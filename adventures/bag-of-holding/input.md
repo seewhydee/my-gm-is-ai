@@ -14,30 +14,31 @@ town. Now you seem to be in a giant cave made of... canvas?
 ### Axe head (start)
 
 The player starts out standing on the tip of a giant battleaxe.  The
-shaft is as wide as a sidewalk.  The axe head is resting against a
-huge wall of canvas (turns out to be the interior of the bag of
-holding).  The axe can be dislodged, but if so, you'd hate to be under
-it.
+axe head is resting against a huge wall of canvas (turns out to be the
+interior of the bag of holding).  The shaft is as wide as a sidewalk,
+sloping downward into the dimness.
 
-The player notices a faint luminescence coming from the canvas walls
--- a side effect of the bag's magic that, thankfully, prevents the
-interior from being pitch black.
+There's a faint luminescence coming from the canvas walls (a side
+effect of the bag's magic that, thankfully, prevents the interior from
+being pitch black).
 
-Above, the canvas scrunches shut (the bag is closed).
+Above, barely above head height, the canvas forms a low ceiling,
+scrunching shut in the center.
 
-The top of the axe blade has made a small rip in the fabric of the
-bag.  If the player balances carefully on the tip of the blade, they
-can look out and see a giant padlock, firmly locked shut and attached
-to the neck of the bag of holding.  The outside is gray nothing and
-howling wind — like being in a stormcloud (it's the Astral Plane).
+The top of the blade has made a small rip in the fabric.  If the
+player balances carefully on the tip of the blade, they can poke their
+head out.  Beyond is a gray nothing (the Astral Plane).  Looking
+around, they can study the exterior of the Bag: most prominently,
+there's a giant padlock barely within reach, currently firmly locked
+shut and attached to the neck of the bag.
 
-The player can drop down into the darkness below, or walk down the axe
-handle.
+The player can drop down into the darkness below, or clamber carefully
+down the axe handle.
 
 ### Axe handle (upper)
 
-Walking down the handle, the player runs into some extremely sticky
-webs. A stuck fly (speaking in a nasally whine) warns of a spider,
+Going down the handle, the player runs into some extremely sticky
+webs. A stuck fly, speaking in a nasally whine, warns of a spider,
 then dies.
 
 The player can drop down into the darkness below, or walk up or down
@@ -45,33 +46,33 @@ the axe handle.
 
 ### Axe handle (lower)
 
-The webs get denser, blocking the path.  If the player inspects them
-carefully, they see the spider, huge and hungry for real blood (see
-below).
+Proceeding down the handle, the webs get denser, blocking the path.
+If the player looks carefully, they see the spider, huge and hungry
+for blood (see below).
 
-Below, the ground is coming into view, in the form of strange,
-irregularly shaped shadowy objects. It looks like the player can drop
-down without much injury (doing so will skip the spider).  There's
-some muffled clanking from the shadows below (Korbar the Dwarf).
+Below, many irregularly shaped objects are coming into view. It looks
+like the player can drop down safely (doing so will skip the spider).
+There's some muffled clanking from the shadows below (Korbar the
+Dwarf).
 
 ### Bag floor
 
 The bag floor consists of loose piles of giant rubbish -- empty potion
 bottles, corks, sandwiches, copper pieces, lint, etc.  The axe handle
-towers up toward the ceiling, while the bag walls loom over all.
+towers over the rest of it, while the bag walls loom over all.
 
 Here is Korbar the Dwarf, drunk and miserable, wearing ridiculously
 noisy platemail (see below).
 
 Amidst the rubbish is a disgustingly damp giant handkerchief.  The
-player won't notice anything special about it unless they search
-systematically (2% chance), or Korbar willingly points it out.  Moving
-the giant handkerchief aside reveals a flap in the canvas wall,
-leading downward into darkness.
+player won't notice anything special about this unless they search
+systematically (2% chance each time), or Korbar willingly points it
+out.  Moving the handkerchief aside reveals a flap in the canvas wall,
+leading down into darkness.
 
 The player can also rummage through the rubbish for a makeshift
 weapon.  There is a 50% chance of finding one: a toenail clipping that
-can be wielded as a shortsword.
+can be wielded as a sword.
 
 ### Secret compartment
 
@@ -86,7 +87,7 @@ If the player jumps down from the axe head or upper axe handle, they
 reach the bag floor but injure themselves; thereafter, they won't be
 able to defeat Korbar in combat (whether armed or unarmed), will have
 a 50% chance of dying to the spider even if armed, and will be in too
-much pain to search the rubbish.
+much pain to search the rubbish themselves.
 
 If dropping from the lower axe handle, they're briefly stunned but
 uninjured.
@@ -108,3 +109,8 @@ combat, if the player is bare-handed, it kills the player (game over).
 If the player is armed, it flees into the shadows, and never threatens
 again.
 
+### Win condition
+
+The player wins by dragging the key up to the top, poking it out of
+the hole, inserting it into the padlock, unlocking the Bag, and
+squirming free.
