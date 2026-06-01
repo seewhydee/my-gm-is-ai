@@ -21,7 +21,7 @@ The game state setup is done ahead of time, similar to a human GM preparing an a
 
 The system will also have a way to track "soft state", such as NPC attitudes. This will be handled by a combination of LLM and a memory store, with safeguards against confabulations by both the narrator and player.
 
-For testing, we will set up one short sample adventure consisting of a hand written text adventure consisting of a 5 room dungeon with no combat (just traps and puzzles). This will be written up as a single long planning document, and converted unto the appropriate schema (with validation) by LLM assistants. Much later, we will explore setting up a more general conversion pipeline, e.g. finding adventures from interactive fiction or tabletop modules with permissive licenses, and translating them.
+For testing, we will set up one short sample adventure consisting of a hand written text adventure consisting of a 5 room dungeon with no combat. This will be written up as a single long planning document, and converted unto the appropriate schema (with validation) by LLM assistants. Much later, we will explore setting up a more general conversion pipeline, e.g. finding adventures from interactive fiction or tabletop modules with permissive licenses, and translating them.
 
 Other scoping issues:
 
