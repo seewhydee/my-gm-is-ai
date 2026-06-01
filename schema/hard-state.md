@@ -81,9 +81,9 @@ exits, interactions, and encounters.
    - On-enter event conditions (`condition`)
    - Encounter rule conditions
 
-### Reserved flags
+### Special flags
 
-Some flags have special meaning to the engine:
+Module authors may define flags that have special meanings for the game state.  For instance, the sample adventure "Trapped In A Bag of Holding" uses these flags:
 
 | Flag                | Meaning |
 |---------------------|---------|
@@ -91,8 +91,6 @@ Some flags have special meaning to the engine:
 | `injured`           | Player is injured. Affects spider encounter outcome and blocks certain interactions (e.g., rummaging). |
 | `stunned`           | Player is briefly stunned after a safe drop. Transient narrative flag. |
 | `dragging_<item>`   | Implicitly managed when a draggable item is in inventory. |
-
-Module authors may define any additional flags.
 
 ---
 
