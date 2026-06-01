@@ -107,7 +107,30 @@ This is what the LLM sees when making a ruling.
 
   "win_condition_hint": "The padlock on the outside of the bag is locked. You will need to find a way to unlock it.",
 
-  "player_input": "I want to push through the webs."
+  "dialogue_context": {
+    "active_npc": {
+      "id": "korbar",
+      "name": "Korbar the Dwarf",
+      "attitude": "neutral",
+      "dialogue_guidelines": {
+        "personality": "Cynical dwarven rogue, heavy drinker, lonely but proud.",
+        "cannot": ["Leave the bag", "Stop drinking", "Remember which way is north"],
+        "knows": ["The padlock mechanism", "The secret compartment in the axe head"],
+        "will_reveal": {
+          "padlock_mechanism": "attitude >= friendly AND topic:abandonment discussed",
+          "secret_compartment": "attitude >= friendly AND player has item:key"
+        }
+      }
+    },
+    "recent_exchanges": [
+      { "turn": 4, "speaker": "player", "text": "Who are you?" },
+      { "turn": 4, "speaker": "korbar", "text": "Arr, name's Korbar. Me party left me here." },
+      { "turn": 5, "speaker": "player", "text": "Tell me more about your party." }
+    ],
+    "topics_discussed": ["origin", "abandonment"]
+  },
+
+  "player_input": "I pull up a cork to sit on and ask Korbar, 'What happened to your party?'"
 }
 ```
 
@@ -122,6 +145,11 @@ This is what the LLM sees when making a ruling.
 4. **Player state summary** is a natural-language condensation of inventory
    and flags, to reduce LLM parsing burden.
 5. **Win condition hint** is included only if the player has discovered clues.
+6. **Dialogue context** is included when `soft_state.dialogue_state.active_npc` is
+   non-null. The block contains the active NPC's identity, attitude, and full
+   `dialogue_guidelines`; the last 5 entries from `conversation_log`; and the
+   set of `topics_discussed`. If `active_npc` is null, `dialogue_context` is
+   omitted entirely from the GMBriefing.
 
 ---
 
@@ -208,11 +236,21 @@ exists, is available from the current room, and all conditions are met.
 {
   "action_type": "talk",
   "target": "<npc_entity_id>",
-  "detail": "What the player says to the NPC, in natural language.",
   "utterance": "Hey there, who are you and how did you get stuck in this bag?",
+  "detail": "Natural-language description of the player's demeanour, gestures, and intent during the conversation.",
+  "ends_dialogue": false,
   "proposed_soft_state_patches": []
 }
 ```
+
+| Field            | Type    | Required | Description |
+|------------------|---------|----------|-------------|
+| `action_type`    | string  | yes      | Must be `"talk"`. |
+| `target`         | string  | yes      | NPC entity ID to speak to. |
+| `utterance`      | string  | yes      | The verbatim spoken words the player's character says. |
+| `detail`         | string  | yes      | Non-verbal context: tone, body language, actions accompanying the speech. |
+| `ends_dialogue`  | boolean | no       | If `true`, signals that the player intends to end the conversation (e.g., "Thanks, I'll be going now."). The engine will archive the conversation log and clear `dialogue_state.active_npc`. |
+| `proposed_soft_state_patches` | array | no   | Standard soft-state patch format. |
 
 **Engine validation:**
 - `target` must be an NPC entity present in the current room, and its `state.alive`
@@ -220,14 +258,20 @@ exists, is available from the current room, and all conditions are met.
 - The engine returns the NPC's `dialogue_guidelines` from the module corpus.
 - The engine does NOT validate dialogue content — dialogue is freeform and
   the LLM improvises based on the guidelines.
+- When a `talk` action succeeds, the engine activates or extends dialogue mode:
+  sets `dialogue_state.active_npc`, appends the player's `utterance` to
+  `conversation_log`, and records any new topics proposed by LLM Call 1.
+- If the `talk` action targets a different NPC than the current
+  `active_npc`, the engine archives the current conversation log and starts a new one.
+- If `ends_dialogue` is `true`, the engine clears dialogue mode after resolution.
 - If the LLM proposes a soft-state patch (e.g., attitude change), the engine
-  validates it per the soft-state patch schema (Section 4).
+  validates it per the soft-state patch schema.
 - Hard knowledge constraints are checked: e.g., if `told_secret` flag is false
   and Korbar's guidelines say she only reveals at `friendly` attitude, the
   engine will reject any attempt by LLM Call 2 to have Korbar reveal the secret
-  at `neutral` attitude. (This is enforced at EngineResult time, not at
+  at `neutral` attitude. This is enforced at EngineResult time, not at
   PlayerAction time — the LLM may *propose* narration that implies a secret
-  reveal; the engine strips or flags it before it reaches the player.)
+  reveal; the engine strips or flags it before it reaches the player.
 
 #### `use` — Use an item on a target
 
@@ -468,10 +512,16 @@ LLM Call 2 receives:
    constraints from the module corpus. The engine provides these guidelines
    in the EngineResult `warnings` field.
 
-5. **Respect game-over state.** If `game_over` is non-null, narrate the ending
+5. **Provide NPC response for dialogue extraction.** When a `talk` action was
+   resolved, the narration must include the NPC's verbatim spoken response in a
+   form the engine can extract (e.g., enclosed in dedicated markers or in a
+   structured `npc_response` field alongside the prose). This response is used
+   to populate `dialogue_state.conversation_log` for future turns.
+
+6. **Respect game-over state.** If `game_over` is non-null, narrate the ending
    and stop. No further player input should be solicited.
 
-6. **The raw chat log may contain hallucinations.** The LLM is instructed that
+7. **The raw chat log may contain hallucinations.** The LLM is instructed that
    prior narration (including its own) is non-canonical unless confirmed by the
    EngineResult. If a contradiction is detected, prefer the engine's version.
 

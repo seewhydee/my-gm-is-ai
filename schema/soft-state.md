@@ -20,7 +20,8 @@ continuity (NPC moods, environmental details, conversation memory).
 {
   "npc_attitudes":     { "<npc_entity_id>": { "attitude": "..." } },
   "environmental_notes": [ "string", ... ],
-  "turn_history":      [ { /* turn log entry */ } ]
+  "turn_history":      [ { /* turn log entry */ } ],
+  "dialogue_state":    { /* active NPC conversation state */ }
 }
 ```
 
@@ -154,6 +155,103 @@ history over any hallucinations in the chat log.
 
 ---
 
+## `dialogue_state` — Active NPC conversation tracking
+
+When the player is in conversation with an NPC, `dialogue_state` tracks the
+ongoing exchange. It gates whether the Context Assembler injects a scoped,
+verbatim `dialogue_context` block into the GMBriefing for LLM Call 1.
+
+```json
+{
+  "active_npc": "korbar",
+  "conversation_log": [
+    {
+      "turn": 4,
+      "speaker": "player",
+      "text": "Who are you, and how did you get stuck in this bag?"
+    },
+    {
+      "turn": 4,
+      "speaker": "korbar",
+      "text": "Arr, name's Korbar. Me party left me here three years ago — said they'd be back. Liars, every one of 'em."
+    },
+    {
+      "turn": 5,
+      "speaker": "player",
+      "text": "Three years? That's awful. Tell me more about this party of yours."
+    }
+  ],
+  "topics_discussed": ["origin", "abandonment"],
+  "entered_turn": 4,
+  "paused_turn": null
+}
+```
+
+### Fields
+
+| Field                | Type              | Description |
+|----------------------|-------------------|-------------|
+| `active_npc`         | string\|null      | Entity ID of the NPC the player is speaking to. `null` means no active dialogue. |
+| `conversation_log`   | array             | Verbatim dialogue exchanges, capped at **10** entries (FIFO eviction). Each entry records the turn number, speaker identifier (`"player"` or the NPC's `entity_id`/name), and the verbatim text spoken. |
+| `topics_discussed`   | string[]          | Named topics that have come up in conversation. LLM Call 1 may propose new topics; the engine deduplicates and stores them. Used by the Context Assembler to inform the ruling LLM what has already been covered. |
+| `entered_turn`       | number            | The turn number when dialogue mode was activated. Used by the engine for stall detection. |
+| `paused_turn`        | number\|null      | Set to the current turn when a non-`talk` action occurs during dialogue. If 3+ turns elapse without another `talk`, the engine auto-clears dialogue mode. `null` when conversation is active. |
+
+### Lifecycle rules
+
+| Trigger                              | Engine action |
+|--------------------------------------|---------------|
+| `talk` action succeeds (no active dialogue) | Set `active_npc`, init `conversation_log` with player utterance, set `entered_turn`. |
+| `talk` action to same NPC           | Append to `conversation_log`. After LLM Call 2 runs, append the NPC response summary. |
+| `talk` action to different NPC      | Archive current `conversation_log` as an `environmental_note` summary, switch `active_npc`, start fresh. |
+| `move` action (player leaves room)  | Archive `conversation_log`, set `active_npc = null`, set `interrupted: true` in the archive note. |
+| NPC dies or flees                   | Archive `conversation_log`, set `active_npc = null`. Reject future `talk` to that NPC. |
+| `talk` with `ends_dialogue: true`   | Archive `conversation_log`, set `active_npc = null`. |
+| 3 turns since last `talk` in dialogue mode | Engine auto-clears dialogue mode; archive and nullify. |
+
+### NPC response extraction
+
+LLM Call 2 generates the full prose narration including the NPC's spoken response.
+After Call 2 completes, the engine extracts the NPC's response from the output
+and appends it to `conversation_log`. The extraction can be heuristic (e.g.,
+text within quotes attributed to the NPC) or the LLM may include a structured
+`npc_response` field alongside its prose to make extraction deterministic.
+
+### Relationship to GMBriefing
+
+When `active_npc != null`, the Context Assembler includes a `dialogue_context`
+block in the GMBriefing with the last 5 entries from `conversation_log`, the
+NPC's `dialogue_guidelines`, current attitude, and `topics_discussed`. This
+gives LLM Call 1 enough conversational awareness to parse player inputs that
+mix action narration with in-character speech, without exposing the full
+verbatim chat log.
+
+### Relationship to `dialogue_guidelines`
+
+The engine cross-references `will_reveal` constraints in the NPC's
+`dialogue_guidelines` with `topics_discussed` and current attitude. If the
+LLM narrates a secret reveal that is gated behind a higher attitude or an
+undiscovered topic, the engine flags it in `warnings`. The `will_reveal`
+block in the corpus can also gate on `topic:<topic_id>` conditions — e.g.,
+"the NPC only reveals the padlock mechanism if `abandonment` has been
+discussed AND attitude >= friendly."
+
+### Archival
+
+When dialogue mode exits, the full `conversation_log` is appended as a
+single `environmental_note`:
+
+```
+"[Turn 4-5] Conversation with Korbar: player asked about her origin and
+party; Korbar revealed she was abandoned by her adventuring company three
+years ago. Topics: origin, abandonment."
+```
+
+This preserves the narrative for future GMBriefings without retaining the
+verbatim exchange indefinitely in the active dialogue state.
+
+---
+
 ## SoftStatePatch reference (from actions.md)
 
 For completeness, the soft-state patch format that the LLM outputs in
@@ -198,6 +296,13 @@ For completeness, the soft-state patch format that the LLM outputs in
     "korbar": { "attitude": "neutral" }
   },
   "environmental_notes": [],
-  "turn_history": []
+  "turn_history": [],
+  "dialogue_state": {
+    "active_npc": null,
+    "conversation_log": [],
+    "topics_discussed": [],
+    "entered_turn": 0,
+    "paused_turn": null
+  }
 }
 ```

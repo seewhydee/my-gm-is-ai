@@ -265,12 +265,12 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
   "cannot": ["list of things the NPC will never do or say"],
   "knows": ["list of facts the NPC possesses"],
   "will_reveal": {
-    "<topic>": "string describing under what conditions the NPC shares this information"
+    "<topic>": "string describing under what conditions the NPC shares this information (may include: attitude thresholds, topic preconditions, item requirements, flag requirements)"
   }
 }
 ```
 
-These are supplied to LLM Call 1 and Call 2 to constrain NPC dialogue improvisation. The engine enforces the `cannot` constraints via the `warnings` field in EngineResult.
+These are supplied to LLM Call 1 and Call 2 to constrain NPC dialogue improvisation. The engine cross-references `will_reveal` constraints against current `dialogue_state.topics_discussed` and `npc_attitudes`; violations are flagged in EngineResult `warnings`. The `will_reveal` conditions may reference `attitude`, `topic:<topic_id>`, `item:<item_id>`, and `flag:<flag_name>`. The engine enforces the `cannot` constraints via the `warnings` field in EngineResult.
 
 ### `behavior` (for NPC with combat)
 
