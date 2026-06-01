@@ -1,0 +1,413 @@
+{
+  "_schema": "module_corpus",
+  "_description": "Read-only canonical adventure content. Never modified during play.",
+
+  "adventure": {
+    "title": "You're Trapped in a Bag of Holding!",
+    "credits": {
+      "author": "Sam Seer",
+      "source": "2023 One Page Dungeon Competition",
+      "license": "CC BY-SA 4.0"
+    },
+    "introduction": "You wake up. The last thing you remember is a night out on the town. Now you seem to be in a giant cave made of... canvas?",
+    "atmosphere": {
+      "setting": "The interior of a magical Bag of Holding, scaled to make the player feel tiny.",
+      "lighting": "Faint luminescence from the canvas walls prevents total darkness.",
+      "tone": "Whimsical danger — giant everyday objects treated as dungeon terrain."
+    }
+  },
+
+  "rooms": {
+    "axe_head": {
+      "name": "Axe Head",
+      "description": "You are standing on the tip of a giant battleaxe. The axe head rests against a huge canvas wall (the interior of the bag of holding). The shaft extends downward into dimness, as wide as a sidewalk. Faint luminescence comes from the canvas walls. Above you, barely above head height, the canvas forms a low ceiling, scrunching shut in the center. A small rip in the fabric is visible at the top of the blade.",
+      "entities_present": ["battleaxe", "canvas_walls", "rip"],
+      "exits": [
+        {
+          "id": "exit_climb_down_handle",
+          "direction": "Climb carefully down the axe handle",
+          "target_room": "axe_handle_upper",
+          "conditions": [],
+          "one_way": false
+        },
+        {
+          "id": "exit_drop_head",
+          "direction": "Drop into the darkness below (you will be injured)",
+          "target_room": "bag_floor",
+          "conditions": [],
+          "on_traverse": {
+            "set_flag": "injured",
+            "value": true,
+            "narrative": "You plummet through the darkness and crash onto the rubbish below. Pain shoots through your body — you are badly injured."
+          },
+          "one_way": true
+        }
+      ],
+      "interactions": [
+        {
+          "id": "look_out_rip",
+          "label": "Poke head through the rip",
+          "description": "Balance carefully on the tip of the blade to look through the rip.",
+          "condition": null,
+          "result": {
+            "narrative": "Beyond is a gray nothing — the Astral Plane. Looking around, you see the exterior of the Bag. Most prominently, there is a giant padlock barely within reach, currently firmly locked shut and attached to the neck of the bag.",
+            "reveals": "The padlock on the outside is locked. You could probably reach it if you had something to poke through."
+          }
+        }
+      ],
+      "is_start_room": true
+    },
+
+    "axe_handle_upper": {
+      "name": "Axe Handle (Upper)",
+      "description": "You are on the upper section of the axe handle, sloping downward. The shaft is as wide as a sidewalk. The area is covered in extremely sticky webs.",
+      "entities_present": ["battleaxe", "stuck_fly", "webs_upper"],
+      "exits": [
+        {
+          "id": "exit_up_to_head",
+          "direction": "Walk up the axe handle",
+          "target_room": "axe_head",
+          "conditions": [],
+          "one_way": false
+        },
+        {
+          "id": "exit_down_handle_upper",
+          "direction": "Proceed further down the axe handle",
+          "target_room": "axe_handle_lower",
+          "conditions": [],
+          "one_way": false
+        },
+        {
+          "id": "exit_drop_upper",
+          "direction": "Drop into the darkness below (you will be injured)",
+          "target_room": "bag_floor",
+          "conditions": [],
+          "on_traverse": {
+            "set_flag": "injured",
+            "value": true,
+            "narrative": "You fall through the darkness and land hard on the rubbish. Pain wracks your body — you are badly injured."
+          },
+          "one_way": true
+        }
+      ],
+      "on_enter": [
+        {
+          "id": "fly_warning",
+          "condition": "flag:fly_alive == true",
+          "action": "narrative_and_flag",
+          "narrative": "You notice a stuck fly caught in the webs. Speaking in a nasally whine, it warns you: 'Watch out... the spider... it's huge...' Then it goes still.",
+          "set_flag": { "fly_alive": false }
+        }
+      ]
+    },
+
+    "axe_handle_lower": {
+      "name": "Axe Handle (Lower)",
+      "description": "You are on the lower section of the axe handle. The webs here are denser, blocking the path downward unless you push through. If you look carefully, you see the spider — huge and hungry for blood — lurking in the webs. Below, many irregularly shaped objects are coming into view. It looks like you could drop down safely. There is some muffled clanking from the shadows below.",
+      "entities_present": ["battleaxe", "spider", "webs_dense"],
+      "exits": [
+        {
+          "id": "exit_up_handle_lower",
+          "direction": "Walk up the axe handle",
+          "target_room": "axe_handle_upper",
+          "conditions": [],
+          "one_way": false
+        },
+        {
+          "id": "exit_through_webs",
+          "direction": "Push through the dense webs downward",
+          "target_room": "bag_floor",
+          "conditions": [
+            { "unless": "flag:spider_alive == false", "note": "If spider is dead, webs are safe to pass." }
+          ],
+          "on_traverse": {
+            "trigger_encounter": "spider_encounter",
+            "skip_if": "flag:spider_fled == true",
+            "narrative_skip": "The webs are here but the spider is gone. You push through the sticky strands and reach the floor."
+          },
+          "one_way": false
+        },
+        {
+          "id": "exit_drop_lower",
+          "direction": "Drop safely down to the floor (you will be briefly stunned)",
+          "target_room": "bag_floor",
+          "conditions": [],
+          "on_traverse": {
+            "set_flag": "stunned",
+            "value": true,
+            "narrative": "You drop down and land on a pile of rubbish. You're winded and briefly stunned, but uninjured."
+          },
+          "one_way": true,
+          "note": "This drop bypasses the spider entirely."
+        }
+      ]
+    },
+
+    "bag_floor": {
+      "name": "Bag Floor",
+      "description": "You are on the floor of the bag. Loose piles of giant rubbish surround you: empty potion bottles, corks, sandwiches, copper pieces, lint, and more. The axe handle towers over everything, while the bag walls loom on all sides. Amidst the rubbish is a disgustingly damp giant handkerchief.",
+      "entities_present": ["battleaxe", "rubbish_pile", "handkerchief", "korbar"],
+      "exits": [
+        {
+          "id": "exit_climb_up_handle_floor",
+          "direction": "Climb up the axe handle",
+          "target_room": "axe_handle_lower",
+          "conditions": [],
+          "one_way": false
+        },
+        {
+          "id": "exit_secret_compartment",
+          "direction": "Descend through the flap into darkness",
+          "target_room": "secret_compartment",
+          "conditions": [
+            { "require": "flag:handkerchief_moved == true" }
+          ],
+          "hidden": true,
+          "one_way": false
+        }
+      ],
+      "interactions": [
+        {
+          "id": "search_handkerchief",
+          "label": "Search the rubbish systematically",
+          "description": "Sift through the rubbish looking for anything unusual.",
+          "condition": { "unless": "flag:injured == true" },
+          "check": {
+            "type": "roll",
+            "threshold": 0.02,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "After careful searching, you notice something odd about that damp handkerchief — it seems to be covering something.",
+            "set_flag": { "handkerchief_noticed": true }
+          },
+          "failure": {
+            "narrative": "You search through the junk but find nothing remarkable."
+          }
+        },
+        {
+          "id": "move_handkerchief",
+          "label": "Move the handkerchief aside",
+          "condition": { "any": [
+            "flag:handkerchief_noticed == true",
+            "flag:korbar_told_secret == true"
+          ]},
+          "result": {
+            "narrative": "Moving the disgusting handkerchief aside, you reveal a flap in the canvas wall, leading down into darkness.",
+            "set_flag": { "handkerchief_moved": true }
+          }
+        },
+        {
+          "id": "rummage_weapon",
+          "label": "Rummage for a makeshift weapon",
+          "description": "Dig through the rubbish looking for something you can use as a weapon.",
+          "check": {
+            "type": "roll",
+            "threshold": 0.50,
+            "repeatable": false,
+            "note": "One attempt only. The rubbish is finite."
+          },
+          "success": {
+            "narrative": "You find a giant toenail clipping — disgusting, but it can be wielded as a sword!",
+            "add_item": "toenail_sword"
+          },
+          "failure": {
+            "narrative": "You paw through the rubbish but find nothing useful as a weapon."
+          }
+        }
+      ]
+    },
+
+    "secret_compartment": {
+      "name": "Secret Compartment",
+      "description": "You have squeezed into a dark hidden compartment beneath the canvas floor. Inside is a key. It is very large — far too heavy to carry normally, but you could drag it with great effort.",
+      "entities_present": ["key"],
+      "exits": [
+        {
+          "id": "exit_back_to_floor",
+          "direction": "Climb back up to the bag floor",
+          "target_room": "bag_floor",
+          "conditions": [],
+          "one_way": false
+        }
+      ],
+      "interactions": [
+        {
+          "id": "take_key",
+          "label": "Take the key",
+          "description": "Begin dragging the enormous key. It takes great effort, but you can move it between rooms.",
+          "condition": { "unless": "inventory:key" },
+          "result": {
+            "narrative": "Grunting with effort, you heave the massive key. It's awkward and heavy — you can drag it but not carry it freely.",
+            "add_item": "key"
+          }
+        }
+      ]
+    }
+  },
+
+  "entities": {
+    "battleaxe": {
+      "type": "feature",
+      "description": "A colossal battleaxe, its head resting against the canvas wall and its shaft sloping down into the dimness. The shaft is as wide as a sidewalk. It belongs to Korbar.",
+      "spans_rooms": ["axe_head", "axe_handle_upper", "axe_handle_lower", "bag_floor"],
+      "state_fields": {}
+    },
+    "canvas_walls": {
+      "type": "feature",
+      "description": "The interior walls of the Bag of Holding, made of thick canvas. They emit a faint luminescence, leaving the bag in a perpetual twilight.",
+      "state_fields": {}
+    },
+    "rip": {
+      "type": "feature",
+      "description": "A small rip in the canvas at the top of the blade. Through it, the player can see outside to the Astral Plane and the padlock.",
+      "state_fields": {}
+    },
+    "stuck_fly": {
+      "type": "npc",
+      "description": "A fly trapped in the sticky webs on the upper axe handle. It is on the verge of death.",
+      "dialogue_guidelines": {
+        "on_encounter": "Warns the player in a nasally whine about the huge spider, then dies. This is a one-time automatic event.",
+        "cannot": ["The fly dies immediately after its warning. It cannot answer questions or engage in conversation."]
+      },
+      "state_fields": {
+        "alive": { "type": "boolean", "description": "Whether the fly is still alive to deliver its warning." }
+      }
+    },
+    "spider": {
+      "type": "npc",
+      "subtype": "monster",
+      "description": "A huge, hungry spider lurking in the dense webs on the lower axe handle. It attacks anyone who passes through its territory.",
+      "dialogue_guidelines": {
+        "can": ["Act as a mindless predator — it does not speak or negotiate."],
+        "cannot": ["Be reasoned with, bribed, or scared off by talk alone."]
+      },
+      "state_fields": {
+        "alive": { "type": "boolean", "description": "Whether the spider is alive." },
+        "fled": { "type": "boolean", "description": "Whether the spider has fled after being wounded." }
+      },
+      "behavior": {
+        "triggers_on": "exit_through_webs",
+        "encounter_rules": {
+          "if_player_unarmed": { "outcome": "death", "narrative": "The spider sinks its fangs into you. You are dead." },
+          "if_player_armed_and_injured": { "outcome": "roll_50_percent", "on_success": "spider_flees", "on_failure": "death" },
+          "if_player_armed_and_not_injured": { "outcome": "spider_flees", "narrative": "You wound the spider with your weapon. It scuttles away into the shadows." }
+        },
+        "on_flee": {
+          "set_flags": { "spider_fled": true },
+          "effect": "The spider never threatens again. Passage through the webs is safe."
+        }
+      }
+    },
+    "webs_upper": {
+      "type": "trap",
+      "description": "Sticky webs covering the upper axe handle. They impede movement but pose no direct danger.",
+      "state_fields": {}
+    },
+    "webs_dense": {
+      "type": "trap",
+      "description": "Dense, thick webs blocking the lower axe handle. The spider lurks within. Moving through them triggers the spider encounter.",
+      "state_fields": {}
+    },
+    "rubbish_pile": {
+      "type": "feature",
+      "description": "Loose piles of giant rubbish: empty potion bottles, corks, sandwiches, copper pieces, lint. Contains a damp handkerchief and possibly a usable weapon.",
+      "state_fields": {}
+    },
+    "handkerchief": {
+      "type": "feature",
+      "description": "A disgustingly damp giant handkerchief lying amidst the rubbish. Hides a flap leading to a secret compartment.",
+      "state_fields": {}
+    },
+    "toenail_sword": {
+      "type": "item",
+      "description": "A giant toenail clipping that can be wielded as a sword. Disgusting but effective.",
+      "tags": ["weapon"],
+      "state_fields": {}
+    },
+    "key": {
+      "type": "item",
+      "description": "An enormously large key, too heavy to carry normally. Can be dragged between rooms with great effort.",
+      "tags": ["key_item", "draggable"],
+      "draggable": true,
+      "dragging_note": "The key occupies the player while being dragged. The player can still move between rooms but cannot perform other manual actions while dragging.",
+      "state_fields": {}
+    },
+    "korbar": {
+      "type": "npc",
+      "description": "Korbar the Dwarf, drunk and miserable, wearing ridiculously noisy platemail. Her adventuring party stuck her in this Bag of Holding during a stealth mission, then forgot about her. She knows how the Bag works. She is unarmed — the axe actually belongs to her.",
+      "dialogue_guidelines": {
+        "personality": "Drunk, miserable, self-pitying, but not hostile. She wants out as much as the player does but is too scared and demoralized to act.",
+        "knows": [
+          "How the Bag of Holding works — she understands its magic.",
+          "That the key to the padlock is hidden in a secret compartment beneath a damp handkerchief on the floor.",
+          "That the spider on the axe handle is extremely dangerous.",
+          "That the padlock on the outside of the bag can be reached through the rip at the top."
+        ],
+        "will_reveal": {
+          "bag_mechanics": "Always — she rambles about how she got stuck here.",
+          "secret_compartment": "Only if she likes the player (friendly attitude). Otherwise she is too miserable to be helpful.",
+          "spider_fear": "Always — she recoils at any mention of the spider."
+        },
+        "cannot": [
+          "Be persuaded to fight the spider — she is absolutely terrified and will never agree.",
+          "Be persuaded to leave the bag floor — she is too scared.",
+          "Reveal the secret compartment if she is hostile or dead."
+        ]
+      },
+      "state_fields": {
+        "alive": { "type": "boolean", "description": "Whether Korbar is alive." },
+        "told_secret": { "type": "boolean", "description": "Whether Korbar has revealed the secret compartment location." }
+      }
+    }
+  },
+
+  "mechanics": {
+    "spider_encounter": {
+      "id": "spider_encounter",
+      "description": "Resolves combat with the spider when player pushes through the webs.",
+      "rules": [
+        {
+          "condition": "inventory does not contain any item with tag 'weapon'",
+          "outcome": "death",
+          "narrative": "Bare-handed, you are no match for the spider. It kills you."
+        },
+        {
+          "condition": "inventory contains weapon AND flag:injured == true",
+          "outcome": "roll",
+          "threshold": 0.50,
+          "on_success": { "outcome": "flee", "set_flags": { "spider_fled": true }, "narrative": "Even injured, you manage to wound the spider. It flees." },
+          "on_failure": { "outcome": "death", "narrative": "Your injuries slow you down. The spider overpowers and kills you." }
+        },
+        {
+          "condition": "inventory contains weapon AND flag:injured == false",
+          "outcome": "flee",
+          "set_flags": { "spider_fled": true },
+          "narrative": "You slash at the spider with your weapon. Wounded, it scuttles away into the shadows."
+        }
+      ]
+    },
+
+    "win_condition": {
+      "description": "The player wins by unlocking the padlock and escaping the Bag.",
+      "check": "Player is in room 'axe_head', has the 'key' in inventory, and uses the key on the exterior padlock.",
+      "on_win": {
+        "narrative": "With great effort, you poke the massive key through the rip, guide it into the padlock, and turn. The lock clicks open. The neck of the bag loosens, and you squirm free into the gray nothing of the Astral Plane — but anywhere is better than inside this bag.",
+        "outcome": "game_over_win"
+      }
+    }
+  },
+
+  "game_over_conditions": [
+    {
+      "id": "death_spider",
+      "trigger": "spider kills player",
+      "type": "failure"
+    },
+    {
+      "id": "win_escape",
+      "trigger": "player unlocks padlock and squirms free",
+      "type": "success"
+    }
+  ]
+}

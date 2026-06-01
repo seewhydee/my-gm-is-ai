@@ -10,7 +10,7 @@ At the same time, we don't want the system to be merely a natural language front
 
 ### Proposed high-level approach
 
-We will set up a system that combines an LLM agent with a non-AI engine for deterministic game logic and game state.
+We will set up a system that combines an LLM agent with a non-AI engine for game logic and game state.
 
 Player Input
  -> combined with context, supplied to LLM
@@ -48,8 +48,8 @@ Player Input
     │
     ▼
 ┌─────────────────────┐
-│  Engine Resolution  │ Validates action against world graph, rules,
-│  (deterministic)    │ inventory, etc. Applies hard-state changes
+│  Engine Resolution  │ Validates action against world, rules, etc.
+│  (deterministic)    │ Resolves rolls.  Applies hard-state changes
 └─────────────────────┘ and in-scope soft-state patches.
     │
     ▼
