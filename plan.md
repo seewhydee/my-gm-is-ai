@@ -45,6 +45,7 @@ Player Input
    Produces: GMBriefing (structured JSON context doc)
 
 2. LLM Call 1: Ruling
+   LLM temperature setting low
    Input:  GMBriefing + verbatim player input
    Output: PlayerAction (action_type, target, detail)
            + proposed SoftStatePatch[] (optional)
@@ -57,6 +58,7 @@ Player Input
    Produces: EngineResult (outcome, state diffs, narration)
 
 4. LLM Call 2: Prose
+   LLM temperature setting moderate
    Input:  Verbatim chat log + GMBriefing + EngineResult
    Output: Natural-language narration (text to player)
 
@@ -114,16 +116,16 @@ No vector database is required for the reference implementation. Lookups are det
 
 ### LLM Call 1: The Ruling
 
-The first LLM call interprets the player's natural-language input.  It cannot propose hard-state changes (inventory, flags, location); those are engine domain.  Its main responsibility is to produce a structured **PlayerAction** in JSON.  This falls into one of five types:
+The first LLM call interprets the player's natural-language input.  It cannot propose hard-state changes (inventory, flags, location); those are engine domain.  Its main responsibility is to produce a structured **PlayerAction** in JSON.  This falls into one of these types:
 
- `move`, `examine`, `interact`, `talk`, `transfer`, `wait`
+ `move`, `examine`, `interact`, `talk`, `transfer`, `wait`, `ooc_discussion`
 
 Only one PlayerAction can be submitted per turn.  If the player's input is a chained action best decribed by multiple PlayerActions, the LLM is instructed to break off the first (or next) piece of the action chain, construct the PlayerAction from that, and indicate the rest of the chained action using the `follow_up` field (see below).  The different PlayerActions are described below:
 
 - `move` must specify a room exit ID, which should be a valid (i.e., accessible and non-hidden) exit from the current room.
   It optionally includes a `style` field to specify special movement methods (e.g. crawling).
 
-* `examine` must specify a valid entity ID or room ID.
+* `examine` must specify a valid entity ID or room ID (cannot be a soft item -- use `wait` for that).
   It optionally includes a `rigorous` field to flag in-depth searches (thus, a schema may specify that only a rigorous search reveals a secret).
   It optionally includes a `using` field to specify a valid entity ID or soft item with which to perform the search.
 
@@ -140,6 +142,8 @@ Only one PlayerAction can be submitted per turn.  If the player's input is a cha
   It optionally includes a `taken_items`: a list of item IDs or soft items.
 
 * `wait` advances the turn counter.  This serves as a catch-all category that includes actions falling below the plot significance threshold (e.g., examining a soft item), as well as player introspection (e.g., looking through inventory).  The `detail` field will be used to instruct the narrator how to react (e.g., reporting on the contents of inventory).
+
+* `ooc_discussion` is a special out-of-character discussion with the GM that, during the engine phase, will not advance the turn counter and will not change the hard state or soft state.  The system will instead skip to the narrator (LLM 2).  This can be used by players to ask the GM for clarifications, etc.
 
 Every PlayerAction, regardless of type includes the following:
 
@@ -171,6 +175,7 @@ For now, our patchwork solution is to pre-populate each room and entity, at corp
 
 The engine is the system's source of ground truth. It receives the PlayerAction and:
 
+0. Does a no-op if the PlayerAction is `ooc_discussion`, skipping straight to the narration.
 1. **Validates** the action against the current hard state and module corpus. Checks include: does the exit exist? is the entity present and alive? are conditions met? is the item in inventory?
    For chained actions, check whether an action chain has surpassed some reasonable length (a defined constant); if so, terminate (to guard against LLM Call 1 creating a follow up loop).
 2. **Resolves mechanics**: evaluates any conditions on exits/interactions, rolls dice for probabilistic checks, dispatches encounters (evaluating rules against inventory and flags), applies `on_traverse` effects and `on_enter` events.
@@ -223,3 +228,4 @@ Before returning control to the player, the system saves a copy of the hard stat
 - **Combat phase**: the attack interaction will be revised to support iterative rounds, HP tracking, damage rolls, and opposed checks. The current flag-based branching is a phase-1 placeholder.
 - **Semantic search / RAG**: once adventures grow beyond the hand-coded five-room scale, the deterministic ID lookup in the Context Assembler can be augmented with vector embeddings for entity descriptions and player queries.
 - **Multi-NPC conversations**: currently we only handle conversing with one NPC at a time, this should be extended.
+- **Restore**: special commands to restore world state.
