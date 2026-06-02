@@ -73,6 +73,8 @@ If LLM Call 1 produces a malformed or impossible action, the system retries once
 
 - *Rooms* as graph nodes.  Each has a prose description, a list of entities present, available exits (with conditions, traversal effects, and hidden/reveal logic), special interactions, and on-enter events (one-shot or conditional).
 - *Entities* have typed categories — `player`, `feature`, `npc`, `trap`, `item`. Each has descriptive prose, special interactions, and declarations of mutable state fields. NPCs carry `dialogue_guidelines` (personality, knowledge constraints, attitude-gated secrets) that are surfaced to the LLM. Monster-type NPCs carry `behavior` blocks defining encounter rules and outcomes.
+- *Interactions* are named interactions that can be performed by or on entities or rooms.
+  Each has a parameter signature (target, using, etc.).
 - *Mechanics* are named rules involving aspects of game state not tied to specific rooms or entities.  These includes game-over conditions (win/lose).
 
 **Hard Game State** (engine-write, engine-read, LLM-read). This stores authoritative plot-relevant runtime state, and is mutated exclusively by the engine during action resolution. Contains:
@@ -89,9 +91,9 @@ If LLM Call 1 produces a malformed or impossible action, the system retries once
 - `soft_inventory`: inventory items lacking item IDs (e.g., rocks picked up from the ground). Soft items are further described below.
 - `room_notes`: freeform strings describing non-plot-relevant changes to rooms (e.g., cleared webs, rearranged debris).
 - `entity_notes`: freeform strings describing non-plot-relevant changes to entities (e.g., door marked with chalk).
-- `npc_attitudes`: a `hostile | neutral | friendly` triple per NPC. The engine enforces a one-step-per-turn transition limit and rejects attitude patches for dead NPCs.
+- `npc_attitudes`: an integer per NPC (positive attitude is > 0). The engine rejects attitude patches for dead NPCs, and imposes corpus-specified attitude limits (e.g., troll never becomes friendly, guard cannot change attitude quickly).
 - `turn_history`: a structured log of completed turns (player input, resolved action, engine summary, flags changed, location after). The Context Assembler includes the last 5 entries in the GMBriefing; the full log is retained for future save/load and debugging.
-- `dialogue_state`: tracks active NPC conversations — which NPC the player is talking to, a scrolled window of the last 10 verbatim exchanges (validated against `turn_history`), and a set of topics discussed. When active, the Context Assembler injects a `dialogue_context` block into the GMBriefing so that LLM Call 1 has enough conversational awareness to parse inputs that mix action narration with in-character speech (see Dialogue Mode below).
+- `dialogue_state`: tracks active NPC conversations — which NPC the player is talking to, a scrolled window of the last 10 verbatim exchanges, and a set of topics discussed. When active, the Context Assembler injects a `dialogue_context` block into the GMBriefing so that LLM Call 1 has enough conversational awareness to parse inputs that mix action narration with in-character speech (see Dialogue Mode below).
 
 ### The Context Assembler and GMBriefing
 
@@ -114,23 +116,30 @@ No vector database is required for the reference implementation. Lookups are det
 
 The first LLM call interprets the player's natural-language input.  It cannot propose hard-state changes (inventory, flags, location); those are engine domain.  Its main responsibility is to produce a structured **PlayerAction** in JSON.  This falls into one of five types:
 
- `move`, `examine`, `talk`, `interact`, `wait`
+ `move`, `examine`, `interact`, `talk`, `transfer`, `wait`
 
 Only one PlayerAction can be submitted per turn.  If the player's input is a chained action best decribed by multiple PlayerActions, the LLM is instructed to break off the first (or next) piece of the action chain, construct the PlayerAction from that, and indicate the rest of the chained action using the `follow_up` field (see below).  The different PlayerActions are described below:
 
 - `move` must specify a room exit ID, which should be a valid (i.e., accessible and non-hidden) exit from the current room.
+  It optionally includes a `style` field to specify special movement methods (e.g. crawling).
 
 * `examine` must specify a valid entity ID or room ID.
   It optionally includes a `rigorous` field to flag in-depth searches (thus, a schema may specify that only a rigorous search reveals a secret).
-
-* `talk` must specify one or more valid NPC entity IDs.
-  It optionally includes an `utterance` field (verbatim player speech) and/or an `ends_dialogue` flag. See the Dialogue section below.
+  It optionally includes a `using` field to specify a valid entity ID or soft item with which to perform the search.
 
 * `interact` must specify a valid entity ID or soft item (a target), plus an interaction ID (a specific plot-relevant way to interact with something).
-  Interactions include generic ones like `attack` or `take`, plus special corpus-defined ones like `recharge`.
-  It optionally includes a `using` field to specify a valid entity ID or soft item with which to perform the interaction.
+  Interactions include generic ones like `attack`, `take`, plus special corpus-defined ones like `recharge`.
+  It optionally includes a `using` field to specify a valid entity ID or soft item enabling the interaction (e.g., attack goblin using sword).
 
-* `wait` advances the turn counter.  This serves as a catch-all category that includes player actions falling below the plot significance threshold (e.g., examining a soft item).
+* `talk` must specify one NPC entity ID.
+  It optionally includes an `utterance` field (verbatim player speech) and/or an `ends_dialogue` flag. See the Dialogue section below.
+
+* `transfer` must specify one entity ID (usually an NPC or container), or room ID
+  (e.g., for dropping items on the floor).
+  It optionally includes a `given_items`: a list of item IDs or soft items.
+  It optionally includes a `taken_items`: a list of item IDs or soft items.
+
+* `wait` advances the turn counter.  This serves as a catch-all category that includes actions falling below the plot significance threshold (e.g., examining a soft item), as well as player introspection (e.g., looking through inventory).  The `detail` field will be used to instruct the narrator how to react (e.g., reporting on the contents of inventory).
 
 Every PlayerAction, regardless of type includes the following:
 
@@ -144,13 +153,13 @@ When constructing PlayerActions involving soft items, the LLM is additionally in
 
 When `soft_state.dialogue_state.active_npc` is non-null, the Context Assembler enriches the GMBriefing with a `dialogue_context` block containing:
 
-- The active NPC(s)' identity, current attitude, and full `dialogue_guidelines` from the corpus.
+- The active NPC's identity, current attitude, and full `dialogue_guidelines` from the corpus.
 - Up to 5 of the most recent verbatim exchanges from `conversation_log` (player utterance + NPC response summary per exchange).
 - The set of `topics_discussed` so far.
 
 This scoped, purpose-built injection gives the ruling LLM enough conversational awareness to correctly classify inputs that intermix action narration with in-character speech (e.g., *"I pull up a cork to sit on and ask Korbar, 'How long have you been down here?'"*). The structured, non-verbatim turn history for all other game-state context remains unchanged; the hallucination firewall is preserved for mechanical state, and only ongoing dialogue gains verbatim context.
 
-Dialogue mode exits automatically when the player moves rooms, the NPC dies/flees, a `talk` action carries `ends_dialogue: true`, or the engine detects a stall (3+ turns without a `talk` action while in dialogue mode). On exit, a summary of the conversation log is archived in the NPC(s)' `entity_notes`, and `dialogue_state` resets to `null`.
+Dialogue mode exits automatically when the player moves rooms, the NPC dies/flees, a `talk` action carries `ends_dialogue: true`, or the engine detects a stall (3+ turns without a `talk` action while in dialogue mode). On exit, a summary of the conversation log is archived in the NPC's `entity_notes`, and `dialogue_state` resets to `null`.
 
 #### Soft items
 
@@ -163,10 +172,10 @@ For now, our patchwork solution is to pre-populate each room and entity, at corp
 The engine is the system's source of ground truth. It receives the PlayerAction and:
 
 1. **Validates** the action against the current hard state and module corpus. Checks include: does the exit exist? is the entity present and alive? are conditions met? is the item in inventory?
-   For chained actions, check whether an action chain has surpassed some reasonable length (e.g. 3); if so, terminate (to guard against LLM Call 1 creating a follow up loop).
+   For chained actions, check whether an action chain has surpassed some reasonable length (a defined constant); if so, terminate (to guard against LLM Call 1 creating a follow up loop).
 2. **Resolves mechanics**: evaluates any conditions on exits/interactions, rolls dice for probabilistic checks, dispatches encounters (evaluating rules against inventory and flags), applies `on_traverse` effects and `on_enter` events.
 3. **Applies hard-state changes**: sets/clears flags, adds/removes inventory items, moves the player, updates entity states.
-4. **Validates soft-state patches**: checks each proposed patch against the soft-state schema (entity exists, soft item is present, attitude step limit, no dead-NPC patches, reason is non-empty, no contradiction with hard state). Accepted patches are applied; rejected patches are returned with reasons.
+4. **Validates soft-state patches**: checks each proposed patch against the soft-state schema (entity exists, soft item is present, attitude steps allowed, no dead-NPC patches, reason is non-empty, no contradiction with hard state). Accepted patches are applied; rejected patches are returned with reasons.
 5. **Checks for game-over**: if a death outcome or win condition fired, sets `hard_state.game_over`.
 6. **Increments the turn counter** and appends a turn log entry** to `soft_state.turn_history`.
 7. **Produces an EngineResult** containing: success/failure, the room after resolution, a diff of all hard-state changes, applied/rejected soft patches, triggered narrations (canonical prose for key events), encounter outcomes, game-over state (if any), and warnings to LLM Call 2 about narrative constraints.
@@ -189,7 +198,7 @@ Key constraints on LLM Call 2:
 4. **Respect hidden information.** Secret exits, NPC secrets gated behind attitude thresholds, and unrevealed mechanics must not be divulged.
 5. **Respect game-over.** If the engine sets `game_over`, the LLM narrates the ending and stops.
 
-Aside from narration, LLM Call 2 has a special adjudication role for chained actions.  After emitting its output, it can decide whether to (i) proceed directly back to step 1, skipping player interaction and proceeding with the next step in the chain; or (ii) interrupt the chain (with appropriate narration), returning control to the player.
+Aside from narration, LLM Call 2 has a special adjudication role for chained actions.  After emitting its output, it can decide whether to (i) proceed directly back to step 1 with an updated GMBriefing for the next step in the chain, skipping player interaction; or (ii) interrupt the chain (with appropriate narration), returning control to the player.
 
 #### Chat History: Structured vs. Verbatim
 
@@ -207,10 +216,10 @@ Before returning control to the player, the system saves a copy of the hard stat
 - **Impossible action** (valid JSON, but target not present or conditions not met): the engine returns `success: false` with a reason; LLM Call 2 narrates the failure naturally.
 - **Rejected soft-state patches**: appear in `EngineResult.soft_state_patches_rejected` with reasons; LLM Call 2 must not narrate the rejected change.
 
-### Extensibility
+## Extensibility and TODO
 
-- **New adventures**: authored as a Module Corpus JSON file and paired hard/soft state files. No code changes needed for adventures that use the existing set of entity types, action types, and mechanics.
+- **New adventures**: each authored as a Module Corpus JSON file and paired hard/soft state files. No code changes needed for adventures that use the existing set of entity types, action types, and mechanics.
 - **New action types**: register in the engine's action parser and add the prompt instruction to LLM Call 1. New soft-state fields can be added to the patch schema with engine-side validation rules.
 - **Combat phase**: the attack interaction will be revised to support iterative rounds, HP tracking, damage rolls, and opposed checks. The current flag-based branching is a phase-1 placeholder.
 - **Semantic search / RAG**: once adventures grow beyond the hand-coded five-room scale, the deterministic ID lookup in the Context Assembler can be augmented with vector embeddings for entity descriptions and player queries.
-
+- **Multi-NPC conversations**: currently we only handle conversing with one NPC at a time, this should be extended.
