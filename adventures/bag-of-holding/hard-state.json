@@ -1,36 +1,29 @@
 {
-  "_schema": "hard_game_state",
-  "_description": "Runtime mutable state managed exclusively by the engine. Never directly modified by the LLM.",
-
   "player": {
     "location": "axe_head",
-    "inventory": [],
-    "hit_points": null,
-    "_hp_note": "HP is not used in this adventure. Add when combat system is implemented."
+    "inventory": []
   },
-
   "flags": {
     "injured": false,
     "stunned": false,
+    "spider_fled": false,
     "handkerchief_noticed": false,
     "handkerchief_moved": false,
     "padlock_unlocked": false
   },
-
-  "entity_states": {
-    "stuck_fly": {
-      "alive": true
-    },
-    "spider": {
-      "alive": true,
-      "fled": false
-    },
-    "korbar": {
-      "alive": true,
-      "told_secret": false
-    }
+  "room_states": {
+    "axe_head": { "visited": false },
+    "axe_handle_upper": { "visited": false },
+    "axe_handle_lower": { "visited": false },
+    "bag_floor": { "visited": false },
+    "secret_compartment": { "visited": false }
   },
-
+  "entity_states": {
+    "player": { "alive": true },
+    "stuck_fly": { "alive": true },
+    "spider": { "alive": true, "fled": false },
+    "korbar": { "alive": true, "told_secret": false }
+  },
   "turn_count": 0,
   "game_over": null
 }

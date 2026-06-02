@@ -1,30 +1,18 @@
 {
-  "_schema": "soft_game_state",
-  "_description": "Mutable state that the LLM may propose changes to in its structured ruling output. The engine validates and applies in-scope patches. Stored separately from hard state to enforce discipline.",
-
+  "soft_inventory": [],
+  "room_notes": {},
+  "entity_notes": {},
   "npc_attitudes": {
-    "korbar": {
-      "attitude": "neutral",
-      "_schema_note": "Allowed values: hostile, neutral, friendly. LLM may propose changes with a narrative justification. Engine caps transitions to one step per turn unless extraordinary circumstances."
-    }
+    "korbar": 0,
+    "stuck_fly": 0,
+    "spider": -5
   },
-
-  "environmental_notes": [],
-  "_environmental_notes_schema": {
-    "description": "Narrative environmental changes proposed by the LLM (e.g., 'the webs are now slightly parted', 'Korbar has built a small lean-to from corks'). The engine accepts any note as long as it does not contradict hard state. These are used to give the LLM continuity between turns."
-  },
-
   "turn_history": [],
-  "_turn_history_schema": {
-    "description": "Structured log of each completed turn. Appended by engine after resolution. Each entry contains the player action, engine result, and applied state changes.",
-    "max_entries_in_context": 5,
-    "entry_format": {
-      "turn": "number",
-      "player_input": "string (verbatim)",
-      "ruled_action": "PlayerAction (as validated)",
-      "engine_result_summary": "string (key outcomes only)",
-      "flags_changed": ["list of flag names changed"],
-      "location_after": "room_id"
-    }
+  "dialogue_state": {
+    "active_npc": null,
+    "conversation_log": [],
+    "topics_discussed": [],
+    "entered_turn": 0,
+    "stall_counter": 0
   }
 }

@@ -125,7 +125,7 @@ Only one PlayerAction can be submitted per turn.  If the player's input is a cha
 - `move` must specify a room exit ID, which should be a valid (i.e., accessible and non-hidden) exit from the current room.
   It optionally includes a `style` field to specify special movement methods (e.g. crawling).
 
-* `examine` must specify a valid entity ID or room ID (cannot be a soft item -- use `wait` for that).
+* `examine` must specify a valid entity ID, room ID, or soft item name.
   It optionally includes a `rigorous` field to flag in-depth searches (thus, a schema may specify that only a rigorous search reveals a secret).
   It optionally includes a `using` field to specify a valid entity ID or soft item with which to perform the search.
 
@@ -140,6 +140,7 @@ Only one PlayerAction can be submitted per turn.  If the player's input is a cha
   (e.g., for dropping items on the floor).
   It optionally includes a `given_items`: a list of item IDs or soft items.
   It optionally includes a `taken_items`: a list of item IDs or soft items.
+  At least one should be non-empty.
 
 * `wait` advances the turn counter.  This serves as a catch-all category that includes actions falling below the plot significance threshold (e.g., examining a soft item), as well as player introspection (e.g., looking through inventory).  The `detail` field will be used to instruct the narrator how to react (e.g., reporting on the contents of inventory).
 
