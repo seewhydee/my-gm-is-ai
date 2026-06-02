@@ -12,11 +12,12 @@ resolve mechanics.
 
 ```json
 {
-  "player":     { /* player state */ },
-  "flags":      { "<flag_name>": true | false, ... },
-  "entity_states": { "<entity_id>": { "<field>": <value>, ... } },
-  "turn_count": 0,
-  "game_over": null
+  "player":       { /* player state */ },
+  "flags":        { "<flag_name>": true | false, ... },
+  "room_states":  { "<room_id>": { "<field>": <value>, ... } },
+  "entity_states":{ "<entity_id>": { "<field>": <value>, ... } },
+  "turn_count":   0,
+  "game_over":    null
 }
 ```
 
@@ -27,29 +28,27 @@ resolve mechanics.
 ```json
 {
   "location": "<room_id>",
-  "inventory": ["<item_entity_id>", ...],
-  "hit_points": null
+  "inventory": ["<item_entity_id>", ...]
 }
 ```
 
-| Field        | Type     | Description |
-|--------------|----------|-------------|
-| `location`   | string   | Current room ID. Must match a key in the module corpus `rooms`. |
-| `inventory`  | string[] | List of item entity IDs the player is carrying. |
-| `hit_points` | number|null | Current HP. `null` means HP is not tracked (no combat system). When the combat system is added, this becomes a number. |
+| Field      | Type     | Description |
+|------------|----------|-------------|
+| `location` | string   | Current room ID. Must match a key in the module corpus `rooms`. |
+| `inventory`| string[] | List of item entity IDs the player is carrying (hard inventory). |
 
 ### Inventory rules
 
 1. Items in inventory are referenced by their entity ID as defined in the
    module corpus `entities` block.
 2. Adding an item: the engine pushes the ID onto the `inventory` array. Duplicates
-   are allowed only if the module explicitly supports it (flag: `stackable`).
+   are allowed only if the module explicitly supports it (tag: `stackable`).
 3. Removing an item: the engine removes the first occurrence from the array.
 4. Draggable items (entity `draggable == true`): the engine sets an implicit
    flag `dragging_<item_id>` to `true` when the item is in inventory. The player
-   cannot perform manual actions (interact, search, rummage) while dragging.
+   cannot perform manual actions (interact, examine) while dragging.
    Movement is still allowed.
-5. The engine checks `inventory contains weapon` by scanning items in inventory
+5. The engine checks `tag:weapon` by scanning items in inventory
    for the `"weapon"` tag in the entity definition, not by specific item ID.
    This allows future modules to have multiple weapon types.
 
@@ -65,7 +64,7 @@ resolve mechanics.
 
 Flags represent binary world state: conditions discovered, events triggered,
 doors opened, NPCs met, etc. The engine uses flags to evaluate conditions on
-exits, interactions, and encounters.
+exits, interactions, encounters, and game-over mechanics.
 
 ### Flag lifecycle
 
@@ -76,21 +75,53 @@ exits, interactions, and encounters.
    - On-enter events (`set_flag`)
    - Encounter outcomes (`set_flags`)
 3. **Read** by the engine to evaluate:
-   - Exit conditions (`conditions`)
-   - Interaction conditions (`condition`)
-   - On-enter event conditions (`condition`)
+   - Exit conditions
+   - Interaction conditions
+   - On-enter event conditions
    - Encounter rule conditions
+   - Game-over conditions
 
 ### Special flags
 
-Module authors may define flags that have special meanings for the game state.  For instance, the sample adventure "Trapped In A Bag of Holding" uses these flags:
+Module authors may define flags that have special meanings for game state.
+For instance, the sample adventure "Trapped In A Bag of Holding" uses these flags:
 
-| Flag                | Meaning |
-|---------------------|---------|
-| `spider_fled`       | Set when the spider flees after being wounded. Prevents re-triggering the spider encounter. |
-| `injured`           | Player is injured. Affects spider encounter outcome and blocks certain interactions (e.g., rummaging). |
-| `stunned`           | Player is briefly stunned after a safe drop. Transient narrative flag. |
-| `dragging_<item>`   | Implicitly managed when a draggable item is in inventory. |
+| Flag               | Meaning |
+|--------------------|---------|
+| `spider_fled`      | Set when the spider flees after being wounded. Prevents re-triggering the spider encounter. |
+| `injured`          | Player is injured. Affects encounter outcomes and blocks certain interactions. |
+| `stunned`          | Player is briefly stunned. Transient narrative flag. |
+| `dragging_<item>`  | Implicitly managed when a draggable item is in inventory. |
+
+---
+
+## `room_states` — Per-room mutable state
+
+```json
+{
+  "<room_id>": {
+    "<field_name>": <value>
+  }
+}
+```
+
+Tracks per-room mutable properties. The primary initial field is `visited`
+(boolean), which the engine sets to `true` the first time the player enters
+a room. Additional per-room fields can be declared by module authors and
+evaluated in condition strings as `room:<room_id>.<field> <op> <value>`.
+
+### State field types
+
+| Type      | Default | Description |
+|-----------|---------|-------------|
+| `boolean` | `false` | Used for `visited`, room-specific toggles. |
+| `number`  | `0`     | Used for counters (future). |
+| `string`  | `""`    | Used for short text state (future). |
+
+### Initialisation
+
+Room state entries are initialised from `hard-state.json`. The engine validates
+at startup that every `room_id` in `room_states` exists in the module corpus.
 
 ---
 
@@ -104,11 +135,11 @@ Module authors may define flags that have special meanings for the game state.  
 }
 ```
 
+Tracks per-entity mutable properties (e.g., `alive`, `told_secret`, `fled`).
 Each key is an entity ID from the module corpus. The value is an object
 containing the current values for that entity's declared `state_fields`.
 
-Only entities that have mutable state need an entry here. Entities with
-empty `state_fields` (e.g., static features) do not require entries.
+Only entities that have declared `state_fields` in the corpus need an entry here.
 
 ### State field types
 
@@ -133,22 +164,34 @@ When the Context Assembler builds the GMBriefing, it:
 1. Lists entities in `entities_present` for the current room.
 2. Filters to entities where `state.alive == true` (or the entity has no
    `alive` field — static features are always visible).
-3. Includes a brief description and current state summary.
+3. Includes a brief description and current state summary for each visible entity.
 
 ---
 
 ## `turn_count` — Turn counter
 
 An integer starting at `0`. Incremented by the engine after successful action
-resolution. Used for display and for capping `turn_history` entries in
-soft state.
+resolution (except for `ooc_discussion`, which does not advance the counter).
+Used for display and for capping `turn_history` entries in soft state.
 
 ---
 
 ## `game_over` — Terminal state
 
 ```json
-null | { "type": "success", "trigger": "win_escape" } | { "type": "failure", "trigger": "death_spider" }
+null
+```
+
+or
+
+```json
+{ "type": "win", "trigger": "escape_bag" }
+```
+
+or
+
+```json
+{ "type": "lose", "trigger": "death_spider" }
 ```
 
 When non-null, the game has ended. No further player input is processed. The
@@ -157,8 +200,8 @@ the ending without soliciting further input.
 
 | Field     | Type   | Description |
 |-----------|--------|-------------|
-| `type`    | string | `"success"` or `"failure"`. |
-| `trigger` | string | The `id` of the `game_over_condition` that fired (matches module corpus). |
+| `type`    | string | `"win"` or `"lose"`. |
+| `trigger` | string | The `trigger_id` of the game-over mechanic that fired (matches module corpus). |
 
 ---
 
@@ -166,16 +209,17 @@ the ending without soliciting further input.
 
 The engine mutates hard state through these operations:
 
-| Operation              | Affects                      |
-|------------------------|------------------------------|
-| `set_player_location`  | `player.location`            |
-| `add_item`             | `player.inventory`           |
-| `remove_item`          | `player.inventory`           |
-| `set_flag`             | `flags.<name>`               |
-| `clear_flag`           | `flags.<name>`               |
-| `set_entity_state`     | `entity_states.<id>.<field>` |
-| `increment_turn`       | `turn_count`                 |
-| `set_game_over`        | `game_over`                  |
+| Operation              | Affects                        |
+|------------------------|--------------------------------|
+| `set_player_location`  | `player.location`              |
+| `add_item`             | `player.inventory`             |
+| `remove_item`          | `player.inventory`             |
+| `set_flag`             | `flags.<name>`                 |
+| `clear_flag`           | `flags.<name>`                 |
+| `set_room_state`       | `room_states.<id>.<field>`     |
+| `set_entity_state`     | `entity_states.<id>.<field>`   |
+| `increment_turn`       | `turn_count`                   |
+| `set_game_over`        | `game_over`                    |
 
 All of these are reflected in the `hard_state_changes` block of EngineResult.
 
@@ -184,10 +228,13 @@ All of these are reflected in the `hard_state_changes` block of EngineResult.
 ## Startup and persistence
 
 1. **Startup**: The engine loads `hard-state.json` and the module corpus. It
-   validates that entity_states match declared state_fields.
+   validates that entity_states match declared state_fields and that room_states
+   reference valid room IDs.
 2. **Between turns**: Hard state is held in memory. On each turn, the engine
    applies changes and produces `hard_state_changes` for the EngineResult.
-3. **Save/load**: Future — serialise the full hard state to disk for save files.
+3. **Save/load**: The full hard state is serialised to disk for save files.
+   Between turns, a copy is saved along with soft state (except during chained
+   actions where control does not return to the player).
 
 ---
 
@@ -197,8 +244,7 @@ All of these are reflected in the `hard_state_changes` block of EngineResult.
 {
   "player": {
     "location": "axe_head",
-    "inventory": [],
-    "hit_points": null
+    "inventory": []
   },
   "flags": {
     "injured": false,
@@ -206,6 +252,12 @@ All of these are reflected in the `hard_state_changes` block of EngineResult.
     "handkerchief_noticed": false,
     "handkerchief_moved": false,
     "padlock_unlocked": false
+  },
+  "room_states": {
+    "axe_head": { "visited": false },
+    "axe_handle_upper": { "visited": false },
+    "axe_handle_lower": { "visited": false },
+    "bag_floor": { "visited": false }
   },
   "entity_states": {
     "stuck_fly": { "alive": true },

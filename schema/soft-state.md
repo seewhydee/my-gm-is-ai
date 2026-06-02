@@ -18,8 +18,10 @@ continuity (NPC moods, environmental details, conversation memory).
 
 ```json
 {
-  "npc_attitudes":     { "<npc_entity_id>": { "attitude": "..." } },
-  "environmental_notes": [ "string", ... ],
+  "soft_inventory":    ["string", ...],
+  "room_notes":        { "<room_id>": ["string", ...] },
+  "entity_notes":      { "<entity_id>": ["string", ...] },
+  "npc_attitudes":     { "<npc_entity_id>": <integer> },
   "turn_history":      [ { /* turn log entry */ } ],
   "dialogue_state":    { /* active NPC conversation state */ }
 }
@@ -27,84 +29,153 @@ continuity (NPC moods, environmental details, conversation memory).
 
 ---
 
-## `npc_attitudes` — NPC disposition tracking
+## `soft_inventory` — Generic carried items
 
 ```json
-{
-  "<npc_entity_id>": {
-    "attitude": "hostile | neutral | friendly"
-  }
-}
+["rock", "loose stone", "dusty rag"]
 ```
 
-### Attitude values
+An array of soft item names the player is carrying. These items come from
+room or entity `soft_items` lists in the module corpus. They are identified
+by their general name only — no unique IDs. They can be:
 
-| Value      | Meaning | Typical NPC behaviour |
-|------------|---------|-----------------------|
-| `hostile`  | The NPC is antagonistic. Will not cooperate, may attack or obstruct. |
-| `neutral`  | Default starting attitude. The NPC is indifferent or cautious. |
-| `friendly` | The NPC likes the player. Will offer help, reveal secrets, cooperate. |
+- Used in `interact` actions (as target or `using` field)
+- Transferred via the `transfer` action
+- Referenced in LLM narration
 
-### Transition rules (enforced by engine)
+### Validation rules
 
-1. Attitude may change at most **one step per turn** (e.g., `hostile → neutral`
-   or `neutral → friendly`). Multi-step jumps in a single turn are rejected
-   unless the LLM provides an extraordinary justification AND the engine is
-   configured to allow it.
-2. Attitude changes must be accompanied by a **non-empty reason** in the
-   SoftStatePatch.
-3. If an NPC's hard state says `alive == false`, all attitude patches for that
-   NPC are rejected.
-
-### Relationship to `dialogue_guidelines`
-
-The module corpus may gate certain dialogue topics behind attitude thresholds.
-For example, Korbar only reveals the secret compartment when `attitude == "friendly"`.
-The engine checks these constraints when LLM Call 2 narrates: if the LLM
-proposes narration that implies a secret reveal at `neutral` attitude, the
-engine flags it in `soft_state_patches_rejected` or issues a `warning`.
+1. Adding a soft item: the engine checks that the item name appears in the
+   current room's `soft_items` or a present entity's `soft_items`.
+2. Removing a soft item: the engine removes the first occurrence from the array.
+3. Duplicate entries are allowed (e.g., multiple "rock" entries).
+4. When a soft item is consumed or destroyed, the engine removes it.
 
 ---
 
-## `environmental_notes` — Narrative environmental continuity
+## `room_notes` — Per-room narrative state
 
 ```json
-[
-  "The webs on the lower axe handle are now partially cleared from the spider's flight.",
-  "Korbar has built a small lean-to from corks and sandwich wrappers."
-]
+{
+  "axe_handle_lower": [
+    "The webs here are partially cleared from the spider's flight.",
+    "A faint trail of ichor leads downward."
+  ],
+  "bag_floor": []
+}
 ```
 
-Environmental notes are freeform strings appended by the engine when the LLM
-proposes an `environmental_note` patch. They are carried forward in future
-GMBriefings to give the LLM continuity about minor narrative changes that
-don't rise to the level of hard-state flags.
+Freeform strings describing non-plot-relevant changes to rooms (e.g., cleared
+webs, rearranged debris, campfire remains). The Context Assembler includes the
+most recent notes (up to 5 per room) in the GMBriefing room description.
 
 ### Patch format
 
 ```json
 {
   "entity_id": null,
-  "field": "environmental_note",
+  "field": "room_note",
+  "target_id": "axe_handle_lower",
   "old_value": null,
-  "new_value": "The webs on the lower axe handle are now partially cleared.",
+  "new_value": "The webs here are partially cleared.",
   "reason": "Player hacked through the webs with the toenail sword."
 }
 ```
 
 ### Validation rules
 
-1. `new_value` must be a non-empty string.
-2. The note must not contradict any hard state flag (e.g., the engine rejects
-   a note saying "the spider is dead" if `entity_states.spider.alive == true`).
-3. No duplicate detection — identical notes may accumulate; the Context
-   Assembler can deduplicate them at briefing time.
+1. `target_id` must be a valid room ID in the module corpus.
+2. `new_value` must be a non-empty string.
+3. The note must not contradict any hard state flag or entity state (e.g., the
+   engine rejects a note saying "the spider is dead" if
+   `entity_states.spider.alive == true`).
+4. No duplicate detection — identical notes may accumulate; the Context
+   Assembler can deduplicate at briefing time.
 
-### Usage in GMBriefing
+---
 
-The Context Assembler appends the most recent N environmental notes (up to 5)
-to the room description or player state summary. This helps the LLM remember
-that "the webs were already cut" or "the campfire is still smoldering."
+## `entity_notes` — Per-entity narrative state
+
+```json
+{
+  "spider": [
+    "The spider's left legs are now covered in ichor from the wound."
+  ],
+  "korbar": [
+    "[Turn 4-6] Conversation summary: player asked about Korbar's origin and party. Korbar revealed she was abandoned by her adventuring company three years ago. Topics: origin, abandonment."
+  ]
+}
+```
+
+Freeform strings describing non-plot-relevant changes to entities (e.g., door
+marked with chalk, scratch marks on a table). When dialogue mode exits, the
+conversation summary is appended here as an `entity_note` on the NPC.
+
+### Patch format
+
+```json
+{
+  "entity_id": "spider",
+  "field": "entity_note",
+  "target_id": null,
+  "old_value": null,
+  "new_value": "The spider's left legs are covered in ichor.",
+  "reason": "Player wounded the spider with the toenail sword."
+}
+```
+
+### Validation rules
+
+1. `entity_id` must be a valid entity ID in the module corpus.
+2. `new_value` must be a non-empty string.
+3. The note must not contradict hard state (same rules as room notes).
+4. Dialogue archival summaries appended by the engine are exempt from the
+   `reason` length check (the reason is the engine's own archival trigger).
+
+---
+
+## `npc_attitudes` — NPC disposition tracking
+
+```json
+{
+  "korbar": 2,
+  "angry_troll": -3
+}
+```
+
+Tracks NPC disposition as an integer. Positive values indicate friendly
+disposition; negative values indicate hostility. Zero (0) is neutral.
+
+### Attitude semantics
+
+| Range      | Typical NPC behaviour |
+|------------|-----------------------|
+| < 0        | Hostile / antagonistic. May attack, obstruct, or refuse cooperation. |
+| 0          | Neutral. Default starting attitude. Indifferent or cautious. |
+| 1–3        | Mildly friendly. Willing to talk, may help with small requests. |
+| 4+         | Very friendly. Offers help, reveals secrets, becomes an ally. |
+
+### Transition rules (enforced by engine)
+
+1. Attitude patches are validated against the NPC's `attitude_limits` in the
+   corpus (`min`, `max`, `step_per_turn`). The absolute change from `old_value`
+   to `new_value` must not exceed `step_per_turn`. The `new_value` must be within
+   `[min, max]`.
+2. Attitude changes must be accompanied by a **non-empty reason** in the
+   SoftStatePatch.
+3. If an NPC's hard state says `alive == false`, all attitude patches for that
+   NPC are rejected.
+4. The engine initialises each NPC's attitude from the corpus
+   `dialogue_guidelines.attitude_limits.initial` (default 0) if no explicit value
+   is provided in the soft state startup file.
+
+### Relationship to `dialogue_guidelines`
+
+The module corpus may gate certain dialogue topics behind attitude thresholds
+via the `will_reveal` block. The engine evaluates the `conditions` on each
+`will_reveal` entry (e.g., `attitude:korbar >= 2`) against the current game
+state. If the LLM narrates a reveal that the conditions do not permit, the
+engine flags it in `warnings`.
 
 ---
 
@@ -133,14 +204,14 @@ that "the webs were already cut" or "the campfire is still smoldering."
 |-------------------------|----------|-------------|
 | `turn`                  | number   | Turn number at the time of this action. |
 | `player_input`          | string   | Verbatim player input for this turn. |
-| `ruled_action`          | object   | The validated `PlayerAction` (as resolved, not as originally proposed). |
+| `ruled_action`          | object   | The validated `PlayerAction` (as resolved by engine, not as originally proposed). |
 | `engine_result_summary` | string   | Condensed summary of what happened — key outcomes only. Written by the engine. |
 | `flags_changed`         | string[] | Names of hard-state flags that were set or cleared this turn. |
 | `location_after`        | string   | Room ID the player was in after resolution. |
 
 ### Size management
 
-1. The engine appends one entry per completed turn.
+1. The engine appends one entry per completed turn (not for `ooc_discussion`).
 2. The Context Assembler includes the last **5 entries** in GMBriefing
    (`recent_history`). This cap prevents context bloat.
 3. The full history is retained in soft state for potential future use (save
@@ -183,31 +254,32 @@ verbatim `dialogue_context` block into the GMBriefing for LLM Call 1.
   ],
   "topics_discussed": ["origin", "abandonment"],
   "entered_turn": 4,
-  "paused_turn": null
+  "stall_counter": 0
 }
 ```
 
 ### Fields
 
-| Field                | Type              | Description |
-|----------------------|-------------------|-------------|
-| `active_npc`         | string\|null      | Entity ID of the NPC the player is speaking to. `null` means no active dialogue. |
-| `conversation_log`   | array             | Verbatim dialogue exchanges, capped at **10** entries (FIFO eviction). Each entry records the turn number, speaker identifier (`"player"` or the NPC's `entity_id`/name), and the verbatim text spoken. |
-| `topics_discussed`   | string[]          | Named topics that have come up in conversation. LLM Call 1 may propose new topics; the engine deduplicates and stores them. Used by the Context Assembler to inform the ruling LLM what has already been covered. |
-| `entered_turn`       | number            | The turn number when dialogue mode was activated. Used by the engine for stall detection. |
-| `paused_turn`        | number\|null      | Set to the current turn when a non-`talk` action occurs during dialogue. If 3+ turns elapse without another `talk`, the engine auto-clears dialogue mode. `null` when conversation is active. |
+| Field              | Type            | Description |
+|--------------------|-----------------|-------------|
+| `active_npc`       | string\|null    | Entity ID of the NPC the player is speaking to. `null` means no active dialogue. |
+| `conversation_log` | array           | Verbatim dialogue exchanges. Capped at **10** entries (FIFO eviction). Each entry records the turn number, speaker identifier (either `"player"` or the NPC's `entity_id`), and the verbatim text exchanged. |
+| `topics_discussed` | string[]        | Named topics that have come up in conversation. LLM Call 1 may propose new topics; the engine deduplicates and stores them. Used by the Context Assembler to inform the ruling LLM what has already been covered. |
+| `entered_turn`     | number          | The turn number when dialogue mode was activated. Used by the engine for stall detection. |
+| `stall_counter`    | number          | Tracks consecutive non-`talk` turns while in dialogue mode. Reset to 0 on each `talk` action. If it reaches 3, the engine auto-clears dialogue mode. |
 
 ### Lifecycle rules
 
-| Trigger                              | Engine action |
-|--------------------------------------|---------------|
-| `talk` action succeeds (no active dialogue) | Set `active_npc`, init `conversation_log` with player utterance, set `entered_turn`. |
-| `talk` action to same NPC           | Append to `conversation_log`. After LLM Call 2 runs, append the NPC response summary. |
-| `talk` action to different NPC      | Archive current `conversation_log` as an `environmental_note` summary, switch `active_npc`, start fresh. |
-| `move` action (player leaves room)  | Archive `conversation_log`, set `active_npc = null`, set `interrupted: true` in the archive note. |
-| NPC dies or flees                   | Archive `conversation_log`, set `active_npc = null`. Reject future `talk` to that NPC. |
-| `talk` with `ends_dialogue: true`   | Archive `conversation_log`, set `active_npc = null`. |
-| 3 turns since last `talk` in dialogue mode | Engine auto-clears dialogue mode; archive and nullify. |
+| Trigger                                  | Engine action |
+|------------------------------------------|---------------|
+| `talk` action succeeds (no active dialogue) | Set `active_npc`, init `conversation_log` with player utterance, set `entered_turn`, reset `stall_counter`. |
+| `talk` action to the same NPC            | Append player utterance to `conversation_log`. After LLM Call 2 runs, extract and append the NPC response. Reset `stall_counter` to 0. |
+| `talk` action to a different NPC         | Archive current `conversation_log` as a summary in the previous NPC's `entity_notes`, switch `active_npc`, start fresh. |
+| Any non-`talk` action while in dialogue  | Increment `stall_counter`. If `stall_counter >= 3`, archive conversation, clear dialogue state. |
+| `move` action (player leaves room)       | Archive conversation summary to NPC's `entity_notes`, clear dialogue state. |
+| NPC dies or flees                        | Archive conversation summary, clear dialogue state. Reject future `talk` to that NPC. |
+| `talk` with `ends_dialogue: true`        | Archive conversation summary to NPC's `entity_notes`, clear dialogue state. |
+| `ooc_discussion` while in dialogue       | Does not increment `stall_counter`; does not affect dialogue state. |
 
 ### NPC response extraction
 
@@ -226,23 +298,15 @@ gives LLM Call 1 enough conversational awareness to parse player inputs that
 mix action narration with in-character speech, without exposing the full
 verbatim chat log.
 
-### Relationship to `dialogue_guidelines`
-
-The engine cross-references `will_reveal` constraints in the NPC's
-`dialogue_guidelines` with `topics_discussed` and current attitude. If the
-LLM narrates a secret reveal that is gated behind a higher attitude or an
-undiscovered topic, the engine flags it in `warnings`. The `will_reveal`
-block in the corpus can also gate on `topic:<topic_id>` conditions — e.g.,
-"the NPC only reveals the padlock mechanism if `abandonment` has been
-discussed AND attitude >= friendly."
+If `active_npc` is null, `dialogue_context` is omitted from the GMBriefing.
 
 ### Archival
 
-When dialogue mode exits, the full `conversation_log` is appended as a
-single `environmental_note`:
+When dialogue mode exits, the full `conversation_log` is summarised and appended
+as an `entity_note` on the NPC:
 
 ```
-"[Turn 4-5] Conversation with Korbar: player asked about her origin and
+"[Turn 4-6] Conversation with Korbar: player asked about her origin and
 party; Korbar revealed she was abandoned by her adventuring company three
 years ago. Topics: origin, abandonment."
 ```
@@ -252,39 +316,53 @@ verbatim exchange indefinitely in the active dialogue state.
 
 ---
 
-## SoftStatePatch reference (from actions.md)
+## SoftStatePatch reference
 
-For completeness, the soft-state patch format that the LLM outputs in
+The general soft-state patch format that the LLM outputs in
 `PlayerAction.proposed_soft_state_patches`:
 
 ```json
 {
   "entity_id": "korbar",
   "field": "attitude",
-  "old_value": "neutral",
-  "new_value": "friendly",
+  "target_id": null,
+  "old_value": 0,
+  "new_value": 2,
   "reason": "The player shared their food with Korbar and listened sympathetically to her story."
 }
 ```
 
-| Field       | Type          | Description |
-|-------------|--------------|-------------|
-| `entity_id` | string|null  | Target NPC entity ID. Null for `environmental_note` patches. |
-| `field`     | string       | Must be `"attitude"` or `"environmental_note"`. |
-| `old_value` | string|null  | Expected current value (for validation). Null for add-only fields. |
-| `new_value` | string       | Proposed new value. |
-| `reason`    | string       | Narrative justification. Must be non-empty. |
+| Field       | Type           | Description |
+|-------------|----------------|-------------|
+| `entity_id` | string\|null   | Target entity ID (e.g., the NPC whose attitude changes, or the entity being noted). Null for `room_note`. |
+| `field`     | string         | One of `attitude`, `room_note`, `entity_note`, `soft_inventory_add`, `soft_inventory_remove`. |
+| `target_id` | string\|null   | For `room_note`, the room ID. Null for entity-level patches. |
+| `old_value` | any\|null      | Expected current value (for validation). Null for add-only patches. |
+| `new_value` | any            | Proposed new value. |
+| `reason`    | string         | Narrative justification. Must be non-empty. |
+
+### Supported soft state fields
+
+| Field                     | Type     | Allowed values              | Notes |
+|---------------------------|----------|-----------------------------|-------|
+| `attitude`                | integer  | Within `[min, max]` per corpus | Step limit from `attitude_limits.step_per_turn`. |
+| `room_note`               | string   | Non-empty, non-contradictory | Appended to `room_notes[target_id]`. |
+| `entity_note`             | string   | Non-empty, non-contradictory | Appended to `entity_notes[entity_id]`. |
+| `soft_inventory_add`      | string   | Must match a soft item in the current room or a present entity | Appended to `soft_inventory[]`. |
+| `soft_inventory_remove`   | string   | Must exist in `soft_inventory` | Removed from `soft_inventory[]`. |
 
 ### Full validation rules
 
 | Rule | Description |
 |------|-------------|
-| Entity must exist | `entity_id` must be defined in the module corpus `entities`. |
-| Field must be registered | `field` must be one of `attitude`, `environmental_note`. |
-| Attitude step limit | Attitude transitions are capped at one step per turn. |
+| Entity/room must exist | `entity_id` or `target_id` must be defined in the module corpus. |
+| Field must be registered | `field` must be one of the supported types above. |
+| Attitude step limit | Absolute delta must not exceed corpus `attitude_limits.step_per_turn`. |
+| Attitude bounds | `new_value` must be within corpus `attitude_limits.[min, max]`. |
 | Alive check | Patches for entities with `alive == false` are rejected. |
 | Reason required | `reason` must be non-empty. |
-| No hard-state contradiction | Environmental notes cannot assert facts that contradict hard-state flags or entity states. |
+| No hard-state contradiction | Notes cannot assert facts that contradict hard-state flags or entity states. |
+| Soft inventory source | `soft_inventory_add` must reference a soft item present in the current room or a present entity. |
 
 ---
 
@@ -292,17 +370,19 @@ For completeness, the soft-state patch format that the LLM outputs in
 
 ```json
 {
+  "soft_inventory": [],
+  "room_notes": {},
+  "entity_notes": {},
   "npc_attitudes": {
-    "korbar": { "attitude": "neutral" }
+    "korbar": 0
   },
-  "environmental_notes": [],
   "turn_history": [],
   "dialogue_state": {
     "active_npc": null,
     "conversation_log": [],
     "topics_discussed": [],
     "entered_turn": 0,
-    "paused_turn": null
+    "stall_counter": 0
   }
 }
 ```

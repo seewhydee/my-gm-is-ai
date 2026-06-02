@@ -14,8 +14,7 @@ from it to validate actions, resolve encounters, and apply mechanics.
   "adventure":    { /* metadata */ },
   "rooms":        { "<room_id>": { /* room */ } },
   "entities":     { "<entity_id>": { /* entity */ } },
-  "mechanics":    { "<mechanic_id>": { /* mechanic */ } },
-  "game_over_conditions": [ { /* condition */ } ]
+  "mechanics":    { "<mechanic_id>": { /* mechanic */ } }
 }
 ```
 
@@ -26,7 +25,7 @@ from it to validate actions, resolve encounters, and apply mechanics.
 | `title`        | string | yes      | Display title of the adventure. |
 | `credits`      | object | no       | `{ author, source, license }`. |
 | `introduction` | string | yes      | Opening narration read to the player at game start. |
-| `atmosphere`   | object | no       | `{ setting, lighting, tone }` — narrative guidance for the LLM's tone and description style. |
+| `atmosphere`   | object | no       | `{ setting, tone }` — 1-2 sentence narrative guidance for both LLM calls. Setting describes the world; tone describes the desired style (e.g., grim, whimsical). |
 
 ---
 
@@ -40,6 +39,7 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
     "name": "string",
     "description": "string (shown when entering and when player examines room)",
     "entities_present": ["<entity_id>", ...],
+    "soft_items": ["string", ...],
     "exits": [ { /* exit */ } ],
     "interactions": [ { /* interaction */ } ],
     "on_enter": [ { /* on_enter event */ } ],
@@ -48,15 +48,16 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 }
 ```
 
-| Field               | Type    | Required | Description |
-|----------------------|---------|----------|-------------|
-| `name`               | string  | yes      | Short display name (e.g., "Axe Head"). |
-| `description`        | string  | yes      | Full prose description shown on entry and on `examine` room. |
-| `entities_present`   | string[] | no     | Entity IDs of non-inventory entities present in this room. The Context Assembler uses this to populate `entities_visible` in GMBriefing, filtered by `state.alive`. |
-| `exits`              | array   | no       | Available exits from this room. |
-| `interactions`       | array   | no       | Defined interactions the player can perform in this room. |
-| `on_enter`           | array   | no       | Events that fire when the player first enters the room (conditional). |
-| `is_start_room`      | boolean | no       | Exactly one room should have this set to `true`. Player starts here. |
+| Field               | Type      | Required | Description |
+|----------------------|-----------|----------|-------------|
+| `name`               | string    | yes      | Short display name (e.g., "Axe Head"). |
+| `description`        | string    | yes      | Full prose description shown on entry and on `examine` room. |
+| `entities_present`   | string[]  | no       | Entity IDs of non-player entities present in this room. The Context Assembler uses this to populate `entities_visible` in GMBriefing, filtered by `state.alive`. |
+| `soft_items`         | string[]  | no       | Plausible generic items that can be found in this room (e.g., `["rock", "loose stone", "dust"]`). These are identified by their general name only — they carry no unique item ID. The engine tracks them in `soft_inventory` when picked up. |
+| `exits`              | array     | no       | Available exits from this room. |
+| `interactions`       | array     | no       | Defined interactions the player can perform in this room. |
+| `on_enter`           | array     | no       | Events that fire when the player first enters the room. May be one-shot or conditional. |
+| `is_start_room`      | boolean   | no       | Exactly one room should have this set to `true`. Player starts here. |
 
 ### Exit object
 
@@ -79,14 +80,14 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 | `target_room`  | string  | yes      | Room ID the player ends up in after traversing. |
 | `conditions`   | array   | no       | Conditions that must be satisfied for the exit to be available. |
 | `on_traverse`  | object  | no       | Effects applied when the player uses this exit: `set_flag`, `trigger_encounter`, etc. |
-| `hidden`       | boolean | no       | If `true`, the exit is omitted from `exits_available` in GMBriefing until its reveal condition is met (e.g., `flag:handkerchief_moved == true`). |
+| `hidden`       | boolean | no       | If `true`, the exit is omitted from `exits_available` in GMBriefing until its reveal condition is met (e.g., `flag:handkerchief_moved == true`). The reveal condition is evaluated by the engine based on hard-state flags. |
 | `one_way`      | boolean | no       | If `true`, the exit cannot be traversed in reverse. |
 
 #### Exit `on_traverse` effects
 
 | Effect               | Description |
 |----------------------|-------------|
-| `set_flag` / `value` | Sets a hard-state flag to the given value. |
+| `set_flag` / `value` | Sets a hard-state flag to the given boolean value. |
 | `set_flag` / `narrative` | Pre-written prose for the traverse event. |
 | `trigger_encounter`  | Triggers a named encounter from `mechanics`. |
 | `skip_if`            | Condition under which the encounter/effect is skipped. |
@@ -95,7 +96,7 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 ### Condition object
 
 Conditions can appear on exits, interactions, on_enter events, and mechanics.
-They are simple predicate objects evaluated against hard game state.
+They are predicate clauses evaluated against hard game state and the module corpus.
 
 **`require`** — condition must be true for the thing to be available:
 
@@ -128,19 +129,31 @@ They are simple predicate objects evaluated against hard game state.
 ```
 
 Condition strings use the format `<domain>:<key> <op> <value>`:
-- `flag:<name>` — refers to a key in `hard_state.flags`.
-- `inventory:<item_id>` — checks if an item is in the player's inventory.
-- Supported ops: `== true`, `== false`, `>= <number>`.
+
+| Domain       | Example                          | Meaning |
+|--------------|----------------------------------|---------|
+| `flag`       | `flag:door_opened == true`       | Refers to a key in `hard_state.flags`. |
+| `inventory`  | `inventory:rusty_key`            | Checks if an item entity ID is in the player's hard inventory. |
+| `tag`        | `tag:weapon`                     | Checks if the player's inventory contains any item with this tag. |
+| `entity`     | `entity:spider.alive == true`    | Checks an entity's hard state field. |
+| `room`       | `room:axe_head.visited == true`  | Checks a room state field. |
+| `attitude`   | `attitude:korbar >= 2`           | Checks an NPC's soft-state attitude value. |
+
+Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`, `<= <number>`, `< <number>`.
 
 ---
 
 ### Interaction object
 
+Interactions are named operations that can be performed by or on entities or rooms.
+They can be defined at the room level or on individual entities.
+
 ```json
 {
-  "id": "string (unique within the room)",
+  "id": "string (unique within the defining context)",
   "label": "string (short label for UI/debug)",
   "description": "string (what the player is attempting)",
+  "parameter_signature": { "target": ["entity", "soft_item"], "using": ["entity", "soft_item"] },
   "condition": { /* condition object or null */ },
   "check": { /* roll check or null */ },
   "success": { /* result */ },
@@ -149,16 +162,19 @@ Condition strings use the format `<domain>:<key> <op> <value>`:
 }
 ```
 
-| Field         | Type         | Required | Description |
-|---------------|-------------|----------|-------------|
-| `id`           | string      | yes      | Unique within the room. Referenced by `interact` action `target`. |
-| `label`        | string      | yes      | Human-readable action label. |
-| `description`  | string      | no       | Extended description of the action. |
-| `condition`    | object|null | no       | Condition that must be met for the interaction to be available. |
-| `check`        | object      | no       | A probabilistic check (roll). If absent, `result` is used directly. |
-| `success`      | object      | no       | Result when the check succeeds. |
-| `failure`      | object      | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
-| `result`       | object      | no       | Deterministic result (used when no `check` is present). |
+| Field                  | Type         | Required | Description |
+|------------------------|--------------|----------|-------------|
+| `id`                   | string       | yes      | Unique within the defining context (room or entity). Referenced by `interact` action `interaction_id`. |
+| `label`                | string       | yes      | Human-readable action label. |
+| `description`          | string       | no       | Extended description of the action. |
+| `parameter_signature`  | object       | no       | Constrains what the `target` and `using` fields of the `interact` action can reference. `target` lists accepted types (`entity`, `soft_item`, `room`); `using` lists accepted types. If absent, no parameter restrictions beyond target existence. |
+| `condition`            | object\|null | no       | Condition that must be met for the interaction to be available. |
+| `check`                | object       | no       | A probabilistic check (roll). If absent, `result` is used directly. |
+| `success`              | object       | no       | Result when the check succeeds. |
+| `failure`              | object       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
+| `result`               | object       | no       | Deterministic result (used when no `check` is present). |
+
+Interactions include generic types available everywhere (e.g., `attack`, `take`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item.
 
 #### Check object
 
@@ -192,8 +208,8 @@ Condition strings use the format `<domain>:<key> <op> <value>`:
 | Field         | Type   | Description |
 |---------------|--------|-------------|
 | `narrative`   | string | Canonical narration of the result. Engine passes this to LLM Call 2 via `triggered_narration`. |
-| `add_item`    | string | Item entity ID to add to inventory. |
-| `remove_item` | string | Item entity ID to remove from inventory. |
+| `add_item`    | string | Item entity ID to add to hard inventory. |
+| `remove_item` | string | Item entity ID to remove from hard inventory. |
 | `set_flag`    | object | Hard-state flags to set or clear. |
 | `reveals`     | string | Hint text; added to the player's known information for future GMBriefings. |
 
@@ -212,12 +228,12 @@ Condition strings use the format `<domain>:<key> <op> <value>`:
 ```
 
 | Field       | Type         | Description |
-|-------------|-------------|-------------|
-| `id`         | string      | Unique event identifier within the room. |
-| `condition`  | string|null | Condition string. If null, fires exactly once on first entry (engine tracks internally). |
-| `action`     | string      | Currently `"narrative_and_flag"`. |
-| `narrative`  | string      | Canonical narration text. |
-| `set_flag`   | object      | Flags to set or clear. |
+|-------------|--------------|-------------|
+| `id`         | string       | Unique event identifier within the room. |
+| `condition`  | string\|null | Condition string. If null, fires exactly once on first entry (engine tracks internally). |
+| `action`     | string       | Currently `"narrative_and_flag"`. |
+| `narrative`  | string       | Canonical narration text. |
+| `set_flag`   | object       | Flags to set or clear. |
 
 ---
 
@@ -228,13 +244,14 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 ```json
 {
   "<entity_id>": {
-    "type": "feature | npc | trap | item",
-    "subtype": "monster (optional, for npc)",
+    "type": "player | feature | npc | trap | item",
     "description": "string",
     "spans_rooms": ["<room_id>", ...],
+    "soft_items": ["string", ...],
     "tags": ["<tag>", ...],
     "draggable": false,
     "dragging_note": "string",
+    "interactions": [ { /* interaction */ } ],
     "dialogue_guidelines": { /* only for npc type */ },
     "behavior": { /* only for npc (monster) type */ },
     "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } }
@@ -242,51 +259,83 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 }
 ```
 
-| Field                | Type   | Applies to    | Description |
-|----------------------|--------|---------------|-------------|
-| `type`               | enum   | all           | `feature`, `npc`, `trap`, `item`. |
-| `subtype`            | string | npc           | Optional qualifier; currently `"monster"`. |
-| `description`        | string | all           | Canonical description returned for `examine` action. |
-| `spans_rooms`        | array  | feature       | List of room IDs this entity is visible in (e.g., the battleaxe spans multiple rooms). |
-| `tags`               | array  | item          | Semantic tags for mechanical matching (e.g., `"weapon"`, `"key_item"`, `"draggable"`). |
-| `draggable`          | bool   | item          | If true, the item can be dragged but occupies the player (no other manual actions while dragging). |
-| `dragging_note`      | string | item          | Narrative note describing the encumbrance. |
-| `dialogue_guidelines`| object | npc           | See below. |
-| `behavior`           | object | npc (monster) | Encounter rules for combat. See below. |
-| `state_fields`       | object | all           | Declaration of mutable state fields for this entity. The engine initialises these from hard-state.json and tracks changes. |
+| Field                  | Type   | Applies to    | Description |
+|------------------------|--------|---------------|-------------|
+| `type`                 | enum   | all           | `player`, `feature`, `npc`, `trap`, `item`. The `player` type is reserved for the player character entity. |
+| `description`          | string | all           | Canonical description returned for `examine` action. |
+| `spans_rooms`          | array  | feature       | List of room IDs this entity is visible in (e.g., a battleaxe spanning multiple rooms). |
+| `soft_items`           | array  | all           | Plausible generic items found on/in this entity (e.g., a corpse might have `["loose change", "torn parchment"]`). Same semantics as room soft_items. |
+| `tags`                 | array  | item          | Semantic tags for mechanical matching (e.g., `"weapon"`, `"key_item"`, `"draggable"`). |
+| `draggable`            | bool   | item          | If true, the item can be dragged but occupies the player (no other manual actions while dragging). |
+| `dragging_note`        | string | item          | Narrative note describing the encumbrance. |
+| `interactions`         | array  | all           | Interactions available on this entity specifically. Follows the same Interaction object schema. |
+| `dialogue_guidelines`  | object | npc           | See below. |
+| `behavior`             | object | npc (monster) | Encounter rules for combat-capable NPCs. See below. |
+| `state_fields`         | object | all           | Declaration of mutable state fields for this entity. The engine initialises these from `hard_state.json` and tracks changes. |
 
 ### `dialogue_guidelines` (for NPC type)
 
 ```json
 {
   "personality": "string (tone, demeanor, motivations)",
-  "on_encounter": "string (what happens when first met, e.g. auto-event)",
+  "on_encounter": "string (what happens when first met — may reference an auto-event)",
   "can": ["list of things the NPC can/will do"],
   "cannot": ["list of things the NPC will never do or say"],
   "knows": ["list of facts the NPC possesses"],
+  "attitude_limits": {
+    "min": -5,
+    "max": 10,
+    "step_per_turn": 3,
+    "initial": 0
+  },
   "will_reveal": {
-    "<topic>": "string describing under what conditions the NPC shares this information (may include: attitude thresholds, topic preconditions, item requirements, flag requirements)"
+    "<topic_id>": {
+      "description": "string",
+      "conditions": ["attitude:korbar >= 2", "topic:abandonment", "item:rusty_key"]
+    }
   }
 }
 ```
 
-These are supplied to LLM Call 1 and Call 2 to constrain NPC dialogue improvisation. The engine cross-references `will_reveal` constraints against current `dialogue_state.topics_discussed` and `npc_attitudes`; violations are flagged in EngineResult `warnings`. The `will_reveal` conditions may reference `attitude`, `topic:<topic_id>`, `item:<item_id>`, and `flag:<flag_name>`. The engine enforces the `cannot` constraints via the `warnings` field in EngineResult.
+| Field             | Type   | Description |
+|-------------------|--------|-------------|
+| `personality`     | string | Tone, demeanor, motivations. Surfaced to both LLM calls. |
+| `on_encounter`    | string | Description of auto-events on first meeting. |
+| `can`             | array  | Things the NPC can/will do. |
+| `cannot`          | array  | Things the NPC will never do or say. The engine flags violations in `warnings`. |
+| `knows`           | array  | Facts the NPC possesses, for LLM dialogue improvisation. |
+| `attitude_limits` | object | Integer attitude bounds (see below). |
+| `will_reveal`     | object | Gated dialogue topics keyed by topic ID. Each entry has a `description` and a `conditions` array of strings following the condition format. |
+
+#### `attitude_limits`
+
+NPC attitude is tracked as an integer in `soft_state.npc_attitudes`. Positive values indicate friendly disposition; negative values indicate hostility. The `attitude_limits` block constrains how attitude can change:
+
+| Field          | Type   | Description |
+|----------------|--------|-------------|
+| `min`          | number | Minimum allowed attitude value. The engine rejects any patch that would go below this floor. |
+| `max`          | number | Maximum allowed attitude value. The engine rejects any patch that would go above this ceiling. |
+| `step_per_turn`| number | Maximum change (absolute delta) per turn. Default: 1. |
+| `initial`      | number | Starting attitude value at game start. Default: 0. |
+
+For example, a troll might have `min: -5, max: -1` — it can never become friendly. A guard might have `step_per_turn: 1` — attitude shifts only gradually.
 
 ### `behavior` (for NPC with combat)
 
 ```json
 {
   "triggers_on": "<exit_id | interaction_id>",
-  "encounter_rules": {
-    "<outcome_key>": {
-      "outcome": "death | flee | roll_50_percent | spider_flees",
+  "encounter_rules": [
+    {
+      "condition": "string (evaluated against player state)",
+      "outcome": "death | flee | roll",
       "threshold": 0.50,
       "narrative": "string",
       "set_flags": { "<flag>": true },
-      "on_success": { /* nested outcome */ },
-      "on_failure": { /* nested outcome */ }
+      "on_success": { "outcome": "...", "set_flags": {}, "narrative": "..." },
+      "on_failure": { "outcome": "...", "narrative": "..." }
     }
-  },
+  ],
   "on_flee": {
     "set_flags": { "<flag>": true },
     "effect": "string describing subsequent behavior change"
@@ -294,13 +343,15 @@ These are supplied to LLM Call 1 and Call 2 to constrain NPC dialogue improvisat
 }
 ```
 
-Outcomes are selected by matching the player's current state (inventory, flags) against the outcome keys. The engine evaluates conditions in the `encounter_rules` (inside the `mechanics` top-level block, which contains the authoritative encounter definitions) and applies the matched outcome.
+Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are evaluated against hard state (flags, inventory, entity states). In phase 1, combat uses kill-or-be-killed resolution with no iterative rounds.
 
 ---
 
 ## `mechanics` — Encounter and system rules
 
-Named mechanics referenced by exits and interactions.
+Named mechanics are rules involving aspects of game state not tied to specific
+rooms or entities. They are referenced by exits, interactions, and on_enter events.
+Game-over conditions live here too.
 
 ### Encounter
 
@@ -324,48 +375,37 @@ Named mechanics referenced by exits and interactions.
 }
 ```
 
-Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are evaluated against:
-- `inventory does not contain any item with tag 'weapon'`
-- `inventory contains weapon AND flag:injured == true`
-- `inventory contains weapon AND flag:injured == false`
+Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions follow the same format as other condition strings.
 
-### Win condition
+### Game-over conditions
 
 ```json
 {
-  "win_condition": {
+  "<mechanic_id>": {
+    "id": "string",
+    "type": "win | lose",
     "description": "string",
-    "check": "string (human-readable description of what must happen)",
-    "on_win": {
-      "narrative": "string",
-      "outcome": "game_over_win"
-    }
+    "condition": "string (evaluated against player and world state)",
+    "narrative": "string (canonical ending narration)",
+    "trigger_id": "string (matches game_over.trigger in hard state)"
   }
 }
 ```
 
-The win condition is not evaluated automatically each turn. It is checked when a `use` action matches a special item–target combination (e.g., using the `key` on the exterior padlock from room `axe_head`). The engine checks if all criteria are met and returns `game_over: { type: "win", narrative: "..." }` in EngineResult.
-
-**Item–target mechanics** for the `use` action should be defined as a first-class mechanic in future versions. For the test adventure, the win condition is special-cased: the engine checks `player location == axe_head`, `inventory contains key`, `action_type == use`, `target == padlock`.
-
----
-
-## `game_over_conditions` — Terminal states
-
-```json
-[
-  {
-    "id": "string",
-    "trigger": "string (human-readable)",
-    "type": "success | failure"
-  }
-]
-```
-
-This is largely documentation. The actual game-over triggers are the spider death encounter and the win condition, both resolved by the engine during action resolution.
+| Field         | Type   | Description |
+|---------------|--------|-------------|
+| `id`          | string | Unique mechanic identifier. |
+| `type`        | string | `"win"` or `"lose"`. |
+| `description` | string | Human-readable description of what must happen. |
+| `condition`   | string | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. |
+| `narrative`   | string | Canonical ending prose passed to LLM Call 2 via `triggered_narration`. |
+| `trigger_id`  | string | Set as `game_over.trigger` in hard state; for debugging and save analysis. |
 
 ---
 
-## Example Module Loading
+## Example Module
 
-In the reference implementation, the module corpus is loaded once at startup from a JSON file (e.g., `adventures/bag-of-holding/corpus.json`). The engine holds it in memory as a read-only data structure. No vector database or semantic search is needed — all lookups are by deterministic ID.
+In the reference implementation, the module corpus is loaded once at startup from
+a JSON file (e.g., `adventures/bag-of-holding/corpus.json`). The engine holds it
+in memory as a read-only data structure. No vector database or semantic search is
+needed — all lookups are by deterministic ID.

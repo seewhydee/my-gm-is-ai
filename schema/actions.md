@@ -1,95 +1,115 @@
 # Action Schema
 
-This defines the structured data formats that flow between the three core-loop
-components: Context Assembler → LLM Call 1 (Ruling) → Engine Resolution → LLM
+This defines the structured data formats that flow between the core-loop
+components: Context Assembler -> LLM Call 1 (Ruling) -> Engine Resolution -> LLM
 Call 2 (Prose).
 
 ## Core Loop Data Flow
 
 ```
-Player Input ──────────────────────────────────────────────────────────────────┐
-                                                                                │
-┌─────────────────────────────────┐                                             │
-│  Context Assembler              │                                             │
-│  Produces: GMBriefing           │                                             │
-└─────────────────────────────────┘                                             │
-         │                                                                      │
-         ▼                                                                      │
-┌─────────────────────────────────┐                                             │
-│  LLM Call 1: Ruling            │                                             │
-│  Input:  GMBriefing            │                                             │
-│  Output: PlayerAction          │  (structured JSON)                          │
-│     + SoftStatePatch[]         │                                             │
-└─────────────────────────────────┘                                             │
-         │                                                                      │
-         ▼                                                                      │
-┌─────────────────────────────────┐                                             │
-│  Engine Resolution              │                                             │
-│  Input:  PlayerAction           │                                             │
-│  Reads:  ModuleCorpus           │                                             │
-│  Reads:  HardGameState          │                                             │
-│  Reads:  SoftGameState          │                                             │
-│  Writes: HardGameState          │                                             │
-│  Validates & Applies:           │                                             │
-│     SoftStatePatch[]            │                                             │
-│  Produces: EngineResult         │                                             │
-│     + TurnLogEntry              │                                             │
-└─────────────────────────────────┘                                             │
-         │                                                                      │
-         ▼                                                                      │
-┌─────────────────────────────────┐                                             │
-│  LLM Call 2: Prose              │                                             │
-│  Input:  ChatLog                │                                             │
-│       + GMBriefing              │                                             │
-│       + EngineResult            │                                             │
-│  Output: Natural-language       │                                             │
-│       narration (text)          │                                             │
-└─────────────────────────────────┘                                             │
-         │                                                                      │
-         ▼                                                                      │
-     Player (text output) ──────────────────────────────────────────────────────┘
+Player Input
+       |
+       v
++------------------------------+
+| 1. Context Assembler         |
+|    Reads:  Module Corpus     |
+|           + Hard State       |
+|           + Soft State       |
+|    Produces: GMBriefing      |
++------------------------------+
+       |
+       v
++------------------------------+
+| 2. LLM Call 1: Ruling        |
+|    Input:  GMBriefing        |
+|           + Player Input     |
+|    Output: PlayerAction      |
+|           + SoftStatePatch[] |
++------------------------------+
+       |
+       v
++------------------------------+
+| 3. Engine Resolution         |
+|    Reads:  Module Corpus     |
+|           + Hard/Soft State  |
+|    Validates & Resolves       |
+|    Writes: Hard State        |
+|    Produces: EngineResult    |
++------------------------------+
+       |
+       v
++------------------------------+
+| 4. LLM Call 2: Prose         |
+|    Input:  Chat Log          |
+|           + GMBriefing       |
+|           + EngineResult     |
+|    Output: Narration (text)  |
+|           + optional continue|
+|           chain decision     |
++------------------------------+
+       |
+       v
+   Player (text output)
 ```
 
 ---
 
-## 1. GMBriefing — Input to LLM Call 1
+## 1. GMBriefing -- Input to LLM Call 1
 
 Assembled by the Context Assembler from Module Corpus + Hard State + Soft State.
-This is what the LLM sees when making a ruling.
+This is what the ruling LLM sees.
 
 ```json
 {
   "adventure_title": "You're Trapped in a Bag of Holding!",
+  "setting": "You are a person trapped inside a magical Bag of Holding — a pocket dimension full of discarded treasures, dangers, and a dwarf who has been lost here for years.",
+  "tone": "Whimsical and slightly dark. The world is absurd but coherent. Danger is real but the tone is more Pratchett than Lovecraft.",
   "turn": 3,
 
   "current_room": {
     "id": "axe_handle_lower",
     "name": "Axe Handle (Lower)",
     "description": "You are on the lower section of the axe handle. The webs here are denser, blocking the path downward unless you push through. If you look carefully, you see the spider — huge and hungry for blood — lurking in the webs. Below, many irregularly shaped objects are coming into view. It looks like you could drop down safely. There is some muffled clanking from the shadows below.",
+    "soft_items": ["rock", "loose stone"],
     "entities_visible": [
-      { "id": "spider", "name": "Huge Spider", "description": "A huge, hungry spider lurking in the dense webs.", "state": "alive, hostile" },
-      { "id": "webs_dense", "name": "Dense Webs", "description": "Thick webs blocking the downward path." }
+      {
+        "id": "spider",
+        "name": "Huge Spider",
+        "type": "npc",
+        "description": "A huge, hungry spider lurking in the dense webs.",
+        "state": { "alive": true, "fled": false },
+        "entity_notes": [],
+        "soft_items": []
+      },
+      {
+        "id": "webs_dense",
+        "name": "Dense Webs",
+        "type": "feature",
+        "description": "Thick webs blocking the downward path.",
+        "state": {},
+        "entity_notes": [],
+        "soft_items": []
+      }
     ],
     "exits_available": [
-      { "id": "exit_up_handle_lower", "direction": "Walk up the axe handle", "target_room": "axe_handle_upper" },
-      { "id": "exit_through_webs", "direction": "Push through the dense webs downward", "target_room": "bag_floor" },
-      { "id": "exit_drop_lower", "direction": "Drop safely down to the floor", "target_room": "bag_floor" }
+      { "id": "exit_up_handle_lower", "direction": "Walk up the axe handle", "target_room": "axe_handle_upper", "hidden": false },
+      { "id": "exit_through_webs", "direction": "Push through the dense webs downward", "target_room": "bag_floor", "hidden": false },
+      { "id": "exit_drop_lower", "direction": "Drop safely down to the floor", "target_room": "bag_floor", "hidden": false }
     ],
-    "interactions_available": []
+    "interactions_available": [],
+    "room_notes": ["The webs here are partially cleared from the spider's flight."]
   },
 
   "player_state": {
     "location": "axe_handle_lower",
-    "inventory": ["toenail_sword"],
-    "flags": {
-      "injured": false,
-      "stunned": false
-    },
-    "summary": "You are uninjured. You are carrying a toenail clipping sword."
+    "hard_inventory": ["iron_sword"],
+    "soft_inventory": ["rock"],
+    "active_flags": { "injured": false, "stunned": false },
+    "entity_notes": []
   },
 
   "npc_attitudes": {
-    "korbar": "neutral"
+    "korbar": 2
   },
 
   "recent_history": [
@@ -105,20 +125,24 @@ This is what the LLM sees when making a ruling.
     }
   ],
 
-  "win_condition_hint": "The padlock on the outside of the bag is locked. You will need to find a way to unlock it.",
-
   "dialogue_context": {
     "active_npc": {
       "id": "korbar",
       "name": "Korbar the Dwarf",
-      "attitude": "neutral",
+      "attitude": 2,
       "dialogue_guidelines": {
         "personality": "Cynical dwarven rogue, heavy drinker, lonely but proud.",
         "cannot": ["Leave the bag", "Stop drinking", "Remember which way is north"],
         "knows": ["The padlock mechanism", "The secret compartment in the axe head"],
         "will_reveal": {
-          "padlock_mechanism": "attitude >= friendly AND topic:abandonment discussed",
-          "secret_compartment": "attitude >= friendly AND player has item:key"
+          "padlock_mechanism": {
+            "description": "How the exterior padlock can be opened from inside",
+            "conditions": ["attitude:korbar >= 2", "topic:abandonment"]
+          },
+          "secret_compartment": {
+            "description": "A hidden cache inside the axe head",
+            "conditions": ["attitude:korbar >= 4", "item:rusty_key"]
+          }
         }
       }
     },
@@ -130,239 +154,369 @@ This is what the LLM sees when making a ruling.
     "topics_discussed": ["origin", "abandonment"]
   },
 
-  "player_input": "I pull up a cork to sit on and ask Korbar, 'What happened to your party?'"
+  "player_input": "I pull up a chair to sit on and ask Korbar, 'What happened to your party?'"
 }
 ```
 
 ### GMBriefing assembly rules
 
-1. **Current room** is fetched by ID from Module Corpus. Only entities with
+1. **Global setting**: `setting` and `tone` are drawn from the module corpus
+   `adventure.atmosphere` block — 1-2 brief sentences each about the world and
+   desired narrative style.
+
+2. **Current room** is fetched by ID from the module corpus. Only entities with
    `state.alive == true` (or equivalent) are included in `entities_visible`.
-2. **Exits** whose conditions are met are included. Hidden exits (e.g., the
+   Each visible entity includes its current hard state, entity notes (up to 3
+   most recent), and its soft_items list. Hidden entities are omitted.
+
+3. **Soft items** in the room (from `room.soft_items`) are listed directly.
+   Entity-specific soft items are listed under each entity's entry.
+
+4. **Exits** whose conditions are met are included. Hidden exits (e.g., the
    secret compartment) are omitted unless their reveal flag is set.
-3. **Recent history** is drawn from Soft Game State `turn_history` — last 5
-   entries, summarized. Raw chat log is NOT included here (see Section 5).
-4. **Player state summary** is a natural-language condensation of inventory
-   and flags, to reduce LLM parsing burden.
-5. **Win condition hint** is included only if the player has discovered clues.
-6. **Dialogue context** is included when `soft_state.dialogue_state.active_npc` is
-   non-null. The block contains the active NPC's identity, attitude, and full
-   `dialogue_guidelines`; the last 5 entries from `conversation_log`; and the
-   set of `topics_discussed`. If `active_npc` is null, `dialogue_context` is
-   omitted entirely from the GMBriefing.
+
+5. **Player state** summarises hard inventory, soft inventory, active flags,
+   and entity notes attached to the player entity.
+
+6. **Recent history** is drawn from soft state `turn_history` — last 5
+   entries, summarised. The raw chat log is NOT included here.
+
+7. **NPC attitudes** includes attitudes for all NPCs the player has met
+   (or all known NPCs, at the implementer's discretion).
+
+8. **Dialogue context** is included when `soft_state.dialogue_state.active_npc`
+   is non-null. The block contains the active NPC's identity, attitude,
+   full `dialogue_guidelines`, last 5 entries from `conversation_log`, and
+   `topics_discussed`. If `active_npc` is null, `dialogue_context` is omitted.
+
+9. **Player input** is the verbatim text entered this turn. For chained
+   actions (see Follow-up below), this is the original input plus a clear
+   indication of where the chain currently stands.
 
 ---
 
-## 2. PlayerAction — Output of LLM Call 1
+## 2. PlayerAction -- Output of LLM Call 1
 
 The LLM must output a single structured action. This is the *ruling* — the LLM
-interprets the player's intent and proposes what happens, which the engine then
-validates and resolves.
+interprets the player's intent and produces a structured proposal, which the
+engine then validates and resolves.
 
-```json
-{
-  "action_type": "move",
-  "target": "exit_through_webs",
-  "detail": "The player steels themselves and pushes through the sticky webs, trying to reach the bag floor.",
-  "proposed_soft_state_patches": []
-}
-```
+Every PlayerAction carries these fields:
+
+| Field                        | Type    | Required | Description |
+|------------------------------|---------|----------|-------------|
+| `action_type`                | string  | yes      | One of the supported action types below. |
+| `detail`                     | string  | yes      | Natural-language description of what the player attempts. |
+| `follow_up`                  | string  | no       | The remainder of a chained action yet to be performed. See Follow-up below. |
+| `proposed_soft_state_patches`| array   | no       | Structured soft-state patch requests. See SoftStatePatch in soft-state.md. |
 
 ### 2.1 Supported action types
 
-#### `move` — Travel between rooms
-
-The LLM selects the exit the player is using. The engine validates the exit
-exists, is available from the current room, and all conditions are met.
+#### `move` -- Travel between rooms
 
 ```json
 {
   "action_type": "move",
   "target": "<exit_id>",
-  "detail": "Natural-language description of how the player moves.",
+  "style": "crawling",
+  "detail": "The player gets down on hands and knees and crawls through the narrow tunnel.",
+  "follow_up": null,
   "proposed_soft_state_patches": []
 }
 ```
+
+| Field    | Type   | Required | Description |
+|----------|--------|----------|-------------|
+| `target` | string | yes      | The exit ID to traverse. Must be a valid, accessible, non-hidden exit from the current room. |
+| `style`  | string | no       | Optional qualifier for special movement methods (e.g., "crawling", "running", "carefully"). |
 
 **Engine validation:**
 - `target` must be a valid exit_id in the current room.
 - All `conditions` on the exit must be satisfied.
 - If the exit has `on_traverse`, the engine applies the specified effects
   (set flags, trigger encounters, etc.).
-- If the exit is one-way, reverse traversal is rejected.
+- If the exit is `one_way: true`, reverse traversal is rejected.
+- On success, `player.location` is set to the exit's `target_room`.
 
-#### `examine` — Look at something
+---
+
+#### `examine` -- Look at something
 
 ```json
 {
   "action_type": "examine",
-  "target": "<entity_id or feature_id>",
-  "detail": "What the player is looking at or trying to inspect.",
+  "target": "<entity_id or room_id>",
+  "rigorous": false,
+  "using": null,
+  "detail": "The player peers closely at the rusty mechanism, looking for a way to disengage it.",
+  "follow_up": null,
   "proposed_soft_state_patches": []
 }
 ```
 
-**Engine validation:**
-- `target` must exist in the current room's `entities_present` list, or be the
-  current room itself (for examining the room).
-- Engine returns the entity's description and any `examine`-specific narrative
-  from the module corpus.
-- Does NOT trigger interactions — those require the `interact` action type.
+| Field      | Type          | Required | Description |
+|------------|---------------|----------|-------------|
+| `target`   | string        | yes      | A valid entity ID present in the current room, the current room ID itself (for re-examining the room), or a soft item name present in the current room or on a visible entity. |
+| `rigorous` | boolean       | no       | If `true`, signifies an in-depth search. A schema may specify that only a rigorous search reveals hidden details. |
+| `using`    | string\|null  | no       | A valid entity ID or soft item used to assist the examination (e.g., using a torch to look at a dark corner). |
 
-#### `interact` — Use a defined interaction
+**Engine validation:**
+- `target` must be a valid entity in the current room's `entities_present`, the
+  current room ID, or a soft item name present in the current room or on a
+  visible entity.
+- If `using` is specified, the item must be in the player's hard inventory
+  (entity IDs) or soft inventory (soft item names).
+- If `rigorous: true`, the engine evaluates the room/entity's interactions
+  that were previously scoped only to rigorous search (i.e., checks that
+  require the `rigorous` flag). Hidden exits, items, or state changes may
+  be revealed.
+- The engine returns the entity's `description` and any applicable
+  examine-only narrative.
+
+---
+
+#### `interact` -- Perform a defined interaction
 
 ```json
 {
   "action_type": "interact",
-  "target": "<interaction_id>",
-  "detail": "How the player attempts the interaction.",
+  "target": "<entity_id or soft_item_name>",
+  "interaction_id": "<interaction_id>",
+  "using": "iron_sword",
+  "detail": "The player slashes at the spider with the iron sword.",
+  "follow_up": null,
   "proposed_soft_state_patches": []
 }
 ```
 
-**Engine validation:**
-- `target` must be a valid `interaction.id` defined in the current room.
-- All conditions on the interaction must be met.
-- If the interaction has a `check` (roll), the engine resolves it and returns
-  success or failure.
-- On success, the engine applies the result (add_item, set_flag, etc.).
-- Interactions are one-to-one: the LLM cannot invent new interactions. For
-  freeform actions not covered by a defined interaction, the engine returns a
-  generic failure and the LLM narrates the impossibility.
+| Field            | Type           | Required | Description |
+|------------------|----------------|----------|-------------|
+| `target`         | string         | yes      | The entity ID or soft item name being interacted with. |
+| `interaction_id` | string         | yes      | The specific interaction to perform. Generic interactions include `attack` and `take`. Module authors define additional ones (e.g., `recharge`). |
+| `using`          | string\|null   | no       | An entity ID or soft item enabling the interaction (e.g., "iron_sword" for attack). |
 
-#### `talk` — Speak to an NPC
+**Engine validation:**
+- `target` must exist: an entity present in the room, or a soft item present
+  in the room or on a present entity.
+- `interaction_id` must match a defined interaction on the target entity, the
+  current room, or a generic interaction (e.g., `attack`, `take`).
+- The interaction's `parameter_signature` (if defined) is validated: `target`
+  must be of a type listed in `parameter_signature.target`, and `using` must
+  be of a type listed in `parameter_signature.using`.
+- All interaction `conditions` must be met.
+- If the interaction has a `check` (roll), the engine resolves it and selects
+  the `success` or `failure` result.
+- On success, the engine applies the result (add_item, set_flag, etc.).
+- If no matching interaction exists, the engine returns `success: false` with
+  a reason. The LLM may then retry with a different action or fall back to
+  `wait`.
+
+---
+
+#### `talk` -- Speak to an NPC
 
 ```json
 {
   "action_type": "talk",
-  "target": "<npc_entity_id>",
+  "target": "korbar",
   "utterance": "Hey there, who are you and how did you get stuck in this bag?",
-  "detail": "Natural-language description of the player's demeanour, gestures, and intent during the conversation.",
+  "detail": "The player approaches the dwarf with an open, friendly demeanour, hands visible to show no threat.",
   "ends_dialogue": false,
-  "proposed_soft_state_patches": []
+  "follow_up": null,
+  "proposed_soft_state_patches": [
+    {
+      "entity_id": "korbar",
+      "field": "attitude",
+      "target_id": null,
+      "old_value": 0,
+      "new_value": 1,
+      "reason": "The player approached in a friendly, non-threatening way."
+    }
+  ]
 }
 ```
 
 | Field            | Type    | Required | Description |
 |------------------|---------|----------|-------------|
-| `action_type`    | string  | yes      | Must be `"talk"`. |
 | `target`         | string  | yes      | NPC entity ID to speak to. |
-| `utterance`      | string  | yes      | The verbatim spoken words the player's character says. |
+| `utterance`      | string  | no       | Verbatim spoken words the player's character says. May be absent if the player is describing speech indirectly or the input is purely non-verbal (e.g., nodding, gesturing). |
 | `detail`         | string  | yes      | Non-verbal context: tone, body language, actions accompanying the speech. |
-| `ends_dialogue`  | boolean | no       | If `true`, signals that the player intends to end the conversation (e.g., "Thanks, I'll be going now."). The engine will archive the conversation log and clear `dialogue_state.active_npc`. |
-| `proposed_soft_state_patches` | array | no   | Standard soft-state patch format. |
+| `ends_dialogue`  | boolean | no       | If `true`, signals that the player intends to end the conversation. The engine will archive the conversation log to the NPC's `entity_notes` and clear `dialogue_state.active_npc`. |
 
 **Engine validation:**
-- `target` must be an NPC entity present in the current room, and its `state.alive`
-  must be true.
-- The engine returns the NPC's `dialogue_guidelines` from the module corpus.
-- The engine does NOT validate dialogue content — dialogue is freeform and
-  the LLM improvises based on the guidelines.
+- `target` must be an NPC entity present in the current room, and `state.alive` must be true.
 - When a `talk` action succeeds, the engine activates or extends dialogue mode:
-  sets `dialogue_state.active_npc`, appends the player's `utterance` to
-  `conversation_log`, and records any new topics proposed by LLM Call 1.
-- If the `talk` action targets a different NPC than the current
-  `active_npc`, the engine archives the current conversation log and starts a new one.
+  sets `dialogue_state.active_npc`, appends the player's `utterance` (or a
+  summary of the `detail` if no `utterance`) to `conversation_log`, and records
+  any new topics proposed by LLM Call 1.
+- If the `talk` targets a different NPC than the current `active_npc`, the
+  engine archives the current conversation log and starts a new one.
 - If `ends_dialogue` is `true`, the engine clears dialogue mode after resolution.
-- If the LLM proposes a soft-state patch (e.g., attitude change), the engine
-  validates it per the soft-state patch schema.
-- Hard knowledge constraints are checked: e.g., if `told_secret` flag is false
-  and Korbar's guidelines say she only reveals at `friendly` attitude, the
-  engine will reject any attempt by LLM Call 2 to have Korbar reveal the secret
-  at `neutral` attitude. This is enforced at EngineResult time, not at
-  PlayerAction time — the LLM may *propose* narration that implies a secret
-  reveal; the engine strips or flags it before it reaches the player.
+- Soft-state patches (e.g., attitude changes) are validated per the soft-state
+  patch schema.
 
-#### `use` — Use an item on a target
+---
+
+#### `transfer` -- Give or take items
 
 ```json
 {
-  "action_type": "use",
-  "item": "<inventory_item_id>",
-  "target": "<entity_id or feature_id>",
-  "detail": "How the player uses the item on the target.",
+  "action_type": "transfer",
+  "target": "korbar",
+  "given_items": ["rusty_key"],
+  "taken_items": ["rock"],
+  "detail": "The player hands the rusty key to Korbar and takes back the rock.",
+  "follow_up": null,
   "proposed_soft_state_patches": []
 }
 ```
 
-**Engine validation:**
-- `item` must be in the player's inventory.
-- `target` must be a valid entity in the current room (or a special reachable
-  entity, e.g., the exterior padlock).
-- The engine checks for a matching item–target combination in the module
-  mechanics. If found, the defined outcome applies.
-- If no defined interaction exists, the engine returns a generic "nothing
-  happens" and the LLM nar narrates the anticlimax.
-
-#### `search` — Search the current room
-
-```json
-{
-  "action_type": "search",
-  "target": null,
-  "detail": "The player searches the room thoroughly.",
-  "proposed_soft_state_patches": []
-}
-```
+| Field          | Type            | Required | Description |
+|----------------|-----------------|----------|-------------|
+| `target`       | string          | yes      | Entity ID (NPC or container) or room ID (for dropping items on the floor). |
+| `given_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is giving to the target. |
+| `taken_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is taking from the target. |
 
 **Engine validation:**
-- The engine enumerates all `interactions` in the current room that have
-  a `check.type == "roll"` and `repeatable == true` or not yet attempted.
-- For each, the engine rolls and reports results.
-- This is a convenience action that bundles multiple search-type interactions.
-  The LLM can also use `interact` with a specific search interaction ID for
-  targeted searching.
+- `target` must be a valid entity ID present in the room, or the current room ID.
+- Each item in `given_items` must be in the player's hard inventory (entity IDs)
+  or soft inventory (soft item names).
+- Each item in `taken_items` must be obtainable from the target: entity IDs must
+  be listed in the target entity's or room's available inventory; soft item names
+  must appear in the target's `soft_items` or the room's `soft_items`.
+- On success, items are moved accordingly between inventories.
+- If the target is a room, `given_items` are removed from the player's inventory
+  and added to the room's available pool; `taken_items` are removed from the
+  room's available pool and added to the player's inventory.
+- At least one of `given_items` or `taken_items` should be non-empty.
 
-#### `attack` — Fight an entity
+---
 
-```json
-{
-  "action_type": "attack",
-  "target": "<entity_id>",
-  "detail": "How the player attacks.",
-  "proposed_soft_state_patches": []
-}
-```
-
-**Engine validation:**
-- `target` must be an entity with a defined combat behavior in the module
-  corpus.
-- The engine resolves combat per the entity's `behavior.encounter_rules`.
-- In phase 1 (no full combat system), combat is resolved as a special-case
-  encounter with flag-based outcomes. The engine checks flags (armed, injured)
-  and applies the corresponding outcome.
-- Future phases will replace this with iterative combat rounds.
-
-#### `wait` — Do nothing / pass time
+#### `wait` -- Pass time / miscellaneous
 
 ```json
 {
   "action_type": "wait",
-  "detail": "The player waits to see if anything happens.",
+  "detail": "The player pauses, taking stock of what they're carrying. Among their belongings: an iron sword, a rock, and a torn piece of canvas.",
+  "follow_up": null,
   "proposed_soft_state_patches": []
 }
 ```
 
+The `wait` action advances the turn counter and serves as a catch-all for:
+- Actions falling below plot significance threshold (e.g., examining a soft
+  item, looking through inventory).
+- Player introspection or self-examination.
+- Genuinely waiting or doing nothing.
+
+The `detail` field instructs LLM Call 2 on how to narrate the response (e.g.,
+reporting inventory contents). No hard state changes occur beyond the turn
+counter increment.
+
 **Engine validation:**
-- No state changes besides advancing the turn counter.
-- The engine may trigger time-based events (none in the test adventure).
-
-### 2.2 Action validation summary
-
-| Action    | target must be                            | other constraints                       |
-|-----------|-------------------------------------------|-----------------------------------------|
-| `move`    | exit_id in current room                   | exit conditions met                     |
-| `examine` | entity_id in current room (or room_id)    | none                                    |
-| `interact`| interaction_id in current room            | interaction conditions met              |
-| `talk`    | npc entity_id in current room, alive      | none (dialogue is freeform)            |
-| `use`     | item in inventory + target in room        | matching mechanic may exist             |
-| `search`  | null                                      | triggers relevant search interactions   |
-| `attack`  | entity_id in current room, has combat     | combat encounter rules applied          |
-| `wait`    | null                                      | none                                    |
+- No additional validation beyond turn advancement.
+- The engine may trigger time-based events (for future modules).
+- Soft-state patches in `proposed_soft_state_patches` are validated as usual.
 
 ---
 
-## 3. EngineResult — Input to LLM Call 2
+#### `ooc_discussion` -- Out-of-character conversation
+
+```json
+{
+  "action_type": "ooc_discussion",
+  "detail": "The player wants to clarify whether the spider is still visible in the room.",
+  "follow_up": null,
+  "proposed_soft_state_patches": []
+}
+```
+
+Allows the player to speak to the GM out-of-character for clarifications,
+rule questions, or meta-discussion.
+
+**Engine behaviour:**
+- The engine performs a no-op: no hard state changes, no soft state changes,
+  and the turn counter is **not** incremented.
+- The engine skips directly to LLM Call 2 with the `ooc_discussion` action
+  and the player's `detail` as the narrative prompt.
+- LLM Call 2 should respond in a GM voice, not an in-world narration voice.
+- If in active dialogue mode, `ooc_discussion` does not increment the
+  `stall_counter`.
+
+---
+
+### 2.2 Follow-up: Chained actions
+
+Players often describe multi-step plans in a single input (e.g., "I pick up
+the key and unlock the door"). The LLM is instructed to:
+
+1. Identify the first (or next) discrete step in the chain.
+2. Construct a `PlayerAction` for that step.
+3. Place the remainder of the chain in the `follow_up` field as a natural-language
+   string describing what remains to be done.
+
+```json
+{
+  "action_type": "transfer",
+  "target": "bag_floor",
+  "taken_items": ["rusty_key"],
+  "detail": "The player picks up the rusty key from the floor.",
+  "follow_up": "Unlock the padlock on the outside of the bag using the rusty key.",
+  "proposed_soft_state_patches": []
+}
+```
+
+After LLM Call 2 narrates the result of the current step, if the chain is not
+complete:
+
+- LLM Call 2 may decide to **continue** the chain: the system loops back to
+  Context Assembler (now with updated state) and feeds the `follow_up` text as
+  the "player input" for the next step, with an indication that this is a
+  chained action.
+- LLM Call 2 may decide to **interrupt** the chain (with appropriate narration
+  explaining why), returning control to the player.
+- The engine enforces a maximum chain length (a defined constant) to guard
+  against LLM Call 1 creating infinite follow-up loops. If exceeded, the chain
+  is terminated and control returns to the player.
+
+---
+
+### 2.3 Action validation summary
+
+| Action            | target must be                                  | other constraints                          |
+|-------------------|-------------------------------------------------|--------------------------------------------|
+| `move`            | exit_id in current room                         | exit conditions met, not one-way blocked   |
+| `examine`         | entity_id in current room, current room_id, or soft item name present in room/on visible entity | `using` item must be in inventory |
+| `interact`        | entity_id or soft item present in room          | interaction_id must match defined interaction; `using` item must be present/in-inventory |
+| `talk`            | npc entity_id in current room, alive            | `utterance` optional                       |
+| `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source  |
+| `wait`            | null (no target)                                | none; advances turn counter                |
+| `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
+
+---
+
+## 3. SoftStatePatch -- LLM-proposed, engine-validated
+
+The LLM may propose changes to soft state in its `PlayerAction` output. The
+full format and validation rules are detailed in `soft-state.md`. In summary:
+
+```json
+{
+  "entity_id": "korbar",
+  "field": "attitude",
+  "target_id": null,
+  "old_value": 0,
+  "new_value": 2,
+  "reason": "The player shared their food with Korbar."
+}
+```
+
+Supported fields: `attitude`, `room_note`, `entity_note`, `soft_inventory_add`,
+`soft_inventory_remove`.
+
+---
+
+## 4. EngineResult -- Input to LLM Call 2
 
 The engine produces this after resolving the PlayerAction. It contains
 everything LLM Call 2 needs to narrate the outcome.
@@ -377,13 +531,16 @@ everything LLM Call 2 needs to narrate the outcome.
     "id": "bag_floor",
     "name": "Bag Floor",
     "description": "You are on the floor of the bag. Loose piles of giant rubbish surround you...",
+    "soft_items": ["cork", "loose copper", "stale sandwich"],
     "entities_visible": [
-      { "id": "korbar", "name": "Korbar the Dwarf", "brief": "A drunk dwarf in noisy platemail." },
-      { "id": "rubbish_pile", "name": "Piles of Rubbish", "brief": "Giant potion bottles, corks, sandwiches, copper pieces, lint." }
+      { "id": "korbar", "name": "Korbar the Dwarf", "type": "npc", "description": "A drunk dwarf in noisy platemail.", "state": { "alive": true }, "entity_notes": [] },
+      { "id": "rubbish_pile", "name": "Piles of Rubbish", "type": "feature", "description": "Giant potion bottles, corks, sandwiches, copper pieces, lint.", "state": {}, "entity_notes": [], "soft_items": ["cork", "loose copper"] }
     ],
     "exits_available": [
       { "id": "exit_climb_up_handle_floor", "direction": "Climb up the axe handle", "target_room": "axe_handle_lower" }
-    ]
+    ],
+    "interactions_available": [],
+    "room_notes": []
   },
 
   "hard_state_changes": {
@@ -392,6 +549,9 @@ everything LLM Call 2 needs to narrate the outcome.
     "inventory_removed": [],
     "flags_set": { "spider_fled": true },
     "flags_cleared": [],
+    "room_state_changes": {
+      "bag_floor": { "visited": true }
+    },
     "entity_state_changes": {
       "spider": { "fled": true }
     }
@@ -405,11 +565,11 @@ everything LLM Call 2 needs to narrate the outcome.
   "encounter_outcome": {
     "encounter_id": "spider_encounter",
     "outcome": "flee",
-    "narrative_brief": "The player wounded the spider with their toenail sword. It fled into the shadows."
+    "narrative_brief": "The player wounded the spider with their iron sword. It fled into the shadows."
   },
 
   "triggered_narration": [
-    "You push through the sticky webs, hacking at them with the toenail sword. The spider lunges — you slash it across its legs. It screeches and scuttles away into the shadows, never to threaten you again.",
+    "You push through the sticky webs, hacking at them with the iron sword. The spider lunges — you slash it across its legs. It screeches and scuttles away into the shadows, never to threaten you again.",
     "You emerge onto the floor of the bag, surrounded by giant rubbish. A drunken dwarf in noisy platemail looks up at you with bleary eyes."
   ],
 
@@ -423,100 +583,62 @@ everything LLM Call 2 needs to narrate the outcome.
   "game_over": null,
 
   "warnings": [
-    "note: Korbar is present but has not been introduced yet. You may narrate her presence."
+    "Korbar is present but has not been introduced yet. You may narrate her presence."
   ]
 }
 ```
 
-### 3.1 EngineResult field descriptions
+### 4.1 EngineResult field descriptions
 
-| Field                      | Description                                                                 |
-|----------------------------|-----------------------------------------------------------------------------|
-| `success`                  | Whether the action was valid and resolved. `false` means the engine rejected the action. |
-| `action_type`, `target`    | Echoed back from PlayerAction for context.                                  |
-| `room_after`               | If the player changed rooms, the new room data. Otherwise the current room. |
-| `hard_state_changes`       | All applied changes to hard state. LLM Call 2 uses this for narration.      |
-| `soft_state_patches_applied` | Soft-state patches the engine accepted (see Section 4).                   |
-| `soft_state_patches_rejected`| Soft-state patches the engine rejected, with reasons.                     |
-| `rolls`                    | Any probabilistic rolls the engine made, with results.                      |
-| `encounter_outcome`        | If an encounter triggered, its resolution.                                  |
-| `triggered_narration`      | Pre-written narrative blocks the engine supplies for specific events (e.g., spider fleeing). LLM Call 2 should incorporate or paraphrase these. |
-| `on_enter_events`          | Any events that fired on entering the new room (e.g., fly warning).         |
-| `game_over`                | `null` or `{"type": "win"|"loss", "narrative": "..."}`.                     |
-| `warnings`                 | Engine hints to the LLM about narrative constraints (e.g., don't have Korbar reveal secrets she hasn't been asked about). |
-
----
-
-## 4. SoftStatePatch — LLM-proposed, engine-validated
-
-The LLM may propose changes to soft state in its `PlayerAction` output. The
-engine validates each patch against a fixed schema and either applies or
-rejects it.
-
-### 4.1 Patch format
-
-```json
-{
-  "entity_id": "korbar",
-  "field": "attitude",
-  "old_value": "neutral",
-  "new_value": "friendly",
-  "reason": "The player shared their food with Korbar and listened sympathetically to her story about being abandoned by her party."
-}
-```
-
-### 4.2 Validation rules
-
-| Rule                        | Description                                                                 |
-|-----------------------------|-----------------------------------------------------------------------------|
-| `entity_id` must exist      | The entity must be defined in the module corpus.                            |
-| `field` must be registered  | The entity must have the field declared in its `state_fields` (hard state) or in the soft state schema. |
-| Attitude transitions ≤ 1 step | Attitude can only move one step per turn (hostile → neutral, neutral → friendly). Multi-step jumps are rejected unless the reason describes extraordinary circumstances AND the engine is configured to allow it. |
-| Cannot contradict hard state | If hard state says `korbar.alive == false`, a patch to change her attitude is rejected. |
-| `reason` must be non-empty  | The LLM must justify the change with a narrative reason.                    |
-
-### 4.3 Supported soft state fields
-
-| Field      | Type   | Allowed values              | Notes                                    |
-|------------|--------|-----------------------------|------------------------------------------|
-| `attitude` | enum   | `hostile`, `neutral`, `friendly` | One-step transitions only. Applies to NPCs. |
-| `environmental_note` | string | Any non-contradictory text | Appended to `environmental_notes[]`. Used for narrative continuity (e.g., "the webs are now partially cleared"). |
+| Field                          | Description |
+|--------------------------------|-------------|
+| `success`                      | Whether the action was valid and resolved. `false` means the engine rejected the action. |
+| `action_type`, `target`        | Echoed from PlayerAction for context. |
+| `room_after`                   | The room after resolution: the new room if the player moved, otherwise the current room. Includes `soft_items`, `room_notes`, visible `entities_visible` (with their `soft_items` and `entity_notes`), available exits, and interactions. |
+| `hard_state_changes`           | All applied changes to hard state: location, inventory changes, flag changes, room state changes, entity state changes. LLM Call 2 must not contradict these. |
+| `soft_state_patches_applied`   | Soft-state patches the engine accepted. |
+| `soft_state_patches_rejected`  | Soft-state patches the engine rejected, each with a `reason` string. LLM Call 2 must not narrate rejected changes. |
+| `rolls`                        | Any probabilistic rolls the engine made, with results. |
+| `encounter_outcome`            | If an encounter triggered, its resolution. |
+| `triggered_narration`          | Pre-written narrative blocks for specific events (e.g., spider fleeing, room entry). LLM Call 2 should incorporate or paraphrase these — they represent canonical prose for key moments. |
+| `on_enter_events`              | Any on_enter events that fired when entering the new room. |
+| `game_over`                    | `null` or `{"type": "win"|"lose", "trigger": "string", "narrative": "string"}`. |
+| `warnings`                     | Engine hints to LLM Call 2 about narrative constraints (e.g., don't reveal secrets, respect attitude gating, NPC dialogue limits). |
 
 ---
 
-## 5. LLM Call 2: Prose Narration Constraints
+## 5. LLM Call 2: Prose Narration
 
 LLM Call 2 receives:
-- **Raw chat log** (verbatim player–GM exchange, last N messages) — for
+- The **adventure setting** (1-2 sentences from the module corpus).
+- The **verbatim chat log** (raw player–GM exchange, recent messages) for
   conversational continuity.
-- **GMBriefing** (same as LLM Call 1 received) — for current state context.
-- **EngineResult** — the authoritative outcome of the player's action.
+- The **GMBriefing** (same as LLM Call 1 received) for current world context.
+- The **PlayerAction** from LLM Call 1.
+- The **EngineResult** — the authoritative outcome.
 
 ### Constraints on LLM Call 2 output
 
 1. **Do not contradict the EngineResult.** If the engine says the spider fled,
-   do not narrate the spider attacking. If the engine says `success: false`,
-   narrate the action failing or being impossible.
+   do not narrate it attacking. If `success: false`, narrate the failure or
+   impossibility naturally.
 
-2. **Do not alter hard state.** The narration cannot add items to inventory,
-   change room, set flags, or kill entities. Those are engine domain.
+2. **Do not alter hard state.** Narration cannot add items to inventory, change
+   the player's room, set flags, or kill entities. Those are engine domain.
 
 3. **Incorporate `triggered_narration` blocks** where provided. These are
    canonical descriptions of key events and should be used verbatim or closely
-   paraphrased. The LLM's job is to weave them into natural prose with the
-   player's action and the broader scene.
+   paraphrased. The LLM's job is to weave them into natural conversation with
+   the player's action and the broader scene.
 
 4. **Do not reveal hidden information.** If a secret exit is hidden, do not
    mention it. If an NPC knows something but hasn't shared it, the LLM may
    improvise their dialogue but must respect the `dialogue_guidelines.cannot`
-   constraints from the module corpus. The engine provides these guidelines
-   in the EngineResult `warnings` field.
+   constraints. The engine provides these constraints in the `warnings` field.
 
 5. **Provide NPC response for dialogue extraction.** When a `talk` action was
-   resolved, the narration must include the NPC's verbatim spoken response in a
-   form the engine can extract (e.g., enclosed in dedicated markers or in a
-   structured `npc_response` field alongside the prose). This response is used
-   to populate `dialogue_state.conversation_log` for future turns.
+   resolved, the narration must include the NPC's spoken response in a form
+   the engine can extract (e.g., marked with a structured `npc_response` field).
 
 6. **Respect game-over state.** If `game_over` is non-null, narrate the ending
    and stop. No further player input should be solicited.
@@ -524,6 +646,22 @@ LLM Call 2 receives:
 7. **The raw chat log may contain hallucinations.** The LLM is instructed that
    prior narration (including its own) is non-canonical unless confirmed by the
    EngineResult. If a contradiction is detected, prefer the engine's version.
+
+8. **Chained action decision.** After emitting narration for the current step,
+   LLM Call 2 evaluates the `follow_up` context and decides whether to:
+   - Continue the chain: return a signal to loop back with the next step, or
+   - Interrupt the chain: narrate the interruption and return control to the player.
+
+### Chat History: Structured vs. Verbatim
+
+LLM Call 1 receives a **structured, non-verbatim** turn history — distilled
+summaries vetted by the engine — to prevent the ruling LLM from reinforcing
+hallucinations. The exception is the `dialogue_context` block in GMBriefing,
+which injects scoped, verbatim dialogue exchanges when the player is in active
+conversation with an NPC.
+
+LLM Call 2 receives the **verbatim chat log** for conversational flavour, but
+is explicitly instructed to defer to the EngineResult when contradictions arise.
 
 ---
 
@@ -538,14 +676,14 @@ missing required fields, invalid JSON), the engine returns:
 {
   "success": false,
   "error": "invalid_action",
-  "message": "Unknown action type 'cast_spell'. Supported types: move, examine, interact, talk, use, search, attack, wait.",
+  "message": "Unknown action type 'cast_spell'. Supported types: move, examine, interact, talk, transfer, wait, ooc_discussion.",
   "player_input_echo": "<original player input>"
 }
 ```
 
-The system should then re-invoke LLM Call 1 with the error message appended to
-the context, giving it a chance to correct. Maximum 1 retry before falling back
-to a generic "You can't do that" narration.
+The system re-invokes LLM Call 1 once with the error message appended to the
+context. If the retry also fails, the system falls back to a generic "You can't
+do that" narration via LLM Call 2.
 
 ### 6.2 LLM proposes impossible action
 
@@ -567,7 +705,7 @@ Korbar, but there's no response from the darkness below.").
 ### 6.3 LLM proposes contradictory soft state
 
 If a soft-state patch is rejected by the engine, it appears in
-`soft_state_patches_rejected` with a reason. LLM Call 2 should NOT narrate the
+`soft_state_patches_rejected` with a reason. LLM Call 2 must not narrate the
 rejected change. If the rejection invalidates the LLM's intended narration
 direction, the LLM should adapt.
 
@@ -576,25 +714,32 @@ direction, the LLM should adapt.
 ## 7. Turn Lifecycle Summary
 
 ```
-1. Player enters input ──────────────────────────────────────────────┐
-2. Context Assembler builds GMBriefing                                │
-3. LLM Call 1 (Ruling) produces PlayerAction + SoftStatePatch[]       │
-4. Engine validates action                                            │
-   ├── Valid:   resolve, apply hard state, validate soft patches      │
-   └── Invalid: return error (goto 3 with retry, or goto 6 with fail) │
-5. Engine adds turn to turn_history                                   │
-6. LLM Call 2 (Prose) narrates outcome                                │
-7. Output text to player ─────────────────────────────────────────────┘
+1. Player enters input
+2. Context Assembler builds GMBriefing
+3. LLM Call 1 (Ruling) produces PlayerAction + SoftStatePatch[]
+4. Engine validates action
+   +-- Valid:   resolve, apply hard state, validate soft patches
+   +-- Invalid: return error (goto 3 with retry, or goto 6 with fail)
+5. Engine adds entry to turn_history (skipped for ooc_discussion)
+6. LLM Call 2 (Prose) narrates outcome
+7. If chained action and LLM Call 2 decides to continue: goto 2
+   Else: output text to player, save game state
 ```
+
+---
 
 ## 8. Extensibility Notes
 
 - **New action types**: Add to Section 2.1 with validation rules. Register in
-  the engine's action parser.
-- **New soft state fields**: Add to Section 4.3. The engine must validate the
-  field exists and the value is in range.
-- **New encounter types**: Add to the entity's `behavior` block. The engine
-  dispatches based on `encounter_id`.
-- **Combat phase**: The `attack` action will be revised to support iterative
-  rounds, HP tracking, and damage rolls. The current flag-based resolution is
-  a phase-1 placeholder for the test adventure only.
+  the engine's action parser and update the LLM Call 1 prompt instructions.
+- **New soft state fields**: Add to `soft-state.md` Section SoftStatePatch.
+  The engine must validate the field exists and values are in range.
+- **New entity types**: Add to the `type` enum in the corpus schema. Update
+  the engine's entity resolver.
+- **Combat phase**: The current `interact`-based attack uses kill-or-be-killed
+  resolution. A future combat phase will support iterative rounds, HP tracking,
+  and damage rolls. The `attack` interaction ID will route to the new combat
+  engine.
+- **Semantic search / RAG**: Once adventures grow beyond the five-room scale,
+  deterministic ID lookups can be augmented with vector embeddings for entity
+  descriptions and player queries.
