@@ -14,7 +14,7 @@ We will set up a system that combines an LLM agent with a non-AI engine for game
 
 Player Input
  -> combined with context, supplied to LLM
- -> LLM does first round of adjudication, and submits a structured action
+ -> LLM adjudicates player intent and submits a structured action
  -> Engine validates and resolves the action
  -> LLM checks outcome, and generates final prose to player
 
@@ -22,11 +22,12 @@ The game state setup is done ahead of time, similar to a human GM preparing an a
 
 For testing, we will set up one short sample adventure consisting of a hand written text adventure consisting of a 5 room dungeon with no combat. This will be written up as a single long planning document, and converted unto the appropriate schema (with validation) by LLM assistants. Much later, we will explore setting up a more general conversion pipeline, e.g. finding adventures from interactive fiction or tabletop modules with permissive licenses, and translating them.
 
-Other scoping issues:
+During the initial phase of development, we will limit the scope as follows:
 
 * We will fix on OpenAI compatible API calls.
-* The input/output will be console based, with no graphics. Much later, we will extend to allow playing via Telegram bot, website, etc.
-* Combat will probably need a special mode, and will be handled in the next phase of development.
+* Input/output will be console based, with no graphics.
+* Combat will have kill-or-be-killed resolutions with no special mechanics.
+* No player stats for now.
 
 ## Proposed Architecture
 
@@ -69,41 +70,42 @@ If LLM Call 1 produces a malformed or impossible action, the system retries once
 
 **Module Corpus** (read-only). The digital equivalent of a printed adventure module. JSON loaded at startup, never modified during play. Contains:
 
-- *Rooms* as graph nodes: each has a prose description, a list of entities present, available exits (with conditions, traversal effects, and hidden/reveal logic), defined interactions (with deterministic or probabilistic results), and on-enter events (one-shot or conditional).
-- *Entities* of typed categories — `feature`, `npc`, `trap`, `item` — each with descriptive prose, tags for mechanical matching, defined interactions, and declarations of mutable state fields. NPCs carry `dialogue_guidelines` (personality, knowledge constraints, attitude-gated secrets) that are surfaced to the LLM. Monster-type NPCs carry `behavior` blocks defining encounter rules and outcomes.
-- *Mechanics*: named encounters (rules evaluated top-to-bottom against player state; outcomes include death, flee, or probabilistic rolls) and win conditions (item–target combinations gated by location and inventory checks).
-- *Game-over conditions*: terminal triggers with success/failure classification.
+- *Rooms* as graph nodes.  Each has a prose description, a list of entities present, available exits (with conditions, traversal effects, and hidden/reveal logic), special interactions, and on-enter events (one-shot or conditional).
+- *Entities* have typed categories — `player`, `feature`, `npc`, `trap`, `item`. Each has descriptive prose, special interactions, and declarations of mutable state fields. NPCs carry `dialogue_guidelines` (personality, knowledge constraints, attitude-gated secrets) that are surfaced to the LLM. Monster-type NPCs carry `behavior` blocks defining encounter rules and outcomes.
+- *Mechanics* are named rules involving aspects of game state not tied to specific rooms or entities.  These includes game-over conditions (win/lose).
 
-**Hard Game State** (engine-write, engine-read, LLM-read). Authoritative runtime state mutated exclusively by the engine during action resolution:
+**Hard Game State** (engine-write, engine-read, LLM-read). This stores authoritative plot-relevant runtime state, and is mutated exclusively by the engine during action resolution. Contains:
 
-- `player`: current room ID, inventory (item IDs), hit points (nullable until combat is added).
-- `flags`: global boolean toggles (doors opened, NPCs met, conditions triggered). Evaluated by the engine to gate exits, interactions, encounters.
-- `entity_states`: per-entity mutable fields (e.g., `alive`, `fled`, `told_secret`), initialised from a startup file and validated against the entity's declared `state_fields` in the corpus.
+- `player`: current room ID, hard inventory (item IDs), etc.
+- `flags`: global boolean toggles not tied to specific rooms or entities (e.g., night time).
+- `room_states`: per-room mutable fields (e.g. `visited`).
+- `entity_states`: per-entity mutable fields (e.g., `alive`, `told_secret`), initialised from a startup file and validated against the entity's declared `state_fields` in the corpus.
 - `turn_count`: monotonic counter incremented each turn.
 - `game_over`: null during play; set to `{ type, trigger }` when a terminal condition fires.
 
 **Soft Game State** (LLM-proposed, engine-validated, LLM-read). Narrative-oriented mutable state that the LLM can propose changes to, but only through a fixed patch schema that the engine validates before applying:
 
+- `soft_inventory`: inventory items lacking item IDs (e.g., rocks picked up from the ground). See "soft items" below.
+- `room_notes`: freeform strings describing non-plot-relevant changes to rooms (e.g., cleared webs, rearranged debris).
+- `entity_notes`: freeform strings describing non-plot-relevant changes to entities (e.g., door marked with chalk).
 - `npc_attitudes`: a `hostile | neutral | friendly` triple per NPC. The engine enforces a one-step-per-turn transition limit and rejects attitude patches for dead NPCs.
-- `environmental_notes`: freeform strings describing minor narrative changes (cleared webs, rearranged debris). The engine accepts any note that does not contradict a hard-state flag.
 - `turn_history`: a structured log of completed turns (player input, resolved action, engine summary, flags changed, location after). The Context Assembler includes the last 5 entries in the GMBriefing; the full log is retained for future save/load and debugging.
 - `dialogue_state`: tracks active NPC conversations — which NPC the player is talking to, a scrolled window of the last 10 verbatim exchanges (validated against `turn_history`), and a set of topics discussed. When active, the Context Assembler injects a `dialogue_context` block into the GMBriefing so that LLM Call 1 has enough conversational awareness to parse inputs that mix action narration with in-character speech (see Dialogue Mode below).
 
-### The Context Assembler and the GMBriefing
+### The Context Assembler and GMBriefing
 
-Each turn begins with the Context Assembler building a **GMBriefing** — a JSON document that distills the current world state into a compact, deterministic prompt block for LLM Call 1. It contains:
+Each turn begins with the Context Assembler building a **GMBriefing** — a JSON document distilling the current world state into a compact prompt block for LLM Call 1. It contains:
 
-- The current room: ID, name, prose description, visible entities (filtered to those whose `alive` state is true), available exits (filtered by condition satisfaction; hidden exits omitted unless their reveal flag is set), and available interactions (filtered by condition).
-- Player state: location, inventory (with entity descriptions and tags), active flags, a natural-language summary.
-- NPC attitudes: current disposition of all NPCs encountered.
+- The current room: ID, name, prose description, entities present with their state and entity notes (hidden entities omitted), available exits and their state (hidden exits omitted), and available interactions.
+- Player state: hard inventory, soft inventory, active flags, entity notes.
 - Recent history: the last 5 entries from the structured `turn_history`, summarised.
-- The verbatim player input for this turn.
+- The verbatim player input *for this turn only*.
 
 No vector database is required for the reference implementation. Lookups are deterministic by ID: the engine knows the player's room, so the Assembler fetches that room's data and enumerates present entities from the corpus.
 
 ### LLM Call 1: The Ruling
 
-The first LLM call interprets the player's natural-language input.  It cannot propose hard-state changes (inventory, flags, location); those are engine domain.  Instead, it produces a structured **PlayerAction** in JSON.  This falls into one of seven types:
+The first LLM call interprets the player's natural-language input.  It cannot propose hard-state changes (inventory, flags, location); those are engine domain.  Its main responsibility is to produce a structured **PlayerAction** in JSON.  This falls into one of seven types:
 
  `move`, `examine`, `talk`, `interact`, `use`, `attack`, `wait`
 
