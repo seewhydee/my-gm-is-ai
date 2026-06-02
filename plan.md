@@ -27,7 +27,7 @@ During the initial phase of development, we will limit the scope as follows:
 * We will fix on OpenAI compatible API calls.
 * Input/output will be console based, with no graphics.
 * Combat will have kill-or-be-killed resolutions with no special mechanics.
-* No player stats for now.
+* Similarly, no player stats for now.
 
 ## Proposed Architecture
 
@@ -60,8 +60,9 @@ Player Input
    Input:  Verbatim chat log + GMBriefing + EngineResult
    Output: Natural-language narration (text to player)
 
-5. Player receives text output
-   (loop repeats)
+5. Game state saved
+   Player receives text output
+(loop repeats)
 ```
 
 If LLM Call 1 produces a malformed or impossible action, the system retries once with an error message injected into the prompt, then falls back to a generic failure narration (see Error Handling below).
@@ -85,7 +86,7 @@ If LLM Call 1 produces a malformed or impossible action, the system retries once
 
 **Soft Game State** (LLM-proposed, engine-validated, LLM-read). Narrative-oriented mutable state that the LLM can propose changes to, but only through a fixed patch schema that the engine validates before applying:
 
-- `soft_inventory`: inventory items lacking item IDs (e.g., rocks picked up from the ground). See "soft items" below.
+- `soft_inventory`: inventory items lacking item IDs (e.g., rocks picked up from the ground). Soft items are further described below.
 - `room_notes`: freeform strings describing non-plot-relevant changes to rooms (e.g., cleared webs, rearranged debris).
 - `entity_notes`: freeform strings describing non-plot-relevant changes to entities (e.g., door marked with chalk).
 - `npc_attitudes`: a `hostile | neutral | friendly` triple per NPC. The engine enforces a one-step-per-turn transition limit and rejects attitude patches for dead NPCs.
@@ -96,46 +97,50 @@ If LLM Call 1 produces a malformed or impossible action, the system retries once
 
 Each turn begins with the Context Assembler building a **GMBriefing** — a JSON document distilling the current world state into a compact prompt block for LLM Call 1. It contains:
 
+- Global setting: one or two brief sentences about the adventure setting.
+
 - The current room: ID, name, prose description, entities present with their state and entity notes (hidden entities omitted), available exits and their state (hidden exits omitted), and available interactions.
+
 - Player state: hard inventory, soft inventory, active flags, entity notes.
+
 - Recent history: the last 5 entries from the structured `turn_history`, summarised.
+
 - The verbatim player input *for this turn only*.
+  Or, for chained actions (see below), the original verbatim player input along with a clear indication of where we are in the chain.
 
 No vector database is required for the reference implementation. Lookups are deterministic by ID: the engine knows the player's room, so the Assembler fetches that room's data and enumerates present entities from the corpus.
 
 ### LLM Call 1: The Ruling
 
-The first LLM call interprets the player's natural-language input.  It cannot propose hard-state changes (inventory, flags, location); those are engine domain.  Its main responsibility is to produce a structured **PlayerAction** in JSON.  This falls into one of seven types:
+The first LLM call interprets the player's natural-language input.  It cannot propose hard-state changes (inventory, flags, location); those are engine domain.  Its main responsibility is to produce a structured **PlayerAction** in JSON.  This falls into one of five types:
 
- `move`, `examine`, `talk`, `interact`, `use`, `attack`, `wait`
+ `move`, `examine`, `talk`, `interact`, `wait`
 
-Each PlayerAction includes a `detail` field containing a natural-language description of what the player attempts, as well as a `proposed_soft_state_patches` field specifying structured requests to update soft state (e.g., NPC attitude changes).
+Only one PlayerAction can be submitted per turn.  If the player's input is a chained action best decribed by multiple PlayerActions, the LLM is instructed to break off the first (or next) piece of the action chain, construct the PlayerAction from that, and indicate the rest of the chained action using the `follow_up` field (see below).  The different PlayerActions are described below:
 
-In choosing and crafting the PlayerAction, the LLM should adjudicate whether it is plausible and consistent with the information in the GMBriefing.  If it thinks not, it should not construct a bogus PlayerAction and submit it to the engine to be rejected; it should instead fall back on a `wait` action, and use the `detail` field to convey the issue to the narrator (the second LLM call).
+- `move` must specify a room exit ID, which should be a valid (i.e., accessible and non-hidden) exit from the current room.
 
-More details about the different actions:
-
-* `move` must specify a room exit ID, which should be a valid (i.e., accessible and non-hidden) exit from the current room.
-
-* `examine` must specify an entity ID or room ID, which should be valid.
-  Searching a room (or an area, etc.), which can reveal hidden things, falls under this action type.
+* `examine` must specify a valid entity ID or room ID.
+  It optionally includes a `rigorous` field to flag in-depth searches (thus, a schema may specify that only a rigorous search reveals a secret).
 
 * `talk` must specify one or more valid NPC entity IDs.
-  It optionally includes an `utterance` field (verbatim player speech) and/or an `ends_dialogue` flag.
-  See the next section for details.
+  It optionally includes an `utterance` field (verbatim player speech) and/or an `ends_dialogue` flag. See the Dialogue section below.
 
-* `interact` must specify an entity ID plus an interaction ID: a specific plot-relevant way to interact with something.
+* `interact` must specify a valid entity ID or soft item (a target), plus an interaction ID (a specific plot-relevant way to interact with something).
+  Interactions include generic ones like `attack` or `take`, plus special corpus-defined ones like `recharge`.
+  It optionally includes a `using` field to specify a valid entity ID or soft item with which to perform the interaction.
 
-* `use` must specify an entity ID (the thing being used) and an interaction ID (a plot-relevant form of usage).
-  It may optionally specify a target entity ID (what it's being used on).
+* `wait` advances the turn counter.  This serves as a catch-all category that includes player actions falling below the plot significance threshold (e.g., examining a soft item).
 
-* `attack` must specify an entity ID (what's being attacked).
+Every PlayerAction, regardless of type includes the following:
 
-* `wait` advances the turn counter.  This serves as a catch-all category that includes player actions
-  falling below the plot significance threshold (e.g., interactions with peripheral objects that aren't
-  in the schema, but can be incorporated into the narrative for flavor).
-  
-### Dialogue Mode (enhanced GMBriefing)
+- `detail` field containing a natural-language description of what the player attempts
+- (optional) a `proposed_soft_state_patches` field specifying structured requests to update soft state (e.g., NPC attitude changes)
+- (optional) a `follow_up` field specifying the rest of a chained action yet to be performed (e.g., "I pick up the key and unlock the door")
+
+When constructing PlayerActions involving soft items, the LLM is additionally instructed to adjudicate whether the action is both physically plausible (e.g., no "I lift up a wall and smash it against the door") and consistent with the GMBriefing.  If it thinks not, it should not construct a bogus PlayerAction (which is risky -- the schema might not catch everything); it should construct some other PlayerAction, or fall back on `wait` and use the `detail` field to convey the problem to LLM Call 2.
+
+#### Dialogue
 
 When `soft_state.dialogue_state.active_npc` is non-null, the Context Assembler enriches the GMBriefing with a `dialogue_context` block containing:
 
@@ -145,26 +150,32 @@ When `soft_state.dialogue_state.active_npc` is non-null, the Context Assembler e
 
 This scoped, purpose-built injection gives the ruling LLM enough conversational awareness to correctly classify inputs that intermix action narration with in-character speech (e.g., *"I pull up a cork to sit on and ask Korbar, 'How long have you been down here?'"*). The structured, non-verbatim turn history for all other game-state context remains unchanged; the hallucination firewall is preserved for mechanical state, and only ongoing dialogue gains verbatim context.
 
-Dialogue mode exits automatically when the player moves rooms, the NPC dies/flees, a `talk` action carries `ends_dialogue: true`, or the engine detects a stall (3+ turns without a `talk` action while in dialogue mode). On exit, the conversation log is archived as an `environmental_note` summary and `dialogue_state` resets to `null`.
+Dialogue mode exits automatically when the player moves rooms, the NPC dies/flees, a `talk` action carries `ends_dialogue: true`, or the engine detects a stall (3+ turns without a `talk` action while in dialogue mode). On exit, a summary of the conversation log is archived in the NPC(s)' `entity_notes`, and `dialogue_state` resets to `null`.
+
+#### Soft items
+
+We want to avoid the immersion-breaking "you see a rock here" trope. If a player is in a rocky cavern and wants to pick up a rock to place on a pressure plate, no human GM would object. However, we don't want to let players pick up a bogus Wand of Wishing from the floor.
+
+For now, our patchwork solution is to pre-populate each room and entity, at corpus generation time, with an LLM-generated list of plausible nondescript items that can be found in/on the room or entity. These **soft items** will not have unique item IDs, but will be identified by their general name (e.g. rock). They can be put into player inventories, and can be used in interactions if so specified by the schema.
 
 ### The Engine
 
 The engine is the system's source of ground truth. It receives the PlayerAction and:
 
 1. **Validates** the action against the current hard state and module corpus. Checks include: does the exit exist? is the entity present and alive? are conditions met? is the item in inventory?
-2. **Resolves mechanics**: evaluates any conditions on exits/interactions, rolls dice for probabilistic checks, dispatches encounters (evaluating rules top-to-bottom against inventory and flags), applies `on_traverse` effects and `on_enter` events.
+   For chained actions, check whether an action chain has surpassed some reasonable length (e.g. 3); if so, terminate (to guard against LLM Call 1 creating a follow up loop).
+2. **Resolves mechanics**: evaluates any conditions on exits/interactions, rolls dice for probabilistic checks, dispatches encounters (evaluating rules against inventory and flags), applies `on_traverse` effects and `on_enter` events.
 3. **Applies hard-state changes**: sets/clears flags, adds/removes inventory items, moves the player, updates entity states.
-4. **Validates soft-state patches**: checks each proposed patch against the soft-state schema (entity exists, attitude step limit, no dead-NPC patches, reason is non-empty, no contradiction with hard state). Accepted patches are applied; rejected patches are returned with reasons.
+4. **Validates soft-state patches**: checks each proposed patch against the soft-state schema (entity exists, soft item is present, attitude step limit, no dead-NPC patches, reason is non-empty, no contradiction with hard state). Accepted patches are applied; rejected patches are returned with reasons.
 5. **Checks for game-over**: if a death outcome or win condition fired, sets `hard_state.game_over`.
 6. **Increments the turn counter** and appends a turn log entry** to `soft_state.turn_history`.
 7. **Produces an EngineResult** containing: success/failure, the room after resolution, a diff of all hard-state changes, applied/rejected soft patches, triggered narrations (canonical prose for key events), encounter outcomes, game-over state (if any), and warnings to LLM Call 2 about narrative constraints.
 
-For now, combat is resolved as flag-based branching (no hit points, no iterative rounds). Iterative combat will be added in a subsequent phase of development.
-
 ### LLM Call 2: Prose Narration
 
-The second LLM call weaves the engine's mechanical outcome into natural prose for the player. It receives three inputs:
+The second LLM call weaves the engine's mechanical outcome into natural prose for the player. It receives the following inputs:
 
+- A corpus-specified short (1-2 sentence) briefing about the setting, the tone of the adventure, etc.
 - The **verbatim chat log** (raw player–GM exchange, recent messages) for conversational continuity.
 - The **GMBriefing** (same as LLM Call 1 received) for current world context.
 - The **PlayerAction** submitted by LLM Call 1.
@@ -178,11 +189,17 @@ Key constraints on LLM Call 2:
 4. **Respect hidden information.** Secret exits, NPC secrets gated behind attitude thresholds, and unrevealed mechanics must not be divulged.
 5. **Respect game-over.** If the engine sets `game_over`, the LLM narrates the ending and stops.
 
-### Chat History: Structured vs. Verbatim
+Aside from narration, LLM Call 2 has a special adjudication role for chained actions.  After emitting its output, it can decide whether to (i) proceed directly back to step 1, skipping player interaction and proceeding with the next step in the chain; or (ii) interrupt the chain (with appropriate narration), returning control to the player.
+
+#### Chat History: Structured vs. Verbatim
 
 A deliberate architectural choice: LLM Call 1 (the ruling) receives a **structured, non-verbatim** turn history — distilled summaries vetted by the engine — to prevent the ruling LLM from reinforcing its own or the player's hallucinations. The one exception is Dialogue Mode: when the player is in active conversation with an NPC, a scoped, engine-validated `dialogue_context` block (verbatim exchanges with that NPC only) is injected into the GMBriefing so the ruling LLM can parse mixed action/dialogue inputs. All other game-state context — room descriptions, inventory, flags, encounter outcomes — remains structured and non-verbatim.
 
 LLM Call 2 (the prose) receives the **verbatim chat log** for conversational flavour, but is explicitly instructed to defer to the EngineResult when contradictions arise. This split is designed to balance narrative continuity against mechanical integrity.
+
+### Serialization
+
+Before returning control to the player, the system saves a copy of the hard state, soft state, and the prose emitted by LLM Call 2 (latest narration). In the middle of a chained action, this step is skipped since the player does not receive control.
 
 ### Error Handling
 
@@ -194,6 +211,6 @@ LLM Call 2 (the prose) receives the **verbatim chat log** for conversational fla
 
 - **New adventures**: authored as a Module Corpus JSON file and paired hard/soft state files. No code changes needed for adventures that use the existing set of entity types, action types, and mechanics.
 - **New action types**: register in the engine's action parser and add the prompt instruction to LLM Call 1. New soft-state fields can be added to the patch schema with engine-side validation rules.
-- **Combat phase**: the `attack` action will be revised to support iterative rounds, HP tracking, damage rolls, and opposed checks. The current flag-based branching is a phase-1 placeholder.
+- **Combat phase**: the attack interaction will be revised to support iterative rounds, HP tracking, damage rolls, and opposed checks. The current flag-based branching is a phase-1 placeholder.
 - **Semantic search / RAG**: once adventures grow beyond the hand-coded five-room scale, the deterministic ID lookup in the Context Assembler can be augmented with vector embeddings for entity descriptions and player queries.
 
