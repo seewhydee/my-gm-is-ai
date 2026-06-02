@@ -32,7 +32,7 @@ Player Input
 | 3. Engine Resolution         |
 |    Reads:  Module Corpus     |
 |           + Hard/Soft State  |
-|    Validates & Resolves       |
+|    Validates & Resolves      |
 |    Writes: Hard State        |
 |    Produces: EngineResult    |
 +------------------------------+
@@ -44,8 +44,19 @@ Player Input
 |           + GMBriefing       |
 |           + EngineResult     |
 |    Output: Narration (text)  |
-|           + optional continue|
-|           chain decision     |
+|           + knowledge_tags   |
+|           + attitude_changes |
++------------------------------+
+       |
+       v
++------------------------------+
+| 4.5. Engine Post-Validation  |
+|    (if knowledge_tags or     |
+|     attitude_changes present)|
+|    Reads:  Module Corpus     |
+|    Validates & Applies       |
+|    Produces: corrected       |
+|    EngineResult              |
 +------------------------------+
        |
        v
@@ -188,8 +199,11 @@ This is what the ruling LLM sees.
 5. **Player state** summarises hard inventory, soft inventory, active flags,
    and entity notes attached to the player entity.
 
-6. **Recent history** is drawn from soft state `turn_history` — last 5
-   entries, summarised. The raw chat log is NOT included here.
+6. **Recent history** is drawn from soft state `turn_history` — the last 5
+   entries from non-`ooc_discussion` turns, summarised. `ooc_discussion` entries
+   are skipped when assembling `recent_history`, so the GMBriefing is unchanged
+   over the course of `ooc_discussion` actions. The raw chat log is NOT included
+   here.
 
 7. **NPC attitudes** includes attitudes for all NPCs the player has met
    (or all known NPCs, at the implementer's discretion).
@@ -442,8 +456,10 @@ Allows the player to speak to the GM out-of-character for clarifications,
 rule questions, or meta-discussion.
 
 **Engine behaviour:**
-- The engine performs a no-op: no hard state changes, no soft state changes,
-  and the turn counter is **not** incremented.
+- The engine performs a no-op: no hard state changes. The turn counter is **not**
+  incremented.
+- The player input is logged in `turn_history` for debugging but does not count
+  toward the GMBriefing entry cap.
 - The engine skips directly to LLM Call 2 with the `ooc_discussion` action
   and the player's `detail` as the narrative prompt.
 - LLM Call 2 should respond in a GM voice, not an in-world narration voice.
@@ -473,18 +489,20 @@ the key and unlock the door"). The LLM is instructed to:
 }
 ```
 
-After LLM Call 2 narrates the result of the current step, if the chain is not
-complete:
+After LLM Call 2 narrates the result of the current step, the system checks
+whether to continue the chain:
 
-- LLM Call 2 may decide to **continue** the chain: the system loops back to
-  Context Assembler (now with updated state) and feeds the `follow_up` text as
-  the "player input" for the next step, with an indication that this is a
-  chained action.
-- LLM Call 2 may decide to **interrupt** the chain (with appropriate narration
-  explaining why), returning control to the player.
+- If the engine terminated the chain due to a validation failure or hard/soft
+  state rejection, control returns to the player. The `chain_info` in the
+  EngineResult will note the reason for cancellation and the `follow_up` that
+  was discarded.
+- If the chain is still viable, the system loops back to the Context Assembler
+  (now with updated state) and feeds the `follow_up` text as the "player input"
+  for the next step. LLM Call 2 is instructed to be terse during ongoing chain
+  steps.
 - The engine enforces a maximum chain length (a defined constant) to guard
-  against LLM Call 1 creating infinite follow-up loops. If exceeded, the chain
-  is terminated and control returns to the player.
+  against infinite follow-up loops. If exceeded, the chain is terminated and
+  control returns to the player.
 
 ---
 
@@ -601,8 +619,14 @@ everything LLM Call 2 needs to narrate the outcome.
 
   "revelations_applied": [],
 
+  "npc_attitude_limits": {
+    "korbar": { "min": -5, "max": 10, "step_per_turn": 3, "current": 2 }
+  },
+
   "attitude_changes_applied": [],
   "attitude_changes_rejected": [],
+
+  "chain_info": null,
 
   "warnings": [
     "Korbar is present but has not been introduced yet. You may narrate her presence."
@@ -627,9 +651,11 @@ everything LLM Call 2 needs to narrate the outcome.
 | `game_over`                    | `null` or `{"type": "win"|"lose", "trigger": "string", "narrative": "string"}`. |
 | `dialogue_exited`              | `null` or `{"npc_id": "string", "exit_narrative": "string"}`. Present when dialogue mode ended this turn and the NPC's `on_dialogue_exit` fired. |
 | `will_reveal_readiness`        | For each NPC with `will_reveal` entries, whether each topic's conditions are currently met and its description. LLM Call 2 uses this to know which topics can be revealed in dialogue and must not narrate a reveal for topics with `conditions_met: false`. |
-| `revelations_applied`          | Topics that LLM Call 2 tagged as revealed in `knowledge_tags` and the engine post-validated. Each entry records the NPC ID, topic ID, and any side effects applied. |
-| `attitude_changes_applied`     | Attitude changes proposed by LLM Call 2 in `attitude_changes` that the engine accepted. Each entry records the NPC ID, old value, new value, and reason. |
+| `npc_attitude_limits`          | For each NPC present in the room after resolution, the `attitude_limits` bounds (`min`, `max`, `step_per_turn`) and `current` attitude value. LLM Call 2 must not propose attitude changes that violate these bounds. |
+| `revelations_applied`          | Topics that LLM Call 2 tagged as revealed in `knowledge_tags` and the engine post-validated (step 4.5). Each entry records the NPC ID, topic ID, and any side effects applied. |
+| `attitude_changes_applied`     | Attitude changes proposed by LLM Call 2 that the engine post-validated and accepted (step 4.5). Each entry records the NPC ID, old value, new value, and reason. |
 | `attitude_changes_rejected`    | Attitude changes proposed by LLM Call 2 that the engine rejected, each with a `reason` string. LLM Call 2 must not narrate the rejected change on future turns. |
+| `chain_info`                   | `null` or an object with chain status: `{ "follow_up": "<discarded text>", "termination_reason": "..." }`. Present when a chained action was terminated by the engine (validation failure, hard-state or soft-state rejection). Also present when a chain is ongoing, indicating the next follow-up step. |
 | `warnings`                     | Engine hints to LLM Call 2 about narrative constraints (e.g., don't reveal secrets, respect attitude gating, NPC dialogue limits). |
 
 ---
@@ -661,7 +687,9 @@ LLM Call 2 receives:
 4. **Do not reveal hidden information.** If a secret exit is hidden, do not
    mention it. If an NPC knows something but hasn't shared it, the LLM may
    improvise their dialogue but must respect the `dialogue_guidelines.cannot`
-   constraints. The engine provides these constraints in the `warnings` field.
+   constraints and `will_reveal_readiness` (only tag topics with
+   `conditions_met: true` as revealed). The engine provides these constraints
+   in the `warnings` field.
 
 5. **Provide NPC response for dialogue extraction.** When a `talk` action was
    resolved, the narration must include the NPC's spoken response in a form
@@ -674,40 +702,25 @@ LLM Call 2 receives:
    prior narration (including its own) is non-canonical unless confirmed by the
    EngineResult. If a contradiction is detected, prefer the engine's version.
 
-8. **Chained action decision.** After emitting narration for the current step,
-    LLM Call 2 evaluates the `follow_up` context and decides whether to:
-    - Continue the chain: return a signal to loop back with the next step, or
-    - Interrupt the chain: narrate the interruption and return control to the player.
+8. **Chained action handling.** If the EngineResult's `chain_info` indicates an
+   ongoing chain, the LLM should be terse — the system will proceed directly
+   back to the next follow-up step without player interaction. Full narration
+   is reserved for the final step or when the chain is interrupted.
 
-9. **Tag NPC revelations.** When an NPC reveals a gated topic during dialogue,
-    LLM Call 2 includes a `knowledge_tags` block tagging which `will_reveal`
-    topic IDs were revealed. The engine post-validates these against the NPC's
-    corpus `will_reveal` conditions and applies any side effects (`set_flag`,
-    `set_entity_state`). Only tag topics whose conditions are met in the
-    `will_reveal_readiness` hint provided in the EngineResult. Tagging a topic
-    with unmet conditions has no effect (the engine rejects it). If no
-    revelations occur, `knowledge_tags` may be omitted or empty.
+9. **Propose `knowledge_tags` when relevant** (non-`ooc_discussion` actions
+   only). When an NPC reveals a gated topic during dialogue, the LLM includes
+   a `knowledge_tags` block tagging which `will_reveal` topic IDs were revealed.
+   The engine post-validates these against the NPC's corpus `will_reveal`
+   conditions and applies any side effects (`set_flag`, `set_entity_state`).
+   Only tag topics whose conditions are met in the `will_reveal_readiness` hint
+   provided in the EngineResult. Tagging a topic with unmet conditions has no
+   effect (the engine rejects it). If no revelations occur, `knowledge_tags`
+   may be omitted or empty.
 
-#### `knowledge_tags` output format
-
-```json
-{
-  "knowledge_tags": {
-    "npc_revealed": ["<topic_id>", ...]
-  }
-}
-```
-
-| Field           | Type     | Description |
-|-----------------|----------|-------------|
-| `npc_revealed`  | string[] | List of `will_reveal` topic IDs the active NPC revealed in this turn's dialogue. Each must be a declared topic in that NPC's `dialogue_guidelines.will_reveal`. |
-
-10. **Propose attitude changes.** LLM Call 2 should propose attitude shifts for
-    any NPC affected by the turn's events — whether through dialogue, actions
-    (gift-giving, attacking), or narrative outcomes. Attitude changes use the
-    `attitude_changes` block alongside `knowledge_tags`. The engine
-    post-validates each change against the NPC's `attitude_limits` (bounds,
-    step limits, alive check). Rejected changes have no effect.
+10. **Propose `attitude_changes` when relevant** (non-`ooc_discussion` actions
+    only). After narrating the turn's events, consider which NPCs' dispositions
+    shifted and propose `attitude_changes` accordingly. Never contradict the
+    `npc_attitude_limits` listed in the EngineResult.
 
 #### `attitude_changes` output format
 
@@ -797,9 +810,12 @@ direction, the LLM should adapt.
 4. Engine validates action
    +-- Valid:   resolve, apply hard state, validate soft patches
    +-- Invalid: return error (goto 3 with retry, or goto 6 with fail)
-5. Engine adds entry to turn_history (skipped for ooc_discussion)
+5. Engine adds entry to turn_history (ooc_discussion entries are logged
+   but do not count toward the GMBriefing cap)
 6. LLM Call 2 (Prose) narrates outcome
-7. If chained action and LLM Call 2 decides to continue: goto 2
+7. If LLM Call 2 produced knowledge_tags or attitude_changes:
+   engine post-validates and produces corrected EngineResult (step 4.5)
+8. If chained action is ongoing and not terminated by engine: goto 2
    Else: output text to player, save game state
 ```
 

@@ -248,16 +248,23 @@ Call 2's `knowledge_tags`.
 | `player_input`          | string   | Verbatim player input for this turn. |
 | `ruled_action`          | object   | The validated `PlayerAction` (as resolved by engine, not as originally proposed). |
 | `engine_result_summary` | string   | Condensed summary of what happened — key outcomes only. Written by the engine. |
-| `flags_changed`         | string[] | Names of hard-state flags that were set or cleared this turn. |
-| `location_after`        | string   | Room ID the player was in after resolution. |
+| `flags_changed`         | string[] | Names of hard-state flags that were set or cleared this turn. Empty array for `ooc_discussion` entries. |
+| `location_after`        | string   | Room ID the player was in after resolution. For `ooc_discussion`, unchanged from the previous turn. |
+
+`ooc_discussion` entries are logged with `ruled_action.action_type` set to
+`"ooc_discussion"`. The Context Assembler skips these entries when building the
+`recent_history` block for the GMBriefing.
 
 ### Size management
 
-1. The engine appends one entry per completed turn (not for `ooc_discussion`).
-2. The Context Assembler includes the last **5 entries** in GMBriefing
-   (`recent_history`). This cap prevents context bloat.
-3. The full history is retained in soft state for potential future use (save
-   files, debugging, post-game analysis).
+1. The engine appends one entry per completed turn. `ooc_discussion` turns are
+   also logged (for debugging and save files) but are **not** counted toward
+   the 5-entry cap in the GMBriefing — the `recent_history` block is unchanged
+   over the course of `ooc_discussion` actions.
+2. The Context Assembler includes the last **5 entries** from non-`ooc_discussion`
+   turns in GMBriefing (`recent_history`). This cap prevents context bloat.
+3. The full history (including `ooc_discussion` entries) is retained in soft
+   state for potential future use (save files, debugging, post-game analysis).
 
 ### Relationship to raw chat log
 
