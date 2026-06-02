@@ -112,6 +112,15 @@ This is what the ruling LLM sees.
     "korbar": 2
   },
 
+  "npc_revelations": {
+    "korbar": [
+      {
+        "topic_id": "padlock_mechanism",
+        "description": "How the exterior padlock can be opened from inside"
+      }
+    ]
+  },
+
   "recent_history": [
     {
       "turn": 2,
@@ -151,7 +160,8 @@ This is what the ruling LLM sees.
       { "turn": 4, "speaker": "korbar", "text": "Arr, name's Korbar. Me party left me here." },
       { "turn": 5, "speaker": "player", "text": "Tell me more about your party." }
     ],
-    "topics_discussed": ["origin", "abandonment"]
+    "topics_discussed": ["origin", "abandonment"],
+    "revealed_topics": ["padlock_mechanism"]
   },
 
   "player_input": "I pull up a chair to sit on and ask Korbar, 'What happened to your party?'"
@@ -184,14 +194,19 @@ This is what the ruling LLM sees.
 7. **NPC attitudes** includes attitudes for all NPCs the player has met
    (or all known NPCs, at the implementer's discretion).
 
-8. **Dialogue context** is included when `soft_state.dialogue_state.active_npc`
-   is non-null. The block contains the active NPC's identity, attitude,
-   full `dialogue_guidelines`, last 5 entries from `conversation_log`, and
-   `topics_discussed`. If `active_npc` is null, `dialogue_context` is omitted.
+8. **NPC revelations** are drawn from `soft_state.npc_revelations`. Each NPC
+   with revealed topics lists them with their `will_reveal` descriptions, so
+   LLM Call 1 knows what the player has learned from each NPC.
 
-9. **Player input** is the verbatim text entered this turn. For chained
-   actions (see Follow-up below), this is the original input plus a clear
-   indication of where the chain currently stands.
+9. **Dialogue context** is included when `soft_state.dialogue_state.active_npc`
+   is non-null. The block contains the active NPC's identity, attitude,
+   full `dialogue_guidelines`, last 5 entries from `conversation_log`,
+   `topics_discussed`, and `revealed_topics` (topic IDs already revealed to
+   the player). If `active_npc` is null, `dialogue_context` is omitted.
+
+10. **Player input** is the verbatim text entered this turn. For chained
+    actions (see Follow-up below), this is the original input plus a clear
+    indication of where the chain currently stands.
 
 ---
 
@@ -323,16 +338,7 @@ Every PlayerAction carries these fields:
   "detail": "The player approaches the dwarf with an open, friendly demeanour, hands visible to show no threat.",
   "ends_dialogue": false,
   "follow_up": null,
-  "proposed_soft_state_patches": [
-    {
-      "entity_id": "korbar",
-      "field": "attitude",
-      "target_id": null,
-      "old_value": 0,
-      "new_value": 1,
-      "reason": "The player approached in a friendly, non-threatening way."
-    }
-  ]
+  "proposed_soft_state_patches": []
 }
 ```
 
@@ -352,8 +358,9 @@ Every PlayerAction carries these fields:
 - If the `talk` targets a different NPC than the current `active_npc`, the
   engine archives the current conversation log and starts a new one.
 - If `ends_dialogue` is `true`, the engine clears dialogue mode after resolution.
-- Soft-state patches (e.g., attitude changes) are validated per the soft-state
-  patch schema.
+- Soft-state patches (e.g., entity notes) are validated per the soft-state
+  patch schema. Attitude changes are proposed by LLM Call 2, not via
+  `proposed_soft_state_patches`.
 
 ---
 
@@ -502,17 +509,18 @@ full format and validation rules are detailed in `soft-state.md`. In summary:
 
 ```json
 {
-  "entity_id": "korbar",
-  "field": "attitude",
-  "target_id": null,
-  "old_value": 0,
-  "new_value": 2,
-  "reason": "The player shared their food with Korbar."
+  "entity_id": null,
+  "field": "room_note",
+  "target_id": "axe_handle_lower",
+  "old_value": null,
+  "new_value": "The webs here are partially cleared.",
+  "reason": "Player hacked through the webs with the iron sword."
 }
 ```
 
-Supported fields: `attitude`, `room_note`, `entity_note`, `soft_inventory_add`,
-`soft_inventory_remove`.
+Supported fields: `room_note`, `entity_note`, `soft_inventory_add`,
+`soft_inventory_remove`. (Attitude changes are proposed by LLM Call 2 via
+`attitude_changes`, not by LLM Call 1.)
 
 ---
 
@@ -582,6 +590,20 @@ everything LLM Call 2 needs to narrate the outcome.
 
   "game_over": null,
 
+  "dialogue_exited": null,
+
+  "will_reveal_readiness": {
+    "korbar": {
+      "padlock_mechanism": { "conditions_met": true, "description": "How the exterior padlock can be opened from inside" },
+      "secret_compartment": { "conditions_met": false, "description": "A hidden cache inside the axe head" }
+    }
+  },
+
+  "revelations_applied": [],
+
+  "attitude_changes_applied": [],
+  "attitude_changes_rejected": [],
+
   "warnings": [
     "Korbar is present but has not been introduced yet. You may narrate her presence."
   ]
@@ -603,6 +625,11 @@ everything LLM Call 2 needs to narrate the outcome.
 | `triggered_narration`          | Pre-written narrative blocks for specific events (e.g., spider fleeing, room entry). LLM Call 2 should incorporate or paraphrase these — they represent canonical prose for key moments. |
 | `on_enter_events`              | Any on_enter events that fired when entering the new room. |
 | `game_over`                    | `null` or `{"type": "win"|"lose", "trigger": "string", "narrative": "string"}`. |
+| `dialogue_exited`              | `null` or `{"npc_id": "string", "exit_narrative": "string"}`. Present when dialogue mode ended this turn and the NPC's `on_dialogue_exit` fired. |
+| `will_reveal_readiness`        | For each NPC with `will_reveal` entries, whether each topic's conditions are currently met and its description. LLM Call 2 uses this to know which topics can be revealed in dialogue and must not narrate a reveal for topics with `conditions_met: false`. |
+| `revelations_applied`          | Topics that LLM Call 2 tagged as revealed in `knowledge_tags` and the engine post-validated. Each entry records the NPC ID, topic ID, and any side effects applied. |
+| `attitude_changes_applied`     | Attitude changes proposed by LLM Call 2 in `attitude_changes` that the engine accepted. Each entry records the NPC ID, old value, new value, and reason. |
+| `attitude_changes_rejected`    | Attitude changes proposed by LLM Call 2 that the engine rejected, each with a `reason` string. LLM Call 2 must not narrate the rejected change on future turns. |
 | `warnings`                     | Engine hints to LLM Call 2 about narrative constraints (e.g., don't reveal secrets, respect attitude gating, NPC dialogue limits). |
 
 ---
@@ -648,9 +675,59 @@ LLM Call 2 receives:
    EngineResult. If a contradiction is detected, prefer the engine's version.
 
 8. **Chained action decision.** After emitting narration for the current step,
-   LLM Call 2 evaluates the `follow_up` context and decides whether to:
-   - Continue the chain: return a signal to loop back with the next step, or
-   - Interrupt the chain: narrate the interruption and return control to the player.
+    LLM Call 2 evaluates the `follow_up` context and decides whether to:
+    - Continue the chain: return a signal to loop back with the next step, or
+    - Interrupt the chain: narrate the interruption and return control to the player.
+
+9. **Tag NPC revelations.** When an NPC reveals a gated topic during dialogue,
+    LLM Call 2 includes a `knowledge_tags` block tagging which `will_reveal`
+    topic IDs were revealed. The engine post-validates these against the NPC's
+    corpus `will_reveal` conditions and applies any side effects (`set_flag`,
+    `set_entity_state`). Only tag topics whose conditions are met in the
+    `will_reveal_readiness` hint provided in the EngineResult. Tagging a topic
+    with unmet conditions has no effect (the engine rejects it). If no
+    revelations occur, `knowledge_tags` may be omitted or empty.
+
+#### `knowledge_tags` output format
+
+```json
+{
+  "knowledge_tags": {
+    "npc_revealed": ["<topic_id>", ...]
+  }
+}
+```
+
+| Field           | Type     | Description |
+|-----------------|----------|-------------|
+| `npc_revealed`  | string[] | List of `will_reveal` topic IDs the active NPC revealed in this turn's dialogue. Each must be a declared topic in that NPC's `dialogue_guidelines.will_reveal`. |
+
+10. **Propose attitude changes.** LLM Call 2 should propose attitude shifts for
+    any NPC affected by the turn's events — whether through dialogue, actions
+    (gift-giving, attacking), or narrative outcomes. Attitude changes use the
+    `attitude_changes` block alongside `knowledge_tags`. The engine
+    post-validates each change against the NPC's `attitude_limits` (bounds,
+    step limits, alive check). Rejected changes have no effect.
+
+#### `attitude_changes` output format
+
+```json
+{
+  "attitude_changes": {
+    "<npc_entity_id>": {
+      "old_value": <integer>,
+      "new_value": <integer>,
+      "reason": "string — narrative justification"
+    }
+  }
+}
+```
+
+| Field        | Type    | Description |
+|--------------|---------|-------------|
+| `old_value`  | integer | Expected current attitude value (for validation). |
+| `new_value`  | integer | Proposed new attitude. Must be within the NPC's `attitude_limits.[min, max]` and the delta must not exceed `step_per_turn`. |
+| `reason`     | string  | Narrative justification. Must be non-empty. |
 
 ### Chat History: Structured vs. Verbatim
 

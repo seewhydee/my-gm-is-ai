@@ -221,17 +221,28 @@ Interactions specific to a room (not to a particular entity) go here:
 ```json
 {
   "id": "string — unique within the room",
-  "condition": "string or null (fires exactly once if null)",
-  "action": "narrative_and_flag",
+  "condition": { /* condition object */ },
   "narrative": "string — canonical narration",
-  "set_flag": { "<flag_name>": true | false }
+  "set_flag": { "<flag_name>": true | false },
+  "set_entity_state": { "<entity_id>": { "<field>": <value> } },
+  "trigger_dialogue": "<npc_entity_id>"
 }
 ```
 
 - If `condition` is null, the event fires on the first entry only.
-- A condition string like `"flag:fly_alive == true"` gates the event on a flag.
+- Otherwise `condition` is a condition object (see §6) gating when the event fires.
+- `narrative`: presented as `triggered_narration` to LLM Call 2.
+- `set_flag`: hard-state flag changes.
+- `set_entity_state`: modifies entity state fields. Keys are entity IDs; values
+  are `{ "field": value }` maps. The engine validates that the entity exists and
+  the field is declared in `state_fields`.
+- `trigger_dialogue`: if set, the engine auto-initiates dialogue with the named
+  NPC (which must be present in the room). The on_enter narrative fires first,
+  then dialogue mode activates.
+- All fields are optional; the engine applies whichever are present.
 - Use on-enter events for: introductory room flavour, NPC auto-dialogue, trap
-  triggering, revealing information the player would immediately notice.
+  triggering, revealing information the player would immediately notice, entity
+  state changes on first visit.
 
 ### 3.3 `entities`
 
@@ -312,8 +323,15 @@ Each entity is keyed by a unique entity ID:
   "will_reveal": {
     "<topic_id>": {
       "description": "string — what the NPC reveals",
-      "conditions": ["attitude:korbar >= 2", "topic:abandonment", "item:rusty_key"]
+      "conditions": ["attitude:korbar >= 2", "topic:abandonment", "item:rusty_key"],
+      "set_flag": { "<flag_name>": true | false },
+      "set_entity_state": { "<entity_id>": { "<field>": <value> } }
     }
+  },
+  "on_dialogue_exit": {
+    "set_entity_state": { "<entity_id>": { "<field>": <value> } },
+    "set_flag": { "<flag_name>": true | false },
+    "narrative": "string — canonical narration when dialogue ends"
   }
 }
 ```
@@ -327,21 +345,29 @@ Each entity is keyed by a unique entity ID:
   dialogue without inventing knowledge.
 - `attitude_limits`: integer caps. `step_per_turn` limits single-turn attitude
   shifts. A troll who never turns friendly might have `min: -5, max: -1`.
-- `will_reveal`: each topic has a conditions array. Conditions are strings using
-  the format described in §6. Common gates:
+- `will_reveal`: each topic is gated by a `conditions` array. Conditions are
+  strings using the format described in §6. All conditions in the array must
+  be true for the topic to be revealable (implicit AND). Common gates:
   - `"attitude:<npc_id> >= <N>"` — attitude threshold
   - `"item:<item_id>"` — player must have the item
   - `"topic:<topic_name>"` — a prior topic must have been discussed
   - `"flag:<flag_name> == true"` — a hard-state flag must be set
+  Each topic may also include `set_flag` and `set_entity_state` — mechanical
+  side effects the engine applies when LLM Call 2 tags the topic as revealed.
+  Example: a secret compartment reveal should `set_flag` the
+  `handkerchief_noticed` flag so the player can later interact with it.
+- `on_dialogue_exit`: effects applied by the engine when dialogue ends. Use
+  this for NPCs that die, flee, or change state after conversation (e.g., a
+  dying fly that expires after its warning). All fields are optional.
 
 ##### `behavior` (combat NPCs)
 
 ```json
 {
-  "triggers_on": "<exit_id or interaction_id>",
+  "triggers_on": ["<exit_id>", "<interaction_id>", ...],
   "encounter_rules": [
     {
-      "condition": "string",
+      "condition": { /* condition object */ },
       "outcome": "death | flee | roll",
       "threshold": 0.50,
       "narrative": "string",
@@ -357,14 +383,16 @@ Each entity is keyed by a unique entity ID:
 }
 ```
 
+- `triggers_on` is an array of exit IDs and/or interaction IDs. When the player
+  uses any trigger in the list, the behavior's encounter rules fire.
 - Rules are evaluated top-to-bottom; the first matching condition applies.
 - For phase 1 (kill-or-be-killed resolution), outcomes are `death` (player
   dies → game over), `flee` (creature flees), or `roll` (check-based).
-- `condition` is a string evaluated against flags, inventory, entity state.
-  Typical patterns:
-  - `"tag:weapon"` — player has a weapon (checks for any item with `"weapon"` tag)
-  - `"flag:injured == true"` — player is injured
-  - `"inventory:toenail_sword"` — player has a specific item
+- `condition` is a condition object (see §6). Typical patterns:
+  - `{ "require": "tag:weapon" }` — player has a weapon
+  - `{ "require": "flag:injured == true" }` — player is injured
+  - `{ "all": ["tag:weapon", "flag:injured == true"] }` — armed AND injured
+  - `{ "all": ["tag:weapon", { "unless": "flag:injured == true" }] }` — armed AND NOT injured
 - When `outcome: roll`, `threshold` and `on_success`/`on_failure` are used.
 - `on_flee`: applied when a flee outcome triggers. Sets flags (e.g.
   `spider_fled`) and records behavioural effects for the narrating LLM.
@@ -402,7 +430,7 @@ Two categories: **encounters** and **game-over conditions**.
     "description": "string — human-readable summary",
     "rules": [
       {
-        "condition": "string — evaluated against player state",
+        "condition": { /* condition object */ },
         "outcome": "death | flee | roll",
         "threshold": 0.50,
         "narrative": "string — canonical narration of the outcome",
@@ -416,7 +444,7 @@ Two categories: **encounters** and **game-over conditions**.
 ```
 
 - Encounters are referenced by exits (`trigger_encounter`) or interactions.
-- Rules use the same format as entity `behavior.encounter_rules`.
+- Rules use the same condition object format as entity `behavior.encounter_rules`.
 
 #### Game-over conditions
 
@@ -426,18 +454,16 @@ Two categories: **encounters** and **game-over conditions**.
     "id": "string — unique identifier",
     "type": "win | lose",
     "description": "string — what must happen",
-    "condition": "string — evaluated each turn or on trigger",
+    "condition": { /* condition object */ },
     "narrative": "string — canonical ending narration",
     "trigger_id": "string — matches game_over.trigger in hard state"
   }
 }
 ```
 
-- `condition` uses the standard condition string format. For a win condition
-  gated on multiple flags:
-  `"all: flag:padlock_unlocked == true , flag:player_escaped == true"`
-  (The exact `all`/`any` syntax is object-based, not string-based — use the
-  `all`/`any` condition objects, not string shorthand.)
+- `condition` uses the standard condition object format (see §6). For a win
+  condition gated on multiple flags:
+  `{ "all": ["flag:padlock_unlocked == true", "flag:player_escaped == true"] }`
 - `narrative`: the closing prose. Should be satisfying; this is shown to the
   player when the game ends.
 - `trigger_id`: short snake_case string matching what will appear in
@@ -510,6 +536,7 @@ Initial soft state. See `soft-state.md` for the full schema.
   "room_notes": {},
   "entity_notes": {},
   "npc_attitudes": { "<npc_entity_id>": <integer> },
+  "npc_revelations": {},
   "turn_history": [],
   "dialogue_state": {
     "active_npc": null,
@@ -534,13 +561,16 @@ Initial soft state. See `soft-state.md` for the full schema.
    the initial attitude value from that NPC's
    `dialogue_guidelines.attitude_limits.initial`. If `initial` is not specified,
    use `0`.
-5. **`turn_history`**: always `[]`.
-6. **`dialogue_state`**: always the null-state structure shown above.
+5. **`npc_revelations`**: always `{}` at start. The engine populates this
+   during play when NPCs reveal gated topics.
+6. **`turn_history`**: always `[]`.
+7. **`dialogue_state`**: always the null-state structure shown above.
 
 ### Validation checklist for soft-state.json
 
 - [ ] Every NPC in the corpus has an entry in `npc_attitudes`.
 - [ ] Attitude values are within the NPC's `[min, max]` range.
+- [ ] `npc_revelations` is an empty object `{}`.
 - [ ] `dialogue_state` has the null structure (all fields present with empty/null
   initial values).
 
@@ -548,8 +578,10 @@ Initial soft state. See `soft-state.md` for the full schema.
 
 ## 6. Condition Syntax Reference
 
-Conditions appear on exits, interactions, on-enter events, and mechanics. They
-use the following formats:
+All condition fields in the corpus (`exits.conditions`, `interactions.condition`,
+`on_enter.condition`, `encounter_rules[].condition`, `mechanics.rules[].condition`,
+`mechanics.game_over.condition`) use **condition objects** — never bare strings.
+This enables compound AND/OR logic with nesting.
 
 ### Simple condition (object-based)
 
@@ -558,21 +590,29 @@ use the following formats:
 { "unless": "flag:injured == true" }
 ```
 
-### Compound condition
+### Compound condition (AND / OR with nesting)
 
 ```json
 { "any": [
   "flag:handkerchief_noticed == true",
-  "flag:korbar_told_secret == true"
+  { "all": [
+    "attitude:korbar >= 4",
+    "flag:padlock_unlocked == false"
+  ] }
 ] }
 ```
 
 ```json
 { "all": [
-  "flag:spider_fled == true",
-  "flag:handkerchief_moved == true"
+  "tag:weapon",
+  { "unless": "flag:injured == true" }
 ] }
 ```
+
+Elements inside `any` and `all` arrays may be:
+- A condition string like `"flag:spider_fled == true"`
+- A nested condition object like `{ "require": "..." }` or `{ "unless": "..." }`
+- A further `{ "any": [...] }` or `{ "all": [...] }` (arbitrary nesting)
 
 ### Condition string format
 
@@ -595,8 +635,8 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
 ### Usage notes
 
 - For `unless`, the condition is true (and thus blocks) when the string evaluates
-  to true. For example, `{ "unless": "flag:injured == true" }` means "this exit
-  is unavailable if the player is injured."
+  to true. For example, `{ "unless": "flag:injured == true" }` means "this is
+  unavailable if the player is injured."
 - `inventory` and `tag` conditions test presence, not equality.
 - `tag:weapon` succeeds if *any* item in inventory has the `"weapon"` tag.
 
@@ -676,8 +716,11 @@ Follow §5. Ensure every NPC gets an attitude entry.
 - [ ] Every `entity_id` in `soft_state.npc_attitudes` has
   `dialogue_guidelines` in its corpus entity definition.
 - [ ] Every `entity_id` in `soft_state.npc_attitudes` has `type: "npc"`.
+- [ ] Every `set_flag` in `will_reveal` entries references a flag declared in `hard_state.flags`.
+- [ ] Every `set_entity_state` in `will_reveal` entries references valid entity IDs with declared `state_fields`.
 - [ ] `hard_state.player.location` is the room with `is_start_room: true`.
 - [ ] `soft_state.dialogue_state` has the standard null structure.
+- [ ] `soft_state.npc_revelations` is an empty object `{}`.
 
 ---
 
@@ -719,12 +762,10 @@ Follow §5. Ensure every NPC gets an attitude entry.
    happens when the player first meets an NPC, encode it in
    `dialogue_guidelines.on_encounter` and/or as a room `on_enter` event.
 
-9. **Ambiguous condition syntax**: Use the object-based form
-   (`{ "require": "..." }`, `{ "any": [...] }`) for conditions attached to
-   exits, interactions, and on-enter events. Use the plain string form
-   (`"flag:injured == true"`) for the `condition` field in encounter rules and
-   game-over mechanics (check the corpus schema for which form each field
-   expects).
+9. **Condition syntax**: All condition fields use the condition object form
+    (`{ "require": "..." }`, `{ "unless": "..." }`, `{ "any": [...] }`,
+    `{ "all": [...] }`). Bare strings are no longer accepted anywhere. Use
+    `{ "require": "..." }` for simple conditions.
 
 10. **Attitude initialisation**: The `npc_attitudes` in soft-state.json must
     use the NPC's `attitude_limits.initial` value. If a scenario says "Korbar

@@ -22,6 +22,7 @@ continuity (NPC moods, environmental details, conversation memory).
   "room_notes":        { "<room_id>": ["string", ...] },
   "entity_notes":      { "<entity_id>": ["string", ...] },
   "npc_attitudes":     { "<npc_entity_id>": <integer> },
+  "npc_revelations":   { "<npc_entity_id>": [{ "topic_id": "...", "description": "..." }] },
   "turn_history":      [ { /* turn log entry */ } ],
   "dialogue_state":    { /* active NPC conversation state */ }
 }
@@ -157,13 +158,15 @@ disposition; negative values indicate hostility. Zero (0) is neutral.
 
 ### Transition rules (enforced by engine)
 
-1. Attitude patches are validated against the NPC's `attitude_limits` in the
+Attitude changes are proposed by LLM Call 2 via the `attitude_changes` block
+and post-validated by the engine in step 4.5:
+
+1. Attitude changes are validated against the NPC's `attitude_limits` in the
    corpus (`min`, `max`, `step_per_turn`). The absolute change from `old_value`
    to `new_value` must not exceed `step_per_turn`. The `new_value` must be within
    `[min, max]`.
-2. Attitude changes must be accompanied by a **non-empty reason** in the
-   SoftStatePatch.
-3. If an NPC's hard state says `alive == false`, all attitude patches for that
+2. Attitude changes must be accompanied by a **non-empty reason**.
+3. If an NPC's hard state says `alive == false`, all attitude changes for that
    NPC are rejected.
 4. The engine initialises each NPC's attitude from the corpus
    `dialogue_guidelines.attitude_limits.initial` (default 0) if no explicit value
@@ -176,6 +179,45 @@ via the `will_reveal` block. The engine evaluates the `conditions` on each
 `will_reveal` entry (e.g., `attitude:korbar >= 2`) against the current game
 state. If the LLM narrates a reveal that the conditions do not permit, the
 engine flags it in `warnings`.
+
+Revelations are recorded in `npc_revelations` (see below), which feeds into
+future GMBriefings and is surfaced in `dialogue_context.revealed_topics` when
+that NPC is the active speaker.
+
+---
+
+## `npc_revelations` — Topics revealed by NPCs
+
+```json
+{
+  "korbar": [
+    { "topic_id": "padlock_mechanism", "description": "How the exterior padlock can be opened from inside" },
+    { "topic_id": "secret_compartment", "description": "A hidden cache inside the axe head" }
+  ]
+}
+```
+
+Records which `will_reveal` topics each NPC has revealed to the player. Each
+entry is an object containing the topic ID and its `description` from the
+corpus. Populated exclusively by the engine during post-validation of LLM
+Call 2's `knowledge_tags`.
+
+### Population rules
+
+| Trigger                                             | Engine action |
+|-----------------------------------------------------|---------------|
+| LLM Call 2 emits `knowledge_tags.npc_revealed`      | For each topic ID, the engine checks against the active NPC's `will_reveal` entries. If the topic exists and all its `conditions` are met, the engine applies the topic's `set_flag` and `set_entity_state` side effects, then appends `{ topic_id, description }` to `npc_revelations[<npc_id>]`. |
+| Tag references unknown topic                        | Silently rejected. |
+| Tag references topic with unmet conditions          | Silently rejected. |
+| Duplicate topic ID (already in `npc_revelations`)   | Skipped (no duplicate entries). |
+
+### Usage in GMBriefing
+
+- The Context Assembler includes `npc_revelations` as a top-level
+  `npc_revelations` block in the GMBriefing so LLM Call 1 knows what the
+  player has learned from each NPC.
+- When `dialogue_state.active_npc` is set, the `dialogue_context` block
+  also includes `revealed_topics` (just the topic IDs) for quick reference.
 
 ---
 
@@ -273,13 +315,19 @@ verbatim `dialogue_context` block into the GMBriefing for LLM Call 1.
 | Trigger                                  | Engine action |
 |------------------------------------------|---------------|
 | `talk` action succeeds (no active dialogue) | Set `active_npc`, init `conversation_log` with player utterance, set `entered_turn`, reset `stall_counter`. |
+| `on_enter` with `trigger_dialogue`       | Set `active_npc` to the named NPC, init `conversation_log` with an empty first entry (the NPC "speaks first" via the on_enter `narrative`), set `entered_turn`, reset `stall_counter`. |
 | `talk` action to the same NPC            | Append player utterance to `conversation_log`. After LLM Call 2 runs, extract and append the NPC response. Reset `stall_counter` to 0. |
-| `talk` action to a different NPC         | Archive current `conversation_log` as a summary in the previous NPC's `entity_notes`, switch `active_npc`, start fresh. |
-| Any non-`talk` action while in dialogue  | Increment `stall_counter`. If `stall_counter >= 3`, archive conversation, clear dialogue state. |
-| `move` action (player leaves room)       | Archive conversation summary to NPC's `entity_notes`, clear dialogue state. |
+| `talk` action to a different NPC         | Archive current `conversation_log` as a summary in the previous NPC's `entity_notes`, apply previous NPC's `dialogue_guidelines.on_dialogue_exit` (if any), switch `active_npc`, start fresh. |
+| Any non-`talk` action while in dialogue  | Increment `stall_counter`. If `stall_counter >= 3`, archive conversation, apply `on_dialogue_exit`, clear dialogue state. |
+| `move` action (player leaves room)       | Archive conversation summary to NPC's `entity_notes`, apply `on_dialogue_exit`, clear dialogue state. |
 | NPC dies or flees                        | Archive conversation summary, clear dialogue state. Reject future `talk` to that NPC. |
-| `talk` with `ends_dialogue: true`        | Archive conversation summary to NPC's `entity_notes`, clear dialogue state. |
+| `talk` with `ends_dialogue: true`        | Archive conversation summary to NPC's `entity_notes`, apply `on_dialogue_exit`, clear dialogue state. |
 | `ooc_discussion` while in dialogue       | Does not increment `stall_counter`; does not affect dialogue state. |
+
+When dialogue mode exits for any reason, the engine checks the NPC's
+`dialogue_guidelines.on_dialogue_exit` block (if present) and applies any
+`set_entity_state`, `set_flag`, and `narrative` specified. This allows NPCs
+to die, flee, transform, or trigger events when conversation ends.
 
 ### NPC response extraction
 
@@ -318,51 +366,62 @@ verbatim exchange indefinitely in the active dialogue state.
 
 ## SoftStatePatch reference
 
-The general soft-state patch format that the LLM outputs in
+The general soft-state patch format that LLM Call 1 outputs in
 `PlayerAction.proposed_soft_state_patches`:
 
 ```json
 {
-  "entity_id": "korbar",
-  "field": "attitude",
-  "target_id": null,
-  "old_value": 0,
-  "new_value": 2,
-  "reason": "The player shared their food with Korbar and listened sympathetically to her story."
+  "entity_id": null,
+  "field": "room_note",
+  "target_id": "axe_handle_lower",
+  "old_value": null,
+  "new_value": "The webs here are partially cleared.",
+  "reason": "Player hacked through the webs with the iron sword."
 }
 ```
 
 | Field       | Type           | Description |
 |-------------|----------------|-------------|
-| `entity_id` | string\|null   | Target entity ID (e.g., the NPC whose attitude changes, or the entity being noted). Null for `room_note`. |
-| `field`     | string         | One of `attitude`, `room_note`, `entity_note`, `soft_inventory_add`, `soft_inventory_remove`. |
+| `entity_id` | string\|null   | Target entity ID for `entity_note`. Null for `room_note`. |
+| `field`     | string         | One of `room_note`, `entity_note`, `soft_inventory_add`, `soft_inventory_remove`. Attitude changes are proposed separately by LLM Call 2 — see below. |
 | `target_id` | string\|null   | For `room_note`, the room ID. Null for entity-level patches. |
 | `old_value` | any\|null      | Expected current value (for validation). Null for add-only patches. |
 | `new_value` | any            | Proposed new value. |
 | `reason`    | string         | Narrative justification. Must be non-empty. |
 
-### Supported soft state fields
+### Supported soft state fields (LLM Call 1)
 
 | Field                     | Type     | Allowed values              | Notes |
 |---------------------------|----------|-----------------------------|-------|
-| `attitude`                | integer  | Within `[min, max]` per corpus | Step limit from `attitude_limits.step_per_turn`. |
 | `room_note`               | string   | Non-empty, non-contradictory | Appended to `room_notes[target_id]`. |
 | `entity_note`             | string   | Non-empty, non-contradictory | Appended to `entity_notes[entity_id]`. |
 | `soft_inventory_add`      | string   | Must match a soft item in the current room or a present entity | Appended to `soft_inventory[]`. |
 | `soft_inventory_remove`   | string   | Must exist in `soft_inventory` | Removed from `soft_inventory[]`. |
 
-### Full validation rules
+### Full validation rules (LLM Call 1 patches)
 
 | Rule | Description |
 |------|-------------|
 | Entity/room must exist | `entity_id` or `target_id` must be defined in the module corpus. |
 | Field must be registered | `field` must be one of the supported types above. |
-| Attitude step limit | Absolute delta must not exceed corpus `attitude_limits.step_per_turn`. |
-| Attitude bounds | `new_value` must be within corpus `attitude_limits.[min, max]`. |
 | Alive check | Patches for entities with `alive == false` are rejected. |
 | Reason required | `reason` must be non-empty. |
 | No hard-state contradiction | Notes cannot assert facts that contradict hard-state flags or entity states. |
 | Soft inventory source | `soft_inventory_add` must reference a soft item present in the current room or a present entity. |
+
+### Attitude changes (LLM Call 2)
+
+Attitude changes are proposed by LLM Call 2 via the `attitude_changes` block
+(see `actions.md` §5), not by LLM Call 1 via `SoftStatePatch`. The engine
+post-validates them against the NPC's `attitude_limits` using the same rules:
+
+| Rule | Description |
+|------|-------------|
+| Entity must exist | NPC entity ID must be defined in the corpus. |
+| Attitude step limit | Absolute delta must not exceed corpus `attitude_limits.step_per_turn`. |
+| Attitude bounds | `new_value` must be within corpus `attitude_limits.[min, max]`. |
+| Alive check | Changes for entities with `alive == false` are rejected. |
+| Reason required | `reason` must be non-empty. |
 
 ---
 
@@ -376,6 +435,7 @@ The general soft-state patch format that the LLM outputs in
   "npc_attitudes": {
     "korbar": 0
   },
+  "npc_revelations": {},
   "turn_history": [],
   "dialogue_state": {
     "active_npc": null,

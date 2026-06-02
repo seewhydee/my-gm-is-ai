@@ -95,8 +95,10 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 
 ### Condition object
 
-Conditions can appear on exits, interactions, on_enter events, and mechanics.
-They are predicate clauses evaluated against hard game state and the module corpus.
+Conditions can appear on exits, interactions, on_enter events, encounter rules,
+and mechanics. They are predicate clauses evaluated against hard game state and
+the module corpus. A condition is always expressed as an **object** (never a
+bare string).
 
 **`require`** — condition must be true for the thing to be available:
 
@@ -110,23 +112,32 @@ They are predicate clauses evaluated against hard game state and the module corp
 { "unless": "flag:injured == true" }
 ```
 
-**`any`** — at least one sub-condition must be true:
+**`any`** — at least one sub-condition must be true. Each element may be a
+condition string *or* a nested condition object:
 
 ```json
 { "any": [
   "flag:handkerchief_noticed == true",
-  "flag:korbar_told_secret == true"
+  { "all": [
+    "attitude:korbar >= 4",
+    "topic:abandonment"
+  ] }
 ] }
 ```
 
-**`all`** — all sub-conditions must be true:
+**`all`** — all sub-conditions must be true. Each element may be a condition
+string *or* a nested condition object:
 
 ```json
 { "all": [
   "flag:spider_fled == true",
-  "flag:handkerchief_moved == true"
+  { "unless": "flag:injured == true" }
 ] }
 ```
+
+A condition object can stand alone (`{ "require": "..." }`) or serve as an
+element inside `any`/`all` arrays, allowing arbitrarily deep nesting of AND/OR
+logic.
 
 Condition strings use the format `<domain>:<key> <op> <value>`:
 
@@ -220,20 +231,27 @@ Interactions include generic types available everywhere (e.g., `attack`, `take`)
 ```json
 {
   "id": "string (unique within the room)",
-  "condition": "string (e.g. 'flag:fly_alive == true') or null (fires exactly once)",
-  "action": "narrative_and_flag",
+  "condition": { "require": "flag:fly_alive == true" },
   "narrative": "string",
-  "set_flag": { "<flag_name>": true | false }
+  "set_flag": { "<flag_name>": true | false },
+  "set_entity_state": { "<entity_id>": { "<field>": <value> } },
+  "trigger_dialogue": "<npc_entity_id>"
 }
 ```
 
-| Field       | Type         | Description |
-|-------------|--------------|-------------|
-| `id`         | string       | Unique event identifier within the room. |
-| `condition`  | string\|null | Condition string. If null, fires exactly once on first entry (engine tracks internally). |
-| `action`     | string       | Currently `"narrative_and_flag"`. |
-| `narrative`  | string       | Canonical narration text. |
-| `set_flag`   | object       | Flags to set or clear. |
+| Field              | Type            | Description |
+|--------------------|-----------------|-------------|
+| `id`                | string          | Unique event identifier within the room. |
+| `condition`         | object\|null    | Condition object. If null, fires exactly once on first entry (engine tracks internally). |
+| `narrative`         | string          | Canonical narration text. |
+| `set_flag`          | object          | Hard-state flags to set or clear. |
+| `set_entity_state`  | object          | Entity state changes to apply. Keys are entity IDs; values are `{ "field": value }` maps. The engine validates that the entity exists and the field is declared in the entity's `state_fields`. |
+| `trigger_dialogue`  | string          | If set, the engine automatically initiates dialogue mode with the named NPC entity. The NPC must be of type `npc` and present in the current room. The on_enter narrative (if any) fires first, then dialogue is activated. |
+
+The engine detects which effects to apply from the presence of the effect
+fields and applies all that are present. Fields can be combined — for example,
+an on_enter event can simultaneously set a flag, modify entity state, and
+initiate dialogue with an NPC.
 
 ---
 
@@ -291,8 +309,15 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
   "will_reveal": {
     "<topic_id>": {
       "description": "string",
-      "conditions": ["attitude:korbar >= 2", "topic:abandonment", "item:rusty_key"]
+      "conditions": ["attitude:korbar >= 2", "topic:abandonment", "item:rusty_key"],
+      "set_flag": { "<flag_name>": true | false },
+      "set_entity_state": { "<entity_id>": { "<field>": <value> } }
     }
+  },
+  "on_dialogue_exit": {
+    "set_entity_state": { "<entity_id>": { "<field>": <value> } },
+    "set_flag": { "<flag_name>": true | false },
+    "narrative": "string (canonical narration when dialogue ends)"
   }
 }
 ```
@@ -305,7 +330,32 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `cannot`          | array  | Things the NPC will never do or say. The engine flags violations in `warnings`. |
 | `knows`           | array  | Facts the NPC possesses, for LLM dialogue improvisation. |
 | `attitude_limits` | object | Integer attitude bounds (see below). |
-| `will_reveal`     | object | Gated dialogue topics keyed by topic ID. Each entry has a `description` and a `conditions` array of strings following the condition format. |
+| `will_reveal`     | object | Gated dialogue topics. Each topic has a `description`, a `conditions` array (all must be true for the topic to be revealable), and optional `set_flag` / `set_entity_state` side effects. When LLM Call 2 tags a topic as revealed via `knowledge_tags`, the engine validates conditions and applies the side effects. |
+| `on_dialogue_exit`| object | Effects applied by the engine when dialogue mode exits for this NPC. Contains optional `set_entity_state`, `set_flag`, and `narrative` fields. This is the mechanism for NPCs that die, flee, transform, or otherwise change state when conversation ends — whether the player leaves, uses `ends_dialogue`, or a stall is detected. |
+
+#### Knowledge tag validation (`will_reveal` flow)
+
+NPC dialogue revelations follow a post-validation pattern that preserves engine
+authority while letting the creative LLM control dialogue timing:
+
+1. The engine includes each NPC's `will_reveal` readiness in the EngineResult
+   passed to LLM Call 2 (which topics are conditions-met and thus available to
+   be revealed this turn).
+2. LLM Call 2 generates dialogue prose and may emit `knowledge_tags` —
+   structured tags indicating which `will_reveal` topic IDs the NPC actually
+   revealed in its spoken dialogue.
+3. The engine post-validates each tag: is it a declared `will_reveal` topic
+   for this NPC? Are all conditions met? If so, the engine applies the topic's
+   `set_flag` and `set_entity_state` side effects, and records the topic ID
+   and its `description` in `soft_state.npc_revelations`.
+4. On subsequent turns, the Context Assembler includes revealed topics (with
+   descriptions) in the GMBriefing, so LLM Call 1 knows what the player has
+   learned.
+
+Invalid or conditions-not-met tags are silently rejected. LLM Call 2 is
+prompted to respect the `will_reveal` readiness signals; if it narrates a
+reveal that the engine rejects, the prose and the mechanical state may
+diverge (same risk as rejected soft-state patches).
 
 #### `attitude_limits`
 
@@ -324,10 +374,10 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
 
 ```json
 {
-  "triggers_on": "<exit_id | interaction_id>",
+  "triggers_on": ["<exit_id>", "<interaction_id>", ...],
   "encounter_rules": [
     {
-      "condition": "string (evaluated against player state)",
+      "condition": { /* condition object */ },
       "outcome": "death | flee | roll",
       "threshold": 0.50,
       "narrative": "string",
@@ -343,7 +393,16 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
 }
 ```
 
-Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are evaluated against hard state (flags, inventory, entity states). In phase 1, combat uses kill-or-be-killed resolution with no iterative rounds.
+- `triggers_on` is an array of exit and/or interaction IDs. When the player
+  uses any trigger in the list, the behavior's encounter rules fire. An empty
+  array means the behavior only fires when the NPC is directly targeted (e.g.,
+  via an `attack` interaction).
+- Rules are evaluated top-to-bottom. The first rule whose `condition` matches
+  is applied. Conditions are condition objects (see Condition object section)
+  evaluated against hard state (flags, inventory, entity states) and soft state
+  (attitudes).
+- For phase 1 (kill-or-be-killed resolution), outcomes are `death` (player
+  dies → game over), `flee` (creature flees), or `roll` (check-based).
 
 ---
 
@@ -362,7 +421,7 @@ Game-over conditions live here too.
     "description": "string",
     "rules": [
       {
-        "condition": "string (evaluated against player state)",
+        "condition": { /* condition object */ },
         "outcome": "death | flee | roll",
         "threshold": 0.50,
         "on_success": { "outcome": "...", "set_flags": {}, "narrative": "..." },
@@ -375,7 +434,7 @@ Game-over conditions live here too.
 }
 ```
 
-Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions follow the same format as other condition strings.
+Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are condition objects (see Condition object section).
 
 ### Game-over conditions
 
@@ -385,7 +444,7 @@ Rules are evaluated top-to-bottom. The first rule whose `condition` matches is a
     "id": "string",
     "type": "win | lose",
     "description": "string",
-    "condition": "string (evaluated against player and world state)",
+    "condition": { /* condition object */ },
     "narrative": "string (canonical ending narration)",
     "trigger_id": "string (matches game_over.trigger in hard state)"
   }
@@ -397,7 +456,7 @@ Rules are evaluated top-to-bottom. The first rule whose `condition` matches is a
 | `id`          | string | Unique mechanic identifier. |
 | `type`        | string | `"win"` or `"lose"`. |
 | `description` | string | Human-readable description of what must happen. |
-| `condition`   | string | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. |
+| `condition`   | object | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. Follows the condition object format. |
 | `narrative`   | string | Canonical ending prose passed to LLM Call 2 via `triggered_narration`. |
 | `trigger_id`  | string | Set as `game_over.trigger` in hard state; for debugging and save analysis. |
 

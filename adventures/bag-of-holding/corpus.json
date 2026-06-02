@@ -87,9 +87,8 @@
         {
           "id": "event_stuck_fly_warning",
           "condition": null,
-          "action": "narrative_and_flag",
-          "narrative": "As you descend the handle, you encounter extremely sticky webs. A fly is trapped in the webbing, struggling weakly. It looks at you with compound eyes and speaks in a nasally whine: 'S-spider... huge one... in the webs below... watch yourself...' Then it goes still, dead.",
-          "set_flag": {}
+          "narrative": "As you descend the handle, you encounter extremely sticky webs. A fly is trapped in the webbing, struggling weakly. It looks at you with compound eyes and speaks in a nasally whine: 'S-spider... huge one... in the webs below... watch yourself...' Its wings twitch feebly — it doesn't have long.",
+          "trigger_dialogue": "stuck_fly"
         }
       ],
       "is_start_room": false
@@ -251,13 +250,17 @@
         "alive": { "type": "boolean", "description": "Whether the fly is still alive." }
       },
       "dialogue_guidelines": {
-        "personality": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine.",
+        "personality": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine. Every word is a struggle — it is clearly at death's door.",
         "on_encounter": "The fly, with its dying breath, warns the player about the huge spider lurking in the webs below.",
-        "can": ["Warn about the spider in the webs below"],
-        "cannot": ["Move from the web", "Survive much longer", "Provide any information beyond the spider warning"],
-        "knows": ["A huge spider lurks in the dense webs lower down the axe handle"],
+        "can": ["Warn about the spider in the webs below", "Answer simple questions about the spider and the webs", "Speak only with great effort"],
+        "cannot": ["Move from the web", "Survive much longer", "Provide any information beyond the spider and the immediate area"],
+        "knows": ["A huge spider lurks in the dense webs lower down the axe handle", "The spider is hungry and aggressive", "The webs get denser the further down you go"],
         "attitude_limits": { "min": 0, "max": 1, "step_per_turn": 1, "initial": 0 },
-        "will_reveal": {}
+        "will_reveal": {},
+        "on_dialogue_exit": {
+          "set_entity_state": { "stuck_fly": { "alive": false } },
+          "narrative": "The fly's wings give one last feeble twitch and then go still. Its warning delivered, it is dead."
+        }
       }
     },
     "webs_upper": {
@@ -290,16 +293,33 @@
         "will_reveal": {}
       },
       "behavior": {
-        "triggers_on": "exit_through_webs",
+        "triggers_on": ["exit_through_webs"],
         "encounter_rules": [
           {
-            "condition": "tag:weapon",
+            "condition": { "all": ["tag:weapon", { "unless": "flag:injured == true" }] },
             "outcome": "flee",
             "narrative": "The spider lunges at you, mandibles clicking hungrily. You swing your weapon with desperate strength, slashing across its legs. It screeches — a horrible, wet sound — and scuttles away into the shadows, ichor trailing behind it.",
             "set_flags": { "spider_fled": true }
           },
           {
-            "condition": "entity:player.alive == true",
+            "condition": { "all": ["tag:weapon", "flag:injured == true"] },
+            "outcome": "roll",
+            "threshold": 0.50,
+            "narrative": "The spider lunges at you. You swing your weapon, but your injuries slow you — the blade wavers. The outcome hangs in the balance.",
+            "set_flags": { "spider_fled": true },
+            "on_success": {
+              "outcome": "flee",
+              "set_flags": {},
+              "narrative": "Despite your injuries, you land a desperate blow. The spider screeches and scuttles away into the shadows, ichor trailing behind it."
+            },
+            "on_failure": {
+              "outcome": "death",
+              "narrative": "Your injured body betrays you — the spider dodges your clumsy swing and sinks its fangs deep. The world goes dark as venom courses through your veins.",
+              "set_flags": {}
+            }
+          },
+          {
+            "condition": { "require": "entity:player.alive == true" },
             "outcome": "death",
             "narrative": "The spider lunges at you, mandibles clicking. You raise your fists, but bare hands are no match for its venomous fangs. The world goes dark as you succumb."
           }
@@ -366,12 +386,7 @@
           "id": "move_handkerchief",
           "label": "Move the handkerchief",
           "description": "Push the damp handkerchief aside to see what — if anything — is underneath.",
-          "condition": {
-            "any": [
-              "flag:handkerchief_noticed == true",
-              "attitude:korbar >= 4"
-            ]
-          },
+          "condition": { "require": "flag:handkerchief_noticed == true" },
           "result": {
             "narrative": "You push the disgustingly damp handkerchief aside with some effort. Beneath it, there is a flap in the canvas wall — a hidden entrance leading down into darkness.",
             "set_flag": { "handkerchief_moved": true },
@@ -422,7 +437,8 @@
           },
           "secret_compartment": {
             "description": "Korbar reveals that a rusty key is hidden beneath a damp handkerchief in a secret compartment. She points out the handkerchief and tells the player to move it aside.",
-            "conditions": ["attitude:korbar >= 4"]
+            "conditions": ["attitude:korbar >= 4"],
+            "set_flag": { "handkerchief_noticed": true }
           }
         }
       }
@@ -447,7 +463,7 @@
       "id": "win_escape_bag",
       "type": "win",
       "description": "The player unlocks the padlock from the inside using the rusty key and squirms free through the rip in the canvas.",
-      "condition": "flag:padlock_unlocked == true",
+      "condition": { "require": "flag:padlock_unlocked == true" },
       "narrative": "The padlock springs open with a satisfying CLUNK. The neck of the bag loosens, and fresh air floods in from above. You haul yourself up through the rip, squirming free of the canvas prison at last. Freedom! You tumble out onto solid ground, gasping with relief. The Bag of Holding lies at your feet, looking far smaller and more innocent from the outside. You are free!",
       "trigger_id": "escape_bag"
     },
@@ -455,7 +471,7 @@
       "id": "lose_death_spider",
       "type": "lose",
       "description": "The player is killed by the giant spider when caught in its webs without a weapon.",
-      "condition": "flag:spider_fled == false",
+      "condition": { "require": "flag:spider_fled == false" },
       "narrative": "The giant spider descends upon you, fangs gleaming. Without a weapon to defend yourself, you are helpless. Everything goes dark. Your adventure ends here, in the belly of the Bag of Holding.",
       "trigger_id": "death_spider"
     }

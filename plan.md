@@ -48,19 +48,34 @@ Player Input
    LLM temperature setting low
    Input:  GMBriefing + verbatim player input
    Output: PlayerAction (action_type, target, detail)
-           + proposed SoftStatePatch[] (optional)
+            + proposed SoftStatePatch[] (optional; room notes, entity notes,
+              soft inventory — see Soft Game State below)
 
 3. Engine Resolution
    Input:  PlayerAction
    Reads:  Module Corpus, current Hard State, Soft State
    Writes: Hard State only (engine is exclusive writer)
-   Validates & applies SoftStatePatch[] (schema-gated)
+   Validates & applies SoftStatePatch[] (schema-gated; does NOT handle
+     NPC attitude changes, which are dealt with in Call 2)
    Produces: EngineResult (outcome, state diffs, narration)
 
 4. LLM Call 2: Prose
    LLM temperature setting moderate
    Input:  Verbatim chat log + GMBriefing + EngineResult
    Output: Natural-language narration (text to player)
+         +  knowledge_tags (optional; topics the NPC revealed)
+         +  attitude_changes (optional; attitude shifts for NPCs affected
+            by this turn's events)
+
+4.5 Engine Post-Validation
+   Input:  knowledge_tags + attitude_changes from LLM Call 2
+   Reads:  Module Corpus (will_reveal entries, attitude_limits)
+   Validates: each knowledge_tag against will_reveal conditions;
+              each attitude change against attitude_limits
+              (bounds, step limits, alive check, reason required)
+   Applies: will_reveal side effects (set_flag, set_entity_state);
+            validated attitude changes to soft_state.npc_attitudes
+   Records: revealed topics in soft_state.npc_revelations
 
 5. Game state saved
    Player receives text output
@@ -93,9 +108,10 @@ If LLM Call 1 produces a malformed or impossible action, the system retries once
 - `soft_inventory`: inventory items lacking item IDs (e.g., rocks picked up from the ground). Soft items are further described below.
 - `room_notes`: freeform strings describing non-plot-relevant changes to rooms (e.g., cleared webs, rearranged debris).
 - `entity_notes`: freeform strings describing non-plot-relevant changes to entities (e.g., door marked with chalk).
-- `npc_attitudes`: an integer per NPC (positive attitude is > 0). The engine rejects attitude patches for dead NPCs, and imposes corpus-specified attitude limits (e.g., troll never becomes friendly, guard cannot change attitude quickly).
+- `npc_attitudes`: an integer per NPC (positive attitude is > 0). Proposed by LLM Call 2 via `attitude_changes` and validated by the engine post-resolution against corpus-specified attitude limits (bounds, step limits, alive check). The engine rejects out-of-range or dead-NPC proposals.
 - `turn_history`: a structured log of completed turns (player input, resolved action, engine summary, flags changed, location after). The Context Assembler includes the last 5 entries in the GMBriefing; the full log is retained for future save/load and debugging.
 - `dialogue_state`: tracks active NPC conversations — which NPC the player is talking to, a scrolled window of the last 10 verbatim exchanges, and a set of topics discussed. When active, the Context Assembler injects a `dialogue_context` block into the GMBriefing so that LLM Call 1 has enough conversational awareness to parse inputs that mix action narration with in-character speech (see Dialogue Mode below).
+- `npc_revelations`: records which `will_reveal` topics each NPC has revealed to the player (`{ "<npc_entity_id>": ["<topic_id>", ...] }`). Populated by the engine during post-validation of LLM Call 2's `knowledge_tags`. The Context Assembler includes these in the GMBriefing so LLM Call 1 knows what the player has learned.
 
 ### The Context Assembler and GMBriefing
 
@@ -108,6 +124,10 @@ Each turn begins with the Context Assembler building a **GMBriefing** — a JSON
 - Player state: hard inventory, soft inventory, active flags, entity notes.
 
 - Recent history: the last 5 entries from the structured `turn_history`, summarised.
+
+- NPC revelations: topics revealed by NPCs so far, drawn from `soft_state.npc_revelations`. Each revelation includes its description so LLM Call 1 knows what the player has learned.
+
+- Dialogue context: when dialogue mode is active, the NPC's identity, current attitude, full dialogue_guidelines, recent exchanges, topics discussed, and any topics already revealed to the player. When inactive, omitted.
 
 - The verbatim player input *for this turn only*.
   Or, for chained actions (see below), the original verbatim player input along with a clear indication of where we are in the chain.
@@ -149,7 +169,7 @@ Only one PlayerAction can be submitted per turn.  If the player's input is a cha
 Every PlayerAction, regardless of type includes the following:
 
 - `detail` field containing a natural-language description of what the player attempts
-- (optional) a `proposed_soft_state_patches` field specifying structured requests to update soft state (e.g., NPC attitude changes)
+- (optional) a `proposed_soft_state_patches` field specifying structured requests to update soft state (e.g., noting environmental changes, adding soft items to inventory). Note: attitude shifts are proposed in LLM Call 2, not here.
 - (optional) a `follow_up` field specifying the rest of a chained action yet to be performed (e.g., "I pick up the key and unlock the door")
 
 When constructing PlayerActions involving soft items, the LLM is additionally instructed to adjudicate whether the action is both physically plausible (e.g., no "I lift up a wall and smash it against the door") and consistent with the GMBriefing.  If it thinks not, it should not construct a bogus PlayerAction (which is risky -- the schema might not catch everything); it should construct some other PlayerAction, or fall back on `wait` and use the `detail` field to convey the problem to LLM Call 2.
@@ -181,7 +201,7 @@ The engine is the system's source of ground truth. It receives the PlayerAction 
    For chained actions, check whether an action chain has surpassed some reasonable length (a defined constant); if so, terminate (to guard against LLM Call 1 creating a follow up loop).
 2. **Resolves mechanics**: evaluates any conditions on exits/interactions, rolls dice for probabilistic checks, dispatches encounters (evaluating rules against inventory and flags), applies `on_traverse` effects and `on_enter` events.
 3. **Applies hard-state changes**: sets/clears flags, adds/removes inventory items, moves the player, updates entity states.
-4. **Validates soft-state patches**: checks each proposed patch against the soft-state schema (entity exists, soft item is present, attitude steps allowed, no dead-NPC patches, reason is non-empty, no contradiction with hard state). Accepted patches are applied; rejected patches are returned with reasons.
+4. **Validates soft-state patches**: checks each proposed patch against the soft-state schema (entity exists, soft item is present, note is non-contradictory with hard state). Accepted patches are applied; rejected patches are returned with reasons. Attitude changes are validated in step 4.5, not here.
 5. **Checks for game-over**: if a death outcome or win condition fired, sets `hard_state.game_over`.
 6. **Increments the turn counter** and appends a turn log entry** to `soft_state.turn_history`.
 7. **Produces an EngineResult** containing: success/failure, the room after resolution, a diff of all hard-state changes, applied/rejected soft patches, triggered narrations (canonical prose for key events), encounter outcomes, game-over state (if any), and warnings to LLM Call 2 about narrative constraints.
@@ -194,17 +214,24 @@ The second LLM call weaves the engine's mechanical outcome into natural prose fo
 - The **verbatim chat log** (raw player–GM exchange, recent messages) for conversational continuity.
 - The **GMBriefing** (same as LLM Call 1 received) for current world context.
 - The **PlayerAction** submitted by LLM Call 1.
-- The **EngineResult** — the authoritative outcome.
+- The **EngineResult** — the authoritative outcome, including `will_reveal_readiness` (which NPC topics are conditions-met and available to reveal).
+
+In addition to natural-language prose narration, LLM Call 2 outputs two optional structured blocks for the engine to post-validate:
+
+- **`knowledge_tags`**: tags `will_reveal` topic IDs the active NPC actually revealed in dialogue. The engine validates conditions and applies any `set_flag` / `set_entity_state` side effects. Topics with unmet conditions are silently rejected.
+- **`attitude_changes`**: proposed attitude shifts for any NPC affected by this turn's events — whether through dialogue, actions (gift-giving, attacking), or narrative outcomes. Uses the format `{ "<npc_id>": { "old_value": N, "new_value": M, "reason": "..." } }`. The engine validates against the NPC's `attitude_limits` (bounds, step limits, alive check).
 
 Key constraints on LLM Call 2:
 
 1. **Do not contradict the engine result.** If the engine says the spider fled, do not narrate it attacking. If `success: false`, narrate the action failing.
-2. **Do not contradict world state.** Narration cannot add items, change rooms, set flags, or kill entities.
+2. **Do not contradict world state.** Narration cannot add items, change rooms, set flags, or kill entities. Hard-state changes come exclusively from the engine.
 3. **Incorporate triggered narrations** where provided. These are canonical prose blocks for key events; the LLM's job is to weave them into natural conversation, not replace them.
-4. **Respect hidden information.** Secret exits, NPC secrets gated behind attitude thresholds, and unrevealed mechanics must not be divulged.
+4. **Respect hidden information.** Secret exits, NPC secrets gated behind attitude thresholds, and unrevealed mechanics must not be divulged. Use the `will_reveal_readiness` field — only tag topics with `conditions_met: true` as revealed.
 5. **Respect game-over.** If the engine sets `game_over`, the LLM narrates the ending and stops.
+6. **Propose attitude changes naturally.** After narrating the turn's events, consider which NPCs' dispositions shifted and propose `attitude_changes` accordingly. For dialogue turns, this is straightforward — did the NPC warm to the player? For non-dialogue turns (combat, gifts, threats), infer the social consequence from the EngineResult and chat log.
+7. **Tag NPC revelations accurately.** Only tag topics listed as `conditions_met: true` in `will_reveal_readiness`. Tagging a gated topic before conditions are met has no effect — the engine rejects it and the mechanical consequences never fire.
 
-Aside from narration, LLM Call 2 has a special adjudication role for chained actions.  After emitting its output, it can decide whether to (i) proceed directly back to step 1 with an updated GMBriefing for the next step in the chain, skipping player interaction; or (ii) interrupt the chain (with appropriate narration), returning control to the player.
+Aside from narration, LLM Call 2 has a special adjudication role for chained actions. After emitting its output, it can decide whether to (i) proceed directly back to step 1 with an updated GMBriefing for the next step in the chain, skipping player interaction; or (ii) interrupt the chain (with appropriate narration), returning control to the player.
 
 #### Chat History: Structured vs. Verbatim
 
@@ -221,6 +248,7 @@ Before returning control to the player, the system saves a copy of the hard stat
 - **Malformed LLM output** (invalid JSON, unknown action type): the engine returns an error; the system re-invokes LLM Call 1 once with the error appended, then falls back to generic "you can't do that" narration.
 - **Impossible action** (valid JSON, but target not present or conditions not met): the engine returns `success: false` with a reason; LLM Call 2 narrates the failure naturally.
 - **Rejected soft-state patches**: appear in `EngineResult.soft_state_patches_rejected` with reasons; LLM Call 2 must not narrate the rejected change.
+- **Rejected attitude changes or knowledge tags**: appear in `EngineResult.attitude_changes_rejected` or are silently dropped (invalid topic tags); LLM Call 2 must not narrate the rejected outcome.
 
 ## Extensibility and TODO
 
