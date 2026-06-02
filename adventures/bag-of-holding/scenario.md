@@ -39,7 +39,7 @@ down the axe handle.
 
 Going down the handle, the player runs into some extremely sticky
 webs. A stuck fly, speaking in a nasally whine, warns of a spider,
-then dies.
+then dies shortly thereafter.
 
 The player can drop down into the darkness below, or walk up or down
 the axe handle.

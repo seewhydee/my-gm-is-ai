@@ -306,7 +306,6 @@
             "outcome": "roll",
             "threshold": 0.50,
             "narrative": "The spider lunges at you. You swing your weapon, but your injuries slow you — the blade wavers. The outcome hangs in the balance.",
-            "set_flags": { "spider_fled": true },
             "on_success": {
               "outcome": "flee",
               "set_flags": {},
@@ -455,6 +454,8 @@
       "description": "A large iron key, rusted with age but still sturdy. It is far too big for any normal door, but it looks like it would fit the giant padlock on the outside of the bag.",
       "soft_items": [],
       "tags": ["key_item"],
+      "draggable": true,
+      "dragging_note": "The key is enormously heavy and awkward to carry. You can only drag it behind you with great effort, and you cannot perform other manual actions while doing so.",
       "state_fields": {}
     }
   },
