@@ -162,7 +162,7 @@ Only one PlayerAction can be submitted per turn.  If the player's input is a cha
   It optionally includes a `taken_items`: a list of item IDs or soft items.
   At least one should be non-empty.
 
-* `wait` advances the turn counter.  This serves as a catch-all category that includes actions falling below the plot significance threshold (e.g., examining a soft item), as well as player introspection (e.g., looking through inventory).  The `detail` field will be used to instruct the narrator how to react (e.g., reporting on the contents of inventory).
+* `wait` advances the turn counter.  This serves as a catch-all category that includes actions falling below the plot significance threshold, as well as player introspection (e.g., looking through inventory).  The `detail` field will be used to instruct the narrator how to react (e.g., reporting on the contents of inventory).
 
 * `ooc_discussion` is a special out-of-character discussion with the GM that, during the engine phase, will not advance the turn counter and will not change the hard state or soft state.  The system will instead skip to the narrator (LLM 2).  This can be used by players to ask the GM for clarifications, etc.
 
