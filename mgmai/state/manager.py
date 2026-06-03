@@ -1,62 +1,61 @@
 from __future__ import annotations
 
 import json
-from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
-from mgmai.models.soft_state import (
-    DialogueState,
-    SoftGameState,
-    SoftStatePatch,
-    TurnHistoryEntry,
-)
+from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from mgmai.models.actions import HardStateChanges
+
+
+class StateNotLoadedError(RuntimeError):
+    """Raised when an operation requires state that has not been loaded."""
 
 
 class StateManager:
     """Loads, validates, holds, and persists game state.
 
     The StateManager is the single source of truth for the module corpus
-    (read-only) and the mutable hard/soft game states.  The engine mutates
-    state through the dedicated apply_* methods; no other component should
-    modify the underlying models directly.
+    (read-only) and the mutable hard/soft game states.  Per plan.md, the
+    engine receives direct references to the state objects and mutates them
+    directly; the apply_* helpers here are conveniences for common engine
+    operations.  No component other than the engine should modify state.
     """
 
-    def __init__(self, adventure_dir: Optional[Union[str, Path]] = None) -> None:
-        self.corpus: Optional[ModuleCorpus] = None
-        self.hard_state: Optional[HardGameState] = None
-        self.soft_state: Optional[SoftGameState] = None
-        self._adventure_dir: Optional[Path] = None
+    def __init__(self, adventure_dir: str | Path | None = None) -> None:
+        self.corpus: ModuleCorpus | None = None
+        self.hard_state: HardGameState | None = None
+        self.soft_state: SoftGameState | None = None
+        self._adventure_dir: Path | None = None
 
         if adventure_dir is not None:
-            self.load_all(Path(adventure_dir))
+            self.load_all(adventure_dir)
 
     # ------------------------------------------------------------------
     # Load helpers
     # ------------------------------------------------------------------
 
     @staticmethod
-    def load_corpus(path: Union[str, Path]) -> ModuleCorpus:
+    def load_corpus(path: str | Path) -> ModuleCorpus:
         """Load and validate the module corpus from a JSON file."""
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return ModuleCorpus.model_validate(data)
 
     @staticmethod
-    def load_hard_state(path: Union[str, Path]) -> HardGameState:
+    def load_hard_state(path: str | Path) -> HardGameState:
         """Load and validate hard state from a JSON file."""
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return HardGameState.model_validate(data)
 
     @staticmethod
-    def load_soft_state(path: Union[str, Path]) -> SoftGameState:
+    def load_soft_state(path: str | Path) -> SoftGameState:
         """Load and validate soft state from a JSON file."""
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return SoftGameState.model_validate(data)
 
-    def load_all(self, adventure_dir: Union[str, Path]) -> None:
+    def load_all(self, adventure_dir: str | Path) -> None:
         """Load corpus, hard state, and soft state from an adventure directory.
 
         Validates cross-references after all three files are loaded.
@@ -81,41 +80,46 @@ class StateManager:
     def _validate_cross_references(self) -> None:
         """Run cross-reference checks between corpus and state files."""
         if self.corpus is None or self.hard_state is None or self.soft_state is None:
-            raise RuntimeError("Corpus and state must be loaded before validation")
+            raise StateNotLoadedError("Corpus and state must be loaded before validation")
+
+        errors: list[str] = []
 
         # Every room referenced in hard_state.room_states must exist in corpus
         for room_id in self.hard_state.room_states:
             if room_id not in self.corpus.rooms:
-                raise ValueError(
+                errors.append(
                     f"hard_state.room_states references unknown room: {room_id}"
                 )
 
         # Every entity referenced in hard_state.entity_states must exist in corpus
         for entity_id in self.hard_state.entity_states:
             if entity_id not in self.corpus.entities:
-                raise ValueError(
+                errors.append(
                     f"hard_state.entity_states references unknown entity: {entity_id}"
                 )
 
         # Every field in hard_state.entity_states must match declared state_fields
         for entity_id, state in self.hard_state.entity_states.items():
+            if entity_id not in self.corpus.entities:
+                # Already reported above; skip field check for unknown entities
+                continue
             declared = self.corpus.entities[entity_id].state_fields
             for field_name in state:
                 if field_name not in declared:
-                    raise ValueError(
+                    errors.append(
                         f"Entity '{entity_id}' has undeclared state field: {field_name}"
                     )
 
         # Player location must be a valid room
         if self.hard_state.player.location not in self.corpus.rooms:
-            raise ValueError(
+            errors.append(
                 f"Player location '{self.hard_state.player.location}' is not a valid room"
             )
 
         # Inventory items must exist in corpus
         for item_id in self.hard_state.player.inventory:
             if item_id not in self.corpus.entities:
-                raise ValueError(
+                errors.append(
                     f"Player inventory references unknown entity: {item_id}"
                 )
 
@@ -123,81 +127,97 @@ class StateManager:
         for room_id, room in self.corpus.rooms.items():
             for entity_id in room.entities_present:
                 if entity_id not in self.corpus.entities:
-                    raise ValueError(
+                    errors.append(
                         f"Room '{room_id}' references unknown entity: {entity_id}"
                     )
 
         # Soft state: room_notes keys must be valid rooms
         for room_id in self.soft_state.room_notes:
             if room_id not in self.corpus.rooms:
-                raise ValueError(
+                errors.append(
                     f"soft_state.room_notes references unknown room: {room_id}"
                 )
 
         # Soft state: entity_notes keys must be valid entities
         for entity_id in self.soft_state.entity_notes:
             if entity_id not in self.corpus.entities:
-                raise ValueError(
+                errors.append(
                     f"soft_state.entity_notes references unknown entity: {entity_id}"
                 )
 
         # Soft state: npc_attitudes keys must be NPC entities
         for npc_id in self.soft_state.npc_attitudes:
             if npc_id not in self.corpus.entities:
-                raise ValueError(
+                errors.append(
                     f"soft_state.npc_attitudes references unknown entity: {npc_id}"
                 )
-            if self.corpus.entities[npc_id].type != "npc":
-                raise ValueError(
+            elif self.corpus.entities[npc_id].type != "npc":
+                errors.append(
                     f"soft_state.npc_attitudes references non-NPC entity: {npc_id}"
                 )
 
         # Soft state: npc_revelations keys must be NPC entities
         for npc_id in self.soft_state.npc_revelations:
             if npc_id not in self.corpus.entities:
-                raise ValueError(
+                errors.append(
                     f"soft_state.npc_revelations references unknown entity: {npc_id}"
                 )
-            if self.corpus.entities[npc_id].type != "npc":
-                raise ValueError(
+            elif self.corpus.entities[npc_id].type != "npc":
+                errors.append(
                     f"soft_state.npc_revelations references non-NPC entity: {npc_id}"
                 )
+            else:
+                guidelines = self.corpus.entities[npc_id].dialogue_guidelines
+                will_reveal = guidelines.will_reveal if guidelines else {}
+                for revelation in self.soft_state.npc_revelations[npc_id]:
+                    if isinstance(revelation, dict):
+                        topic_id = revelation.get("topic_id")
+                    else:
+                        topic_id = revelation.topic_id
+                    if topic_id not in will_reveal:
+                        errors.append(
+                            f"NPC '{npc_id}' revelation topic_id "
+                            f"'{topic_id}' is not in will_reveal"
+                        )
+
+        if errors:
+            raise ValueError("\n".join(errors))
 
     # ------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------
 
     def get_hard_state(self) -> HardGameState:
-        """Return a deep copy of the current hard state."""
+        """Return the current hard state (direct reference)."""
         if self.hard_state is None:
-            raise RuntimeError("Hard state has not been loaded")
-        return self.hard_state.model_copy(deep=True)
+            raise StateNotLoadedError("Hard state has not been loaded")
+        return self.hard_state
 
     def get_soft_state(self) -> SoftGameState:
-        """Return a deep copy of the current soft state."""
+        """Return the current soft state (direct reference)."""
         if self.soft_state is None:
-            raise RuntimeError("Soft state has not been loaded")
-        return self.soft_state.model_copy(deep=True)
+            raise StateNotLoadedError("Soft state has not been loaded")
+        return self.soft_state
 
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
 
-    def save_state(self, save_dir: Union[str, Path]) -> Path:
+    def save_state(self, save_dir: str | Path) -> Path:
         """Serialize hard + soft state to a JSON file in *save_dir*.
 
         Returns the path to the written file.
         """
         if self.hard_state is None or self.soft_state is None:
-            raise RuntimeError("State has not been loaded")
+            raise StateNotLoadedError("State has not been loaded")
 
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
         save_path = save_dir / "save.json"
 
-        payload: Dict[str, Any] = {
-            "hard": json.loads(self.hard_state.model_dump_json()),
-            "soft": json.loads(self.soft_state.model_dump_json()),
+        payload: dict[str, Any] = {
+            "hard": self.hard_state.model_dump(mode="json"),
+            "soft": self.soft_state.model_dump(mode="json"),
         }
         if self._adventure_dir is not None:
             payload["adventure_path"] = str(self._adventure_dir)
@@ -212,10 +232,10 @@ class StateManager:
     # Mutation helpers (called by the engine)
     # ------------------------------------------------------------------
 
-    def apply_hard_changes(self, changes: Union[HardStateChanges, Dict[str, Any]]) -> None:
+    def apply_hard_changes(self, changes: HardStateChanges | dict[str, Any]) -> None:
         """Apply a ``HardStateChanges`` object to the current hard state."""
         if self.hard_state is None:
-            raise RuntimeError("Hard state has not been loaded")
+            raise StateNotLoadedError("Hard state has not been loaded")
 
         if isinstance(changes, dict):
             changes = HardStateChanges.model_validate(changes)
@@ -234,22 +254,32 @@ class StateManager:
             self.hard_state.flags[flag] = value
 
         for flag in changes.flags_cleared:
+            if flag not in self.hard_state.flags:
+                raise ValueError(f"Cannot clear unknown flag: {flag}")
             self.hard_state.flags[flag] = False
 
         for room_id, room_changes in changes.room_state_changes.items():
+            if room_id not in self.corpus.rooms:
+                raise ValueError(
+                    f"room_state_changes references unknown room: {room_id}"
+                )
             if room_id not in self.hard_state.room_states:
                 self.hard_state.room_states[room_id] = {}
             self.hard_state.room_states[room_id].update(room_changes)
 
         for entity_id, entity_changes in changes.entity_state_changes.items():
+            if entity_id not in self.corpus.entities:
+                raise ValueError(
+                    f"entity_state_changes references unknown entity: {entity_id}"
+                )
             if entity_id not in self.hard_state.entity_states:
                 self.hard_state.entity_states[entity_id] = {}
             self.hard_state.entity_states[entity_id].update(entity_changes)
 
-    def apply_soft_patches(self, patches: List[Union[SoftStatePatch, Dict[str, Any]]]) -> None:
+    def apply_soft_patches(self, patches: list[SoftStatePatch | dict[str, Any]]) -> None:
         """Apply a list of validated ``SoftStatePatch`` objects to soft state."""
         if self.soft_state is None:
-            raise RuntimeError("Soft state has not been loaded")
+            raise StateNotLoadedError("Soft state has not been loaded")
 
         for patch in patches:
             if isinstance(patch, dict):
@@ -262,6 +292,10 @@ class StateManager:
                     raise ValueError("room_note patch requires target_id")
                 if target not in self.soft_state.room_notes:
                     self.soft_state.room_notes[target] = []
+                if not isinstance(patch.new_value, str):
+                    raise ValueError(
+                        f"room_note patch new_value must be a string, got {type(patch.new_value).__name__}"
+                    )
                 self.soft_state.room_notes[target].append(patch.new_value)
 
             elif field == "entity_note":
@@ -270,13 +304,25 @@ class StateManager:
                     raise ValueError("entity_note patch requires entity_id")
                 if target not in self.soft_state.entity_notes:
                     self.soft_state.entity_notes[target] = []
+                if not isinstance(patch.new_value, str):
+                    raise ValueError(
+                        f"entity_note patch new_value must be a string, got {type(patch.new_value).__name__}"
+                    )
                 self.soft_state.entity_notes[target].append(patch.new_value)
 
             elif field == "soft_inventory_add":
+                if not isinstance(patch.new_value, str):
+                    raise ValueError(
+                        f"soft_inventory_add patch new_value must be a string, got {type(patch.new_value).__name__}"
+                    )
                 self.soft_state.soft_inventory.append(patch.new_value)
 
             elif field == "soft_inventory_remove":
                 value = patch.new_value
+                if not isinstance(value, str):
+                    raise ValueError(
+                        f"soft_inventory_remove patch new_value must be a string, got {type(value).__name__}"
+                    )
                 if value in self.soft_state.soft_inventory:
                     self.soft_state.soft_inventory.remove(value)
 
@@ -285,10 +331,15 @@ class StateManager:
                 # but we keep it for defensiveness.
                 raise ValueError(f"Unsupported soft state patch field: {field}")
 
-    def append_turn_history(self, entry: Union[TurnHistoryEntry, Dict[str, Any]]) -> None:
-        """Append a turn log entry to soft state."""
+    def append_turn_history(self, entry: TurnHistoryEntry | dict[str, Any]) -> None:
+        """Append a turn log entry to soft state.
+
+        The full turn_history is retained here for save/load and debugging.
+        The Context Assembler is responsible for capping at 5 entries when
+        building the GMBriefing.
+        """
         if self.soft_state is None:
-            raise RuntimeError("Soft state has not been loaded")
+            raise StateNotLoadedError("Soft state has not been loaded")
 
         if isinstance(entry, dict):
             entry = TurnHistoryEntry.model_validate(entry)

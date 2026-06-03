@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from mgmai.state.manager import StateManager
+from mgmai.state.manager import StateManager, StateNotLoadedError
 from mgmai.models.actions import HardStateChanges
 from mgmai.models.soft_state import SoftStatePatch, TurnHistoryEntry
 
@@ -117,26 +117,47 @@ class TestLoadAndValidation:
         with pytest.raises(ValueError, match="non-NPC entity"):
             sm._validate_cross_references()
 
+    def test_invalid_npc_revelations_topic(self) -> None:
+        sm = StateManager()
+        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.soft_state.npc_revelations["korbar"] = [
+            {"topic_id": "fake_topic", "description": "Fake"}
+        ]
+        with pytest.raises(ValueError, match="not in will_reveal"):
+            sm._validate_cross_references()
+
+    def test_multiple_errors_collected(self) -> None:
+        sm = StateManager()
+        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.hard_state.player.location = "bad_room"
+        sm.hard_state.room_states["bad_room2"] = {}
+        with pytest.raises(ValueError) as exc_info:
+            sm._validate_cross_references()
+        msg = str(exc_info.value)
+        assert "bad_room" in msg
+        assert "bad_room2" in msg
+
 
 class TestGetState:
-    def test_get_hard_state_is_snapshot(self, manager: StateManager) -> None:
+    def test_get_hard_state_is_direct_reference(self, manager: StateManager) -> None:
         snapshot = manager.get_hard_state()
-        original_location = manager.hard_state.player.location
         manager.hard_state.player.location = "bag_floor"
-        assert snapshot.player.location == original_location
-        assert manager.hard_state.player.location == "bag_floor"
+        assert snapshot.player.location == "bag_floor"
 
-    def test_get_soft_state_is_snapshot(self, manager: StateManager) -> None:
+    def test_get_soft_state_is_direct_reference(self, manager: StateManager) -> None:
         snapshot = manager.get_soft_state()
         manager.soft_state.soft_inventory.append("rock")
-        assert "rock" not in snapshot.soft_inventory
-        assert "rock" in manager.soft_state.soft_inventory
+        assert "rock" in snapshot.soft_inventory
 
     def test_get_before_load_raises(self) -> None:
         sm = StateManager()
-        with pytest.raises(RuntimeError, match="Hard state has not been loaded"):
+        with pytest.raises(StateNotLoadedError, match="Hard state has not been loaded"):
             sm.get_hard_state()
-        with pytest.raises(RuntimeError, match="Soft state has not been loaded"):
+        with pytest.raises(StateNotLoadedError, match="Soft state has not been loaded"):
             sm.get_soft_state()
 
 
@@ -164,10 +185,18 @@ class TestApplyHardChanges:
         manager.apply_hard_changes(HardStateChanges(flags_set={"spider_fled": True}))
         assert manager.hard_state.flags["spider_fled"] is True
 
+    def test_flags_set_creates_new_flag(self, manager: StateManager) -> None:
+        manager.apply_hard_changes(HardStateChanges(flags_set={"new_dynamic_flag": True}))
+        assert manager.hard_state.flags["new_dynamic_flag"] is True
+
     def test_flags_cleared(self, manager: StateManager) -> None:
         manager.hard_state.flags["injured"] = True
         manager.apply_hard_changes(HardStateChanges(flags_cleared=["injured"]))
         assert manager.hard_state.flags["injured"] is False
+
+    def test_flags_cleared_unknown_raises(self, manager: StateManager) -> None:
+        with pytest.raises(ValueError, match="Cannot clear unknown flag"):
+            manager.apply_hard_changes(HardStateChanges(flags_cleared=["nonexistent_flag"]))
 
     def test_room_state_changes(self, manager: StateManager) -> None:
         manager.apply_hard_changes(
@@ -182,6 +211,12 @@ class TestApplyHardChanges:
         )
         assert manager.hard_state.room_states["secret_compartment"]["visited"] is True
 
+    def test_room_state_changes_unknown_room_raises(self, manager: StateManager) -> None:
+        with pytest.raises(ValueError, match="unknown room"):
+            manager.apply_hard_changes(
+                HardStateChanges(room_state_changes={"void": {"visited": True}})
+            )
+
     def test_entity_state_changes(self, manager: StateManager) -> None:
         manager.apply_hard_changes(
             HardStateChanges(entity_state_changes={"spider": {"fled": True}})
@@ -195,13 +230,19 @@ class TestApplyHardChanges:
         )
         assert manager.hard_state.entity_states["korbar"]["alive"] is True
 
+    def test_entity_state_changes_unknown_entity_raises(self, manager: StateManager) -> None:
+        with pytest.raises(ValueError, match="unknown entity"):
+            manager.apply_hard_changes(
+                HardStateChanges(entity_state_changes={"ghost": {"alive": True}})
+            )
+
     def test_apply_from_dict(self, manager: StateManager) -> None:
         manager.apply_hard_changes({"player_location": "bag_floor"})
         assert manager.hard_state.player.location == "bag_floor"
 
     def test_apply_before_load_raises(self) -> None:
         sm = StateManager()
-        with pytest.raises(RuntimeError, match="Hard state has not been loaded"):
+        with pytest.raises(StateNotLoadedError, match="Hard state has not been loaded"):
             sm.apply_hard_changes(HardStateChanges())
 
 
@@ -286,8 +327,46 @@ class TestApplySoftPatches:
 
     def test_apply_before_load_raises(self) -> None:
         sm = StateManager()
-        with pytest.raises(RuntimeError, match="Soft state has not been loaded"):
+        with pytest.raises(StateNotLoadedError, match="Soft state has not been loaded"):
             sm.apply_soft_patches([])
+
+    def test_room_note_non_string_raises(self, manager: StateManager) -> None:
+        patch = SoftStatePatch(
+            field="room_note",
+            target_id="axe_head",
+            new_value=123,
+            reason="Test.",
+        )
+        with pytest.raises(ValueError, match="must be a string"):
+            manager.apply_soft_patches([patch])
+
+    def test_entity_note_non_string_raises(self, manager: StateManager) -> None:
+        patch = SoftStatePatch(
+            entity_id="spider",
+            field="entity_note",
+            new_value={"bad": "value"},
+            reason="Test.",
+        )
+        with pytest.raises(ValueError, match="must be a string"):
+            manager.apply_soft_patches([patch])
+
+    def test_soft_inventory_add_non_string_raises(self, manager: StateManager) -> None:
+        patch = SoftStatePatch(
+            field="soft_inventory_add",
+            new_value=123,
+            reason="Test.",
+        )
+        with pytest.raises(ValueError, match="must be a string"):
+            manager.apply_soft_patches([patch])
+
+    def test_soft_inventory_remove_non_string_raises(self, manager: StateManager) -> None:
+        patch = SoftStatePatch(
+            field="soft_inventory_remove",
+            new_value=["list"],
+            reason="Test.",
+        )
+        with pytest.raises(ValueError, match="must be a string"):
+            manager.apply_soft_patches([patch])
 
 
 class TestAppendTurnHistory:
@@ -318,7 +397,7 @@ class TestAppendTurnHistory:
 
     def test_append_before_load_raises(self) -> None:
         sm = StateManager()
-        with pytest.raises(RuntimeError, match="Soft state has not been loaded"):
+        with pytest.raises(StateNotLoadedError, match="Soft state has not been loaded"):
             sm.append_turn_history({})
 
     def test_append_multiple(self, manager: StateManager) -> None:
@@ -352,7 +431,7 @@ class TestSaveState:
 
     def test_save_before_load_raises(self, tmp_path: Path) -> None:
         sm = StateManager()
-        with pytest.raises(RuntimeError, match="State has not been loaded"):
+        with pytest.raises(StateNotLoadedError, match="State has not been loaded"):
             sm.save_state(tmp_path)
 
     def test_save_reflects_mutations(self, manager: StateManager, tmp_path: Path) -> None:
