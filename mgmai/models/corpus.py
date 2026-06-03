@@ -130,7 +130,7 @@ class StateFieldDecl(BaseModel):
 class AttitudeLimits(BaseModel):
     min: int
     max: int
-    step_per_turn: int
+    step_per_turn: int = 1
     initial: int = 0
 
 
@@ -197,6 +197,20 @@ class Entity(BaseModel):
     dialogue_guidelines: Optional[DialogueGuidelines] = None
     behavior: Optional[Behavior] = None
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def check_type_specific_fields(self) -> Entity:
+        if self.type != "npc" and self.dialogue_guidelines is not None:
+            raise ValueError(
+                f"Entity type '{self.type}' must not have 'dialogue_guidelines'. "
+                f"Only 'npc' entities may carry dialogue_guidelines."
+            )
+        if self.type != "npc" and self.behavior is not None:
+            raise ValueError(
+                f"Entity type '{self.type}' must not have 'behavior'. "
+                f"Only 'npc' entities may carry behavior."
+            )
+        return self
 
 
 class Mechanic(BaseModel):

@@ -16,6 +16,7 @@ from mgmai.models.corpus import (
     OnEnterEvent,
     Result,
     Room,
+    StateFieldDecl,
     TraversalEffect,
     WillRevealEntry,
 )
@@ -52,6 +53,15 @@ class TestModuleCorpus:
                 assert exit_.target_room in room_ids, (
                     f"Exit '{exit_.id}' targets unknown room '{exit_.target_room}'"
                 )
+
+    def test_spans_rooms_are_rooms(self, sample_corpus: ModuleCorpus) -> None:
+        room_ids = set(sample_corpus.rooms.keys())
+        for entity in sample_corpus.entities.values():
+            if entity.spans_rooms is not None:
+                for room_id in entity.spans_rooms:
+                    assert room_id in room_ids, (
+                        f"Entity spans unknown room '{room_id}'"
+                    )
 
 
 class TestConditionExpression:
@@ -196,6 +206,18 @@ class TestInteraction:
         assert i.parameter_signature.target == ["entity"]
         assert i.parameter_signature.using == ["entity", "soft_item"]
 
+    def test_with_condition(self) -> None:
+        i = Interaction.model_validate({
+            "id": "open_secret_door",
+            "label": "Open the secret door",
+            "condition": {"require": "flag:secret_door_found == true"},
+            "result": {"narrative": "The secret door slides open.", "set_flag": {"secret_door_open": True}},
+        })
+        assert i.condition is not None
+        assert i.condition.require == "flag:secret_door_found == true"
+        assert i.result is not None
+        assert i.result.narrative == "The secret door slides open."
+
 
 class TestMechanic:
     def test_game_over_win(self) -> None:
@@ -271,6 +293,16 @@ class TestMechanic:
             Mechanic.model_validate({
                 "id": "bad",
                 "description": "Just a description.",
+            })
+
+    def test_invalid_type_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Mechanic.model_validate({
+                "id": "bad",
+                "description": "Invalid type.",
+                "type": "draw",
+                "condition": {"require": "flag:x == true"},
+                "trigger_id": "x",
             })
 
 
@@ -365,6 +397,73 @@ class TestEntity:
         assert g.on_dialogue_exit is not None
         assert g.on_dialogue_exit.set_entity_state == {"stuck_fly": {"alive": False}}
 
+    def test_will_reveal_with_set_entity_state(self) -> None:
+        g = DialogueGuidelines.model_validate({
+            "personality": "Mysterious.",
+            "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2, "initial": 0},
+            "will_reveal": {
+                "trap_warning": {
+                    "description": "Warns about a trap.",
+                    "conditions": ["attitude:mysterious_npc >= 3"],
+                    "set_entity_state": {"spike_trap": {"disarmed": True}},
+                },
+            },
+        })
+        reveal = g.will_reveal["trap_warning"]
+        assert reveal.set_entity_state == {"spike_trap": {"disarmed": True}}
+
+    def test_feature_with_dialogue_guidelines_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Entity.model_validate({
+                "type": "feature",
+                "description": "A talking door.",
+                "dialogue_guidelines": {
+                    "personality": "Creaky.",
+                    "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2},
+                },
+            })
+
+    def test_item_with_dialogue_guidelines_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Entity.model_validate({
+                "type": "item",
+                "description": "A talking sword.",
+                "dialogue_guidelines": {
+                    "personality": "Chatty.",
+                    "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2},
+                },
+            })
+
+    def test_item_with_behavior_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Entity.model_validate({
+                "type": "item",
+                "description": "An aggressive sword.",
+                "behavior": {
+                    "encounter_rules": [
+                        {
+                            "condition": {"require": "flag:x == true"},
+                            "outcome": "flee",
+                        },
+                    ],
+                },
+            })
+
+    def test_player_with_behavior_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Entity.model_validate({
+                "type": "player",
+                "description": "The player character.",
+                "behavior": {
+                    "encounter_rules": [
+                        {
+                            "condition": {"require": "flag:x == true"},
+                            "outcome": "flee",
+                        },
+                    ],
+                },
+            })
+
 
 class TestExit:
     def test_basic_exit(self) -> None:
@@ -410,6 +509,32 @@ class TestExit:
         })
         assert e.on_traverse.set_flag == {"injured": True}
         assert e.on_traverse.narrative == "You hurt yourself."
+
+    def test_traversal_trigger_encounter(self) -> None:
+        e = Exit.model_validate({
+            "id": "exit_webs",
+            "direction": "Through the webs",
+            "target_room": "bag_floor",
+            "on_traverse": {
+                "trigger_encounter": "spider",
+            },
+        })
+        assert e.on_traverse.trigger_encounter == "spider"
+
+    def test_traversal_skip_if(self) -> None:
+        e = Exit.model_validate({
+            "id": "gated_exit",
+            "direction": "Through the gate",
+            "target_room": "beyond",
+            "on_traverse": {
+                "narrative": "The gate slams behind you.",
+                "skip_if": {"require": "flag:gate_held == true"},
+                "narrative_skip": "You slip through, holding the gate open.",
+            },
+        })
+        assert e.on_traverse.skip_if is not None
+        assert e.on_traverse.skip_if.require == "flag:gate_held == true"
+        assert e.on_traverse.narrative_skip == "You slip through, holding the gate open."
 
 
 class TestRoom:
@@ -469,6 +594,14 @@ class TestCheck:
         with pytest.raises(ValidationError):
             Check.model_validate({"threshold": -0.1, "repeatable": True})
 
+    def test_type_defaults_to_roll(self) -> None:
+        c = Check.model_validate({"threshold": 0.5})
+        assert c.type == "roll"
+
+    def test_type_invalid_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Check.model_validate({"threshold": 0.5, "type": "dice"})
+
 
 class TestAttitudeLimits:
     def test_defaults(self) -> None:
@@ -480,3 +613,56 @@ class TestAttitudeLimits:
             "min": -5, "max": 10, "step_per_turn": 3, "initial": 2
         })
         assert a.initial == 2
+
+    def test_step_per_turn_defaults_to_one(self) -> None:
+        a = AttitudeLimits.model_validate({"min": -5, "max": 10})
+        assert a.step_per_turn == 1
+
+
+class TestStateFieldDecl:
+    def test_valid_boolean_type(self) -> None:
+        s = StateFieldDecl.model_validate({"type": "boolean", "description": "Is alive."})
+        assert s.type == "boolean"
+        assert s.description == "Is alive."
+
+    def test_valid_number_type(self) -> None:
+        s = StateFieldDecl.model_validate({"type": "number", "description": "HP."})
+        assert s.type == "number"
+
+    def test_valid_string_type(self) -> None:
+        s = StateFieldDecl.model_validate({"type": "string", "description": "Flavour text."})
+        assert s.type == "string"
+
+    def test_invalid_type_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            StateFieldDecl.model_validate({"type": "integer", "description": "HP."})
+
+    def test_missing_description_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            StateFieldDecl.model_validate({"type": "boolean"})
+
+
+class TestOnEnterEvent:
+    def test_isolated_basic_event(self) -> None:
+        event = OnEnterEvent.model_validate({"id": "event_1"})
+        assert event.id == "event_1"
+        assert event.condition is None
+        assert event.narrative is None
+
+    def test_with_trigger_dialogue(self) -> None:
+        event = OnEnterEvent.model_validate({
+            "id": "greet_korbar",
+            "trigger_dialogue": "korbar",
+        })
+        assert event.trigger_dialogue == "korbar"
+
+    def test_with_set_entity_state(self) -> None:
+        event = OnEnterEvent.model_validate({
+            "id": "kill_door",
+            "set_entity_state": {"secret_door": {"alive": False}},
+        })
+        assert event.set_entity_state == {"secret_door": {"alive": False}}
+
+    def test_missing_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            OnEnterEvent.model_validate({"narrative": "Hello."})
