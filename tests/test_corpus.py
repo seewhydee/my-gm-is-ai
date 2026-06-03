@@ -2,18 +2,25 @@ import pytest
 from pydantic import ValidationError
 
 from mgmai.models.corpus import (
+    Adventure,
+    Atmosphere,
     AttitudeLimits,
+    Behavior,
+    BranchOutcome,
     Check,
     ConditionExpression,
+    Credits,
     DialogueGuidelines,
     DialogueExit,
     EncounterRule,
     Entity,
     Exit,
+    FleeEffect,
     Interaction,
     Mechanic,
     ModuleCorpus,
     OnEnterEvent,
+    ParameterSignature,
     Result,
     Room,
     StateFieldDecl,
@@ -78,9 +85,9 @@ class TestConditionExpression:
         c = ConditionExpression.model_validate({
             "any": ["flag:a == true", "flag:b == true"]
         })
-        assert c.any is not None
-        assert len(c.any) == 2
-        assert c.any[0] == "flag:a == true"
+        assert c.any_of is not None
+        assert len(c.any_of) == 2
+        assert c.any_of[0] == "flag:a == true"
 
     def test_any_with_nested_objects(self) -> None:
         c = ConditionExpression.model_validate({
@@ -89,11 +96,21 @@ class TestConditionExpression:
                 {"all": ["flag:y == true", "flag:z == true"]},
             ]
         })
-        assert c.any is not None
-        assert len(c.any) == 2
-        assert isinstance(c.any[1], ConditionExpression)
-        assert c.any[1].all is not None
-        assert len(c.any[1].all) == 2  # type: ignore[arg-type]
+        assert c.any_of is not None
+        assert len(c.any_of) == 2
+        assert isinstance(c.any_of[1], ConditionExpression)
+        assert c.any_of[1].all_of is not None
+        assert len(c.any_of[1].all_of) == 2  # type: ignore[arg-type]
+
+    def test_all_with_plain_strings(self) -> None:
+        c = ConditionExpression.model_validate({
+            "all": ["flag:a == true", "flag:b == true", "flag:c == true"]
+        })
+        assert c.all_of is not None
+        assert len(c.all_of) == 3
+        assert c.all_of[0] == "flag:a == true"
+        assert c.all_of[1] == "flag:b == true"
+        assert c.all_of[2] == "flag:c == true"
 
     def test_all_with_nesting(self) -> None:
         c = ConditionExpression.model_validate({
@@ -102,10 +119,10 @@ class TestConditionExpression:
                 {"unless": "flag:b == true"},
             ]
         })
-        assert c.all is not None
-        assert len(c.all) == 2
-        assert isinstance(c.all[1], ConditionExpression)
-        assert c.all[1].unless == "flag:b == true"  # type: ignore[union-attr]
+        assert c.all_of is not None
+        assert len(c.all_of) == 2
+        assert isinstance(c.all_of[1], ConditionExpression)
+        assert c.all_of[1].unless == "flag:b == true"  # type: ignore[union-attr]
 
     def test_deeply_nested_any_all(self) -> None:
         data = {
@@ -118,8 +135,8 @@ class TestConditionExpression:
             ]
         }
         c = ConditionExpression.model_validate(data)
-        assert c.any is not None
-        assert len(c.any) == 2
+        assert c.any_of is not None
+        assert len(c.any_of) == 2
 
     def test_missing_all_keys_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -464,6 +481,47 @@ class TestEntity:
                 },
             })
 
+    def test_player_entity_type(self) -> None:
+        e = Entity.model_validate({
+            "type": "player",
+            "description": "The player character.",
+        })
+        assert e.type == "player"
+        assert e.dialogue_guidelines is None
+        assert e.behavior is None
+
+    def test_trap_entity_type(self) -> None:
+        e = Entity.model_validate({
+            "type": "trap",
+            "description": "A spike trap hidden in the floor.",
+            "state_fields": {"triggered": {"type": "boolean", "description": "Whether the trap has triggered."}},
+        })
+        assert e.type == "trap"
+        assert e.state_fields["triggered"].type == "boolean"
+
+    def test_entity_with_interactions(self) -> None:
+        e = Entity.model_validate({
+            "type": "feature",
+            "description": "A mysterious altar.",
+            "interactions": [
+                {
+                    "id": "pray_at_altar",
+                    "label": "Pray at the altar",
+                    "result": {"narrative": "You feel a divine presence."},
+                },
+            ],
+        })
+        assert len(e.interactions) == 1
+        assert e.interactions[0].id == "pray_at_altar"
+
+    def test_entity_with_soft_items(self) -> None:
+        e = Entity.model_validate({
+            "type": "feature",
+            "description": "A dead adventurer.",
+            "soft_items": ["rusty coin", "torn map", "empty flask"],
+        })
+        assert e.soft_items == ["rusty coin", "torn map", "empty flask"]
+
 
 class TestExit:
     def test_basic_exit(self) -> None:
@@ -582,6 +640,22 @@ class TestRoom:
         assert len(r.interactions) == 1
         assert r.interactions[0].id == "pull_lever"
 
+    def test_room_with_soft_items(self) -> None:
+        r = Room.model_validate({
+            "name": "Cavern",
+            "description": "A dark cavern.",
+            "soft_items": ["rock", "loose stone", "stale bread"],
+        })
+        assert r.soft_items == ["rock", "loose stone", "stale bread"]
+
+    def test_room_with_entities_present(self) -> None:
+        r = Room.model_validate({
+            "name": "Guard Room",
+            "description": "A room with guards.",
+            "entities_present": ["guard_1", "guard_2", "captain"],
+        })
+        assert r.entities_present == ["guard_1", "guard_2", "captain"]
+
 
 class TestCheck:
     def test_check_threshold_bounds(self) -> None:
@@ -595,12 +669,29 @@ class TestCheck:
             Check.model_validate({"threshold": -0.1, "repeatable": True})
 
     def test_type_defaults_to_roll(self) -> None:
-        c = Check.model_validate({"threshold": 0.5})
+        c = Check.model_validate({"threshold": 0.5, "repeatable": True})
         assert c.type == "roll"
 
     def test_type_invalid_raises(self) -> None:
         with pytest.raises(ValidationError):
             Check.model_validate({"threshold": 0.5, "type": "dice"})
+
+    def test_with_note(self) -> None:
+        c = Check.model_validate({
+            "threshold": 0.75,
+            "repeatable": False,
+            "note": "This is an optional designer note explaining the check.",
+        })
+        assert c.note == "This is an optional designer note explaining the check."
+        assert c.threshold == 0.75
+        assert c.repeatable is False
+
+    def test_note_is_optional(self) -> None:
+        c = Check.model_validate({
+            "threshold": 0.3,
+            "repeatable": True,
+        })
+        assert c.note is None
 
 
 class TestAttitudeLimits:
@@ -666,3 +757,250 @@ class TestOnEnterEvent:
     def test_missing_id_raises(self) -> None:
         with pytest.raises(ValidationError):
             OnEnterEvent.model_validate({"narrative": "Hello."})
+
+    def test_with_set_flag(self) -> None:
+        event = OnEnterEvent.model_validate({
+            "id": "event_flag",
+            "set_flag": {"visited_room": True, "alarm_triggered": False},
+        })
+        assert event.set_flag == {"visited_room": True, "alarm_triggered": False}
+
+    def test_narrative_in_isolation(self) -> None:
+        event = OnEnterEvent.model_validate({
+            "id": "event_narrate",
+            "narrative": "The door creaks open slowly.",
+        })
+        assert event.narrative == "The door creaks open slowly."
+
+    def test_all_fields_combined(self) -> None:
+        event = OnEnterEvent.model_validate({
+            "id": "full_event",
+            "condition": {"require": "flag:x == true"},
+            "narrative": "Something stirs in the darkness.",
+            "set_flag": {"monster_awake": True},
+            "set_entity_state": {"monster": {"awake": True}},
+            "trigger_dialogue": "monster",
+        })
+        assert event.condition.require == "flag:x == true"
+        assert event.narrative == "Something stirs in the darkness."
+        assert event.set_flag == {"monster_awake": True}
+        assert event.trigger_dialogue == "monster"
+
+
+class TestBranchOutcome:
+    def test_basic(self) -> None:
+        b = BranchOutcome.model_validate({
+            "outcome": "success",
+            "set_flags": {"door_open": True},
+            "narrative": "The door swings open.",
+        })
+        assert b.outcome == "success"
+        assert b.set_flags == {"door_open": True}
+        assert b.narrative == "The door swings open."
+
+    def test_minimal_outcome_only(self) -> None:
+        b = BranchOutcome.model_validate({"outcome": "death"})
+        assert b.outcome == "death"
+        assert b.set_flags is None
+        assert b.narrative is None
+
+    def test_missing_outcome_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            BranchOutcome.model_validate({
+                "set_flags": {"x": True},
+            })
+
+
+class TestCredits:
+    def test_all_fields(self) -> None:
+        c = Credits.model_validate({
+            "author": "A. N. Author",
+            "source": "Original",
+            "license": "CC BY-SA 4.0",
+        })
+        assert c.author == "A. N. Author"
+        assert c.source == "Original"
+        assert c.license == "CC BY-SA 4.0"
+
+    def test_empty_credits(self) -> None:
+        c = Credits.model_validate({})
+        assert c.author is None
+        assert c.source is None
+        assert c.license is None
+
+
+class TestAdventure:
+    def test_isolated(self) -> None:
+        a = Adventure.model_validate({
+            "title": "Test Adventure",
+            "introduction": "You find yourself in a dark room.",
+            "atmosphere": {"setting": "A mysterious dungeon.", "tone": "Dark and foreboding."},
+            "credits": {"author": "Alice", "license": "MIT"},
+        })
+        assert a.title == "Test Adventure"
+        assert a.introduction == "You find yourself in a dark room."
+        assert a.atmosphere.setting == "A mysterious dungeon."
+        assert a.credits.author == "Alice"
+
+    def test_minimal(self) -> None:
+        a = Adventure.model_validate({
+            "title": "Minimal",
+            "introduction": "Start.",
+        })
+        assert a.title == "Minimal"
+        assert a.credits is None
+        assert a.atmosphere is None
+
+
+class TestAtmosphere:
+    def test_basic(self) -> None:
+        a = Atmosphere.model_validate({
+            "setting": "A whimsical world.",
+            "tone": "Lighthearted and fun.",
+        })
+        assert a.setting == "A whimsical world."
+        assert a.tone == "Lighthearted and fun."
+
+    def test_missing_setting_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Atmosphere.model_validate({"tone": "Dark."})
+
+    def test_missing_tone_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Atmosphere.model_validate({"setting": "A world."})
+
+
+class TestParameterSignature:
+    def test_basic(self) -> None:
+        p = ParameterSignature.model_validate({
+            "target": ["entity", "soft_item"],
+            "using": ["entity"],
+        })
+        assert p.target == ["entity", "soft_item"]
+        assert p.using == ["entity"]
+
+    def test_empty(self) -> None:
+        p = ParameterSignature.model_validate({})
+        assert p.target is None
+        assert p.using is None
+
+
+class TestFleeEffect:
+    def test_basic(self) -> None:
+        f = FleeEffect.model_validate({
+            "set_flags": {"spider_fled": True},
+            "effect": "The spider scurries away into the shadows.",
+        })
+        assert f.set_flags == {"spider_fled": True}
+        assert f.effect == "The spider scurries away into the shadows."
+
+    def test_missing_set_flags_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            FleeEffect.model_validate({"effect": "x"})
+
+    def test_missing_effect_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            FleeEffect.model_validate({"set_flags": {"x": True}})
+
+
+class TestEncounterRule:
+    def test_outcome_death(self) -> None:
+        r = EncounterRule.model_validate({
+            "condition": {"require": "flag:unarmed == true"},
+            "outcome": "death",
+        })
+        assert r.outcome == "death"
+        assert r.condition.require == "flag:unarmed == true"
+
+    def test_outcome_flee(self) -> None:
+        r = EncounterRule.model_validate({
+            "condition": {"require": "flag:has_weapon == true"},
+            "outcome": "flee",
+        })
+        assert r.outcome == "flee"
+
+    def test_outcome_roll(self) -> None:
+        r = EncounterRule.model_validate({
+            "condition": {"require": "flag:injured == true"},
+            "outcome": "roll",
+            "threshold": 0.5,
+            "narrative": "The spider lunges!",
+            "set_flags": {"spider_attacked": True},
+        })
+        assert r.outcome == "roll"
+        assert r.threshold == 0.5
+        assert r.narrative == "The spider lunges!"
+        assert r.set_flags == {"spider_attacked": True}
+
+    def test_with_on_success(self) -> None:
+        r = EncounterRule.model_validate({
+            "condition": {"require": "flag:injured == true"},
+            "outcome": "roll",
+            "threshold": 0.5,
+            "on_success": {
+                "outcome": "success",
+                "set_flags": {"spider_fled": True},
+                "narrative": "You drive the spider away.",
+            },
+        })
+        assert r.on_success is not None
+        assert r.on_success.outcome == "success"
+        assert r.on_success.set_flags == {"spider_fled": True}
+
+    def test_with_on_failure(self) -> None:
+        r = EncounterRule.model_validate({
+            "condition": {"require": "flag:injured == true"},
+            "outcome": "roll",
+            "threshold": 0.7,
+            "on_failure": {
+                "outcome": "death",
+                "narrative": "The spider overpowers you.",
+            },
+        })
+        assert r.on_failure is not None
+        assert r.on_failure.outcome == "death"
+        assert r.on_failure.narrative == "The spider overpowers you."
+
+
+class TestBehavior:
+    def test_triggers_on_empty(self) -> None:
+        b = Behavior.model_validate({
+            "triggers_on": [],
+            "encounter_rules": [
+                {
+                    "condition": {"require": "flag:x == true"},
+                    "outcome": "flee",
+                },
+            ],
+        })
+        assert b.triggers_on == []
+        assert len(b.encounter_rules) == 1
+
+    def test_triggers_on_non_empty(self) -> None:
+        b = Behavior.model_validate({
+            "triggers_on": ["exit_through_webs", "attack"],
+            "encounter_rules": [
+                {
+                    "condition": {"require": "flag:x == true"},
+                    "outcome": "flee",
+                },
+            ],
+        })
+        assert b.triggers_on == ["exit_through_webs", "attack"]
+
+    def test_with_on_flee(self) -> None:
+        b = Behavior.model_validate({
+            "triggers_on": ["exit_through_webs"],
+            "encounter_rules": [
+                {
+                    "condition": {"require": "flag:has_weapon == true"},
+                    "outcome": "flee",
+                },
+            ],
+            "on_flee": {
+                "set_flags": {"spider_fled": True},
+                "effect": "It scurries away.",
+            },
+        })
+        assert b.on_flee is not None
+        assert b.on_flee.set_flags == {"spider_fled": True}

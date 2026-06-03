@@ -7,6 +7,12 @@ from pydantic import BaseModel, Field
 from mgmai.models.corpus import DialogueGuidelines
 
 
+class BriefingInteraction(BaseModel):
+    id: str
+    label: str
+    description: Optional[str] = None
+
+
 class BriefingEntity(BaseModel):
     id: str
     name: str
@@ -31,7 +37,7 @@ class BriefingRoom(BaseModel):
     soft_items: List[str] = Field(default_factory=list)
     entities_visible: List[BriefingEntity] = Field(default_factory=list)
     exits_available: List[BriefingExit] = Field(default_factory=list)
-    interactions_available: List[Any] = Field(default_factory=list)
+    interactions_available: List[BriefingInteraction] = Field(default_factory=list)
     room_notes: List[str] = Field(default_factory=list)
 
 
@@ -49,9 +55,15 @@ class BriefingHistoryEntry(BaseModel):
     location_after: str
 
 
-class DialogueContext(BaseModel):
-    active_npc: BriefingEntity
+class DialogueActiveNpc(BaseModel):
+    id: str
+    name: str
+    attitude: int
     dialogue_guidelines: DialogueGuidelines
+
+
+class DialogueContext(BaseModel):
+    active_npc: DialogueActiveNpc
     recent_exchanges: List[Dict[str, Any]] = Field(default_factory=list)
     topics_discussed: List[str] = Field(default_factory=list)
     revealed_topics: List[str] = Field(default_factory=list)

@@ -145,12 +145,13 @@ Each exit is:
 - **`conditions`**: if exit availability depends on flags, inventory, or entity
   state. Each condition is an object with `require`, `unless`, `any`, or `all`.
   See the Condition syntax section below (§6).
-- **`on_traverse`**: effects applied when the player uses this exit:
-  - `set_flag` / `value` — boolean flag to set
-  - `set_flag` / `narrative` — prose for the traversal
-  - `trigger_encounter` — encounter mechanic to trigger
-  - `skip_if` — condition to skip (optional)
-  - `narrative_skip` — prose when skipped (optional)
+- **`on_traverse`**: effects applied when the player uses this exit
+  (all fields optional):
+  - `set_flag` — object: `{ "<flag_name>": true|false, ... }`
+  - `narrative` — string: prose for the traversal event
+  - `trigger_encounter` — string: encounter mechanic ID to trigger
+  - `skip_if` — condition object: skip the effect if this condition is met
+  - `narrative_skip` — string: prose when the effect is skipped
 - **`hidden`**: set `true` for exits that are secret/unrevealed at game start
   (e.g. a hidden flap under a handkerchief). The engine omits these from
   GMBriefing until the reveal condition is met. The reveal condition is a
@@ -302,8 +303,13 @@ Each entity is keyed by a unique entity ID:
 #### `npc` type
 
 - Characters the player can talk to, fight, or interact with.
-- Required: `dialogue_guidelines` block (see below).
-- For combat-capable NPCs: `behavior` block (see below).
+- Conversational NPCs (any NPC the player can `talk` to) must have a
+  `dialogue_guidelines` block (see below).
+- Monster-type NPCs (combat-only) carry a `behavior` block instead.
+- An NPC may have both `dialogue_guidelines` and `behavior` if it
+  can both talk and fight.
+- A purely decorative or ambient NPC may have neither, but at least
+  one of `dialogue_guidelines` or `behavior` is expected.
 
 ##### `dialogue_guidelines`
 
@@ -664,8 +670,9 @@ For every entity in the scenario, decide its `type` and declare its
 `state_fields`.
 
 - Start with the player entity (type `player`).
-- NPCs → type `npc` with `dialogue_guidelines`.
+- Conversational NPCs → type `npc` with `dialogue_guidelines`.
 - Combat NPCs → also add `behavior`.
+- Monster-type NPCs (no dialogue) → type `npc` with `behavior` only.
 - Static dressing → type `feature`.
 - Pickup-able objects → type `item`, with appropriate `tags`.
 - Hazards → type `trap`.
@@ -685,7 +692,7 @@ For each room, fill in:
 
 - Attach interactions to entities (e.g. `search_handkerchief` on the
   handkerchief feature).
-- Fill in `dialogue_guidelines` for every NPC.
+- Fill in `dialogue_guidelines` for conversational NPCs.
 - Fill in `behavior` for combat NPCs.
 - Assign `tags` to items.
 
@@ -713,9 +720,10 @@ Follow §5. Ensure every NPC gets an attitude entry.
 - [ ] Every `set_flag` flag name is declared in `hard_state.flags`.
 - [ ] Every `add_item` / `remove_item` references a valid entity ID.
 - [ ] Every `trigger_encounter` references a valid `mechanics` entry.
-- [ ] Every `entity_id` in `soft_state.npc_attitudes` has
-  `dialogue_guidelines` in its corpus entity definition.
 - [ ] Every `entity_id` in `soft_state.npc_attitudes` has `type: "npc"`.
+- [ ] Conversational NPCs (those in `npc_attitudes`) have `dialogue_guidelines`
+  in their corpus entity definition.
+- [ ] Combat NPCs have `behavior` in their corpus entity definition.
 - [ ] Every `set_flag` in `will_reveal` entries references a flag declared in `hard_state.flags`.
 - [ ] Every `set_entity_state` in `will_reveal` entries references valid entity IDs with declared `state_fields`.
 - [ ] `hard_state.player.location` is the room with `is_start_room: true`.
@@ -754,9 +762,11 @@ Follow §5. Ensure every NPC gets an attitude entry.
 6. **Duplicate IDs**: Ensure every ID (room, entity, exit, interaction, mechanic,
    flag, topic) is unique across the entire corpus.
 
-7. **NPCs with no `dialogue_guidelines`**: Every `npc` entity must have a
-   `dialogue_guidelines` block, even if the NPC has nothing to say — provide
-   minimal guidelines (`personality`, empty `can`/`cannot`/`knows` arrays).
+7. **NPCs without dialogue_guidelines or behavior**: Conversational NPCs
+   need `dialogue_guidelines`; combat NPCs need `behavior`.  An NPC
+   with neither cannot be meaningfully interacted with.  If an NPC
+   won't talk and won't fight, consider whether it should be a
+   `feature` instead.
 
 8. **Missing `on_encounter` narrative for NPCs**: If the scenario describes what
    happens when the player first meets an NPC, encode it in

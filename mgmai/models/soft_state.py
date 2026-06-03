@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
 class SoftStatePatch(BaseModel):
     entity_id: Optional[str] = None
-    field: str
+    field: Literal[
+        "room_note", "entity_note", "soft_inventory_add", "soft_inventory_remove"
+    ]
     target_id: Optional[str] = None
     old_value: Optional[Any] = None
     new_value: Any
@@ -35,6 +37,18 @@ class TurnHistoryEntry(BaseModel):
     engine_result_summary: str
     flags_changed: List[str] = Field(default_factory=list)
     location_after: str
+
+    model_config = {
+        "json_schema_extra": {
+            "ruled_action_description": (
+                "Serialized form of the validated PlayerAction (discriminated "
+                "union).  Validation happens at LLM Call 1 parse time via "
+                "validate_player_action() — this field stores the model_dump() "
+                "output for archival and save/load.  The engine reads action "
+                "history only for GMBriefing summaries, not for re-execution."
+            ),
+        },
+    }
 
 
 class NpcRevelation(BaseModel):

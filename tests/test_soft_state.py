@@ -46,6 +46,34 @@ class TestSoftStatePatch:
         assert p.field == "soft_inventory_add"
         assert p.new_value == "rock"
 
+    def test_soft_inventory_remove(self) -> None:
+        p = SoftStatePatch.model_validate({
+            "field": "soft_inventory_remove",
+            "new_value": "rock",
+            "reason": "Player throws the rock away.",
+        })
+        assert p.field == "soft_inventory_remove"
+        assert p.new_value == "rock"
+
+    def test_invalid_field_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStatePatch.model_validate({
+                "field": "invalid_field",
+                "new_value": "x",
+                "reason": "y",
+            })
+
+    def test_with_old_value(self) -> None:
+        p = SoftStatePatch.model_validate({
+            "field": "room_note",
+            "target_id": "room1",
+            "old_value": "The room is messy.",
+            "new_value": "The room is tidy.",
+            "reason": "Player cleaned the room.",
+        })
+        assert p.old_value == "The room is messy."
+        assert p.new_value == "The room is tidy."
+
     def test_missing_field_raises(self) -> None:
         with pytest.raises(ValidationError):
             SoftStatePatch.model_validate({
@@ -129,6 +157,29 @@ class TestTurnHistoryEntry:
                 "turn": 1,
                 "player_input": "hi",
             })
+
+    def test_ooc_discussion_action_type(self) -> None:
+        e = TurnHistoryEntry.model_validate({
+            "turn": 5,
+            "player_input": "Is the spider still there?",
+            "ruled_action": {"action_type": "ooc_discussion", "detail": "Clarification question."},
+            "engine_result_summary": "GM clarified spider status.",
+            "flags_changed": [],
+            "location_after": "axe_handle_lower",
+        })
+        assert e.ruled_action["action_type"] == "ooc_discussion"
+        assert e.flags_changed == []
+
+    def test_empty_flags_changed(self) -> None:
+        e = TurnHistoryEntry.model_validate({
+            "turn": 2,
+            "player_input": "Look around.",
+            "ruled_action": {"action_type": "examine", "target": "room"},
+            "engine_result_summary": "Player examined the room.",
+            "flags_changed": [],
+            "location_after": "axe_head",
+        })
+        assert e.flags_changed == []
 
 
 class TestNpcRevelation:

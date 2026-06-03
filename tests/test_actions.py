@@ -1,7 +1,20 @@
 import pytest
 from pydantic import ValidationError
 
-from mgmai.models.actions import EngineResult, PlayerAction
+from mgmai.models.actions import (
+    AttitudeLimitsCurrent,
+    ChainInfo,
+    DialogueExitedResult,
+    EncounterOutcome,
+    EngineResult,
+    GameOverResult,
+    HardStateChanges,
+    OnEnterEventResult,
+    PlayerAction,
+    RevelationApplied,
+    WillRevealReadinessEntry,
+)
+from mgmai.models.narration import AttitudeChange
 from mgmai.models.soft_state import SoftStatePatch
 
 
@@ -16,7 +29,6 @@ class TestPlayerAction:
         assert a.action_type == "move"
         assert a.target == "exit_through_webs"
         assert a.style == "crawling"
-        assert a.rigorous is False
 
     def test_examine(self) -> None:
         a = PlayerAction.model_validate({
@@ -29,6 +41,16 @@ class TestPlayerAction:
         assert a.action_type == "examine"
         assert a.rigorous is True
         assert a.using == "torch"
+
+    def test_examine_using_null(self) -> None:
+        a = PlayerAction.model_validate({
+            "action_type": "examine",
+            "target": "spider",
+            "rigorous": False,
+            "using": None,
+            "detail": "The player looks at the spider.",
+        })
+        assert a.using is None
 
     def test_interact(self) -> None:
         a = PlayerAction.model_validate({
@@ -68,7 +90,8 @@ class TestPlayerAction:
             "action_type": "wait",
             "detail": "The player pauses to think.",
         })
-        assert a.target is None
+        assert a.action_type == "wait"
+        assert isinstance(a.detail, str)
 
     def test_ooc_discussion(self) -> None:
         a = PlayerAction.model_validate({
@@ -183,7 +206,7 @@ class TestEngineResult:
             "game_over": {"type": "win", "trigger": "escape_bag", "narrative": "You are free!"},
         })
         assert r.game_over is not None
-        assert r.game_over["type"] == "win"
+        assert r.game_over.type == "win"
 
     def test_chain_info(self) -> None:
         r = EngineResult.model_validate({
@@ -195,7 +218,7 @@ class TestEngineResult:
             },
         })
         assert r.chain_info is not None
-        assert r.chain_info["follow_up"] == "Unlock the padlock."
+        assert r.chain_info.follow_up == "Unlock the padlock."
 
     def test_default_lists(self) -> None:
         r = EngineResult.model_validate({
@@ -219,3 +242,191 @@ class TestEngineResult:
             EngineResult.model_validate({
                 "success": True,
             })
+
+    def test_with_room_after(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "move",
+            "room_after": {
+                "id": "bag_floor",
+                "name": "Bag Floor",
+                "description": "The floor of the bag.",
+                "soft_items": ["cork", "copper"],
+                "entities_visible": [
+                    {
+                        "id": "korbar",
+                        "name": "Korbar the Dwarf",
+                        "type": "npc",
+                        "description": "A drunk dwarf.",
+                        "state": {"alive": True},
+                        "entity_notes": [],
+                        "soft_items": [],
+                    },
+                ],
+                "exits_available": [
+                    {
+                        "id": "exit_climb",
+                        "direction": "Climb up",
+                        "target_room": "axe_handle_lower",
+                    },
+                ],
+                "interactions_available": [],
+                "room_notes": ["A faint trail leads north."],
+            },
+        })
+        assert r.room_after is not None
+        assert r.room_after["id"] == "bag_floor"
+
+    def test_with_encounter_outcome(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "move",
+            "encounter_outcome": {
+                "encounter_id": "spider_encounter",
+                "outcome": "flee",
+                "narrative_brief": "The spider fled into the shadows.",
+            },
+        })
+        assert r.encounter_outcome is not None
+        assert r.encounter_outcome.encounter_id == "spider_encounter"
+        assert r.encounter_outcome.outcome == "flee"
+
+    def test_with_on_enter_events(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "move",
+            "on_enter_events": [
+                {"event_id": "welcome_event", "narrative": "Welcome to the bag floor."},
+            ],
+        })
+        assert len(r.on_enter_events) == 1
+        assert r.on_enter_events[0].event_id == "welcome_event"
+
+    def test_with_dialogue_exited(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "talk",
+            "dialogue_exited": {
+                "npc_id": "korbar",
+                "exit_narrative": "Korbar turns and walks away.",
+            },
+        })
+        assert r.dialogue_exited is not None
+        assert r.dialogue_exited.npc_id == "korbar"
+
+    def test_with_will_reveal_readiness(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "talk",
+            "will_reveal_readiness": {
+                "korbar": {
+                    "padlock_mechanism": {"conditions_met": True, "description": "How to open the padlock."},
+                    "secret_compartment": {"conditions_met": False, "description": "A hidden cache."},
+                },
+            },
+        })
+        assert r.will_reveal_readiness is not None
+        assert r.will_reveal_readiness["korbar"]["padlock_mechanism"].conditions_met is True
+
+    def test_with_npc_attitude_limits(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "talk",
+            "npc_attitude_limits": {
+                "korbar": {"min": -5, "max": 10, "step_per_turn": 3, "current": 2},
+            },
+        })
+        assert r.npc_attitude_limits is not None
+        assert r.npc_attitude_limits["korbar"].current == 2
+
+    def test_with_attitude_changes_applied(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "talk",
+            "attitude_changes_applied": [
+                {"old_value": 0, "new_value": 2, "reason": "Player was kind."},
+            ],
+        })
+        assert len(r.attitude_changes_applied) == 1
+        assert r.attitude_changes_applied[0].new_value == 2
+
+    def test_with_attitude_changes_rejected(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "talk",
+            "attitude_changes_rejected": [
+                {
+                    "old_value": 0,
+                    "new_value": 2,
+                    "reason": "Attitude step exceeded",
+                },
+            ],
+        })
+        assert len(r.attitude_changes_rejected) == 1
+
+    def test_with_revelations_applied(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "talk",
+            "revelations_applied": [
+                {
+                    "npc_id": "korbar",
+                    "topic_id": "padlock_mechanism",
+                    "side_effects_applied": ["set_flag"],
+                },
+            ],
+        })
+        assert len(r.revelations_applied) == 1
+        assert r.revelations_applied[0].npc_id == "korbar"
+
+    def test_with_warnings(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "wait",
+            "warnings": [
+                "Korbar is present but has not been introduced.",
+                "The secret exit remains hidden.",
+            ],
+        })
+        assert len(r.warnings) == 2
+        assert "Korbar" in r.warnings[0]
+
+    def test_full_hard_state_changes(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "interact",
+            "hard_state_changes": {
+                "player_location": "bag_floor",
+                "inventory_added": ["rusty_key"],
+                "inventory_removed": ["iron_sword"],
+                "flags_set": {"spider_fled": True, "door_opened": True},
+                "flags_cleared": ["stunned"],
+                "room_state_changes": {
+                    "bag_floor": {"visited": True, "searched": True},
+                },
+                "entity_state_changes": {
+                    "spider": {"alive": False, "fled": True},
+                    "korbar": {"told_secret": True},
+                },
+            },
+        })
+        assert r.hard_state_changes is not None
+        assert r.hard_state_changes.inventory_added == ["rusty_key"]
+        assert r.hard_state_changes.inventory_removed == ["iron_sword"]
+        assert r.hard_state_changes.flags_cleared == ["stunned"]
+        assert r.hard_state_changes.room_state_changes["bag_floor"]["visited"] is True
+        assert r.hard_state_changes.entity_state_changes["spider"]["fled"] is True
+
+    def test_rolls_with_actual_data(self) -> None:
+        r = EngineResult.model_validate({
+            "success": True,
+            "action_type": "interact",
+            "rolls": [
+                {"roll_id": "search_roll", "threshold": 0.5, "result": 0.3, "success": True},
+                {"roll_id": "attack_roll", "threshold": 0.7, "result": 0.8, "success": False},
+            ],
+        })
+        assert len(r.rolls) == 2
+        assert r.rolls[0]["roll_id"] == "search_roll"
+        assert r.rolls[0]["success"] is True
+        assert r.rolls[1]["success"] is False

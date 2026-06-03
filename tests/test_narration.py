@@ -22,6 +22,20 @@ class TestAttitudeChange:
                 "new_value": 2,
             })
 
+    def test_missing_old_value_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            AttitudeChange.model_validate({
+                "new_value": 2,
+                "reason": "Player was kind.",
+            })
+
+    def test_missing_new_value_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            AttitudeChange.model_validate({
+                "old_value": 0,
+                "reason": "Player was kind.",
+            })
+
 
 class TestKnowledgeTags:
     def test_npc_revealed(self) -> None:
@@ -109,3 +123,10 @@ class TestNarrationOutput:
             NarrationOutput.model_validate({
                 "npc_response": "Hello.",
             })
+
+    def test_empty_narration(self) -> None:
+        n = NarrationOutput.model_validate({"narration": ""})
+        assert n.narration == ""
+        assert n.npc_response is None
+        assert n.knowledge_tags is None
+        assert n.attitude_changes is None

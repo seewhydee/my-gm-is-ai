@@ -26,14 +26,18 @@ class Adventure(BaseModel):
 class ConditionExpression(BaseModel):
     require: Optional[str] = None
     unless: Optional[str] = None
-    any: Optional[List[Union[str, ConditionExpression]]] = None
-    all: Optional[List[Union[str, ConditionExpression]]] = None
+    any_of: Optional[List[Union[str, ConditionExpression]]] = Field(
+        default=None, alias="any"
+    )
+    all_of: Optional[List[Union[str, ConditionExpression]]] = Field(
+        default=None, alias="all"
+    )
 
     @model_validator(mode="after")
     def check_exactly_one(self) -> ConditionExpression:
         present = [
             k
-            for k in ("require", "unless", "any", "all")
+            for k in ("require", "unless", "any_of", "all_of")
             if getattr(self, k) is not None
         ]
         if len(present) != 1:
@@ -60,7 +64,7 @@ class Result(BaseModel):
 class Check(BaseModel):
     type: Literal["roll"] = "roll"
     threshold: float = Field(ge=0.0, le=1.0)
-    repeatable: bool = True
+    repeatable: bool
     note: Optional[str] = None
 
 
@@ -81,6 +85,8 @@ class Interaction(BaseModel):
         has_result = self.result is not None
         if has_check and has_result:
             raise ValueError("Interaction must have either check (+success/+failure) or result, not both")
+        if has_check and self.success is None:
+            raise ValueError("Interaction with 'check' must also have 'success'")
         return self
 
 
@@ -97,7 +103,7 @@ class Exit(BaseModel):
     direction: str
     target_room: str
     conditions: List[ConditionExpression] = Field(default_factory=list)
-    on_traverse: TraversalEffect = Field(default_factory=TraversalEffect)
+    on_traverse: Optional[TraversalEffect] = None
     hidden: bool = False
     one_way: bool = False
 

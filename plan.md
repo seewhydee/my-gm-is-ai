@@ -314,14 +314,15 @@ mgmai/
 ├── cli.py                      # Entry point, argument parsing, game start
 ├── models/                     # Pydantic models — all structured data
 │   ├── __init__.py
-│   ├── corpus.py               # Module Corpus (rooms, entities, interactions, mechanics)
+│   ├── corpus.py               # Module Corpus (rooms, entities, interactions, mechanics,
+│   │                           #   ConditionExpression, checks, traversal effects)
 │   ├── hard_state.py           # Hard Game State (player, flags, room_states, entity_states)
-│   ├── soft_state.py           # Soft Game State (inventory, notes, attitudes, dialogue, history)
-│   ├── actions.py              # PlayerAction (discriminated union of 7 types), follow-up
+│   ├── soft_state.py           # Soft Game State (inventory, notes, attitudes, dialogue,
+│   │                           #   history, SoftStatePatch)
+│   ├── actions.py              # PlayerAction (discriminated union of 7 types),
+│   │                           # EngineResult, hard_state_changes, chain_info
 │   ├── briefing.py             # GMBriefing, dialogue_context
-│   ├── engine_result.py        # EngineResult, hard_state_changes, chain_info
-│   ├── conditions.py           # Condition expression models (require, unless, any, all)
-│   └── patches.py              # SoftStatePatch, AttitudeChange, KnowledgeTag
+│   └── narration.py            # NarrationOutput, AttitudeChange, KnowledgeTags
 ├── engine/                     # Deterministic game engine
 │   ├── __init__.py
 │   ├── conditions.py           # Condition evaluator — evaluates condition objects against state
@@ -348,10 +349,12 @@ mgmai/
 │   ├── ruling.j2               # System prompt for LLM Call 1 (player action ruling)
 │   └── prose.j2                # System prompt for LLM Call 2 (prose narration)
 └── tests/
-    ├── test_conditions.py      # Condition evaluator unit tests
-    ├── test_engine.py          # Engine resolution tests (mock LLM)
-    ├── test_assembler.py       # Context Assembler tests
-    ├── test_models.py          # Pydantic model validation tests
+    ├── test_corpus.py          # Module corpus model validation tests
+    ├── test_hard_state.py      # Hard state model validation tests
+    ├── test_soft_state.py      # Soft state model validation tests
+    ├── test_actions.py         # PlayerAction and EngineResult model tests
+    ├── test_briefing.py        # GMBriefing model tests
+    ├── test_narration.py       # Narration output model tests
     └── conftest.py             # Shared fixtures (sample corpus, state)
 ```
 
@@ -359,7 +362,7 @@ mgmai/
 
 ### Phase 1: Models (foundation for everything)
 
-**Files:** `models/corpus.py`, `models/hard_state.py`, `models/soft_state.py`, `models/actions.py`, `models/briefing.py`, `models/engine_result.py`, `models/conditions.py`, `models/patches.py`
+**Files:** `models/corpus.py`, `models/hard_state.py`, `models/soft_state.py`, `models/actions.py`, `models/briefing.py`, `models/narration.py`
 
 All Pydantic v2 models matching the schema documents. Every JSON structure defined in `schema/` gets a corresponding Pydantic class.
 

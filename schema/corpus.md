@@ -85,13 +85,15 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 
 #### Exit `on_traverse` effects
 
-| Effect               | Description |
-|----------------------|-------------|
-| `set_flag` / `value` | Sets a hard-state flag to the given boolean value. |
-| `set_flag` / `narrative` | Pre-written prose for the traverse event. |
-| `trigger_encounter`  | Triggers a named encounter from `mechanics`. |
-| `skip_if`            | Condition under which the encounter/effect is skipped. |
-| `narrative_skip`     | Short narrative for when the effect is skipped. |
+The `on_traverse` object supports these fields; all are optional:
+
+| Field               | Type             | Description |
+|---------------------|------------------|-------------|
+| `set_flag`          | object           | Sets hard-state flags: `{ "<flag_name>": true\|false, ... }`. |
+| `narrative`         | string           | Pre-written prose for the traverse event. |
+| `trigger_encounter` | string           | Triggers a named encounter from `mechanics`. |
+| `skip_if`           | condition object | Condition under which the effect is skipped. |
+| `narrative_skip`    | string           | Short narrative for when the effect is skipped. |
 
 ### Condition object
 
