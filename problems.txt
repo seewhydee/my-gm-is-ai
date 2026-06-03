@@ -1,0 +1,16 @@
+## Issues & Ambiguities
+
+### NPC/container inventory not declared in corpus
+The `transfer` action can take items from NPCs or containers, but the plan doesn't specify how these inventories are defined in the module corpus. **Resolution**: I assumed both entities and rooms have an implicit "available pool" of items (their own item children plus `soft_items`). The plan should address how NPC inventories are authored.
+
+### LLM Call 2's chain-continue decision mechanism
+The plan says LLM Call 2 "can decide whether to (i) proceed directly back to step 1... or (ii) interrupt the chain." But the actual mechanism for LLM Call 2 to signal this decision isn't specified (a structured output field? a special token?). I documented it as "a signal" in the schema. The implementation will need to define this concretely.
+
+### Draggable items prevent interactions, conflicting with scenario win condition
+The scenario says the rusty key "can be dragged with great effort" and the player wins by "dragging the key up to the top, poking it out of the hole, inserting it into the padlock." The schema states that draggable items (`draggable: true`) encumber the player and prevent `interact` actions — only movement is allowed. A key marked draggable cannot be used in the padlock unlock interaction. Workaround: the key was marked as non-draggable, but this loses the intended mechanical constraint of the scenario.
+
+### Will_reveal blocks lack set_flag or side-effect capability
+When Korbar reveals the secret_compartment topic via `will_reveal`, the engine should logically set `handkerchief_noticed` so the player can then move the handkerchief. But `will_reveal` entries only have `description` and `conditions` — no `set_flag` or side-effect mechanism. The awkward workaround was to add `attitude:korbar >= 4` as an alternative condition on the `move_handkerchief` interaction, coupling soft-state dialogue gating to a room-level interaction condition.
+
+### Korbar combat not fully specifiable in current encounter system
+The scenario says injured players "won't be able to defeat Korbar in combat" but leaves the outcome of a non-injured player fighting Korbar unspecified. The behaviour/encounter system expects well-defined rules with deterministic outcomes (death, flee, roll), but the scenario treats Korbar's defeatable state as narrative flavour rather than a mechanical system. The module corpus omits behaviour rules for Korbar entirely, relying on the LLM to handle combat improvisationally, which may lead to inconsistent resolution.
