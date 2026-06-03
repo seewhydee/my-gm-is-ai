@@ -1,20 +1,26 @@
 from __future__ import annotations
 
-import sys
-from typing import Any
+from typing import Any, Optional
 
-from mgmai.game.commands import _Commands
+from mgmai.game.commands import Commands
 from mgmai.game.display import Display
 from mgmai.game.state_loader import StateLoader
 
 
 class GameLoop:
-    def __init__(self, state_loader: StateLoader, llm_client: Any = None, *, debug: bool = False):
+    def __init__(
+        self,
+        state_loader: StateLoader,
+        llm_client: Any = None,
+        *,
+        debug: bool = False,
+        display: Optional[Display] = None,
+    ):
         self._state = state_loader
         self._llm = llm_client
-        self._display = Display()
+        self._display = display if display is not None else Display()
         self._running = False
-        self._commands = _Commands(
+        self._commands = Commands(
             state_loader=state_loader,
             render=self._display.print,
             exit_fn=self._do_exit,
@@ -71,4 +77,3 @@ class GameLoop:
     def _do_exit(self) -> None:
         self._running = False
         self._display.render_goodbye()
-        sys.exit(0)

@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> None:
         display.render_error(f"Failed to load state: {e}")
         sys.exit(1)
 
-    loop = GameLoop(state_loader, debug=args.debug)
+    loop = GameLoop(state_loader, debug=args.debug, display=display)
     loop.start()
 
 
