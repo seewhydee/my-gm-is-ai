@@ -1,3 +1,4 @@
+import copy
 import json
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import pytest
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
+from mgmai.state.manager import StateManager
 
 ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
 BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
@@ -32,3 +34,14 @@ def sample_hard_state() -> HardGameState:
 def sample_soft_state() -> SoftGameState:
     path = BAG_OF_HOLDING / "soft-state.json"
     return SoftGameState.model_validate(json.loads(path.read_text()))
+
+
+@pytest.fixture
+def state_manager(sample_corpus, sample_hard_state, sample_soft_state):
+    """A fresh StateManager with sample data for each test function."""
+    manager = StateManager()
+    manager.corpus = sample_corpus
+    manager.hard_state = copy.deepcopy(sample_hard_state)
+    manager.soft_state = copy.deepcopy(sample_soft_state)
+    manager._adventure_dir = BAG_OF_HOLDING
+    return manager

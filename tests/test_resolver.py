@@ -1,0 +1,441 @@
+"""Tests for engine/resolver.py."""
+
+import copy
+import json
+from pathlib import Path
+
+import pytest
+
+from mgmai.engine.resolver import (
+    resolve_move,
+    resolve_examine,
+    resolve_interact,
+    resolve_talk,
+    resolve_transfer,
+    resolve_wait,
+    resolve_ooc,
+    resolve_action,
+)
+from mgmai.models.actions import (
+    MoveAction,
+    ExamineAction,
+    InteractAction,
+    TalkAction,
+    TransferAction,
+    WaitAction,
+    OocDiscussionAction,
+)
+
+ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
+BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
+
+
+def _load_hard():
+    return HardGameState.model_validate(
+        json.loads((BAG_OF_HOLDING / "hard-state.json").read_text())
+    )
+
+
+def _load_soft():
+    return SoftGameState.model_validate(
+        json.loads((BAG_OF_HOLDING / "soft-state.json").read_text())
+    )
+
+
+from mgmai.models.hard_state import HardGameState
+from mgmai.models.soft_state import SoftGameState
+
+
+class TestResolveWait:
+    def test_always_succeeds(self, state_manager):
+        action = WaitAction(action_type="wait", detail="Looking around")
+        result = resolve_wait(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.room_after_id == "axe_head"
+
+    def test_no_state_changes(self, state_manager):
+        action = WaitAction(action_type="wait", detail="Resting")
+        hard = state_manager.hard_state
+        result = resolve_wait(action, hard, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.hard_changes is not None
+        assert result.hard_changes.player_location is None
+
+
+class TestResolveOoc:
+    def test_always_succeeds(self, state_manager):
+        action = OocDiscussionAction(action_type="ooc_discussion", detail="What is that?")
+        result = resolve_ooc(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.room_after_id == "axe_head"
+
+
+class TestResolveExamine:
+    def test_examine_entity_in_room(self, state_manager):
+        action = ExamineAction(action_type="examine", target="padlock", detail="Examining the padlock")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert any("padlock" in n for n in result.triggered_narration)
+
+    def test_examine_room(self, state_manager):
+        action = ExamineAction(action_type="examine", target="axe_head", detail="Looking around")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+
+    def test_examine_nonexistent_target(self, state_manager):
+        action = ExamineAction(action_type="examine", target="nonexistent", detail="Looking")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False
+        assert "not found" in (result.error or "")
+
+    def test_examine_with_using_not_in_inventory(self, state_manager):
+        action = ExamineAction(action_type="examine", target="padlock", using="rusty_key", detail="Poking with key")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False
+        assert "not in your inventory" in (result.error or "")
+
+    def test_examine_with_using_in_inventory(self, state_manager):
+        state_manager.hard_state.player.inventory.append("rusty_key")
+        action = ExamineAction(action_type="examine", target="padlock", using="rusty_key", detail="Poking with key")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+
+    def test_examine_soft_item(self, state_manager):
+        action = ExamineAction(action_type="examine", target="loose stone", detail="Looking at stone")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+
+
+class TestResolveMove:
+    def test_valid_exit(self, state_manager):
+        action = MoveAction(action_type="move", target="exit_climb_down_handle", detail="Climbing down")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.hard_changes.player_location == "axe_handle_upper"
+        assert result.room_after_id == "axe_handle_upper"
+
+    def test_invalid_exit(self, state_manager):
+        action = MoveAction(action_type="move", target="exit_nonexistent", detail="Walking")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False
+        assert "not found" in (result.error or "")
+
+    def test_drop_exit_sets_flag(self, state_manager):
+        action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.hard_changes.player_location == "bag_floor"
+        assert "injured" in result.hard_changes.flags_set
+        assert result.hard_changes.flags_set["injured"] is True
+
+    def test_drop_exit_generates_narrative(self, state_manager):
+        action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert len(result.triggered_narration) > 0
+
+    def test_hidden_exit_not_accessible(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        action = MoveAction(action_type="move", target="exit_enter_secret_flap", detail="Entering flap")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False
+        assert "condition" in (result.error or "").lower() or "hidden" in (result.error or "").lower()
+
+    def test_condition_gated_exit(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        state_manager.hard_state.flags["handkerchief_moved"] = True
+        action = MoveAction(action_type="move", target="exit_enter_secret_flap", detail="Entering flap")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.hard_changes.player_location == "secret_compartment"
+
+    def test_condition_gated_exit_fails(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        action = MoveAction(action_type="move", target="exit_enter_secret_flap", detail="Entering hidden flap")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False
+
+    def test_traverse_skip_if(self, state_manager):
+        state_manager.hard_state.flags["spider_fled"] = True
+        state_manager.hard_state.player.location = "axe_handle_lower"
+        action = MoveAction(action_type="move", target="exit_through_webs", detail="Pushing through webs")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.hard_changes.player_location == "bag_floor"
+
+    def test_sets_visited_on_target_room(self, state_manager):
+        action = MoveAction(action_type="move", target="exit_climb_down_handle", detail="Climbing down")
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.hard_changes.room_state_changes.get("axe_handle_upper", {}).get("visited") is True
+
+
+class TestResolveTalk:
+    def test_talk_to_present_npc(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        action = TalkAction(action_type="talk", target="korbar", utterance="Hello!", detail="Greeting")
+        result = resolve_talk(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert state_manager.soft_state.dialogue_state.active_npc == "korbar"
+
+    def test_talk_to_npc_not_in_room(self, state_manager):
+        action = TalkAction(action_type="talk", target="korbar", utterance="Hello!", detail="Greeting")
+        result = resolve_talk(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False
+
+    def test_talk_to_dead_npc(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        state_manager.hard_state.entity_states["korbar"]["alive"] = False
+        action = TalkAction(action_type="talk", target="korbar", utterance="Hello?", detail="Greeting")
+        result = resolve_talk(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False
+
+    def test_ends_dialogue(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        soft = state_manager.soft_state
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        from mgmai.engine.dialogue import enter_dialogue
+        enter_dialogue(soft, "korbar", 1, "Hello", "Greeting")
+        action = TalkAction(action_type="talk", target="korbar", utterance="Goodbye", ends_dialogue=True, detail="Farewell")
+        result = resolve_talk(action, hard, soft, corpus)
+        assert result.success is True
+        assert soft.dialogue_state.active_npc is None
+
+    def test_switches_npc(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from mgmai.engine.dialogue import enter_dialogue
+        enter_dialogue(soft, "korbar", 1, "Hello", "Greeting")
+        action = TalkAction(action_type="talk", target="rubbish_pile", utterance="Hi?", detail="Talking to rubbish")
+        result = resolve_talk(action, hard, soft, corpus)
+        assert result.success is False
+
+
+class TestResolveTransfer:
+    def test_give_item_from_inventory(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        hard.player.inventory.append("toenail_sword")
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_items=["toenail_sword"],
+            detail="Giving sword to Korbar",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert "toenail_sword" in result.hard_changes.inventory_removed
+
+    def test_give_item_not_in_inventory(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_items=["nonexistent_item"],
+            detail="Giving nothing",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "not in your inventory" in (result.error or "")
+
+    def test_take_item_from_room(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        action = TransferAction(
+            action_type="transfer", target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert "rusty_key" in result.hard_changes.inventory_added
+
+    def test_transfer_target_not_found(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        action = TransferAction(
+            action_type="transfer", target="nonexistent",
+            given_items=["fictional_item"],
+            taken_items=[],
+            detail="Transferring",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+
+    def test_give_soft_item(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        soft.soft_inventory.append("cork")
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_items=["cork"],
+            taken_items=[],
+            detail="Giving a cork",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert "cork" in result.hard_changes.inventory_removed
+
+
+class TestResolveInteract:
+    def test_interact_with_entity_interaction(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = InteractAction(
+            action_type="interact", target="handkerchief",
+            interaction_id="search_handkerchief",
+            detail="Searching the handkerchief",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is True
+
+    def test_interact_not_found(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = InteractAction(
+            action_type="interact", target="korbar",
+            interaction_id="nonexistent_interaction",
+            detail="Doing something",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is False
+
+    def test_interact_condition_not_met(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        hard.flags["handkerchief_noticed"] = False
+        action = InteractAction(
+            action_type="interact", target="handkerchief",
+            interaction_id="move_handkerchief",
+            detail="Moving handkerchief",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is False
+
+    def test_interact_condition_met(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        hard.flags["handkerchief_noticed"] = True
+        action = InteractAction(
+            action_type="interact", target="handkerchief",
+            interaction_id="move_handkerchief",
+            detail="Moving handkerchief",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.flags_set.get("handkerchief_moved") is True
+
+    def test_take_item(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        action = InteractAction(
+            action_type="interact", target="rusty_key",
+            interaction_id="take",
+            detail="Taking the key",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is True
+        assert "rusty_key" in result.hard_changes.inventory_added
+
+    def test_attack_on_npc_with_behavior(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = InteractAction(
+            action_type="interact", target="korbar",
+            interaction_id="attack",
+            detail="Attacking Korbar",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.encounter_trigger == "korbar"
+
+    def test_attack_on_non_combatant(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        action = InteractAction(
+            action_type="interact", target="padlock",
+            interaction_id="attack",
+            detail="Attacking padlock",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is False
+
+    def test_using_in_inventory(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        hard.player.inventory.append("rusty_key")
+        action = InteractAction(
+            action_type="interact", target="padlock",
+            interaction_id="unlock_padlock",
+            using="rusty_key",
+            detail="Unlocking the padlock",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.flags_set.get("padlock_unlocked") is True
+
+    def test_unlock_without_key_fails(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        action = InteractAction(
+            action_type="interact", target="padlock",
+            interaction_id="unlock_padlock",
+            detail="Trying to unlock",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is False
+
+    def test_interact_target_not_found(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        action = InteractAction(
+            action_type="interact", target="nonexistent",
+            interaction_id="search",
+            detail="Searching",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is False
+
+
+class TestResolveAction:
+    def test_dispatches_correctly(self, state_manager):
+        action = WaitAction(action_type="wait", detail="Waiting")
+        result = resolve_action(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.room_after_id == "axe_head"
+
+    def test_unknown_action_type(self, state_manager):
+        class UnknownAction:
+            action_type = "unknown"
+        result = resolve_action(UnknownAction(), state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False

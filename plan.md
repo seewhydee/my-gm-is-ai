@@ -443,28 +443,31 @@ resolve(player_action: PlayerAction, state_manager: StateManager) -> EngineResul
 
 High-level flow:
 1. If `ooc_discussion`: no-op, return minimal EngineResult with `success: true`
-2. **Validate** action against current state (delegates to resolver)
+2. **Validate** action against current state (delegates to resolver). The resolver returns a result object containing: success/error, proposed `HardStateChanges`, `triggered_narration` blocks, any triggered encounter, and warnings.
 3. If invalid: return `success: false` EngineResult with error message
-4. **Resolve mechanics**: apply exit traversal effects, interaction results, encounter outcomes
-5. **Apply hard-state changes**: move player, update inventory, set flags, update entity/room states
-6. **Validate soft-state patches**: check each `proposed_soft_state_patches` against soft-state schema
-7. **Handle dialogue state**: enter/continue/exit dialogue mode based on action type
-8. **Check game-over conditions**: evaluate `mechanics` game-over entries
-9. **Increment turn counter** (except for ooc_discussion)
-10. **Build turn_history entry**
-11. **Produce EngineResult** with all fields populated
+4. **Resolve encounters**: if the action triggered an encounter (via exit traversal's `trigger_encounter`, or an `attack` interaction on an NPC with `behavior`), evaluate encounter rules *before* committing hard-state changes. A `death` outcome sets `game_over` immediately; a `flee` outcome applies `on_flee` effects.
+5. **Check game-over**: if the encounter produced `game_over`, skip to step 9 (do not apply further state changes).
+6. **Apply hard-state changes**: move player, update inventory, set flags, update entity/room states.
+7. **Fire on-enter events**: if the player moved to a new room, evaluate the target room's `on_enter` events (condition check, set_flag, set_entity_state, trigger_dialogue). Collect triggered narrations.
+8. **Validate soft-state patches**: check each `proposed_soft_state_patches` against soft-state schema (entity/room exists, soft item is present, non-contradictory with hard state).
+9. **Handle dialogue state**: enter/continue/exit dialogue mode based on action type. If the player moved rooms away from the active NPC, archive and exit dialogue. If in dialogue and a non-`talk` action was taken, increment stall counter; auto-exit at 3.
+10. **Increment turn counter** (except for ooc_discussion)
+11. **Build turn_history entry**
+12. **Produce EngineResult** with all fields populated (room_after, hard_state_changes, soft patches, rolls, encounter outcome, triggered_narration, on_enter_events, game_over, dialogue_exited, will_reveal_readiness, npc_attitude_limits, chain_info, warnings)
+
+Note: the ordering above is deliberate — encounters fire *before* hard-state changes are committed, so that a death outcome does not produce contradictory state (e.g., the player arriving in a room and dying there simultaneously). On-enter events fire *after* the player has moved, since they describe what happens upon arrival.
 
 #### `engine/resolver.py` — Per-action-type validation
 
-One function per action type, each returning `(valid: bool, error: str | None, changes: HardStateChanges)`:
+One function per action type, each returning a result object containing `(success: bool, error: str | None, hard_changes: HardStateChanges, triggered_narration: list[str], encounter_trigger: str | None, warnings: list[str])`. The resolver validates and *proposes* changes but does not mutate state — the orchestrator applies them after encounter resolution.
 
 | Function | Validates |
 |----------|-----------|
 | `resolve_move(action, state, corpus)` | Exit exists, conditions met, not one-way blocked. Returns target room + traversal effects |
 | `resolve_examine(action, state, corpus)` | Target entity/room/soft_item exists and is visible. If `rigorous`, evaluates any rigorous-search-gated interactions. If `using`, checks item in inventory |
-| `resolve_interact(action, state, corpus)` | Target exists, interaction_id matches defined interaction, parameter_signature satisfied, conditions met. Resolves check if present |
+| `resolve_interact(action, state, corpus)` | Target exists, interaction_id matches defined interaction, parameter_signature satisfied, conditions met. Resolves check if present. Tracks non-repeatable checks (corpus `check.repeatable: false`) and rejects retries |
 | `resolve_talk(action, state, corpus)` | NPC exists in room, alive. Handles dialogue state transitions |
-| `resolve_transfer(action, state, corpus)` | Target entity/room exists, items exist in source inventories |
+| `resolve_transfer(action, state, corpus)` | Target entity/room exists, items exist in source inventories. Hard items must be in the player's inventory; soft items must be in the player's soft inventory or available from the target (an entity's available pool = item entities in the same room + the entity's `soft_items`; a room's available pool = item entities present + the room's `soft_items`) |
 | `resolve_wait(action, state, corpus)` | Always valid. Advances turn only |
 
 #### `engine/encounters.py` — Encounter resolution
