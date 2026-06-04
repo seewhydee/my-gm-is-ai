@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Optional
 
 from mgmai.context.assembler import assemble
@@ -32,18 +33,21 @@ class GameLoop:
         *,
         debug: bool = False,
         display: Optional[Display] = None,
+        config_dir: Optional[str | Path] = None,
     ):
         self._state = state_manager
         self._llm = llm_client
         self._display = display if display is not None else Display()
         self._running = False
         self._chat_log: list[dict[str, str]] = []
+        self._config_dir = Path(config_dir) if config_dir else None
         self._commands = Commands(
             state_loader=state_manager,
             render=self._display.print,
             exit_fn=self._do_exit,
             debug=debug,
             on_load=self._on_game_loaded,
+            config_dir=config_dir,
         )
 
     @property
@@ -231,10 +235,27 @@ class GameLoop:
 
     def _auto_save(self, narration: str) -> None:
         try:
-            self._state.save_state(".", "autosave.json", latest_narration=narration)
+            save_path = self._get_autosave_path()
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            self._state.save_state(
+                save_path.parent, save_path.name, latest_narration=narration
+            )
         except Exception:
             # Auto-save failure is non-fatal; don't interrupt the player
             pass
+
+    def _get_autosave_path(self) -> Path:
+        from mgmai.config import get_autosave_path
+
+        adv_name = self._adventure_name()
+        if self._config_dir:
+            return get_autosave_path(adv_name, self._config_dir)
+        return Path("autosave.json")
+
+    def _adventure_name(self) -> str:
+        if self._state._adventure_dir:
+            return self._state._adventure_dir.name
+        return "game"
 
     # ------------------------------------------------------------------
     # LLM helpers

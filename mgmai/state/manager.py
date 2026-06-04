@@ -29,6 +29,7 @@ class StateManager:
         self.hard_state: HardGameState | None = None
         self.soft_state: SoftGameState | None = None
         self._adventure_dir: Path | None = None
+        self._config_dir: Path | None = None
 
         if adventure_dir is not None:
             self.load_all(adventure_dir)
