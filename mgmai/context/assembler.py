@@ -1,0 +1,276 @@
+from __future__ import annotations
+
+from mgmai.models.briefing import (
+    BriefingEntity,
+    BriefingExit,
+    BriefingHistoryEntry,
+    BriefingInteraction,
+    BriefingRoom,
+    DialogueActiveNpc,
+    DialogueContext,
+    GMBriefing,
+    PlayerStateBriefing,
+)
+from mgmai.models.corpus import ModuleCorpus
+from mgmai.models.hard_state import HardGameState
+from mgmai.models.soft_state import SoftGameState
+from mgmai.engine.conditions import evaluate
+
+
+def assemble(
+    corpus: ModuleCorpus,
+    hard: HardGameState,
+    soft: SoftGameState,
+    player_input: str,
+) -> GMBriefing:
+    """Build a GMBriefing from the current corpus + game state.
+
+    Pure data assembly — no LLM calls, no state mutation.
+    """
+    room_id = hard.player.location
+    room = corpus.rooms.get(room_id)
+    if room is None:
+        raise ValueError(f"Player location '{room_id}' not found in corpus")
+
+    atmosphere = corpus.adventure.atmosphere
+
+    return GMBriefing(
+        adventure_title=corpus.adventure.title,
+        setting=atmosphere.setting if atmosphere else "",
+        tone=atmosphere.tone if atmosphere else "",
+        turn=hard.turn_count,
+        current_room=_build_room(room_id, room, hard, soft, corpus),
+        player_state=_build_player_state(hard, soft),
+        npc_attitudes=dict(soft.npc_attitudes),
+        npc_revelations=_build_npc_revelations(soft, corpus),
+        recent_history=_build_recent_history(soft),
+        dialogue_context=_build_dialogue_context(soft, hard, corpus),
+        player_input=player_input,
+    )
+
+
+def _build_room(
+    room_id: str,
+    room: object,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> BriefingRoom:
+    from mgmai.models.corpus import Room as CorpusRoom
+
+    assert isinstance(room, CorpusRoom)
+
+    entities_visible: list[BriefingEntity] = []
+    for eid in room.entities_present:
+        entity = corpus.entities.get(eid)
+        if entity is None:
+            continue
+
+        entity_state = hard.entity_states.get(eid, {})
+        if entity_state.get("alive") is False:
+            continue
+
+        notes = soft.entity_notes.get(eid, [])[-3:]
+
+        entities_visible.append(
+            BriefingEntity(
+                id=eid,
+                name=getattr(entity, "name", eid),
+                type=entity.type,
+                description=entity.description,
+                state=dict(entity_state),
+                entity_notes=list(notes),
+                soft_items=list(entity.soft_items or []),
+            )
+        )
+
+    exits_available: list[BriefingExit] = []
+    for ex in room.exits:
+        if ex.hidden:
+            continue
+        if ex.conditions:
+            all_met = True
+            for cond in ex.conditions:
+                if not evaluate(cond, hard, soft, corpus):
+                    all_met = False
+                    break
+            if not all_met:
+                continue
+        exits_available.append(
+            BriefingExit(
+                id=ex.id,
+                direction=ex.direction,
+                target_room=ex.target_room,
+                hidden=ex.hidden,
+            )
+        )
+
+    interactions_available: list[BriefingInteraction] = []
+    for inter in room.interactions:
+        if inter.condition:
+            if not evaluate(inter.condition, hard, soft, corpus):
+                continue
+        interactions_available.append(
+            BriefingInteraction(
+                id=inter.id,
+                label=inter.label,
+                description=inter.description,
+            )
+        )
+
+    for eid in room.entities_present:
+        entity = corpus.entities.get(eid)
+        if entity is None:
+            continue
+        entity_state = hard.entity_states.get(eid, {})
+        if entity_state.get("alive") is False:
+            continue
+        for inter in entity.interactions:
+            if inter.condition:
+                if not evaluate(inter.condition, hard, soft, corpus):
+                    continue
+            interactions_available.append(
+                BriefingInteraction(
+                    id=inter.id,
+                    label=inter.label,
+                    description=inter.description,
+                )
+            )
+
+    room_notes = soft.room_notes.get(room_id, [])[-5:]
+
+    return BriefingRoom(
+        id=room_id,
+        name=room.name,
+        description=room.description,
+        soft_items=list(room.soft_items or []),
+        entities_visible=entities_visible,
+        exits_available=exits_available,
+        interactions_available=interactions_available,
+        room_notes=list(room_notes),
+    )
+
+
+def _build_player_state(
+    hard: HardGameState,
+    soft: SoftGameState,
+) -> PlayerStateBriefing:
+    active_flags = {k: v for k, v in hard.flags.items() if v}
+    player_entity_notes = soft.entity_notes.get("player", [])
+
+    return PlayerStateBriefing(
+        location=hard.player.location,
+        hard_inventory=list(hard.player.inventory),
+        soft_inventory=list(soft.soft_inventory),
+        active_flags=active_flags,
+        entity_notes=list(player_entity_notes),
+    )
+
+
+def _pair_conversation_log(
+    log: list[object],
+) -> list[dict[str, object]]:
+    """Pair player+NPC entries into exchanges, cap at 5 most recent.
+
+    Adjacent player→NPC entries become one exchange dict.
+    Unpaired entries get their own dict.
+    Returns the last 5 exchanges.
+    """
+    from mgmai.models.soft_state import ConversationLogEntry
+
+    exchanges: list[dict[str, object]] = []
+    i = 0
+    while i < len(log):
+        entry = log[i]
+        assert isinstance(entry, ConversationLogEntry)
+        if entry.speaker == "player":
+            exchange: dict[str, object] = {"player": entry.text}
+            if i + 1 < len(log):
+                next_entry = log[i + 1]
+                assert isinstance(next_entry, ConversationLogEntry)
+                if next_entry.speaker == "npc":
+                    exchange["npc"] = next_entry.text
+                    i += 2
+                else:
+                    i += 1
+            else:
+                i += 1
+            exchanges.append(exchange)
+        else:
+            exchanges.append({"npc": entry.text})
+            i += 1
+
+    return exchanges[-5:]
+
+
+def _build_npc_revelations(
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> dict[str, list[dict[str, str]]]:
+    result: dict[str, list[dict[str, str]]] = {}
+    for npc_id, revelations in soft.npc_revelations.items():
+        entries: list[dict[str, str]] = []
+        for rev in revelations:
+            entry: dict[str, str] = {"topic_id": rev.topic_id, "description": rev.description}
+            entries.append(entry)
+        if entries:
+            result[npc_id] = entries
+    return result
+
+
+def _build_recent_history(
+    soft: SoftGameState,
+) -> list[BriefingHistoryEntry]:
+    non_ooc = [e for e in soft.turn_history if e.ruled_action.get("action_type") != "ooc_discussion"]
+    last_five = non_ooc[-5:]
+    return [
+        BriefingHistoryEntry(
+            turn=entry.turn,
+            summary=entry.engine_result_summary,
+            location_after=entry.location_after,
+        )
+        for entry in last_five
+    ]
+
+
+def _build_dialogue_context(
+    soft: SoftGameState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> DialogueContext | None:
+    ds = soft.dialogue_state
+    if ds.active_npc is None:
+        return None
+
+    npc_id = ds.active_npc
+    npc = corpus.entities.get(npc_id)
+    if npc is None:
+        return None
+
+    guidelines = npc.dialogue_guidelines
+    if guidelines is None:
+        return None
+
+    entity_state = hard.entity_states.get(npc_id, {})
+    if entity_state.get("alive") is False:
+        return None
+
+    attitude = soft.npc_attitudes.get(npc_id, guidelines.attitude_limits.initial)
+
+    recent_exchanges = _pair_conversation_log(ds.conversation_log)
+
+    revealed_topics: list[str] = []
+    for rev in soft.npc_revelations.get(npc_id, []):
+        revealed_topics.append(rev.topic_id)
+
+    return DialogueContext(
+        active_npc=DialogueActiveNpc(
+            id=npc_id,
+            name=getattr(npc, "name", npc_id),
+            attitude=attitude,
+            dialogue_guidelines=guidelines,
+        ),
+        recent_exchanges=recent_exchanges,
+        topics_discussed=list(ds.topics_discussed),
+        revealed_topics=revealed_topics,
+    )

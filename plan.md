@@ -521,19 +521,7 @@ No LLM calls here — just data assembly.
 
 #### `llm/client.py`
 
-Thin wrapper around the `openai` package:
-
-```python
-class LLMClient:
-    def __init__(self, base_url: str, api_key: str, model: str):
-        self.client = openai.OpenAI(base_url=base_url, api_key=api_key)
-        self.model = model
-
-    def complete(self, system_prompt: str, user_prompt: str, 
-                 response_format: dict | None = None) -> str:
-        """Single-turn completion. Returns raw text or JSON string."""
-```
-
+Thin wrapper around the `openai` package.
 Supports `response_format={"type": "json_object"}` for structured outputs.
 
 #### `templates/ruling.j2` — LLM Call 1 system prompt
