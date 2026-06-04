@@ -108,6 +108,26 @@ class TestLoadAndValidation:
         with pytest.raises(ValueError, match="non-NPC entity"):
             sm._validate_cross_references()
 
+    def test_npc_attitude_below_min(self) -> None:
+        sm = StateManager()
+        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        # korbar's attitude_limits.min is -5 in the sample corpus
+        sm.soft_state.npc_attitudes["korbar"] = -10
+        with pytest.raises(ValueError, match="below minimum"):
+            sm._validate_cross_references()
+
+    def test_npc_attitude_above_max(self) -> None:
+        sm = StateManager()
+        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        # korbar's attitude_limits.max is 10 in the sample corpus
+        sm.soft_state.npc_attitudes["korbar"] = 15
+        with pytest.raises(ValueError, match="above maximum"):
+            sm._validate_cross_references()
+
     def test_invalid_npc_revelations_entity(self) -> None:
         sm = StateManager()
         sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")

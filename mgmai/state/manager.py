@@ -155,6 +155,20 @@ class StateManager:
                 errors.append(
                     f"soft_state.npc_attitudes references non-NPC entity: {npc_id}"
                 )
+            else:
+                value = self.soft_state.npc_attitudes[npc_id]
+                limits = self.corpus.entities[npc_id].dialogue_guidelines
+                if limits is not None:
+                    if value < limits.attitude_limits.min:
+                        errors.append(
+                            f"soft_state.npc_attitudes['{npc_id}'] = {value} is below "
+                            f"minimum {limits.attitude_limits.min}"
+                        )
+                    if value > limits.attitude_limits.max:
+                        errors.append(
+                            f"soft_state.npc_attitudes['{npc_id}'] = {value} is above "
+                            f"maximum {limits.attitude_limits.max}"
+                        )
 
         # Soft state: npc_revelations keys must be NPC entities
         for npc_id in self.soft_state.npc_revelations:

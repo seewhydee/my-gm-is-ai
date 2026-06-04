@@ -70,23 +70,6 @@ have been resolved in code and removed from this document.
 CONCRETE MODEL/SCHEMA MISMATCHES
 ======================================================================
 
-6. WEAK RUNTIME ATTITUDE BOUNDS ENFORCEMENT/DEFINITION
-   The npc_attitudes dict in SoftGameState (soft_state.py:63) accepts
-   any int.  The schema specifies that attitudes must stay within
-   corpus-defined [min, max] bounds.  This validation will happen in
-   the engine/post-validate code, but the model itself doesn't guard
-   it.  Moreover, if the schema leaves it to the corpus to define
-   attitude scaling, the scenario generation instructions should
-   tell the generation model to include attitude definitions.
-
-   [RESOLVED: DEFERRED — The Pydantic model Dict[str, int] cannot
-    validate individual values against per-NPC corpus attitude_limits
-    without access to the corpus at model-construction time (circular
-    dep).  Attitude bounds enforcement is explicitly planned as
-    engine/post-validate work in Phase 4 (plan.md §"engine/post_validate
-    step 4.5").  The scenario generation concern is out of scope for
-    Phase 1 models — it belongs in schema/scenario-generation.md.]
-
 11. THE STALE ROOM DESCRIPTIONS PROBLEM
     The axe_handle_lower description mentions the spider; after it
     flees, the description is factually incorrect.  The briefing
@@ -102,31 +85,58 @@ CONCRETE MODEL/SCHEMA MISMATCHES
      assembler should present them prominently alongside descriptions.
      No Phase 1 model change needed.]
 
-14. stuck_fly AND spider HAVE npc_attitudes ENTRIES BUT LIMITED DIALOGUE
-    Both have entries in soft-state.json (stuck_fly: 0, spider: -5).
-    The spider has attitude_limits with min: -5, max: -5,
-    step_per_turn: 0 — it can never change attitude.  The stuck_fly
-    has min: 0, max: 1, step_per_turn: 1.  These are fine but the
-    engine should handle the edge case of step_per_turn: 0 (no attitude
-    changes ever allowed).
-
-    [RESOLVED: DEFERRED — This is an engine/sample data quality note.
-     The model already supports step_per_turn: 0 via int type.  The
-     engine's post-validate logic (Phase 4) should treat
-     step_per_turn: 0 as "no attitude changes allowed" when validating
-     proposed AttitudeChange entries.  No model change needed.]
-
 Schema / document inconsistencies discovered
 -------------------------------------------------
 These are design-document issues that will impede engine implementation if not
 fixed:
 
-  c) `Result.reveals` field
-     The `Result` model includes a `reveals` string field, but the schema does
-     not clearly specify where this text is surfaced (GMBriefing? EngineResult?
-     silently ignored?). The engine spec does not mention it. Clarification
-     needed.
-     [DEFERRED] This is a schema/documentation question. `reveals` is defined
-     in the `Result` object (corpus.md) as "hint text for the player's future
-     reference." Its surfacing mechanism belongs in the Context Assembler
-     (Phase 5) or engine (Phase 4) spec, which is not yet written.
+### `Result.reveals` field
+  The `Result` model includes a `reveals` string field, but the schema does
+  not clearly specify where this text is surfaced (GMBriefing? EngineResult?
+  silently ignored?). The engine spec does not mention it. Clarification
+  needed.
+  This is a schema/documentation question. `reveals` is defined
+  in the `Result` object (corpus.md) as "hint text for the player's future
+  reference." Its surfacing mechanism belongs in the Context Assembler
+  (Phase 5) or engine (Phase 4) spec, which is not yet written.
+
+
+### Encounter resolution happens *after* hard-state changes are committed
+**Severity:** Medium  
+**File:** `mgmai/engine/engine.py` (`resolve`)  
+**Detail:** Per `phase-4-plan.md` §Step 4, encounters must fire *before* hard-state changes so that a death outcome does not leave the player in a contradictory state (e.g. moved to a new room and died simultaneously).  Current ordering: `apply_hard_changes()` → `resolve_encounter()`.  If the encounter produces `game_over`, the player location has already been updated.  
+**Fix:** Reorder to evaluate encounters against the *proposed* changes before committing them; only commit hard changes if the encounter does not produce `game_over` (or commit them conditionally).
+
+This requires non-trivial refactoring of the engine orchestrator (the encounter logic depends on current state, including flags; the ordering and conditional-commit semantics need careful design). Deferred for later resolution.
+
+### `resolve_examine` completely ignores the `rigorous` flag
+**Severity:** Low  
+**File:** `mgmai/engine/resolver.py` (`resolve_examine`)  
+**Detail:** The `rigorous` field on `ExamineAction` is never read.  The schema requires that a rigorous examination evaluate interactions that are gated behind `rigorous` searches.  
+**Fix:** If `action.rigorous` is `True`, evaluate the target entity/room for any interactions whose availability depends on `rigorous` and include the results in `triggered_narration`.
+
+However, the `rigorous` gating mechanism needs schema-level definition (the `ConditionExpression` model currently has no way to express "this interaction requires rigorous examination"). Adding a `rigorous_only` flag to `Interaction` or a `rigorous` domain in condition strings would be needed before the resolver can implement it. Deferred for later resolution.
+
+### `_build_room_after` omits hidden exits unconditionally
+**Severity:** Low  
+**File:** `mgmai/engine/engine.py` (`_build_room_after`)  
+**Detail:** Hidden exits are skipped with `if ex.hidden: continue`, even if their conditions are met.  `resolve_move` (per the changed behaviour documented in the report) now allows traversing hidden exits when conditions are met.  This creates an inconsistency: a player can traverse an exit that does not appear in `room_after.exits_available`.  The Context Assembler (Phase 5) will need to resolve this, but the engine's own `room_after` should probably be consistent with what the player can actually do.  
+**Fix:** For hidden exits, evaluate conditions and include them in `exits_available` if conditions are met.
+
+However, the plan (`phase-4-plan.md` §Step 4 "Building room_after") explicitly says hidden exits should be omitted from `exits_available`. The Context Assembler (Phase 5) uses the same approach. The inconsistency is between the resolver (which allows traversing hidden exits) and the briefing (which hides them). This is a cross-phase design question that should be resolved when the Context Assembler requirements are finalized. Deferred.
+
+### Items taken from rooms remain visible in `room_after`
+**Severity:** Medium  
+**Files:** `mgmai/engine/engine.py` (`_build_room_after`)  
+**Detail:** Because `entities_present` lives in the read-only corpus, taking an item (e.g. `rusty_key`) adds it to hard inventory but never removes it from the room's entity list.  `_build_room_after` filters by `alive` but not by inventory presence, so taken items still appear in `room_after.entities_visible`.  This will confuse LLM Call 2 unless the Context Assembler compensates.  
+**Fix:** The engine should probably filter out item entities that are in the player's hard inventory when building `room_after`.  (Or the Context Assembler does it in Phase 5.)
+
+The fix belongs in the Context Assembler (Phase 5), not the engine, since entity presence in rooms is a read-only corpus property that shouldn't be modified by the engine. The engine could add taken-item hints to the EngineResult, but the Context Assembler is the right layer to filter entity visibility based on current inventory state. Deferred.
+
+### `Result.reveals` is surfaced as immediate narration rather than a hint
+**Severity:** Low  
+**File:** `mgmai/engine/resolver.py` (`_apply_result`)  
+**Detail:** `result.reveals` is appended to `triggered_narration`.  The schema defines `reveals` as *"hint text for the player's future reference"*.  By treating it as narration, LLM Call 2 will narrate it immediately rather than storing it as learned information.  
+**Fix:** Add a dedicated `revealed_hints` field to `EngineResult` (or `ResolutionResult`) and surface it separately so the Context Assembler can inject it into `npc_revelations` or a similar knowledge store.
+
+The `reveals` field should be surfaced as structured hint data, not raw narration. Adding a `revealed_hints` field to `EngineResult` requires model changes and Context Assembler consultation (Phase 5). Deferred for later resolution.

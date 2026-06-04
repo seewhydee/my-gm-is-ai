@@ -2,16 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from mgmai.models.actions import (
-    AttitudeLimitsCurrent,
-    AttitudeChange as AttitudeChangeModel,
-    EngineResult,
-    RevelationApplied,
-)
+from mgmai.models.actions import EngineResult, HardStateChanges, RevelationApplied
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.narration import AttitudeChange
 from mgmai.models.soft_state import NpcRevelation, SoftGameState
+from mgmai.state.manager import StateManager
 from mgmai.engine.conditions import evaluate
 
 
@@ -20,13 +16,18 @@ def post_validate_knowledge_tags(
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
-) -> list[RevelationApplied]:
+) -> tuple[list[RevelationApplied], HardStateChanges]:
     """Validate and apply knowledge_tag revelations.
 
-    Returns a list of RevelationApplied entries for accepted tags.
+    Returns a tuple of (applied_revelations, hard_state_changes).
     Topics with unmet conditions or unknown topics are silently skipped.
+
+    Note: hard state is mutated directly so that subsequent topic condition
+    evaluations see earlier side effects, but the same mutations are also
+    collected into the returned HardStateChanges delta.
     """
     applied: list[RevelationApplied] = []
+    hard_changes = HardStateChanges()
 
     for npc_id, topic_ids in knowledge_tags.items():
         npc_entity = corpus.entities.get(npc_id)
@@ -69,6 +70,7 @@ def post_validate_knowledge_tags(
             if topic_entry.set_flag:
                 for flag, val in topic_entry.set_flag.items():
                     hard.flags[flag] = val
+                    hard_changes.flags_set[flag] = val
                     side_effects.append(f"set_flag:{flag}={val}")
 
             if topic_entry.set_entity_state:
@@ -76,6 +78,9 @@ def post_validate_knowledge_tags(
                     if ent_id not in hard.entity_states:
                         hard.entity_states[ent_id] = {}
                     hard.entity_states[ent_id].update(state_changes)
+                    hard_changes.entity_state_changes.setdefault(
+                        ent_id, {}
+                    ).update(state_changes)
                     side_effects.append(f"set_entity_state:{ent_id}={state_changes}")
 
             soft.npc_revelations[npc_id].append(
@@ -95,7 +100,7 @@ def post_validate_knowledge_tags(
 
             existing_topics.add(topic_id)
 
-    return applied
+    return applied, hard_changes
 
 
 def post_validate_attitude_changes(
@@ -196,33 +201,62 @@ def post_validate_attitude_changes(
 def apply_post_validation(
     knowledge_tags: dict[str, list[str]] | None,
     attitude_changes: dict[str, AttitudeChange] | None,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-) -> dict[str, Any]:
-    """Run full post-validation and return updates to merge into EngineResult.
+    state_manager: StateManager,
+    base_result: EngineResult | None = None,
+) -> EngineResult:
+    """Run full post-validation and produce an updated EngineResult.
 
-    Returns a dict with:
-        revelations_applied: list[RevelationApplied]
-        attitude_changes_applied: dict[str, AttitudeChange]
-        attitude_changes_rejected: dict[str, dict]
+    If ``base_result`` is provided, the post-validation fields and any
+    hard-state changes are merged into it.  If not, a minimal EngineResult
+    containing only the post-validation outcomes is returned.
     """
-    result: dict[str, Any] = {
-        "revelations_applied": [],
-        "attitude_changes_applied": {},
-        "attitude_changes_rejected": {},
-    }
+    hard = state_manager.hard_state
+    soft = state_manager.soft_state
+    corpus = state_manager.corpus
+
+    if hard is None or soft is None or corpus is None:
+        if base_result is not None:
+            return base_result
+        return EngineResult(
+            success=True,
+            action_type="post_validation",
+            error="State not loaded",
+        )
+
+    revelations_applied: list[RevelationApplied] = []
+    post_hard_changes = HardStateChanges()
 
     if knowledge_tags:
-        result["revelations_applied"] = post_validate_knowledge_tags(
+        revelations_applied, post_hard_changes = post_validate_knowledge_tags(
             knowledge_tags, hard, soft, corpus
         )
+        if post_hard_changes.has_changes():
+            state_manager.apply_hard_changes(post_hard_changes)
+
+    attitude_changes_applied: dict[str, AttitudeChange] = {}
+    attitude_changes_rejected: dict[str, dict[str, Any]] = {}
 
     if attitude_changes:
-        applied, rejected = post_validate_attitude_changes(
-            attitude_changes, hard, soft, corpus
+        attitude_changes_applied, attitude_changes_rejected = (
+            post_validate_attitude_changes(attitude_changes, hard, soft, corpus)
         )
-        result["attitude_changes_applied"] = applied
-        result["attitude_changes_rejected"] = rejected
 
-    return result
+    if base_result is not None:
+        result = base_result.model_copy(deep=True)
+        if post_hard_changes.has_changes() and result.hard_state_changes is not None:
+            result.hard_state_changes.merge(post_hard_changes)
+        elif post_hard_changes.has_changes():
+            result.hard_state_changes = post_hard_changes
+        result.revelations_applied = revelations_applied
+        result.attitude_changes_applied = attitude_changes_applied
+        result.attitude_changes_rejected = attitude_changes_rejected
+        return result
+
+    return EngineResult(
+        success=True,
+        action_type="post_validation",
+        hard_state_changes=post_hard_changes if post_hard_changes.has_changes() else None,
+        revelations_applied=revelations_applied,
+        attitude_changes_applied=attitude_changes_applied,
+        attitude_changes_rejected=attitude_changes_rejected,
+    )

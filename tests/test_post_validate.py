@@ -10,6 +10,7 @@ from mgmai.engine.post_validate import (
     post_validate_attitude_changes,
     apply_post_validation,
 )
+from mgmai.models.actions import EngineResult, HardStateChanges
 from mgmai.models.narration import AttitudeChange
 
 ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
@@ -38,12 +39,16 @@ class TestPostValidateKnowledgeTags:
         hard.player.location = "bag_floor"
         soft.npc_attitudes["korbar"] = 5
         tags = {"korbar": ["secret_compartment"]}
-        result = post_validate_knowledge_tags(tags, hard, soft, corpus)
-        assert len(result) == 1
-        assert result[0].npc_id == "korbar"
-        assert result[0].topic_id == "secret_compartment"
+        revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
+        assert len(revelations) == 1
+        assert revelations[0].npc_id == "korbar"
+        assert revelations[0].topic_id == "secret_compartment"
+        # Direct mutation is preserved for condition-evaluation ordering
         assert hard.flags.get("handkerchief_noticed") is True
         assert hard.entity_states["korbar"]["told_secret"] is True
+        # Structured delta is also returned
+        assert hard_changes.flags_set.get("handkerchief_noticed") is True
+        assert hard_changes.entity_state_changes["korbar"]["told_secret"] is True
         assert "korbar" in soft.npc_revelations
         assert len(soft.npc_revelations["korbar"]) == 1
         assert soft.npc_revelations["korbar"][0].topic_id == "secret_compartment"
@@ -55,8 +60,9 @@ class TestPostValidateKnowledgeTags:
         hard.player.location = "bag_floor"
         soft.npc_attitudes["korbar"] = 0
         tags = {"korbar": ["padlock_mechanism"]}
-        result = post_validate_knowledge_tags(tags, hard, soft, corpus)
-        assert len(result) == 0
+        revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
+        assert len(revelations) == 0
+        assert not hard_changes.has_changes()
 
     def test_unknown_topic_silently_skipped(self, state_manager):
         hard = state_manager.hard_state
@@ -64,16 +70,18 @@ class TestPostValidateKnowledgeTags:
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
         tags = {"korbar": ["nonexistent_topic"]}
-        result = post_validate_knowledge_tags(tags, hard, soft, corpus)
-        assert len(result) == 0
+        revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
+        assert len(revelations) == 0
+        assert not hard_changes.has_changes()
 
     def test_unknown_npc_skipped(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         tags = {"nonexistent": ["padlock_mechanism"]}
-        result = post_validate_knowledge_tags(tags, hard, soft, corpus)
-        assert len(result) == 0
+        revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
+        assert len(revelations) == 0
+        assert not hard_changes.has_changes()
 
     def test_dead_npc_skipped(self, state_manager):
         hard = state_manager.hard_state
@@ -82,8 +90,9 @@ class TestPostValidateKnowledgeTags:
         hard.player.location = "bag_floor"
         hard.entity_states["korbar"]["alive"] = False
         tags = {"korbar": ["padlock_mechanism"]}
-        result = post_validate_knowledge_tags(tags, hard, soft, corpus)
-        assert len(result) == 0
+        revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
+        assert len(revelations) == 0
+        assert not hard_changes.has_changes()
 
     def test_no_duplicate_revelations(self, state_manager):
         hard = state_manager.hard_state
@@ -93,8 +102,9 @@ class TestPostValidateKnowledgeTags:
         soft.npc_attitudes["korbar"] = 5
         tags = {"korbar": ["secret_compartment"]}
         post_validate_knowledge_tags(tags, hard, soft, corpus)
-        result = post_validate_knowledge_tags(tags, hard, soft, corpus)
-        assert len(result) == 0
+        revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
+        assert len(revelations) == 0
+        assert not hard_changes.has_changes()
         assert len(soft.npc_revelations["korbar"]) == 1
 
 
@@ -204,7 +214,6 @@ class TestApplyPostValidation:
     def test_full_post_validation(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
-        corpus = state_manager.corpus
         hard.player.location = "bag_floor"
         soft.npc_attitudes["korbar"] = 5
 
@@ -213,19 +222,40 @@ class TestApplyPostValidation:
             "korbar": AttitudeChange(old_value=5, new_value=6, reason="Great conversation")
         }
 
+        base = EngineResult(success=True, action_type="talk")
         result = apply_post_validation(
-            knowledge_tags, attitude_changes, hard, soft, corpus
+            knowledge_tags, attitude_changes, state_manager, base_result=base
         )
 
-        assert len(result["revelations_applied"]) == 1
-        assert "korbar" in result["attitude_changes_applied"]
-        assert len(result["attitude_changes_rejected"]) == 0
+        assert isinstance(result, EngineResult)
+        assert len(result.revelations_applied) == 1
+        assert "korbar" in result.attitude_changes_applied
+        assert len(result.attitude_changes_rejected) == 0
+        # Post-validation hard changes merged into base result
+        assert result.hard_state_changes is not None
+        assert result.hard_state_changes.flags_set.get("handkerchief_noticed") is True
+        assert result.hard_state_changes.entity_state_changes["korbar"]["told_secret"] is True
 
     def test_none_inputs_are_noop(self, state_manager):
+        base = EngineResult(success=True, action_type="talk")
+        result = apply_post_validation(None, None, state_manager, base_result=base)
+        assert isinstance(result, EngineResult)
+        assert result.revelations_applied == []
+        assert result.attitude_changes_applied == {}
+        assert result.attitude_changes_rejected == {}
+
+    def test_without_base_result_returns_minimal_engine_result(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
-        corpus = state_manager.corpus
-        result = apply_post_validation(None, None, hard, soft, corpus)
-        assert result["revelations_applied"] == []
-        assert result["attitude_changes_applied"] == {}
-        assert result["attitude_changes_rejected"] == {}
+        hard.player.location = "bag_floor"
+        soft.npc_attitudes["korbar"] = 5
+
+        knowledge_tags = {"korbar": ["secret_compartment"]}
+        result = apply_post_validation(knowledge_tags, None, state_manager)
+
+        assert isinstance(result, EngineResult)
+        assert result.success is True
+        assert result.action_type == "post_validation"
+        assert len(result.revelations_applied) == 1
+        assert result.hard_state_changes is not None
+        assert result.hard_state_changes.flags_set.get("handkerchief_noticed") is True

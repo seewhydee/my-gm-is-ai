@@ -284,7 +284,9 @@ class TestResolveTransfer:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        assert "cork" in result.hard_changes.inventory_removed
+        assert len(result.soft_patches) == 1
+        assert result.soft_patches[0].field == "soft_inventory_remove"
+        assert result.soft_patches[0].new_value == "cork"
 
 
 class TestResolveInteract:

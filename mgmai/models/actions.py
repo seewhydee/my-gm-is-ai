@@ -139,6 +139,32 @@ class HardStateChanges(BaseModel):
     room_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     entity_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
+    def merge(self, other: "HardStateChanges") -> "HardStateChanges":
+        """Merge another HardStateChanges into this one in-place."""
+        if other.player_location is not None:
+            self.player_location = other.player_location
+        self.inventory_added.extend(other.inventory_added)
+        self.inventory_removed.extend(other.inventory_removed)
+        self.flags_set.update(other.flags_set)
+        self.flags_cleared.extend(other.flags_cleared)
+        for room_id, changes in other.room_state_changes.items():
+            self.room_state_changes.setdefault(room_id, {}).update(changes)
+        for entity_id, changes in other.entity_state_changes.items():
+            self.entity_state_changes.setdefault(entity_id, {}).update(changes)
+        return self
+
+    def has_changes(self) -> bool:
+        """Return True if any field contains a change."""
+        return (
+            self.player_location is not None
+            or bool(self.inventory_added)
+            or bool(self.inventory_removed)
+            or bool(self.flags_set)
+            or bool(self.flags_cleared)
+            or bool(self.room_state_changes)
+            or bool(self.entity_state_changes)
+        )
+
 
 class EncounterOutcome(BaseModel):
     encounter_id: str

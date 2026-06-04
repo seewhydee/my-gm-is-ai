@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from mgmai.models.actions import (
     AttitudeLimitsCurrent,
@@ -28,14 +28,13 @@ from mgmai.engine.resolver import resolve_action, ResolutionResult
 from mgmai.engine.encounters import (
     apply_flee_effects,
     resolve_encounter,
-    should_trigger_behavior,
 )
 from mgmai.engine.dialogue import (
     check_room_change_exit,
+    enter_dialogue,
     exit_dialogue,
     increment_stall,
 )
-from mgmai.engine.post_validate import apply_post_validation
 
 MAX_CHAIN_LENGTH = 10
 
@@ -70,6 +69,15 @@ def resolve(
     action_type = player_action.action_type
 
     if action_type == "ooc_discussion":
+        turn_entry = TurnHistoryEntry(
+            turn=hard.turn_count,
+            player_input=player_input_echo or player_action.detail,
+            ruled_action=player_action.model_dump(),
+            engine_result_summary="OOC discussion",
+            flags_changed=[],
+            location_after=hard.player.location,
+        )
+        state_manager.append_turn_history(turn_entry)
         return EngineResult(
             success=True,
             action_type="ooc_discussion",
@@ -92,12 +100,19 @@ def resolve(
     resolution = resolve_action(player_action, hard, soft, corpus)
 
     if not resolution.success:
+        chain_info = None
+        if player_action.follow_up:
+            chain_info = ChainInfo(
+                follow_up=player_action.follow_up,
+                termination_reason="validation failure",
+            )
         return EngineResult(
             success=False,
             action_type=action_type,
             target=getattr(player_action, "target", None),
             error=resolution.error,
             player_input_echo=player_input_echo,
+            chain_info=chain_info,
         )
 
     hard_changes = resolution.hard_changes or HardStateChanges()
@@ -105,6 +120,10 @@ def resolve(
     old_room = hard.player.location
 
     state_manager.apply_hard_changes(hard_changes)
+
+    engine_soft_patches = list(resolution.soft_patches or [])
+    if engine_soft_patches:
+        state_manager.apply_soft_patches(engine_soft_patches)
 
     soft_patches = _validate_soft_patches(
         player_action.proposed_soft_state_patches or [],
@@ -117,9 +136,11 @@ def resolve(
     if applied_patches:
         state_manager.apply_soft_patches(applied_patches)
 
-    encounter_outcome = None
+    combined_applied = engine_soft_patches + applied_patches
+
+    encounter_outcome: dict[str, Any] | None = None
     game_over = None
-    rolls: list[dict[str, Any]] = []
+    rolls: list[dict[str, Any]] = list(resolution.rolls or [])
 
     if resolution.encounter_trigger:
         npc_id = resolution.encounter_trigger
@@ -151,6 +172,8 @@ def resolve(
                 outcome=enc_result["outcome"],
                 narrative_brief=enc_result.get("narrative"),
             )
+            enc_rolls = enc_result.get("rolls") or []
+            rolls.extend(enc_rolls)
 
     if resolution.encounter_trigger and game_over is None:
         interact_target = getattr(player_action, "target", None)
@@ -195,14 +218,6 @@ def resolve(
             if stall_exited:
                 resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
-    if hard_changes.player_location and hard_changes.player_location != old_room:
-        old_room_ent = corpus.rooms.get(old_room)
-        new_room_ent = corpus.rooms.get(hard_changes.player_location)
-        active_npc = soft.dialogue_state.active_npc
-        if active_npc and old_room_ent and new_room_ent:
-            if active_npc not in new_room_ent.entities_present:
-                resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
-
     hard.turn_count += 1
 
     turn_entry = TurnHistoryEntry(
@@ -238,10 +253,10 @@ def resolve(
         player_input_echo=player_input_echo,
         room_after=room_after,
         hard_state_changes=hard_changes,
-        soft_state_patches_applied=applied_patches,
+        soft_state_patches_applied=combined_applied,
         soft_state_patches_rejected=rejected_patches,
         rolls=rolls,
-        encounter_outcome=encounter_outcome,
+        encounter_outcome=encounter_outcome if isinstance(encounter_outcome, EncounterOutcome) else None,
         triggered_narration=resolution.triggered_narration,
         on_enter_events=on_enter_results,
         game_over=game_over,
@@ -268,9 +283,28 @@ def _validate_soft_patches(
         if patch.field == "room_note":
             if not patch.target_id or patch.target_id not in corpus.rooms:
                 reason = f"Invalid room_id: {patch.target_id}"
+            elif not isinstance(patch.new_value, str) or not patch.new_value.strip():
+                reason = "room_note new_value must be a non-empty string"
+            else:
+                room = corpus.rooms.get(patch.new_value if isinstance(patch.new_value, str) else "")
+                if room is None:
+                    pass
+                contradiction = _check_note_contradiction(patch.new_value, patch.target_id, hard, corpus)
+                if contradiction:
+                    reason = contradiction
         elif patch.field == "entity_note":
             if not patch.entity_id or patch.entity_id not in corpus.entities:
                 reason = f"Invalid entity_id: {patch.entity_id}"
+            elif not isinstance(patch.new_value, str) or not patch.new_value.strip():
+                reason = "entity_note new_value must be a non-empty string"
+            else:
+                entity_state = hard.entity_states.get(patch.entity_id, {})
+                if entity_state.get("alive") is False:
+                    reason = f"Entity '{patch.entity_id}' is dead; notes are not allowed"
+                else:
+                    contradiction = _check_note_contradiction(patch.new_value, None, hard, corpus)
+                    if contradiction:
+                        reason = contradiction
         elif patch.field == "soft_inventory_add":
             room_id = hard.player.location
             room = corpus.rooms.get(room_id)
@@ -302,6 +336,34 @@ def _validate_soft_patches(
             applied.append(patch)
 
     return applied, rejected
+
+
+def _check_note_contradiction(
+    text: str,
+    room_id: str | None,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> str | None:
+    """Basic contradiction check: note text must not claim an entity is
+    dead/alive in contradiction with hard state."""
+    text_lower = text.lower()
+    for ent_id, state in hard.entity_states.items():
+        if room_id is not None:
+            room = corpus.rooms.get(room_id)
+            if room is None or ent_id not in room.entities_present:
+                continue
+        ent = corpus.entities.get(ent_id)
+        if ent is None:
+            continue
+        name = getattr(ent, "name", ent_id) or ent_id
+        name_lower = name.lower()
+        if name_lower not in text_lower.split():
+            continue
+        if state.get("alive") is False and "dead" not in text_lower:
+            pass
+        elif state.get("alive") is True and "dead" in text_lower and name_lower in text_lower:
+            return f"Note contradicts hard state: '{name}' is alive"
+    return None
 
 
 def _build_room_after(
@@ -365,6 +427,9 @@ def _build_room_after(
 
     interactions_available: list[BriefingInteraction] = []
     for inter in room.interactions:
+        if inter.condition:
+            if not evaluate(inter.condition, hard, soft, corpus):
+                continue
         interactions_available.append(
             BriefingInteraction(
                 id=inter.id,
@@ -474,7 +539,14 @@ def _fire_on_enter_events(
     if room is None:
         return results
 
+    room_state = hard.room_states.setdefault(room_id, {})
+    fired_events = room_state.setdefault("_fired_on_enter", [])
+
     for event in room.on_enter:
+        if event.condition is None:
+            if event.id in fired_events:
+                continue
+
         if event.condition and not evaluate(event.condition, hard, soft, corpus):
             continue
 
@@ -491,12 +563,21 @@ def _fire_on_enter_events(
         if event.narrative:
             triggered_narration.append(event.narrative)
 
+        if event.trigger_dialogue:
+            npc = corpus.entities.get(event.trigger_dialogue)
+            if npc and npc.type == "npc":
+                from mgmai.engine.dialogue import enter_dialogue as _enter_dlg
+                _enter_dlg(soft, event.trigger_dialogue, hard.turn_count, None, "")
+
         results.append(
             OnEnterEventResult(
                 event_id=event.id,
                 narrative=event.narrative,
             )
         )
+
+        if event.condition is None:
+            fired_events.append(event.id)
 
     return results
 

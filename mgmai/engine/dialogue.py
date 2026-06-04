@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import (
@@ -128,7 +126,7 @@ def _archive_and_exit(
     summary = _build_conversation_summary(soft)
     note = (
         f"[Turn {soft.dialogue_state.entered_turn}-"
-        f"{soft.dialogue_state.stall_counter + soft.dialogue_state.entered_turn}] "
+        f"{hard.turn_count}] "
         f"Conversation summary: {summary}"
     )
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from mgmai.models.actions import (
+    DialogueExitedResult,
     ExamineAction,
     HardStateChanges,
     InteractAction,
@@ -40,7 +41,9 @@ class ResolutionResult:
     on_enter_events: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     room_after_id: str | None = None
-    dialogue_exited: dict | None = None
+    dialogue_exited: DialogueExitedResult | dict | None = None
+    soft_patches: list[SoftStatePatch] = field(default_factory=list)
+    rolls: list[dict[str, Any]] = field(default_factory=list)
 
 
 def resolve_wait(
@@ -195,10 +198,24 @@ def resolve_move(
                 encounter_trigger = trav.trigger_encounter
 
     room_states = hard.room_states.get(exit_data.target_room, {})
-    changes.room_state_changes[exit_data.target_room] = {
-        **room_states,
-        "visited": True,
-    }
+    one_way_from = room_states.get("_one_way_from", {})
+    if one_way_from.get(room_id):
+        return ResolutionResult(
+            success=False,
+            error=f"Reverse traversal of one-way exit from '{exit_data.target_room}' to '{room_id}' is blocked",
+        )
+
+    if exit_data.one_way:
+        changes.room_state_changes[exit_data.target_room] = {
+            **room_states,
+            "visited": True,
+            "_one_way_from": {**one_way_from, room_id: True},
+        }
+    else:
+        changes.room_state_changes[exit_data.target_room] = {
+            **room_states,
+            "visited": True,
+        }
 
     return ResolutionResult(
         success=True,
@@ -290,12 +307,19 @@ def resolve_transfer(
     taken_items = action.taken_items or []
 
     changes = HardStateChanges()
+    soft_patches: list[SoftStatePatch] = []
 
     for item in given_items:
         if item in hard.player.inventory:
             changes.inventory_removed.append(item)
         elif item in soft.soft_inventory:
-            changes.inventory_removed.append(item)
+            soft_patches.append(
+                SoftStatePatch(
+                    field="soft_inventory_remove",
+                    new_value=item,
+                    reason=f"Transfer: given to {target_id}",
+                )
+            )
         else:
             return ResolutionResult(
                 success=False,
@@ -330,6 +354,7 @@ def resolve_transfer(
     return ResolutionResult(
         success=True,
         hard_changes=changes,
+        soft_patches=soft_patches,
         room_after_id=room_id,
     )
 
@@ -357,11 +382,12 @@ def resolve_interact(
     target_entity = _find_entity_in_room(target_id, room_id, room, corpus)
 
     if target_entity is None:
-        if interaction_id not in ("take",):
-            return ResolutionResult(
-                success=False,
-                error=f"Target '{target_id}' not found in room '{room_id}'",
-            )
+        if interaction_id == "take":
+            return _handle_soft_take(target_id, room_id, room, soft, corpus)
+        return ResolutionResult(
+            success=False,
+            error=f"Target '{target_id}' not found in room '{room_id}'",
+        )
 
     matches: list[tuple[Interaction, str]] = []
 
@@ -374,6 +400,12 @@ def resolve_interact(
         if interaction_id == "attack":
             npc_entity = corpus.entities.get(target_id)
             if npc_entity and npc_entity.type == "npc" and npc_entity.behavior:
+                entity_state = hard.entity_states.get(target_id, {})
+                if entity_state.get("alive") is False:
+                    return ResolutionResult(
+                        success=False,
+                        error=f"NPC '{target_id}' is dead",
+                    )
                 encounter_trigger = target_id
                 return ResolutionResult(
                     success=True,
@@ -452,6 +484,14 @@ def _resolve_interaction_check(
     if check is None:
         return ResolutionResult(success=False, error="Check defined but missing")
 
+    if not check.repeatable:
+        attempted = soft.checks_attempted.get(inter.id, [])
+        if room_id in attempted:
+            return ResolutionResult(
+                success=False,
+                error=f"Interaction '{inter.id}' has already been attempted and is not repeatable",
+            )
+
     roll = random.random()
     success_flag = roll < check.threshold
 
@@ -460,6 +500,19 @@ def _resolve_interaction_check(
 
     changes = HardStateChanges()
     narrative: list[str] = []
+    rolls: list[dict[str, Any]] = []
+
+    if not check.repeatable:
+        if inter.id not in soft.checks_attempted:
+            soft.checks_attempted[inter.id] = []
+        soft.checks_attempted[inter.id].append(room_id)
+
+    rolls.append({
+        "check_id": inter.id,
+        "threshold": check.threshold,
+        "result": roll,
+        "success": success_flag,
+    })
 
     if result:
         _apply_result(result, changes, narrative)
@@ -469,6 +522,7 @@ def _resolve_interaction_check(
         hard_changes=changes,
         triggered_narration=narrative,
         room_after_id=room_id,
+        rolls=rolls,
     )
 
 
@@ -528,6 +582,37 @@ def _handle_take(
     return ResolutionResult(
         success=True,
         hard_changes=changes,
+        triggered_narration=[f"You take the {target_id}."],
+        room_after_id=room_id,
+    )
+
+
+def _handle_soft_take(
+    target_id: str,
+    room_id: str,
+    room: Any,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> ResolutionResult:
+    all_soft = set(room.soft_items or [])
+    for eid in room.entities_present:
+        ent = corpus.entities.get(eid)
+        if ent and ent.soft_items:
+            all_soft.update(ent.soft_items)
+    if target_id not in all_soft:
+        return ResolutionResult(
+            success=False,
+            error=f"Soft item '{target_id}' not available in room '{room_id}'",
+        )
+    patch = SoftStatePatch(
+        field="soft_inventory_add",
+        new_value=target_id,
+        reason=f"Took soft item '{target_id}'",
+    )
+    return ResolutionResult(
+        success=True,
+        hard_changes=HardStateChanges(),
+        soft_patches=[patch],
         triggered_narration=[f"You take the {target_id}."],
         room_after_id=room_id,
     )

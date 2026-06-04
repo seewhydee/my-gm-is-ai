@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import random
-from typing import Optional
 
 from mgmai.models.corpus import (
-    Behavior,
     EncounterRule,
     ModuleCorpus,
 )
@@ -39,6 +37,7 @@ def resolve_encounter(
         "set_flags": {},
         "game_over": None,
         "flee_effects": None,
+        "rolls": [],
     }
 
 
@@ -61,6 +60,7 @@ def _apply_encounter_rule(
                 "trigger": npc_id or "encounter",
             },
             "flee_effects": None,
+            "rolls": [],
         }
 
     if outcome == "flee":
@@ -83,6 +83,7 @@ def _apply_encounter_rule(
             "set_flags": set_flags,
             "game_over": None,
             "flee_effects": flee_data,
+            "rolls": [],
         }
 
     if outcome == "roll":
@@ -93,6 +94,7 @@ def _apply_encounter_rule(
                 "set_flags": {},
                 "game_over": None,
                 "flee_effects": None,
+                "rolls": [],
             }
         roll = random.random()
         success = roll < rule.threshold
@@ -105,6 +107,12 @@ def _apply_encounter_rule(
                 "set_flags": rule.set_flags or {},
                 "game_over": None,
                 "flee_effects": None,
+                "rolls": [{
+                    "encounter_id": npc_id or "encounter",
+                    "threshold": rule.threshold,
+                    "result": roll,
+                    "success": success,
+                }],
             }
 
         sub_outcome = branch.outcome if branch else "none"
@@ -114,6 +122,12 @@ def _apply_encounter_rule(
             "set_flags": {},
             "game_over": None,
             "flee_effects": None,
+            "rolls": [{
+                "encounter_id": npc_id or "encounter",
+                "threshold": rule.threshold,
+                "result": roll,
+                "success": success,
+            }],
         }
 
         if rule.set_flags:
@@ -151,6 +165,7 @@ def _apply_encounter_rule(
         "set_flags": {},
         "game_over": None,
         "flee_effects": None,
+        "rolls": [],
     }
 
 
