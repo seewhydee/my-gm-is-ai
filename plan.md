@@ -1,37 +1,15 @@
 # My GM is AI (MGMAI) -- Project Plan
 
-## Preamble
-
-The goal of this project is to build an AI-driven Game Master (GM) that can run a **fixed, pre-written adventure** for a **single player**, with strict adherence to the module’s map and mechanics.
-
-Since the advent of LLM chatbots, there has been an explosion of interest in using them for roleplaying (RP).  However, these RP systems have focused on generating non-player characters (NPCs) with emotional depth, open-ended narratives, and other aspects that are not core to the classic tabletop adventure module RP experience.  What we are after is natural-language interaction with a GM to run through a fun RP adventure, without human interaction.
-
-At the same time, we don't want the system to be merely a natural language front end to an interactive fiction game, i.e. Zork with a nice parser.  The intention is for the AI to be aware of the adventure's narrative intent and adjudicate player actions against it, while maintaining mechanical fidelity. The player can attempt anything, and the GM decides (a) if it's possible here, (b) what mechanics apply, and (c) how to describe the outcome. We will aim to strike the right balance between AI creativity and fidelity -- the same struggle a human GM has to deal with, but magnified.
-
-### Proposed high-level approach
-
-We will set up a system that combines an LLM agent with a non-AI engine for game logic and game state.
-
-Player Input
- -> combined with context, supplied to LLM
- -> LLM adjudicates player intent and submits a structured action
- -> Engine validates and resolves the action
- -> LLM checks outcome, and generates final prose to player
-
-The game state setup is done ahead of time, similar to a human GM preparing an adventure module before the play session -- we will not try to handle freeform adventures.  The game engine rigorously tracks "hard state" conditions (e.g., the secret door in room 2 is opened, the lich on level 3 is killed).  "Soft state" like NPC attitudes is tracked through a combination of LLM and a memory store, with safeguards against confabulations by both the narrator and player.
-
-For testing, we will set up one short sample adventure consisting of a hand written text adventure consisting of a 5 room dungeon with no combat. This will be written up as a single long planning document, and converted unto the appropriate schema (with validation) by LLM assistants. Much later, we will explore setting up a more general conversion pipeline, e.g. finding adventures from interactive fiction or tabletop modules with permissive licenses, and translating them.
+For an overview of project goals, see README.md.
 
 During the initial phase of development, we will limit the scope as follows:
 
 * We will fix on OpenAI compatible API calls.
-* Input/output will be console based, with no graphics.
+* Input/output are console based, with no graphics.
 * Combat will have kill-or-be-killed resolutions with no special mechanics.
 * Similarly, no player stats for now.
 
-## Proposed Architecture
-
-### Overview
+## Architecture
 
 The system is a loop of **two LLM calls sandwiching a deterministic engine**. Three data stores — one read-only corpus and two mutable state stores — feed into a Context Assembler that builds a structured "GM Briefing" each turn. The engine has authority over game mechanics; the LLM interprets natural language and narrates outcomes but cannot alter mechanical state directly.
 
@@ -286,10 +264,6 @@ On load, the Context Assembler reconstructs the GMBriefing from scratch; no LLM 
 - **Semantic search / RAG**: once adventures grow beyond the hand-coded five-room scale, the deterministic ID lookup in the Context Assembler can be augmented with vector embeddings for entity descriptions and player queries.
 - **Multi-NPC conversations**: currently we only handle conversing with one NPC at a time, this should be extended.
 
----
-
-# Coding Plan
-
 ## Technology Stack
 
 | Component | Choice | Rationale |
@@ -301,11 +275,6 @@ On load, the Context Assembler reconstructs the GMBriefing from scratch; no LLM 
 | Console UI | `rich` | Markdown rendering, colored panels, live display. Good RPG console experience |
 | Testing | pytest | Standard. Parametrized tests for condition evaluation, mock LLM for integration tests |
 | CLI entry | argparse | Built-in, sufficient for console app |
-
-**Not used:**
-- **LangChain / LangGraph**: Rejected. The architecture is a simple two-LLM-calls-one-engine loop. LangChain would add dozens of transitive dependencies for abstraction layers we don't need.
-- **FastAPI**: Not needed for a console app. If we later want a web UI, the core can be wrapped with FastAPI then.
-- **Vector database / embeddings**: Not needed at phase-1 scale. The Context Assembler does deterministic ID lookups from a corpus small enough to fit in memory.
 
 ## Directory Structure
 
@@ -358,296 +327,7 @@ mgmai/
     └── conftest.py             # Shared fixtures (sample corpus, state)
 ```
 
-## Phase-by-Phase Implementation Plan
-
-### Phase 1: Models (foundation for everything)
-
-**Files:** `models/corpus.py`, `models/hard_state.py`, `models/soft_state.py`, `models/actions.py`, `models/briefing.py`, `models/narration.py`
-
-All Pydantic v2 models matching the schema documents. Every JSON structure defined in `schema/` gets a corresponding Pydantic class.
-
-Key design points:
-- **`PlayerAction`** uses a discriminated union (`typing.Annotated` + `pydantic.Field(discriminator="action_type")`) to validate each action type's specific fields.
-- **`ConditionExpression`** models the nested `require`/`unless`/`any`/`all` object format. Bare condition strings (e.g. `"flag:spider_fled == true"`) are validated against the `<domain>:<key> <op> <value>` grammar.
-- **`Interaction`** models the optional `check` + `success`/`failure` vs. deterministic `result` branching.
-- **`EngineResult`** includes all fields described in `schema/actions.md` §4.1, including `will_reveal_readiness`, `npc_attitude_limits`, `chain_info`.
-- **`SoftStatePatch`** has field-specific validation: `soft_inventory_add` checks the item exists in room/entity soft_items; `room_note` validates room_id exists, etc.
-- Each model includes `model_validator` where cross-field constraints exist (e.g., `Interaction` must have either `check+success+failure` or `result`, not both).
-
-No dependencies beyond pydantic. No game logic here — pure data shapes.
-
-### Phase 2: State Manager
-
-**Files:** `state/manager.py`
-
-Responsibility: load, validate, hold, and persist game state.
-
-```
-StateManager
-├── corpus: ModuleCorpus          # loaded once at startup, read-only
-├── hard_state: HardGameState     # mutable, engine writes
-├── soft_state: SoftGameState     # mutable, engine writes
-│
-├── load_corpus(path)             # JSON → ModuleCorpus (pydantic validation)
-├── load_hard_state(path)         # JSON → HardGameState
-├── load_soft_state(path)         # JSON → SoftGameState
-├── save_state(dir)               # Serializes hard + soft state to disk
-├── get_hard_state()              # Returns current hard state snapshot
-├── get_soft_state()              # Returns current soft state snapshot
-├── apply_hard_changes(changes)   # Applies hard_state_changes dict from EngineResult
-├── apply_soft_patches(patches)   # Applies accepted SoftStatePatch list
-└── append_turn_history(entry)    # Appends to turn_history, caps at 5 for briefing
-```
-
-On startup, loads `corpus.json`, `hard-state.json`, `soft-state.json` from an adventure directory. Validates cross-references: every entity in `room.entities_present` exists in corpus, every flag in `hard_state.flags` is declared, every `entity_state` entry has a matching `state_fields` declaration, etc.
-
-Between turns, saves a copy of hard + soft state (skipped during chained actions).
-
-Design note: The state manager holds mutable `HardGameState` and `SoftGameState` objects. The engine receives references to these and mutates them directly (since the engine is the sole writer), rather than passing copies. This avoids serialization overhead inside the hot loop.
-
-### Phase 3: Condition Evaluator
-
-**Files:** `engine/conditions.py`
-
-Evaluates `ConditionExpression` objects against the current game state (hard + soft).
-
-```
-evaluate(condition: ConditionExpression, hard_state: HardGameState, soft_state: SoftGameState) -> bool
-```
-
-Supports all six domains:
-| Domain | Implementation |
-|--------|---------------|
-| `flag:name == true/false` | Lookup `hard_state.flags[name]` |
-| `inventory:item_id` | Check `item_id in hard_state.player.inventory` |
-| `tag:tagname` | Check if any item in inventory has tag `tagname` (via corpus entity lookup) |
-| `entity:id.field op value` | Lookup `hard_state.entity_states[id][field]` |
-| `room:id.field op value` | Lookup `hard_state.room_states[id][field]` |
-| `attitude:id op N` | Lookup `soft_state.npc_attitudes[id]` |
-
-For `any`/`all`, recurses into sub-conditions. Bare strings inside `any`/`all` arrays are treated as `require` conditions. The evaluator needs access to the corpus (for tag lookups on inventory items), so it receives either the StateManager or the corpus directly.
-
-This is pure logic, no I/O. Heavily unit-testable.
-
-### Phase 4: Engine
-
-**Files:** `engine/engine.py`, `engine/resolver.py`, `engine/encounters.py`, `engine/dialogue.py`, `engine/post_validate.py`
-
-The largest phase. The engine is a pure function: `PlayerAction → EngineResult`, reading state and corpus.
-
-#### `engine/engine.py` — Main entry point
-
-```
-resolve(player_action: PlayerAction, state_manager: StateManager) -> EngineResult
-```
-
-High-level flow:
-1. If `ooc_discussion`: no-op, return minimal EngineResult with `success: true`
-2. **Validate** action against current state (delegates to resolver). The resolver returns a result object containing: success/error, proposed `HardStateChanges`, `triggered_narration` blocks, any triggered encounter, and warnings.
-3. If invalid: return `success: false` EngineResult with error message
-4. **Resolve encounters**: if the action triggered an encounter (via exit traversal's `trigger_encounter`, or an `attack` interaction on an NPC with `behavior`), evaluate encounter rules *before* committing hard-state changes. A `death` outcome sets `game_over` immediately; a `flee` outcome applies `on_flee` effects.
-5. **Check game-over**: if the encounter produced `game_over`, skip to step 9 (do not apply further state changes).
-6. **Apply hard-state changes**: move player, update inventory, set flags, update entity/room states.
-7. **Fire on-enter events**: if the player moved to a new room, evaluate the target room's `on_enter` events (condition check, set_flag, set_entity_state, trigger_dialogue). Collect triggered narrations.
-8. **Validate soft-state patches**: check each `proposed_soft_state_patches` against soft-state schema (entity/room exists, soft item is present, non-contradictory with hard state).
-9. **Handle dialogue state**: enter/continue/exit dialogue mode based on action type. If the player moved rooms away from the active NPC, archive and exit dialogue. If in dialogue and a non-`talk` action was taken, increment stall counter; auto-exit at 3.
-10. **Increment turn counter** (except for ooc_discussion)
-11. **Build turn_history entry**
-12. **Produce EngineResult** with all fields populated (room_after, hard_state_changes, soft patches, rolls, encounter outcome, triggered_narration, on_enter_events, game_over, dialogue_exited, will_reveal_readiness, npc_attitude_limits, chain_info, warnings)
-
-Note: the ordering above is deliberate — encounters fire *before* hard-state changes are committed, so that a death outcome does not produce contradictory state (e.g., the player arriving in a room and dying there simultaneously). On-enter events fire *after* the player has moved, since they describe what happens upon arrival.
-
-#### `engine/resolver.py` — Per-action-type validation
-
-One function per action type, each returning a result object containing `(success: bool, error: str | None, hard_changes: HardStateChanges, triggered_narration: list[str], encounter_trigger: str | None, warnings: list[str])`. The resolver validates and *proposes* changes but does not mutate state — the orchestrator applies them after encounter resolution.
-
-| Function | Validates |
-|----------|-----------|
-| `resolve_move(action, state, corpus)` | Exit exists, conditions met, not one-way blocked. Returns target room + traversal effects |
-| `resolve_examine(action, state, corpus)` | Target entity/room/soft_item exists and is visible. If `rigorous`, evaluates any rigorous-search-gated interactions. If `using`, checks item in inventory |
-| `resolve_interact(action, state, corpus)` | Target exists, interaction_id matches defined interaction, parameter_signature satisfied, conditions met. Resolves check if present. Tracks non-repeatable checks (corpus `check.repeatable: false`) and rejects retries |
-| `resolve_talk(action, state, corpus)` | NPC exists in room, alive. Handles dialogue state transitions |
-| `resolve_transfer(action, state, corpus)` | Target entity/room exists, items exist in source inventories. Hard items must be in the player's inventory; soft items must be in the player's soft inventory or available from the target (an entity's available pool = item entities in the same room + the entity's `soft_items`; a room's available pool = item entities present + the room's `soft_items`) |
-| `resolve_wait(action, state, corpus)` | Always valid. Advances turn only |
-
-#### `engine/encounters.py` — Encounter resolution
-
-Evaluates NPC `behavior.encounter_rules` and `mechanics` encounters. Rules are evaluated top-to-bottom; first matching condition applies. Handles outcomes: `death` (set game_over), `flee` (set flags, apply on_flee effects), `roll` (random check with success/failure branches).
-
-#### `engine/dialogue.py` — Dialogue state lifecycle
-
-Manages `soft_state.dialogue_state` transitions:
-- Enter dialogue on `talk` action or `on_enter.trigger_dialogue`
-- Append utterances to `conversation_log` (capped at 10)
-- Track `stall_counter`; auto-exit at 3 (excluding `ooc_discussion`)
-- On exit: archive conversation summary to `entity_notes`, apply `on_dialogue_exit` effects
-- NPC response extraction from LLM Call 2 output (look for structured `npc_response` field)
-- Handle switching between different NPCs
-
-#### `engine/post_validate.py` — Step 4.5
-
-Validates LLM Call 2's `knowledge_tags` and `attitude_changes`:
-- For each `knowledge_tag`: verify topic exists in NPC's `will_reveal`, all conditions met. Apply `set_flag`/`set_entity_state` side effects. Record in `npc_revelations`.
-- For each `attitude_change`: verify NPC exists, alive, delta within `step_per_turn`, new value within `[min, max]`, non-empty reason.
-- Returns lists of applied and rejected items.
-
-### Phase 5: Context Assembler
-
-**Files:** `context/assembler.py`
-
-Pure function: reads corpus + state → produces `GMBriefing`.
-
-```
-assemble(state_manager: StateManager) -> GMBriefing
-```
-
-Assembly rules (per `schema/actions.md` §1):
-1. Get current room from `hard_state.player.location`
-2. Filter `entities_visible`: only entities with `alive == true` (or no `alive` field). Include each entity's state, up to 3 most recent entity_notes, and soft_items. Omit hidden entities.
-3. Filter `exits_available`: conditions met, hidden exits omitted unless reveal flag set.
-4. Build `player_state`: hard inventory, soft inventory, active flags (non-false), entity notes on player.
-5. Build `recent_history`: last 5 non-`ooc_discussion` entries from `turn_history`, summarized.
-6. Build `npc_attitudes`: all NPCs with known attitudes.
-7. Build `npc_revelations`: from soft_state, with topic descriptions.
-8. Build `dialogue_context` if `active_npc` is non-null: NPC identity, attitude, last 5 exchanges, dialogue_guidelines, topics_discussed, revealed_topics.
-9. Include `player_input` (raw text, passed in by game loop).
-10. Include global `setting` and `tone` from `corpus.adventure.atmosphere`.
-
-No LLM calls here — just data assembly.
-
-### Phase 6: LLM Integration
-
-**Files:** `llm/client.py`, `llm/parser.py`, `templates/ruling.j2`, `templates/prose.j2`
-
-#### `llm/client.py`
-
-Thin wrapper around the `openai` package.
-Supports `response_format={"type": "json_object"}` for structured outputs.
-
-#### `templates/ruling.j2` — LLM Call 1 system prompt
-
-Jinja2 template that receives the `GMBriefing` (as a dict, rendered to JSON in the prompt) plus instructions. The prompt instructs the LLM to:
-- Interpret the player's input in context
-- Produce exactly one `PlayerAction` (with action_type, target, detail, etc.)
-- Propose soft-state patches if applicable
-- Break chained actions into first step + follow_up
-- Fall back to `wait` if action is impossible to adjudicate
-
-The template includes the full GMBriefing JSON, the supported action types with field descriptions, and constraints (don't invent items, don't change hard state, respect hidden info).
-
-#### `templates/prose.j2` — LLM Call 2 system prompt
-
-Receives: adventure atmosphere, GMBriefing, PlayerAction, EngineResult, verbatim chat log.
-Instructs the LLM to:
-- Narrate the outcome in natural prose
-- Incorporate `triggered_narration` blocks
-- Do not contradict EngineResult or hard_state_changes
-- Propose `knowledge_tags` and `attitude_changes` if relevant
-- Be terse during chained actions
-- Include structured `npc_response` field for dialogue extraction
-- Respect `will_reveal_readiness` — only tag met conditions
-
-#### `llm/parser.py`
-
-Parses LLM output strings into Pydantic models:
-- `parse_player_action(raw: str) -> PlayerAction`: Validates JSON, retries on parse error (the game loop handles the retry-with-error-message logic)
-- `parse_prose_output(raw: str) -> ProseOutput`: Extracts `narration`, `npc_response`, `knowledge_tags`, `attitude_changes` from Call 2's JSON output
-
-### Phase 7: Game Loop & CLI
-
-**Files:** `game/loop.py`, `game/display.py`, `cli.py`
-
-#### `game/loop.py`
-
-The main turn loop:
-
-```python
-class GameLoop:
-    def __init__(self, state_manager: StateManager, llm: LLMClient):
-        ...
-
-    def run_turn(self, player_input: str) -> str:
-        """Execute one full turn. Returns narration text."""
-        # 1. Context Assembler → GMBriefing
-        # 2. LLM Call 1 → PlayerAction (with retry on malformed output)
-        # 3. Engine → EngineResult
-        # 4. LLM Call 2 → ProseOutput (narration + tags)
-        # 5. Post-validate knowledge_tags + attitude_changes
-        # 6. If chain_info indicates continuation: loop back to step 1
-        #    with follow_up as next player_input (no user interaction)
-        # 7. Save state (skip during chained actions)
-        # 8. Return narration
-```
-
-Chain handling: The loop detects `chain_info` in EngineResult indicating an ongoing chain. It feeds `follow_up` back as the next "player input" without waiting for user input, with LLM Call 2 instructed to be terse. Chain terminates on validation failure, hard/soft rejection, or max chain length.
-
-Retry logic: If LLM Call 1 produces invalid JSON, the loop retries once with the parse error appended to context. On second failure, falls back to a generic "You can't do that" narration.
-
-#### `game/display.py`
-
-Rich-based console output:
-- `render_narration(text: str)`: Print narration with rich Markdown rendering
-- `render_room(state, corpus)`: Display current room name, description, visible exits (formatted)
-- `render_status(state)`: Show inventory, flags, turn count as a compact status bar
-- `render_game_over(result)`: Display ending narrative with win/lose styling
-
-#### `cli.py`
-
-Entry point:
-```bash
-python -m mgmai.cli adventures/bag-of-holding          # start new game
-python -m mgmai.cli adventures/bag-of-holding --load save.json  # resume
-```
-
-Uses argparse. Sets up `StateManager`, `LLMClient`, `GameLoop`. Runs the REPL: prompt for input, call `game_loop.run_turn()`, display result, repeat until `game_over`.
-
-Environment variables: `MGMAI_API_KEY`, `MGMAI_BASE_URL` (defaults to Deepseek), `MGMAI_MODEL` (defaults to `deepseek-v4-flash`).
-
-### Phase 8: Testing & Adventure Validation
-
-**Files:** `tests/conftest.py`, `tests/test_conditions.py`, `tests/test_engine.py`, `tests/test_assembler.py`, `tests/test_models.py`
-
-#### Test strategy
-
-1. **Model validation tests** (`test_models.py`): Load the sample `corpus.json`, `hard-state.json`, `soft-state.json` and verify Pydantic validation passes. Test invalid documents are rejected.
-
-2. **Condition evaluator tests** (`test_conditions.py`): Parametrized tests for every condition domain:
-   - Simple: `flag:X == true`, `inventory:Y`, `tag:weapon`, `entity:Z.alive == true`
-   - Compound: `any`/`all` with nesting
-   - Edge cases: missing flag, entity not in room, attitude out of bounds
-
-3. **Engine tests** (`test_engine.py`): Test each action type against the sample adventure:
-   - `move`: valid exit, invalid exit, one-way blocked, conditions not met
-   - `examine`: existing entity, nonexistent entity, rigorous search
-   - `interact`: valid interaction, wrong target, conditions not met, check resolution (mock random)
-   - `talk`: valid NPC, dead NPC, ends_dialogue, attitude gating
-   - `transfer`: valid give/take, item not in inventory
-   - `wait`: always valid, turn advances
-   - `ooc_discussion`: no state change
-   - Encounter resolution: spider encounter with/without weapon, injured/not injured
-   - Dialogue lifecycle: enter, continue, stall exit, move exit, NPC death exit
-   - Chained actions: follow_up processing, max chain length enforcement
-   - Game-over: win condition (unlock padlock), lose condition (spider death)
-   - Soft-state patches: valid, invalid (contradicts hard state, nonexistent entity)
-
-4. **Context Assembler tests** (`test_assembler.py`): Build GMBriefing from sample state, verify:
-   - Correct room and visible entities
-   - Hidden exits omitted
-   - Dialogue context present when active_npc set
-   - Recent history capped at 5, ooc_discussion excluded
-   - Correct player state (inventory, flags)
-
-5. **Integration test** (`test_integration.py`): Script a sequence of player inputs through the sample adventure and verify the engine state at each step. Mock the LLM to return predetermined PlayerActions. Verify the full loop behaves correctly.
-
-#### Test fixtures (`conftest.py`)
-
-- `sample_corpus`: ModuleCorpus loaded from `adventures/bag-of-holding/corpus.json`
-- `sample_hard_state`: HardGameState from `adventures/bag-of-holding/hard-state.json`
-- `sample_soft_state`: SoftGameState from `adventures/bag-of-holding/soft-state.json`
-- `state_manager`: StateManager with sample data loaded
-- `mock_llm_client`: Returns predetermined responses for testing
-
-## Key Design Decisions
+## Design Decisions
 
 ### 1. Engine mutations the state manager directly
 
@@ -663,14 +343,7 @@ Both LLM calls use `response_format={"type": "json_object"}`:
 
 This eliminates fragile regex parsing. The `openai` package (and Deepseek) support this. If a model doesn't support JSON mode, we fall back to extracting JSON from markdown code blocks.
 
-### 3. Temperature settings per call
-
-- LLM Call 1 (ruling): temperature ≈ 0.9. Deepseek-v4-flash expects temperatures around 1.0; we want consistent, predictable action classification.
-- LLM Call 2 (prose): temperature ≈ 1.1. Deepseek-v4-flash expects temperatures around 1.0; we want creative, varied narration.
-
-Configurable via environment variables `MGMAI_RULING_TEMPERATURE` and `MGMAI_PROSE_TEMPERATURE`.
-
-### 4. Condition string parsing
+### 3. Condition string parsing
 
 Condition strings like `"flag:spider_fled == true"` are parsed with a simple regex:
 ```
@@ -681,31 +354,17 @@ For `inventory` and `tag`, no operator/value — just presence check. For others
 
 This parsing happens in `engine/conditions.py`, not in the Pydantic models (which store these as strings). Runtime evaluation resolves the domain references against current state.
 
-### 5. Error handling as described in the architecture
+### 4. Error handling as described in the architecture
 
 - Malformed LLM JSON → retry once with error in context → fallback narration
 - Impossible action (valid JSON, engine rejects) → `success: false` in EngineResult → LLM Call 2 narrates failure naturally
 - Rejected soft patches → listed in EngineResult, LLM Call 2 must not narrate
 - Chain termination → `chain_info` with reason, LLM Call 2 narrates the interruption
 
-### 6. Save/load format
+### 5. Save/load format
 
 Save file: a JSON file containing both `hard_state` and `soft_state` (merged into one object with `hard` and `soft` keys), plus the adventure path to reload the corpus. Saved after each non-chain turn. Load reconstructs state from scratch; no LLM context is persisted.
 
-### 7. Soft state contradiction detection
+### 6. Soft state contradiction detection
 
 The engine does basic contradiction checks on soft-state patches (e.g., can't say "spider is dead" if `entity_states.spider.alive == true`). This is done via simple keyword matching against entity names + state fields, not via a second LLM call. It won't catch subtle contradictions but will catch the obvious ones.
-
-## Open Questions / Future Work
-
-1. **Rich display of GMBriefing debug mode**: Add a `--debug` flag that renders the GMBriefing and EngineResult for each turn alongside the narration. Useful for development and troubleshooting.
-
-2. **Streaming narration**: For better UX, LLM Call 2's narration could be streamed token-by-token via the OpenAI streaming API, with `rich` live-updating the display.
-
-3. **Token budgeting**: Count tokens in the GMBriefing and trim `entity_notes`, `recent_history`, and `room_notes` if approaching the model's context limit. Not needed for the 5-room sample but important for larger adventures.
-
-4. **Multi-model support**: The two LLM calls could use different models — a cheap fast model for Call 1 (ruling) and a more expressive model for Call 2 (prose). Configurable via separate environment variables.
-
-5. **Adventure validation tool**: A script that loads a corpus + state files and runs validation checks (all entity refs resolve, all flags declared, all rooms connected, etc.) without starting the game. Useful for adventure authors.
-
-6. **Corpus generation pipeline**: The `schema/scenario-generation.md` document describes an LLM agent workflow for converting natural-language scenarios into structured JSON. This could be implemented as a separate CLI tool (`mgmai-generate`).

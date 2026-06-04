@@ -168,8 +168,10 @@ Use the validation playground:
 MGMAI_API_KEY=sk-... python scripts/validate.py adventures/bag-of-holding --turns 10
 ```
 
-## Config files
+## Save/load should be adventure specific
 
-We should save the supplied API key to a json store, similar to what others are doing.
+We need to record which adventure applies to which save/load, e.g. by comparing a cryptographic hash or id.
 
-Likewise for saves and auto-saves, which are currently hardcoded to CWD.
+## TODO: **Streaming narration**: For better UX, LLM Call 2's narration could be streamed token-by-token via the OpenAI streaming API, with `rich` live-updating the display.
+
+## TODO: **Adventure validation tool**: A script that loads a corpus + state files and runs validation checks (all entity refs resolve, all flags declared, all rooms connected, etc.) without starting the game. Useful for adventure authors.

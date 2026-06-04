@@ -1,10 +1,10 @@
 # My GM is AI
 
-An AI-driven Game Master (GM) for single-player RPGs.
+An AI-driven Game Master (GM) for single-player RPGs.  The objective: replicate the tabletop RPG experience without needing friends.
 
-Unlike freeform AI roleplay chatbots, this AI GM runs pre-written adventure modules with mechanical fidelity.  You can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens.  Like a human GM, the AI GM system aims to strike a balance between creativity and rules adherence.
+Unlike freeform AI roleplay chatbots, this AI GM system is not optimized for crafting naturalistic interlocutors with emotional depth, nor can it create open-ended adventures.  Instead, the AI GM runs a pre-generated adventure module faithfully.  You, the player, can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens.  Like a human GM, the AI GM aims to strike a balance between creativity and rules adherence.
 
-This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Player stats and combat is not yet implemented.
+This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Player stats and combat are not yet implemented.
 
 ## How It Works
 
@@ -13,6 +13,8 @@ Each turn, your natural language input flows through a three-stage pipeline:
 1. **Ruling** — A large language mode (LLM) call interprets your intent and produces a structured action.
 2. **Engine resolution** — A deterministic engine validates the action against the adventure module's rules and the current game state, rolls virtual dice, etc.
 3. **Prose narration** — A second LLM call weaves the outcome into natural prose, respecting narrative requirements like keeping secrets hidden.
+
+The adventures will be generated from handwritten RPG scenarios, which are converted into game logic with the help of LLM assistants.  This setup is done ahead of time, just as a human GM prepares adventure modules before each play session.  In time, it is hoped that the conversion process becomes powerful enough to accommodate complex adventure modules written for tabletop play.
 
 ## Installation and setup
 
