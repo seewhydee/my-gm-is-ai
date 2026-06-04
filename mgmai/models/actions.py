@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, model_validator
 
 from mgmai.models.narration import AttitudeChange
 from mgmai.models.soft_state import SoftStatePatch
@@ -46,6 +46,17 @@ class TransferAction(_BaseAction):
     target: str
     given_items: Optional[List[str]] = None
     taken_items: Optional[List[str]] = None
+
+    @model_validator(mode="after")
+    def check_non_empty_transfer(self) -> TransferAction:
+        gi = self.given_items
+        ti = self.taken_items
+        if (gi is None or len(gi) == 0) and (ti is None or len(ti) == 0):
+            raise ValueError(
+                "TransferAction must have at least one of given_items or "
+                "taken_items be non-empty"
+            )
+        return self
 
 
 class WaitAction(_BaseAction):
@@ -193,7 +204,7 @@ class EngineResult(BaseModel):
     will_reveal_readiness: Optional[Dict[str, Dict[str, WillRevealReadinessEntry]]] = None
     revelations_applied: List[RevelationApplied] = Field(default_factory=list)
     npc_attitude_limits: Optional[Dict[str, AttitudeLimitsCurrent]] = None
-    attitude_changes_applied: List[AttitudeChange] = Field(default_factory=list)
-    attitude_changes_rejected: List[Dict[str, Any]] = Field(default_factory=list)
+    attitude_changes_applied: Dict[str, AttitudeChange] = Field(default_factory=dict)
+    attitude_changes_rejected: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     chain_info: Optional[ChainInfo] = None
     warnings: List[str] = Field(default_factory=list)

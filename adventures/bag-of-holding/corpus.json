@@ -293,7 +293,7 @@
         "will_reveal": {}
       },
       "behavior": {
-        "triggers_on": ["exit_through_webs"],
+        "triggers_on": ["exit_through_webs", "attack"],
         "encounter_rules": [
           {
             "condition": { "all": ["tag:weapon", { "unless": "flag:injured == true" }] },
@@ -308,7 +308,7 @@
             "narrative": "The spider lunges at you. You swing your weapon, but your injuries slow you — the blade wavers. The outcome hangs in the balance.",
             "on_success": {
               "outcome": "flee",
-              "set_flags": {},
+              "set_flags": { "spider_fled": true },
               "narrative": "Despite your injuries, you land a desperate blow. The spider screeches and scuttles away into the shadows, ichor trailing behind it."
             },
             "on_failure": {
@@ -325,6 +325,7 @@
         ],
         "on_flee": {
           "set_flags": { "spider_fled": true },
+          "set_entity_state": { "spider": { "alive": false } },
           "effect": "The spider retreats into the shadows and will never threaten the player again."
         }
       }
@@ -437,9 +438,27 @@
           "secret_compartment": {
             "description": "Korbar reveals that a rusty key is hidden beneath a damp handkerchief in a secret compartment. She points out the handkerchief and tells the player to move it aside.",
             "conditions": ["attitude:korbar >= 4"],
-            "set_flag": { "handkerchief_noticed": true }
+            "set_flag": { "handkerchief_noticed": true },
+            "set_entity_state": { "korbar": { "told_secret": true } }
           }
         }
+      },
+      "behavior": {
+        "triggers_on": ["attack"],
+        "encounter_rules": [
+          {
+            "condition": { "require": "flag:injured == true" },
+            "outcome": "death",
+            "narrative": "You lunge at Korbar, but your injuries slow you down. Even through the haze of drink, the dwarf's practised reflexes are more than enough. She sidesteps your clumsy attack and delivers a single, efficient blow to your temple. Everything goes dark.",
+            "set_flags": {}
+          },
+          {
+            "condition": { "require": "entity:player.alive == true" },
+            "outcome": "death",
+            "narrative": "You attack Korbar, but the dwarf's iron platemail deflects your blows with contemptuous ease. She sighs, almost sadly, and disarms you with a practised motion before delivering a decisive strike. 'Sorry, friend,' she mutters. 'Ye leave me no choice.'",
+            "set_flags": {}
+          }
+        ]
       }
     },
     "toenail_sword": {
@@ -454,8 +473,6 @@
       "description": "A large iron key, rusted with age but still sturdy. It is far too big for any normal door, but it looks like it would fit the giant padlock on the outside of the bag.",
       "soft_items": [],
       "tags": ["key_item"],
-      "draggable": true,
-      "dragging_note": "The key is enormously heavy and awkward to carry. You can only drag it behind you with great effort, and you cannot perform other manual actions while doing so.",
       "state_fields": {}
     }
   },
@@ -467,14 +484,6 @@
       "condition": { "require": "flag:padlock_unlocked == true" },
       "narrative": "The padlock springs open with a satisfying CLUNK. The neck of the bag loosens, and fresh air floods in from above. You haul yourself up through the rip, squirming free of the canvas prison at last. Freedom! You tumble out onto solid ground, gasping with relief. The Bag of Holding lies at your feet, looking far smaller and more innocent from the outside. You are free!",
       "trigger_id": "escape_bag"
-    },
-    "lose_death_spider": {
-      "id": "lose_death_spider",
-      "type": "lose",
-      "description": "The player is killed by the giant spider when caught in its webs without a weapon.",
-      "condition": { "require": "flag:spider_fled == false" },
-      "narrative": "The giant spider descends upon you, fangs gleaming. Without a weapon to defend yourself, you are helpless. Everything goes dark. Your adventure ends here, in the belly of the Bag of Holding.",
-      "trigger_id": "death_spider"
     }
   }
 }

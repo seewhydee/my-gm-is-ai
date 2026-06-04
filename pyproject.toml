@@ -9,6 +9,7 @@ description = "My GM is AI — an AI-driven Game Master for tabletop RPG adventu
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0",
+    "rich>=13.0",
 ]
 
 [project.optional-dependencies]

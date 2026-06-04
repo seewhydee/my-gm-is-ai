@@ -343,24 +343,24 @@ class TestEngineResult:
         r = EngineResult.model_validate({
             "success": True,
             "action_type": "talk",
-            "attitude_changes_applied": [
-                {"old_value": 0, "new_value": 2, "reason": "Player was kind."},
-            ],
+            "attitude_changes_applied": {
+                "korbar": {"old_value": 0, "new_value": 2, "reason": "Player was kind."},
+            },
         })
         assert len(r.attitude_changes_applied) == 1
-        assert r.attitude_changes_applied[0].new_value == 2
+        assert r.attitude_changes_applied["korbar"].new_value == 2
 
     def test_with_attitude_changes_rejected(self) -> None:
         r = EngineResult.model_validate({
             "success": True,
             "action_type": "talk",
-            "attitude_changes_rejected": [
-                {
+            "attitude_changes_rejected": {
+                "grum": {
                     "old_value": 0,
                     "new_value": 2,
                     "reason": "Attitude step exceeded",
                 },
-            ],
+            },
         })
         assert len(r.attitude_changes_rejected) == 1
 

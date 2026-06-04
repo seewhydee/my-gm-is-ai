@@ -36,7 +36,7 @@ class TestModuleCorpus:
         assert sample_corpus.adventure.atmosphere.setting
         assert len(sample_corpus.rooms) == 5
         assert len(sample_corpus.entities) > 0
-        assert len(sample_corpus.mechanics) == 2
+        assert len(sample_corpus.mechanics) == 1
 
     def test_start_room_has_is_start_room(self, sample_corpus: ModuleCorpus) -> None:
         start_rooms = [r for r in sample_corpus.rooms.values() if r.is_start_room]
