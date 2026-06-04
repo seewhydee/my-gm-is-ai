@@ -99,8 +99,9 @@ The `on_traverse` object supports these fields; all are optional:
 
 Conditions can appear on exits, interactions, on_enter events, encounter rules,
 and mechanics. They are predicate clauses evaluated against hard game state and
-the module corpus. A condition is always expressed as an **object** (never a
-bare string).
+the module corpus. A standalone condition is expressed as an **object**; the
+`any` and `all` forms may contain bare condition strings as array elements
+(in addition to nested condition objects).
 
 **`require`** — condition must be true for the thing to be available:
 
@@ -147,10 +148,12 @@ Condition strings use the format `<domain>:<key> <op> <value>`:
 |--------------|----------------------------------|---------|
 | `flag`       | `flag:door_opened == true`       | Refers to a key in `hard_state.flags`. |
 | `inventory`  | `inventory:rusty_key`            | Checks if an item entity ID is in the player's hard inventory. |
+| `item`       | `item:rusty_key`                 | Alias for `inventory`. |
 | `tag`        | `tag:weapon`                     | Checks if the player's inventory contains any item with this tag. |
 | `entity`     | `entity:spider.alive == true`    | Checks an entity's hard state field. |
 | `room`       | `room:axe_head.visited == true`  | Checks a room state field. |
-| `attitude`   | `attitude:korbar >= 2`           | Checks an NPC's soft-state attitude value. |
+| `attitude`   | `attitude:korbar >= 2`           | Checks an NPC's soft-state attitude value. Defaults to the corpus `attitude_limits.initial` if absent from soft state. |
+| `topic`      | `topic:abandonment`              | Checks if a topic ID has been discussed in the current dialogue (present in `soft_state.dialogue_state.topics_discussed`). |
 
 Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`, `<= <number>`, `< <number>`.
 

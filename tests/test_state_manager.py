@@ -192,7 +192,7 @@ class TestApplyHardChanges:
     def test_flags_cleared(self, manager: StateManager) -> None:
         manager.hard_state.flags["injured"] = True
         manager.apply_hard_changes(HardStateChanges(flags_cleared=["injured"]))
-        assert manager.hard_state.flags["injured"] is False
+        assert "injured" not in manager.hard_state.flags
 
     def test_flags_cleared_unknown_is_noop(self, manager: StateManager) -> None:
         manager.apply_hard_changes(HardStateChanges(flags_cleared=["nonexistent_flag"]))

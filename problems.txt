@@ -70,25 +70,6 @@ have been resolved in code and removed from this document.
 CONCRETE MODEL/SCHEMA MISMATCHES
 ======================================================================
 
-4. room_states AND entity_states ARE Dict[str, Dict[str, Any]]
-   File: mgmai/models/hard_state.py:21-22
-   These are completely untyped.  The schema describes typed fields
-   (boolean, number, string) with specific defaults.  A corrupted
-   hard-state.json with a string where a boolean is expected would pass
-   model validation and fail later at runtime during condition
-   evaluation.  The models could validate initial values against corpus
-   state_fields declarations.
-
-   [RESOLVED: DEFERRED — Pydantic models cannot validate inner dict
-    values against corpus state_field declarations without access to the
-    corpus at model-construction time (would create a circular dep).
-    This validation is planned for Phase 2 StateManager startup
-    (plan.md §Phase 2: "validates every entity_state entry has a
-    matching state_fields declaration").  The existing
-    _validate_cross_references in state/manager.py already checks
-    that entity state fields are declared.  Value-type validation
-    (boolean vs number vs string) should be added there.]
-
 6. WEAK RUNTIME ATTITUDE BOUNDS ENFORCEMENT/DEFINITION
    The npc_attitudes dict in SoftGameState (soft_state.py:63) accepts
    any int.  The schema specifies that attitudes must stay within
@@ -106,7 +87,6 @@ CONCRETE MODEL/SCHEMA MISMATCHES
     step 4.5").  The scenario generation concern is out of scope for
     Phase 1 models — it belongs in schema/scenario-generation.md.]
 
-
 11. THE STALE ROOM DESCRIPTIONS PROBLEM
     The axe_handle_lower description mentions the spider; after it
     flees, the description is factually incorrect.  The briefing
@@ -122,25 +102,6 @@ CONCRETE MODEL/SCHEMA MISMATCHES
      assembler should present them prominently alongside descriptions.
      No Phase 1 model change needed.]
 
-13. will_reveal.conditions USES BARE STRINGS, NOT ConditionExpression
-    File: adventures/bag-of-holding/corpus.json:437
-    Korbar's will_reveal conditions are bare strings like
-    "attitude:korbar >= 2".  The WillRevealEntry model
-    (corpus.py:143-148) declares conditions: List[str].  This is
-    consistent with the schema, but it means the condition evaluator
-    needs two code paths: one for ConditionExpression objects and one
-    for bare strings in will_reveal.  The plan's condition evaluator
-    (engine/conditions.py) will need to handle both.
-
-    [RESOLVED: DEFERRED — This is a Phase 3 (Condition Evaluator)
-     concern.  Both the model and the schema define will_reveal
-     conditions as List[str] (bare condition strings), which is
-     intentional: will_reveal conditions are simple predicates
-     (attitude thresholds, item presence), not nested AND/OR logic.
-     The condition evaluator should handle both bare strings and
-     ConditionExpression objects as separate code paths, as noted
-     in plan.md §Phase 3.]
-
 14. stuck_fly AND spider HAVE npc_attitudes ENTRIES BUT LIMITED DIALOGUE
     Both have entries in soft-state.json (stuck_fly: 0, spider: -5).
     The spider has attitude_limits with min: -5, max: -5,
@@ -154,3 +115,18 @@ CONCRETE MODEL/SCHEMA MISMATCHES
      engine's post-validate logic (Phase 4) should treat
      step_per_turn: 0 as "no attitude changes allowed" when validating
      proposed AttitudeChange entries.  No model change needed.]
+
+Schema / document inconsistencies discovered
+-------------------------------------------------
+These are design-document issues that will impede engine implementation if not
+fixed:
+
+  c) `Result.reveals` field
+     The `Result` model includes a `reveals` string field, but the schema does
+     not clearly specify where this text is surfaced (GMBriefing? EngineResult?
+     silently ignored?). The engine spec does not mention it. Clarification
+     needed.
+     [DEFERRED] This is a schema/documentation question. `reveals` is defined
+     in the `Result` object (corpus.md) as "hint text for the player's future
+     reference." Its surfacing mechanism belongs in the Context Assembler
+     (Phase 5) or engine (Phase 4) spec, which is not yet written.

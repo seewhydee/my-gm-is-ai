@@ -162,6 +162,25 @@ class TestParseConditionString:
         with pytest.raises(ValueError, match="Could not parse"):
             parse_condition_string("key == value")
 
+    def test_hyphen_in_id(self) -> None:
+        domain, key, op, value = parse_condition_string("flag:door-opened == true")
+        assert domain == "flag"
+        assert key == "door-opened"
+
+    def test_topic_domain(self) -> None:
+        domain, key, op, value = parse_condition_string("topic:abandonment")
+        assert domain == "topic"
+        assert key == "abandonment"
+        assert op is None
+        assert value is None
+
+    def test_item_domain(self) -> None:
+        domain, key, op, value = parse_condition_string("item:rusty_key")
+        assert domain == "item"
+        assert key == "rusty_key"
+        assert op is None
+        assert value is None
+
 
 class TestEvaluateConditionStringFlag:
     def test_flag_true_match(self) -> None:
@@ -328,6 +347,12 @@ class TestEvaluateConditionStringEntity:
         ss = make_soft_state()
         assert evaluate_condition_string("entity:chest.state == locked", hs, ss, None)
 
+    def test_entity_numeric_float_int_equality(self) -> None:
+        hs = make_hard_state(entity_states={"boss": {"hp": 10.0}})
+        ss = make_soft_state()
+        assert evaluate_condition_string("entity:boss.hp == 10", hs, ss, None)
+        assert evaluate_condition_string("entity:boss.hp == 10.0", hs, ss, None)
+
 
 class TestEvaluateConditionStringRoom:
     def test_room_visited_true(self) -> None:
@@ -423,6 +448,50 @@ class TestEvaluateConditionStringAttitude:
         ss = make_soft_state()
         with pytest.raises(ValueError, match="attitude condition requires operator"):
             evaluate_condition_string("attitude:korbar", hs, ss, None)
+
+    def test_attitude_defaults_to_corpus_initial(self) -> None:
+        hs = make_hard_state()
+        ss = make_soft_state(npc_attitudes={})
+        corpus = make_corpus()
+        # korbar's attitude_limits.initial is 0 in the fixture corpus
+        assert evaluate_condition_string("attitude:korbar >= 0", hs, ss, corpus)
+        assert not evaluate_condition_string("attitude:korbar >= 1", hs, ss, corpus)
+
+
+class TestEvaluateConditionStringTopic:
+    def test_topic_present(self) -> None:
+        hs = make_hard_state()
+        ss = make_soft_state(dialogue_state={"topics_discussed": ["abandonment"]})
+        assert evaluate_condition_string("topic:abandonment", hs, ss, None)
+
+    def test_topic_missing(self) -> None:
+        hs = make_hard_state()
+        ss = make_soft_state(dialogue_state={"topics_discussed": []})
+        assert not evaluate_condition_string("topic:abandonment", hs, ss, None)
+
+    def test_topic_with_operator_raises(self) -> None:
+        hs = make_hard_state()
+        ss = make_soft_state()
+        with pytest.raises(ValueError, match="topic condition must not have operator"):
+            evaluate_condition_string("topic:abandonment == true", hs, ss, None)
+
+
+class TestEvaluateConditionStringItem:
+    def test_item_present(self) -> None:
+        hs = make_hard_state(player={"location": "axe_head", "inventory": ["rusty_key"]})
+        ss = make_soft_state()
+        assert evaluate_condition_string("item:rusty_key", hs, ss, None)
+
+    def test_item_missing(self) -> None:
+        hs = make_hard_state()
+        ss = make_soft_state()
+        assert not evaluate_condition_string("item:rusty_key", hs, ss, None)
+
+    def test_item_with_operator_raises(self) -> None:
+        hs = make_hard_state()
+        ss = make_soft_state()
+        with pytest.raises(ValueError, match="item condition must not have operator"):
+            evaluate_condition_string("item:rusty_key == true", hs, ss, None)
 
 
 class TestEvaluateConditionExpression:
@@ -788,7 +857,9 @@ class TestEdgeCases:
         })
         assert not evaluate(condition, hs, ss, corpus)
 
-    def test_any_short_circuits(self) -> None:
+    def test_any_evaluates_all_when_all_false(self) -> None:
+        # When every item in an `any` is False, Python's any() must evaluate
+        # all of them — it only short-circuits on the first True.
         hs = make_hard_state(flags={"a": False})
         ss = make_soft_state()
         condition = ConditionExpression.model_validate({
@@ -796,6 +867,23 @@ class TestEdgeCases:
         })
         with pytest.raises(ValueError):
             evaluate(condition, hs, ss)
+
+    def test_unless_with_tag_condition(self) -> None:
+        hs = make_hard_state(player={"location": "axe_head", "inventory": ["sword"]})
+        ss = make_soft_state()
+        corpus = make_corpus()
+        condition = ConditionExpression.model_validate({
+            "unless": "tag:weapon"
+        })
+        assert not evaluate(condition, hs, ss, corpus)
+
+    def test_unless_with_inventory_condition(self) -> None:
+        hs = make_hard_state(player={"location": "axe_head", "inventory": ["rusty_key"]})
+        ss = make_soft_state()
+        condition = ConditionExpression.model_validate({
+            "unless": "inventory:rusty_key"
+        })
+        assert not evaluate(condition, hs, ss)
 
     def test_all_short_circuits(self) -> None:
         hs = make_hard_state(flags={"a": False})

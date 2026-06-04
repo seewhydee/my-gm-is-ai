@@ -7,9 +7,10 @@ from mgmai.models.corpus import ConditionExpression, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 
+DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item"
 CONDITION_RE = re.compile(
-    r"^(flag|inventory|tag|entity|room|attitude):([\w.]+)"
-    r"(?:\s*(==|>=|>|<=|<)\s*(.+))?$"
+    rf"^({DOMAINS}):([\w.-]+)"
+    rf"(?:\s*(==|>=|>|<=|<)\s*(.+))?$"
 )
 
 TRUE_VALUES = frozenset({"true", "True"})
@@ -110,9 +111,23 @@ def evaluate_condition_string(
                 f"attitude condition requires operator and value: {raw!r}"
             )
         attitude_val = soft_state.npc_attitudes.get(key)
+        if attitude_val is None and corpus is not None:
+            entity = corpus.entities.get(key)
+            if entity is not None and entity.dialogue_guidelines is not None:
+                attitude_val = entity.dialogue_guidelines.attitude_limits.initial
         if attitude_val is None:
             return False
         return _compare(attitude_val, op, value)
+
+    if domain == "topic":
+        if op is not None:
+            raise ValueError(f"topic condition must not have operator: {raw!r}")
+        return key in soft_state.dialogue_state.topics_discussed
+
+    if domain == "item":
+        if op is not None:
+            raise ValueError(f"item condition must not have operator: {raw!r}")
+        return key in hard_state.player.inventory
 
     raise ValueError(f"Unknown condition domain: {domain}")
 
@@ -124,6 +139,14 @@ def _compare(actual: object, op: str, expected: str) -> bool:
             return actual is True or actual == "true"
         if expected in FALSE_VALUES:
             return actual is False or actual == "false"
+        # Numeric equality to avoid false mismatches like 10.0 != "10".
+        if not isinstance(actual, bool):
+            try:
+                actual_num = float(actual)
+                expected_num = float(expected)
+                return actual_num == expected_num
+            except (ValueError, TypeError):
+                pass
         return str(actual) == expected
 
     if expected in TRUE_VALUES or expected in FALSE_VALUES:

@@ -287,7 +287,7 @@ class StateManager:
 
         for flag in changes.flags_cleared:
             if flag in self.hard_state.flags:
-                self.hard_state.flags[flag] = False
+                del self.hard_state.flags[flag]
 
         for room_id, room_changes in changes.room_state_changes.items():
             if room_id not in self.hard_state.room_states:
