@@ -20,6 +20,9 @@ dev = [
     "pytest>=8.0",
 ]
 
+[project.scripts]
+mgmai = "mgmai.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["mgmai*"]
 

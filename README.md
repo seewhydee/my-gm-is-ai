@@ -36,16 +36,23 @@ Alternatively, on first launch you will be prompted for this information.  These
 
 ## Usage
 
-Start a new game from an adventure directory:
+If you installed the package with `pip install -e .`, you can use the `mgmai` command:
 
 ```bash
 mgmai adventures/bag-of-holding
+```
+
+To run directly from the source directory without installing, use:
+
+```bash
+python -m mgmai.cli adventures/bag-of-holding
 ```
 
 Resume a saved game:
 
 ```bash
 mgmai adventures/bag-of-holding --load save.json
+# or: python -m mgmai.cli adventures/bag-of-holding --load save.json
 ```
 
 During play, type natural-language commands. Examples:
@@ -65,6 +72,7 @@ Run with `--debug` to display the internal Game Master briefing and engine resul
 
 ```bash
 mgmai --debug adventures/bag-of-holding
+# or: python -m mgmai.cli --debug adventures/bag-of-holding
 ```
 
 ## License
