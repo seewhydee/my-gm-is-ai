@@ -26,6 +26,7 @@ sys.path.insert(0, str(parent))
 
 from mgmai.state.manager import StateManager
 from mgmai.llm.client import LLMClient
+from mgmai.llm.model_config import get_model_config
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
 from mgmai.context.assembler import assemble
 from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
@@ -73,8 +74,13 @@ def main() -> None:
         print("Error: MGMAI_API_KEY is not set")
         sys.exit(1)
 
-    base_url = os.environ.get("MGMAI_BASE_URL", "https://api.deepseek.com")
-    model = os.environ.get("MGMAI_MODEL", "deepseek-v4-flash")
+    model_name = os.environ.get("MGMAI_MODEL", "deepseek-v4-flash")
+    config = get_model_config(model_name)
+
+    base_url = os.environ.get("MGMAI_BASE_URL")
+    if base_url:
+        from dataclasses import replace
+        config = replace(config, base_url=base_url)
 
     state_manager = StateManager()
     try:
@@ -85,8 +91,7 @@ def main() -> None:
 
     llm_client = LLMClient(
         api_key=api_key,
-        base_url=base_url,
-        model=model,
+        config=config,
     )
 
     run_validation(state_manager, llm_client, args)

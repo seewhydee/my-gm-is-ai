@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from openai import OpenAI
+
+from mgmai.llm.model_config import ModelConfig
 
 
 class LLMClient:
@@ -19,18 +20,13 @@ class LLMClient:
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.deepseek.com",
-        model: str = "deepseek-v4-flash",
-        ruling_temperature: float = 0.9,
-        prose_temperature: float = 1.1,
+        config: ModelConfig,
     ) -> None:
         self._client = OpenAI(
             api_key=api_key,
-            base_url=base_url,
+            base_url=config.base_url,
         )
-        self._model = model
-        self._ruling_temperature = ruling_temperature
-        self._prose_temperature = prose_temperature
+        self._config = config
 
     # ------------------------------------------------------------------
     # public API
@@ -45,7 +41,7 @@ class LLMClient:
         return self._call(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=self._ruling_temperature,
+            temperature=self._config.ruling_temperature,
         )
 
     def call_prose(self, system_prompt: str, user_prompt: str) -> str:
@@ -57,7 +53,7 @@ class LLMClient:
         return self._call(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=self._prose_temperature,
+            temperature=self._config.prose_temperature,
         )
 
     # ------------------------------------------------------------------
@@ -70,16 +66,19 @@ class LLMClient:
         user_prompt: str,
         temperature: float,
     ) -> str:
-        response = self._client.chat.completions.create(
-            model=self._model,
-            temperature=temperature,
-            response_format={"type": "json_object"},
-            extra_body={"thinking": {"type": "disabled"}},
-            messages=[
+        kwargs: dict[str, Any] = {
+            "model": self._config.name,
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-        )
+        }
+        if self._config.extra_body is not None:
+            kwargs["extra_body"] = self._config.extra_body
+
+        response = self._client.chat.completions.create(**kwargs)
 
         choice = response.choices[0]
         if choice.message.content is None:

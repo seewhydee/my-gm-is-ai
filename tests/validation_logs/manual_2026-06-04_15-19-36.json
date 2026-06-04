@@ -1,0 +1,428 @@
+{
+  "adventure": "adventures/bag-of-holding",
+  "turns": [
+    {
+      "turn": 1,
+      "player_input": "look around",
+      "chain_steps": [
+        {
+          "briefing": {
+            "adventure_title": "You're Trapped in a Bag of Holding!",
+            "setting": "You are a person trapped inside a magical Bag of Holding \u2014 a pocket dimension full of discarded treasures and hidden dangers.",
+            "tone": "Whimsical and slightly dark. The world is absurd but coherent. Danger is real but the tone is more Pratchett than Lovecraft.",
+            "turn": 0,
+            "current_room": {
+              "id": "axe_head",
+              "name": "Axe Head",
+              "description": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.",
+              "soft_items": [
+                "loose stone",
+                "dust"
+              ],
+              "entities_visible": [
+                {
+                  "id": "battleaxe",
+                  "name": "battleaxe",
+                  "type": "feature",
+                  "description": "A truly enormous battleaxe, its head resting against the canvas wall. The shaft is as wide as a sidewalk and slopes downward into the dimness. It belongs to Korbar the Dwarf.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "canvas_walls",
+                  "name": "canvas_walls",
+                  "type": "feature",
+                  "description": "The interior walls of the Bag of Holding \u2014 vast planes of rough canvas that stretch upward and curve inward to form a ceiling. They emit a faint, magical luminescence that keeps the interior from being pitch black.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "rip_in_canvas",
+                  "name": "rip_in_canvas",
+                  "type": "feature",
+                  "description": "A small rip in the fabric of the bag near the ceiling, made by the tip of the battleaxe. By balancing carefully on the blade tip, you can poke your head through. Beyond is a grey nothing \u2014 the Astral Plane. Looking around from this vantage, you can see the exterior of the Bag, including a giant padlock barely within reach, firmly locked shut and attached to the neck of the bag.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "padlock",
+                  "name": "padlock",
+                  "type": "feature",
+                  "description": "A giant padlock attached to the neck of the Bag of Holding, barely within reach from the rip in the canvas. It is currently firmly locked shut.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                }
+              ],
+              "exits_available": [
+                {
+                  "id": "exit_climb_down_handle",
+                  "direction": "Climb carefully down the axe handle",
+                  "target_room": "axe_handle_upper",
+                  "hidden": false
+                },
+                {
+                  "id": "exit_drop_from_head",
+                  "direction": "Drop down into the darkness below",
+                  "target_room": "bag_floor",
+                  "hidden": false
+                }
+              ],
+              "interactions_available": [],
+              "room_notes": []
+            },
+            "player_state": {
+              "location": "axe_head",
+              "hard_inventory": [],
+              "soft_inventory": [],
+              "active_flags": {},
+              "entity_notes": []
+            },
+            "npc_attitudes": {
+              "korbar": 0,
+              "stuck_fly": 0,
+              "spider": -5
+            },
+            "npc_revelations": {},
+            "recent_history": [],
+            "dialogue_context": null,
+            "player_input": "look around"
+          },
+          "raw_ruling": "{\n  \"action_type\": \"examine\",\n  \"target\": \"axe_head\",\n  \"rigorous\": false,\n  \"detail\": \"Player looks around the area.\",\n  \"follow_up\": null,\n  \"proposed_soft_state_patches\": []\n}",
+          "parsed_action": {
+            "detail": "Player looks around the area.",
+            "follow_up": null,
+            "proposed_soft_state_patches": [],
+            "action_type": "examine",
+            "target": "axe_head",
+            "rigorous": false,
+            "using": null
+          },
+          "engine_result": {
+            "success": true,
+            "action_type": "examine",
+            "target": "axe_head",
+            "error": null,
+            "message": null,
+            "player_input_echo": "look around",
+            "room_after": {
+              "id": "axe_head",
+              "name": "Axe Head",
+              "description": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.",
+              "soft_items": [
+                "loose stone",
+                "dust"
+              ],
+              "entities_visible": [
+                {
+                  "id": "battleaxe",
+                  "name": "battleaxe",
+                  "type": "feature",
+                  "description": "A truly enormous battleaxe, its head resting against the canvas wall. The shaft is as wide as a sidewalk and slopes downward into the dimness. It belongs to Korbar the Dwarf.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "canvas_walls",
+                  "name": "canvas_walls",
+                  "type": "feature",
+                  "description": "The interior walls of the Bag of Holding \u2014 vast planes of rough canvas that stretch upward and curve inward to form a ceiling. They emit a faint, magical luminescence that keeps the interior from being pitch black.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "rip_in_canvas",
+                  "name": "rip_in_canvas",
+                  "type": "feature",
+                  "description": "A small rip in the fabric of the bag near the ceiling, made by the tip of the battleaxe. By balancing carefully on the blade tip, you can poke your head through. Beyond is a grey nothing \u2014 the Astral Plane. Looking around from this vantage, you can see the exterior of the Bag, including a giant padlock barely within reach, firmly locked shut and attached to the neck of the bag.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "padlock",
+                  "name": "padlock",
+                  "type": "feature",
+                  "description": "A giant padlock attached to the neck of the Bag of Holding, barely within reach from the rip in the canvas. It is currently firmly locked shut.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                }
+              ],
+              "exits_available": [
+                {
+                  "id": "exit_climb_down_handle",
+                  "direction": "Climb carefully down the axe handle",
+                  "target_room": "axe_handle_upper",
+                  "hidden": false
+                },
+                {
+                  "id": "exit_drop_from_head",
+                  "direction": "Drop down into the darkness below",
+                  "target_room": "bag_floor",
+                  "hidden": false
+                }
+              ],
+              "interactions_available": [],
+              "room_notes": []
+            },
+            "hard_state_changes": {
+              "player_location": null,
+              "inventory_added": [],
+              "inventory_removed": [],
+              "flags_set": {},
+              "flags_cleared": [],
+              "room_state_changes": {},
+              "entity_state_changes": {}
+            },
+            "soft_state_patches_applied": [],
+            "soft_state_patches_rejected": [],
+            "rolls": [],
+            "encounter_outcome": null,
+            "triggered_narration": [
+              "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle."
+            ],
+            "on_enter_events": [],
+            "game_over": null,
+            "dialogue_exited": null,
+            "will_reveal_readiness": {},
+            "revelations_applied": [],
+            "npc_attitude_limits": {},
+            "attitude_changes_applied": {},
+            "attitude_changes_rejected": {},
+            "chain_info": null,
+            "warnings": []
+          },
+          "raw_prose": "{\n  \"narration\": \"You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.\",\n  \"npc_response\": null,\n  \"knowledge_tags\": null,\n  \"attitude_changes\": null\n}",
+          "parsed_prose": {
+            "narration": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.",
+            "npc_response": null,
+            "knowledge_tags": null,
+            "attitude_changes": null
+          },
+          "narration": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle."
+        }
+      ]
+    },
+    {
+      "turn": 2,
+      "player_input": "can I reach the hole?",
+      "chain_steps": [
+        {
+          "briefing": {
+            "adventure_title": "You're Trapped in a Bag of Holding!",
+            "setting": "You are a person trapped inside a magical Bag of Holding \u2014 a pocket dimension full of discarded treasures and hidden dangers.",
+            "tone": "Whimsical and slightly dark. The world is absurd but coherent. Danger is real but the tone is more Pratchett than Lovecraft.",
+            "turn": 1,
+            "current_room": {
+              "id": "axe_head",
+              "name": "Axe Head",
+              "description": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.",
+              "soft_items": [
+                "loose stone",
+                "dust"
+              ],
+              "entities_visible": [
+                {
+                  "id": "battleaxe",
+                  "name": "battleaxe",
+                  "type": "feature",
+                  "description": "A truly enormous battleaxe, its head resting against the canvas wall. The shaft is as wide as a sidewalk and slopes downward into the dimness. It belongs to Korbar the Dwarf.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "canvas_walls",
+                  "name": "canvas_walls",
+                  "type": "feature",
+                  "description": "The interior walls of the Bag of Holding \u2014 vast planes of rough canvas that stretch upward and curve inward to form a ceiling. They emit a faint, magical luminescence that keeps the interior from being pitch black.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "rip_in_canvas",
+                  "name": "rip_in_canvas",
+                  "type": "feature",
+                  "description": "A small rip in the fabric of the bag near the ceiling, made by the tip of the battleaxe. By balancing carefully on the blade tip, you can poke your head through. Beyond is a grey nothing \u2014 the Astral Plane. Looking around from this vantage, you can see the exterior of the Bag, including a giant padlock barely within reach, firmly locked shut and attached to the neck of the bag.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "padlock",
+                  "name": "padlock",
+                  "type": "feature",
+                  "description": "A giant padlock attached to the neck of the Bag of Holding, barely within reach from the rip in the canvas. It is currently firmly locked shut.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                }
+              ],
+              "exits_available": [
+                {
+                  "id": "exit_climb_down_handle",
+                  "direction": "Climb carefully down the axe handle",
+                  "target_room": "axe_handle_upper",
+                  "hidden": false
+                },
+                {
+                  "id": "exit_drop_from_head",
+                  "direction": "Drop down into the darkness below",
+                  "target_room": "bag_floor",
+                  "hidden": false
+                }
+              ],
+              "interactions_available": [],
+              "room_notes": []
+            },
+            "player_state": {
+              "location": "axe_head",
+              "hard_inventory": [],
+              "soft_inventory": [],
+              "active_flags": {},
+              "entity_notes": []
+            },
+            "npc_attitudes": {
+              "korbar": 0,
+              "stuck_fly": 0,
+              "spider": -5
+            },
+            "npc_revelations": {},
+            "recent_history": [
+              {
+                "turn": 1,
+                "summary": "Narration: You are standing on the tip of a giant battleaxe, its blade resting against a hu...",
+                "location_after": "axe_head"
+              }
+            ],
+            "dialogue_context": null,
+            "player_input": "can I reach the hole?"
+          },
+          "raw_ruling": "{\n  \"action_type\": \"examine\",\n  \"target\": \"rip_in_canvas\",\n  \"detail\": \"Player inspects the rip in the canvas to see if they can reach it and put their head through.\",\n  \"follow_up\": null,\n  \"proposed_soft_state_patches\": []\n}",
+          "parsed_action": {
+            "detail": "Player inspects the rip in the canvas to see if they can reach it and put their head through.",
+            "follow_up": null,
+            "proposed_soft_state_patches": [],
+            "action_type": "examine",
+            "target": "rip_in_canvas",
+            "rigorous": false,
+            "using": null
+          },
+          "engine_result": {
+            "success": true,
+            "action_type": "examine",
+            "target": "rip_in_canvas",
+            "error": null,
+            "message": null,
+            "player_input_echo": "can I reach the hole?",
+            "room_after": {
+              "id": "axe_head",
+              "name": "Axe Head",
+              "description": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.",
+              "soft_items": [
+                "loose stone",
+                "dust"
+              ],
+              "entities_visible": [
+                {
+                  "id": "battleaxe",
+                  "name": "battleaxe",
+                  "type": "feature",
+                  "description": "A truly enormous battleaxe, its head resting against the canvas wall. The shaft is as wide as a sidewalk and slopes downward into the dimness. It belongs to Korbar the Dwarf.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "canvas_walls",
+                  "name": "canvas_walls",
+                  "type": "feature",
+                  "description": "The interior walls of the Bag of Holding \u2014 vast planes of rough canvas that stretch upward and curve inward to form a ceiling. They emit a faint, magical luminescence that keeps the interior from being pitch black.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "rip_in_canvas",
+                  "name": "rip_in_canvas",
+                  "type": "feature",
+                  "description": "A small rip in the fabric of the bag near the ceiling, made by the tip of the battleaxe. By balancing carefully on the blade tip, you can poke your head through. Beyond is a grey nothing \u2014 the Astral Plane. Looking around from this vantage, you can see the exterior of the Bag, including a giant padlock barely within reach, firmly locked shut and attached to the neck of the bag.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                },
+                {
+                  "id": "padlock",
+                  "name": "padlock",
+                  "type": "feature",
+                  "description": "A giant padlock attached to the neck of the Bag of Holding, barely within reach from the rip in the canvas. It is currently firmly locked shut.",
+                  "state": {},
+                  "entity_notes": [],
+                  "soft_items": []
+                }
+              ],
+              "exits_available": [
+                {
+                  "id": "exit_climb_down_handle",
+                  "direction": "Climb carefully down the axe handle",
+                  "target_room": "axe_handle_upper",
+                  "hidden": false
+                },
+                {
+                  "id": "exit_drop_from_head",
+                  "direction": "Drop down into the darkness below",
+                  "target_room": "bag_floor",
+                  "hidden": false
+                }
+              ],
+              "interactions_available": [],
+              "room_notes": []
+            },
+            "hard_state_changes": {
+              "player_location": null,
+              "inventory_added": [],
+              "inventory_removed": [],
+              "flags_set": {},
+              "flags_cleared": [],
+              "room_state_changes": {},
+              "entity_state_changes": {}
+            },
+            "soft_state_patches_applied": [],
+            "soft_state_patches_rejected": [],
+            "rolls": [],
+            "encounter_outcome": null,
+            "triggered_narration": [
+              "A small rip in the fabric of the bag near the ceiling, made by the tip of the battleaxe. By balancing carefully on the blade tip, you can poke your head through. Beyond is a grey nothing \u2014 the Astral Plane. Looking around from this vantage, you can see the exterior of the Bag, including a giant padlock barely within reach, firmly locked shut and attached to the neck of the bag."
+            ],
+            "on_enter_events": [],
+            "game_over": null,
+            "dialogue_exited": null,
+            "will_reveal_readiness": {},
+            "revelations_applied": [],
+            "npc_attitude_limits": {},
+            "attitude_changes_applied": {},
+            "attitude_changes_rejected": {},
+            "chain_info": null,
+            "warnings": []
+          },
+          "raw_prose": "{\n  \"narration\": \"You steady yourself on the battleaxe's tip, your heart hammering as you stretch upward toward the small rip in the canvas. The fabric squeaks under your fingers but holds firm. Carefully, you pull yourself up and poke your head through the gap. Beyond is a grey, infinite void \u2013 the Astral Plane. It's cold and silent, with a faint pressure like being underwater. Peeking around, you can see the exterior of the Bag of Holding, a bulging sack of rough canvas. A giant padlock dangles from the cinched neck, barely within reach from this precarious perch. It's firmly locked, but perhaps you could feel it for keyholes or tamper with it if you could get a hand on it. For now, you're just head and shoulders through the rip \u2013 the rest of you remains perched on the axe blade.\",\n  \"npc_response\": null,\n  \"knowledge_tags\": null,\n  \"attitude_changes\": null\n}",
+          "parsed_prose": {
+            "narration": "You steady yourself on the battleaxe's tip, your heart hammering as you stretch upward toward the small rip in the canvas. The fabric squeaks under your fingers but holds firm. Carefully, you pull yourself up and poke your head through the gap. Beyond is a grey, infinite void \u2013 the Astral Plane. It's cold and silent, with a faint pressure like being underwater. Peeking around, you can see the exterior of the Bag of Holding, a bulging sack of rough canvas. A giant padlock dangles from the cinched neck, barely within reach from this precarious perch. It's firmly locked, but perhaps you could feel it for keyholes or tamper with it if you could get a hand on it. For now, you're just head and shoulders through the rip \u2013 the rest of you remains perched on the axe blade.",
+            "npc_response": null,
+            "knowledge_tags": null,
+            "attitude_changes": null
+          },
+          "narration": "You steady yourself on the battleaxe's tip, your heart hammering as you stretch upward toward the small rip in the canvas. The fabric squeaks under your fingers but holds firm. Carefully, you pull yourself up and poke your head through the gap. Beyond is a grey, infinite void \u2013 the Astral Plane. It's cold and silent, with a faint pressure like being underwater. Peeking around, you can see the exterior of the Bag of Holding, a bulging sack of rough canvas. A giant padlock dangles from the cinched neck, barely within reach from this precarious perch. It's firmly locked, but perhaps you could feel it for keyholes or tamper with it if you could get a hand on it. For now, you're just head and shoulders through the rip \u2013 the rest of you remains perched on the axe blade."
+        }
+      ]
+    }
+  ],
+  "sequence": null
+}

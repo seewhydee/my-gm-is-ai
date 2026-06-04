@@ -11,10 +11,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from mgmai.state.manager import StateManager
 from mgmai.llm.client import LLMClient
+from mgmai.llm.model_config import get_model_config
 from mgmai.game.display import Display
 from mgmai.game.loop import GameLoop
 
@@ -85,16 +87,21 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
 
-    base_url = args.base_url or os.environ.get(
-        "MGMAI_BASE_URL", "https://api.deepseek.com"
-    )
-    model = args.model or os.environ.get("MGMAI_MODEL", "deepseek-v4-flash")
-    ruling_temp = float(
-        os.environ.get("MGMAI_RULING_TEMPERATURE", "0.9")
-    )
-    prose_temp = float(
-        os.environ.get("MGMAI_PROSE_TEMPERATURE", "1.1")
-    )
+    model_name = args.model or os.environ.get("MGMAI_MODEL", "deepseek-v4-flash")
+    config = get_model_config(model_name)
+
+    base_url = args.base_url or os.environ.get("MGMAI_BASE_URL")
+    if base_url:
+        config = replace(config, base_url=base_url)
+
+    # Environment variables can still override individual temperatures for
+    # quick experimentation, but the registry is the authoritative source.
+    ruling_temp = os.environ.get("MGMAI_RULING_TEMPERATURE")
+    prose_temp = os.environ.get("MGMAI_PROSE_TEMPERATURE")
+    if ruling_temp is not None:
+        config = replace(config, ruling_temperature=float(ruling_temp))
+    if prose_temp is not None:
+        config = replace(config, prose_temperature=float(prose_temp))
 
     state_manager = StateManager()
 
@@ -118,10 +125,7 @@ def main(argv: list[str] | None = None) -> None:
 
     llm_client = LLMClient(
         api_key=api_key,
-        base_url=base_url,
-        model=model,
-        ruling_temperature=ruling_temp,
-        prose_temperature=prose_temp,
+        config=config,
     )
 
     loop = GameLoop(
