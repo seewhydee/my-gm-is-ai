@@ -1,20 +1,20 @@
 # My GM is AI
 
-An AI-driven Game Master for tabletop RPG adventures — play through a pre-written adventure module with an AI GM that adjudicates your actions and narrates the outcome.
+An AI-driven Game Master (GM) for single-player RPGs.
 
-Unlike freeform AI roleplay chatbots, MGMAI runs a **fixed adventure module** with mechanical fidelity. You can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens. It aims to strike a balance between AI creativity and rules adherence (similar to what a human GM must manage).
+Unlike freeform AI roleplay chatbots, this AI GM runs pre-written adventure modules with mechanical fidelity.  You can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens.  Like a human GM, the AI GM system aims to strike a balance between creativity and rules adherence.
+
+This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Player stats and combat is not yet implemented.
 
 ## How It Works
 
-Each turn, your natural-language input flows through a two-stage pipeline:
+Each turn, your natural language input flows through a three-stage pipeline:
 
-1. **Ruling** — A large language mode (LLM) interprets your intent and produces a structured action (move, examine, interact, talk, transfer, wait).
-2. **Engine resolution** — A deterministic engine validates the action against the adventure module's rules, applies state changes, and checks for encounters or game-over conditions.
-3. **Prose narration** — A second LLM call weaves the mechanical outcome into natural prose, respecting hidden information and attitude mechanics.
+1. **Ruling** — A large language mode (LLM) call interprets your intent and produces a structured action.
+2. **Engine resolution** — A deterministic engine validates the action against the adventure module's rules and the current game state, rolls virtual dice, etc.
+3. **Prose narration** — A second LLM call weaves the outcome into natural prose, respecting narrative requirements like keeping secrets hidden.
 
-Game state (inventory, flags, room states, entity states, NPC attitudes, dialogue) is tracked rigorously between turns and persisted to disk.
-
-## Installation
+## Installation and setup
 
 Requires Python 3 with some packages (Pydantic, Rich, Openai, Jinja2, Platformdirs).  You can install them all via `pip`:
 
@@ -22,9 +22,7 @@ Requires Python 3 with some packages (Pydantic, Rich, Openai, Jinja2, Platformdi
 pip install -e .
 ```
 
-## Setup
-
-The LLMs are accessed via an OpenAI-compatible API.  You can set your credentials using environmental variables, e.g.:
+The AI GM system requires API access to an LLM via an OpenAI-compatible API.  You can set your credentials using environmental variables, e.g.:
 
 ```bash
 export MGMAI_BASE_URL="https://api.deepseek.com"
@@ -32,7 +30,7 @@ export MGMAI_MODEL="deepseek-v4-flash"
 export MGMAI_API_KEY="your-api-key"
 ```
 
-Alternatively, on first launch you will be prompted for this information, which will be saved to your config files.
+Alternatively, on first launch you will be prompted for this information.  These credentials, as well as save files, are saved to `~/.config/mgmai/`.
 
 ## Usage
 
@@ -52,12 +50,9 @@ During play, type natural-language commands. Examples:
 
 ```
 > look around
-> examine the wooden chest
-> take the rusty key
+> I poke my head through the window. What do I see?
 > open the door with the rusty key
-> talk to the innkeeper
-> attack the spider
-> check my inventory
+> I nod at the innkeeper. "I need accommodation for a day or so. I prefer a quiet chamber and a bed free of vermin."
 ```
 
 Use `/help` during play for available commands.
@@ -69,18 +64,6 @@ Run with `--debug` to display the internal Game Master briefing and engine resul
 ```bash
 mgmai --debug adventures/bag-of-holding
 ```
-
-## Configuration
-
-Credentials and preferences are stored in `~/.config/mgmai/`.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MGMAI_API_KEY` | — | API key (required) |
-| `MGMAI_BASE_URL` | `https://api.deepseek.com` | API base URL |
-| `MGMAI_MODEL` | `deepseek-v4-flash` | Model name |
-| `MGMAI_RULING_TEMPERATURE` | `0.9` | Temperature for action ruling |
-| `MGMAI_PROSE_TEMPERATURE` | `1.1` | Temperature for prose narration |
 
 ## License
 
