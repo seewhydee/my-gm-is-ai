@@ -43,6 +43,7 @@ class GameLoop:
             render=self._display.print,
             exit_fn=self._do_exit,
             debug=debug,
+            on_load=self._on_game_loaded,
         )
 
     @property
@@ -100,9 +101,15 @@ class GameLoop:
 
             self._chat_log.append({"role": "gm", "content": narration})
             self._display.render_narration(narration)
+
+            # Check for game over and handle end-of-turn bookkeeping
+            self._finalize_turn(narration)
             return
 
-        self._display.render_narration(TURN_ERROR_NARRATION)
+        if narration:
+            self._chat_log.append({"role": "gm", "content": narration})
+            self._display.render_narration(narration)
+            self._finalize_turn(narration)
 
     # ------------------------------------------------------------------
     # single-turn execution
@@ -172,6 +179,23 @@ class GameLoop:
                 + prose.model_dump_json(indent=2)
             )
 
+        # 4.5 Feed dialogue state from prose output
+        if action.action_type != "ooc_discussion":
+            from mgmai.engine.dialogue import append_npc_response, track_topic
+
+            if prose.npc_response and soft.dialogue_state.active_npc is not None:
+                append_npc_response(
+                    soft,
+                    soft.dialogue_state.active_npc,
+                    hard.turn_count,
+                    prose.npc_response,
+                )
+
+            if prose.knowledge_tags and prose.knowledge_tags.npc_revealed:
+                for npc_id, topics in prose.knowledge_tags.npc_revealed.items():
+                    for topic in topics:
+                        track_topic(soft, topic)
+
         # 5. Post-validate knowledge_tags + attitude_changes
         kt = prose.knowledge_tags.npc_revealed if prose.knowledge_tags else None
         ac = dict(prose.attitude_changes) if prose.attitude_changes else None
@@ -180,6 +204,37 @@ class GameLoop:
             self._last_result = result
 
         return prose.narration
+
+    # ------------------------------------------------------------------
+    # turn finalization
+    # ------------------------------------------------------------------
+
+    def _finalize_turn(self, narration: str) -> None:
+        hard = self._state.hard_state
+        if hard is None:
+            return
+
+        if hard.game_over is not None:
+            # Build a lightweight result object for the display
+            from mgmai.models.actions import GameOverResult
+
+            go = GameOverResult(
+                type=hard.game_over.type,
+                trigger=hard.game_over.trigger,
+            )
+            self._display.render_game_over(go)
+            self._do_exit()
+            return
+
+        self._display.render_status(self._state)
+        self._auto_save(narration)
+
+    def _auto_save(self, narration: str) -> None:
+        try:
+            self._state.save_state(".", "autosave.json", latest_narration=narration)
+        except Exception:
+            # Auto-save failure is non-fatal; don't interrupt the player
+            pass
 
     # ------------------------------------------------------------------
     # LLM helpers
@@ -219,11 +274,20 @@ class GameLoop:
         user_data = {
             "setting": briefing.setting,
             "tone": briefing.tone,
-            "briefing": json.loads(briefing.model_dump_json()),
-            "player_action": json.loads(action.model_dump_json()),
-            "engine_result": json.loads(result.model_dump_json()),
+            "briefing": briefing.model_dump(mode="json"),
+            "player_action": action.model_dump(mode="json"),
+            "engine_result": result.model_dump(mode="json"),
             "chat_log": self._chat_log[-10:],
         }
+
+        if result.will_reveal_readiness:
+            user_data["will_reveal_readiness"] = {
+                npc: {
+                    tid: entry.model_dump(mode="json")
+                    for tid, entry in topics.items()
+                }
+                for npc, topics in result.will_reveal_readiness.items()
+            }
 
         if result.chain_info and result.chain_info.follow_up:
             user_data["chained_action"] = True
@@ -240,6 +304,10 @@ class GameLoop:
     # --- internal ---
 
     _last_result: Any = None
+
+    def _on_game_loaded(self) -> None:
+        self._chat_log.clear()
+        self._last_result = None
 
     def _do_exit(self) -> None:
         self._running = False

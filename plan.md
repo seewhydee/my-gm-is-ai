@@ -601,7 +601,7 @@ python -m mgmai.cli adventures/bag-of-holding --load save.json  # resume
 
 Uses argparse. Sets up `StateManager`, `LLMClient`, `GameLoop`. Runs the REPL: prompt for input, call `game_loop.run_turn()`, display result, repeat until `game_over`.
 
-Environment variables: `MGMAI_API_KEY`, `MGMAI_BASE_URL` (defaults to Deepseek), `MGMAI_MODEL` (defaults to `deepseek-chat`).
+Environment variables: `MGMAI_API_KEY`, `MGMAI_BASE_URL` (defaults to Deepseek), `MGMAI_MODEL` (defaults to `deepseek-v4-flash`).
 
 ### Phase 8: Testing & Adventure Validation
 

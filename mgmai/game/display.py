@@ -48,7 +48,7 @@ class Display:
             self._console.print(Rule(characters="="))
             self._console.print()
             panel = Panel(
-                f"[bold italic]{title}[/bold italic]\n\n[intro]",
+                f"[bold italic]{title}[/bold italic]\n\n{intro}",
                 border_style="bold cyan",
                 padding=(1, 2),
             )
@@ -114,6 +114,81 @@ class Display:
             self._console.print(f"[bold red]Error:[/bold red] {text}")
         else:
             print(f"Error: {text}")
+
+    def render_status(self, state_loader: Any) -> None:
+        hard = state_loader.hard_state
+        soft = state_loader.soft_state
+        if hard is None:
+            return
+
+        loc = hard.player.location
+        inv = hard.player.inventory
+        turn = hard.turn_count
+        active_flags = [k for k, v in hard.flags.items() if v]
+        soft_inv = soft.soft_inventory if soft else []
+
+        if RICH_AVAILABLE:
+            parts = [f"[dim]Turn {turn}[/dim]"]
+            parts.append(f"[dim]Location:[/dim] [cyan]{loc}[/cyan]")
+            if inv:
+                parts.append(f"[dim]Inventory:[/dim] {', '.join(inv)}")
+            if soft_inv:
+                parts.append(f"[dim]Misc:[/dim] {', '.join(soft_inv)}")
+            if active_flags:
+                parts.append(f"[dim]Flags:[/dim] {', '.join(active_flags)}")
+            self._console.print(f"  {' | '.join(parts)}")
+        else:
+            parts = [f"Turn {turn}", f"Location: {loc}"]
+            if inv:
+                parts.append(f"Inventory: {', '.join(inv)}")
+            if soft_inv:
+                parts.append(f"Misc: {', '.join(soft_inv)}")
+            if active_flags:
+                parts.append(f"Flags: {', '.join(active_flags)}")
+            print(f"  {' | '.join(parts)}")
+
+    def render_game_over(self, result: Any) -> None:
+        go_type = getattr(result, "type", "unknown")
+        narrative = getattr(result, "narrative", None) or ""
+        trigger = getattr(result, "trigger", "")
+
+        if go_type == "win":
+            title = "🎉 Victory!"
+            style = "bold green"
+            border = "green"
+        elif go_type == "lose":
+            title = "💀 Defeat"
+            style = "bold red"
+            border = "red"
+        else:
+            title = f"Game Over ({go_type})"
+            style = "bold yellow"
+            border = "yellow"
+
+        text_parts = [f"[{style}]{title}[/{style}]"]
+        if trigger:
+            text_parts.append(f"[dim]Trigger:[/dim] {trigger}")
+        if narrative:
+            text_parts.append(f"\n{narrative}")
+
+        if RICH_AVAILABLE:
+            self._console.print()
+            self._console.print(
+                Panel(
+                    "\n".join(text_parts),
+                    border_style=border,
+                    padding=(1, 2),
+                )
+            )
+            self._console.print()
+        else:
+            print()
+            print(title)
+            if trigger:
+                print(f"Trigger: {trigger}")
+            if narrative:
+                print(narrative)
+            print()
 
     # --- helpers ---
 

@@ -10,11 +10,13 @@ class Commands:
         render: Callable[[str], None],
         exit_fn: Callable[[], None],
         debug: bool = False,
+        on_load: Callable[[], None] | None = None,
     ):
         self._state = state_loader
         self._render = render
         self._exit = exit_fn
         self._debug = debug
+        self._on_load = on_load
 
     @property
     def debug(self) -> bool:
@@ -90,6 +92,8 @@ class Commands:
                 f"[green]Game loaded from {filename} "
                 f"(adventure: {adv_path})[/green]"
             )
+            if self._on_load is not None:
+                self._on_load()
         except FileNotFoundError:
             self._render(f"[red]Save file not found: {filename}[/red]")
         except Exception as e:

@@ -1,42 +1,45 @@
 from __future__ import annotations
 
 import json as _json
-from typing import Union
+import re as _re
 
-from mgmai.models.actions import (
-    ExamineAction,
-    InteractAction,
-    MoveAction,
-    OocDiscussionAction,
-    TalkAction,
-    TransferAction,
-    WaitAction,
-    validate_player_action,
-)
+from mgmai.models.actions import validate_player_action
 from mgmai.models.narration import NarrationOutput
 
-PlayerActionType = Union[
-    MoveAction,
-    ExamineAction,
-    InteractAction,
-    TalkAction,
-    TransferAction,
-    WaitAction,
-    OocDiscussionAction,
-]
+_MARKDOWN_JSON_RE = _re.compile(
+    r"```(?:json)?\s*\n?(.*?)\n?```", _re.DOTALL
+)
 
 
 class LLMOutputError(Exception):
     """Raised when LLM output cannot be parsed into the expected Pydantic model."""
 
 
-def parse_player_action(raw: str) -> PlayerActionType:
+def _extract_json(raw: str) -> dict:
+    """Extract a JSON dict from LLM output, with markdown-fence fallback.
+
+    Attempts direct ``json.loads`` first.  If that fails and the string
+    contains a `` ```json ... ``` `` (or plain `` ``` ``) fenced block,
+    the content of the first such block is parsed instead.
+    """
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError:
+        match = _MARKDOWN_JSON_RE.search(raw)
+        if match:
+            data = _json.loads(match.group(1))
+        else:
+            raise
+    return data
+
+
+def parse_player_action(raw: str):
     """Parse LLM Call 1 JSON output into a validated PlayerAction.
 
     Raises :exc:`LLMOutputError` on invalid JSON or schema mismatch.
     """
     try:
-        data = _json.loads(raw)
+        data = _extract_json(raw)
     except _json.JSONDecodeError as exc:
         raise LLMOutputError(f"Invalid JSON from LLM Call 1: {exc}") from exc
 
@@ -65,7 +68,7 @@ def parse_prose_output(raw: str) -> NarrationOutput:
     Raises :exc:`LLMOutputError` on invalid JSON or schema mismatch.
     """
     try:
-        data = _json.loads(raw)
+        data = _extract_json(raw)
     except _json.JSONDecodeError as exc:
         raise LLMOutputError(f"Invalid JSON from LLM Call 2: {exc}") from exc
 

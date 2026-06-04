@@ -167,3 +167,9 @@ Use the validation playground:
 ```bash
 MGMAI_API_KEY=sk-... python scripts/validate.py adventures/bag-of-holding --turns 10
 ```
+
+## Config files
+
+We should save the supplied API key to a json store, similar to what others are doing.
+
+Likewise for saves and auto-saves, which are currently hardcoded to CWD.

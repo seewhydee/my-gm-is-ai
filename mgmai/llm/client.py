@@ -69,12 +69,13 @@ class LLMClient:
         kwargs: dict[str, Any] = {
             "model": self._config.name,
             "temperature": temperature,
-            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         }
+        if self._config.supports_json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
         if self._config.extra_body is not None:
             kwargs["extra_body"] = self._config.extra_body
 

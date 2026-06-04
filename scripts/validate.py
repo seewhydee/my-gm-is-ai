@@ -225,7 +225,7 @@ def execute_turn(
 
     # 1. GMBriefing
     briefing = assemble(corpus, hard, soft, current_input)
-    step["briefing"] = json.loads(briefing.model_dump_json())
+    step["briefing"] = briefing.model_dump(mode="json")
 
     print_section("GMBriefing", briefing.model_dump_json(indent=2))
 
@@ -240,7 +240,7 @@ def execute_turn(
 
     try:
         action = parse_player_action(raw_ruling)
-        step["parsed_action"] = json.loads(action.model_dump_json())
+        step["parsed_action"] = action.model_dump(mode="json")
         print_section("Parsed Action", action.model_dump_json(indent=2))
     except LLMOutputError as e:
         step["parse_error_ruling"] = str(e)
@@ -248,7 +248,7 @@ def execute_turn(
         raw_ruling = llm_client.call_ruling(system_prompt, retry_prompt)
         try:
             action = parse_player_action(raw_ruling)
-            step["parsed_action"] = json.loads(action.model_dump_json())
+            step["parsed_action"] = action.model_dump(mode="json")
         except LLMOutputError as e2:
             step["parse_error_ruling_retry"] = str(e2)
             return {"error": f"LLM Call 1 failed after retry: {e2}"}
@@ -260,7 +260,7 @@ def execute_turn(
         chain_depth=chain_depth,
         player_input_echo=original_input,
     )
-    step["engine_result"] = json.loads(result.model_dump_json())
+    step["engine_result"] = result.model_dump(mode="json")
 
     print_section("Engine Result", result.model_dump_json(indent=2))
     print_section("State After Turn", format_state(state_manager))
@@ -270,9 +270,9 @@ def execute_turn(
     user_data = {
         "setting": briefing.setting,
         "tone": briefing.tone,
-        "briefing": json.loads(briefing.model_dump_json()),
-        "player_action": json.loads(action.model_dump_json()),
-        "engine_result": json.loads(result.model_dump_json()),
+        "briefing": briefing.model_dump(mode="json"),
+        "player_action": action.model_dump(mode="json"),
+        "engine_result": result.model_dump(mode="json"),
         "chat_log": chat_log[-10:],
     }
     user_prompt_prose = json.dumps(user_data, indent=2)
@@ -284,7 +284,7 @@ def execute_turn(
 
     try:
         prose = parse_prose_output(raw_prose)
-        step["parsed_prose"] = json.loads(prose.model_dump_json())
+        step["parsed_prose"] = prose.model_dump(mode="json")
         print_section("Parsed Narration", prose.model_dump_json(indent=2))
     except LLMOutputError as e:
         step["parse_error_prose"] = str(e)
@@ -295,7 +295,7 @@ def execute_turn(
     ac = dict(prose.attitude_changes) if prose.attitude_changes else None
     if kt or ac:
         result = apply_post_validation(kt, ac, state_manager, result)
-        step["post_validated"] = json.loads(result.model_dump_json())
+        step["post_validated"] = result.model_dump(mode="json")
         print_section("Post-Validated Result", result.model_dump_json(indent=2))
 
     step["narration"] = prose.narration
