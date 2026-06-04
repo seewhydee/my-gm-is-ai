@@ -45,6 +45,7 @@ def assemble(
         npc_revelations=_build_npc_revelations(soft, corpus),
         recent_history=_build_recent_history(soft),
         dialogue_context=_build_dialogue_context(soft, hard, corpus),
+        revealed_hints=list(soft.revealed_hints),
         player_input=player_input,
     )
 
@@ -68,6 +69,8 @@ def _build_room(
 
         entity_state = hard.entity_states.get(eid, {})
         if entity_state.get("alive") is False:
+            continue
+        if entity.type == "item" and eid in hard.player.inventory:
             continue
 
         notes = soft.entity_notes.get(eid, [])[-3:]

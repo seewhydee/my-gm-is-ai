@@ -17,6 +17,7 @@ class Atmosphere(BaseModel):
 
 
 class Adventure(BaseModel):
+    id: Optional[str] = None
     title: str
     credits: Optional[Credits] = None
     introduction: str
@@ -255,3 +256,4 @@ class ModuleCorpus(BaseModel):
     rooms: Dict[str, Room]
     entities: Dict[str, Entity]
     mechanics: Dict[str, Mechanic] = Field(default_factory=dict)
+    flags_declared: Optional[List[str]] = None

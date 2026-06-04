@@ -207,6 +207,17 @@ class GameLoop:
             result = apply_post_validation(kt, ac, self._state, result)
             self._last_result = result
 
+        # LLM Call 2 may narratively terminate an ongoing chained action
+        if prose.terminate_chain:
+            result = self._last_result
+            if result and result.chain_info and not result.chain_info.termination_reason:
+                from mgmai.models.actions import ChainInfo
+                result.chain_info = ChainInfo(
+                    follow_up=result.chain_info.follow_up,
+                    termination_reason="narrative termination by LLM Call 2",
+                )
+                self._last_result = result
+
         return prose.narration
 
     # ------------------------------------------------------------------

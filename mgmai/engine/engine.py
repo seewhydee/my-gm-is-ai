@@ -138,6 +138,11 @@ def resolve(
 
     combined_applied = engine_soft_patches + applied_patches
 
+    # Persist revealed hints from interaction results into soft state
+    for hint in resolution.revealed_hints or []:
+        if hint not in soft.revealed_hints:
+            soft.revealed_hints.append(hint)
+
     encounter_outcome: dict[str, Any] | None = None
     game_over = None
     rolls: list[dict[str, Any]] = list(resolution.rolls or [])
@@ -264,6 +269,7 @@ def resolve(
         will_reveal_readiness=will_reveal,
         npc_attitude_limits=attitude_limits,
         chain_info=chain_info,
+        revealed_hints=resolution.revealed_hints or [],
         warnings=warnings,
     )
 
@@ -389,6 +395,8 @@ def _build_room_after(
         entity_state = hard.entity_states.get(eid, {})
         if entity_state.get("alive") is False:
             continue
+        if entity.type == "item" and eid in hard.player.inventory:
+            continue
 
         notes = soft.entity_notes.get(eid, [])[-3:]
 
@@ -407,8 +415,18 @@ def _build_room_after(
     exits_available: list[BriefingExit] = []
     for ex in room.exits:
         if ex.hidden:
-            continue
-        if ex.conditions:
+            # Hidden exits are revealed only when their conditions are met
+            if ex.conditions:
+                all_met = True
+                for cond in ex.conditions:
+                    if not evaluate(cond, hard, soft, corpus):
+                        all_met = False
+                        break
+                if not all_met:
+                    continue
+            else:
+                continue
+        elif ex.conditions:
             all_met = True
             for cond in ex.conditions:
                 if not evaluate(cond, hard, soft, corpus):

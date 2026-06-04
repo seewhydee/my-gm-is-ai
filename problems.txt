@@ -1,76 +1,6 @@
 ## Issues & Ambiguities
 
-### NPC/container inventory not declared in corpus
-The `transfer` action can take items from NPCs or containers, but the plan doesn't specify how these inventories are defined in the module corpus. **Resolution**: I assumed both entities and rooms have an implicit "available pool" of items (their own item children plus `soft_items`). The plan should address how NPC inventories are authored.
-
-### LLM Call 2's chain-continue decision mechanism
-The plan says LLM Call 2 "can decide whether to (i) proceed directly back to step 1... or (ii) interrupt the chain." But the actual mechanism for LLM Call 2 to signal this decision isn't specified (a structured output field? a special token?). I documented it as "a signal" in the schema. The implementation will need to define this concretely.
-
-### Draggable items prevent interactions, conflicting with scenario win condition
-The scenario says the rusty key "can be dragged with great effort" and the player wins by "dragging the key up to the top, poking it out of the hole, inserting it into the padlock." The schema states that draggable items (`draggable: true`) encumber the player and prevent `interact` actions — only movement is allowed. A key marked draggable cannot be used in the padlock unlock interaction. Workaround: the key was marked as non-draggable, but this loses the intended mechanical constraint of the scenario.
-
-### Will_reveal blocks lack set_flag or side-effect capability
-When Korbar reveals the secret_compartment topic via `will_reveal`, the engine should logically set `handkerchief_noticed` so the player can then move the handkerchief. But `will_reveal` entries only have `description` and `conditions` — no `set_flag` or side-effect mechanism. The awkward workaround was to add `attitude:korbar >= 4` as an alternative condition on the `move_handkerchief` interaction, coupling soft-state dialogue gating to a room-level interaction condition.
-
-### Korbar combat not fully specifiable in current encounter system
-The scenario says injured players "won't be able to defeat Korbar in combat" but leaves the outcome of a non-injured player fighting Korbar unspecified. The behaviour/encounter system expects well-defined rules with deterministic outcomes (death, flee, roll), but the scenario treats Korbar's defeatable state as narrative flavour rather than a mechanical system. The module corpus omits behaviour rules for Korbar entirely, relying on the LLM to handle combat improvisationally, which may lead to inconsistent resolution.
-
-
-================================================================================
-REVIEW: mgmai/state/manager.py (Phase 2 — State Manager)
-================================================================================
-
-This review covers correctness, design alignment with plan.md, robustness,
-API completeness, and code quality.  Issues that were straightforward to fix
-have been resolved in code and removed from this document.
-
---------------------------------------------------------------------------------
-1. DESIGN / ARCHITECTURE
---------------------------------------------------------------------------------
-
-1.2  Missing mutation helpers for several state fields
-     The manager has apply_hard_changes, apply_soft_patches, and
-     append_turn_history, but it has NO dedicated methods for:
-       - npc_attitudes (applying validated attitude_changes from LLM Call 2)
-       - npc_revelations (applying validated knowledge_tags / will_reveal
-         side effects: set_flag, set_entity_state)
-       - dialogue_state transitions (enter/exit dialogue, append utterance,
-         update stall_counter)
-       - game_over (setting hard_state.game_over)
-       - incrementing turn_count (or setting it)
-
-     CONCURRENCE: If the manager were the sole writer, these helpers would be
-     necessary. Per plan.md §Design Decision 1, however, the engine receives
-     direct references to the mutable state objects and mutates them directly.
-     Fixing 1.1 (getters now return direct references) makes these helpers
-     unnecessary for the current design.
-
-1.3  No load_state() method for save file restoration
-     save_state() writes adventure_path into the payload, anticipating a
-     corresponding load path.  But no method reads a save.json back.
-
-     CONCURRENCE: load_state() pairs naturally with save_state(). Per plan.md
-     this is a Phase 7 (CLI) concern; deferring implementation until then.
-
---------------------------------------------------------------------------------
-2. CROSS-REFERENCE VALIDATION
---------------------------------------------------------------------------------
-
-2.1  Flags are NOT validated against any declaration
-     The plan says:
-       "Validates cross-references: every flag in hard_state.flags is declared"
-     There is no corpus field that declares permissible flag names, so this
-     check cannot be implemented today.
-
-     CONCURRENCE: ModuleCorpus lacks a flags_declared or similar top-level
-     field. Adding one requires a schema change, which is out of scope for
-     Phase 2. This should be addressed when the corpus schema is next revised.
-
-======================================================================
-CONCRETE MODEL/SCHEMA MISMATCHES
-======================================================================
-
-11. THE STALE ROOM DESCRIPTIONS PROBLEM
+### STALE ROOM DESCRIPTIONS PROBLEM
     The axe_handle_lower description mentions the spider; after it
     flees, the description is factually incorrect.  The briefing
     includes entity state alongside the description, so the LLM can
@@ -79,79 +9,20 @@ CONCRETE MODEL/SCHEMA MISMATCHES
     mind when designing the Context Assembler — it should prominently
     flag entity state next to stale descriptions.
 
-    [RESOLVED: DEFERRED — This is a content/design concern for the
-     Context Assembler (Phase 5), not a model defect.  The Entity
-     model and BriefingEntity already include state fields; the
-     assembler should present them prominently alongside descriptions.
-     No Phase 1 model change needed.]
-
-Schema / document inconsistencies discovered
--------------------------------------------------
-These are design-document issues that will impede engine implementation if not
-fixed:
-
-### `Result.reveals` field
-  The `Result` model includes a `reveals` string field, but the schema does
-  not clearly specify where this text is surfaced (GMBriefing? EngineResult?
-  silently ignored?). The engine spec does not mention it. Clarification
-  needed.
-  This is a schema/documentation question. `reveals` is defined
-  in the `Result` object (corpus.md) as "hint text for the player's future
-  reference." Its surfacing mechanism belongs in the Context Assembler
-  (Phase 5) or engine (Phase 4) spec, which is not yet written.
-
+    This is a content/design concern for the Context Assembler (Phase
+    5), not a model defect.  The Entity model and BriefingEntity
+    already include state fields; the assembler should present them
+    prominently alongside descriptions.
 
 ### Encounter resolution happens *after* hard-state changes are committed
-**Severity:** Medium  
-**File:** `mgmai/engine/engine.py` (`resolve`)  
-**Detail:** Per `phase-4-plan.md` §Step 4, encounters must fire *before* hard-state changes so that a death outcome does not leave the player in a contradictory state (e.g. moved to a new room and died simultaneously).  Current ordering: `apply_hard_changes()` → `resolve_encounter()`.  If the encounter produces `game_over`, the player location has already been updated.  
+    Per `phase-4-plan.md` §Step 4, encounters must fire *before* hard-state changes so that a death outcome does not leave the player in a contradictory state (e.g. moved to a new room and died simultaneously).  Current ordering: `apply_hard_changes()` → `resolve_encounter()`.  If the encounter produces `game_over`, the player location has already been updated.  
 **Fix:** Reorder to evaluate encounters against the *proposed* changes before committing them; only commit hard changes if the encounter does not produce `game_over` (or commit them conditionally).
 
-This requires non-trivial refactoring of the engine orchestrator (the encounter logic depends on current state, including flags; the ordering and conditional-commit semantics need careful design). Deferred for later resolution.
-
 ### `resolve_examine` completely ignores the `rigorous` flag
-**Severity:** Low  
-**File:** `mgmai/engine/resolver.py` (`resolve_examine`)  
-**Detail:** The `rigorous` field on `ExamineAction` is never read.  The schema requires that a rigorous examination evaluate interactions that are gated behind `rigorous` searches.  
-**Fix:** If `action.rigorous` is `True`, evaluate the target entity/room for any interactions whose availability depends on `rigorous` and include the results in `triggered_narration`.
-
-However, the `rigorous` gating mechanism needs schema-level definition (the `ConditionExpression` model currently has no way to express "this interaction requires rigorous examination"). Adding a `rigorous_only` flag to `Interaction` or a `rigorous` domain in condition strings would be needed before the resolver can implement it. Deferred for later resolution.
-
-### `_build_room_after` omits hidden exits unconditionally
-**Severity:** Low  
-**File:** `mgmai/engine/engine.py` (`_build_room_after`)  
-**Detail:** Hidden exits are skipped with `if ex.hidden: continue`, even if their conditions are met.  `resolve_move` (per the changed behaviour documented in the report) now allows traversing hidden exits when conditions are met.  This creates an inconsistency: a player can traverse an exit that does not appear in `room_after.exits_available`.  The Context Assembler (Phase 5) will need to resolve this, but the engine's own `room_after` should probably be consistent with what the player can actually do.  
-**Fix:** For hidden exits, evaluate conditions and include them in `exits_available` if conditions are met.
-
-However, the plan (`phase-4-plan.md` §Step 4 "Building room_after") explicitly says hidden exits should be omitted from `exits_available`. The Context Assembler (Phase 5) uses the same approach. The inconsistency is between the resolver (which allows traversing hidden exits) and the briefing (which hides them). This is a cross-phase design question that should be resolved when the Context Assembler requirements are finalized. Deferred.
-
-### Items taken from rooms remain visible in `room_after`
-**Severity:** Medium  
-**Files:** `mgmai/engine/engine.py` (`_build_room_after`)  
-**Detail:** Because `entities_present` lives in the read-only corpus, taking an item (e.g. `rusty_key`) adds it to hard inventory but never removes it from the room's entity list.  `_build_room_after` filters by `alive` but not by inventory presence, so taken items still appear in `room_after.entities_visible`.  This will confuse LLM Call 2 unless the Context Assembler compensates.  
-**Fix:** The engine should probably filter out item entities that are in the player's hard inventory when building `room_after`.  (Or the Context Assembler does it in Phase 5.)
-
-The fix belongs in the Context Assembler (Phase 5), not the engine, since entity presence in rooms is a read-only corpus property that shouldn't be modified by the engine. The engine could add taken-item hints to the EngineResult, but the Context Assembler is the right layer to filter entity visibility based on current inventory state. Deferred.
-
-### `Result.reveals` is surfaced as immediate narration rather than a hint
-**Severity:** Low  
-**File:** `mgmai/engine/resolver.py` (`_apply_result`)  
-**Detail:** `result.reveals` is appended to `triggered_narration`.  The schema defines `reveals` as *"hint text for the player's future reference"*.  By treating it as narration, LLM Call 2 will narrate it immediately rather than storing it as learned information.  
-**Fix:** Add a dedicated `revealed_hints` field to `EngineResult` (or `ResolutionResult`) and surface it separately so the Context Assembler can inject it into `npc_revelations` or a similar knowledge store.
-
-The `reveals` field should be surfaced as structured hint data, not raw narration. Adding a `revealed_hints` field to `EngineResult` requires model changes and Context Assembler consultation (Phase 5). Deferred for later resolution.
-
-LLM issues
--------------------------------------------------
-
-1. **`response_format` risk with prose**: Both calls use `response_format={"type": "json_object"}`. For Call 1 this is appropriate. For Call 2, the model must produce markdown-like narration text inside a JSON string. This constrains narrative quality slightly (the model knows it's producing JSON). The alternative (no `response_format` with markdown extraction) was considered but rejected for now as parsing reliability is more important than prose quality.
-
-2. **No `ooc_discussion` special handling in LLM Call 2**: When a player uses `ooc_discussion`, LLM Call 2 receives the same GMBriefing + EngineResult. The prose template instructs the narrator to answer out-of-character, but this is not explicitly marked in the user message. The LLM should infer from the action_type being `ooc_discussion`.
-
-3. **`will_reveal` readiness**: The plan says `will_reveal_readiness` should be passed to LLM Call 2. It IS present in the EngineResult, but the prose template only references it descriptively, not structurally. The LLM has to extract this information from the EngineResult JSON. Consider adding explicit `will_reveal_readiness` to the prose user message for clarity.
+    File: `mgmai/engine/resolver.py` (`resolve_examine`)  
+    The `rigorous` field on `ExamineAction` is never read.  The schema requires that a rigorous examination evaluate interactions that are gated behind `rigorous` searches. Fix: if `action.rigorous` is `True`, evaluate the target entity/room for any interactions whose availability depends on `rigorous` and include the results in `triggered_narration`.
 
 ## Human Validation Required
-
 The following cannot be verified by automated tests — they require running the game with a real LLM:
 
 - [ ] LLM Call 1 correctly classifies player intent for edge cases (ambiguous input, chained actions)
@@ -167,11 +38,3 @@ Use the validation playground:
 ```bash
 MGMAI_API_KEY=sk-... python scripts/validate.py adventures/bag-of-holding --turns 10
 ```
-
-## Save/load should be adventure specific
-
-We need to record which adventure applies to which save/load, e.g. by comparing a cryptographic hash or id.
-
-## TODO: **Streaming narration**: For better UX, LLM Call 2's narration could be streamed token-by-token via the OpenAI streaming API, with `rich` live-updating the display.
-
-## TODO: **Adventure validation tool**: A script that loads a corpus + state files and runs validation checks (all entity refs resolve, all flags declared, all rooms connected, etc.) without starting the game. Useful for adventure authors.

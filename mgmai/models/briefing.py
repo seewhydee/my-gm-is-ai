@@ -80,4 +80,5 @@ class GMBriefing(BaseModel):
     npc_revelations: Dict[str, List[Dict[str, str]]] = Field(default_factory=dict)
     recent_history: List[BriefingHistoryEntry] = Field(default_factory=list)
     dialogue_context: Optional[DialogueContext] = None
+    revealed_hints: List[str] = Field(default_factory=list)
     player_input: str

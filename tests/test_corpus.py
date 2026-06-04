@@ -850,6 +850,15 @@ class TestAdventure:
         assert a.title == "Minimal"
         assert a.credits is None
         assert a.atmosphere is None
+        assert a.id is None
+
+    def test_with_id(self) -> None:
+        a = Adventure.model_validate({
+            "id": "test-adv",
+            "title": "Test Adventure",
+            "introduction": "Start.",
+        })
+        assert a.id == "test-adv"
 
 
 class TestAtmosphere:

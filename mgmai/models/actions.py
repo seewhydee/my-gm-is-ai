@@ -234,4 +234,5 @@ class EngineResult(BaseModel):
     attitude_changes_applied: Dict[str, AttitudeChange] = Field(default_factory=dict)
     attitude_changes_rejected: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     chain_info: Optional[ChainInfo] = None
+    revealed_hints: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)

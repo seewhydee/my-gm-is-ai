@@ -85,3 +85,4 @@ class SoftGameState(BaseModel):
     turn_history: List[TurnHistoryEntry] = Field(default_factory=list)
     dialogue_state: DialogueState = Field(default_factory=DialogueState)
     checks_attempted: Dict[str, List[str]] = Field(default_factory=dict)
+    revealed_hints: List[str] = Field(default_factory=list)

@@ -37,6 +37,7 @@ class ResolutionResult:
     error: str | None = None
     hard_changes: HardStateChanges | None = None
     triggered_narration: list[str] = field(default_factory=list)
+    revealed_hints: list[str] = field(default_factory=list)
     encounter_trigger: str | None = None
     on_enter_events: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -514,13 +515,15 @@ def _resolve_interaction_check(
         "success": success_flag,
     })
 
+    revealed_hints: list[str] = []
     if result:
-        _apply_result(result, changes, narrative)
+        _apply_result(result, changes, narrative, revealed_hints)
 
     return ResolutionResult(
         success=True,
         hard_changes=changes,
         triggered_narration=narrative,
+        revealed_hints=revealed_hints,
         room_after_id=room_id,
         rolls=rolls,
     )
@@ -535,13 +538,15 @@ def _resolve_interaction_result(
 ) -> ResolutionResult:
     changes = HardStateChanges()
     narrative: list[str] = []
+    revealed_hints: list[str] = []
 
-    _apply_result(result, changes, narrative)
+    _apply_result(result, changes, narrative, revealed_hints)
 
     return ResolutionResult(
         success=True,
         hard_changes=changes,
         triggered_narration=narrative,
+        revealed_hints=revealed_hints,
         room_after_id=room_id,
     )
 
@@ -550,6 +555,7 @@ def _apply_result(
     result: Result,
     changes: HardStateChanges,
     narrative: list[str],
+    revealed_hints: list[str],
 ) -> None:
     if result.narrative:
         narrative.append(result.narrative)
@@ -564,7 +570,7 @@ def _apply_result(
             else:
                 changes.flags_set[flag] = val
     if result.reveals:
-        narrative.append(result.reveals)
+        revealed_hints.append(result.reveals)
 
 
 def _handle_take(

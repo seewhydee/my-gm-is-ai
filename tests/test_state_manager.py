@@ -491,3 +491,55 @@ class TestSaveState:
         save_path = manager.save_state(tmp_path, filename="slot1.json")
         assert save_path.name == "slot1.json"
         assert save_path.exists()
+
+    def test_save_includes_adventure_id(self, manager: StateManager, tmp_path: Path) -> None:
+        assert manager.corpus is not None
+        manager.corpus.adventure.id = "bag-of-holding"
+        save_path = manager.save_state(tmp_path)
+        data = json.loads(save_path.read_text(encoding="utf-8"))
+        assert data.get("adventure_id") == "bag-of-holding"
+
+    def test_save_no_adventure_id_when_none(self, manager: StateManager, tmp_path: Path) -> None:
+        assert manager.corpus is not None
+        manager.corpus.adventure.id = None
+        save_path = manager.save_state(tmp_path)
+        data = json.loads(save_path.read_text(encoding="utf-8"))
+        assert "adventure_id" not in data
+
+    def test_load_save_validates_adventure_id(self, manager: StateManager, tmp_path: Path) -> None:
+        assert manager.corpus is not None
+        manager.corpus.adventure.id = "bag-of-holding"
+        save_path = manager.save_state(tmp_path)
+
+        # Loading into a fresh manager with the same corpus should succeed
+        fresh = StateManager()
+        fresh.load_save(save_path)
+        assert fresh.hard_state is not None
+
+    def test_load_save_rejects_mismatched_id(self, manager: StateManager, tmp_path: Path) -> None:
+        assert manager.corpus is not None
+        manager.corpus.adventure.id = "bag-of-holding"
+        save_path = manager.save_state(tmp_path)
+
+        # Tamper with the save to change adventure_id
+        data = json.loads(save_path.read_text(encoding="utf-8"))
+        data["adventure_id"] = "wrong-adventure"
+        save_path.write_text(json.dumps(data), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="does not match"):
+            manager.load_save(save_path)
+
+    def test_load_save_backward_compat_no_id(self, manager: StateManager, tmp_path: Path) -> None:
+        assert manager.corpus is not None
+        manager.corpus.adventure.id = "bag-of-holding"
+        save_path = manager.save_state(tmp_path)
+
+        # Remove adventure_id to simulate old save
+        data = json.loads(save_path.read_text(encoding="utf-8"))
+        del data["adventure_id"]
+        save_path.write_text(json.dumps(data), encoding="utf-8")
+
+        # Should load without error
+        fresh = StateManager()
+        fresh.load_save(save_path)
+        assert fresh.hard_state is not None

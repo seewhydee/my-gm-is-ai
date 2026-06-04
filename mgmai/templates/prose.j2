@@ -43,7 +43,8 @@ You MUST output a single JSON object:
   "narration": "The natural-language prose to show the player. REQUIRED.",
   "npc_response": "Verbatim NPC speech if in dialogue. null or omit if not.",
   "knowledge_tags": {"npc_id": ["topic_id", ...]} or null,
-  "attitude_changes": {"npc_id": {"old_value": N, "new_value": M, "reason": "..."}} or null
+  "attitude_changes": {"npc_id": {"old_value": N, "new_value": M, "reason": "..."}} or null,
+  "terminate_chain": false
 }
 ```
 
@@ -71,9 +72,11 @@ You MUST output a single JSON object:
 
 8. **Narrate failures naturally.** A failed action shouldn't feel like a game bug. Describe WHY it didn't work in-fiction: "You reach for the lever, but it's jammed solid with rust."
 
-9. **Narrate soft state changes.** If the player added notes or soft items, reflect that: "You pocket a small, smooth stone from the cave floor."
+9. **Terminate chained actions narratively if justified.** If the player submitted a chained action (e.g. "pick up the key and unlock the door") and something happens mid-chain that would naturally stop the plan, set `terminate_chain: true`. The engine will halt the chain and return control to the player. Example: the player begins picking up a key but an NPC interrupts them.
 
-10. **Narrate room transitions.** If the player moved, describe the journey and new surroundings. Use `room_after` from the EngineResult.
+10. **Narrate soft state changes.** If the player added notes or soft items, reflect that: "You pocket a small, smooth stone from the cave floor."
+
+11. **Narrate room transitions.** If the player moved, describe the journey and new surroundings. Use `room_after` from the EngineResult.
 
 ---
 

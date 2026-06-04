@@ -178,6 +178,15 @@ class StateManager:
                             f"maximum {limits.attitude_limits.max}"
                         )
 
+        # Validate flags against corpus declaration if provided
+        if self.corpus.flags_declared is not None:
+            declared_set = set(self.corpus.flags_declared)
+            for flag in self.hard_state.flags:
+                if flag not in declared_set:
+                    errors.append(
+                        f"hard_state.flags contains undeclared flag: {flag}"
+                    )
+
         # Soft state: npc_revelations keys must be NPC entities
         for npc_id in self.soft_state.npc_revelations:
             if npc_id not in self.corpus.entities:
@@ -248,6 +257,8 @@ class StateManager:
         }
         if self._adventure_dir is not None:
             payload["adventure_path"] = str(self._adventure_dir)
+        if self.corpus is not None and self.corpus.adventure.id is not None:
+            payload["adventure_id"] = self.corpus.adventure.id
         if latest_narration is not None:
             payload["latest_narration"] = latest_narration
 
@@ -271,6 +282,9 @@ class StateManager:
         Load hard + soft state from a save file and re-load the corpus
         from the adventure directory recorded inside the save.  Returns
         the adventure path that was reloaded.
+
+        Raises ValueError if the save's adventure_id does not match the
+        loaded corpus.
         """
         path = Path(path)
         if not path.is_file():
@@ -278,6 +292,7 @@ class StateManager:
 
         data = json.loads(path.read_text(encoding="utf-8"))
         adv_path = data.get("adventure_path")
+        save_adventure_id = data.get("adventure_id")
         self.hard_state = HardGameState.model_validate(data["hard"])
         self.soft_state = SoftGameState.model_validate(data["soft"])
 
@@ -286,6 +301,13 @@ class StateManager:
             corpus_path = self._adventure_dir / "corpus.json"
             if corpus_path.is_file():
                 self.corpus = self.load_corpus(corpus_path)
+                if save_adventure_id is not None:
+                    corpus_id = self.corpus.adventure.id
+                    if corpus_id is not None and corpus_id != save_adventure_id:
+                        raise ValueError(
+                            f"Save file adventure_id '{save_adventure_id}' does not match "
+                            f"corpus adventure_id '{corpus_id}'."
+                        )
 
         return adv_path or ""
 
