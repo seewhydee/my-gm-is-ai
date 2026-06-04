@@ -203,8 +203,13 @@ class StateManager:
     # Persistence
     # ------------------------------------------------------------------
 
-    def save_state(self, save_dir: str | Path) -> Path:
-        """Serialize hard + soft state to a JSON file in *save_dir*.
+    def save_state(
+        self,
+        save_dir: str | Path,
+        filename: str = "save.json",
+        latest_narration: str | None = None,
+    ) -> Path:
+        """Serialize hard + soft state (and optional latest narration) to disk.
 
         Returns the path to the written file.
         """
@@ -213,7 +218,7 @@ class StateManager:
 
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
-        save_path = save_dir / "save.json"
+        save_path = save_dir / filename
 
         payload: dict[str, Any] = {
             "hard": self.hard_state.model_dump(mode="json"),
@@ -221,6 +226,8 @@ class StateManager:
         }
         if self._adventure_dir is not None:
             payload["adventure_path"] = str(self._adventure_dir)
+        if latest_narration is not None:
+            payload["latest_narration"] = latest_narration
 
         save_path.write_text(
             json.dumps(payload, indent=2, ensure_ascii=False),
@@ -240,6 +247,31 @@ class StateManager:
         if isinstance(changes, dict):
             changes = HardStateChanges.model_validate(changes)
 
+        # Pre-validate all changes so we fail atomically and report every
+        # problem at once, matching the style of ``_validate_cross_references``.
+        errors: list[str] = []
+        corpus = self.corpus
+        for room_id in changes.room_state_changes:
+            if corpus is None or room_id not in corpus.rooms:
+                errors.append(f"room_state_changes references unknown room: {room_id}")
+
+        for entity_id, entity_changes in changes.entity_state_changes.items():
+            if corpus is None or entity_id not in corpus.entities:
+                errors.append(
+                    f"entity_state_changes references unknown entity: {entity_id}"
+                )
+            else:
+                declared = corpus.entities[entity_id].state_fields
+                for field_name in entity_changes:
+                    if field_name not in declared:
+                        errors.append(
+                            f"Entity '{entity_id}' state change has undeclared field: "
+                            f"{field_name}"
+                        )
+
+        if errors:
+            raise ValueError("\n".join(errors))
+
         if changes.player_location is not None:
             self.hard_state.player.location = changes.player_location
 
@@ -254,24 +286,15 @@ class StateManager:
             self.hard_state.flags[flag] = value
 
         for flag in changes.flags_cleared:
-            if flag not in self.hard_state.flags:
-                raise ValueError(f"Cannot clear unknown flag: {flag}")
-            self.hard_state.flags[flag] = False
+            if flag in self.hard_state.flags:
+                self.hard_state.flags[flag] = False
 
         for room_id, room_changes in changes.room_state_changes.items():
-            if room_id not in self.corpus.rooms:
-                raise ValueError(
-                    f"room_state_changes references unknown room: {room_id}"
-                )
             if room_id not in self.hard_state.room_states:
                 self.hard_state.room_states[room_id] = {}
             self.hard_state.room_states[room_id].update(room_changes)
 
         for entity_id, entity_changes in changes.entity_state_changes.items():
-            if entity_id not in self.corpus.entities:
-                raise ValueError(
-                    f"entity_state_changes references unknown entity: {entity_id}"
-                )
             if entity_id not in self.hard_state.entity_states:
                 self.hard_state.entity_states[entity_id] = {}
             self.hard_state.entity_states[entity_id].update(entity_changes)

@@ -194,9 +194,9 @@ class TestApplyHardChanges:
         manager.apply_hard_changes(HardStateChanges(flags_cleared=["injured"]))
         assert manager.hard_state.flags["injured"] is False
 
-    def test_flags_cleared_unknown_raises(self, manager: StateManager) -> None:
-        with pytest.raises(ValueError, match="Cannot clear unknown flag"):
-            manager.apply_hard_changes(HardStateChanges(flags_cleared=["nonexistent_flag"]))
+    def test_flags_cleared_unknown_is_noop(self, manager: StateManager) -> None:
+        manager.apply_hard_changes(HardStateChanges(flags_cleared=["nonexistent_flag"]))
+        assert "nonexistent_flag" not in manager.hard_state.flags
 
     def test_room_state_changes(self, manager: StateManager) -> None:
         manager.apply_hard_changes(
@@ -239,6 +239,26 @@ class TestApplyHardChanges:
     def test_apply_from_dict(self, manager: StateManager) -> None:
         manager.apply_hard_changes({"player_location": "bag_floor"})
         assert manager.hard_state.player.location == "bag_floor"
+
+    def test_entity_state_changes_undeclared_field_raises(
+        self, manager: StateManager
+    ) -> None:
+        with pytest.raises(ValueError, match="undeclared field"):
+            manager.apply_hard_changes(
+                HardStateChanges(entity_state_changes={"spider": {"magic_level": 9000}})
+            )
+
+    def test_apply_hard_changes_collects_errors(self, manager: StateManager) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            manager.apply_hard_changes(
+                HardStateChanges(
+                    room_state_changes={"void": {"visited": True}},
+                    entity_state_changes={"ghost": {"alive": True}},
+                )
+            )
+        msg = str(exc_info.value)
+        assert "void" in msg
+        assert "ghost" in msg
 
     def test_apply_before_load_raises(self) -> None:
         sm = StateManager()
@@ -439,3 +459,15 @@ class TestSaveState:
         data = json.loads(save_path.read_text(encoding="utf-8"))
         assert data["hard"]["player"]["location"] == "bag_floor"
         assert "rock" in data["soft"]["soft_inventory"]
+
+    def test_save_with_latest_narration(self, manager: StateManager, tmp_path: Path) -> None:
+        save_path = manager.save_state(
+            tmp_path, latest_narration="You entered the room."
+        )
+        data = json.loads(save_path.read_text(encoding="utf-8"))
+        assert data["latest_narration"] == "You entered the room."
+
+    def test_save_with_custom_filename(self, manager: StateManager, tmp_path: Path) -> None:
+        save_path = manager.save_state(tmp_path, filename="slot1.json")
+        assert save_path.name == "slot1.json"
+        assert save_path.exists()
