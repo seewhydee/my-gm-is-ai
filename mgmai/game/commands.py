@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from typing import Callable
-
-from mgmai.game.state_loader import StateLoader
+from typing import Any, Callable
 
 
 class Commands:
     def __init__(
         self,
-        state_loader: StateLoader,
+        state_loader: Any,
         render: Callable[[str], None],
         exit_fn: Callable[[], None],
         debug: bool = False,

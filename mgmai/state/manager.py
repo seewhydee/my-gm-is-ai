@@ -33,6 +33,13 @@ class StateManager:
         if adventure_dir is not None:
             self.load_all(adventure_dir)
 
+    @property
+    def loaded(self) -> bool:
+        return all(
+            x is not None
+            for x in (self.corpus, self.hard_state, self.soft_state)
+        )
+
     # ------------------------------------------------------------------
     # Load helpers
     # ------------------------------------------------------------------
@@ -248,6 +255,38 @@ class StateManager:
             encoding="utf-8",
         )
         return save_path
+
+    def save(self, path: str | Path) -> None:
+        """Convenience method compatible with StateLoader interface.
+
+        Write a save file at *path*.  The parent directory must exist.
+        """
+        path = Path(path)
+        self.save_state(path.parent, path.name)
+
+    def load_save(self, path: str | Path) -> str:
+        """Convenience method compatible with StateLoader interface.
+
+        Load hard + soft state from a save file and re-load the corpus
+        from the adventure directory recorded inside the save.  Returns
+        the adventure path that was reloaded.
+        """
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Save file not found: {path}")
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        adv_path = data.get("adventure_path")
+        self.hard_state = HardGameState.model_validate(data["hard"])
+        self.soft_state = SoftGameState.model_validate(data["soft"])
+
+        if adv_path:
+            self._adventure_dir = Path(adv_path)
+            corpus_path = self._adventure_dir / "corpus.json"
+            if corpus_path.is_file():
+                self.corpus = self.load_corpus(corpus_path)
+
+        return adv_path or ""
 
     # ------------------------------------------------------------------
     # Mutation helpers (called by the engine)

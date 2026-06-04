@@ -140,3 +140,32 @@ The fix belongs in the Context Assembler (Phase 5), not the engine, since entity
 **Fix:** Add a dedicated `revealed_hints` field to `EngineResult` (or `ResolutionResult`) and surface it separately so the Context Assembler can inject it into `npc_revelations` or a similar knowledge store.
 
 The `reveals` field should be surfaced as structured hint data, not raw narration. Adding a `revealed_hints` field to `EngineResult` requires model changes and Context Assembler consultation (Phase 5). Deferred for later resolution.
+
+LLM issues
+-------------------------------------------------
+
+1. **`thinking_mode` is provider-specific**: The plan (both `plan.md` and `phase-6-plan.md`) references `thinking_mode="non-thinking"` without noting it's Deepseek-specific. Implemented via `extra_body` but this may need adjustment for other providers.
+
+2. **`response_format` risk with prose**: Both calls use `response_format={"type": "json_object"}`. For Call 1 this is appropriate. For Call 2, the model must produce markdown-like narration text inside a JSON string. This constrains narrative quality slightly (the model knows it's producing JSON). The alternative (no `response_format` with markdown extraction) was considered but rejected for now as parsing reliability is more important than prose quality.
+
+3. **No `ooc_discussion` special handling in LLM Call 2**: When a player uses `ooc_discussion`, LLM Call 2 receives the same GMBriefing + EngineResult. The prose template instructs the narrator to answer out-of-character, but this is not explicitly marked in the user message. The LLM should infer from the action_type being `ooc_discussion`.
+
+4. **`will_reveal` readiness**: The plan says `will_reveal_readiness` should be passed to LLM Call 2. It IS present in the EngineResult, but the prose template only references it descriptively, not structurally. The LLM has to extract this information from the EngineResult JSON. Consider adding explicit `will_reveal_readiness` to the prose user message for clarity.
+
+## Human Validation Required
+
+The following cannot be verified by automated tests — they require running the game with a real LLM:
+
+- [ ] LLM Call 1 correctly classifies player intent for edge cases (ambiguous input, chained actions)
+- [ ] LLM Call 1 doesn't hallucinate entity IDs or exits
+- [ ] LLM Call 2 produces coherent, tone-appropriate narration
+- [ ] LLM Call 2 correctly incorporates `triggered_narration` blocks
+- [ ] LLM Call 2 respects `will_reveal_readiness` — only reveals topics with `conditions_met: true`
+- [ ] `attitude_changes` are reasonable and within limits
+- [ ] Chain actions work end-to-end
+- [ ] Template quality is sufficient — prompts may need iteration
+
+Use the validation playground:
+```bash
+MGMAI_API_KEY=sk-... python scripts/validate.py adventures/bag-of-holding --turns 10
+```

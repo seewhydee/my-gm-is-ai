@@ -9,12 +9,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
+from mgmai.state.manager import StateManager
+from mgmai.llm.client import LLMClient
 from mgmai.game.display import Display
 from mgmai.game.loop import GameLoop
-from mgmai.game.state_loader import StateLoader
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -45,6 +47,21 @@ def main(argv: list[str] | None = None) -> None:
         action="version",
         version="mgmai 0.1.0",
     )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key (overrides MGMAI_API_KEY env var)",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="API base URL (overrides MGMAI_BASE_URL env var)",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Model name (overrides MGMAI_MODEL env var)",
+    )
     args = parser.parse_args(argv)
 
     display = Display()
@@ -60,19 +77,38 @@ def main(argv: list[str] | None = None) -> None:
 
     adventure_path = Path(args.adventure)
 
-    state_loader = StateLoader(adventure_path)
+    api_key = args.api_key or os.environ.get("MGMAI_API_KEY")
+    if not api_key:
+        display.render_error(
+            "MGMAI_API_KEY environment variable is not set. "
+            "Set it or pass --api-key."
+        )
+        sys.exit(1)
+
+    base_url = args.base_url or os.environ.get(
+        "MGMAI_BASE_URL", "https://api.deepseek.com"
+    )
+    model = args.model or os.environ.get("MGMAI_MODEL", "deepseek-v4-flash")
+    ruling_temp = float(
+        os.environ.get("MGMAI_RULING_TEMPERATURE", "0.9")
+    )
+    prose_temp = float(
+        os.environ.get("MGMAI_PROSE_TEMPERATURE", "1.1")
+    )
+
+    state_manager = StateManager()
 
     try:
         if args.load_file:
             if not Path(args.load_file).is_file():
                 display.render_error(f"Save file not found: {args.load_file}")
                 sys.exit(1)
-            adv_path = state_loader.load_save(args.load_file)
+            adv_path = state_manager.load_save(args.load_file)
             display.print(
                 f"[green]Resuming from {args.load_file} (adventure: {adv_path})[/green]"
             )
         else:
-            state_loader.load()
+            state_manager.load_all(adventure_path)
     except FileNotFoundError as e:
         display.render_error(str(e))
         sys.exit(1)
@@ -80,7 +116,20 @@ def main(argv: list[str] | None = None) -> None:
         display.render_error(f"Failed to load state: {e}")
         sys.exit(1)
 
-    loop = GameLoop(state_loader, debug=args.debug, display=display)
+    llm_client = LLMClient(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        ruling_temperature=ruling_temp,
+        prose_temperature=prose_temp,
+    )
+
+    loop = GameLoop(
+        state_manager,
+        llm_client,
+        debug=args.debug,
+        display=display,
+    )
     loop.start()
 
 

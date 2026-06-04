@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mgmai.game.state_loader import StateLoader
+from typing import Any
 
 try:
     from rich.console import Console
@@ -36,7 +36,7 @@ class Display:
 
     # --- game screens ---
 
-    def render_intro(self, state_loader: StateLoader) -> None:
+    def render_intro(self, state_loader: Any) -> None:
         corpus = state_loader.corpus
         adv = corpus.adventure
 
@@ -117,7 +117,7 @@ class Display:
 
     # --- helpers ---
 
-    def _render_room(self, state_loader: StateLoader) -> None:
+    def _render_room(self, state_loader: Any) -> None:
         corpus = state_loader.corpus
         hs = state_loader.hard_state
         room = corpus.rooms.get(hs.player.location)

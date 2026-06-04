@@ -665,8 +665,8 @@ This eliminates fragile regex parsing. The `openai` package (and Deepseek) suppo
 
 ### 3. Temperature settings per call
 
-- LLM Call 1 (ruling): temperature ≈ 0.1–0.2. We want consistent, predictable action classification.
-- LLM Call 2 (prose): temperature ≈ 0.6–0.8. We want creative, varied narration.
+- LLM Call 1 (ruling): temperature ≈ 0.9. Deepseek-v4-flash expects temperatures around 1.0; we want consistent, predictable action classification.
+- LLM Call 2 (prose): temperature ≈ 1.1. Deepseek-v4-flash expects temperatures around 1.0; we want creative, varied narration.
 
 Configurable via environment variables `MGMAI_RULING_TEMPERATURE` and `MGMAI_PROSE_TEMPERATURE`.
 

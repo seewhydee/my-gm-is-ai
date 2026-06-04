@@ -1,0 +1,18 @@
+[
+  {
+    "input": "I look around the axe head area carefully",
+    "expectations": "Should describe the Axe Head room with battleaxe blade, canvas walls, rip in canvas, stuck fly, webs"
+  },
+  {
+    "input": "I carefully climb down the axe handle",
+    "expectations": "Should move to axe_handle_upper. May trigger on-enter events if any."
+  },
+  {
+    "input": "I examine the webs above",
+    "expectations": "Should describe the webs_upper feature in axe_handle_upper"
+  },
+  {
+    "input": "I walk further down the axe handle",
+    "expectations": "Should move to axe_handle_lower. May reveal spider encounter area."
+  }
+]
