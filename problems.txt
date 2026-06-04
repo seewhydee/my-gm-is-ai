@@ -14,3 +14,143 @@ When Korbar reveals the secret_compartment topic via `will_reveal`, the engine s
 
 ### Korbar combat not fully specifiable in current encounter system
 The scenario says injured players "won't be able to defeat Korbar in combat" but leaves the outcome of a non-injured player fighting Korbar unspecified. The behaviour/encounter system expects well-defined rules with deterministic outcomes (death, flee, roll), but the scenario treats Korbar's defeatable state as narrative flavour rather than a mechanical system. The module corpus omits behaviour rules for Korbar entirely, relying on the LLM to handle combat improvisationally, which may lead to inconsistent resolution.
+
+
+================================================================================
+REVIEW: mgmai/state/manager.py (Phase 2 — State Manager)
+================================================================================
+
+This review covers correctness, design alignment with plan.md, robustness,
+API completeness, and code quality.  Issues that were straightforward to fix
+have been resolved in code and removed from this document.
+
+--------------------------------------------------------------------------------
+1. DESIGN / ARCHITECTURE
+--------------------------------------------------------------------------------
+
+1.2  Missing mutation helpers for several state fields
+     The manager has apply_hard_changes, apply_soft_patches, and
+     append_turn_history, but it has NO dedicated methods for:
+       - npc_attitudes (applying validated attitude_changes from LLM Call 2)
+       - npc_revelations (applying validated knowledge_tags / will_reveal
+         side effects: set_flag, set_entity_state)
+       - dialogue_state transitions (enter/exit dialogue, append utterance,
+         update stall_counter)
+       - game_over (setting hard_state.game_over)
+       - incrementing turn_count (or setting it)
+
+     CONCURRENCE: If the manager were the sole writer, these helpers would be
+     necessary. Per plan.md §Design Decision 1, however, the engine receives
+     direct references to the mutable state objects and mutates them directly.
+     Fixing 1.1 (getters now return direct references) makes these helpers
+     unnecessary for the current design.
+
+1.3  No load_state() method for save file restoration
+     save_state() writes adventure_path into the payload, anticipating a
+     corresponding load path.  But no method reads a save.json back.
+
+     CONCURRENCE: load_state() pairs naturally with save_state(). Per plan.md
+     this is a Phase 7 (CLI) concern; deferring implementation until then.
+
+--------------------------------------------------------------------------------
+2. CROSS-REFERENCE VALIDATION
+--------------------------------------------------------------------------------
+
+2.1  Flags are NOT validated against any declaration
+     The plan says:
+       "Validates cross-references: every flag in hard_state.flags is declared"
+     There is no corpus field that declares permissible flag names, so this
+     check cannot be implemented today.
+
+     CONCURRENCE: ModuleCorpus lacks a flags_declared or similar top-level
+     field. Adding one requires a schema change, which is out of scope for
+     Phase 2. This should be addressed when the corpus schema is next revised.
+
+======================================================================
+CONCRETE MODEL/SCHEMA MISMATCHES
+======================================================================
+
+4. room_states AND entity_states ARE Dict[str, Dict[str, Any]]
+   File: mgmai/models/hard_state.py:21-22
+   These are completely untyped.  The schema describes typed fields
+   (boolean, number, string) with specific defaults.  A corrupted
+   hard-state.json with a string where a boolean is expected would pass
+   model validation and fail later at runtime during condition
+   evaluation.  The models could validate initial values against corpus
+   state_fields declarations.
+
+   [RESOLVED: DEFERRED — Pydantic models cannot validate inner dict
+    values against corpus state_field declarations without access to the
+    corpus at model-construction time (would create a circular dep).
+    This validation is planned for Phase 2 StateManager startup
+    (plan.md §Phase 2: "validates every entity_state entry has a
+    matching state_fields declaration").  The existing
+    _validate_cross_references in state/manager.py already checks
+    that entity state fields are declared.  Value-type validation
+    (boolean vs number vs string) should be added there.]
+
+6. WEAK RUNTIME ATTITUDE BOUNDS ENFORCEMENT/DEFINITION
+   The npc_attitudes dict in SoftGameState (soft_state.py:63) accepts
+   any int.  The schema specifies that attitudes must stay within
+   corpus-defined [min, max] bounds.  This validation will happen in
+   the engine/post-validate code, but the model itself doesn't guard
+   it.  Moreover, if the schema leaves it to the corpus to define
+   attitude scaling, the scenario generation instructions should
+   tell the generation model to include attitude definitions.
+
+   [RESOLVED: DEFERRED — The Pydantic model Dict[str, int] cannot
+    validate individual values against per-NPC corpus attitude_limits
+    without access to the corpus at model-construction time (circular
+    dep).  Attitude bounds enforcement is explicitly planned as
+    engine/post-validate work in Phase 4 (plan.md §"engine/post_validate
+    step 4.5").  The scenario generation concern is out of scope for
+    Phase 1 models — it belongs in schema/scenario-generation.md.]
+
+
+11. THE STALE ROOM DESCRIPTIONS PROBLEM
+    The axe_handle_lower description mentions the spider; after it
+    flees, the description is factually incorrect.  The briefing
+    includes entity state alongside the description, so the LLM can
+    mentally override, but this is fragile.  This is a schema-level
+    limitation that won't be fixed in Phase 2 but should be kept in
+    mind when designing the Context Assembler — it should prominently
+    flag entity state next to stale descriptions.
+
+    [RESOLVED: DEFERRED — This is a content/design concern for the
+     Context Assembler (Phase 5), not a model defect.  The Entity
+     model and BriefingEntity already include state fields; the
+     assembler should present them prominently alongside descriptions.
+     No Phase 1 model change needed.]
+
+13. will_reveal.conditions USES BARE STRINGS, NOT ConditionExpression
+    File: adventures/bag-of-holding/corpus.json:437
+    Korbar's will_reveal conditions are bare strings like
+    "attitude:korbar >= 2".  The WillRevealEntry model
+    (corpus.py:143-148) declares conditions: List[str].  This is
+    consistent with the schema, but it means the condition evaluator
+    needs two code paths: one for ConditionExpression objects and one
+    for bare strings in will_reveal.  The plan's condition evaluator
+    (engine/conditions.py) will need to handle both.
+
+    [RESOLVED: DEFERRED — This is a Phase 3 (Condition Evaluator)
+     concern.  Both the model and the schema define will_reveal
+     conditions as List[str] (bare condition strings), which is
+     intentional: will_reveal conditions are simple predicates
+     (attitude thresholds, item presence), not nested AND/OR logic.
+     The condition evaluator should handle both bare strings and
+     ConditionExpression objects as separate code paths, as noted
+     in plan.md §Phase 3.]
+
+14. stuck_fly AND spider HAVE npc_attitudes ENTRIES BUT LIMITED DIALOGUE
+    Both have entries in soft-state.json (stuck_fly: 0, spider: -5).
+    The spider has attitude_limits with min: -5, max: -5,
+    step_per_turn: 0 — it can never change attitude.  The stuck_fly
+    has min: 0, max: 1, step_per_turn: 1.  These are fine but the
+    engine should handle the edge case of step_per_turn: 0 (no attitude
+    changes ever allowed).
+
+    [RESOLVED: DEFERRED — This is an engine/sample data quality note.
+     The model already supports step_per_turn: 0 via int type.  The
+     engine's post-validate logic (Phase 4) should treat
+     step_per_turn: 0 as "no attitude changes allowed" when validating
+     proposed AttitudeChange entries.  No model change needed.]

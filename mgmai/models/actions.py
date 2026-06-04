@@ -4,6 +4,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
 
+from mgmai.models.briefing import BriefingRoom
 from mgmai.models.narration import AttitudeChange
 from mgmai.models.soft_state import SoftStatePatch
 
@@ -191,7 +192,7 @@ class EngineResult(BaseModel):
     error: Optional[str] = None
     message: Optional[str] = None
     player_input_echo: Optional[str] = None
-    room_after: Optional[Dict[str, Any]] = None
+    room_after: Optional[BriefingRoom] = None
     hard_state_changes: Optional[HardStateChanges] = None
     soft_state_patches_applied: List[SoftStatePatch] = Field(default_factory=list)
     soft_state_patches_rejected: List[Dict[str, Any]] = Field(default_factory=list)

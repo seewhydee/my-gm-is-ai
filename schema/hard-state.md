@@ -200,7 +200,7 @@ the ending without soliciting further input.
 
 | Field     | Type   | Description |
 |-----------|--------|-------------|
-| `type`    | string | `"win"` or `"lose"`. |
+| `type`    | string | Describes the outcome (typically `"win"` or `"lose"`). Unrestricted to accommodate tabletop games with non-binary endings. |
 | `trigger` | string | The `trigger_id` of the game-over mechanic that fired (matches module corpus). |
 
 ---

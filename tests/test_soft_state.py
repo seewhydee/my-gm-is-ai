@@ -95,6 +95,42 @@ class TestSoftStatePatch:
                 "new_value": "x",
             })
 
+    def test_room_note_with_entity_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStatePatch.model_validate({
+                "entity_id": "spider",
+                "field": "room_note",
+                "target_id": "axe_handle_lower",
+                "new_value": "The webs are cleared.",
+                "reason": "Player cleared webs.",
+            })
+
+    def test_room_note_missing_target_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStatePatch.model_validate({
+                "field": "room_note",
+                "new_value": "Cleared webs.",
+                "reason": "Player cleared webs.",
+            })
+
+    def test_entity_note_with_target_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStatePatch.model_validate({
+                "entity_id": "spider",
+                "field": "entity_note",
+                "target_id": "axe_handle_lower",
+                "new_value": "The spider is wounded.",
+                "reason": "Player attacked.",
+            })
+
+    def test_entity_note_missing_entity_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStatePatch.model_validate({
+                "field": "entity_note",
+                "new_value": "Wounded.",
+                "reason": "Player attacked.",
+            })
+
 
 class TestConversationLogEntry:
     def test_basic(self) -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SoftStatePatch(BaseModel):
@@ -14,6 +14,26 @@ class SoftStatePatch(BaseModel):
     old_value: Optional[Any] = None
     new_value: Any
     reason: str
+
+    @model_validator(mode="after")
+    def check_field_consistency(self) -> SoftStatePatch:
+        if self.field == "room_note":
+            if self.entity_id is not None:
+                raise ValueError(
+                    "room_note patch must not have entity_id; use target_id "
+                    "for the room ID"
+                )
+            if self.target_id is None:
+                raise ValueError("room_note patch requires target_id (the room ID)")
+        elif self.field == "entity_note":
+            if self.target_id is not None:
+                raise ValueError(
+                    "entity_note patch must not have target_id; use entity_id "
+                    "for the entity ID"
+                )
+            if self.entity_id is None:
+                raise ValueError("entity_note patch requires entity_id")
+        return self
 
 
 class ConversationLogEntry(BaseModel):

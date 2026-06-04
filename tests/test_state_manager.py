@@ -298,22 +298,20 @@ class TestApplySoftPatches:
         assert manager.soft_state.soft_inventory == []
 
     def test_room_note_missing_target_raises(self, manager: StateManager) -> None:
-        patch = SoftStatePatch(
-            field="room_note",
-            new_value="Something.",
-            reason="Test.",
-        )
-        with pytest.raises(ValueError, match="requires target_id"):
-            manager.apply_soft_patches([patch])
+        with pytest.raises(ValidationError, match="requires target_id"):
+            SoftStatePatch(
+                field="room_note",
+                new_value="Something.",
+                reason="Test.",
+            )
 
     def test_entity_note_missing_entity_raises(self, manager: StateManager) -> None:
-        patch = SoftStatePatch(
-            field="entity_note",
-            new_value="Something.",
-            reason="Test.",
-        )
-        with pytest.raises(ValueError, match="requires entity_id"):
-            manager.apply_soft_patches([patch])
+        with pytest.raises(ValidationError, match="requires entity_id"):
+            SoftStatePatch(
+                field="entity_note",
+                new_value="Something.",
+                reason="Test.",
+            )
 
     def test_apply_from_dict(self, manager: StateManager) -> None:
         manager.apply_soft_patches([

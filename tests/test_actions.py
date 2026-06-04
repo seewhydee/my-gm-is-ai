@@ -275,7 +275,7 @@ class TestEngineResult:
             },
         })
         assert r.room_after is not None
-        assert r.room_after["id"] == "bag_floor"
+        assert r.room_after.id == "bag_floor"
 
     def test_with_encounter_outcome(self) -> None:
         r = EngineResult.model_validate({

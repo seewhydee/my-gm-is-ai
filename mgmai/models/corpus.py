@@ -182,6 +182,7 @@ class EncounterRule(BaseModel):
 
 class FleeEffect(BaseModel):
     set_flags: Dict[str, bool]
+    set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
     effect: str
 
 
