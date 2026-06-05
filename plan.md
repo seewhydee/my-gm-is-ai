@@ -456,7 +456,7 @@ A new optional top-level block in `corpus.json`:
 
 - `stats` is an optional dict on `player`. If absent, the adventure has no stats.
 - Values are integers. The meaning depends on the resolution system (for d20: these are the raw ability scores, modifiers are computed).
-- The engine validates at startup that every stat key in `player.stats` has a matching entry in `corpus.stats.definitions`.
+- Startup validation (in `state/manager.py` after both corpus and hard state are loaded) ensures that every stat key in `player.stats` has a matching entry in `corpus.stats.definitions`, and that `player.stats` is absent when `corpus.stats` is absent (and vice versa).
 
 ### 3. New condition domain: `stat`
 
@@ -483,7 +483,7 @@ if domain == "stat":
     return _compare(stat_val, op, value)
 ```
 
-The syntax `npc_stat:<entity_id>.<stat_key>` is reserved for future NPC opposed checks (not implemented in phase 2). The condition evaluator will log a `NotImplementedError` if encountered, preventing silent mis-evaluation.
+The syntax `npc_stat:<entity_id>.<stat_key>` is reserved for future NPC opposed checks (not implemented in phase 2). It is not added to the condition parser regex in phase 2; attempting to use it will fail with "Could not parse condition string" like any other unknown domain. This avoids adding dead code paths and is simpler to extend later.
 
 **Usage in corpus conditions** (same condition-object nesting as everything else):
 
@@ -542,8 +542,8 @@ Extend the `Check` model with a new type alongside `"roll"`:
 
 1. Engine receives an `interact` (or other) action whose interaction has a `stat_check`.
 2. Engine looks up `corpus.stats.resolution_system` (currently `"d20"`).
-3. Engine computes the modifier from the player's stat value: `modifier = (stat - 10) // 2`.
-4. Engine reads `resolution_params` for the active system: e.g., for d20, checks `resolution_params.get("d20", {}).get("advantage")` and applies advantage/disadvantage logic (roll twice, take higher/lower). If both advantage and disadvantage are set, they cancel out.
+3. Engine computes the modifier from the player's stat value using the resolution system's formula: for d20, `computed_modifier = compute_d20_modifier(stat_value)` where `compute_d20_modifier` is a standalone, unit-testable function: `(stat_value - 10) // 2`.
+4. Engine reads `resolution_params` for the active system: e.g., for d20, checks `resolution_params.get("d20", {}).get("advantage")` and applies advantage/disadvantage logic (roll twice, take higher/lower). If both advantage and disadvantage are set, they cancel out. Parameters present for a non-active system key are silently ignored (a warning may be logged).
 5. Engine rolls: `random.randint(1, 20) + computed_modifier + check.modifier >= dc`.
 6. Engine selects `success` or `failure` result as with any check.
 7. The roll details (stat, modifier, dc, raw roll, total, margin, outcome) are recorded in `EngineResult.rolls`.
@@ -551,6 +551,13 @@ Extend the `Check` model with a new type alongside `"roll"`:
 **Pydantic model change** (in `mgmai/models/corpus.py`):
 
 ```python
+class RollCheck(BaseModel):
+    type: Literal["roll"] = "roll"
+    threshold: float = Field(ge=0.0, le=1.0)
+    repeatable: bool
+    note: Optional[str] = None
+
+
 class StatCheck(BaseModel):
     type: Literal["stat_check"] = "stat_check"
     stat: str
@@ -560,14 +567,22 @@ class StatCheck(BaseModel):
     opposed_by: Optional[str] = None  # reserved; future NPC opposed checks
     repeatable: bool
     note: Optional[str] = None
+    skill: Optional[str] = None        # reserved for future skill checks
 
-class Check(BaseModel):
-    type: Literal["roll", "stat_check"]
-    # ... existing roll fields + stat_check fields
-    # Use discriminated union or optional fields
+
+CheckType = RollCheck | StatCheck   # Union; discriminated by Literal["type"]
 ```
 
-Cleanest approach: make `Check` a discriminated union of `RollCheck` and `StatCheck`. This matches the existing pattern used for `PlayerAction`.
+Update `Interaction.check` to use the union:
+
+```python
+class Interaction(BaseModel):
+    # ... existing fields ...
+    check: Optional[CheckType] = None   # was Optional[Check]
+    # ... rest unchanged ...
+```
+
+This matches the existing discriminated-union pattern used for `PlayerAction`. Every site that accesses `check.threshold` must first guard on `check.type == "roll"` or use `isinstance(check, RollCheck)`.
 
 **Reusable component positioning:** `StatCheck` is designed as a reusable component that can be attached to any rule-based resolution point in the corpus, not just `Interaction.check`. The schema treats `StatCheck` as optional within `EncounterRule`, `TraversalEffect`, and `OnEnterEvent` (phase 2 only implements `Interaction.check`; the other positions are reserved and will error if a `stat_check` is found there in phase 2). This mirrors how `ConditionExpression` is universally attachable throughout the corpus.
 
@@ -588,8 +603,7 @@ Add to the GMBriefing:
 }
 ```
 
-- `player_stats` is omitted if the adventure has no stats.
-- The modifier is pre-computed by the Context Assembler using the resolution system formula. This gives the LLM direct knowledge of the player's capabilities without requiring it to do math.
+A new `PlayerStatEntry` Pydantic model holds `value: int` and `modifier: int`. The Context Assembler needs access to `corpus.stats.resolution_system` (passed into `_build_player_state`) to compute modifiers. `player_stats` is omitted if the adventure has no stats. This gives the LLM direct knowledge of the player's capabilities without requiring it to do math.
 
 ### 7. EngineResult extension
 
@@ -599,20 +613,25 @@ Add stat check details to the existing `rolls` array:
 {
   "rolls": [
     {
+      "check_id": "bend_bars",
       "type": "stat_check",
       "stat": "STR",
       "dc": 12,
-      "modifier": 2,
+      "modifier": 4,
+      "computed_mod": 2,
+      "flat_mod": 2,
       "raw_roll": 14,
       "total": 16,
       "margin": 4,
-      "success": true
+      "success": true,
+      "advantage": false,
+      "disadvantage": false
     }
   ]
 }
 ```
 
-This is backward-compatible — `rolls` already accepts `List[Dict[str, Any]]`. The `margin` field (total − DC) is included to support future graded outcomes (success at a cost, partial success) without requiring schema changes.
+This is backward-compatible — `rolls` already accepts `List[Dict[str, Any]]`. The `check_id` field (the interaction ID) is included for consistency with existing roll entries and for debuggability. The `computed_mod` is the modifier derived from the player's stat score; `flat_mod` is the check's own `modifier` field; `modifier` is the total modifier applied to the roll. The `margin` field (`total − DC`) supports future graded outcomes without requiring schema changes.
 
 ### 8. Character sheet display
 
@@ -757,49 +776,23 @@ A scenario written with `d20` in mind (DCs in the 10-20 range, stats 3-18) works
 | `schema/hard-state.md` | Add | Document `player.stats` |
 | `schema/actions.md` | Add | Document `stat_check` in EngineResult.rolls |
 | `schema/scenario-generation.md` | Add | Stats section in generation instructions |
-| `mgmai/models/corpus.py` | Add | `StatDefinition`, `StatsBlock`, `StatCheck` models. Add `stats` to `ModuleCorpus`. |
+| `mgmai/models/corpus.py` | Modify | Replace `Check` with `RollCheck` + `StatCheck` discriminated union (`CheckType`). Add `StatDefinition`, `StatsBlock`. Add `stats` to `ModuleCorpus`. |
 | `mgmai/models/hard_state.py` | Add | `stats: Optional[Dict[str, int]]` to `PlayerState` |
-| `mgmai/models/briefing.py` | Add | `player_stats` to GMBriefing model |
-| `mgmai/engine/conditions.py` | Add | `stat` domain branch in `evaluate_condition_string()` |
-| `mgmai/engine/resolver.py` | Add | Stat check resolution logic |
-| `mgmai/engine/engine.py` | Modify | Handle `stat_check` in interaction resolution |
-| `mgmai/context/assembler.py` | Add | Include `player_stats` in GMBriefing |
+| `mgmai/models/briefing.py` | Add | `PlayerStatEntry` model. `player_stats` to GMBriefing |
+| `mgmai/engine/conditions.py` | Modify | Add `stat` to `DOMAINS` regex. Add `stat` domain branch in `evaluate_condition_string()` |
+| `mgmai/engine/stat_checks.py` | New | `compute_d20_modifier()`, `compute_modifier()` public functions |
+| `mgmai/engine/resolver.py` | Modify | Refactor `_resolve_interaction_check` → dispatch on `check.type`. Extract `_resolve_roll_check()`. Add `_resolve_stat_check()`. |
+| `mgmai/engine/engine.py` | No change | Stat checks flow through existing `resolve()` pipeline |
+| `mgmai/context/assembler.py` | Modify | Pass `corpus` to `_build_player_state`. Compute and include `player_stats` in GMBriefing |
+| `mgmai/state/manager.py` | Modify | Add `_validate_player_stats()` call on load/new-game |
 | `mgmai/game/display.py` | Add | Character sheet panel |
 
 No existing fields, functions, or schemas are altered — all changes are additive.
 
 ## Open Questions
 
-1. **Stat range**: Should the schema enforce a range (e.g., 1-20 for d20)? Or leave it unconstrained and let the resolution system interpret? Recommendation: unconstrained in the schema, with validation only at check time (the resolution system knows its expected range).
+1. **Stat checks on non-player entities**: Should NPCs have stats too? Recommendation: not for this phase. The schema reserves an `opposed_by` field on `StatCheck` and an `npc_stat:` condition domain for future use. NPC capabilities remain modeled through `behavior` encounter rules and `attitude_limits`.
 
-2. **Advantage/disadvantage**: Now handled via `resolution_params` (d20-system concept), so stacking rules are per-system. For d20: if resolution_params specifies both advantage and disadvantage, they cancel out.
+2. **LLM knowledge of stats**: Should the LLM Call 1 prompt include the full character sheet, or just the relevant stat for the current situation? Recommendation: include the full `player_stats` block in the GMBriefing. The LLM should understand the character holistically, not just in the context of a single check.
 
-3. **Stat checks on non-player entities**: Should NPCs have stats too? Recommendation: not for phase 2. The schema reserves an `opposed_by` field on `StatCheck` and an `npc_stat:` condition domain for future use. NPC capabilities remain modeled through `behavior` encounter rules and `attitude_limits`.
-
-4. **LLM knowledge of stats**: Should the LLM Call 1 prompt include the full character sheet, or just the relevant stat for the current situation? Recommendation: include the full `player_stats` block in the GMBriefing. The LLM should understand the character holistically, not just in the context of a single check.
-
-5. **Separation of player stats from adventure module**: Eventually, we want to be able to import a player stat block into a module (and export it!). This can be deferred till later, but the design should retain this possibility.
-
-## Remaining Open Concern
-
-### Static Modifiers, Dynamic World
-
-The `modifier` field on `StatCheck` is a static corpus value. In tabletop play, modifiers are highly dynamic: a climber with a rope gets +2, an injured climber gets −2, a character under a bless spell gets +1d4. The condition system can gate *whether* a check is allowed (`require: flag:has_rope == true`), but it cannot influence the DC or the modifier.
-
-This means adventure authors must either:
-- Define multiple near-identical interactions for every situational variant (climb wall, climb wall with rope, climb wall while injured...), or
-- Ignore situational modifiers and let the LLM narrate them cosmetically while the engine ignores them mechanically.
-
-Both options weaken the engine's authority. A more expressive design would allow conditions to contribute dynamic modifiers, or at least allow `modifier` to reference a flag value.
-
-**Deferred.** Adding dynamic modifier hooks would introduce significant complexity to the condition/check evaluation pipeline. For phase 2, the static `modifier` field suffices; this concern can be revisited once the system has real-world mileage.
-
-## Deferred Design Reservations
-
-The following concerns were raised before the proposal was revised but were assessed as excessive scope for phase 2. They remain open for future consideration.
-
-1. **Skills layer:** Plan a `skills` parallel structure in `hard_state.player` and corpus definitions. The `StatCheck` can optionally reference a `skill` instead of a raw `stat`. Schema space reserved (see §1).
-
-2. **Character creation schema:** Reserve a top-level `character_creation` block in the corpus for future use.
-
-3. **Cross-module character portability:** Document that `player.stats` integers are raw data; the resolution system is a per-module interpretation layer, not a property of the character.
+3. **Separation of player stats from adventure module**: Eventually, we want to be able to import a player stat block into a module (and export it!). This can be deferred till later, but the design should retain this possibility.

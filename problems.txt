@@ -1,6 +1,6 @@
-## Issues & Ambiguities
+# Design Issues
 
-### STALE ROOM DESCRIPTIONS PROBLEM
+## STALE ROOM DESCRIPTIONS PROBLEM
     The axe_handle_lower description mentions the spider; after it
     flees, the description is factually incorrect.  The briefing
     includes entity state alongside the description, so the LLM can
@@ -14,15 +14,25 @@
     already include state fields; the assembler should present them
     prominently alongside descriptions.
 
-### Encounter resolution happens *after* hard-state changes are committed
+## Encounter resolution happens *after* hard-state changes are committed
     Per `phase-4-plan.md` §Step 4, encounters must fire *before* hard-state changes so that a death outcome does not leave the player in a contradictory state (e.g. moved to a new room and died simultaneously).  Current ordering: `apply_hard_changes()` → `resolve_encounter()`.  If the encounter produces `game_over`, the player location has already been updated.  
 **Fix:** Reorder to evaluate encounters against the *proposed* changes before committing them; only commit hard changes if the encounter does not produce `game_over` (or commit them conditionally).
 
-### `resolve_examine` completely ignores the `rigorous` flag
+## `resolve_examine` completely ignores the `rigorous` flag
     File: `mgmai/engine/resolver.py` (`resolve_examine`)  
     The `rigorous` field on `ExamineAction` is never read.  The schema requires that a rigorous examination evaluate interactions that are gated behind `rigorous` searches. Fix: if `action.rigorous` is `True`, evaluate the target entity/room for any interactions whose availability depends on `rigorous` and include the results in `triggered_narration`.
 
-## Human Validation Required
+# Features
+
+## Implement some interactive fiction shortcuts: l, x, u, d, etc.
+   Handled at input level by translating into natural language sentences
+
+## Stricter instructions to the GM about how to handle player queries,
+   e.g. "Is the hole large enough for me to look through?"
+   should not translate into an examine action.
+
+# TODO items for Human Validation
+
 The following cannot be verified by automated tests — they require running the game with a real LLM:
 
 - [ ] LLM Call 1 correctly classifies player intent for edge cases (ambiguous input, chained actions)
