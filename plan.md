@@ -431,6 +431,7 @@ A new optional top-level block in `corpus.json`:
 - `definitions` is a dict of stat keys → `{ name, description }`.
 - `resolution_system` references a named built-in or a custom resolution definition (see §4).
 - If `stats` is absent, the adventure has no stat system. All existing adventures continue to work.
+- The schema also reserves space for a future optional `skills` block (parallel to `definitions`), and for a `proficiencies` dict on the player (`hard_state.player.proficiencies`) which would map skill IDs to a proficiency tier. These are not implemented in phase 2, but the `StatCheck` model may optionally reference a `skill` in addition to `stat` (reserved, unused in phase 2).
 
 ### 2. Player stats in hard state
 
@@ -482,6 +483,8 @@ if domain == "stat":
     return _compare(stat_val, op, value)
 ```
 
+The syntax `npc_stat:<entity_id>.<stat_key>` is reserved for future NPC opposed checks (not implemented in phase 2). The condition evaluator will log a `NotImplementedError` if encountered, preventing silent mis-evaluation.
+
 **Usage in corpus conditions** (same condition-object nesting as everything else):
 
 ```json
@@ -530,8 +533,8 @@ Extend the `Check` model with a new type alongside `"roll"`:
 | `stat` | string | yes | Stat key (must be defined in `corpus.stats.definitions`). |
 | `dc` | number | yes | Difficulty class (or target number, depending on resolution system). |
 | `modifier` | number | no | Flat modifier added to the roll (default 0). Represents situational bonuses: tools, conditions, etc. |
-| `advantage` | boolean | no | Roll with advantage (d20: roll twice, take higher). Default false. |
-| `disadvantage` | boolean | no | Roll with disadvantage. Default false. |
+| `resolution_params` | dict | no | Resolution-system-specific options, keyed by system name. For d20: `{"d20": {"advantage": true}}`. Keeps edition-specific mechanics out of the generic schema. |
+| `opposed_by` | string | no | Reserved for future NPC opposed checks (e.g. `"entity:spider.DEX"`). Not implemented in phase 2. |
 | `repeatable` | boolean | yes | Whether the check can be retried. |
 | `note` | string | no | Designer note. |
 
@@ -540,9 +543,10 @@ Extend the `Check` model with a new type alongside `"roll"`:
 1. Engine receives an `interact` (or other) action whose interaction has a `stat_check`.
 2. Engine looks up `corpus.stats.resolution_system` (currently `"d20"`).
 3. Engine computes the modifier from the player's stat value: `modifier = (stat - 10) // 2`.
-4. Engine rolls: `random.randint(1, 20) + computed_modifier + check.modifier >= dc`.
-5. Engine selects `success` or `failure` result as with any check.
-6. The roll details (stat, modifier, dc, raw roll, total, outcome) are recorded in `EngineResult.rolls`.
+4. Engine reads `resolution_params` for the active system: e.g., for d20, checks `resolution_params.get("d20", {}).get("advantage")` and applies advantage/disadvantage logic (roll twice, take higher/lower). If both advantage and disadvantage are set, they cancel out.
+5. Engine rolls: `random.randint(1, 20) + computed_modifier + check.modifier >= dc`.
+6. Engine selects `success` or `failure` result as with any check.
+7. The roll details (stat, modifier, dc, raw roll, total, margin, outcome) are recorded in `EngineResult.rolls`.
 
 **Pydantic model change** (in `mgmai/models/corpus.py`):
 
@@ -552,8 +556,8 @@ class StatCheck(BaseModel):
     stat: str
     dc: int
     modifier: int = 0
-    advantage: bool = False
-    disadvantage: bool = False
+    resolution_params: Optional[Dict[str, Any]] = None
+    opposed_by: Optional[str] = None  # reserved; future NPC opposed checks
     repeatable: bool
     note: Optional[str] = None
 
@@ -564,6 +568,8 @@ class Check(BaseModel):
 ```
 
 Cleanest approach: make `Check` a discriminated union of `RollCheck` and `StatCheck`. This matches the existing pattern used for `PlayerAction`.
+
+**Reusable component positioning:** `StatCheck` is designed as a reusable component that can be attached to any rule-based resolution point in the corpus, not just `Interaction.check`. The schema treats `StatCheck` as optional within `EncounterRule`, `TraversalEffect`, and `OnEnterEvent` (phase 2 only implements `Interaction.check`; the other positions are reserved and will error if a `stat_check` is found there in phase 2). This mirrors how `ConditionExpression` is universally attachable throughout the corpus.
 
 ### 6. GMBriefing extension
 
@@ -599,13 +605,14 @@ Add stat check details to the existing `rolls` array:
       "modifier": 2,
       "raw_roll": 14,
       "total": 16,
+      "margin": 4,
       "success": true
     }
   ]
 }
 ```
 
-This is backward-compatible — `rolls` already accepts `List[Dict[str, Any]]`.
+This is backward-compatible — `rolls` already accepts `List[Dict[str, Any]]`. The `margin` field (total − DC) is included to support future graded outcomes (success at a cost, partial success) without requiring schema changes.
 
 ### 8. Character sheet display
 
@@ -765,45 +772,17 @@ No existing fields, functions, or schemas are altered — all changes are additi
 
 1. **Stat range**: Should the schema enforce a range (e.g., 1-20 for d20)? Or leave it unconstrained and let the resolution system interpret? Recommendation: unconstrained in the schema, with validation only at check time (the resolution system knows its expected range).
 
-2. **Advantage/disadvantage stacking**: If a check has both advantage and disadvantage from different sources, what happens? Recommendation: they cancel out (standard d20 rule). Only one can be true on a single check object; the engine rejects both being set.
+2. **Advantage/disadvantage**: Now handled via `resolution_params` (d20-system concept), so stacking rules are per-system. For d20: if resolution_params specifies both advantage and disadvantage, they cancel out.
 
-3. **Stat checks on non-player entities**: Should NPCs have stats too? Recommendation: not for phase 2. NPC capabilities are already modeled through `behavior` encounter rules and `attitude_limits`. If needed later, NPCs can get stats via `entity_states` or a parallel `npc_stats` structure.
+3. **Stat checks on non-player entities**: Should NPCs have stats too? Recommendation: not for phase 2. The schema reserves an `opposed_by` field on `StatCheck` and an `npc_stat:` condition domain for future use. NPC capabilities remain modeled through `behavior` encounter rules and `attitude_limits`.
 
 4. **LLM knowledge of stats**: Should the LLM Call 1 prompt include the full character sheet, or just the relevant stat for the current situation? Recommendation: include the full `player_stats` block in the GMBriefing. The LLM should understand the character holistically, not just in the context of a single check.
 
 5. **Separation of player stats from adventure module**: Eventually, we want to be able to import a player stat block into a module (and export it!). This can be deferred till later, but the design should retain this possibility.
 
-## Criticisms
+## Remaining Open Concern
 
-The proposed stat-check system is a sound and necessary step toward a tabletop-like RPG experience. It correctly identifies the architectural insertion points, preserves the engine/LLM separation of concerns, and maintains backward compatibility. From a high-level game-design perspective, the proposal will successfully make the experience "less like Zork and more like D&D" at a surface level, but several design gaps mean it will likely require significant expansion—or even revision—once combat, skills, or cross-module play are attempted.
-
-### 1. Coarse-Grained Stats with No Skills Layer
-
-The six ability scores alone are extremely coarse. In actual tabletop play, "I try to persuade the guard" is usually a Charisma (**Persuasion**) check, not a raw CHA check. "I search for hidden doors" is Perception (WIS), not raw WIS. Raw ability checks are relatively rare in D&D and similar systems.
-
-**The risk:** Adventures will be forced to use `stat:CHA` for every social roll, `stat:WIS` for every sensory roll, etc. This flattens character differentiation. Two characters with CHA 16 are equally good at intimidation, deception, persuasion, and performance—even though in tabletop these are often separate proficiencies.
-
-**Does it matter for Phase 2?** No. But the schema should at least *reserve space* for a future skill layer (e.g., a `skills` dict parallel to `stats`, or a `proficiency_bonus` concept) so that `stat_check` doesn't become a dead-end.
-
-### 2. No NPC Stats Means No Opposed Checks
-
-The proposal explicitly excludes NPC stats (Open Question 3). This is pragmatic for scope, but it creates a major tabletop-feel gap: **there is no opposed resolution.**
-
-In tabletop RPGs, many dramatic moments are contests: arm-wrestling (STR vs. STR), a chase (DEX vs. DEX), a deception (CHA vs. WIS). With only player stats, every check is against a static DC. The world is a set of obstacle courses, not a living system of competing agents.
-
-This also undermines the future **Combat phase** extension mentioned in the plan. Combat without opposed attack rolls, NPC AC, or NPC saving throws is not D&D-like; it's a narrative engine with health bars. If NPC stats are deferred too long, the `behavior`/`encounter_rules` system may ossify around flat thresholds (`random() < 0.5`) that are hard to retrofit into stat-based combat.
-
-**Recommendation:** Do not implement NPC stats now, but design `StatCheck` (and the condition system) so that an `opposed_by` field or `npc_stat` domain can be added later without breaking existing modules.
-
-### 3. Binary Outcomes Only
-
-Tabletop systems thrive on *degrees* of success and failure. D&D has critical hits/misses, and many modern systems (PBTA, Fate) have explicit "success at a cost" or "partial success" states. The current `success`/`failure` branch model in `Interaction` is strictly binary.
-
-The proposal's examples reinforce this: "bend bars" either works or doesn't. In a tabletop game, a strong character might bend the bars *partway*, creating a new option (squeeze through with difficulty, or make it easier for a smaller ally). The engine's `Result` object has no room for this.
-
-**Recommendation:** Not urgent, but consider whether `EngineResult.rolls` should include `margin` (total − DC) so that future extensions can implement graded outcomes without schema changes.
-
-### 4. Static Modifiers, Dynamic World
+### Static Modifiers, Dynamic World
 
 The `modifier` field on `StatCheck` is a static corpus value. In tabletop play, modifiers are highly dynamic: a climber with a rope gets +2, an injured climber gets −2, a character under a bless spell gets +1d4. The condition system can gate *whether* a check is allowed (`require: flag:has_rope == true`), but it cannot influence the DC or the modifier.
 
@@ -813,61 +792,14 @@ This means adventure authors must either:
 
 Both options weaken the engine's authority. A more expressive design would allow conditions to contribute dynamic modifiers, or at least allow `modifier` to reference a flag value.
 
-## Extensibility Concerns: Will It Slot In Nicely?
+**Deferred.** Adding dynamic modifier hooks would introduce significant complexity to the condition/check evaluation pipeline. For phase 2, the static `modifier` field suffices; this concern can be revisited once the system has real-world mileage.
 
-### 1. D-20-ism Is Baked into the Schema
+## Deferred Design Reservations
 
-The `advantage` and `disadvantage` booleans on `StatCheck` are deeply D&D 5e concepts. The proposal's own translation table shows that a `3d6` system or diceless system would interpret these very differently (or not at all). Yet they are first-class fields in the generic `StatCheck` model.
+The following concerns were raised before the proposal was revised but were assessed as excessive scope for phase 2. They remain open for future consideration.
 
-This is a tension: the resolution system abstraction promises edition-agnostic design, but the schema silently encodes D&D-5e-isms. If the project later wants to support a Call of Cthulhu d100 system or a Blades in the Dark resistance-roll system, `advantage: true` will be a confusing no-op or require awkward reinterpretation.
+1. **Skills layer:** Plan a `skills` parallel structure in `hard_state.player` and corpus definitions. The `StatCheck` can optionally reference a `skill` instead of a raw `stat`. Schema space reserved (see §1).
 
-**Recommendation:** Move edition-specific mechanics into a flexible `options` or `resolution_params` dict keyed by the resolution system, rather than promoting D&D concepts to top-level fields. For example:
+2. **Character creation schema:** Reserve a top-level `character_creation` block in the corpus for future use.
 
-```json
-{
-  "type": "stat_check",
-  "stat": "STR",
-  "dc": 14,
-  "resolution_params": {
-    "d20": { "advantage": true }
-  }
-}
-```
-
-This keeps the core schema generic while allowing system-specific flourishes.
-
-### 2. Missing Integration Points
-
-The proposal focuses entirely on `Interaction.check`. But stat checks should logically appear in other resolution contexts:
-
-- **Encounter rules:** Currently `EncounterRule` uses `threshold: 0.5` flat probability. It would be more consistent—and more tabletop-like—to allow `stat_check` here too (e.g., "DEX save vs. spider venom, DC 12"). Without this, combat remains a flat-roll system even after stats are introduced.
-- **Exit traversal:** A `stat_check` on an exit could model "leap across the chasm (DEX DC 15)" as a traversal effect, rather than requiring a separate interaction.
-- **On-enter events:** A room might require a CON save upon entry (toxic fumes).
-
-Restricting stat checks to `Interaction` objects means the engine's other resolution pathways (`resolve_move`, `resolve_encounter`, `on_enter` events) remain stat-agnostic. This creates a fragmented mechanics layer where some systems use stats and others use flat randomness.
-
-**Recommendation:** Define `StatCheck` as a reusable component that can be attached to any rule-based resolution point, not just interactions. The schema already treats `ConditionExpression` as universally attachable; `StatCheck` should have the same status.
-
-## Recommendations (Prioritized)
-
-### Must Do Before Implementation
-
-1. **Generalize `StatCheck` fields:** Replace `advantage`/`disadvantage` booleans with a `resolution_params` dict scoped to the named resolution system. This prevents D&D-5e-ism from becoming a permanent schema assumption.
-
-2. **Plan for NPC stats:** Even if not implemented, reserve the condition syntax and model structure for `entity:spider.STR >= 10` or `npc_stat:guard.DEX`. This ensures the `StatCheck` model can later support opposed checks without a breaking change.
-
-3. **Add `margin` to roll results:** Include `margin: total - dc` in `EngineResult.rolls`. This is a cheap, backward-compatible addition that opens the door to graded outcomes later.
-
-### Should Do During Implementation
-
-4. **Reusable `StatCheck` component:** Allow `StatCheck` (or a reference to one) in `EncounterRule`, `TraversalEffect`, and `OnEnterEvent`, not just `Interaction`.
-
-5. **Dynamic modifier hooks:** Provide a minimal mechanism for situational bonuses—perhaps a `modifier_conditions` array where matching conditions add flat bonuses. Even a simple version prevents the "ten interactions for one action" problem.
-
-### Can Defer, But Keep in Mind
-
-6. **Skills layer:** Plan a `skills` parallel structure in `hard_state.player` and corpus definitions. The `stat_check` can optionally reference a `skill` instead of a raw `stat`.
-
-7. **Character creation schema:** Reserve a top-level `character_creation` block in the corpus for future use.
-
-8. **Cross-module character portability:** Document that `player.stats` integers are raw data; the resolution system is a per-module interpretation layer, not a property of the character.
+3. **Cross-module character portability:** Document that `player.stats` integers are raw data; the resolution system is a per-module interpretation layer, not a property of the character.
