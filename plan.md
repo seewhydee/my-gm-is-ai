@@ -368,3 +368,409 @@ Save file: a JSON file containing both `hard_state` and `soft_state` (merged int
 ### 6. Soft state contradiction detection
 
 The engine does basic contradiction checks on soft-state patches (e.g., can't say "spider is dead" if `entity_states.spider.alive == true`). This is done via simple keyword matching against entity names + state fields, not via a second LLM call. It won't catch subtle contradictions but will catch the obvious ones.
+
+# To Be Done: Player Stats Extension
+
+## Objective
+
+Add a rudimentary player stat system that supports:
+
+1. A basic character sheet with ability scores (STR, DEX, CON, INT, WIS, CHA).
+2. Stat checks (e.g., "STR +4 vs DC 12") for gating actions and resolving uncertain outcomes.
+3. Adventure module-level references to stats in conditions and interactions.
+4. A **resolution system abstraction** so adventures are not coupled to a specific RPG edition (D&D 5e, Pathfinder, GURPS, etc.).
+   The scenario writes checks in a general form; a translation layer maps them to concrete dice math.
+   Once a scenario is translated into an adventure module (json files), it's locked into a specific resolution system.
+
+No existing code or schema is altered — this is purely additive.
+
+### What already exists
+
+| Existing feature | How stats extend it |
+|---|---|
+| **Condition domains** (`flag`, `inventory`, `tag`, `entity`, `room`, `attitude`, `topic`) | Add a `stat` domain: `stat:STR >= 12`. This is a new branch in `evaluate_condition_string()`. |
+| **Check object** (`type: "roll"`, flat `threshold`) | Add a new check type `"stat_check"` with stat, modifier, and DC fields. The engine dispatches to the resolution system. |
+| **Entity `state_fields`** | Player stats are a parallel data structure living in `hard_state.player.stats`. |
+| **NPC `attitude_limits`** | Stats can be added as conditions on `will_reveal` entries, encounters, and interactions — same condition-object nesting. |
+| **GMBriefing** | Add a `player_stats` section. The Context Assembler already builds the briefing from hard state. |
+| **Engine resolution** | Stat checks slot into the same resolve → produce EngineResult flow. `EngineResult.rolls` already exists for probabilistic outcomes. |
+
+### What does NOT need to change
+
+- The two-LLM-call architecture (ruling + prose) is untouched.
+- The soft state system is untouched (stats are hard state — engine-authoritative).
+- Existing condition domains, action types, and interaction schemas are untouched.
+- The bag-of-holding adventure continues to work as-is (stats are optional per adventure).
+
+## Proposed Design
+
+### 1. Stat definitions in the corpus
+
+A new optional top-level block in `corpus.json`:
+
+```json
+{
+  "adventure": { ... },
+  "rooms": { ... },
+  "entities": { ... },
+  "mechanics": { ... },
+  "stats": {
+    "definitions": {
+      "STR": { "name": "Strength", "description": "Physical power and melee capability" },
+      "DEX": { "name": "Dexterity", "description": "Agility, reflexes, and ranged capability" },
+      "CON": { "name": "Constitution", "description": "Endurance, stamina, and resilience" },
+      "INT": { "name": "Intelligence", "description": "Reasoning, memory, and arcane knowledge" },
+      "WIS": { "name": "Wisdom", "description": "Perception, intuition, and willpower" },
+      "CHA": { "name": "Charisma", "description": "Force of personality, persuasion, and leadership" }
+    },
+    "resolution_system": "d20"
+  }
+}
+```
+
+- `definitions` is a dict of stat keys → `{ name, description }`.
+- `resolution_system` references a named built-in or a custom resolution definition (see §4).
+- If `stats` is absent, the adventure has no stat system. All existing adventures continue to work.
+
+### 2. Player stats in hard state
+
+```json
+{
+  "player": {
+    "location": "axe_head",
+    "inventory": [],
+    "stats": {
+      "STR": 14,
+      "DEX": 12,
+      "CON": 13,
+      "INT": 10,
+      "WIS": 8,
+      "CHA": 16
+    }
+  },
+  "flags": { ... },
+  ...
+}
+```
+
+- `stats` is an optional dict on `player`. If absent, the adventure has no stats.
+- Values are integers. The meaning depends on the resolution system (for d20: these are the raw ability scores, modifiers are computed).
+- The engine validates at startup that every stat key in `player.stats` has a matching entry in `corpus.stats.definitions`.
+
+### 3. New condition domain: `stat`
+
+Extend the condition string format:
+
+```
+stat:STR >= 12
+stat:CHA >= 15
+stat:DEX < 8
+```
+
+This evaluates to true when the player's current stat value meets the comparison. Uses the same `_compare()` function as other numeric conditions.
+
+**In `engine/conditions.py`:**
+```python
+if domain == "stat":
+    if op is None or value is None:
+        raise ValueError(f"stat condition requires operator and value: {raw!r}")
+    if hard_state.player.stats is None:
+        return False
+    stat_val = hard_state.player.stats.get(key)
+    if stat_val is None:
+        return False
+    return _compare(stat_val, op, value)
+```
+
+**Usage in corpus conditions** (same condition-object nesting as everything else):
+
+```json
+{
+  "require": "stat:STR >= 13"
+}
+```
+
+```json
+{
+  "all": [
+    "stat:CHA >= 15",
+    "attitude:korbar >= 2"
+  ]
+}
+```
+
+This lets scenario authors gate interactions on stats. For example, a "Bend the Bars" interaction could require `stat:STR >= 15`. Persuading an NPC to share a secret could require `stat:CHA >= 12` in addition to attitude.
+
+### 4. Resolution system abstraction
+
+The resolution system defines **how stat checks translate to probability**. This is the translation layer that decouples adventures from specific RPG editions.
+
+For the current phase, we only implement `d20`: 20-sided dice, modifier = (stat - 10) / 2, rounded down, roll(1d20) + modifier >= DC.
+
+Custom systems are a future extension point — the schema reserves the space, but the engine only needs to handle the named built-in systems.  Eventually, the corpus generator could support translating a given scenario.md file into different resolution systems.
+
+### 5. New check type: `stat_check`
+
+Extend the `Check` model with a new type alongside `"roll"`:
+
+```json
+{
+  "type": "stat_check",
+  "stat": "STR",
+  "dc": 12,
+  "modifier": 0,
+  "repeatable": true,
+  "note": "Bend the iron bars."
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | `"stat_check"` | yes | Discriminator. |
+| `stat` | string | yes | Stat key (must be defined in `corpus.stats.definitions`). |
+| `dc` | number | yes | Difficulty class (or target number, depending on resolution system). |
+| `modifier` | number | no | Flat modifier added to the roll (default 0). Represents situational bonuses: tools, conditions, etc. |
+| `advantage` | boolean | no | Roll with advantage (d20: roll twice, take higher). Default false. |
+| `disadvantage` | boolean | no | Roll with disadvantage. Default false. |
+| `repeatable` | boolean | yes | Whether the check can be retried. |
+| `note` | string | no | Designer note. |
+
+**Engine resolution flow:**
+
+1. Engine receives an `interact` (or other) action whose interaction has a `stat_check`.
+2. Engine looks up `corpus.stats.resolution_system` (currently `"d20"`).
+3. Engine computes the modifier from the player's stat value: `modifier = (stat - 10) // 2`.
+4. Engine rolls: `random.randint(1, 20) + computed_modifier + check.modifier >= dc`.
+5. Engine selects `success` or `failure` result as with any check.
+6. The roll details (stat, modifier, dc, raw roll, total, outcome) are recorded in `EngineResult.rolls`.
+
+**Pydantic model change** (in `mgmai/models/corpus.py`):
+
+```python
+class StatCheck(BaseModel):
+    type: Literal["stat_check"] = "stat_check"
+    stat: str
+    dc: int
+    modifier: int = 0
+    advantage: bool = False
+    disadvantage: bool = False
+    repeatable: bool
+    note: Optional[str] = None
+
+class Check(BaseModel):
+    type: Literal["roll", "stat_check"]
+    # ... existing roll fields + stat_check fields
+    # Use discriminated union or optional fields
+```
+
+Cleanest approach: make `Check` a discriminated union of `RollCheck` and `StatCheck`. This matches the existing pattern used for `PlayerAction`.
+
+### 6. GMBriefing extension
+
+Add to the GMBriefing:
+
+```json
+{
+  "player_stats": {
+    "STR": { "value": 14, "modifier": 2 },
+    "DEX": { "value": 12, "modifier": 1 },
+    "CON": { "value": 13, "modifier": 1 },
+    "INT": { "value": 10, "modifier": 0 },
+    "WIS": { "value": 8, "modifier": -1 },
+    "CHA": { "value": 16, "modifier": 3 }
+  }
+}
+```
+
+- `player_stats` is omitted if the adventure has no stats.
+- The modifier is pre-computed by the Context Assembler using the resolution system formula. This gives the LLM direct knowledge of the player's capabilities without requiring it to do math.
+
+### 7. EngineResult extension
+
+Add stat check details to the existing `rolls` array:
+
+```json
+{
+  "rolls": [
+    {
+      "type": "stat_check",
+      "stat": "STR",
+      "dc": 12,
+      "modifier": 2,
+      "raw_roll": 14,
+      "total": 16,
+      "success": true
+    }
+  ]
+}
+```
+
+This is backward-compatible — `rolls` already accepts `List[Dict[str, Any]]`.
+
+### 8. Character sheet display
+
+In `mgmai/game/display.py`, when stats are present, render a character sheet panel using Rich:
+
+```
+┌─ Character Sheet ──────────────┐
+│ STR 14 (+2)   INT 10 (+0)     │
+│ DEX 12 (+1)   WIS  8 (-1)     │
+│ CON 13 (+1)   CHA 16 (+3)     │
+└────────────────────────────────┘
+```
+
+This is a display-only change. The `display.py` module already uses Rich panels.
+
+### 9. Scenario integration examples
+
+#### Example: Bending bars with STR
+
+In the corpus, an interaction on a feature:
+
+```json
+{
+  "id": "bend_bars",
+  "label": "Bend the iron bars",
+  "description": "Attempt to bend the rusty iron bars apart using brute strength.",
+  "condition": { "require": "stat:STR >= 10" },
+  "check": {
+    "type": "stat_check",
+    "stat": "STR",
+    "dc": 14,
+    "repeatable": true,
+    "note": "STR check DC 14 to bend the bars."
+  },
+  "success": {
+    "narrative": "You grip the bars and heave. Metal groans and bends — enough for you to squeeze through.",
+    "set_flag": { "bars_bent": true }
+  },
+  "failure": {
+    "narrative": "You strain against the bars, but they refuse to budge. You'll need more strength, or another approach."
+  }
+}
+```
+
+#### Example: Persuading an NPC with CHA
+
+Gating a `will_reveal` topic on both attitude and stat:
+
+```json
+{
+  "will_reveal": {
+    "deep_secret": {
+      "description": "The NPC reveals a deeply personal secret.",
+      "conditions": [
+        "attitude:guard >= 4",
+        "stat:CHA >= 14"
+      ]
+    }
+  }
+}
+```
+
+#### Example: Perception check (WIS)
+
+A hidden exit revealed by a WIS check:
+
+```json
+{
+  "interactions": [
+    {
+      "id": "search_for_passage",
+      "label": "Search for a hidden passage",
+      "description": "Scan the walls carefully for any sign of a concealed exit.",
+      "check": {
+        "type": "stat_check",
+        "stat": "WIS",
+        "dc": 13,
+        "repeatable": true
+      },
+      "success": {
+        "narrative": "Your keen eye catches a faint seam in the stone — a hidden door!",
+        "set_flag": { "passage_found": true }
+      },
+      "failure": {
+        "narrative": "You scan the walls but nothing stands out. The stonework looks solid."
+      }
+    }
+  ]
+}
+```
+
+With the exit:
+
+```json
+{
+  "id": "exit_hidden_passage",
+  "direction": "Slip through the hidden passage",
+  "target_room": "secret_tunnel",
+  "conditions": [{ "require": "flag:passage_found == true" }],
+  "hidden": true
+}
+```
+
+---
+
+## Translation Layer: How It Decouples from D&D
+
+The key insight is that **the scenario references stats and DCs abstractly**; the resolution system provides the concrete math.
+
+| Scenario says | d20 system interprets | 3d6 system interprets | Diceless interprets |
+|---|---|---|---|
+| `stat:STR >= 14` | Raw STR score >= 14 | Raw STR score >= 14 | Raw STR score >= 14 |
+| `stat_check: STR, dc: 12` | d20 + (STR-10)//2 >= 12 | 3d6 <= STR | STR >= 12 |
+| `stat_check: CHA, dc: 15, modifier: 2` | d20 + (CHA-10)//2 + 2 >= 15 | 3d6 <= CHA+2 | CHA + 2 >= 15 |
+
+The scenario author only needs to think in terms of "is the character strong enough?" and "what's the difficulty?" The resolution system translates that into whatever probability curve the system uses.
+
+A scenario written with `d20` in mind (DCs in the 10-20 range, stats 3-18) works naturally with d20. A scenario written for a point-buy system (stats 1-5) would use `flat` resolution. The scenario author picks the resolution system that matches their stat scale; the engine handles the rest.
+
+---
+
+## Implementation Scope
+
+### In scope
+
+1. `stats` block in corpus schema (definitions + resolution_system).
+2. `player.stats` in hard state schema and Pydantic model.
+3. `stat` condition domain in the condition evaluator.
+4. `StatCheck` as a new check type alongside `RollCheck`.
+5. d20 resolution system (the only built-in for now).
+6. `player_stats` in GMBriefing.
+7. Stat check details in `EngineResult.rolls`.
+8. Character sheet display in the console UI.
+9. Startup validation (stats in hard state match corpus definitions).
+10. Update `scenario-generation.md` with stats instructions.
+
+## File Changes Summary
+
+| File | Change type | Description |
+|---|---|---|
+| `schema/corpus.md` | Add | Document `stats` block, `stat_check` type, `stat` condition domain |
+| `schema/hard-state.md` | Add | Document `player.stats` |
+| `schema/actions.md` | Add | Document `stat_check` in EngineResult.rolls |
+| `schema/scenario-generation.md` | Add | Stats section in generation instructions |
+| `mgmai/models/corpus.py` | Add | `StatDefinition`, `StatsBlock`, `StatCheck` models. Add `stats` to `ModuleCorpus`. |
+| `mgmai/models/hard_state.py` | Add | `stats: Optional[Dict[str, int]]` to `PlayerState` |
+| `mgmai/models/briefing.py` | Add | `player_stats` to GMBriefing model |
+| `mgmai/engine/conditions.py` | Add | `stat` domain branch in `evaluate_condition_string()` |
+| `mgmai/engine/resolver.py` | Add | Stat check resolution logic |
+| `mgmai/engine/engine.py` | Modify | Handle `stat_check` in interaction resolution |
+| `mgmai/context/assembler.py` | Add | Include `player_stats` in GMBriefing |
+| `mgmai/game/display.py` | Add | Character sheet panel |
+
+No existing fields, functions, or schemas are altered — all changes are additive.
+
+---
+
+## Open Questions
+
+1. **Stat range**: Should the schema enforce a range (e.g., 1-20 for d20)? Or leave it unconstrained and let the resolution system interpret? Recommendation: unconstrained in the schema, with validation only at check time (the resolution system knows its expected range).
+
+2. **Advantage/disadvantage stacking**: If a check has both advantage and disadvantage from different sources, what happens? Recommendation: they cancel out (standard d20 rule). Only one can be true on a single check object; the engine rejects both being set.
+
+3. **Stat checks on non-player entities**: Should NPCs have stats too? Recommendation: not for phase 2. NPC capabilities are already modeled through `behavior` encounter rules and `attitude_limits`. If needed later, NPCs can get stats via `entity_states` or a parallel `npc_stats` structure.
+
+4. **LLM knowledge of stats**: Should the LLM Call 1 prompt include the full character sheet, or just the relevant stat for the current situation? Recommendation: include the full `player_stats` block in the GMBriefing. The LLM should understand the character holistically, not just in the context of a single check.
+
+5. **Separation of player stats from adventure module**: Eventually, we want to be able to import a player stat block into a module (and export it!). This can be deferred till later, but the design should retain this possibility.
