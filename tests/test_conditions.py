@@ -181,6 +181,21 @@ class TestParseConditionString:
         assert op is None
         assert value is None
 
+    def test_stat_with_op(self) -> None:
+        domain, key, op, value = parse_condition_string("stat:STR >= 12")
+        assert domain == "stat"
+        assert key == "STR"
+        assert op == ">="
+        assert value == "12"
+
+    def test_stat_no_op_raises(self) -> None:
+        domain, key, op, value = parse_condition_string("stat:STR")
+        # parsing succeeds but op is None; evaluation will raise
+        assert domain == "stat"
+        assert key == "STR"
+        assert op is None
+        assert value is None
+
 
 class TestEvaluateConditionStringFlag:
     def test_flag_true_match(self) -> None:
@@ -492,6 +507,81 @@ class TestEvaluateConditionStringItem:
         ss = make_soft_state()
         with pytest.raises(ValueError, match="item condition must not have operator"):
             evaluate_condition_string("item:rusty_key == true", hs, ss, None)
+
+
+class TestEvaluateConditionStringStat:
+    def _with_stats(self, **overrides):
+        hs = make_hard_state()
+        hs.player.stats = {"STR": 14, "DEX": 12, "CON": 10}
+        return hs
+
+    def test_stat_gte_true(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state()
+        assert evaluate_condition_string("stat:STR >= 12", hs, ss, None)
+
+    def test_stat_gte_false(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state()
+        assert not evaluate_condition_string("stat:STR >= 16", hs, ss, None)
+
+    def test_stat_lt_true(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state()
+        assert evaluate_condition_string("stat:STR < 20", hs, ss, None)
+
+    def test_stat_eq(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state()
+        assert evaluate_condition_string("stat:STR == 14", hs, ss, None)
+
+    def test_stat_nonexistent_key(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state()
+        assert not evaluate_condition_string("stat:WIS >= 10", hs, ss, None)
+
+    def test_stat_no_player_stats(self) -> None:
+        hs = make_hard_state()
+        ss = make_soft_state()
+        hs.player.stats = None
+        assert not evaluate_condition_string("stat:STR >= 12", hs, ss, None)
+
+    def test_stat_missing_operator_raises(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state()
+        with pytest.raises(ValueError, match="stat condition requires operator"):
+            evaluate_condition_string("stat:STR", hs, ss, None)
+
+    def test_stat_with_decimal(self) -> None:
+        hs = self._with_stats()
+        hs.player.stats = {"STR": 14.5}
+        ss = make_soft_state()
+        assert evaluate_condition_string("stat:STR >= 14", hs, ss, None)
+
+    def test_stat_in_condition_expression(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state()
+        condition = ConditionExpression.model_validate({"require": "stat:STR >= 13"})
+        from mgmai.engine.conditions import evaluate
+        assert evaluate(condition, hs, ss)
+
+    def test_stat_all_of(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state()
+        condition = ConditionExpression.model_validate({
+            "all": ["stat:STR >= 10", "stat:DEX >= 10"],
+        })
+        from mgmai.engine.conditions import evaluate
+        assert evaluate(condition, hs, ss)
+
+    def test_stat_with_attitude(self) -> None:
+        hs = self._with_stats()
+        ss = make_soft_state(npc_attitudes={"korbar": 5})
+        condition = ConditionExpression.model_validate({
+            "all": ["stat:CHA >= 15", "attitude:korbar >= 2"],
+        })
+        from mgmai.engine.conditions import evaluate
+        assert not evaluate(condition, hs, ss)
 
 
 class TestEvaluateConditionExpression:

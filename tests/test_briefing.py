@@ -370,3 +370,56 @@ class TestGMBriefing:
                 "current_room": {"id": "room1", "name": "Room 1", "description": "A room."},
                 "player_input": "Look.",
             })
+
+
+class TestPlayerStatEntry:
+    def test_basic(self) -> None:
+        from mgmai.models.briefing import PlayerStatEntry
+        e = PlayerStatEntry.model_validate({"value": 14, "modifier": 2})
+        assert e.value == 14
+        assert e.modifier == 2
+
+    def test_negative_modifier(self) -> None:
+        from mgmai.models.briefing import PlayerStatEntry
+        e = PlayerStatEntry.model_validate({"value": 8, "modifier": -1})
+        assert e.modifier == -1
+
+
+class TestGMBriefingPlayerStats:
+    def test_includes_player_stats_when_present(self) -> None:
+        b = GMBriefing.model_validate({
+            "adventure_title": "Test",
+            "setting": "A setting.",
+            "tone": "Test tone.",
+            "turn": 1,
+            "current_room": {
+                "id": "room1",
+                "name": "Room 1",
+                "description": "A test room.",
+            },
+            "player_state": {"location": "room1"},
+            "player_stats": {
+                "STR": {"value": 14, "modifier": 2},
+                "DEX": {"value": 12, "modifier": 1},
+            },
+            "player_input": "Hello.",
+        })
+        assert b.player_stats is not None
+        assert b.player_stats["STR"].value == 14
+        assert b.player_stats["STR"].modifier == 2
+
+    def test_player_stats_none_when_absent(self) -> None:
+        b = GMBriefing.model_validate({
+            "adventure_title": "Test",
+            "setting": "A setting.",
+            "tone": "Test tone.",
+            "turn": 1,
+            "current_room": {
+                "id": "room1",
+                "name": "Room 1",
+                "description": "A test room.",
+            },
+            "player_state": {"location": "room1"},
+            "player_input": "Hello.",
+        })
+        assert b.player_stats is None

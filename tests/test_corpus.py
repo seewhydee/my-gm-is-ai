@@ -7,7 +7,6 @@ from mgmai.models.corpus import (
     AttitudeLimits,
     Behavior,
     BranchOutcome,
-    Check,
     ConditionExpression,
     Credits,
     DialogueGuidelines,
@@ -22,8 +21,12 @@ from mgmai.models.corpus import (
     OnEnterEvent,
     ParameterSignature,
     Result,
+    RollCheck,
     Room,
     StateFieldDecl,
+    StatCheck,
+    StatDefinition,
+    StatsBlock,
     TraversalEffect,
     WillRevealEntry,
 )
@@ -657,27 +660,23 @@ class TestRoom:
         assert r.entities_present == ["guard_1", "guard_2", "captain"]
 
 
-class TestCheck:
-    def test_check_threshold_bounds(self) -> None:
-        Check.model_validate({"threshold": 0.0, "repeatable": True})
-        Check.model_validate({"threshold": 1.0, "repeatable": True})
+class TestRollCheck:
+    def test_threshold_bounds(self) -> None:
+        RollCheck.model_validate({"threshold": 0.0, "repeatable": True})
+        RollCheck.model_validate({"threshold": 1.0, "repeatable": True})
 
-    def test_check_threshold_out_of_bounds(self) -> None:
+    def test_threshold_out_of_bounds(self) -> None:
         with pytest.raises(ValidationError):
-            Check.model_validate({"threshold": 1.5, "repeatable": True})
+            RollCheck.model_validate({"threshold": 1.5, "repeatable": True})
         with pytest.raises(ValidationError):
-            Check.model_validate({"threshold": -0.1, "repeatable": True})
+            RollCheck.model_validate({"threshold": -0.1, "repeatable": True})
 
     def test_type_defaults_to_roll(self) -> None:
-        c = Check.model_validate({"threshold": 0.5, "repeatable": True})
+        c = RollCheck.model_validate({"threshold": 0.5, "repeatable": True})
         assert c.type == "roll"
 
-    def test_type_invalid_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            Check.model_validate({"threshold": 0.5, "type": "dice"})
-
     def test_with_note(self) -> None:
-        c = Check.model_validate({
+        c = RollCheck.model_validate({
             "threshold": 0.75,
             "repeatable": False,
             "note": "This is an optional designer note explaining the check.",
@@ -687,7 +686,7 @@ class TestCheck:
         assert c.repeatable is False
 
     def test_note_is_optional(self) -> None:
-        c = Check.model_validate({
+        c = RollCheck.model_validate({
             "threshold": 0.3,
             "repeatable": True,
         })
@@ -1013,3 +1012,131 @@ class TestBehavior:
         })
         assert b.on_flee is not None
         assert b.on_flee.set_flags == {"spider_fled": True}
+
+
+class TestStatsBlock:
+    def test_valid(self) -> None:
+        sb = StatsBlock.model_validate({
+            "definitions": {
+                "STR": {"name": "Strength", "description": "Physical might"},
+            },
+            "resolution_system": "d20",
+        })
+        assert sb.definitions["STR"].name == "Strength"
+        assert sb.resolution_system == "d20"
+
+    def test_default_system(self) -> None:
+        sb = StatsBlock.model_validate({
+            "definitions": {"STR": {"name": "Strength", "description": ""}},
+        })
+        assert sb.resolution_system == "d20"
+
+    def test_unsupported_system_raises(self) -> None:
+        with pytest.raises(ValidationError, match="Unknown resolution_system"):
+            StatsBlock.model_validate({
+                "definitions": {"STR": {"name": "Strength", "description": ""}},
+                "resolution_system": "gurps",
+            })
+
+    def test_definitions_can_hold_six_stats(self) -> None:
+        stat_names = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
+        sb = StatsBlock.model_validate({
+            "definitions": {
+                s: {"name": s, "description": f"The {s} stat"}
+                for s in stat_names
+            },
+        })
+        assert len(sb.definitions) == 6
+
+
+class TestStatCheck:
+    def test_minimal(self) -> None:
+        sc = StatCheck.model_validate({"stat": "STR", "dc": 12, "repeatable": False})
+        assert sc.stat == "STR"
+        assert sc.dc == 12
+        assert sc.repeatable is False
+        assert sc.type == "stat_check"
+
+    def test_full(self) -> None:
+        sc = StatCheck.model_validate({
+            "stat": "STR",
+            "dc": 15,
+            "modifier": 2,
+            "resolution_params": {"d20": {"advantage": True}},
+            "opposed_by": "entity:spider.DEX",
+            "repeatable": True,
+            "note": "A strength check",
+            "skill": "athletics",
+        })
+        assert sc.modifier == 2
+        assert sc.resolution_params == {"d20": {"advantage": True}}
+        assert sc.opposed_by == "entity:spider.DEX"
+        assert sc.skill == "athletics"
+
+    def test_modifier_defaults_to_zero(self) -> None:
+        sc = StatCheck.model_validate({"stat": "DEX", "dc": 10, "repeatable": True})
+        assert sc.modifier == 0
+
+    def test_resolution_params_optional(self) -> None:
+        sc = StatCheck.model_validate({"stat": "CHA", "dc": 14, "repeatable": False})
+        assert sc.resolution_params is None
+
+
+class TestInteractionWithCheck:
+    def test_with_roll_check(self) -> None:
+        inter = Interaction.model_validate({
+            "id": "test_roll",
+            "label": "Test",
+            "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
+            "success": {"narrative": "Pass"},
+            "failure": {"narrative": "Fail"},
+        })
+        assert inter.check is not None
+        assert inter.check.type == "roll"
+        assert isinstance(inter.check, RollCheck)
+
+    def test_with_stat_check(self) -> None:
+        inter = Interaction.model_validate({
+            "id": "test_stat",
+            "label": "Test",
+            "check": {"type": "stat_check", "stat": "STR", "dc": 12, "repeatable": True},
+            "success": {"narrative": "Pass"},
+            "failure": {"narrative": "Fail"},
+        })
+        assert inter.check is not None
+        assert inter.check.type == "stat_check"
+        assert isinstance(inter.check, StatCheck)
+        assert inter.check.stat == "STR"
+
+    def test_check_and_result_mutually_exclusive_raises(self) -> None:
+        with pytest.raises(ValidationError, match="must have either check"):
+            Interaction.model_validate({
+                "id": "bad",
+                "label": "Bad",
+                "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
+                "result": {"narrative": "Result"},
+            })
+
+
+class TestModuleCorpusWithStats:
+    def test_without_stats(self) -> None:
+        mc = ModuleCorpus.model_validate({
+            "adventure": {"title": "T", "introduction": "I"},
+            "rooms": {},
+            "entities": {},
+        })
+        assert mc.stats is None
+
+    def test_with_stats(self) -> None:
+        mc = ModuleCorpus.model_validate({
+            "adventure": {"title": "T", "introduction": "I"},
+            "rooms": {},
+            "entities": {},
+            "stats": {
+                "definitions": {
+                    "STR": {"name": "Strength", "description": ""},
+                },
+            },
+        })
+        assert mc.stats is not None
+        assert mc.stats.definitions["STR"].name == "Strength"

@@ -41,12 +41,18 @@ class BriefingRoom(BaseModel):
     room_notes: List[str] = Field(default_factory=list)
 
 
+class PlayerStatEntry(BaseModel):
+    value: int
+    modifier: int
+
+
 class PlayerStateBriefing(BaseModel):
     location: str
     hard_inventory: List[str] = Field(default_factory=list)
     soft_inventory: List[str] = Field(default_factory=list)
     active_flags: Dict[str, bool] = Field(default_factory=dict)
     entity_notes: List[str] = Field(default_factory=list)
+    player_stats: Optional[Dict[str, PlayerStatEntry]] = None
 
 
 class BriefingHistoryEntry(BaseModel):
@@ -76,6 +82,7 @@ class GMBriefing(BaseModel):
     turn: int
     current_room: BriefingRoom
     player_state: PlayerStateBriefing
+    player_stats: Optional[Dict[str, PlayerStatEntry]] = None
     npc_attitudes: Dict[str, int] = Field(default_factory=dict)
     npc_revelations: Dict[str, List[Dict[str, str]]] = Field(default_factory=dict)
     recent_history: List[BriefingHistoryEntry] = Field(default_factory=list)

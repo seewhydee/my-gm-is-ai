@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from mgmai.models.briefing import (
     BriefingEntity,
     BriefingExit,
@@ -10,6 +12,7 @@ from mgmai.models.briefing import (
     DialogueContext,
     GMBriefing,
     PlayerStateBriefing,
+    PlayerStatEntry,
 )
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
@@ -34,6 +37,8 @@ def assemble(
 
     atmosphere = corpus.adventure.atmosphere
 
+    player_stats = _build_player_stats(hard, corpus)
+
     return GMBriefing(
         adventure_title=corpus.adventure.title,
         setting=atmosphere.setting if atmosphere else "",
@@ -41,6 +46,7 @@ def assemble(
         turn=hard.turn_count,
         current_room=_build_room(room_id, room, hard, soft, corpus),
         player_state=_build_player_state(hard, soft),
+        player_stats=player_stats,
         npc_attitudes=dict(soft.npc_attitudes),
         npc_revelations=_build_npc_revelations(soft, corpus),
         recent_history=_build_recent_history(soft),
@@ -168,6 +174,23 @@ def _build_player_state(
         active_flags=active_flags,
         entity_notes=list(player_entity_notes),
     )
+
+
+def _build_player_stats(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> Optional[dict[str, PlayerStatEntry]]:
+    if hard.player.stats is None or corpus.stats is None:
+        return None
+
+    from mgmai.engine.stat_checks import compute_modifier
+
+    stats_block = corpus.stats
+    result: dict[str, PlayerStatEntry] = {}
+    for stat_key, stat_value in hard.player.stats.items():
+        mod = compute_modifier(stat_value, stats_block.resolution_system)
+        result[stat_key] = PlayerStatEntry(value=stat_value, modifier=mod)
+    return result
 
 
 def _pair_conversation_log(

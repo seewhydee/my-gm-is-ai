@@ -62,11 +62,26 @@ class Result(BaseModel):
     reveals: Optional[str] = None
 
 
-class Check(BaseModel):
+class RollCheck(BaseModel):
     type: Literal["roll"] = "roll"
     threshold: float = Field(ge=0.0, le=1.0)
     repeatable: bool
     note: Optional[str] = None
+
+
+class StatCheck(BaseModel):
+    type: Literal["stat_check"] = "stat_check"
+    stat: str
+    dc: int
+    modifier: int = 0
+    resolution_params: Optional[Dict[str, Any]] = None
+    opposed_by: Optional[str] = None
+    repeatable: bool
+    note: Optional[str] = None
+    skill: Optional[str] = None
+
+
+CheckType = RollCheck | StatCheck
 
 
 class Interaction(BaseModel):
@@ -75,7 +90,7 @@ class Interaction(BaseModel):
     description: Optional[str] = None
     parameter_signature: Optional[ParameterSignature] = None
     condition: Optional[ConditionExpression] = None
-    check: Optional[Check] = None
+    check: Optional[CheckType] = None
     success: Optional[Result] = None
     failure: Optional[Result] = None
     result: Optional[Result] = None
@@ -251,9 +266,30 @@ class Mechanic(BaseModel):
         return self
 
 
+class StatDefinition(BaseModel):
+    name: str
+    description: str
+
+
+class StatsBlock(BaseModel):
+    definitions: Dict[str, StatDefinition]
+    resolution_system: str = "d20"
+
+    @model_validator(mode="after")
+    def check_resolution_system(self) -> StatsBlock:
+        supported = {"d20"}
+        if self.resolution_system not in supported:
+            raise ValueError(
+                f"Unknown resolution_system: {self.resolution_system!r}. "
+                f"Supported: {supported}"
+            )
+        return self
+
+
 class ModuleCorpus(BaseModel):
     adventure: Adventure
     rooms: Dict[str, Room]
     entities: Dict[str, Entity]
     mechanics: Dict[str, Mechanic] = Field(default_factory=dict)
     flags_declared: Optional[List[str]] = None
+    stats: Optional[StatsBlock] = None

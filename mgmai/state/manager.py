@@ -80,6 +80,7 @@ class StateManager:
         self.soft_state = self.load_soft_state(soft_path)
 
         self._validate_cross_references()
+        self._validate_player_stats()
 
     # ------------------------------------------------------------------
     # Validation
@@ -213,6 +214,30 @@ class StateManager:
 
         if errors:
             raise ValueError("\n".join(errors))
+
+    def _validate_player_stats(self) -> None:
+        if self.corpus is None or self.hard_state is None:
+            return
+        corpus = self.corpus
+        hard = self.hard_state
+
+        if corpus.stats is None:
+            if hard.player.stats is not None:
+                raise ValueError(
+                    "player.stats is present but corpus has no stats block"
+                )
+            return
+
+        if hard.player.stats is None:
+            raise ValueError(
+                "corpus defines stats but player.stats is missing"
+            )
+
+        for stat_key in hard.player.stats:
+            if stat_key not in corpus.stats.definitions:
+                raise ValueError(
+                    f"Player stat '{stat_key}' is not defined in corpus.stats.definitions"
+                )
 
     # ------------------------------------------------------------------
     # Accessors

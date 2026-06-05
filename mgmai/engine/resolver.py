@@ -16,10 +16,11 @@ from mgmai.models.actions import (
     WaitAction,
 )
 from mgmai.models.corpus import (
-    Check,
     Interaction,
     ModuleCorpus,
     Result,
+    RollCheck,
+    StatCheck,
 )
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch
@@ -485,6 +486,7 @@ def _resolve_interaction_check(
     if check is None:
         return ResolutionResult(success=False, error="Check defined but missing")
 
+    # Non-repeatable gating (shared by both check types)
     if not check.repeatable:
         attempted = soft.checks_attempted.get(inter.id, [])
         if room_id in attempted:
@@ -493,6 +495,20 @@ def _resolve_interaction_check(
                 error=f"Interaction '{inter.id}' has already been attempted and is not repeatable",
             )
 
+    if isinstance(check, StatCheck):
+        return _resolve_stat_check(inter, check, hard, soft, corpus, room_id)
+    else:
+        return _resolve_roll_check(inter, check, hard, soft, corpus, room_id)
+
+
+def _resolve_roll_check(
+    inter: Interaction,
+    check: RollCheck,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    room_id: str,
+) -> ResolutionResult:
     roll = random.random()
     success_flag = roll < check.threshold
 
@@ -516,6 +532,98 @@ def _resolve_interaction_check(
     })
 
     revealed_hints: list[str] = []
+    if result:
+        _apply_result(result, changes, narrative, revealed_hints)
+
+    return ResolutionResult(
+        success=True,
+        hard_changes=changes,
+        triggered_narration=narrative,
+        revealed_hints=revealed_hints,
+        room_after_id=room_id,
+        rolls=rolls,
+    )
+
+
+def _resolve_stat_check(
+    inter: Interaction,
+    check: StatCheck,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    room_id: str,
+) -> ResolutionResult:
+    stats_block = corpus.stats
+    if stats_block is None:
+        return ResolutionResult(
+            success=False, error="Adventure has no stats system defined"
+        )
+
+    player_stats = hard.player.stats
+    if player_stats is None or check.stat not in player_stats:
+        return ResolutionResult(
+            success=False,
+            error=f"Player has no '{check.stat}' stat",
+        )
+
+    stat_value = player_stats[check.stat]
+    res_system = stats_block.resolution_system
+
+    if res_system != "d20":
+        return ResolutionResult(
+            success=False,
+            error=f"Unsupported resolution system: {res_system!r}",
+        )
+
+    from mgmai.engine.stat_checks import compute_d20_modifier
+
+    computed_mod = compute_d20_modifier(stat_value)
+    total_mod = computed_mod + check.modifier
+
+    # advantage / disadvantage
+    params = (check.resolution_params or {}).get("d20", {})
+    advantage = params.get("advantage", False)
+    disadvantage = params.get("disadvantage", False)
+
+    raw_roll: int
+    if advantage and not disadvantage:
+        raw_roll = max(random.randint(1, 20), random.randint(1, 20))
+    elif disadvantage and not advantage:
+        raw_roll = min(random.randint(1, 20), random.randint(1, 20))
+    else:
+        raw_roll = random.randint(1, 20)
+
+    total = raw_roll + total_mod
+    success_flag = total >= check.dc
+
+    branch = inter.success if success_flag else inter.failure
+    result = branch if branch else inter.result
+
+    if not check.repeatable:
+        if inter.id not in soft.checks_attempted:
+            soft.checks_attempted[inter.id] = []
+        soft.checks_attempted[inter.id].append(room_id)
+
+    changes = HardStateChanges()
+    narrative: list[str] = []
+    revealed_hints: list[str] = []
+
+    rolls: list[dict[str, Any]] = [{
+        "check_id": inter.id,
+        "type": "stat_check",
+        "stat": check.stat,
+        "dc": check.dc,
+        "modifier": total_mod,
+        "computed_mod": computed_mod,
+        "flat_mod": check.modifier,
+        "raw_roll": raw_roll,
+        "total": total,
+        "margin": total - check.dc,
+        "success": success_flag,
+        "advantage": advantage,
+        "disadvantage": disadvantage,
+    }]
+
     if result:
         _apply_result(result, changes, narrative, revealed_hints)
 

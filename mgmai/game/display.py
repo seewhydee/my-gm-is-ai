@@ -147,6 +147,49 @@ class Display:
                 parts.append(f"Flags: {', '.join(active_flags)}")
             print(f"  {' | '.join(parts)}")
 
+        self._render_character_sheet(state_loader)
+
+    def _render_character_sheet(self, state_loader: Any) -> None:
+        hard = state_loader.hard_state
+        corpus = state_loader.corpus
+        if hard is None or corpus is None:
+            return
+        stats = hard.player.stats
+        if stats is None or corpus.stats is None:
+            return
+
+        from mgmai.engine.stat_checks import compute_modifier
+
+        stat_entries = sorted(stats.items())
+        lines: list[str] = []
+
+        # Layout: 3 columns -> 2 rows for 6 stats
+        for i in range(0, len(stat_entries), 3):
+            row_stats = stat_entries[i : i + 3]
+            pair_parts = []
+            for key, val in row_stats:
+                mod = compute_modifier(val, corpus.stats.resolution_system)
+                sign = "+" if mod >= 0 else ""
+                pair_parts.append(f"{key} {val:>2} ({sign}{mod})")
+            lines.append("   ".join(pair_parts))
+
+        if RICH_AVAILABLE:
+            body = "\n".join(lines)
+            panel = Panel(
+                body,
+                title="Character Sheet",
+                border_style="cyan",
+                padding=(0, 1),
+            )
+            self._console.print(panel)
+        else:
+            print()
+            print("┌─ Character Sheet ───────────────────────┐")
+            for line in lines:
+                print(f"│ {line.ljust(30)}│")
+            print("└───────────────────────────────────┘")
+            print()
+
     def render_game_over(self, result: Any) -> None:
         go_type = getattr(result, "type", "unknown")
         narrative = getattr(result, "narrative", None) or ""

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 class PlayerState(BaseModel):
     location: str
     inventory: list[str] = Field(default_factory=list)
+    stats: Optional[Dict[str, int]] = None
 
 
 class GameOverState(BaseModel):

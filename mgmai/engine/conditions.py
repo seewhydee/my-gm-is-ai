@@ -7,7 +7,7 @@ from mgmai.models.corpus import ConditionExpression, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 
-DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item"
+DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item|stat"
 CONDITION_RE = re.compile(
     rf"^({DOMAINS}):([\w.-]+)"
     rf"(?:\s*(==|>=|>|<=|<)\s*(.+))?$"
@@ -128,6 +128,19 @@ def evaluate_condition_string(
         if op is not None:
             raise ValueError(f"item condition must not have operator: {raw!r}")
         return key in hard_state.player.inventory
+
+    if domain == "stat":
+        if op is None or value is None:
+            raise ValueError(
+                f"stat condition requires operator and value: {raw!r}"
+            )
+        stats = hard_state.player.stats
+        if stats is None:
+            return False
+        stat_val = stats.get(key)
+        if stat_val is None:
+            return False
+        return _compare(stat_val, op, value)
 
     raise ValueError(f"Unknown condition domain: {domain}")
 

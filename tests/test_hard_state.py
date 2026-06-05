@@ -118,3 +118,23 @@ class TestHardGameState:
         assert h.entity_states["stuck_fly"]["alive"] is True
         assert "spider" in h.entity_states
         assert h.entity_states["spider"]["fled"] is False
+
+
+class TestPlayerStats:
+    def test_no_stats(self) -> None:
+        p = PlayerState.model_validate({"location": "room1"})
+        assert p.stats is None
+
+    def test_with_stats(self) -> None:
+        p = PlayerState.model_validate({
+            "location": "room1",
+            "stats": {"STR": 14, "DEX": 12},
+        })
+        assert p.stats == {"STR": 14, "DEX": 12}
+
+    def test_empty_dict(self) -> None:
+        p = PlayerState.model_validate({
+            "location": "room1",
+            "stats": {},
+        })
+        assert p.stats == {}
