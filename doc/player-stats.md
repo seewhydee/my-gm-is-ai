@@ -1,23 +1,17 @@
-# Player Stats Extension Plan
+# Player Stats
 
-## Objective
-
-Add a rudimentary player stat system to the MGMAI engine. This is the primary focus of **Phase 2** development.
-
-The extension supports:
+At present, we implement a rudimentary player stat system, supporting the following:
 
 1. A basic character sheet with ability scores (STR, DEX, CON, INT, WIS, CHA).
 2. Stat checks (e.g., "STR vs DC 12") for gating actions and resolving uncertain outcomes.
 3. Adventure module-level references to stats in conditions and interactions.
 4. A **resolution system abstraction** that decouples adventures from specific RPG editions (D&D 5e, Pathfinder, GURPS, etc.).
 
-**Design constraint**: The extension must be purely additive — no existing schema fields, functions, or behaviour are altered. The bag-of-holding adventure must continue to work as-is (stats are optional per adventure).
-
 ## Design Overview
 
 ### Stat definitions in the corpus
 
-A new optional `stats` block in `corpus.json` declares which stats the adventure uses and which resolution system applies:
+An optional `stats` block in `corpus.json` declares which stats the adventure uses and which resolution system applies:
 
 ```json
 {
@@ -47,9 +41,9 @@ A new optional `stats` block in `corpus.json` declares which stats the adventure
 
 Player stat values live in `hard_state.player.stats` as an optional dict of stat key → integer value. These are engine-authoritative (hard state), so the LLM cannot mutate them directly. On startup, the system validates that every stat key in the player state has a matching entry in the corpus definitions, and that stats are consistently present or absent in both.
 
-### New condition domain: `stat`
+### Condition domain: `stat`
 
-A new condition domain extends the existing condition string format:
+A condition domain extends the condition string format:
 
 ```
 stat:STR >= 12
@@ -58,9 +52,9 @@ stat:CHA >= 15
 
 This lets scenario authors gate interactions, exits, encounters, and knowledge reveals on stat thresholds. For example, a "Bend the Bars" interaction might require both `stat:STR >= 13` and the presence of a crowbar in inventory.
 
-### New check type: `stat_check`
+### The `stat_check` check type
 
-A new check type alongside the existing `roll` (flat percentage) check:
+This check type exists alongside the `roll` (flat percentage) check:
 
 | Field | Description |
 |-------|-------------|
