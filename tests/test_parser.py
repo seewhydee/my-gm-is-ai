@@ -150,9 +150,9 @@ class TestParsePlayerAction:
 
     def test_follow_up_chain(self) -> None:
         raw = json.dumps({
-            "action_type": "interact",
-            "target": "rusty_key",
-            "interaction_id": "take",
+            "action_type": "transfer",
+            "target": "axe_head",
+            "taken_items": ["rusty_key"],
             "detail": "Pick up key",
             "follow_up": "unlock the door with the rusty key",
             "proposed_soft_state_patches": [],

@@ -321,14 +321,14 @@ Every PlayerAction carries these fields:
 | Field            | Type           | Required | Description |
 |------------------|----------------|----------|-------------|
 | `target`         | string         | yes      | The entity ID or soft item name being interacted with. |
-| `interaction_id` | string         | yes      | The specific interaction to perform. Generic interactions include `attack` and `take`. Module authors define additional ones (e.g., `recharge`). |
+| `interaction_id` | string         | yes      | The specific interaction to perform. Generic interactions include `attack`. Module authors define additional ones (e.g., `recharge`). Picking up or giving items should use the `transfer` action instead. |
 | `using`          | string\|null   | no       | An entity ID or soft item enabling the interaction (e.g., "iron_sword" for attack). |
 
 **Engine validation:**
 - `target` must exist: an entity present in the room, or a soft item present
   in the room or on a present entity.
 - `interaction_id` must match a defined interaction on the target entity, the
-  current room, or a generic interaction (e.g., `attack`, `take`).
+  current room, or a generic interaction (e.g., `attack`).
 - The interaction's `parameter_signature` (if defined) is validated: `target`
   must be of a type listed in `parameter_signature.target`, and `using` must
   be of a type listed in `parameter_signature.using`.

@@ -345,17 +345,17 @@ class TestResolveInteract:
         assert result.success is True
         assert result.hard_changes.flags_set.get("handkerchief_moved") is True
 
-    def test_take_item(self, state_manager):
+    def test_transfer_take_item(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "secret_compartment"
-        action = InteractAction(
-            action_type="interact", target="rusty_key",
-            interaction_id="take",
+        action = TransferAction(
+            action_type="transfer", target="secret_compartment",
+            taken_items=["rusty_key"],
             detail="Taking the key",
         )
-        result = resolve_interact(action, hard, soft, corpus)
+        result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
         assert "rusty_key" in result.hard_changes.inventory_added
 

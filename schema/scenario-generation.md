@@ -186,8 +186,9 @@ Interactions specific to a room (not to a particular entity) go here:
 - If a probabilistic check is needed, define `check` + `success` + `failure`.
 - `parameter_signature` constrains what `interact` action `target` and `using`
   can reference. When absent, there are no type restrictions beyond existence.
-- Generic interactions like `attack` or `take` do NOT need to be defined in the
+- Generic interactions like `attack` do NOT need to be defined in the
   corpus — they are available everywhere. Only define non-standard interactions.
+  Picking up items should use the `transfer` action instead.
 
 **Check object:**
 ```json

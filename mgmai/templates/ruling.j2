@@ -47,7 +47,7 @@ You MUST output a single JSON object with the following structure.
 
 **interact** — Perform an interaction:
 - `target` (string, required): Entity ID or soft item to interact with
-- `interaction_id` (string, required): The specific interaction ID (from `current_room.interactions_available` or relevant corpus interactions). General interactions like `attack`, `take`, `push`, `pull` are also valid.
+- `interaction_id` (string, required): The specific interaction ID (from `current_room.interactions_available` or relevant corpus interactions). General interactions like `attack`, `push`, `pull` are also valid.
 - `using` (string, optional): Item/entity used to enable the interaction
 
 **talk** — Talk to an NPC:
@@ -89,7 +89,7 @@ Only propose patches that are plausible given the current room and player state.
 
 2. **Examination**: Looking at something, searching, reading, inspecting. Use `rigorous: true` for deep searches. Use `using` when specifying a tool (e.g. "examine the lock using the magnifying glass").
 
-3. **Interaction**: Any action involving manipulating something — pulling a lever, attacking, picking up an item, unlocking a door. The `interaction_id` can be a specific corpus-defined interaction or a general one like `take`, `attack`, `push`, `pull`, `open`, `close`. If the player is picking up a hard item (specific item ID), prefer `take` interaction. For soft items (rocks, debris), use a `soft_inventory_add` patch and `wait` or `interact` as appropriate.
+3. **Interaction**: Any action involving manipulating something — pulling a lever, attacking, unlocking a door. The `interaction_id` can be a specific corpus-defined interaction or a general one like `attack`, `push`, `pull`, `open`, `close`. To pick up items, use `transfer` instead.
 
 4. **Talking**: Speaking to an NPC. Include verbatim `utterance` when the player speaks in-character. Set `ends_dialogue: true` when the player says goodbye or leaves the conversation.
 
@@ -107,7 +107,7 @@ Only propose patches that are plausible given the current room and player state.
 - **Never propose hard-state changes.** You cannot change flags, move the player, kill entities, or modify inventory outside of `proposed_soft_state_patches`. The engine does that.
 - **Respect hidden information.** Do not reference hidden exits, dead entities, or NPC secrets not yet revealed.
 - **Use the GMBriefing data.** All information you need is in the JSON. Do not confabulate.
-- **For chained actions**, break off the FIRST step as the PlayerAction, and put the remainder of the player's intent in `follow_up` as a natural-language string. Example: "I pick up the key and unlock the door" → action_type: "take", follow_up: "unlock the door with the key".
+- **For chained actions**, break off the FIRST step as the PlayerAction, and put the remainder of the player's intent in `follow_up` as a natural-language string. Example: "I pick up the key and unlock the door" → action_type: "transfer" with taken_items, follow_up: "unlock the door with the key".
 - **For ambiguous or impossible actions**, fall back to `wait` and use `detail` to explain the ambiguity so the narrator can address it.
 - **Soft items**: Items without item IDs (like "rock", "stick", "pebble") that are plausibly present in a room based on its description. You may propose adding them to soft inventory via patches. Do not invent magical or plot-significant items.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
@@ -123,7 +123,7 @@ Input: "I search the room thoroughly"
 Output: `{"action_type": "examine", "target": "room_entrance", "rigorous": true, "detail": "Player conducts a thorough search of the entrance hall", "follow_up": null, "proposed_soft_state_patches": []}`
 
 Input: "I pick up the rusty key and unlock the padlock"
-Output: `{"action_type": "interact", "target": "rusty_key", "interaction_id": "take", "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "proposed_soft_state_patches": [], "using": null}`
+Output: `{"action_type": "transfer", "target": "axe_head", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "proposed_soft_state_patches": []}`
 
 Input: "I pull a loose rock from the wall and throw it at the spider"
 Output: `{"action_type": "interact", "target": "spider", "interaction_id": "attack", "using": "rock", "detail": "Player throws a loose rock at the spider", "follow_up": null, "proposed_soft_state_patches": [{"field": "soft_inventory_add", "target_id": null, "entity_id": null, "new_value": "rock", "reason": "Player picked loose rock from wall"}]}`

@@ -190,7 +190,7 @@ They can be defined at the room level or on individual entities.
 | `failure`              | object       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
 | `result`               | object       | no       | Deterministic result (used when no `check` is present). |
 
-Interactions include generic types available everywhere (e.g., `attack`, `take`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item.
+Interactions include generic types available everywhere (e.g., `attack`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item. Picking up items should use the `transfer` action instead.
 
 #### Check object
 

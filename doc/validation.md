@@ -107,7 +107,7 @@ Each sequence file should test a specific capability or scenario. Name them desc
 | `dialogue_basic.json` | Starting/exiting dialogue, simple conversational exchange |
 | `dialogue_attitude.json` | NPC attitude shifts through conversation |
 | `dialogue_knowledge.json` | NPC revealing knowledge topics via will_reveal |
-| `interactions_simple.json` | Using basic interactions (take, attack, use) |
+| `interactions_simple.json` | Using basic interactions (transfer, attack) |
 | `interactions_checks.json` | Interactions with roll checks (success and failure) |
 | `interactions_stat_checks.json` | Interactions with stat checks (requires stat extension) |
 | `chain_simple.json` | Simple two-step chained action |
@@ -121,7 +121,7 @@ Each sequence file should test a specific capability or scenario. Name them desc
 Every adventure should have sequence files that collectively cover:
 
 1. **Movement**: Navigate through all accessible rooms.
-2. **Basic interactions**: Examine, take, attack, use on available entities.
+2. **Basic interactions**: Examine, transfer, attack on available entities.
 3. **Dialogue**: Start conversation, exchange multiple turns, exit.
 4. **Checks**: Interact with entities that require roll checks (both success and failure paths).
 5. **Chain actions**: At least one multi-step chained action.
@@ -308,7 +308,7 @@ Keep a list in `problems.txt` (already exists) that accumulates all known defect
 | Seq file | Inputs | What it tests |
 |----------|--------|--------------|
 | `basic_movement.json` | ✓ | Move through all rooms. Exists (4 inputs). |
-| `basic_interactions.json` | Examine the padlock, try to take the key, examine stuck_fly, inspect webs | Basic examine/take on entities. |
+| `basic_interactions.json` | Examine the padlock, try to pick up the key, examine stuck_fly, inspect webs | Basic examine/transfer on entities. |
 | `dialogue_korbar.json` | Talk to Korbar, ask about exit, ask about axe, end dialogue | Dialogue entry/exit, basic Q&A, engine-post-validation of knowledge_tags. |
 | `error_cases.json` | `/exit`, nonsensical action like "fly to the moon", trying to attack dead NPC | Error handling, `ooc_discussion`, impossible actions. |
 

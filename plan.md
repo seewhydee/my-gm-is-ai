@@ -131,14 +131,13 @@ Only one PlayerAction can be submitted per turn.  If the player's input is a cha
   It optionally includes a `using` field to specify a valid entity ID or soft item with which to perform the search.
 
 * `interact` must specify a valid entity ID or soft item (a target), plus an interaction ID (a specific plot-relevant way to interact with something).
-  Interactions include generic ones like `attack`, `take`, plus special corpus-defined ones like `recharge`.
+   Interactions include generic ones like `attack`, plus special corpus-defined ones like `recharge`.
   It optionally includes a `using` field to specify a valid entity ID or soft item enabling the interaction (e.g., attack goblin using sword).
 
 * `talk` must specify one NPC entity ID.
   It optionally includes an `utterance` field (verbatim player speech) and/or an `ends_dialogue` flag. See the Dialogue section below.
 
-* `transfer` must specify one entity ID (usually an NPC or container), or room ID
-  (e.g., for dropping items on the floor).
+* `transfer` must specify one entity ID (usually an NPC or container), or room ID, to transfer items to/from (e.g., for dropping items on the floor).
   It optionally includes a `given_items`: a list of item IDs or soft items.
   It optionally includes a `taken_items`: a list of item IDs or soft items.
   At least one should be non-empty.

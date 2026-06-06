@@ -384,8 +384,6 @@ def resolve_interact(
     target_entity = _find_entity_in_room(target_id, room_id, room, corpus)
 
     if target_entity is None:
-        if interaction_id == "take":
-            return _handle_soft_take(target_id, room_id, room, soft, corpus)
         return ResolutionResult(
             success=False,
             error=f"Target '{target_id}' not found in room '{room_id}'",
@@ -397,8 +395,6 @@ def resolve_interact(
         for inter in target_entity.interactions:
             if inter.id == interaction_id:
                 matches.append((inter, "entity"))
-        if interaction_id == "take" and target_entity.type == "item":
-            return _handle_take(target_id, target_entity, room_id, room, hard, soft, corpus)
         if interaction_id == "attack":
             npc_entity = corpus.entities.get(target_id)
             if npc_entity and npc_entity.type == "npc" and npc_entity.behavior:
@@ -679,57 +675,6 @@ def _apply_result(
                 changes.flags_set[flag] = val
     if result.reveals:
         revealed_hints.append(result.reveals)
-
-
-def _handle_take(
-    target_id: str,
-    entity: Any,
-    room_id: str,
-    room: Any,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-) -> ResolutionResult:
-    changes = HardStateChanges()
-    changes.inventory_added.append(target_id)
-
-    return ResolutionResult(
-        success=True,
-        hard_changes=changes,
-        triggered_narration=[f"You take the {target_id}."],
-        room_after_id=room_id,
-    )
-
-
-def _handle_soft_take(
-    target_id: str,
-    room_id: str,
-    room: Any,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-) -> ResolutionResult:
-    all_soft = set(room.soft_items or [])
-    for eid in room.entities_present:
-        ent = corpus.entities.get(eid)
-        if ent and ent.soft_items:
-            all_soft.update(ent.soft_items)
-    if target_id not in all_soft:
-        return ResolutionResult(
-            success=False,
-            error=f"Soft item '{target_id}' not available in room '{room_id}'",
-        )
-    patch = SoftStatePatch(
-        field="soft_inventory_add",
-        new_value=target_id,
-        reason=f"Took soft item '{target_id}'",
-    )
-    return ResolutionResult(
-        success=True,
-        hard_changes=HardStateChanges(),
-        soft_patches=[patch],
-        triggered_narration=[f"You take the {target_id}."],
-        room_after_id=room_id,
-    )
 
 
 def _find_entity_in_room(
