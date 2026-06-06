@@ -190,7 +190,11 @@ Interactions specific to a room (not to a particular entity) go here:
   corpus — they are available everywhere. Only define non-standard interactions.
   Picking up items should use the `transfer` action instead.
 
-**Check object:**
+**Check objects:**
+
+Two check types are supported: `roll` (flat probability) and `stat_check` (ability-score-based).
+
+*Roll check:*
 ```json
 {
   "type": "roll",
@@ -202,6 +206,27 @@ Interactions specific to a room (not to a particular entity) go here:
 
 - `threshold` is 0.0–1.0. Roll succeeds if `random() < threshold`.
 - `repeatable`: if `false`, the engine tracks attempts and rejects retries.
+
+*Stat check:*
+```json
+{
+  "type": "stat_check",
+  "stat": "STR",
+  "dc": 12,
+  "modifier": 0,
+  "resolution_params": { "advantage": true },
+  "repeatable": false,
+  "note": "Bend the iron bars"
+}
+```
+
+- `stat`: stat key (e.g. `"STR"`). Must be declared in `stats.definitions`.
+- `dc`: difficulty class — target number to meet or exceed. Typical range: 5 (trivial) to 25 (nearly impossible).
+- `modifier`: flat situational bonus/penalty (default 0).
+- `resolution_params`: system-specific options. For `d20`: `{ "advantage": true }` (roll 2d20, take higher) or `{ "disadvantage": true }` (roll 2d20, take lower).
+- `repeatable`: whether the check can be retried.
+- `opposed_by` and `skill` are reserved fields for future use — leave them absent.
+- Use `stat_check` only when the scenario calls for gating actions on character ability scores. If no `stats` block is declared in the corpus, do not use `stat_check`.
 
 **Result object:**
 ```json
@@ -478,6 +503,55 @@ Two categories: **encounters** and **game-over conditions**.
 
 ---
 
+### 3.5 `stats` (optional)
+
+If the scenario involves stat-based gating (ability checks, character sheet mechanics), add a `stats` block to the corpus. If the scenario has no stat system, omit it entirely.
+
+```json
+{
+  "definitions": {
+    "STR": { "name": "Strength", "description": "Physical power" },
+    "DEX": { "name": "Dexterity", "description": "Agility and reflexes" },
+    "CON": { "name": "Constitution", "description": "Endurance" },
+    "INT": { "name": "Intelligence", "description": "Reasoning" },
+    "WIS": { "name": "Wisdom", "description": "Perception" },
+    "CHA": { "name": "Charisma", "description": "Force of personality" }
+  },
+  "resolution_system": "d20"
+}
+```
+
+#### When to add stats
+
+- If the scenario calls for bending bars, noticing hidden details, persuading
+  an NPC, or any action gated on character ability → include stats.
+- If the scenario is purely puzzle-driven or relational (flag/inventory/attitude
+  gating suffices) → omit stats.
+
+#### `definitions`
+
+- Dict of stat key (uppercase, 3-letter abbreviation) → `{ name, description }`.
+- Common fantasy ability scores: STR (Strength), DEX (Dexterity), CON
+  (Constitution), INT (Intelligence), WIS (Wisdom), CHA (Charisma).
+- Only declare stats that are actually used in the scenario's stat checks
+  or stat conditions. Unused stats are noise for the LLM.
+
+#### `resolution_system`
+
+- Currently only `"d20"` is supported.
+- Under `d20`, the modifier is `(stat_value - 10) // 2`. Typical stat values
+  are 3–18; typical DCs are 5 (trivial), 10 (easy), 15 (moderate), 20 (hard),
+  25 (very hard).
+
+#### Informing the player
+
+When stats are present, the engine generates a character sheet panel in the
+console UI. Player stat values are set in `hard-state.json` (see §4). The
+`player_stats` block in the GMBriefing tells the LLM the player's exact
+capabilities.
+
+---
+
 ## 4. Generating `hard-state.json`
 
 Initial hard state. See `hard-state.md` for the full schema.
@@ -486,7 +560,15 @@ Initial hard state. See `hard-state.md` for the full schema.
 {
   "player": {
     "location": "<room_id of start room>",
-    "inventory": ["<entity_id>", ...]
+    "inventory": ["<entity_id>", ...],
+    "stats": {
+      "STR": 14,
+      "DEX": 12,
+      "CON": 13,
+      "INT": 10,
+      "WIS": 8,
+      "CHA": 16
+    }
   },
   "flags": {
     "<flag_name>": true | false
@@ -507,18 +589,24 @@ Initial hard state. See `hard-state.md` for the full schema.
 1. **`player.location`**: set to the ID of the room with `is_start_room: true`.
 2. **`player.inventory`**: list any entity IDs the player starts with. Usually
    empty (no starting items).
-3. **`flags`**: enumerate every flag name used anywhere in the corpus
-   (conditions, `set_flag` results, encounter outcomes, etc.). Set each to its
-   initial value (almost always `false`).
-4. **`room_states`**: for every room in the corpus, add an entry with `visited:
-   false`. If a room has additional `state_fields`, add them with initial values
-   (boolean → `false`, number → `0`, string → `""`).
-5. **`entity_states`**: for every entity that declared `state_fields` in the
-   corpus, add an entry with initial values for each declared field. **Do not
-   skip any entity that has state_fields.** Boolean fields default to `false`;
-   `alive` for creatures that start alive should be `true`.
-6. **`turn_count`**: always `0`.
-7. **`game_over`**: always `null`.
+3. **`player.stats`** (if corpus has `stats`): define stat values for the
+   player character. Under `d20`, typical values range 3–18 with 10 as
+   average. Consider what kind of character the scenario implies — a
+   lumbering brute might have high STR/low INT; a sly rogue high DEX/low WIS;
+   an everyman 10s across the board. If the corpus has no `stats`, omit this
+    field.
+4. **`flags`**: enumerate every flag name used anywhere in the corpus
+    (conditions, `set_flag` results, encounter outcomes, etc.). Set each to its
+    initial value (almost always `false`).
+5. **`room_states`**: for every room in the corpus, add an entry with `visited:
+    false`. If a room has additional `state_fields`, add them with initial values
+    (boolean → `false`, number → `0`, string → `""`).
+6. **`entity_states`**: for every entity that declared `state_fields` in the
+    corpus, add an entry with initial values for each declared field. **Do not
+    skip any entity that has state_fields.** Boolean fields default to `false`;
+    `alive` for creatures that start alive should be `true`.
+7. **`turn_count`**: always `0`.
+8. **`game_over`**: always `null`.
 
 ### Validation checklist for hard-state.json
 
@@ -530,6 +618,10 @@ Initial hard state. See `hard-state.md` for the full schema.
 - [ ] `player.location` references a valid room ID with `is_start_room: true`.
 - [ ] No entity IDs in `player.inventory` duplicate room `entities_present`
   (an item should not be both in inventory and in a room at start).
+- [ ] If corpus has `stats`, then `player.stats` must be present. If corpus
+  has no `stats`, then `player.stats` must be omitted (or null).
+- [ ] Every stat key in `player.stats` matches a key in
+  `corpus.stats.definitions`. No extra stat keys in the player state.
 
 ---
 
@@ -635,6 +727,8 @@ Elements inside `any` and `all` arrays may be:
 | `entity`     | `entity:spider.alive == true`    | Entity hard-state field |
 | `room`       | `room:axe_head.visited == true`  | Room state field |
 | `attitude`   | `attitude:korbar >= 2`           | NPC soft-state attitude |
+| `stat`       | `stat:STR >= 12`                 | Player stat value vs threshold. Stat must be declared in `stats.definitions`. |
+| `topic`      | `topic:abandonment`              | Topic ID discussed in current dialogue |
 
 Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
 `> <number>`, `<= <number>`, `< <number>`.
@@ -646,6 +740,11 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
   unavailable if the player is injured."
 - `inventory` and `tag` conditions test presence, not equality.
 - `tag:weapon` succeeds if *any* item in inventory has the `"weapon"` tag.
+- `stat:STR >= 12` evaluates the player's current Strength value. Only use
+  stat conditions when the corpus declares a `stats` block and the player
+  state includes stat values.
+- `topic:abandonment` succeeds if the topic ID appears in
+  `soft_state.dialogue_state.topics_discussed`.
 
 ---
 
@@ -703,15 +802,24 @@ For each room, fill in:
 - Model win and loss conditions as mechanic entries with `type: "win"` or
   `"lose"`.
 
-### Step F: Generate `hard-state.json`
+### Step F: Create stats block (if applicable)
+
+If the scenario uses stat-based gating:
+- Add a `stats` block with `definitions` and `resolution_system: "d20"`.
+- Only declare stats that are actually referenced in `stat_check` interactions
+  or `stat:` conditions.
+- Typical fantasy six: STR, DEX, CON, INT, WIS, CHA.
+
+### Step G: Generate `hard-state.json`
 
 Follow §4. Ensure every flag, room, and entity state field is initialised.
+If the corpus has a `stats` block, include `player.stats`.
 
-### Step G: Generate `soft-state.json`
+### Step H: Generate `soft-state.json`
 
 Follow §5. Ensure every NPC gets an attitude entry.
 
-### Step H: Cross-file validation
+### Step I: Cross-file validation
 
 - [ ] Every entity ID appearing in `rooms.*.entities_present` exists in the
   `entities` block.
@@ -730,6 +838,15 @@ Follow §5. Ensure every NPC gets an attitude entry.
 - [ ] `hard_state.player.location` is the room with `is_start_room: true`.
 - [ ] `soft_state.dialogue_state` has the standard null structure.
 - [ ] `soft_state.npc_revelations` is an empty object `{}`.
+- [ ] If corpus has `stats`: every `stat_check` interaction references a stat
+  key declared in `stats.definitions`. No `stat_check` interactions use
+  undeclared stat keys.
+- [ ] If corpus has `stats`: every `stat:` condition references a stat key in
+  `stats.definitions` and `player.stats` is present in hard state.
+- [ ] If corpus has `stats`: `stats.resolution_system` is `"d20"` (the only
+  currently supported system).
+- [ ] If corpus has no `stats`: no `stat_check` interactions, no `stat:`
+  conditions, and `hard_state.player.stats` is absent.
 
 ---
 
@@ -790,3 +907,21 @@ Follow §5. Ensure every NPC gets an attitude entry.
 12. **Prose style**: All descriptions (`description` fields, `narrative` fields,
     `introduction`) should be in second-person present tense ("You see... You
     are...") matching the interactive fiction convention.
+
+13. **Stat consistency**: If you include a `stats` block in the corpus, you
+    must also include `player.stats` in hard state. Every stat key used in
+    `stat_check` interactions or `stat:` conditions must appear in
+    `stats.definitions`. Unused stat definitions add noise — only declare
+    stats the scenario actually references.
+
+14. **Stat value ranges**: Under `d20`, stat values typically range 3–18.
+    DCs should match the character's capabilities: an "average" character
+    (stat 10, +0 modifier) has ~55% chance against DC 10, ~30% against DC 15,
+    ~5% against DC 20. Do not set DCs that are mathematically impossible
+    given the player's stats — or if you do, provide an alternative path.
+
+15. **Mixing roll and stat_check**: A single adventure can use both `roll`
+    and `stat_check` interactions. Use `roll` for checks that shouldn't depend
+    on character abilities (e.g., blind luck, environmental hazards); use
+    `stat_check` for actions gated by ability scores (e.g., STR to bend bars,
+    INT to solve a puzzle, CHA to persuade).

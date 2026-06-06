@@ -28,7 +28,15 @@ resolve mechanics.
 ```json
 {
   "location": "<room_id>",
-  "inventory": ["<item_entity_id>", ...]
+  "inventory": ["<item_entity_id>", ...],
+  "stats": {
+    "STR": 14,
+    "DEX": 12,
+    "CON": 13,
+    "INT": 10,
+    "WIS": 8,
+    "CHA": 16
+  }
 }
 ```
 
@@ -36,6 +44,7 @@ resolve mechanics.
 |------------|----------|-------------|
 | `location` | string   | Current room ID. Must match a key in the module corpus `rooms`. |
 | `inventory`| string[] | List of item entity IDs the player is carrying (hard inventory). |
+| `stats`    | object   | Player ability scores. Optional dict of stat key → integer value. Keys must match `stats.definitions` in the corpus. When stats are present in the corpus, this field should also be present (and vice versa). The engine validates key consistency on startup. |
 
 ### Inventory rules
 
@@ -245,6 +254,7 @@ All of these are reflected in the `hard_state_changes` block of EngineResult.
   "player": {
     "location": "axe_head",
     "inventory": []
+    // "stats": { "STR": 14, "DEX": 12, ... } — optional ability scores
   },
   "flags": {
     "injured": false,

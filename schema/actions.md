@@ -116,7 +116,17 @@ This is what the ruling LLM sees.
     "hard_inventory": ["iron_sword"],
     "soft_inventory": ["rock"],
     "active_flags": { "injured": false, "stunned": false },
-    "entity_notes": []
+    "entity_notes": [],
+    "player_stats": null
+  },
+
+  "player_stats": {
+    "STR": { "value": 14, "modifier": 2 },
+    "DEX": { "value": 12, "modifier": 1 },
+    "CON": { "value": 13, "modifier": 1 },
+    "INT": { "value": 10, "modifier": 0 },
+    "WIS": { "value": 8, "modifier": -1 },
+    "CHA": { "value": 16, "modifier": 3 }
   },
 
   "npc_attitudes": {
@@ -197,28 +207,36 @@ This is what the ruling LLM sees.
    secret compartment) are omitted unless their reveal flag is set.
 
 5. **Player state** summarises hard inventory, soft inventory, active flags,
-   and entity notes attached to the player entity.
+   and entity notes attached to the player entity. If the corpus defines stats,
+   `player_state.player_stats` is included with each stat's value and computed
+   modifier (e.g., `{ "value": 14, "modifier": 2 }`).
 
-6. **Recent history** is drawn from soft state `turn_history` — the last 5
+6. **Player stats** is included as a top-level block when the corpus defines
+   stats. Each stat key maps to `{ value, modifier }`, where `modifier` is
+   computed by the active resolution system (e.g., `(stat - 10) // 2` for d20).
+   This gives LLM Call 1 direct knowledge of the player's capabilities without
+   requiring it to do the math.
+
+7. **Recent history** is drawn from soft state `turn_history` — the last 5
    entries from non-`ooc_discussion` turns, summarised. `ooc_discussion` entries
    are skipped when assembling `recent_history`, so the GMBriefing is unchanged
    over the course of `ooc_discussion` actions. The raw chat log is NOT included
    here.
 
-7. **NPC attitudes** includes attitudes for all NPCs the player has met
+8. **NPC attitudes** includes attitudes for all NPCs the player has met
    (or all known NPCs, at the implementer's discretion).
 
-8. **NPC revelations** are drawn from `soft_state.npc_revelations`. Each NPC
+9. **NPC revelations** are drawn from `soft_state.npc_revelations`. Each NPC
    with revealed topics lists them with their `will_reveal` descriptions, so
    LLM Call 1 knows what the player has learned from each NPC.
 
-9. **Dialogue context** is included when `soft_state.dialogue_state.active_npc`
+10. **Dialogue context** is included when `soft_state.dialogue_state.active_npc`
    is non-null. The block contains the active NPC's identity, attitude,
    full `dialogue_guidelines`, last 5 entries from `conversation_log`,
    `topics_discussed`, and `revealed_topics` (topic IDs already revealed to
    the player). If `active_npc` is null, `dialogue_context` is omitted.
 
-10. **Player input** is the verbatim text entered this turn. For chained
+11. **Player input** is the verbatim text entered this turn. For chained
     actions (see Follow-up below), this is the original input plus a clear
     indication of where the chain currently stands.
 
@@ -644,7 +662,7 @@ everything LLM Call 2 needs to narrate the outcome.
 | `hard_state_changes`           | All applied changes to hard state: location, inventory changes, flag changes, room state changes, entity state changes. LLM Call 2 must not contradict these. |
 | `soft_state_patches_applied`   | Soft-state patches the engine accepted. |
 | `soft_state_patches_rejected`  | Soft-state patches the engine rejected, each with a `reason` string. LLM Call 2 must not narrate rejected changes. |
-| `rolls`                        | Any probabilistic rolls the engine made, with results. |
+| `rolls`                        | Any probabilistic rolls or stat checks the engine resolved. For `roll` checks: `{ outcome, roll, threshold }`. For `stat_check` checks: `{ check_type, stat, dc, raw_roll, modifier, stat_modifier, total, margin, advantage, disadvantage }`. |
 | `encounter_outcome`            | If an encounter triggered, its resolution. |
 | `triggered_narration`          | Pre-written narrative blocks for specific events (e.g., spider fleeing, room entry). LLM Call 2 should incorporate or paraphrase these — they represent canonical prose for key moments. |
 | `on_enter_events`              | Any on_enter events that fired when entering the new room. |

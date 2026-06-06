@@ -14,7 +14,8 @@ from it to validate actions, resolve encounters, and apply mechanics.
   "adventure":    { /* metadata */ },
   "rooms":        { "<room_id>": { /* room */ } },
   "entities":     { "<entity_id>": { /* entity */ } },
-  "mechanics":    { "<mechanic_id>": { /* mechanic */ } }
+  "mechanics":    { "<mechanic_id>": { /* mechanic */ } },
+  "stats":        { /* stat definitions (optional) */ }
 }
 ```
 
@@ -154,6 +155,7 @@ Condition strings use the format `<domain>:<key> <op> <value>`:
 | `room`       | `room:axe_head.visited == true`  | Checks a room state field. |
 | `attitude`   | `attitude:korbar >= 2`           | Checks an NPC's soft-state attitude value. Defaults to the corpus `attitude_limits.initial` if absent from soft state. |
 | `topic`      | `topic:abandonment`              | Checks if a topic ID has been discussed in the current dialogue (present in `soft_state.dialogue_state.topics_discussed`). |
+| `stat`       | `stat:STR >= 12`                 | Checks the player's stat value against a threshold. Stat must be declared in `corpus.stats.definitions`; the player's value comes from `hard_state.player.stats`. |
 
 Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`, `<= <number>`, `< <number>`.
 
@@ -192,7 +194,11 @@ They can be defined at the room level or on individual entities.
 
 Interactions include generic types available everywhere (e.g., `attack`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item. Picking up items should use the `transfer` action instead.
 
-#### Check object
+#### Check objects
+
+Interactions use one of two check types: `roll` (flat probability) or `stat_check` (ability-score-based resolution).
+
+**Roll check:**
 
 ```json
 {
@@ -205,9 +211,50 @@ Interactions include generic types available everywhere (e.g., `attack`) and spe
 
 | Field        | Type    | Required | Description |
 |--------------|---------|----------|-------------|
-| `type`       | string  | yes      | Currently only `"roll"`. Future: `"skill_check"`, `"opposed"`. |
+| `type`       | string  | yes      | `"roll"` — flat probability check. |
 | `threshold`  | number  | yes      | Probability threshold (0.0–1.0). Roll succeeds if `random() < threshold`. |
 | `repeatable` | boolean | yes      | Whether the check can be retried. If `false`, the engine tracks attempts and rejects repeats. |
+| `note`       | string  | no       | Optional designer note. |
+
+**Stat check:**
+
+```json
+{
+  "type": "stat_check",
+  "stat": "STR",
+  "dc": 12,
+  "modifier": 0,
+  "resolution_params": { "advantage": true },
+  "repeatable": false,
+  "note": "Bend the iron bars."
+}
+```
+
+| Field              | Type    | Required | Description |
+|--------------------|---------|----------|-------------|
+| `type`             | string  | yes      | `"stat_check"` — ability-score-based check. |
+| `stat`             | string  | yes      | Stat key (e.g. `"STR"`, `"DEX"`). Must be declared in `stats.definitions`. |
+| `dc`               | integer | yes      | Difficulty class (target number). Typical range: 5 (trivial) to 25 (nearly impossible). |
+| `modifier`         | integer | no       | Flat situational modifier (default 0). E.g. `-2` for a slippery surface. |
+| `resolution_params`| object  | no       | System-specific options. For `d20`: `{ "advantage": true }` or `{ "disadvantage": true }`. |
+| `repeatable`       | boolean | yes      | Whether the check can be retried. |
+| `opposed_by`       | string  | no       | Reserved for future NPC opposed checks. |
+| `skill`            | string  | no       | Reserved for future skill checks. |
+| `note`             | string  | no       | Optional designer note. |
+
+The engine dispatches `stat_check` to the active resolution system (declared in
+`stats.resolution_system`), which computes the dice formula and produces a
+success/failure outcome.
+
+**Resolution systems:**
+
+| System | Formula                              | Use case |
+|--------|--------------------------------------|----------|
+| `d20`  | roll(1d20) + (stat-10)//2 + modifier >= DC | D&D-style (3–18 stats, DC 5–25) |
+
+The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
+`flat` for diceless).
+
 
 #### Result object
 
@@ -464,6 +511,59 @@ Rules are evaluated top-to-bottom. The first rule whose `condition` matches is a
 | `condition`   | object | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. Follows the condition object format. |
 | `narrative`   | string | Canonical ending prose passed to LLM Call 2 via `triggered_narration`. |
 | `trigger_id`  | string | Set as `game_over.trigger` in hard state; for debugging and save analysis. |
+
+---
+
+## `stats` — Player ability scores (optional)
+
+When present, the `stats` block declares which ability scores the adventure uses
+and which resolution system applies to stat checks. If absent, the adventure has
+no stat system — existing adventures work unchanged.
+
+```json
+{
+  "definitions": {
+    "STR": { "name": "Strength", "description": "Physical power" },
+    "DEX": { "name": "Dexterity", "description": "Agility and reflexes" },
+    "CON": { "name": "Constitution", "description": "Endurance" },
+    "INT": { "name": "Intelligence", "description": "Reasoning" },
+    "WIS": { "name": "Wisdom", "description": "Perception" },
+    "CHA": { "name": "Charisma", "description": "Force of personality" }
+  },
+  "resolution_system": "d20"
+}
+```
+
+| Field               | Type   | Required | Description |
+|---------------------|--------|----------|-------------|
+| `definitions`       | object | yes      | Dict of stat key → `{ name, description }`. Keys are short uppercase identifiers (e.g. `"STR"`). |
+| `resolution_system` | string | yes      | Named resolution system. Currently supported: `"d20"`. |
+
+### Resolution system abstraction
+
+The resolution system defines how stat checks translate to probability, decoupling
+adventures from specific RPG mechanics. The engine scoreboards stat check details
+in `EngineResult.rolls`, including the stat name, DC, modifier breakdown, raw
+roll, total, margin (total − DC), and advantage/disadvantage status.
+
+### Player character stats
+
+Player stat values live in `hard_state.player.stats` as a dict of stat key →
+integer value. On startup, the engine validates that:
+- Every stat key in the player state has a matching definition in `stats.definitions`.
+- Stats are consistently present or absent in both corpus and hard state.
+- If `stats` is present in the corpus, `player.stats` should be present in
+  hard state (and vice versa).
+
+The Context Assembler computes each stat's modifier from the resolution system
+(e.g., `(stat - 10) // 2` for d20) and includes the full `player_stats` block
+in the GMBriefing so the LLM knows the player's capabilities without doing math.
+
+### Stat condition domain
+
+Stats can be used in condition strings via the `stat` domain (see Condition
+object section). Example: `stat:INT >= 14` gates an interaction on the player's
+Intelligence score.
 
 ---
 
