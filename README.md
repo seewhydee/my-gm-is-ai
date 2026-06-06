@@ -6,6 +6,14 @@ Unlike freeform AI roleplay chatbots, this AI GM system is not optimized for cra
 
 This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Player stats and combat are not yet implemented.
 
+## Documentation
+
+Detailed documentation is in the `doc/` folder:
+
+- **[doc/intro.md](doc/intro.md)** — Architecture guide: goals, design philosophy, per-turn pipeline, data stores, player action types, directory structure.
+- **[doc/validation.md](doc/validation.md)** — Human validation plan: running validation scripts, writing sequence files, reviewing logs.
+- **[doc/player-stats.md](doc/player-stats.md)** — Planned player stats extension (STR/DEX/CON/INT/WIS/CHA) for future development.
+
 ## How It Works
 
 Each turn, your natural language input flows through a three-stage pipeline:

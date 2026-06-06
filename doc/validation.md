@@ -287,7 +287,7 @@ Manual interactive mode. The reviewer types inputs freely to probe edge cases no
 
 ### 6.1 Session log
 
-Maintain a running record at the top of this file or in a companion `validation-log.md`:
+Maintain a running record in a companion `validation-log.md` (in the same directory as this file):
 
 | Date | Session type | Adventure | Seq file | Turns | Result | Issues |
 |------|-------------|-----------|----------|-------|--------|--------|
