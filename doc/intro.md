@@ -1,32 +1,12 @@
 # My GM is AI — Architecture Guide
 
-## Project Goals
+The objective of this software is to implement an AI-driven Game Master (GM) that can replicate key aspects of the tabletop RPG experience.  Specifically, it attempts to function like a human GM running a pre-written adventure module.  The GM knows the rules and follows them strictly, but tries hard to accommodate the player's intentions and provide narrative flavor.
 
-An AI-driven Game Master (GM) for single-player RPGs. The objective: replicate the tabletop RPG experience without needing friends.
-
-Unlike freeform AI roleplay chatbots, this AI GM is **not** optimised for crafting naturalistic interlocutors with emotional depth, nor can it create open-ended adventures. Instead, the AI GM runs a **pre-generated adventure module faithfully**. You, the player, can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens. Like a human GM, the AI GM aims to strike a balance between creativity and rules adherence.
-
-### Phase 1 scope
-
-- OpenAI-compatible API calls (Deepseek, etc.)
-- Console-based input/output, no graphics
-- Kill-or-be-killed combat with no special mechanics (HP, rounds, etc.)
-- No player stats
-
-## Overall Approach
-
-The system is built around a **single, invariant design principle**: the LLM drives narration and interpretation, but a deterministic engine has final authority over game mechanics.
-
-The core insight is that LLMs are excellent at natural-language understanding and prose generation, but unreliable for rule enforcement and state tracking. By splitting these responsibilities, we get the best of both worlds:
-
-- The **LLM** interprets player intent, constructs structured actions, and weaves outcomes into compelling prose.
-- The **engine** validates actions against the rules, resolves mechanics deterministically (dice rolls, condition checks, state mutations), and constrains the LLM's narrative output to prevent contradictions and hallucinations.
-
-This architecture is analogous to a human GM who knows the rules intimately: the engine is the rulebook, the LLM is the voice.
+Architecturally, the AI GM uses a large language model (LLM) to drive interpretation and narration, and a deterministic engine to impose authority over game mechanics.  The idea is that LLMs are excellent at natural-language understanding and prose generation, but unreliable for rule enforcement and state tracking. By splitting these responsibilities, we get the best of both worlds: the LLM interprets player intent, constructs structured actions, and weaves outcomes into compelling prose; the engine validates actions against the rules, resolves mechanics, and constrains the LLM's narrative output to the actual game state.
 
 ## Architecture
 
-The system runs a per-turn loop of **two LLM calls sandwiching a deterministic engine**, with three data stores feeding a Context Assembler that builds the LLM's input each turn.
+Each turn, we run two LLM calls sandwiching a deterministic engine. The LLM calls and engine are informed by three data stores that track the game state.
 
 ### Per-turn data flow
 
@@ -34,56 +14,56 @@ The system runs a per-turn loop of **two LLM calls sandwiching a deterministic e
 Player Input
       │
       ▼
-┌─────────────────┐
+┌──────────────────┐
 │ Context Assembler│ ◄── Corpus + Hard State + Soft State
-└────────┬────────┘
-         │ GMBriefing (structured JSON)
-         ▼
+└────┬─────────────┘
+     │ GMBriefing (structured JSON)
+     ▼
 ┌─────────────────┐
 │   LLM Call 1    │  (low temperature — ruling)
-│   "What does    │
-│    the player   │  Output: PlayerAction (machine-readable)
-│    attempt?"    │         + optional SoftStatePatch[]
-└────────┬────────┘
-         │ PlayerAction
-         ▼
+│ "What does      │
+│  the player     │  Output: PlayerAction (machine-readable)
+│  attempt?"      │         + optional soft state patch
+└────┬────────────┘
+     │ PlayerAction
+     ▼
 ┌─────────────────┐
-│  Engine (rule-  │  Reads: Corpus + Hard State + Soft State
-│  book, dice,    │  Writes: Hard State only
-│  state machine) │  Validates & applies SoftStatePatch[]
-└────────┬────────┘
-         │ EngineResult (outcome, state diffs, narration)
-         ▼
+│  Engine         │  Reads: Corpus + Hard State + Soft State
+│ (checks, rules, │  Writes: Hard State only
+│  roll dice)     │  Validates & applies soft state patch
+└────┬────────────┘
+     │ EngineResult (outcome, state diffs, narration)
+     ▼
 ┌─────────────────┐
 │   LLM Call 2    │  (moderate temperature — prose)
-│   "How does the │
-│    world react?"│  Output: natural-language narration
-│                  │       + optional knowledge_tags (NPC revelations)
-└────────┬────────┘  │       + optional attitude_changes
-         │           ▼
-         │   ┌─────────────────┐
-         │   │ Post-validation  │  Engine validates knowledge_tags
-         │   │      (step 4.5)  │  and attitude_changes from Call 2
-         │   └────────┬────────┘
-         ▼            ▼
+│ "How does the   │
+│  world react?"  │  Output: natural-language narration
+│                 │       + optional NPC knowledge tags
+└────┬─────────┬──┘         and/or attitude changes
+     │         ▼
+     │ ┌─────────────────┐
+     │ │ Post-validation │ Validates knowledge_tags and
+     │ │   (optional)    │ attitude_changes
+     │ └──────┬──────────┘
+     ▼        ▼
    Game state saved   Player receives narration
 ```
 
 ### The three data stores
 
-**Module Corpus** (read-only). The digital equivalent of a printed adventure module — a JSON file loaded at startup, never modified during play. Contains rooms (as graph nodes), entities (player, NPCs, features, traps, items), interactions (named actions gated by conditions), and mechanics (win/lose rules, dice checks).
+**Module Corpus** (read-only). This is a JSON file that is loaded at startup and never modified during play, serving as the equivalent of a printed adventure module.  It specifies rooms (as graph nodes), entities (player, NPCs, features, items), interactions (named actions gated by conditions), and mechanics (win/lose rules, dice checks).
 
-**Hard Game State** (engine-authoritative). Mutable runtime state written exclusively by the engine. Tracks player location, inventory, flags, room/entity states, turn count, and game-over conditions. The LLM reads it via the GMBriefing but cannot propose changes directly.
+**Hard Game State** (engine-authoritative). This is data store contains mutable runtime state and is managed exclusively by the engine. It tracks player location, inventory, flags, room/entity states, turn count, and game-over conditions. The LLM reads part of it via the GMBriefing, but cannot alter it directly.
 
-**Soft Game State** (LLM-proposed, engine-validated). Narrative state that the LLM can propose changes to — soft inventory (non-unique items like "a rock"), room notes, entity notes, NPC attitudes, dialogue state, turn history, and NPC revelations. All proposals go through a strict patch schema; the engine validates and applies.
+**Soft Game State** (LLM-proposed, engine-validated). This contains narrative elements that the LLM can propose changes to: soft inventory (non-unique items like "a rock"), room notes, entity notes, NPC attitudes, dialogue state, turn history, and NPC revelations. All proposals go through a patch schema, which the engine validates and applies.
 
 ### The Context Assembler and GMBriefing
 
-Each turn, the Context Assembler builds a **GMBriefing** — a JSON document that compresses the current world into a compact prompt block for the ruling LLM. It contains:
+Each turn, the Context Assembler builds a **GMBriefing**: a JSON document that compresses the current world into a compact prompt block for the ruling LLM. It contains:
 
-- **Global setting**: one or two brief sentences about the adventure.
-- **Current room**: ID, name, prose description, visible entities with state, available exits, available interactions.
-- **Player state**: location, hard inventory, soft inventory, active flags, entity notes.
+- **Global setting**: a few introductory sentences about the adventure.
+- **Current room**: ID, name, prose description, visible entities, available exits, available interactions.
+- **Player state**: location, hard inventory, soft inventory, active flags.
 - **Recent history**: the last 5 turns, summarised.
 - **NPC revelations**: topics NPCs have revealed to the player so far.
 - **Dialogue context** (when in conversation): active NPC identity, attitude, dialogue guidelines, recent exchanges, topics discussed — all omitted when not in dialogue.
@@ -134,7 +114,7 @@ Receives the GMBriefing, PlayerAction, EngineResult, and a verbatim chat log. We
 4. **Respect hidden information** — secret exits, gated NPC knowledge, and unrevealed mechanics must not be divulged.
 5. **Respect game-over** — if `game_over` is set, narrate the ending and stop.
 
-Optionally, the LLM may also propose `knowledge_tags` (which topic IDs an NPC revealed) and `attitude_changes` (NPC attitude shifts from this turn's events). Both are engine-validated in step 4.5 before being applied.
+Optionally, the LLM may also propose `knowledge_tags` (which topic IDs an NPC revealed) and `attitude_changes` (NPC attitude shifts from this turn's events). Both are checked in the post-validation step before being applied.
 
 ### Chained actions
 
@@ -158,7 +138,7 @@ A deliberate design choice: LLM Call 1 (ruling) receives **structured, non-verba
 
 ### Serialization
 
-After each non-chain turn, the system saves hard state + soft state as a JSON file. The GMBriefing is reconstructed from scratch on load — no LLM context is persisted.
+After each non-chain turn, the system saves hard state + soft state as a JSON file. The GMBriefing is reconstructed from scratch on load; no LLM context is persisted.
 
 ## Technology Stack
 
@@ -222,13 +202,11 @@ The project includes two validation tools in `scripts/`:
 - **`validate_adventure.py`** — static structural checks on adventure corpus files (no LLM required).
 - **`validate.py`** — runtime validation with full LLM pipeline, logging all intermediate artifacts (GMBriefing, raw LLM outputs, engine results, narration).
 
-See [validation.md](validation.md) for the full validation plan covering sequence files, log review procedures, and defect tracking.
+See [validation.md](validation.md) for the full validation plan.
 
 ## Planned Extensions
 
-The following are on the roadmap for future phases. Detailed design documents are linked below.
+The following are on the roadmap for future phases:
 
-- **Player stats** (player-stats.md): Add ability scores (STR/DEX/CON/INT/WIS/CHA), stat-gated conditions and checks, and a resolution-system abstraction to decouple adventures from specific RPG editions.
 - **Combat phase**: Replace the current flag-based kill-or-be-killed placeholder with iterative rounds, HP tracking, damage rolls, and opposed checks.
 - **Semantic search / RAG**: Augment the deterministic ID lookup with vector embeddings for larger adventure modules.
-- **Multi-NPC conversations**: Extend dialogue mode to handle simultaneous conversations with multiple NPCs.
