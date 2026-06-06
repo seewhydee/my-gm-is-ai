@@ -1,5 +1,9 @@
 # Design Issues
 
+## Dead entities shouldn't disappear
+They're omitted from the GMBriefing, but really they ought to be mentioned.
+Otherwise players can't loot corpses, etc.
+
 ## STALE ROOM DESCRIPTIONS PROBLEM
     The axe_handle_lower description mentions the spider; after it
     flees, the description is factually incorrect.  The briefing

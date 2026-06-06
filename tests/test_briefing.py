@@ -397,16 +397,18 @@ class TestGMBriefingPlayerStats:
                 "name": "Room 1",
                 "description": "A test room.",
             },
-            "player_state": {"location": "room1"},
-            "player_stats": {
-                "STR": {"value": 14, "modifier": 2},
-                "DEX": {"value": 12, "modifier": 1},
+            "player_state": {
+                "location": "room1",
+                "player_stats": {
+                    "STR": {"value": 14, "modifier": 2},
+                    "DEX": {"value": 12, "modifier": 1},
+                },
             },
             "player_input": "Hello.",
         })
-        assert b.player_stats is not None
-        assert b.player_stats["STR"].value == 14
-        assert b.player_stats["STR"].modifier == 2
+        assert b.player_state.player_stats is not None
+        assert b.player_state.player_stats["STR"].value == 14
+        assert b.player_state.player_stats["STR"].modifier == 2
 
     def test_player_stats_none_when_absent(self) -> None:
         b = GMBriefing.model_validate({
@@ -422,4 +424,4 @@ class TestGMBriefingPlayerStats:
             "player_state": {"location": "room1"},
             "player_input": "Hello.",
         })
-        assert b.player_stats is None
+        assert b.player_state.player_stats is None

@@ -45,8 +45,7 @@ def assemble(
         tone=atmosphere.tone if atmosphere else "",
         turn=hard.turn_count,
         current_room=_build_room(room_id, room, hard, soft, corpus),
-        player_state=_build_player_state(hard, soft),
-        player_stats=player_stats,
+        player_state=_build_player_state(hard, soft, player_stats),
         npc_attitudes=dict(soft.npc_attitudes),
         npc_revelations=_build_npc_revelations(soft, corpus),
         recent_history=_build_recent_history(soft),
@@ -163,6 +162,7 @@ def _build_room(
 def _build_player_state(
     hard: HardGameState,
     soft: SoftGameState,
+    player_stats: Optional[dict[str, PlayerStatEntry]],
 ) -> PlayerStateBriefing:
     active_flags = {k: v for k, v in hard.flags.items() if v}
     player_entity_notes = soft.entity_notes.get("player", [])
@@ -173,6 +173,7 @@ def _build_player_state(
         soft_inventory=list(soft.soft_inventory),
         active_flags=active_flags,
         entity_notes=list(player_entity_notes),
+        player_stats=player_stats,
     )
 
 

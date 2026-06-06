@@ -9,7 +9,6 @@ During the initial phase of development, we will limit the scope as follows:
 * We will fix on OpenAI compatible API calls.
 * Input/output are console based, with no graphics.
 * Combat will have kill-or-be-killed resolutions with no special mechanics.
-* Similarly, no player stats for now.
 
 ## Architecture
 
