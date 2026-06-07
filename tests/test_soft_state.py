@@ -4,7 +4,7 @@ from pydantic import ValidationError
 from mgmai.models.soft_state import (
     ConversationLogEntry,
     DialogueState,
-    NpcRevelation,
+    KnowledgeEntry,
     SoftGameState,
     SoftStatePatch,
     TurnHistoryEntry,
@@ -218,18 +218,36 @@ class TestTurnHistoryEntry:
         assert e.flags_changed == []
 
 
-class TestNpcRevelation:
+class TestKnowledgeEntry:
     def test_basic(self) -> None:
-        r = NpcRevelation.model_validate({
+        r = KnowledgeEntry.model_validate({
             "topic_id": "padlock_mechanism",
             "description": "How the exterior padlock can be opened from inside",
+            "source_type": "npc_dialogue",
+            "source_id": "korbar",
+            "turn_learned": 3,
         })
         assert r.topic_id == "padlock_mechanism"
-        assert "padlock" in r.description
+        assert r.source_type == "npc_dialogue"
+        assert r.source_id == "korbar"
+        assert r.turn_learned == 3
 
     def test_missing_topic_id_raises(self) -> None:
         with pytest.raises(ValidationError):
-            NpcRevelation.model_validate({"description": "x"})
+            KnowledgeEntry.model_validate({
+                "description": "x",
+                "source_type": "npc_dialogue",
+                "turn_learned": 1,
+            })
+
+    def test_source_id_optional(self) -> None:
+        r = KnowledgeEntry.model_validate({
+            "topic_id": "some_fact",
+            "description": "A fact learned through interaction",
+            "source_type": "interaction",
+            "turn_learned": 5,
+        })
+        assert r.source_id is None
 
 
 class TestSoftGameState:
@@ -238,7 +256,7 @@ class TestSoftGameState:
         assert s.soft_inventory == []
         assert s.room_notes == {}
         assert s.entity_notes == {}
-        assert s.npc_revelations == {}
+        assert s.player_knowledge == []
         assert s.turn_history == []
         assert s.dialogue_state.active_npc is None
 
@@ -251,11 +269,15 @@ class TestSoftGameState:
             "entity_notes": {
                 "spider": ["Left legs covered in ichor."],
             },
-            "npc_revelations": {
-                "korbar": [
-                    {"topic_id": "padlock_mechanism", "description": "How to open from inside"},
-                ],
-            },
+            "player_knowledge": [
+                {
+                    "topic_id": "padlock_mechanism",
+                    "description": "How to open from inside",
+                    "source_type": "npc_dialogue",
+                    "source_id": "korbar",
+                    "turn_learned": 4,
+                },
+            ],
             "turn_history": [
                 {
                     "turn": 1,

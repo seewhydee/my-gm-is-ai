@@ -12,7 +12,7 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 - **turn**: Current turn number.
 - **current_room**: The room the player is in — ID, name, description, soft_items available, visible entities (with state fields including attitude, and entity_notes), available exits, and available interactions.
 - **player_state**: Hard inventory (item IDs), soft inventory (named objects like "rock"), active flags, entity notes on the player. When the corpus defines stats, includes `player_stats` with each stat's value and computed modifier (e.g. `"STR": { "value": 14, "modifier": 2 }`).
-- **npc_revelations**: Topics NPCs have revealed so far, with descriptions.
+- **player_knowledge_topics**: Topic IDs the player has learned about during the adventure.
 - **recent_history**: Last few turn summaries (structured, not verbatim).
 - **dialogue_context**: (if in conversation) Active NPC details, attitude, dialogue guidelines, recent exchanges, topics discussed, and revealed topics.
 - **player_input**: The player's verbatim input for this turn.

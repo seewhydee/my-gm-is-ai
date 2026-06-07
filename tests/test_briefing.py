@@ -236,11 +236,7 @@ class TestGMBriefing:
                 "soft_inventory": ["rock"],
                 "active_flags": {"injured": False},
             },
-            "npc_revelations": {
-                "korbar": [
-                    {"topic_id": "padlock_mechanism", "description": "How to open from inside"},
-                ],
-            },
+            "player_knowledge_topics": [],
             "recent_history": [
                 {
                     "turn": 2,

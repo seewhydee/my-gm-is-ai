@@ -19,7 +19,7 @@ from mgmai.models.briefing import (
 from mgmai.models.soft_state import (
     ConversationLogEntry,
     DialogueState,
-    NpcRevelation,
+    KnowledgeEntry,
     TurnHistoryEntry,
 )
 
@@ -567,23 +567,26 @@ class TestNpcAttitudes:
         assert korbar_entity.state.get("attitude") == 5
 
 
-class TestNpcRevelations:
-    """NPC revelation assembly."""
+class TestPlayerKnowledge:
+    """Player knowledge assembly."""
 
-    def test_empty_revelations(self, state_manager):
+    def test_empty_knowledge(self, state_manager):
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
             state_manager.soft_state,
             "look",
         )
-        assert result.npc_revelations == {}
+        assert result.player_knowledge_topics == []
 
-    def test_revelations_included(self, state_manager):
-        state_manager.soft_state.npc_revelations["korbar"] = [
-            NpcRevelation(
+    def test_knowledge_topics_included(self, state_manager):
+        state_manager.soft_state.player_knowledge = [
+            KnowledgeEntry(
                 topic_id="padlock_mechanism",
                 description="Korbar explains that the padlock can be unlocked from inside.",
+                source_type="npc_dialogue",
+                source_id="korbar",
+                turn_learned=3,
             ),
         ]
         result = assemble(
@@ -592,11 +595,7 @@ class TestNpcRevelations:
             state_manager.soft_state,
             "look",
         )
-        assert "korbar" in result.npc_revelations
-        revs = result.npc_revelations["korbar"]
-        assert len(revs) == 1
-        assert revs[0]["topic_id"] == "padlock_mechanism"
-        assert "padlock" in revs[0]["description"].lower()
+        assert "padlock_mechanism" in result.player_knowledge_topics
 
 
 class TestDialogueContext:
@@ -677,10 +676,13 @@ class TestDialogueContext:
         state_manager.soft_state.dialogue_state = DialogueState(
             active_npc="korbar",
         )
-        state_manager.soft_state.npc_revelations["korbar"] = [
-            NpcRevelation(
+        state_manager.soft_state.player_knowledge = [
+            KnowledgeEntry(
                 topic_id="padlock_mechanism",
                 description="The padlock can be unlocked from inside.",
+                source_type="npc_dialogue",
+                source_id="korbar",
+                turn_learned=2,
             ),
         ]
         result = assemble(
@@ -772,7 +774,7 @@ class TestErrorHandling:
         state_manager.soft_state.soft_inventory = []
         state_manager.soft_state.room_notes = {}
         state_manager.soft_state.entity_notes = {}
-        state_manager.soft_state.npc_revelations = {}
+        state_manager.soft_state.player_knowledge = []
         state_manager.soft_state.turn_history = []
         state_manager.soft_state.dialogue_state = DialogueState()
 
@@ -783,6 +785,6 @@ class TestErrorHandling:
             "look",
         )
         assert result.player_state.soft_inventory == []
-        assert result.npc_revelations == {}
+        assert result.player_knowledge_topics == []
         assert result.recent_history == []
         assert result.dialogue_context is None

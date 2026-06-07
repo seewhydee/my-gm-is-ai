@@ -12,6 +12,7 @@ from mgmai.engine.post_validate import (
 )
 from mgmai.models.actions import EngineResult, HardStateChanges
 from mgmai.models.narration import AttitudeChange
+from mgmai.models.soft_state import KnowledgeEntry
 
 ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
 BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
@@ -49,9 +50,11 @@ class TestPostValidateKnowledgeTags:
         # Structured delta is also returned
         assert hard_changes.flags_set.get("handkerchief_noticed") is True
         assert hard_changes.entity_state_changes["korbar"]["told_secret"] is True
-        assert "korbar" in soft.npc_revelations
-        assert len(soft.npc_revelations["korbar"]) == 1
-        assert soft.npc_revelations["korbar"][0].topic_id == "secret_compartment"
+        assert len(soft.player_knowledge) == 1
+        entry = soft.player_knowledge[0]
+        assert entry.topic_id == "secret_compartment"
+        assert entry.source_type == "npc_dialogue"
+        assert entry.source_id == "korbar"
 
     def test_conditions_not_met_silently_skipped(self, state_manager):
         hard = state_manager.hard_state
@@ -105,7 +108,7 @@ class TestPostValidateKnowledgeTags:
         revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
         assert len(revelations) == 0
         assert not hard_changes.has_changes()
-        assert len(soft.npc_revelations["korbar"]) == 1
+        assert len(soft.player_knowledge) == 1
 
 
 class TestPostValidateAttitudeChanges:

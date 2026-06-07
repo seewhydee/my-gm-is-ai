@@ -128,22 +128,38 @@ class TestLoadAndValidation:
         with pytest.raises(ValueError, match="above maximum"):
             sm._validate_cross_references()
 
-    def test_invalid_npc_revelations_entity(self) -> None:
+    def test_invalid_player_knowledge_non_npc(self) -> None:
         sm = StateManager()
         sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
         sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
-        sm.soft_state.npc_revelations["battleaxe"] = []
+        from mgmai.models.soft_state import KnowledgeEntry
+        sm.soft_state.player_knowledge = [
+            KnowledgeEntry(
+                topic_id="padlock_mechanism",
+                description="test",
+                source_type="npc_dialogue",
+                source_id="battleaxe",
+                turn_learned=1,
+            ),
+        ]
         with pytest.raises(ValueError, match="non-NPC entity"):
             sm._validate_cross_references()
 
-    def test_invalid_npc_revelations_topic(self) -> None:
+    def test_invalid_player_knowledge_topic(self) -> None:
         sm = StateManager()
         sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
         sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
-        sm.soft_state.npc_revelations["korbar"] = [
-            {"topic_id": "fake_topic", "description": "Fake"}
+        from mgmai.models.soft_state import KnowledgeEntry
+        sm.soft_state.player_knowledge = [
+            KnowledgeEntry(
+                topic_id="fake_topic",
+                description="Fake",
+                source_type="npc_dialogue",
+                source_id="korbar",
+                turn_learned=1,
+            ),
         ]
         with pytest.raises(ValueError, match="not in will_reveal"):
             sm._validate_cross_references()

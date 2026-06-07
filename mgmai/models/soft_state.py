@@ -5,6 +5,14 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
+class KnowledgeEntry(BaseModel):
+    topic_id: str
+    description: str
+    source_type: Literal["npc_dialogue", "interaction", "examination", "book", "puzzle"]
+    source_id: Optional[str] = None
+    turn_learned: int
+
+
 class SoftStatePatch(BaseModel):
     entity_id: Optional[str] = None
     field: Literal[
@@ -71,16 +79,11 @@ class TurnHistoryEntry(BaseModel):
     }
 
 
-class NpcRevelation(BaseModel):
-    topic_id: str
-    description: str
-
-
 class SoftGameState(BaseModel):
     soft_inventory: List[str] = Field(default_factory=list)
     room_notes: Dict[str, List[str]] = Field(default_factory=dict)
     entity_notes: Dict[str, List[str]] = Field(default_factory=dict)
-    npc_revelations: Dict[str, List[NpcRevelation]] = Field(default_factory=dict)
+    player_knowledge: List[KnowledgeEntry] = Field(default_factory=list)
     turn_history: List[TurnHistoryEntry] = Field(default_factory=list)
     dialogue_state: DialogueState = Field(default_factory=DialogueState)
     surfaced_soft_items: Dict[str, List[str]] = Field(default_factory=dict)

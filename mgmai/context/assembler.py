@@ -43,7 +43,7 @@ def assemble(
         turn=hard.turn_count,
         current_room=_build_room(room_id, room, hard, soft, corpus),
         player_state=_build_player_state(hard, soft, player_stats),
-        npc_revelations=_build_npc_revelations(soft, corpus),
+        player_knowledge_topics=_build_player_knowledge(soft),
         recent_history=_build_recent_history(soft),
         dialogue_context=_build_dialogue_context(soft, hard, corpus),
         revealed_hints=list(soft.revealed_hints),
@@ -226,19 +226,10 @@ def _pair_conversation_log(
     return exchanges[-5:]
 
 
-def _build_npc_revelations(
+def _build_player_knowledge(
     soft: SoftGameState,
-    corpus: ModuleCorpus,
-) -> dict[str, list[dict[str, str]]]:
-    result: dict[str, list[dict[str, str]]] = {}
-    for npc_id, revelations in soft.npc_revelations.items():
-        entries: list[dict[str, str]] = []
-        for rev in revelations:
-            entry: dict[str, str] = {"topic_id": rev.topic_id, "description": rev.description}
-            entries.append(entry)
-        if entries:
-            result[npc_id] = entries
-    return result
+) -> list[str]:
+    return [entry.topic_id for entry in soft.player_knowledge]
 
 
 def _build_recent_history(
@@ -287,8 +278,9 @@ def _build_dialogue_context(
     recent_exchanges = _pair_conversation_log(ds.conversation_log)
 
     revealed_topics: list[str] = []
-    for rev in soft.npc_revelations.get(npc_id, []):
-        revealed_topics.append(rev.topic_id)
+    for entry in soft.player_knowledge:
+        if entry.source_id == npc_id:
+            revealed_topics.append(entry.topic_id)
 
     return DialogueContext(
         active_npc=DialogueActiveNpc(

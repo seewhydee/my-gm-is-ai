@@ -6,7 +6,7 @@ from mgmai.models.actions import EngineResult, HardStateChanges, RevelationAppli
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.narration import AttitudeChange
-from mgmai.models.soft_state import NpcRevelation, SoftGameState
+from mgmai.models.soft_state import KnowledgeEntry, SoftGameState
 from mgmai.state.manager import StateManager
 from mgmai.engine.conditions import evaluate
 
@@ -29,6 +29,8 @@ def post_validate_knowledge_tags(
     applied: list[RevelationApplied] = []
     hard_changes = HardStateChanges()
 
+    existing_topic_ids = {k.topic_id for k in soft.player_knowledge}
+
     for npc_id, topic_ids in knowledge_tags.items():
         npc_entity = corpus.entities.get(npc_id)
         if npc_entity is None or npc_entity.type != "npc":
@@ -44,12 +46,8 @@ def post_validate_knowledge_tags(
 
         will_reveal = guidelines.will_reveal or {}
 
-        if npc_id not in soft.npc_revelations:
-            soft.npc_revelations[npc_id] = []
-        existing_topics = {r.topic_id for r in soft.npc_revelations[npc_id]}
-
         for topic_id in topic_ids:
-            if topic_id in existing_topics:
+            if topic_id in existing_topic_ids:
                 continue
 
             topic_entry = will_reveal.get(topic_id)
@@ -83,10 +81,13 @@ def post_validate_knowledge_tags(
                     ).update(state_changes)
                     side_effects.append(f"set_entity_state:{ent_id}={state_changes}")
 
-            soft.npc_revelations[npc_id].append(
-                NpcRevelation(
+            soft.player_knowledge.append(
+                KnowledgeEntry(
                     topic_id=topic_id,
                     description=topic_entry.description,
+                    source_type="npc_dialogue",
+                    source_id=npc_id,
+                    turn_learned=hard.turn_count,
                 )
             )
 
@@ -98,7 +99,7 @@ def post_validate_knowledge_tags(
                 )
             )
 
-            existing_topics.add(topic_id)
+            existing_topic_ids.add(topic_id)
 
     return applied, hard_changes
 

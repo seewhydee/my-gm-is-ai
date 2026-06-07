@@ -44,7 +44,6 @@ def make_soft_state(**overrides) -> SoftGameState:
         "soft_inventory": [],
         "room_notes": {},
         "entity_notes": {},
-        "npc_revelations": {},
         "turn_history": [],
         "dialogue_state": {},
     }
@@ -748,7 +747,6 @@ class TestEvaluateWithSampleCorpus:
             "soft_inventory": [],
             "room_notes": {},
             "entity_notes": {},
-            "npc_revelations": {},
             "turn_history": [],
             "dialogue_state": {
                 "active_npc": None,
@@ -802,7 +800,6 @@ class TestEvaluateWithSampleCorpus:
             "soft_inventory": ["cork"],
             "room_notes": {},
             "entity_notes": {},
-            "npc_revelations": {},
             "turn_history": [],
             "dialogue_state": {
                 "active_npc": None,

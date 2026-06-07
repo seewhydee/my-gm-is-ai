@@ -190,28 +190,26 @@ class StateManager:
                         f"hard_state.flags contains undeclared flag: {flag}"
                     )
 
-        # Soft state: npc_revelations keys must be NPC entities
-        for npc_id in self.soft_state.npc_revelations:
-            if npc_id not in self.corpus.entities:
-                errors.append(
-                    f"soft_state.npc_revelations references unknown entity: {npc_id}"
-                )
-            elif self.corpus.entities[npc_id].type != "npc":
-                errors.append(
-                    f"soft_state.npc_revelations references non-NPC entity: {npc_id}"
-                )
-            else:
-                guidelines = self.corpus.entities[npc_id].dialogue_guidelines
-                will_reveal = guidelines.will_reveal if guidelines else {}
-                for revelation in self.soft_state.npc_revelations[npc_id]:
-                    if isinstance(revelation, dict):
-                        topic_id = revelation.get("topic_id")
-                    else:
-                        topic_id = revelation.topic_id
-                    if topic_id not in will_reveal:
+        # Soft state: player_knowledge entries must reference valid entities/sources
+        for entry in self.soft_state.player_knowledge:
+            if entry.source_type == "npc_dialogue" and entry.source_id is not None:
+                if entry.source_id not in self.corpus.entities:
+                    errors.append(
+                        f"soft_state.player_knowledge references unknown entity: "
+                        f"{entry.source_id}"
+                    )
+                elif self.corpus.entities[entry.source_id].type != "npc":
+                    errors.append(
+                        f"soft_state.player_knowledge references non-NPC entity: "
+                        f"{entry.source_id}"
+                    )
+                else:
+                    guidelines = self.corpus.entities[entry.source_id].dialogue_guidelines
+                    will_reveal = guidelines.will_reveal if guidelines else {}
+                    if entry.topic_id not in will_reveal:
                         errors.append(
-                            f"NPC '{npc_id}' revelation topic_id "
-                            f"'{topic_id}' is not in will_reveal"
+                            f"NPC '{entry.source_id}' knowledge topic_id "
+                            f"'{entry.topic_id}' is not in will_reveal"
                         )
 
         if errors:
