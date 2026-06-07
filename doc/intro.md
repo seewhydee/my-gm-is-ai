@@ -1,8 +1,8 @@
 # My GM is AI — Architecture Guide
 
-The objective of this software is to implement an AI-driven Game Master (GM) that can replicate key aspects of the tabletop RPG experience.  Specifically, it attempts to function like a human GM running a pre-written adventure module.  The GM knows the rules and follows them strictly, but tries hard to accommodate the player's intentions and provide narrative flavor.
+The objective of this software is to implement an AI-driven Game Master (GM) that can replicate key aspects of the tabletop RPG experience.  It attempts to function like a human GM running a pre-written adventure module: the GM knows and follows the rules, but also accommodates the player's intentions and provide narrative flavor.
 
-Architecturally, the AI GM uses a large language model (LLM) to drive interpretation and narration, and a deterministic engine to impose authority over game mechanics.  The idea is that LLMs are excellent at natural-language understanding and prose generation, but unreliable for rule enforcement and state tracking. By splitting these responsibilities, we get the best of both worlds: the LLM interprets player intent, constructs structured actions, and weaves outcomes into compelling prose; the engine validates actions against the rules, resolves mechanics, and constrains the LLM's narrative output to the actual game state.
+The system uses a large language model (LLM) to drive interpretation and narration, and a deterministic engine to impose game mechanics.  LLMs are excellent at natural-language understanding and prose generation, but unreliable for rule enforcement and state tracking.  By splitting these responsibilities, we (hope to) get the best of both worlds: the LLM interprets player intent, constructs structured actions, and weaves outcomes into compelling prose; the engine validates actions against the rules, resolves mechanics, and constrains the narrative output to the actual game state.
 
 ## Architecture
 
@@ -51,15 +51,15 @@ Player Input
 
 ### The three data stores
 
-**Module Corpus** (read-only). This is a JSON file that is loaded at startup and never modified during play, serving as the equivalent of a printed adventure module.  It specifies rooms (as graph nodes), entities (player, NPCs, features, items), interactions (named actions gated by conditions), and mechanics (win/lose rules, dice checks).
+**Module Corpus** (read-only). This is loaded at startup and never modified during play, serving as the equivalent of a printed adventure module.  It specifies rooms (as graph nodes), entities (player, NPCs, features, items), interactions (named actions gated by conditions), and mechanics (win/lose rules, dice checks).
 
-**Hard Game State** (engine-authoritative). This is data store contains mutable runtime state and is managed exclusively by the engine. It tracks player location, inventory, flags, room/entity states, turn count, and game-over conditions. The LLM reads part of it via the GMBriefing, but cannot alter it directly.
+**Hard Game State** (engine-authoritative). This contains mutable runtime state and is managed exclusively by the engine. It tracks player location, inventory, flags, room/entity states, turn count, and game-over conditions. The LLM reads part of it via the GMBriefing, but cannot alter it directly.
 
 **Soft Game State** (LLM-proposed, engine-validated). This contains narrative elements that the LLM can propose changes to: soft inventory (non-unique items like "a rock"), room notes, entity notes, NPC attitudes, dialogue state, turn history, and NPC revelations. All proposals go through a patch schema, which the engine validates and applies.
 
 ### The Context Assembler and GMBriefing
 
-Each turn, the Context Assembler builds a **GMBriefing**: a JSON document that compresses the current world into a compact prompt block for the ruling LLM. It contains:
+Each turn, the Context Assembler builds a **GMBriefing**: a compact JSON document describing the current world state to the ruling LLM. It contains:
 
 - **Global setting**: a few introductory sentences about the adventure.
 - **Current room**: ID, name, prose description, visible entities, available exits, available interactions.
@@ -71,9 +71,9 @@ Each turn, the Context Assembler builds a **GMBriefing**: a JSON document that c
 
 No vector database — lookups are deterministic by ID.
 
-### Player action types
+### LLM Call 1 and player actions
 
-LLM Call 1 maps the player's natural-language input into exactly one of seven structured action types:
+LLM Call 1, which runs at a moderately low temperature, receives the GMBriefing + verbatim player input and is tasked with interpreting the player's input.  It cannot propose hard-state changes (those are the engine's domain).  Instead, it is tasked with producing a structured PlayerAction in JSON, consisting of exactly one of seven types:
 
 | Type | Purpose | Key fields |
 |------|---------|------------|
@@ -85,28 +85,24 @@ LLM Call 1 maps the player's natural-language input into exactly one of seven st
 | `wait` | Pass time, catch-all for below-threshold actions | `detail` describing intent |
 | `ooc_discussion` | Out-of-character question to the GM | `detail` with the question |
 
-Every action includes a `detail` field (natural-language description), optional `proposed_soft_state_patches`, and optional `follow_up` (for chained actions — see below).
+Every action includes a `detail` field (natural-language description), optional `proposed_soft_state_patches`, and optional `follow_up` for chained actions (see below).
 
-Only one action per turn. For multi-step inputs ("I pick up the key and unlock the door"), the LLM constructs the first action and stores the remainder in the `follow_up` field; the engine re-injects the follow-up as a new turn automatically.
-
-### LLM Call 1: Ruling (low temperature)
-
-Receives the GMBriefing + verbatim player input. Produces a structured PlayerAction in JSON. Cannot propose hard-state changes (those are the engine's domain). If the LLM encounters an impossible or out-of-scope player request, it should produce a `wait` action and use the `detail` field to explain why.
+Only one action occurs per turn. Multi-step inputs ("I pick up the key and unlock the door") are handled by constructing **chained actions**.  The LLM extracts the first action ("I pick up the key") and stores the rest in the `follow_up` field ("unlock the door").  After the first action is processed, the engine injects the follow-up as a new turn, *without waiting for further player input*.  This follow-up can itself be broken up, thereby extending the chain, if necessary.  The chain terminates if any step fails validation; we also define a maximum chain depth to prevent infloops.
 
 ### Engine resolution
 
 The engine is the system's source of truth. It receives the PlayerAction and:
 
-1. **Validates** the action against the hard state and corpus (does the exit exist? is the entity alive? are conditions met?).
+1. **Validates** the action (e.g., is the entity alive? does the item exist?).
 2. **Resolves mechanics**: evaluates conditions, rolls dice for checks, dispatches encounters, applies traversal effects and on-enter events.
 3. **Applies hard-state changes**: flags, inventory, location, entity states.
 4. **Validates soft-state patches**: accepts/rejects with reasons.
-5. **Checks for game-over** conditions.
+5. **Checks for game-over**.
 6. **Produces an EngineResult** containing the full outcome: success/failure, the room after resolution, a diff of all changes, triggered narrations (canonical prose for key events), encounter outcomes, roll details, warnings, and chain-action handling info.
 
 ### LLM Call 2: Prose narration (moderate temperature)
 
-Receives the GMBriefing, PlayerAction, EngineResult, and a verbatim chat log. Weaves the outcome into natural prose. Key constraints:
+LLM Call 2 runs at a moderately high temperature, after the engine.  It receives the GMBriefing, PlayerAction, EngineResult, and a verbatim chat log. Its task is to weave the outcome into natural prose, subject to these constraints:
 
 1. **Do not contradict the engine result** — if the engine says the spider fled, do not narrate it attacking.
 2. **Do not invent game state** — no adding items, changing rooms, or killing entities.
@@ -116,19 +112,13 @@ Receives the GMBriefing, PlayerAction, EngineResult, and a verbatim chat log. We
 
 Optionally, the LLM may also propose `knowledge_tags` (which topic IDs an NPC revealed) and `attitude_changes` (NPC attitude shifts from this turn's events). Both are checked in the post-validation step before being applied.
 
-### Chained actions
-
-When a player's input describes multiple steps, the LLM produces the first action and stores the remainder as `follow_up`. The engine then re-injects the follow-up as an automatic next turn without waiting for the player. The chain terminates if any step fails validation. Max chain depth is a defined constant to prevent infloops.
-
 ### Dialogue mode
 
-When the player starts talking to an NPC (`talk` action), the system enters dialogue mode. The GMBriefing is enriched with a `dialogue_context` block containing the NPC's personality guidelines, recent exchanges, and discussed topics — giving the ruling LLM enough context to parse inputs that mix action narration with in-character speech.
+When the player starts talking to an NPC (`talk` action), the system enters dialogue mode. The GMBriefing is enriched with a `dialogue_context` block containing the NPC's personality guidelines, recent exchanges, and discussed topics.
+
+The `dialogue_context` block is a calculated gamble: we provide LLM Call 2 with more context to improve its conversational ability, hoping that the other guardrails can ward off hallucinations (e.g., the instructions to the LLM to defer to engine results if contradictions arise).
 
 Dialogue ends when: the player moves rooms, the NPC dies/flees, the player sends `talk` with `ends_dialogue: true`, or 3+ turns pass without a `talk` action.
-
-### Dialogue vs. structured history
-
-A deliberate design choice: LLM Call 1 (ruling) receives **structured, non-verbatim** turn history to prevent it from reinforcing hallucinations. The one exception is Dialogue Mode, where a scoped, engine-validated block of verbatim conversation with the active NPC is injected. LLM Call 2 (prose) receives the **verbatim chat log** for conversational continuity, but is instructed to defer to the engine when contradictions arise.
 
 ### Error handling
 
@@ -195,14 +185,6 @@ mgmai/
         ├── hard-state.json
         └── soft-state.json
 ```
-
-## Human Validation
-
-The project includes two validation tools in `scripts/`:
-- **`validate_adventure.py`** — static structural checks on adventure corpus files (no LLM required).
-- **`validate.py`** — runtime validation with full LLM pipeline, logging all intermediate artifacts (GMBriefing, raw LLM outputs, engine results, narration).
-
-See [validation.md](validation.md) for the full validation plan.
 
 ## Planned Extensions
 
