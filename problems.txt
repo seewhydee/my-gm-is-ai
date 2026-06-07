@@ -1,5 +1,9 @@
 # Other design Issues
 
+## Consider pruning LLM instructions situationally
+For example, if there's no NPC present, we can omit the complicated
+NPC-handling instructions.
+
 ## STALE ROOM DESCRIPTIONS PROBLEM
     The axe_handle_lower description mentions the spider; after it
     flees, the description is factually incorrect.  The briefing
