@@ -191,6 +191,13 @@ class DialogueExitedResult(BaseModel):
 class WillRevealReadinessEntry(BaseModel):
     conditions_met: bool
     description: str
+    conditions: List[ConditionStatus] = Field(default_factory=list)
+
+
+class ConditionStatus(BaseModel):
+    condition: str
+    met: bool
+    detail: str
 
 
 class AttitudeLimitsCurrent(BaseModel):

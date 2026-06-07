@@ -6,6 +6,7 @@ from typing import Union
 from mgmai.models.corpus import ConditionExpression, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
+from mgmai.models.actions import ConditionStatus
 
 DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item|stat"
 CONDITION_RE = re.compile(
@@ -259,3 +260,84 @@ def evaluate_require(
 ) -> bool:
     """Convenience: evaluate exactly as ``evaluate`` would."""
     return evaluate(condition, hard_state, soft_state, corpus)
+
+
+def get_condition_detail(
+    raw: str,
+    hard_state: HardGameState,
+    soft_state: SoftGameState,
+    corpus: ModuleCorpus | None = None,
+) -> ConditionStatus:
+    """Evaluate a condition string and return status with current-value detail.
+
+    The ``detail`` field gives a human-readable description of the current
+    state value that the condition references, so an LLM can understand
+    *why* a condition is or isn't met.
+    """
+    domain, key, op, value = parse_condition_string(raw)
+    met = evaluate_condition_string(raw, hard_state, soft_state, corpus)
+
+    if domain == "flag":
+        current = hard_state.flags.get(key, False)
+        detail = f"flag {key} = {current}"
+
+    elif domain == "attitude":
+        current_val = hard_state.entity_states.get(key, {}).get("attitude")
+        if current_val is None and corpus is not None:
+            entity = corpus.entities.get(key)
+            if entity is not None and entity.dialogue_guidelines is not None:
+                current_val = entity.dialogue_guidelines.attitude_limits.initial
+        if current_val is None:
+            detail = f"attitude {key} = (unknown)"
+        else:
+            detail = f"attitude {key} = {current_val}"
+
+    elif domain == "inventory":
+        has_item = key in hard_state.player.inventory
+        detail = f"inventory contains '{key}': {has_item}"
+
+    elif domain == "item":
+        has_item = key in hard_state.player.inventory
+        detail = f"inventory contains '{key}': {has_item}"
+
+    elif domain == "tag":
+        if corpus is not None:
+            found = any(
+                key in entity.tags
+                for item_id in hard_state.player.inventory
+                if (entity := corpus.entities.get(item_id)) is not None
+            )
+        else:
+            found = False
+        detail = f"item with tag '{key}' in inventory: {found}"
+
+    elif domain == "entity":
+        if "." in key:
+            entity_id, field = key.split(".", 1)
+            current_val = hard_state.entity_states.get(entity_id, {}).get(field)
+        else:
+            entity_id, field = key, "?"
+            current_val = None
+        detail = f"entity {entity_id}.{field} = {current_val}"
+
+    elif domain == "room":
+        if "." in key:
+            room_id, field = key.split(".", 1)
+            current_val = hard_state.room_states.get(room_id, {}).get(field)
+        else:
+            room_id, field = key, "?"
+            current_val = None
+        detail = f"room {room_id}.{field} = {current_val}"
+
+    elif domain == "topic":
+        discussed = key in soft_state.dialogue_state.topics_discussed
+        detail = f"topic '{key}' discussed: {discussed}"
+
+    elif domain == "stat":
+        current_val = (hard_state.player.stats or {}).get(key)
+        detail = f"stat {key} = {current_val}"
+
+    else:
+        detail = f"unknown domain '{domain}' for '{raw}'"
+
+    return ConditionStatus(condition=raw, met=met, detail=detail)

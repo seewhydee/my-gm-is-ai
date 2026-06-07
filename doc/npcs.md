@@ -1,6 +1,6 @@
 # NPC Interaction Model
 
-NPCs are the characters the player can talk to, fight, and build relationships with. This document covers how NPCs are defined in the corpus, how their state is tracked, and how the system manages dialogue, attitude, and knowledge revelation.
+NPCs are characters the player can interact with. This document covers how NPCs are defined in the corpus, how their state is tracked, and how the system manages dialogue, attitude, and knowledge revelation.
 
 ## NPC Definition in the Corpus
 
@@ -42,20 +42,19 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
 ```json
 {
   "dialogue_guidelines": {
-    "personality": "Gruff, cynical, but secretly lonely. Speaks in short, clipped sentences.",
-    "on_encounter": "Korbar looks up from his whittling. 'Another one, eh? Fell through the rip too?'",
+    "personality": "Gruff, miserable, but secretly lonely. Speaks in short, clipped sentences.",
+    "on_encounter": "Korbar looks up from her bottle. 'Another one, eh? How'd you get here?'",
     "can": [
       "Talk about the bag's interior and its dangers",
       "Discuss the spider"
     ],
     "cannot": [
       "Reveal personal history before trust is earned",
-      "Discuss the lich before the spider is dealt with"
+      "Discuss escape methods before the spider is dealt with"
     ],
     "knows": [
-      "The bag's internal geography",
-      "The spider's habits",
-      "The lich's weakness"
+		"The player and Korbor are trapped in a bag of holding, a magical item that is bigger on the inside than the outside",
+		"Jumping out through a hole in the bag walls is a bad idea, since you'll end up in the Astral Plane"
     ],
     "attitude_limits": {
       "min": -5,
@@ -65,7 +64,7 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
     },
     "will_reveal": {
       "spider_habits": {
-        "description": "The spider only hunts at the top of the hour, when the bag's ambient magic pulses.",
+        "description": "The spider lurks where the web is densest. Korbor is afraid of it.",
         "conditions": ["attitude:korbar >= 1"]
       },
       "secret_compartment": {
@@ -78,7 +77,7 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
       }
     },
     "on_dialogue_exit": {
-      "narrative": "Korbar returns to his whittling, muttering something under his breath."
+      "narrative": "Korbar returns to her drinking, muttering under her breath."
     }
   }
 }
@@ -97,7 +96,6 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
 | `will_reveal` | Topics the NPC can reveal, gated by conditions, with optional side effects (see below). |
 | `on_dialogue_exit` | Optional effects applied when dialogue ends (see Dialogue Lifecycle). |
 
----
 
 ## Attitude System
 
@@ -123,7 +121,7 @@ Defined per-NPC in `dialogue_guidelines.attitude_limits`:
 
 ### Flow: How Attitude Changes
 
-1. **LLM Call 2** (the prose narrator) outputs an `attitude_changes` block in its JSON response:
+1. Unlike most other aspects of hard state, attitude is altered by **LLM Call 2** (the prose narrator), not LLM Call 1.  When LLM Call 2 emits its narration, it may optionally include an `attitude_changes` block in the JSON response:
    ```json
    "attitude_changes": {
      "korbar": {
@@ -143,7 +141,9 @@ Defined per-NPC in `dialogue_guidelines.attitude_limits`:
    - `reason` is non-empty
    - If `step_per_turn == 0`, all changes are rejected
 
-3. **Accepted changes** are written to `hard.entity_states.<npc_id>.attitude`. **Rejected changes** are returned in `EngineResult.attitude_changes_rejected` with explanations; the narrator must not describe rejected changes.
+3. **Accepted changes** are written to `hard.entity_states.<npc_id>.attitude`. **Rejected changes** are returned in `EngineResult.attitude_changes_rejected` with explanations.
+
+Currently, rejection does not alter the narration received by the player.  This could change in future versions.
 
 ### Attitude in the GMBriefing
 
@@ -160,7 +160,7 @@ The prose template provides guidance to LLM Call 2 on appropriate attitude chang
 
 | Change | When to use |
 |--------|-------------|
-| ±1 | Minor interactions: polite greeting, small compliment, mild insult |
+| ±1 | Minor unrepeated interactions: polite greeting, small compliment, mild insult |
 | ±2 | Significant interactions: genuine gift, meaningful help, serious threat |
 | ±3 | Exceptional moments: saving the NPC's life, deep betrayal |
 
@@ -168,7 +168,9 @@ The prose template provides guidance to LLM Call 2 on appropriate attitude chang
 
 ## Knowledge Revelation (`will_reveal`)
 
-The `will_reveal` system controls what NPCs can tell the player and what mechanical side effects result.
+Certain pieces of knowledge that are plot/mechanics relevant are tracked with unique topic IDs.  For example, a secret door may appear in a room only if the player has learned of its existence (from an NPC, reading a note, etc.).
+
+NPCs have a `will_reveal` field specifying what topics they can potentially inform the player about.  As for non-plot-relevant topics, the LLM narrator can deal freely with those.
 
 ### Topic Definition
 
@@ -181,7 +183,7 @@ Each topic under `will_reveal` has:
 | `set_flag` | Optional flags to set when the topic is revealed |
 | `set_entity_state` | Optional entity state changes when the topic is revealed |
 
-Conditions can reference attitude (`attitude:korbar >= 2`), flags (`flag:spider_fled == true`), inventory, and other state — the same condition syntax used throughout the engine.
+Conditions use the usual condition syntax and can reference attitude (`attitude:korbar >= 2`), flags (`flag:spider_fled == true`), inventory, and other state.
 
 ### Flow: How Knowledge Is Revealed
 
@@ -191,16 +193,23 @@ Conditions can reference attitude (`attitude:korbar >= 2`), flags (`flag:spider_
      "korbar": {
        "spider_habits": {
          "conditions_met": true,
-         "description": "The spider only hunts at the top of the hour..."
+         "description": "The spider only hunts at the top of the hour...",
+         "conditions": [
+           { "condition": "attitude:korbar >= 1", "met": true, "detail": "attitude korbar = 3" }
+         ]
        },
        "secret_compartment": {
          "conditions_met": false,
-         "description": "There is a hidden flap..."
+         "description": "There is a hidden flap...",
+         "conditions": [
+           { "condition": "attitude:korbar >= 2", "met": true, "detail": "attitude korbar = 3" },
+           { "condition": "flag:spider_fled == true", "met": false, "detail": "flag spider_fled = False" }
+         ]
        }
      }
    }
    ```
-   This is sent to **LLM Call 2 only** (the prose narrator).
+   This is sent to **LLM Call 2 only** (the prose narrator). Each condition includes its original string, whether it's met, and a `detail` showing the current state value — so the LLM can roleplay *why* a topic is unavailable (e.g., "I'd tell you more, but not while that spider's still loose").
 
 2. **LLM Call 2** decides whether the NPC actually reveals a topic during narration. If so, it includes a `knowledge_tags` block:
    ```json
@@ -223,19 +232,16 @@ class KnowledgeEntry(BaseModel):
     turn_learned: int
 ```
 
-This replaces the earlier per-NPC `npc_revelations` dict. Knowledge is indexed by topic, not by source — the system tracks *what* the player knows, with source as metadata rather than the primary key.
+Note that knowledge is indexed by topic, not by source — the system tracks *what* the player knows, with source as metadata rather than the primary key.
 
 For the GMBriefing, the Context Assembler produces `player_knowledge_topics: List[str]` — a flat list of topic IDs the player has learned. Full descriptions are available from the corpus `will_reveal` entries when needed by LLM Call 2. This avoids duplicating description text in every briefing.
 
-### Duplicate Detection
-
-The system deduplicates by `topic_id` across **all** sources. If the player already knows topic X (from an interaction, a previous NPC, or any source), a later NPC who meets the conditions for the same topic will not "re-reveal" it — the post-validation silently skips duplicate entries.
+The system deduplicates by `topic_id` across **all** sources. If the player already knows topic X (from an interaction, a previous NPC, or any source), a later NPC who meets the conditions for the same topic will not re-reveal it — the post-validation silently skips duplicate entries.
 
 ### Interaction with Dialogue Context
 
 When dialogue mode is active, the `DialogueContext.revealed_topics` field shows which topics the *current* NPC has revealed. This is computed by filtering `player_knowledge` for entries with `source_id == active_npc_id`.
 
----
 
 ## Dialogue Lifecycle
 
@@ -296,7 +302,6 @@ This context is available to **both LLM calls** via the GMBriefing. LLM Call 1 u
 
 When dialogue is inactive, `dialogue_context` is `null`.
 
----
 
 ## NPC Behavior & Encounters
 
@@ -338,7 +343,6 @@ When the player uses `interact` with `interaction_id: "attack"` targeting an NPC
 
 Encounter outcomes (death, flee, etc.) update hard state (`entity_states.<npc>.alive`), which in turn gates dialogue, attitude changes, and knowledge revelation for that NPC.
 
----
 
 ## Summary: Per-Turn NPC Data Flow
 

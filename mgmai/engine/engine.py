@@ -5,6 +5,7 @@ from typing import Any
 from mgmai.models.actions import (
     AttitudeLimitsCurrent,
     ChainInfo,
+    ConditionStatus,
     EncounterOutcome,
     EngineResult,
     GameOverResult,
@@ -23,7 +24,7 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState, GameOverState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from mgmai.state.manager import StateManager
-from mgmai.engine.conditions import evaluate
+from mgmai.engine.conditions import evaluate, get_condition_detail
 from mgmai.engine.resolver import resolve_action, ResolutionResult
 from mgmai.engine.encounters import (
     apply_flee_effects,
@@ -505,13 +506,16 @@ def _build_will_reveal_readiness(
         npc_ready: dict[str, WillRevealReadinessEntry] = {}
         for topic_id, topic_entry in guidelines.will_reveal.items():
             conditions_met = True
+            conditions: list[ConditionStatus] = []
             for cond_raw in topic_entry.conditions:
-                if not evaluate(cond_raw, hard, soft, corpus):
+                status = get_condition_detail(cond_raw, hard, soft, corpus)
+                conditions.append(status)
+                if not status.met:
                     conditions_met = False
-                    break
             npc_ready[topic_id] = WillRevealReadinessEntry(
                 conditions_met=conditions_met,
                 description=topic_entry.description,
+                conditions=conditions,
             )
 
         if npc_ready:
