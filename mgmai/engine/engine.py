@@ -125,6 +125,14 @@ def resolve(
     if engine_soft_patches:
         state_manager.apply_soft_patches(engine_soft_patches)
 
+    # Track surfaced soft items from the resolution
+    for entity_or_room_id, items in resolution.surfaced_soft_items.items():
+        if entity_or_room_id not in soft.surfaced_soft_items:
+            soft.surfaced_soft_items[entity_or_room_id] = []
+        for item in items:
+            if item not in soft.surfaced_soft_items[entity_or_room_id]:
+                soft.surfaced_soft_items[entity_or_room_id].append(item)
+
     soft_patches = _validate_soft_patches(
         player_action.proposed_soft_state_patches or [],
         hard,
@@ -397,6 +405,7 @@ def _build_room_after(
             continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
+        entity_soft = soft.surfaced_soft_items.get(eid, [])
 
         entities_visible.append(
             BriefingEntity(
@@ -406,7 +415,7 @@ def _build_room_after(
                 description=entity.description,
                 state=entity_state,
                 entity_notes=notes,
-                soft_items=[],
+                soft_items=list(entity_soft),
             )
         )
 
@@ -455,12 +464,13 @@ def _build_room_after(
         )
 
     room_notes = soft.room_notes.get(room_id, [])[-5:]
+    room_soft_items = soft.surfaced_soft_items.get(room_id, [])
 
     return BriefingRoom(
         id=room_id,
         name=room.name,
         description=room.description,
-        soft_items=[],
+        soft_items=list(room_soft_items),
         entities_visible=entities_visible,
         exits_available=exits_available,
         interactions_available=interactions_available,

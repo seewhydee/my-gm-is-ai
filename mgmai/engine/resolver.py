@@ -46,6 +46,7 @@ class ResolutionResult:
     dialogue_exited: DialogueExitedResult | dict | None = None
     soft_patches: list[SoftStatePatch] = field(default_factory=list)
     rolls: list[dict[str, Any]] = field(default_factory=list)
+    surfaced_soft_items: dict[str, list[str]] = field(default_factory=dict)
 
 
 def resolve_wait(
@@ -124,11 +125,22 @@ def resolve_examine(
         if ent and ent.soft_items:
             all_soft.update(ent.soft_items)
     if target in all_soft:
+        # Determine where the soft item lives for surfacing
+        surfaced: dict[str, list[str]] = {}
+        if room.soft_items and target in room.soft_items:
+            surfaced[room_id] = [target]
+        else:
+            for eid in room.entities_present:
+                ent = corpus.entities.get(eid)
+                if ent and ent.soft_items and target in ent.soft_items:
+                    surfaced[eid] = [target]
+                    break
         return ResolutionResult(
             success=True,
             hard_changes=HardStateChanges(),
             triggered_narration=[f"You examine the {target}."],
             room_after_id=room_id,
+            surfaced_soft_items=surfaced,
         )
 
     return ResolutionResult(
@@ -344,20 +356,42 @@ def resolve_transfer(
             if target_ent.soft_items:
                 available_pool.update(target_ent.soft_items)
 
+    surfaced: dict[str, list[str]] = {}
+
     for item in taken_items:
         if item in available_pool:
             changes.inventory_added.append(item)
+            # Surface the soft item on its source
+            if target_is_room:
+                if room.soft_items and item in room.soft_items:
+                    surfaced.setdefault(room_id, []).append(item)
+                else:
+                    for eid in room.entities_present:
+                        ent = corpus.entities.get(eid)
+                        if ent and ent.soft_items and item in ent.soft_items:
+                            surfaced.setdefault(eid, []).append(item)
+                            break
+            elif target_is_entity:
+                target_ent = corpus.entities.get(target_id)
+                if target_ent and target_ent.soft_items and item in target_ent.soft_items:
+                    surfaced.setdefault(target_id, []).append(item)
         else:
             return ResolutionResult(
                 success=False,
                 error=f"Item '{item}' is not available from '{target_id}'",
             )
 
+    # Given soft items: surface on the target (they now reside there)
+    for item in given_items:
+        if item in soft.soft_inventory:
+            surfaced.setdefault(target_id, []).append(item)
+
     return ResolutionResult(
         success=True,
         hard_changes=changes,
         soft_patches=soft_patches,
         room_after_id=room_id,
+        surfaced_soft_items=surfaced,
     )
 
 

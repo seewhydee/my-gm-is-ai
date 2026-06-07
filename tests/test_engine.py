@@ -264,6 +264,60 @@ class TestEngineRoomAfter:
         assert result.will_reveal_readiness is not None
         assert "korbar" in result.will_reveal_readiness
 
+    def test_surfaced_soft_items_persisted_after_examine(self, state_manager):
+        """Examining a soft item persists it into soft.surfaced_soft_items."""
+        action = ExamineAction(
+            action_type="examine",
+            target="loose stone",
+            detail="Looking at stone",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert "axe_head" in state_manager.soft_state.surfaced_soft_items
+        assert "loose stone" in state_manager.soft_state.surfaced_soft_items["axe_head"]
+
+    def test_surfaced_soft_items_persisted_after_take(self, state_manager):
+        """Taking a soft item persists it into soft.surfaced_soft_items."""
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        action = TransferAction(
+            action_type="transfer",
+            target="rubbish_pile",
+            taken_items=["stale sandwich"],
+            detail="Taking a sandwich",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert "rubbish_pile" in state_manager.soft_state.surfaced_soft_items
+        assert "stale sandwich" in state_manager.soft_state.surfaced_soft_items["rubbish_pile"]
+
+    def test_surfaced_soft_items_in_room_after(self, state_manager):
+        """Surfaced items appear in the EngineResult.room_after briefing."""
+        state_manager.soft_state.surfaced_soft_items["axe_head"] = ["loose stone"]
+        action = WaitAction(
+            action_type="wait",
+            detail="Looking around",
+        )
+        result = resolve(action, state_manager)
+        assert result.room_after is not None
+        assert "loose stone" in result.room_after.soft_items
+
+    def test_surfaced_entity_soft_items_in_room_after(self, state_manager):
+        """Entity-level surfaced items appear in the entity's soft_items in room_after."""
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        state_manager.soft_state.surfaced_soft_items["rubbish_pile"] = ["lint"]
+        action = WaitAction(
+            action_type="wait",
+            detail="Looking around",
+        )
+        result = resolve(action, state_manager)
+        rubbish = next(
+            e for e in result.room_after.entities_visible
+            if e.id == "rubbish_pile"
+        )
+        assert "lint" in rubbish.soft_items
+
     def test_npc_attitude_limits(self, state_manager):
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"

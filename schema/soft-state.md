@@ -24,6 +24,7 @@ continuity (NPC moods, environmental details, conversation memory).
   "npc_attitudes":     { "<npc_entity_id>": <integer> },
   "npc_revelations":   { "<npc_entity_id>": [{ "topic_id": "...", "description": "..." }] },
   "turn_history":      [ { /* turn log entry */ } ],
+  "surfaced_soft_items": { "<room_or_entity_id>": ["string", ...] },
   "dialogue_state":    { /* active NPC conversation state */ }
 }
 ```
@@ -218,6 +219,39 @@ Call 2's `knowledge_tags`.
   player has learned from each NPC.
 - When `dialogue_state.active_npc` is set, the `dialogue_context` block
   also includes `revealed_topics` (just the topic IDs) for quick reference.
+
+---
+
+## `surfaced_soft_items` — Player-encountered soft items
+
+```json
+{
+  "axe_head": ["loose stone"],
+  "rubbish_pile": ["cork"]
+}
+```
+
+A dictionary mapping room IDs and entity IDs to lists of soft item names that the
+player has successfully interacted with. Unlike the implicit soft items in the
+corpus (which enumerate every plausible pebble), surfaced items are those the
+player has examined, taken, or otherwise engaged with.
+
+### Population rules
+
+| Trigger | Action |
+|---------|--------|
+| `examine` targets a soft item | The engine records the item name under the room or entity it belongs to. |
+| `transfer` takes a soft item from a source | The engine records the item name under the source room or entity. |
+| `transfer` gives a soft item to a target | The engine records the item name under the target entity. |
+| Item is already surfaced | No duplicate entry (first occurrence preserved). |
+
+### Usage in GMBriefing
+
+The Context Assembler populates `BriefingRoom.soft_items` and
+`BriefingEntity.soft_items` from this field. Implicit (non-surfaced) soft items
+are omitted, keeping the briefing focused on items the player has observed.
+Carried soft items are surfaced separately via `soft_inventory` in the player
+state block.
 
 ---
 
@@ -443,6 +477,7 @@ post-validates them against the NPC's `attitude_limits` using the same rules:
     "korbar": 0
   },
   "npc_revelations": {},
+  "surfaced_soft_items": {},
   "turn_history": [],
   "dialogue_state": {
     "active_npc": null,

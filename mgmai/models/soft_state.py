@@ -84,5 +84,6 @@ class SoftGameState(BaseModel):
     npc_revelations: Dict[str, List[NpcRevelation]] = Field(default_factory=dict)
     turn_history: List[TurnHistoryEntry] = Field(default_factory=list)
     dialogue_state: DialogueState = Field(default_factory=DialogueState)
+    surfaced_soft_items: Dict[str, List[str]] = Field(default_factory=dict)
     checks_attempted: Dict[str, List[str]] = Field(default_factory=dict)
     revealed_hints: List[str] = Field(default_factory=list)

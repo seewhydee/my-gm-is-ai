@@ -105,6 +105,40 @@ class TestResolveExamine:
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.success is True
 
+    def test_examine_soft_item_surfaces_on_room(self, state_manager):
+        """Soft items belonging to the room are surfaced on the room ID."""
+        action = ExamineAction(action_type="examine", target="loose stone", detail="Looking at stone")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.surfaced_soft_items.get("axe_head") == ["loose stone"]
+
+    def test_examine_soft_item_surfaces_on_entity(self, state_manager):
+        """Soft items exclusive to an entity are surfaced on that entity ID."""
+        state_manager.hard_state.player.location = "bag_floor"
+        action = ExamineAction(action_type="examine", target="stale sandwich", detail="Looking at sandwich")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.surfaced_soft_items.get("rubbish_pile") == ["stale sandwich"]
+
+    def test_examine_room_soft_item_surfaces_on_room(self, state_manager):
+        """Soft items listed on the room surface on the room ID."""
+        state_manager.hard_state.player.location = "axe_handle_lower"
+        action = ExamineAction(action_type="examine", target="rock", detail="Looking at rock")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.surfaced_soft_items.get("axe_handle_lower") == ["rock"]
+
+    def test_examine_soft_item_surfaces_on_room_when_shared(self, state_manager):
+        """When a soft item exists on both room and entity, room wins."""
+        state_manager.hard_state.player.location = "axe_handle_upper"
+        action = ExamineAction(action_type="examine", target="sticky webbing", detail="Looking at webbing")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.surfaced_soft_items.get("axe_handle_upper") == ["sticky webbing"]
+
+    def test_examine_non_soft_item_no_surfacing(self, state_manager):
+        """Examining an entity (not a soft item) does not populate surfaced_soft_items."""
+        action = ExamineAction(action_type="examine", target="padlock", detail="Looking at padlock")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.surfaced_soft_items == {}
+
 
 class TestResolveMove:
     def test_valid_exit(self, state_manager):
@@ -287,6 +321,71 @@ class TestResolveTransfer:
         assert len(result.soft_patches) == 1
         assert result.soft_patches[0].field == "soft_inventory_remove"
         assert result.soft_patches[0].new_value == "cork"
+
+    def test_give_soft_item_surfaces_on_target(self, state_manager):
+        """Given soft items are surfaced on the transfer target."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        soft.soft_inventory.append("cork")
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_items=["cork"],
+            taken_items=[],
+            detail="Giving a cork",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.surfaced_soft_items.get("korbar") == ["cork"]
+
+    def test_take_soft_item_surfaces_on_entity_source(self, state_manager):
+        """Taken soft items exclusive to an entity are surfaced on that entity."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = TransferAction(
+            action_type="transfer", target="rubbish_pile",
+            given_items=[],
+            taken_items=["stale sandwich"],
+            detail="Taking a sandwich",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.surfaced_soft_items.get("rubbish_pile") == ["stale sandwich"]
+
+    def test_take_soft_item_surfaces_on_entity_when_shared(self, state_manager):
+        """When target is an entity, soft items surface on that entity."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = TransferAction(
+            action_type="transfer", target="rubbish_pile",
+            given_items=[],
+            taken_items=["cork"],
+            detail="Taking a cork",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        # cork is in rubbish_pile.soft_items; target_is_entity path checks target entity
+        assert result.surfaced_soft_items.get("rubbish_pile") == ["cork"]
+
+    def test_take_soft_item_surfaces_on_room_when_target_is_room(self, state_manager):
+        """When transfer target is the room itself, surface on the room."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = TransferAction(
+            action_type="transfer", target="bag_floor",
+            given_items=[],
+            taken_items=["cork"],
+            detail="Picking up a cork",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.surfaced_soft_items.get("bag_floor") == ["cork"]
 
 
 class TestResolveInteract:

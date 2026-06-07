@@ -299,6 +299,46 @@ class TestRoomSoftItemsAndNotes:
         )
         assert result.current_room.soft_items == []
 
+    def test_surfaced_room_soft_items_appear(self, state_manager):
+        state_manager.soft_state.surfaced_soft_items["axe_head"] = ["loose stone"]
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        assert result.current_room.soft_items == ["loose stone"]
+
+    def test_surfaced_entity_soft_items_appear(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        state_manager.soft_state.surfaced_soft_items["rubbish_pile"] = ["cork", "lint"]
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        rubbish = next(
+            e for e in result.current_room.entities_visible if e.id == "rubbish_pile"
+        )
+        assert rubbish.soft_items == ["cork", "lint"]
+
+    def test_surfaced_entity_soft_items_no_longer_empty(self, state_manager):
+        """The 'no longer populated' test should now show surfaced items instead."""
+        state_manager.hard_state.player.location = "bag_floor"
+        state_manager.soft_state.surfaced_soft_items["rubbish_pile"] = ["cork"]
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        rubbish = next(
+            e for e in result.current_room.entities_visible if e.id == "rubbish_pile"
+        )
+        assert rubbish.soft_items == ["cork"]
+        assert rubbish.soft_items != []
+
     def test_room_notes_included(self, state_manager):
         state_manager.soft_state.room_notes["axe_head"] = [
             "Scratches on the blade",

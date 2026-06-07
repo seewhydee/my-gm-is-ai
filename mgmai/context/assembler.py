@@ -77,6 +77,7 @@ def _build_room(
             continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
+        entity_soft = soft.surfaced_soft_items.get(eid, [])
 
         entities_visible.append(
             BriefingEntity(
@@ -86,7 +87,7 @@ def _build_room(
                 description=entity.description,
                 state=dict(entity_state),
                 entity_notes=list(notes),
-                soft_items=[],
+                soft_items=list(entity_soft),
             )
         )
 
@@ -144,12 +145,13 @@ def _build_room(
             )
 
     room_notes = soft.room_notes.get(room_id, [])[-5:]
+    room_soft_items = soft.surfaced_soft_items.get(room_id, [])
 
     return BriefingRoom(
         id=room_id,
         name=room.name,
         description=room.description,
-        soft_items=[],
+        soft_items=list(room_soft_items),
         entities_visible=entities_visible,
         exits_available=exits_available,
         interactions_available=interactions_available,
