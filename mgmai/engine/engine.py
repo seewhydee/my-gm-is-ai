@@ -393,12 +393,10 @@ def _build_room_after(
             continue
 
         entity_state = hard.entity_states.get(eid, {})
-        if entity_state.get("alive") is False:
-            continue
         if entity.type == "item" and eid in hard.player.inventory:
             continue
 
-        notes = soft.entity_notes.get(eid, [])[-3:]
+        notes = soft.entity_notes.get(eid, [])[-5:]
 
         entities_visible.append(
             BriefingEntity(
@@ -408,7 +406,7 @@ def _build_room_after(
                 description=entity.description,
                 state=entity_state,
                 entity_notes=notes,
-                soft_items=entity.soft_items or [],
+                soft_items=[],
             )
         )
 
@@ -462,7 +460,7 @@ def _build_room_after(
         id=room_id,
         name=room.name,
         description=room.description,
-        soft_items=room.soft_items or [],
+        soft_items=[],
         entities_visible=entities_visible,
         exits_available=exits_available,
         interactions_available=interactions_available,

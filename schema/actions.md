@@ -1,8 +1,7 @@
 # Action Schema
 
 This defines the structured data formats that flow between the core-loop
-components: Context Assembler -> LLM Call 1 (Ruling) -> Engine Resolution -> LLM
-Call 2 (Prose).
+components: Context Assembler -> LLM Call 1 -> Engine -> LLM Call 2.
 
 ## Core Loop Data Flow
 
@@ -67,8 +66,8 @@ Player Input
 
 ## 1. GMBriefing -- Input to LLM Call 1
 
-Assembled by the Context Assembler from Module Corpus + Hard State + Soft State.
-This is what the ruling LLM sees.
+Assembled by the Context Assembler from Module Corpus, Hard State, and
+Soft State, for the ruling LLM (call 1).
 
 ```json
 {
@@ -189,11 +188,11 @@ This is what the ruling LLM sees.
 
 ### GMBriefing assembly rules
 
-1. **Global setting**: `setting` and `tone` are drawn from the module corpus
-   `adventure.atmosphere` block — 1-2 brief sentences each about the world and
-   desired narrative style.
+1. **Global setting**: `setting` and `tone` drawn from the module corpus
+   `adventure.atmosphere` block.  Some brief sentences about the world and
+   narrative style.
 
-2. **Current room** is fetched by ID from the module corpus. Only entities with
+2. **Current room**: fetched by ID from the module corpus. Only entities with
    `state.alive == true` (or equivalent) are included in `entities_visible`.
    Each visible entity includes its current hard state, entity notes (up to 3
    most recent), and its soft_items list. Hidden entities are omitted.
@@ -210,11 +209,12 @@ This is what the ruling LLM sees.
    `{ "value": 14, "modifier": 2 }`). This gives LLM Call 1 direct knowledge
    of the player's capabilities without requiring it to do the math.
 
-6. **Recent history** is drawn from soft state `turn_history` — the last 5
-   entries from non-`ooc_discussion` turns, summarised. `ooc_discussion` entries
-   are skipped when assembling `recent_history`, so the GMBriefing is unchanged
-   over the course of `ooc_discussion` actions. The raw chat log is NOT included
-   here.
+6. **Recent history** is drawn from soft state `turn_history`, which
+   summarizes the player's recent actions.  This includes the last 5
+   proper entries from non-`ooc_discussion` turns; `ooc_discussion`
+   entries are included, but do not count toward the cap.  Thus,
+   GMBriefing is unchanged over multiple `ooc_discussion` actions.
+   NO raw chat log.
 
 7. **NPC attitudes** includes attitudes for all NPCs the player has met
    (or all known NPCs, at the implementer's discretion).
@@ -296,7 +296,7 @@ Every PlayerAction carries these fields:
 
 | Field      | Type          | Required | Description |
 |------------|---------------|----------|-------------|
-| `target`   | string        | yes      | A valid entity ID present in the current room, the current room ID itself (for re-examining the room), or a soft item name present in the current room or on a visible entity. |
+| `target`   | string        | yes      | A valid entity ID present in the current room, the current room ID itself (for examining the room), or a soft item name present in the current room or on a visible entity. |
 | `rigorous` | boolean       | no       | If `true`, signifies an in-depth search. A schema may specify that only a rigorous search reveals hidden details. |
 | `using`    | string\|null  | no       | A valid entity ID or soft item used to assist the examination (e.g., using a torch to look at a dark corner). |
 
@@ -375,14 +375,14 @@ Every PlayerAction carries these fields:
 | `ends_dialogue`  | boolean | no       | If `true`, signals that the player intends to end the conversation. The engine will archive the conversation log to the NPC's `entity_notes` and clear `dialogue_state.active_npc`. |
 
 **Engine validation:**
-- `target` must be an NPC entity present in the current room, and `state.alive` must be true.
+- `target` must be an NPC entity present in the current room, with `state.alive` true.
 - When a `talk` action succeeds, the engine activates or extends dialogue mode:
   sets `dialogue_state.active_npc`, appends the player's `utterance` (or a
   summary of the `detail` if no `utterance`) to `conversation_log`, and records
   any new topics proposed by LLM Call 1.
 - If the `talk` targets a different NPC than the current `active_npc`, the
   engine archives the current conversation log and starts a new one.
-- If `ends_dialogue` is `true`, the engine clears dialogue mode after resolution.
+- If `ends_dialogue` is `true`, engine clears dialogue mode after resolution.
 - Soft-state patches (e.g., entity notes) are validated per the soft-state
   patch schema. Attitude changes are proposed by LLM Call 2, not via
   `proposed_soft_state_patches`.
@@ -410,12 +410,13 @@ Every PlayerAction carries these fields:
 | `taken_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is taking from the target. |
 
 **Engine validation:**
-- `target` must be a valid entity ID present in the room, or the current room ID.
-- Each item in `given_items` must be in the player's hard inventory (entity IDs)
-  or soft inventory (soft item names).
-- Each item in `taken_items` must be obtainable from the target: entity IDs must
-  be listed in the target entity's or room's available inventory; soft item names
-  must appear in the target's `soft_items` or the room's `soft_items`.
+- `target` must be an entity ID present in the room, or current room ID.
+- Each item in `given_items` must be in the player's hard inventory
+  (entity IDs) or soft inventory (soft item names).
+- Each item in `taken_items` must be obtainable from the target: entity IDs 
+  must be listed in the target entity's or room's available inventory;
+  soft item names must appear in the target's `soft_items` or the room's 
+  `soft_items`.
 - On success, items are moved accordingly between inventories.
 - If the target is a room, `given_items` are removed from the player's inventory
   and added to the room's available pool; `taken_items` are removed from the

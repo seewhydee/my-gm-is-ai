@@ -1,8 +1,177 @@
-# Design Issues
+# Design Issues in GMBriefing
 
-## Dead entities shouldn't disappear
+## Dead entities shouldn't disappear [RESOLVED]
 They're omitted from the GMBriefing, but really they ought to be mentioned.
 Otherwise players can't loot corpses, etc.
+
+**Verdict: Agree.** The filter at assembler.py:76 (`if
+entity_state.get("alive") is False: continue`) hides dead entities entirely
+from `entities_visible`.  Corpses are physical objects — they should remain
+visible for looting, examination, and narrative description.  The
+`BriefingEntity.state` dict already carries the full entity state, so the LLM
+can see `alive: false`.
+
+Proposed fix: Remove the alive filter from the visible-entity loop
+(assembler.py:76).  Dead entities appear in `entities_visible` with
+`state: {"alive": false, ...}`.  The alive check should remain for:
+- `dialogue_context` (dead NPCs can't converse) — already correct at
+  assembler.py:282.
+- Entity-note patches for dead entities — engine already rejects these at
+  engine.py:308.
+- Interactions *originating from* dead entities — keep the filter at
+  assembler.py:134 for this loop (dead goblins don't offer interactions with
+  the player).  Interactions *targeting* a dead entity (e.g. "loot corpse")
+  come from room-level or other-entity interactions and are unaffected.
+
+One edge case: a dead *player character* — but that triggers game-over so
+the GMBriefing is moot at that point.
+
+## Entity note history [RESOLVED]
+Keeping only "up to 3 most recent" is not necessary, can cause problems
+
+**Verdict: Weak agreement — raise the cap but keep a cap.**
+
+The "3 most recent" limit is applied at assembler.py:81 during GMBriefing
+construction:
+    notes = soft.entity_notes.get(eid, [])[-3:]
+
+The full notes array is preserved in soft state; only the briefing surfacing
+is truncated.  For contrast, room notes get a cap of 5 (assembler.py:148).
+
+The reviewer is right that an arbitrary cap of 3 is stingy.  If a player
+needs to remember something noted 4 turns ago (e.g. scratch marks), it
+vanishes from the LLM's structured context.  However, completely removing
+the cap risks accumulating unbounded narrative clutter (especially
+conversation summaries auto-appended on dialogue exit — see
+soft-state.md:112-113).
+
+Proposed fix: Raise the entity-note cap to 5 to match room notes.  That's
+simple, symmetric, and addresses the immediate concern.  If a stronger
+solution is wanted later, the assembler could score notes by relevance to
+the current player input and select the top-N rather than blindly taking the
+N most recent.
+
+## Turn history says GMBriefing is not changed by ooc_discussion [NO FIX NEEDED]
+This statement might be just an oversight; ooc_discussion is logged
+(see discussion of ooc_discussion in line 473), so by its presence
+should affect GMBriefing, right?  Please check.  The wording in the
+soft_state.md schema is also ambiguous.  To clarify: we want
+ooc_discussion to be logged (if not in turn_history, then some other
+way), so that the GM has enough conversational memory to carry on a
+naturalistic chain of questions and answers with the player.
+
+**Verdict: Disagree — the current design is correct.**
+
+The statement in plan.md:94-95 is deliberate and correctly implemented at
+assembler.py:251-252:
+    non_ooc = [e for e in soft.turn_history
+               if e.ruled_action.get("action_type") != "ooc_discussion"]
+    last_five = non_ooc[-5:]
+
+OOC entries *are* logged in `soft.turn_history` (preserved for save/load
+and debugging), but are filtered out of the GMBriefing's `recent_history`
+block.  This is the right split because:
+
+1. **LLM Call 1 (Ruling)** receives the GMBriefing.  OOC discussion
+   bypasses the engine entirely (plan.md:148: "during the engine phase, will
+   not advance the turn counter and will not change the hard state or soft
+   state").  Including OOC exchanges in the GMBriefing would waste context
+   on material irrelevant to action resolution.
+
+2. **LLM Call 2 (Prose)** receives the *verbatim chat log* as a separate
+   input (plan.md:220-221).  That is where the conversational memory for
+   naturalistic Q&A lives — not in the structured GMBriefing.  The
+   GM's ability to carry on a Q&A chain is already satisfied by this
+   separate verbatim channel.
+
+The concern that "ooc_discussion should affect GMBriefing" is therefore
+based on a misunderstanding of the data flow: the GMBriefing is the
+*structured* context document for action ruling; conversational continuity
+for the prose narrator comes from the separate verbatim chat log.
+
+The only action needed: add a clarifying sentence to soft-state.md and/or
+plan.md noting that OOC entries are stored in turn_history but the
+GMBriefing's `recent_history` field is built from non-OOC entries only,
+while LLM Call 2 independently receives the verbatim chat log.
+
+## Soft items design remains problematic [RESOLVED]
+Currently, the system relies on direct listing of soft items that are
+present.  If this refers to soft items that have not been
+instantiated, this list could be quite large, polluting context.  Do
+we need this?  We shouldn't need to tell LLM call 1 that rocks are
+present, or that an NPC has nose, hair, mouth, etc.  Without such a
+list, LLM call 1 can still make broad physical plausibility checks
+(e.g., it knows you can't pick up a wall), and the engine can still
+validate (e.g., the player tries to pick up a wand of wishing, engine
+invalidates, narrator reports failure).
+
+On the other hand, it seems that we rely on having an explicit list
+for actions like `examine` and `interact`, which validate by soft
+items' explicit presence.  There seems to be a design problem here.
+
+**Verdict: Agree — this is a genuine design tension that needs a split
+approach.**
+
+The problem correctly identifies a two-sided tension:
+
+  Side A (context pollution): Listing every soft item — rocks, pebbles,
+  dust, "nose, hair, mouth" — in the GMBriefing wastes LLM context on
+  mundane items the player will almost never interact with.  LLM Call 1
+  already has world knowledge for basic physical plausibility ("you can't
+  pick up a wall").
+
+  Side B (validation dependency): The engine validates soft-item actions
+  (transfer, interact) by checking whether the item name appears in the
+  room or entity `soft_items` list.  If the lists aren't surfaced to LLM
+  Call 1, it can't know which soft items are valid targets for `examine`
+  or `interact`, and must guess — leading to trial-and-error rejections.
+
+**These two sides can be separated.**  The corpus is the source of truth
+for what soft items exist; the GMBriefing is a context-limited view for the
+LLM.  The proposed resolution:
+
+1. **Don't list soft items in the GMBriefing by default.**  Remove the
+   `soft_items` fields from `BriefingRoom` and `BriefingEntity` (or set them
+   to empty for the default path).  LLM Call 1 uses common sense to propose
+   soft-item actions (e.g. "I pick up a rock" → transfer action targeting
+   "rock").  The engine validates against the full corpus list and rejects
+   if the item isn't present.  LLM Call 2 narrates rejections naturally
+   ("You search but find no such thing").
+
+2. **Keep the corpus lists for engine validation.**  This is the
+   deterministic backstop that prevents players from conjuring "Wand of
+   Wishing" out of thin air.  The lists remain the authoritative
+   representation of what's physically present, even if they're not
+   surfaced in full to the LLM.
+
+3. **Optionally mark "notable" soft items for briefing inclusion.**  Add an
+   optional `notable: true` flag on corpus soft-item entries.  Only notable
+   items are surfaced in the GMBriefing (e.g. "loose floorboard" in a room
+   where a floorboard hides a secret, or "gold ring" on a corpse).  This
+   gives the LLM the right breadcrumbs for discoverable objects without
+   enumerating every pebble.  If this feels like feature creep for phase 1,
+   skip it — default to no soft items in the briefing.
+
+Why this works: The engine is the gatekeeper.  LLM Call 1 proposes; the
+engine accepts or rejects.  The player experience on rejection is "you
+can't find that here" — which is exactly what a human GM would say if a
+player tried to pick up a non-existent Wand of Wishing.  The LLM's common
+sense covers the mundane ("rocks in a cave" → accepted by the engine
+because the cave's corpus list includes "rock"), and the engine stops the
+fantastical.
+
+Concern about `examine`: When a player says "I examine the rock," LLM
+Call 1 must construct `examine` targeting "rock."  Without the soft-items
+list in the briefing, the LLM might not know "rock" is a valid target.
+But in practice: (a) the LLM can name the item the player named ("rock" is
+in the player's input), (b) the engine validates and rejects if it's not a
+known soft item, (c) LLM Call 2 narrates the outcome.  The player said
+"rock," the GM said "you examine the rock" — the validation is invisible.
+If the player says "I examine the amulet of power" and no such item exists,
+the engine rejects and the narrator says "You don't see any amulet of power
+here" — correct behavior.
+
+# Other design Issues
 
 ## STALE ROOM DESCRIPTIONS PROBLEM
     The axe_handle_lower description mentions the spider; after it

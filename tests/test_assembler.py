@@ -102,7 +102,7 @@ class TestEntityVisibility:
         assert "rip_in_canvas" in entity_ids
         assert "padlock" in entity_ids
 
-    def test_dead_entity_filtered(self, state_manager):
+    def test_dead_entity_still_visible(self, state_manager):
         state_manager.hard_state.player.location = "bag_floor"
         state_manager.hard_state.entity_states["korbar"]["alive"] = False
         result = assemble(
@@ -112,7 +112,7 @@ class TestEntityVisibility:
             "look",
         )
         entity_ids = [e.id for e in result.current_room.entities_visible]
-        assert "korbar" not in entity_ids
+        assert "korbar" in entity_ids
 
     def test_entity_state_included(self, state_manager):
         state_manager.hard_state.player.location = "axe_handle_lower"
@@ -144,10 +144,15 @@ class TestEntityVisibility:
         padlock = next(
             e for e in result.current_room.entities_visible if e.id == "padlock"
         )
-        # Capped at 3 most recent
-        assert padlock.entity_notes == ["Rusty mechanism", "Recently oiled", "Very old"]
+        # Capped at 5 most recent (all 4 fit)
+        assert padlock.entity_notes == [
+            "Scratched surface",
+            "Rusty mechanism",
+            "Recently oiled",
+            "Very old",
+        ]
 
-    def test_entity_soft_items_included(self, state_manager):
+    def test_entity_soft_items_no_longer_populated(self, state_manager):
         state_manager.hard_state.player.location = "bag_floor"
         result = assemble(
             state_manager.corpus,
@@ -158,8 +163,7 @@ class TestEntityVisibility:
         rubbish = next(
             e for e in result.current_room.entities_visible if e.id == "rubbish_pile"
         )
-        assert "cork" in rubbish.soft_items
-        assert "stale sandwich" in rubbish.soft_items
+        assert rubbish.soft_items == []
 
     def test_entity_type_included(self, state_manager):
         state_manager.hard_state.player.location = "bag_floor"
@@ -286,15 +290,14 @@ class TestInteractions:
 class TestRoomSoftItemsAndNotes:
     """Room-level soft items and room notes."""
 
-    def test_room_soft_items(self, state_manager):
+    def test_room_soft_items_no_longer_populated(self, state_manager):
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
             state_manager.soft_state,
             "look",
         )
-        assert "loose stone" in result.current_room.soft_items
-        assert "dust" in result.current_room.soft_items
+        assert result.current_room.soft_items == []
 
     def test_room_notes_included(self, state_manager):
         state_manager.soft_state.room_notes["axe_head"] = [
