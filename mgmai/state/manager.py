@@ -154,30 +154,32 @@ class StateManager:
                     f"soft_state.entity_notes references unknown entity: {entity_id}"
                 )
 
-        # Soft state: npc_attitudes keys must be NPC entities
-        for npc_id in self.soft_state.npc_attitudes:
-            if npc_id not in self.corpus.entities:
+        # Validate entity_states attitude fields against corpus attitude_limits
+        for entity_id, state in self.hard_state.entity_states.items():
+            if "attitude" not in state:
+                continue
+            entity = self.corpus.entities.get(entity_id)
+            if entity is None:
+                continue
+            if entity.type != "npc":
                 errors.append(
-                    f"soft_state.npc_attitudes references unknown entity: {npc_id}"
+                    f"hard_state.entity_states['{entity_id}'] has attitude but "
+                    f"entity type is '{entity.type}', not 'npc'"
                 )
-            elif self.corpus.entities[npc_id].type != "npc":
-                errors.append(
-                    f"soft_state.npc_attitudes references non-NPC entity: {npc_id}"
-                )
-            else:
-                value = self.soft_state.npc_attitudes[npc_id]
-                limits = self.corpus.entities[npc_id].dialogue_guidelines
-                if limits is not None:
-                    if value < limits.attitude_limits.min:
-                        errors.append(
-                            f"soft_state.npc_attitudes['{npc_id}'] = {value} is below "
-                            f"minimum {limits.attitude_limits.min}"
-                        )
-                    if value > limits.attitude_limits.max:
-                        errors.append(
-                            f"soft_state.npc_attitudes['{npc_id}'] = {value} is above "
-                            f"maximum {limits.attitude_limits.max}"
-                        )
+                continue
+            value = state["attitude"]
+            guidelines = entity.dialogue_guidelines
+            if guidelines is not None:
+                if value < guidelines.attitude_limits.min:
+                    errors.append(
+                        f"hard_state.entity_states['{entity_id}'].attitude = {value} is below "
+                        f"minimum {guidelines.attitude_limits.min}"
+                    )
+                if value > guidelines.attitude_limits.max:
+                    errors.append(
+                        f"hard_state.entity_states['{entity_id}'].attitude = {value} is above "
+                        f"maximum {guidelines.attitude_limits.max}"
+                    )
 
         # Validate flags against corpus declaration if provided
         if self.corpus.flags_declared is not None:

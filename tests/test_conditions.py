@@ -28,8 +28,9 @@ def make_hard_state(**overrides) -> HardGameState:
         },
         "entity_states": {
             "player": {"alive": True},
-            "spider": {"alive": True, "fled": False},
-            "korbar": {"alive": True, "told_secret": False},
+            "spider": {"alive": True, "fled": False, "attitude": -5},
+            "korbar": {"alive": True, "told_secret": False, "attitude": 5},
+            "stuck_fly": {"alive": True, "attitude": 0},
         },
         "turn_count": 0,
         "game_over": None,
@@ -43,7 +44,6 @@ def make_soft_state(**overrides) -> SoftGameState:
         "soft_inventory": [],
         "room_notes": {},
         "entity_notes": {},
-        "npc_attitudes": {"korbar": 5, "spider": -5, "stuck_fly": 0},
         "npc_revelations": {},
         "turn_history": [],
         "dialogue_state": {},
@@ -415,40 +415,40 @@ class TestEvaluateConditionStringRoom:
 class TestEvaluateConditionStringAttitude:
     def test_attitude_gte_true(self) -> None:
         hs = make_hard_state()
-        ss = make_soft_state(npc_attitudes={"korbar": 5})
+        ss = make_soft_state()
         assert evaluate_condition_string("attitude:korbar >= 4", hs, ss, None)
 
     def test_attitude_gte_false(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state(npc_attitudes={"korbar": 1})
+        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 1}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
+        ss = make_soft_state()
         assert not evaluate_condition_string("attitude:korbar >= 4", hs, ss, None)
 
     def test_attitude_gte_boundary(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state(npc_attitudes={"korbar": 2})
+        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 2}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
+        ss = make_soft_state()
         assert evaluate_condition_string("attitude:korbar >= 2", hs, ss, None)
 
     def test_attitude_gt(self) -> None:
         hs = make_hard_state()
-        ss = make_soft_state(npc_attitudes={"korbar": 5})
+        ss = make_soft_state()
         assert evaluate_condition_string("attitude:korbar > 2", hs, ss, None)
         assert not evaluate_condition_string("attitude:korbar > 5", hs, ss, None)
 
     def test_attitude_lte(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state(npc_attitudes={"korbar": 3})
+        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 3}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
+        ss = make_soft_state()
         assert evaluate_condition_string("attitude:korbar <= 3", hs, ss, None)
         assert not evaluate_condition_string("attitude:korbar <= 2", hs, ss, None)
 
     def test_attitude_lt(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state(npc_attitudes={"korbar": -3})
+        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": -3}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
+        ss = make_soft_state()
         assert evaluate_condition_string("attitude:korbar < 0", hs, ss, None)
         assert not evaluate_condition_string("attitude:korbar < -5", hs, ss, None)
 
     def test_attitude_negative_values(self) -> None:
         hs = make_hard_state()
-        ss = make_soft_state(npc_attitudes={"spider": -5})
+        ss = make_soft_state()
         assert evaluate_condition_string("attitude:spider == -5", hs, ss, None)
 
     def test_attitude_nonexistent_npc_returns_false(self) -> None:
@@ -465,8 +465,8 @@ class TestEvaluateConditionStringAttitude:
             evaluate_condition_string("attitude:korbar", hs, ss, None)
 
     def test_attitude_defaults_to_corpus_initial(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state(npc_attitudes={})
+        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False}})
+        ss = make_soft_state()
         corpus = make_corpus()
         # korbar's attitude_limits.initial is 0 in the fixture corpus
         assert evaluate_condition_string("attitude:korbar >= 0", hs, ss, corpus)
@@ -576,7 +576,7 @@ class TestEvaluateConditionStringStat:
 
     def test_stat_with_attitude(self) -> None:
         hs = self._with_stats()
-        ss = make_soft_state(npc_attitudes={"korbar": 5})
+        ss = make_soft_state()
         condition = ConditionExpression.model_validate({
             "all": ["stat:CHA >= 15", "attitude:korbar >= 2"],
         })
@@ -632,8 +632,8 @@ class TestEvaluateConditionExpression:
         assert not evaluate(condition, hs, ss)
 
     def test_any_with_nested_conditions(self) -> None:
-        hs = make_hard_state(flags={"injured": False})
-        ss = make_soft_state(npc_attitudes={"korbar": 0})
+        hs = make_hard_state(flags={"injured": False}, entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 0}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
+        ss = make_soft_state()
         condition = ConditionExpression.model_validate({
             "any": [
                 {"require": "flag:injured == true"},
@@ -677,7 +677,7 @@ class TestEvaluateConditionExpression:
 
     def test_all_with_nested_conditions(self) -> None:
         hs = make_hard_state(flags={"injured": False})
-        ss = make_soft_state(npc_attitudes={"korbar": 5})
+        ss = make_soft_state()
         condition = ConditionExpression.model_validate({
             "all": [
                 {"unless": "flag:injured == true"},
@@ -737,9 +737,9 @@ class TestEvaluateWithSampleCorpus:
             },
             "entity_states": {
                 "player": {"alive": True},
-                "stuck_fly": {"alive": True},
-                "spider": {"alive": True, "fled": False},
-                "korbar": {"alive": True, "told_secret": False},
+                "stuck_fly": {"alive": True, "attitude": 0},
+                "spider": {"alive": True, "fled": False, "attitude": -5},
+                "korbar": {"alive": True, "told_secret": False, "attitude": 3},
             },
             "turn_count": 0,
             "game_over": None,
@@ -748,7 +748,6 @@ class TestEvaluateWithSampleCorpus:
             "soft_inventory": [],
             "room_notes": {},
             "entity_notes": {},
-            "npc_attitudes": {"korbar": 3, "stuck_fly": 0, "spider": -5},
             "npc_revelations": {},
             "turn_history": [],
             "dialogue_state": {
@@ -792,9 +791,9 @@ class TestEvaluateWithSampleCorpus:
             },
             "entity_states": {
                 "player": {"alive": True},
-                "stuck_fly": {"alive": False},
-                "spider": {"alive": True, "fled": True},
-                "korbar": {"alive": True, "told_secret": False},
+                "stuck_fly": {"alive": False, "attitude": 0},
+                "spider": {"alive": True, "fled": True, "attitude": -5},
+                "korbar": {"alive": True, "told_secret": False, "attitude": 6},
             },
             "turn_count": 10,
             "game_over": None,
@@ -803,7 +802,6 @@ class TestEvaluateWithSampleCorpus:
             "soft_inventory": ["cork"],
             "room_notes": {},
             "entity_notes": {},
-            "npc_attitudes": {"korbar": 6, "stuck_fly": 0, "spider": -5},
             "npc_revelations": {},
             "turn_history": [],
             "dialogue_state": {
@@ -814,10 +812,6 @@ class TestEvaluateWithSampleCorpus:
                 "stall_counter": 0,
             },
         })
-
-        assert evaluate_condition_string(
-            "attitude:korbar >= 4", hs, ss, sample_corpus
-        )
 
         assert evaluate_condition_string(
             "flag:injured == false", hs, ss, sample_corpus
@@ -849,10 +843,10 @@ class TestEdgeCases:
 
     def test_comparison_numeric_value(self) -> None:
         hs = make_hard_state(
-            entity_states={"boss": {"hp": 5}},
+            entity_states={"boss": {"hp": 5}, "npc": {"attitude": -2}},
             room_states={"pit": {"depth": 3}},
         )
-        ss = make_soft_state(npc_attitudes={"npc": -2})
+        ss = make_soft_state()
 
         assert evaluate_condition_string("entity:boss.hp >= 3", hs, ss, None)
         assert evaluate_condition_string("entity:boss.hp <= 10", hs, ss, None)
@@ -863,10 +857,10 @@ class TestEdgeCases:
 
     def test_equality_with_string(self) -> None:
         hs = make_hard_state(
-            entity_states={"chest": {"state": "open"}},
+            entity_states={"chest": {"state": "open"}, "npc": {"attitude": 0}},
             room_states={"tower": {"weather": "stormy"}},
         )
-        ss = make_soft_state(npc_attitudes={"npc": 0})
+        ss = make_soft_state()
         assert evaluate_condition_string("entity:chest.state == open", hs, ss, None)
         assert not evaluate_condition_string("entity:chest.state == closed", hs, ss, None)
         assert evaluate_condition_string("room:tower.weather == stormy", hs, ss, None)

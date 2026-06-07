@@ -537,28 +537,34 @@ class TestRecentHistory:
 class TestNpcAttitudes:
     """NPC attitude pass-through."""
 
-    def test_attitudes_from_soft_state(self, state_manager):
+    def test_attitudes_in_entity_state(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
             state_manager.soft_state,
             "look",
         )
-        assert result.npc_attitudes == {
-            "korbar": 0,
-            "stuck_fly": 0,
-            "spider": -5,
-        }
+        korbar_entity = next(
+            (e for e in result.current_room.entities_visible if e.id == "korbar"), None
+        )
+        assert korbar_entity is not None
+        assert korbar_entity.state.get("attitude") == 0
 
-    def test_attitudes_updated(self, state_manager):
-        state_manager.soft_state.npc_attitudes["korbar"] = 5
+    def test_attitudes_updated_in_entity_state(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        state_manager.hard_state.entity_states["korbar"]["attitude"] = 5
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
             state_manager.soft_state,
             "talk to korbar",
         )
-        assert result.npc_attitudes["korbar"] == 5
+        korbar_entity = next(
+            (e for e in result.current_room.entities_visible if e.id == "korbar"), None
+        )
+        assert korbar_entity is not None
+        assert korbar_entity.state.get("attitude") == 5
 
 
 class TestNpcRevelations:
@@ -616,7 +622,7 @@ class TestDialogueContext:
             entered_turn=1,
             stall_counter=0,
         )
-        state_manager.soft_state.npc_attitudes["korbar"] = 3
+        state_manager.hard_state.entity_states["korbar"]["attitude"] = 3
 
         result = assemble(
             state_manager.corpus,
@@ -766,7 +772,6 @@ class TestErrorHandling:
         state_manager.soft_state.soft_inventory = []
         state_manager.soft_state.room_notes = {}
         state_manager.soft_state.entity_notes = {}
-        state_manager.soft_state.npc_attitudes = {}
         state_manager.soft_state.npc_revelations = {}
         state_manager.soft_state.turn_history = []
         state_manager.soft_state.dialogue_state = DialogueState()
@@ -778,7 +783,6 @@ class TestErrorHandling:
             "look",
         )
         assert result.player_state.soft_inventory == []
-        assert result.npc_attitudes == {}
         assert result.npc_revelations == {}
         assert result.recent_history == []
         assert result.dialogue_context is None

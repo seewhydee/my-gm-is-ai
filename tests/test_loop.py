@@ -230,8 +230,7 @@ class TestRunTurn:
         self, state_manager, fake_display
     ) -> None:
         """When prose output has knowledge_tags, post-validation is applied."""
-        soft = state_manager.soft_state
-        soft.npc_attitudes["korbar"] = 5
+        state_manager.hard_state.entity_states["korbar"]["attitude"] = 5
 
         prose = json.dumps({
             "narration": "Korbar tells you a secret.",
@@ -257,8 +256,6 @@ class TestRunTurn:
         self, state_manager, fake_display
     ) -> None:
         """When prose output has attitude_changes, post-validation is applied."""
-        soft = state_manager.soft_state
-        soft.npc_attitudes["korbar"] = 0
 
         prose = json.dumps({
             "narration": "Korbar appreciates your kindness.",
@@ -277,7 +274,7 @@ class TestRunTurn:
 
         assert loop._last_result is not None
         assert "korbar" in loop._last_result.attitude_changes_applied
-        assert state_manager.soft_state.npc_attitudes["korbar"] == 1
+        assert state_manager.hard_state.entity_states["korbar"]["attitude"] == 1
 
     def test_npc_response_feeds_dialogue(
         self, state_manager, fake_display
@@ -286,7 +283,6 @@ class TestRunTurn:
         soft = state_manager.soft_state
         soft.dialogue_state.active_npc = "korbar"
         soft.dialogue_state.conversation_log = []
-        soft.npc_attitudes["korbar"] = 0
 
         prose = json.dumps({
             "narration": "Korbar grunts in reply.",
@@ -314,7 +310,7 @@ class TestRunTurn:
         soft.dialogue_state.active_npc = "korbar"
         soft.dialogue_state.conversation_log = []
         soft.dialogue_state.topics_discussed = []
-        soft.npc_attitudes["korbar"] = 5
+        state_manager.hard_state.entity_states["korbar"]["attitude"] = 5
 
         prose = json.dumps({
             "narration": "Korbar explains the padlock.",

@@ -236,7 +236,6 @@ class TestGMBriefing:
                 "soft_inventory": ["rock"],
                 "active_flags": {"injured": False},
             },
-            "npc_attitudes": {"korbar": 2},
             "npc_revelations": {
                 "korbar": [
                     {"topic_id": "padlock_mechanism", "description": "How to open from inside"},
@@ -252,7 +251,6 @@ class TestGMBriefing:
             "player_input": "I look at the spider.",
         })
         assert b.current_room.id == "axe_handle_lower"
-        assert b.npc_attitudes["korbar"] == 2
         assert len(b.recent_history) == 1
         assert b.dialogue_context is None
 

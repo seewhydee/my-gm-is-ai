@@ -541,7 +541,12 @@ def _build_npc_attitude_limits(
             continue
 
         limits = guidelines.attitude_limits
-        current = soft.npc_attitudes.get(eid, limits.initial)
+        entity_state = hard.entity_states.get(eid, {})
+        attitude_val = entity_state.get("attitude")
+        if attitude_val is None:
+            current = limits.initial
+        else:
+            current = int(attitude_val)
 
         result[eid] = AttitudeLimitsCurrent(
             min=limits.min,

@@ -108,13 +108,15 @@ def post_validate_attitude_changes(
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
-) -> tuple[dict[str, AttitudeChange], dict[str, dict[str, Any]]]:
+) -> tuple[dict[str, AttitudeChange], dict[str, dict[str, Any]], HardStateChanges]:
     """Validate attitude changes.
 
-    Returns (applied, rejected) where rejected has explanations.
+    Returns (applied, rejected, hard_state_changes) where rejected has
+    explanations and hard_state_changes records validated attitude updates.
     """
     applied: dict[str, AttitudeChange] = {}
     rejected: dict[str, dict[str, Any]] = {}
+    hard_changes = HardStateChanges()
 
     for npc_id, change in attitude_changes.items():
         npc_entity = corpus.entities.get(npc_id)
@@ -142,7 +144,11 @@ def post_validate_attitude_changes(
             continue
 
         limits = guidelines.attitude_limits
-        current = soft.npc_attitudes.get(npc_id, limits.initial)
+        attitude_val = entity_state.get("attitude")
+        if attitude_val is None:
+            current = limits.initial
+        else:
+            current = int(attitude_val)
 
         if change.old_value != current:
             rejected[npc_id] = {
@@ -192,10 +198,13 @@ def post_validate_attitude_changes(
             }
             continue
 
-        soft.npc_attitudes[npc_id] = change.new_value
+        if npc_id not in hard.entity_states:
+            hard.entity_states[npc_id] = {}
+        hard.entity_states[npc_id]["attitude"] = change.new_value
+        hard_changes.entity_state_changes.setdefault(npc_id, {})["attitude"] = change.new_value
         applied[npc_id] = change
 
-    return applied, rejected
+    return applied, rejected, hard_changes
 
 
 def apply_post_validation(
@@ -237,9 +246,12 @@ def apply_post_validation(
     attitude_changes_rejected: dict[str, dict[str, Any]] = {}
 
     if attitude_changes:
-        attitude_changes_applied, attitude_changes_rejected = (
+        attitude_changes_applied, attitude_changes_rejected, attitude_hard_changes = (
             post_validate_attitude_changes(attitude_changes, hard, soft, corpus)
         )
+        if attitude_hard_changes.has_changes():
+            state_manager.apply_hard_changes(attitude_hard_changes)
+            post_hard_changes.merge(attitude_hard_changes)
 
     if base_result is not None:
         result = base_result.model_copy(deep=True)

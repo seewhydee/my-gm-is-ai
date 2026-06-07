@@ -37,7 +37,7 @@ class TestPostValidateKnowledgeTags:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
-        soft.npc_attitudes["korbar"] = 5
+        hard.entity_states["korbar"]["attitude"] = 5
         tags = {"korbar": ["secret_compartment"]}
         revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
         assert len(revelations) == 1
@@ -58,7 +58,7 @@ class TestPostValidateKnowledgeTags:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
-        soft.npc_attitudes["korbar"] = 0
+        hard.entity_states["korbar"]["attitude"] = 0
         tags = {"korbar": ["padlock_mechanism"]}
         revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
         assert len(revelations) == 0
@@ -99,7 +99,7 @@ class TestPostValidateKnowledgeTags:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
-        soft.npc_attitudes["korbar"] = 5
+        hard.entity_states["korbar"]["attitude"] = 5
         tags = {"korbar": ["secret_compartment"]}
         post_validate_knowledge_tags(tags, hard, soft, corpus)
         revelations, hard_changes = post_validate_knowledge_tags(tags, hard, soft, corpus)
@@ -113,24 +113,26 @@ class TestPostValidateAttitudeChanges:
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
-        soft.npc_attitudes["korbar"] = 0
+        hard.entity_states["korbar"]["attitude"] = 0
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=2, reason="Friendly chat")
         }
-        applied, rejected = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" in applied
         assert "korbar" not in rejected
-        assert soft.npc_attitudes["korbar"] == 2
+        assert hard.entity_states["korbar"]["attitude"] == 2
+        assert "korbar" in hard_changes.entity_state_changes
+        assert hard_changes.entity_state_changes["korbar"]["attitude"] == 2
 
     def test_old_value_mismatch_rejected(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
-        soft.npc_attitudes["korbar"] = 0
+        hard.entity_states["korbar"]["attitude"] = 0
         changes = {
             "korbar": AttitudeChange(old_value=5, new_value=7, reason="Test")
         }
-        applied, rejected = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
         assert "mismatch" in rejected["korbar"]["reason"]
@@ -139,11 +141,11 @@ class TestPostValidateAttitudeChanges:
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
-        soft.npc_attitudes["korbar"] = 0
+        hard.entity_states["korbar"]["attitude"] = 0
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=10, reason="Big jump")
         }
-        applied, rejected = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
         assert "step_per_turn" in rejected["korbar"]["reason"]
@@ -152,11 +154,11 @@ class TestPostValidateAttitudeChanges:
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
-        soft.npc_attitudes["korbar"] = 0
+        hard.entity_states["korbar"]["attitude"] = 0
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=100, reason="OOB")
         }
-        applied, rejected = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
 
@@ -165,11 +167,11 @@ class TestPostValidateAttitudeChanges:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.entity_states["korbar"]["alive"] = False
-        soft.npc_attitudes["korbar"] = 0
+        hard.entity_states["korbar"]["attitude"] = 0
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=1, reason="Dead NPC")
         }
-        applied, rejected = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
 
@@ -177,11 +179,11 @@ class TestPostValidateAttitudeChanges:
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
-        soft.npc_attitudes["korbar"] = 0
+        hard.entity_states["korbar"]["attitude"] = 0
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=1, reason="")
         }
-        applied, rejected = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
 
@@ -189,11 +191,11 @@ class TestPostValidateAttitudeChanges:
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
-        soft.npc_attitudes["spider"] = -5
+        hard.entity_states["spider"]["attitude"] = -5
         changes = {
             "spider": AttitudeChange(old_value=-5, new_value=-4, reason="Feed spider")
         }
-        applied, rejected = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "spider" not in applied
         assert "spider" in rejected
         assert "step_per_turn is 0" in rejected["spider"]["reason"]
@@ -205,7 +207,7 @@ class TestPostValidateAttitudeChanges:
         changes = {
             "nonexistent": AttitudeChange(old_value=0, new_value=1, reason="Test")
         }
-        applied, rejected = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "nonexistent" not in applied
         assert "nonexistent" in rejected
 
@@ -215,7 +217,7 @@ class TestApplyPostValidation:
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         hard.player.location = "bag_floor"
-        soft.npc_attitudes["korbar"] = 5
+        hard.entity_states["korbar"]["attitude"] = 5
 
         knowledge_tags = {"korbar": ["secret_compartment"]}
         attitude_changes = {
@@ -235,6 +237,9 @@ class TestApplyPostValidation:
         assert result.hard_state_changes is not None
         assert result.hard_state_changes.flags_set.get("handkerchief_noticed") is True
         assert result.hard_state_changes.entity_state_changes["korbar"]["told_secret"] is True
+        # Attitude change applied to entity_states
+        assert result.hard_state_changes.entity_state_changes["korbar"]["attitude"] == 6
+        assert hard.entity_states["korbar"]["attitude"] == 6
 
     def test_none_inputs_are_noop(self, state_manager):
         base = EngineResult(success=True, action_type="talk")
@@ -248,7 +253,7 @@ class TestApplyPostValidation:
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         hard.player.location = "bag_floor"
-        soft.npc_attitudes["korbar"] = 5
+        hard.entity_states["korbar"]["attitude"] = 5
 
         knowledge_tags = {"korbar": ["secret_compartment"]}
         result = apply_post_validation(knowledge_tags, None, state_manager)

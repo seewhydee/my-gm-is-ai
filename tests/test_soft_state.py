@@ -238,7 +238,6 @@ class TestSoftGameState:
         assert s.soft_inventory == []
         assert s.room_notes == {}
         assert s.entity_notes == {}
-        assert s.npc_attitudes == {}
         assert s.npc_revelations == {}
         assert s.turn_history == []
         assert s.dialogue_state.active_npc is None
@@ -252,7 +251,6 @@ class TestSoftGameState:
             "entity_notes": {
                 "spider": ["Left legs covered in ichor."],
             },
-            "npc_attitudes": {"korbar": 2},
             "npc_revelations": {
                 "korbar": [
                     {"topic_id": "padlock_mechanism", "description": "How to open from inside"},
@@ -279,7 +277,6 @@ class TestSoftGameState:
             },
         })
         assert s.soft_inventory == ["rock"]
-        assert s.npc_attitudes["korbar"] == 2
         assert len(s.turn_history) == 1
         assert s.dialogue_state.active_npc == "korbar"
 
@@ -305,6 +302,5 @@ class TestSoftGameState:
         data = json.loads(path.read_text())
         s = SoftGameState.model_validate(data)
         assert s.soft_inventory == []
-        assert s.npc_attitudes.get("korbar") == 0
         assert s.dialogue_state.active_npc is None
         assert s.dialogue_state.stall_counter == 0

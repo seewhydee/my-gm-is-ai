@@ -126,10 +126,6 @@ Soft State, for the ruling LLM (call 1).
     }
   },
 
-  "npc_attitudes": {
-    "korbar": 2
-  },
-
   "npc_revelations": {
     "korbar": [
       {

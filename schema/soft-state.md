@@ -21,7 +21,6 @@ continuity (NPC moods, environmental details, conversation memory).
   "soft_inventory":    ["string", ...],
   "room_notes":        { "<room_id>": ["string", ...] },
   "entity_notes":      { "<entity_id>": ["string", ...] },
-  "npc_attitudes":     { "<npc_entity_id>": <integer> },
   "npc_revelations":   { "<npc_entity_id>": [{ "topic_id": "...", "description": "..." }] },
   "turn_history":      [ { /* turn log entry */ } ],
   "surfaced_soft_items": { "<room_or_entity_id>": ["string", ...] },
@@ -136,26 +135,17 @@ conversation summary is appended here as an `entity_note` on the NPC.
 
 ---
 
-## `npc_attitudes` — NPC disposition tracking
+## NPC Attitude Tracking
 
-```json
-{
-  "korbar": 2,
-  "angry_troll": -3
-}
-```
+NPC attitude is now tracked as a `state_fields` entry per NPC in
+`hard_state.entity_states` (see `corpus.md` § `dialogue_guidelines.attitude_limits`
+and the `entity_states` section of `hard-state.md`). Attitude changes are proposed
+by LLM Call 2 via the `attitude_changes` block, post-validated by the engine, and
+applied to `hard_state.entity_states[<npc_id>].attitude` via
+`StateManager.apply_hard_changes()`.
 
-Tracks NPC disposition as an integer. Positive values indicate friendly
-disposition; negative values indicate hostility. Zero (0) is neutral.
-
-### Attitude semantics
-
-| Range      | Typical NPC behaviour |
-|------------|-----------------------|
-| < 0        | Hostile / antagonistic. May attack, obstruct, or refuse cooperation. |
-| 0          | Neutral. Default starting attitude. Indifferent or cautious. |
-| 1–3        | Mildly friendly. Willing to talk, may help with small requests. |
-| 4+         | Very friendly. Offers help, reveals secrets, becomes an ally. |
+The Context Assembler includes attitude values for visible NPCs through the
+`BriefingEntity.state` field, which contains all declared entity state fields.
 
 ### Transition rules (enforced by engine)
 
@@ -171,7 +161,7 @@ and post-validated by the engine in step 4.5:
    NPC are rejected.
 4. The engine initialises each NPC's attitude from the corpus
    `dialogue_guidelines.attitude_limits.initial` (default 0) if no explicit value
-   is provided in the soft state startup file.
+   is provided in the hard state startup file.
 
 ### Relationship to `dialogue_guidelines`
 
@@ -473,9 +463,6 @@ post-validates them against the NPC's `attitude_limits` using the same rules:
   "soft_inventory": [],
   "room_notes": {},
   "entity_notes": {},
-  "npc_attitudes": {
-    "korbar": 0
-  },
   "npc_revelations": {},
   "surfaced_soft_items": {},
   "turn_history": [],

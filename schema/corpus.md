@@ -411,7 +411,7 @@ diverge (same risk as rejected soft-state patches).
 
 #### `attitude_limits`
 
-NPC attitude is tracked as an integer in `soft_state.npc_attitudes`. Positive values indicate friendly disposition; negative values indicate hostility. The `attitude_limits` block constrains how attitude can change:
+NPC attitude is tracked as an integer in `hard_state.entity_states[<npc_id>].attitude`. Positive values indicate friendly disposition; negative values indicate hostility. The `attitude_limits` block constrains how attitude can change:
 
 | Field          | Type   | Description |
 |----------------|--------|-------------|

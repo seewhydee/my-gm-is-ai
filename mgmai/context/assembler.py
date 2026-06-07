@@ -26,10 +26,7 @@ def assemble(
     soft: SoftGameState,
     player_input: str,
 ) -> GMBriefing:
-    """Build a GMBriefing from the current corpus + game state.
-
-    Pure data assembly — no LLM calls, no state mutation.
-    """
+    """Build a GMBriefing from the current corpus + game state."""
     room_id = hard.player.location
     room = corpus.rooms.get(room_id)
     if room is None:
@@ -46,7 +43,6 @@ def assemble(
         turn=hard.turn_count,
         current_room=_build_room(room_id, room, hard, soft, corpus),
         player_state=_build_player_state(hard, soft, player_stats),
-        npc_attitudes=dict(soft.npc_attitudes),
         npc_revelations=_build_npc_revelations(soft, corpus),
         recent_history=_build_recent_history(soft),
         dialogue_context=_build_dialogue_context(soft, hard, corpus),
@@ -282,7 +278,11 @@ def _build_dialogue_context(
     if entity_state.get("alive") is False:
         return None
 
-    attitude = soft.npc_attitudes.get(npc_id, guidelines.attitude_limits.initial)
+    attitude_val = entity_state.get("attitude")
+    if attitude_val is None:
+        attitude = guidelines.attitude_limits.initial
+    else:
+        attitude = int(attitude_val)
 
     recent_exchanges = _pair_conversation_log(ds.conversation_log)
 

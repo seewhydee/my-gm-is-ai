@@ -320,6 +320,10 @@
         "alive": {
           "type": "boolean",
           "description": "Whether the fly is still alive."
+        },
+        "attitude": {
+          "type": "number",
+          "description": "The fly's disposition toward the player. Positive is friendly."
         }
       },
       "dialogue_guidelines": {
@@ -385,6 +389,10 @@
         "fled": {
           "type": "boolean",
           "description": "Whether the spider has fled into the shadows."
+        },
+        "attitude": {
+          "type": "number",
+          "description": "The spider's disposition toward the player. Positive is friendly."
         }
       },
       "dialogue_guidelines": {
@@ -565,6 +573,10 @@
         "told_secret": {
           "type": "boolean",
           "description": "Whether Korbar has revealed the secret compartment location."
+        },
+        "attitude": {
+          "type": "number",
+          "description": "Korbar's disposition toward the player. Positive is friendly."
         }
       },
       "dialogue_guidelines": {

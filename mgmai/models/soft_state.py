@@ -80,7 +80,6 @@ class SoftGameState(BaseModel):
     soft_inventory: List[str] = Field(default_factory=list)
     room_notes: Dict[str, List[str]] = Field(default_factory=dict)
     entity_notes: Dict[str, List[str]] = Field(default_factory=dict)
-    npc_attitudes: Dict[str, int] = Field(default_factory=dict)
     npc_revelations: Dict[str, List[NpcRevelation]] = Field(default_factory=dict)
     turn_history: List[TurnHistoryEntry] = Field(default_factory=list)
     dialogue_state: DialogueState = Field(default_factory=DialogueState)

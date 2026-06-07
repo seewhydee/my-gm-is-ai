@@ -10,9 +10,8 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 
 - **adventure_title**, **setting**, **tone**: One or two sentences about the adventure.
 - **turn**: Current turn number.
-- **current_room**: The room the player is in — ID, name, description, soft_items available, visible entities (with state fields and entity_notes), available exits, and available interactions.
+- **current_room**: The room the player is in — ID, name, description, soft_items available, visible entities (with state fields including attitude, and entity_notes), available exits, and available interactions.
 - **player_state**: Hard inventory (item IDs), soft inventory (named objects like "rock"), active flags, entity notes on the player. When the corpus defines stats, includes `player_stats` with each stat's value and computed modifier (e.g. `"STR": { "value": 14, "modifier": 2 }`).
-- **npc_attitudes**: Current attitude values for NPCs the player has met.
 - **npc_revelations**: Topics NPCs have revealed so far, with descriptions.
 - **recent_history**: Last few turn summaries (structured, not verbatim).
 - **dialogue_context**: (if in conversation) Active NPC details, attitude, dialogue guidelines, recent exchanges, topics discussed, and revealed topics.
@@ -122,7 +121,7 @@ Input: "I search the room thoroughly"
 Output: `{"action_type": "examine", "target": "room_entrance", "rigorous": true, "detail": "Player conducts a thorough search of the entrance hall", "follow_up": null, "proposed_soft_state_patches": []}`
 
 Input: "I pick up the rusty key and unlock the padlock"
-Output: `{"action_type": "transfer", "target": "axe_head", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "proposed_soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "dungeon_cell", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "proposed_soft_state_patches": []}`
 
 Input: "I pull a loose rock from the wall and throw it at the spider"
 Output: `{"action_type": "interact", "target": "spider", "interaction_id": "attack", "using": "rock", "detail": "Player throws a loose rock at the spider", "follow_up": null, "proposed_soft_state_patches": [{"field": "soft_inventory_add", "target_id": null, "entity_id": null, "new_value": "rock", "reason": "Player picked loose rock from wall"}]}`

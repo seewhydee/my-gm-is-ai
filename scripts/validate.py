@@ -314,7 +314,11 @@ def format_state(state_manager: StateManager) -> str:
         "soft_inventory": soft.soft_inventory,
         "flags": hard.flags,
         "turn_count": hard.turn_count,
-        "npc_attitudes": dict(soft.npc_attitudes),
+        "entity_attitudes": {
+            eid: s.get("attitude")
+            for eid, s in hard.entity_states.items()
+            if "attitude" in s
+        },
     }, indent=2)
 
 

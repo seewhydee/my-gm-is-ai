@@ -110,7 +110,8 @@ def evaluate_condition_string(
             raise ValueError(
                 f"attitude condition requires operator and value: {raw!r}"
             )
-        attitude_val = soft_state.npc_attitudes.get(key)
+        entity_state = hard_state.entity_states.get(key, {})
+        attitude_val = entity_state.get("attitude")
         if attitude_val is None and corpus is not None:
             entity = corpus.entities.get(key)
             if entity is not None and entity.dialogue_guidelines is not None:

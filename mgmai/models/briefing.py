@@ -82,7 +82,6 @@ class GMBriefing(BaseModel):
     turn: int
     current_room: BriefingRoom
     player_state: PlayerStateBriefing
-    npc_attitudes: Dict[str, int] = Field(default_factory=dict)
     npc_revelations: Dict[str, List[Dict[str, str]]] = Field(default_factory=dict)
     recent_history: List[BriefingHistoryEntry] = Field(default_factory=list)
     dialogue_context: Optional[DialogueContext] = None

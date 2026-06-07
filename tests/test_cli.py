@@ -70,8 +70,9 @@ class TestCliBoot:
             f'"hard": {{"player": {{"location": "axe_head", "inventory": []}}, '
             f'"flags": {{}}, "room_states": {{}}, "entity_states": {{}}, "turn_count": 0}}, '
             f'"soft": {{"soft_inventory": [], "room_notes": {{}}, "entity_notes": {{}}, '
-            f'"npc_attitudes": {{}}, "turn_history": [], '
-            f'"npc_revelations": {{}}}}}}'
+            f'"npc_revelations": {{}}, "turn_history": [], '
+            f'"dialogue_state": {{"active_npc": null, "conversation_log": [], '
+            f'"topics_discussed": [], "entered_turn": 0, "stall_counter": 0}}}}}}'
         )
         mock_loop = MagicMock()
 

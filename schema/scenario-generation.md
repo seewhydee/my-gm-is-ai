@@ -634,7 +634,6 @@ Initial soft state. See `soft-state.md` for the full schema.
   "soft_inventory": [],
   "room_notes": {},
   "entity_notes": {},
-  "npc_attitudes": { "<npc_entity_id>": <integer> },
   "npc_revelations": {},
   "turn_history": [],
   "dialogue_state": {
@@ -656,18 +655,21 @@ Initial soft state. See `soft-state.md` for the full schema.
    each room: `{ "axe_head": [], ... }`. Either is acceptable.)
 3. **`entity_notes`**: empty object `{}` (or pre-filled with empty arrays per
    entity).
-4. **`npc_attitudes`**: for every NPC entity (type `npc`), add an entry with
-   the initial attitude value from that NPC's
-   `dialogue_guidelines.attitude_limits.initial`. If `initial` is not specified,
-   use `0`.
+4. **NPC attitude initialisation**: for every NPC entity (type `npc`), add an
+    `"attitude"` field to the entity's entry in `hard_state.entity_states` with
+    the initial attitude value from that NPC's
+    `dialogue_guidelines.attitude_limits.initial`. If `initial` is not specified,
+    use `0`. Also add `"attitude"` to the entity's `state_fields` in the corpus
+    (e.g., `"attitude": {"type": "number", "description": "..."}`).
 5. **`npc_revelations`**: always `{}` at start. The engine populates this
-   during play when NPCs reveal gated topics.
+    during play when NPCs reveal gated topics.
 6. **`turn_history`**: always `[]`.
 7. **`dialogue_state`**: always the null-state structure shown above.
 
 ### Validation checklist for soft-state.json
 
-- [ ] Every NPC in the corpus has an entry in `npc_attitudes`.
+- [ ] Every NPC in the corpus has `attitude` declared in `state_fields` and
+  an initial value in `hard_state.entity_states`.
 - [ ] Attitude values are within the NPC's `[min, max]` range.
 - [ ] `npc_revelations` is an empty object `{}`.
 - [ ] `dialogue_state` has the null structure (all fields present with empty/null
@@ -817,7 +819,8 @@ If the corpus has a `stats` block, include `player.stats`.
 
 ### Step H: Generate `soft-state.json`
 
-Follow §5. Ensure every NPC gets an attitude entry.
+Follow §5. Ensure every NPC gets an attitude entry in `hard_state.entity_states`
+and has `attitude` declared in their corpus `state_fields`.
 
 ### Step I: Cross-file validation
 
@@ -829,9 +832,9 @@ Follow §5. Ensure every NPC gets an attitude entry.
 - [ ] Every `set_flag` flag name is declared in `hard_state.flags`.
 - [ ] Every `add_item` / `remove_item` references a valid entity ID.
 - [ ] Every `trigger_encounter` references a valid `mechanics` entry.
-- [ ] Every `entity_id` in `soft_state.npc_attitudes` has `type: "npc"`.
-- [ ] Conversational NPCs (those in `npc_attitudes`) have `dialogue_guidelines`
-  in their corpus entity definition.
+- [ ] Every NPC entity has `attitude` declared in `state_fields` and an
+  initial value in `hard_state.entity_states`.
+- [ ] Conversational NPCs have `dialogue_guidelines` in their corpus entity definition.
 - [ ] Combat NPCs have `behavior` in their corpus entity definition.
 - [ ] Every `set_flag` in `will_reveal` entries references a flag declared in `hard_state.flags`.
 - [ ] Every `set_entity_state` in `will_reveal` entries references valid entity IDs with declared `state_fields`.
@@ -895,10 +898,11 @@ Follow §5. Ensure every NPC gets an attitude entry.
     `{ "all": [...] }`). Bare strings are no longer accepted anywhere. Use
     `{ "require": "..." }` for simple conditions.
 
-10. **Attitude initialisation**: The `npc_attitudes` in soft-state.json must
-    use the NPC's `attitude_limits.initial` value. If a scenario says "Korbar
-    is initially neutral", that's `0`. If she's described as friendly, set
-    higher (e.g. `1` or `2`).
+10. **Attitude initialisation**: Each NPC's initial attitude is stored in
+    `hard_state.entity_states[<npc_id>].attitude` and must match the NPC's
+    `attitude_limits.initial` value. If a scenario says "Korbar is initially
+    neutral", that's `0`. If she's described as friendly, set higher (e.g. `1`
+    or `2`).
 
 11. **Item placement**: Items that start in a specific location should appear
     in that room's `entities_present`. Items the player starts carrying should
