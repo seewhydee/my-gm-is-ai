@@ -192,10 +192,10 @@ Soft State, for the ruling LLM (call 1).
    `adventure.atmosphere` block.  Some brief sentences about the world and
    narrative style.
 
-2. **Current room**: fetched by ID from the module corpus. Only entities with
-   `state.alive == true` (or equivalent) are included in `entities_visible`.
-   Each visible entity includes its current hard state, entity notes (up to 3
-   most recent), and its soft_items list. Hidden entities are omitted.
+2. **Current room**: fetched by ID from the module corpus. Includes 
+   `entities_visible`, listing all non-concealed entities in the room.
+   Each of these entity entries includes the entity ID, current hard
+   state, and entity notes (up to 3 most recent).
 
 3. **Soft items** in the room (from `room.soft_items`) are listed directly.
    Entity-specific soft items are listed under each entity's entry.
@@ -212,12 +212,9 @@ Soft State, for the ruling LLM (call 1).
 6. **Recent history** is drawn from soft state `turn_history`, which
    summarizes the player's recent actions.  This includes the last 5
    proper entries from non-`ooc_discussion` turns; `ooc_discussion`
-   entries are included, but do not count toward the cap.  Thus,
-   GMBriefing is unchanged over multiple `ooc_discussion` actions.
-   NO raw chat log.
+   entries are included but do not count toward the cap.  NO raw chat log.
 
-7. **NPC attitudes** includes attitudes for all NPCs the player has met
-   (or all known NPCs, at the implementer's discretion).
+7. **NPC attitudes** includes attitudes for all known NPCs.
 
 8. **NPC revelations** are drawn from `soft_state.npc_revelations`. Each NPC
    with revealed topics lists them with their `will_reveal` descriptions, so
@@ -230,22 +227,18 @@ Soft State, for the ruling LLM (call 1).
    the player). If `active_npc` is null, `dialogue_context` is omitted.
 
 10. **Player input** is the verbatim text entered this turn. For chained
-    actions (see Follow-up below), this is the original input plus a clear
-    indication of where the chain currently stands.
+    actions (described below), this is the original input plus a clear
+	indication of where the chain currently stands.
 
 ---
 
 ## 2. PlayerAction -- Output of LLM Call 1
 
-The LLM must output a single structured action. This is the *ruling* — the LLM
-interprets the player's intent and produces a structured proposal, which the
-engine then validates and resolves.
-
-Every PlayerAction carries these fields:
+The LLM must output a single structured action, corresponding to the player's intent, for the engine to validate and resolve.  Every PlayerAction carries these fields:
 
 | Field                        | Type    | Required | Description |
 |------------------------------|---------|----------|-------------|
-| `action_type`                | string  | yes      | One of the supported action types below. |
+| `action_type`                | string  | yes      | One of the action types below. |
 | `detail`                     | string  | yes      | Natural-language description of what the player attempts. |
 | `follow_up`                  | string  | no       | The remainder of a chained action yet to be performed. See Follow-up below. |
 | `proposed_soft_state_patches`| array   | no       | Structured soft-state patch requests. See SoftStatePatch in soft-state.md. |
@@ -468,8 +461,8 @@ Allows the player to speak to the GM out-of-character for clarifications,
 rule questions, or meta-discussion.
 
 **Engine behaviour:**
-- The engine performs a no-op: no hard state changes. The turn counter is **not**
-  incremented.
+- The engine performs a no-op: no hard state changes. The turn counter is 
+  **not** incremented.
 - The player input is logged in `turn_history` for debugging but does not count
   toward the GMBriefing entry cap.
 - The engine skips directly to LLM Call 2 with the `ooc_discussion` action
@@ -487,8 +480,8 @@ the key and unlock the door"). The LLM is instructed to:
 
 1. Identify the first (or next) discrete step in the chain.
 2. Construct a `PlayerAction` for that step.
-3. Place the remainder of the chain in the `follow_up` field as a natural-language
-   string describing what remains to be done.
+3. Place the remainder of the chain in the `follow_up` field as a 
+   natural-language string describing what remains to be done.
 
 ```json
 {
