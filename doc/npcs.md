@@ -172,8 +172,6 @@ Certain pieces of knowledge that are plot/mechanics relevant are tracked with un
 
 NPCs have a `will_reveal` field specifying what topics they can potentially inform the player about.  As for non-plot-relevant topics, the LLM narrator can deal freely with those.
 
-### Topic Definition
-
 Each topic under `will_reveal` has:
 
 | Field | Description |
@@ -187,7 +185,7 @@ Conditions use the usual condition syntax and can reference attitude (`attitude:
 
 ### Flow: How Knowledge Is Revealed
 
-1. **The engine** evaluates all `will_reveal` entries for NPCs in the current room and produces `will_reveal_readiness` on the `EngineResult`:
+1. The engine evaluates all `will_reveal` entries for NPCs in the current room and produces `will_reveal_readiness` on the `EngineResult`:
    ```json
    "will_reveal_readiness": {
      "korbar": {
@@ -209,15 +207,15 @@ Conditions use the usual condition syntax and can reference attitude (`attitude:
      }
    }
    ```
-   This is sent to **LLM Call 2 only** (the prose narrator). Each condition includes its original string, whether it's met, and a `detail` showing the current state value — so the LLM can roleplay *why* a topic is unavailable (e.g., "I'd tell you more, but not while that spider's still loose").
+   This is sent to LLM Call 2 *only*. Each condition includes its original string, whether it's met, and a `detail` showing the current state value.  This aids the LLM in roleplaying why a topic is unavailable (e.g., "I'd tell you more, but not while that spider's still loose").
 
-2. **LLM Call 2** decides whether the NPC actually reveals a topic during narration. If so, it includes a `knowledge_tags` block:
+2. LLM Call 2 decides whether the NPC actually reveals a topic during narration. If so, it generates a `knowledge_tags` block that helps tracks what topics the player has uncovered:
    ```json
-   "knowledge_tags": { "npc_revealed": { "korbar": ["spider_habits"] } }
+   "knowledge_tags": {"npc_id": ["topic_id", ...]}
    ```
-   The LLM is instructed to **only tag topics where `conditions_met` is `true`**.
+   The LLM is instructed to only reveal topics whose `conditions_met` is `true`.
 
-3. **Post-validation** (`post_validate_knowledge_tags`) re-checks conditions and, if met, applies any `set_flag` / `set_entity_state` side effects directly to hard state, and records the revelation in `soft.player_knowledge`.
+3. The post-validation step re-checks the conditions and, if met, records the revelation in `soft.player_knowledge`.  It also applies any `set_flag` / `set_entity_state` side effects in hard state arising from the revealed knowledge.
 
 ### Player Knowledge Tracking
 

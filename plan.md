@@ -208,7 +208,7 @@ The engine is the system's source of ground truth. It receives the PlayerAction 
    - game-over state (if any)
    - warnings to LLM Call 2 about narrative constraints
    - attitude limits of any NPCs present
-   - if in dialogue mode, NPC's `will_reveal_readiness` topics
+    - NPC's `will_reveal_readiness` topics for all NPCs in the current room
    - chain action handling info (if any)
 
 For chain actions, any validation failure, or rejection of hard-state or soft-state, will automatically terminate the chain.  The EngineResult will explicitly note the reason for the cancellation, and `follow_up` that was discarded.
