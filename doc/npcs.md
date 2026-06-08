@@ -280,12 +280,13 @@ Dialogue exits through any of these triggers:
 | Stall (3+ non-talk turns) | Player stops engaging with the NPC |
 
 On exit:
-1. A **conversation summary** is generated from the topics discussed and log length
-2. The summary is appended to `soft.entity_notes.<npc_id>` as a record of the interaction
-3. If the NPC's `dialogue_guidelines.on_dialogue_exit` defines `set_flag` or `set_entity_state` side effects, they are applied to hard state
-4. Dialogue state is cleared (`active_npc = null`, log and topics reset)
+1. The engine generates a fallback summary from topics discussed and log length
+2. **LLM Call 2** may provide a richer `conversation_note` in its prose output
+3. The note written to `soft.entity_notes.<npc_id>` is the LLM's `conversation_note` (if provided) or the engine fallback — whichever is available, not both
+4. If the NPC's `dialogue_guidelines.on_dialogue_exit` defines `set_flag` or `set_entity_state` side effects, they are applied to hard state
+5. Dialogue state is cleared (`active_npc = null`, log and topics reset)
 
-The `on_dialogue_exit.narrative` field, if present, is surfaced in the `DialogueExitedResult` for LLM Call 2 to potentially weave into narration.
+The `on_dialogue_exit.narrative` field, if present, is surfaced in the `DialogueExitedResult` for LLM Call 2 to potentially weave into narration. The `conversation_note` field in the prose template instructs the LLM on the expected format: a self-contained paragraph covering what was discussed, information exchanged, promises made, and the NPC's disposition. See `schema/soft-state.md §Archival` for details.
 
 ### Dialogue Context in the GMBriefing
 
