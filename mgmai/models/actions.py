@@ -186,6 +186,7 @@ class GameOverResult(BaseModel):
 class DialogueExitedResult(BaseModel):
     npc_id: str
     exit_narrative: Optional[str] = None
+    archival_fallback: Optional[str] = None
 
 
 class WillRevealReadinessEntry(BaseModel):

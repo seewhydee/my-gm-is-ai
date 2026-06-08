@@ -200,6 +200,13 @@ class GameLoop:
                     for topic in topics:
                         track_topic(soft, topic)
 
+        # 4.6 Archive conversation note if dialogue just ended
+        if result.dialogue_exited is not None:
+            npc_id = result.dialogue_exited.npc_id
+            note = prose.conversation_note or result.dialogue_exited.archival_fallback
+            if note:
+                soft.entity_notes.setdefault(npc_id, []).append(note)
+
         # 5. Post-validate knowledge_tags + attitude_changes
         kt = prose.knowledge_tags.npc_revealed if prose.knowledge_tags else None
         ac = dict(prose.attitude_changes) if prose.attitude_changes else None

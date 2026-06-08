@@ -348,11 +348,11 @@ verbatim `dialogue_context` block into the GMBriefing for LLM Call 1.
 | `talk` action succeeds (no active dialogue) | Set `active_npc`, init `conversation_log` with player utterance, set `entered_turn`, reset `stall_counter`. |
 | `on_enter` with `trigger_dialogue`       | Set `active_npc` to the named NPC, init `conversation_log` with an empty first entry (the NPC "speaks first" via the on_enter `narrative`), set `entered_turn`, reset `stall_counter`. |
 | `talk` action to the same NPC            | Append player utterance to `conversation_log`. After LLM Call 2 runs, extract and append the NPC response. Reset `stall_counter` to 0. |
-| `talk` action to a different NPC         | Archive current `conversation_log` as a summary in the previous NPC's `entity_notes`, apply previous NPC's `dialogue_guidelines.on_dialogue_exit` (if any), switch `active_npc`, start fresh. |
-| Any non-`talk` action while in dialogue  | Increment `stall_counter`. If `stall_counter >= 3`, archive conversation, apply `on_dialogue_exit`, clear dialogue state. |
-| `move` action (player leaves room)       | Archive conversation summary to NPC's `entity_notes`, apply `on_dialogue_exit`, clear dialogue state. |
-| NPC dies or flees                        | Archive conversation summary, clear dialogue state. Reject future `talk` to that NPC. |
-| `talk` with `ends_dialogue: true`        | Archive conversation summary to NPC's `entity_notes`, apply `on_dialogue_exit`, clear dialogue state. |
+| `talk` action to a different NPC         | Archive conversation (see §Archival), apply previous NPC's `dialogue_guidelines.on_dialogue_exit` (if any), switch `active_npc`, start fresh. |
+| Any non-`talk` action while in dialogue  | Increment `stall_counter`. If `stall_counter >= 3`, archive conversation (see §Archival), apply `on_dialogue_exit`, clear dialogue state. |
+| `move` action (player leaves room)       | Archive conversation (see §Archival), apply `on_dialogue_exit`, clear dialogue state. |
+| NPC dies or flees                        | Archive conversation (see §Archival), clear dialogue state. Reject future `talk` to that NPC. |
+| `talk` with `ends_dialogue: true`        | Archive conversation (see §Archival), apply `on_dialogue_exit`, clear dialogue state. |
 | `ooc_discussion` while in dialogue       | Does not increment `stall_counter`; does not affect dialogue state. |
 
 When dialogue mode exits for any reason, the engine checks the NPC's
@@ -381,15 +381,31 @@ If `active_npc` is null, `dialogue_context` is omitted from the GMBriefing.
 
 ### Archival
 
-When dialogue mode exits, the full `conversation_log` is summarised and appended
-as an `entity_note` on the NPC:
+When dialogue mode exits, the engine appends a conversation memory note to
+`entity_notes[<npc_id>]`. This note persists across turns and is surfaced in
+the GMBriefing whenever that NPC is present in the room (last 5 notes per
+entity).
+
+**LLM-authored (preferred):** If LLM Call 2 (Prose) includes a
+`conversation_note` field in its output, that note is used. The LLM should
+write a self-contained narrative summary covering what was discussed, what
+information was exchanged, any promises or conflicts, and the NPC's disposition.
 
 ```
-"[Turn 4-6] Conversation with Korbar: player asked about her origin and
-party; Korbar revealed she was abandoned by her adventuring company three
-years ago. Topics: origin, abandonment."
+"Player spoke with Korbar about her origin and abandonment. Korbar revealed
+the padlock mechanism secret and became cautiously friendly. Player promised
+to look for her old party."
 ```
 
+**Engine fallback:** If the LLM does not provide a `conversation_note`, the
+engine writes a minimal fallback recording only the topic names and exchange
+count:
+
+```
+"[Turn 4-6] Conversation summary: Discussed origin, abandonment over 6 exchanges."
+```
+
+The LLM's note replaces the fallback entirely — the two are never both written.
 This preserves the narrative for future GMBriefings without retaining the
 verbatim exchange indefinitely in the active dialogue state.
 

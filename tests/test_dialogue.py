@@ -101,9 +101,13 @@ class TestExitDialogue:
         result = exit_dialogue(soft, corpus, hard)
         assert result is not None
         assert result["npc_id"] == "korbar"
+        assert result["archival_fallback"] is not None
+        assert "Conversation summary" in result["archival_fallback"]
+        assert "2 exchanges" in result["archival_fallback"]
         assert soft.dialogue_state.active_npc is None
-        assert "korbar" in soft.entity_notes
-        assert len(soft.entity_notes["korbar"]) == 1
+        # entity_notes are now written by _execute_turn after LLM Call 2,
+        # not by exit_dialogue. The fallback is passed through the result.
+        assert "korbar" not in soft.entity_notes
 
     def test_noop_when_no_active_dialogue(self, state_manager):
         soft = state_manager.soft_state

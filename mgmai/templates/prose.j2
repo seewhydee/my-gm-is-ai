@@ -42,6 +42,7 @@ You MUST output a single JSON object:
 {
   "narration": "The natural-language prose to show the player. REQUIRED.",
   "npc_response": "Verbatim NPC speech if in dialogue. null or omit if not.",
+  "conversation_note": "A narrative summary of this conversation for long-term memory, if dialogue just ended. null or omit if not.",
   "knowledge_tags": {"npc_id": ["topic_id", ...]} or null,
   "attitude_changes": {"npc_id": {"old_value": N, "new_value": M, "reason": "..."}} or null,
   "terminate_chain": false
@@ -137,6 +138,33 @@ Do not propose ±3 for every turn — reserve it for story-defining moments. Whe
 
 ---
 
+## Conversation Note (Long-Term Memory Archival)
+
+If `engine_result.dialogue_exited` is non-null, the conversation with that NPC
+has just ended. Write a `conversation_note` — a narrative summary that will be
+stored as the player's long-term memory of this interaction, surfaced whenever
+the NPC is encountered again.
+
+Write this as a self-contained paragraph describing:
+- What topics were discussed
+- What information was exchanged or learned
+- Any promises, deals, or conflicts that occurred
+- The NPC's disposition toward the player by the end
+
+Example:
+```json
+"conversation_note": "Player spoke with Korbar about her origin and her party's abandonment. Korbar revealed the padlock mechanism secret. She is cautiously friendly toward the player."
+```
+
+The note must be a non-empty string. If you don't provide one, the engine will
+fall back to a minimal summary recording only topic names. Good notes make the
+NPC feel remembered on re-encounter.
+
+If dialogue is still ongoing (`engine_result.dialogue_exited` is null) or no
+NPC conversation occurred, omit this field or set it to null.
+
+---
+
 ## Examples
 
 **Success (movement):**
@@ -159,11 +187,12 @@ Do not propose ±3 for every turn — reserve it for story-defining moments. Whe
 }
 ```
 
-**NPC dialogue with revelation:**
+**Dialogue exited with conversation note:**
 ```json
 {
-  "narration": "Korbar grunts and shifts his weight on the stool. His eyes narrow as he studies you, then he reaches into his boot and pulls out a folded piece of parchment. 'The lich's weakness,' he mutters, 'is sunlight. Pure, unfiltered sunlight. That's why he never leaves the crypt.'",
-  "npc_response": "The lich's weakness is sunlight. Pure, unfiltered sunlight. That's why he never leaves the crypt.",
+  "narration": "Korbar grunts and shifts his weight on the stool. 'That's all I know, friend. Find the crypt, wait for dawn.' She turns back to her drink, signalling the conversation is over.",
+  "npc_response": "That's all I know, friend. Find the crypt, wait for dawn.",
+  "conversation_note": "Player ended a long conversation with Korbar. Topics discussed: origin, abandonment, lich weakness. Korbar revealed the lich's sunlight weakness and shared her backstory. She is now cautiously friendly. Player asked no follow-ups.",
   "knowledge_tags": {"korbar": ["lich_weakness"]},
   "attitude_changes": {"korbar": {"old_value": 0, "new_value": 1, "reason": "Player listened respectfully to Korbar's story"}}
 }

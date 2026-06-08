@@ -123,16 +123,14 @@ def _archive_and_exit(
     corpus: ModuleCorpus,
     hard: HardGameState,
 ) -> dict:
+    # Build fallback summary for use when the LLM doesn't provide
+    # a better conversation_note (archived after LLM Call 2).
     summary = _build_conversation_summary(soft)
-    note = (
+    archival_fallback = (
         f"[Turn {soft.dialogue_state.entered_turn}-"
         f"{hard.turn_count}] "
         f"Conversation summary: {summary}"
     )
-
-    if npc_id not in soft.entity_notes:
-        soft.entity_notes[npc_id] = []
-    soft.entity_notes[npc_id].append(note)
 
     npc_entity = corpus.entities.get(npc_id)
     exit_narrative = None
@@ -155,9 +153,13 @@ def _archive_and_exit(
     soft.dialogue_state.entered_turn = 0
     soft.dialogue_state.stall_counter = 0
 
+    # Note: entity_notes are NOT written here. The archival is deferred to
+    # _execute_turn() after LLM Call 2, which may provide a richer
+    # conversation_note. The fallback is passed through for that step.
     return {
         "npc_id": npc_id,
         "exit_narrative": exit_narrative,
+        "archival_fallback": archival_fallback,
     }
 
 

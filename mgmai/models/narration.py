@@ -20,4 +20,5 @@ class NarrationOutput(BaseModel):
     npc_response: Optional[str] = None
     knowledge_tags: Optional[KnowledgeTags] = None
     attitude_changes: Optional[Dict[str, AttitudeChange]] = None
+    conversation_note: Optional[str] = None
     terminate_chain: bool = False
