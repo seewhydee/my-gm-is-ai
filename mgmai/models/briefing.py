@@ -21,6 +21,7 @@ class BriefingEntity(BaseModel):
     state: Dict[str, Any] = Field(default_factory=dict)
     entity_notes: List[str] = Field(default_factory=list)
     soft_items: List[str] = Field(default_factory=list)
+    dialogue_paths: Dict[str, str] = Field(default_factory=dict)
 
 
 class BriefingExit(BaseModel):

@@ -15,20 +15,7 @@
    Y to all traversal." A `global_rules` block or a
    `modifies_movement` property on items could address this.
 
-## 3. No dynamic DC scaling on stat checks
-   Escalating DCs (e.g., Korbar's CHA check: DC 9 → 12 → 15 per
-   attempt) require separate interaction entries with mutually
-   exclusive conditions. This is verbose and error-prone. A
-   `dc_increment` or `dc_escalation` field on StatCheck would let
-   the engine handle it natively.
-
-## 4. Game-over from Result is always indirect
-   There's no way for a Result (or chain_check) to trigger game-over
-   directly. The `set_flag` → `lose` mechanic pattern works but
-   requires two-step setup. May be intentional (engine philosophy:
-   game-over is exclusively mechanic-evaluated).
-
-## 5. NPC blocking only covers predefined interactions
+## 3. NPC blocking only covers predefined interactions
    The NPC action blocking pattern (e.g., Korbar shooing the player)
    only works for corpus-defined interactions in the room. Generic
    actions like `examine room` can't be blocked by NPC attitude —

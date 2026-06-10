@@ -15,6 +15,7 @@ from mgmai.engine.resolver import (
     resolve_wait,
     resolve_ooc,
     resolve_action,
+    _apply_result,
 )
 from mgmai.models.actions import (
     MoveAction,
@@ -540,3 +541,125 @@ class TestResolveAction:
             action_type = "unknown"
         result = resolve_action(UnknownAction(), state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.success is False
+
+
+class TestApplyResult:
+    def test_adjust_attitude_applies_delta(self, state_manager):
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.entity_states["korbar"]["attitude"] = 0
+        from mgmai.models.actions import HardStateChanges
+        from mgmai.models.corpus import Result
+
+        result = Result(adjust_attitude={"korbar": 2})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard, corpus)
+        assert hard.entity_states["korbar"]["attitude"] == 2
+        assert changes.entity_state_changes["korbar"]["attitude"] == 2
+
+    def test_adjust_attitude_clamps_to_limits(self, state_manager):
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.entity_states["korbar"]["attitude"] = 9
+        from mgmai.models.actions import HardStateChanges
+        from mgmai.models.corpus import Result
+
+        result = Result(adjust_attitude={"korbar": 5})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard, corpus)
+        assert hard.entity_states["korbar"]["attitude"] == 10  # clamped to max
+
+    def test_adjust_attitude_respects_step_per_turn(self, state_manager):
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.entity_states["korbar"]["attitude"] = 0
+        from mgmai.models.actions import HardStateChanges
+        from mgmai.models.corpus import Result
+
+        result = Result(adjust_attitude={"korbar": 10})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard, corpus)
+        assert hard.entity_states["korbar"]["attitude"] == 3  # clamped to step_per_turn
+
+
+class TestResolveTalkDialoguePaths:
+    def test_dialogue_path_not_found(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = TalkAction(
+            action_type="talk",
+            target="korbar",
+            utterance="Test",
+            detail="Testing",
+            dialogue_path="nonexistent",
+        )
+        result = resolve_talk(action, hard, soft, corpus)
+        assert result.success is False
+        assert "not found" in result.error
+
+    def test_dialogue_path_condition_not_met(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from mgmai.models.corpus import DialoguePath, ConditionExpression
+
+        path = DialoguePath(
+            description="Test path with an impossible condition.",
+            condition=ConditionExpression.model_validate({"require": "flag:impossible_flag == true"})
+        )
+        corpus.entities["korbar"].dialogue_guidelines.dialogue_paths["test_path"] = path
+        action = TalkAction(
+            action_type="talk",
+            target="korbar",
+            utterance="Test",
+            detail="Testing",
+            dialogue_path="test_path",
+        )
+        result = resolve_talk(action, hard, soft, corpus)
+        assert result.success is False
+        assert "Conditions not met" in result.error
+
+    def test_dialogue_path_result_applied(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from mgmai.models.corpus import DialoguePath, Result
+
+        path = DialoguePath(
+            description="Compliment Korbar on her armor.",
+            result=Result(
+                narrative="Korbar seems pleased.",
+                adjust_attitude={"korbar": 1},
+            )
+        )
+        corpus.entities["korbar"].dialogue_guidelines.dialogue_paths["compliment"] = path
+        action = TalkAction(
+            action_type="talk",
+            target="korbar",
+            utterance="Nice armor!",
+            detail="Complimenting Korbar",
+            dialogue_path="compliment",
+        )
+        result = resolve_talk(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.entity_state_changes["korbar"]["attitude"] == 1
+        assert "pleased" in result.triggered_narration[0]
+
+    def test_plain_talk_no_path(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = TalkAction(
+            action_type="talk",
+            target="korbar",
+            utterance="Hello there",
+            detail="Greeting Korbar",
+        )
+        result = resolve_talk(action, hard, soft, corpus)
+        assert result.success is True
+        assert not result.hard_changes.has_changes()

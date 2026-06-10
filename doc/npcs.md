@@ -95,7 +95,67 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
 | `attitude_limits` | Mechanical bounds on the NPC's attitude (see below). |
 | `will_reveal` | Topics the NPC can reveal, gated by conditions, with optional side effects (see below). |
 | `on_dialogue_exit` | Optional effects applied when dialogue ends (see Dialogue Lifecycle). |
+| `dialogue_paths` | Special conversation paths with mechanical effects (see below). |
 
+
+## Special Dialogue Paths (`dialogue_paths`)
+
+`dialogue_paths` defines special conversation routes that have engine-resolved mechanical consequences. They are useful for:
+- Social approaches tied to stat checks (`flatter`, `intimidate`, `persuade`).
+- Delivering plot-critical information (`inform_spider_dead`).
+- Any dialogue moment where the engine needs to apply results directly (`adjust_attitude`, `set_flag`, `set_stat`, etc.).
+
+### Path ID vs. description
+
+Each path has two parts:
+- **Path ID** — the machine key used in the `talk` action's `dialogue_path` field and looked up by the engine.
+- **Description** — a required human-readable string that explains what the path represents.
+
+The description is **essential** because it is the only context LLM Call 1 has for deciding whether a player's input matches a defined path. LLM Call 1 receives the paths in `current_room.entities_visible[*].dialogue_paths` as a map of `{path_id: description}`. It reads the description, decides if the player's intent fits, and outputs the matching path ID in the `talk` action.
+
+Write descriptions as clear player-intent phrases:
+- Good: `"Praise the spider's hunting prowess to improve its attitude."`
+- Good: `"Tell Korbar that the spider has been dealt with."`
+- Bad: `"Flattery path"` (too vague — the LLM cannot map player input to this)
+
+### Example
+
+```json
+{
+  "dialogue_guidelines": {
+    "dialogue_paths": {
+      "flatter": {
+        "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
+        "condition": { "require": "attitude:spider < 0" },
+        "check": { "type": "stat_check", "stat": "CHA", "dc": 12, "repeatable": true },
+        "success": {
+          "narrative": "The spider preens at your praise.",
+          "adjust_attitude": { "spider": 1 }
+        },
+        "failure": {
+          "narrative": "The spider hisses indifferently."
+        }
+      },
+      "inform_spider_dead": {
+        "description": "Tell Korbar that the spider has been dealt with.",
+        "condition": { "require": "flag:spider_fled == true" },
+        "result": {
+          "narrative": "Korbar's eyes widen with disbelief, then relief.",
+          "adjust_attitude": { "korbar": 3 }
+        }
+      }
+    }
+  }
+}
+```
+
+### Engine resolution flow
+
+1. LLM Call 1 receives `dialogue_paths` as `{path_id: description}` on visible NPCs.
+2. If the player's input matches a path description, LLM Call 1 emits a `talk` action with `dialogue_path` set to the matching path ID.
+3. The engine validates that the path exists, that its `condition` (if any) is met, and resolves any `check`.
+4. The engine applies the `success`, `failure`, or `result` outcome, including any `adjust_attitude`, `set_flag`, or other effects.
+5. If no path matches, LLM Call 1 omits `dialogue_path` and the conversation proceeds as freeform dialogue.
 
 ## Attitude System
 

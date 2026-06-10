@@ -214,6 +214,39 @@ class TestPostValidateAttitudeChanges:
         assert "nonexistent" not in applied
         assert "nonexistent" in rejected
 
+    def test_prior_mechanical_adjustment_rejects_llm_proposal(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.entity_states["korbar"]["attitude"] = 0
+        changes = {
+            "korbar": AttitudeChange(old_value=0, new_value=1, reason="Friendly chat")
+        }
+        prior = HardStateChanges()
+        prior.entity_state_changes["korbar"] = {"attitude": 1}
+        applied, rejected, hard_changes = post_validate_attitude_changes(
+            changes, hard, soft, corpus, prior_changes=prior
+        )
+        assert "korbar" not in applied
+        assert "korbar" in rejected
+        assert "mechanically adjusted" in rejected["korbar"]["reason"]
+
+    def test_prior_changes_without_attitude_allows_llm_proposal(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.entity_states["korbar"]["attitude"] = 0
+        changes = {
+            "korbar": AttitudeChange(old_value=0, new_value=1, reason="Friendly chat")
+        }
+        prior = HardStateChanges()
+        prior.entity_state_changes["korbar"] = {"following": True}
+        applied, rejected, hard_changes = post_validate_attitude_changes(
+            changes, hard, soft, corpus, prior_changes=prior
+        )
+        assert "korbar" in applied
+        assert "korbar" not in rejected
+
 
 class TestApplyPostValidation:
     def test_full_post_validation(self, state_manager):

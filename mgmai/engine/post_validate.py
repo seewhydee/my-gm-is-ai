@@ -109,6 +109,7 @@ def post_validate_attitude_changes(
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
+    prior_changes: HardStateChanges | None = None,
 ) -> tuple[dict[str, AttitudeChange], dict[str, dict[str, Any]], HardStateChanges]:
     """Validate attitude changes.
 
@@ -199,6 +200,19 @@ def post_validate_attitude_changes(
             }
             continue
 
+        # Reject if attitude was already mechanically adjusted this turn
+        if prior_changes is not None:
+            prior_entity_changes = prior_changes.entity_state_changes.get(npc_id, {})
+            if "attitude" in prior_entity_changes:
+                rejected[npc_id] = {
+                    "change": change.model_dump(),
+                    "reason": (
+                        f"NPC '{npc_id}' attitude was already mechanically adjusted "
+                        f"this turn via an interaction result"
+                    ),
+                }
+                continue
+
         if npc_id not in hard.entity_states:
             hard.entity_states[npc_id] = {}
         hard.entity_states[npc_id]["attitude"] = change.new_value
@@ -247,8 +261,11 @@ def apply_post_validation(
     attitude_changes_rejected: dict[str, dict[str, Any]] = {}
 
     if attitude_changes:
+        prior_changes = base_result.hard_state_changes if base_result is not None else None
         attitude_changes_applied, attitude_changes_rejected, attitude_hard_changes = (
-            post_validate_attitude_changes(attitude_changes, hard, soft, corpus)
+            post_validate_attitude_changes(
+                attitude_changes, hard, soft, corpus, prior_changes=prior_changes
+            )
         )
         if attitude_hard_changes.has_changes():
             state_manager.apply_hard_changes(attitude_hard_changes)

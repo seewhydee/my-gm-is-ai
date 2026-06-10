@@ -40,6 +40,7 @@ class TalkAction(_BaseAction):
     target: str
     utterance: Optional[str] = None
     ends_dialogue: bool = False
+    dialogue_path: Optional[str] = None
 
 
 class TransferAction(_BaseAction):

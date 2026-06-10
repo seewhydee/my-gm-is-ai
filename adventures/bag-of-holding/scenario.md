@@ -315,11 +315,9 @@ Korbar knows several important pieces of information:
   offer this secret unless her attitude reaches 3.
 
 If the player engages Korbar positively, such as commiserating with
-her plight, a successful CHA check (DC 9) raises her attitude by +1.
-This can be repeated up to 3 times, with the DC increasing by +3 each
-time (i.e., DC 9, 12, 15).  (Implementation note: this can be done at
-post-validation.)  Any failed CHA check makes her wary, preventing any
-further increase via conversation alone.
+her plight, her attitude can be increased by +1 each time at the GM's
+discretion.  This increase can be applied up to 3 times if the player
+engages with Korbar persistently.
 
 If the player engages Korbar negatively, such as making fun of her,
 her attitude can decrease by 1 each turn (to a minimum of -10).  She

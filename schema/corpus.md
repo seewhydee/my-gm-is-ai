@@ -300,6 +300,7 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
   "remove_item": "<item_id> (optional)",
   "set_flag": { "<flag_name>": true | false },
   "set_stat": { "<stat_key>": <delta> },
+  "adjust_attitude": { "<npc_id>": <delta> },
   "reveals": "string (hint text for the player's future reference)",
   "chain_check": { /* chained check (optional) */ }
 }
@@ -310,11 +311,11 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 | `narrative`   | string | Canonical narration of the result. Engine passes this to LLM Call 2 via `triggered_narration`. |
 | `add_item`    | string | Item entity ID to add to hard inventory. |
 | `remove_item` | string | Item entity ID to remove from hard inventory. |
-| `set_flag`    | object | Hard-state flags to set or clear. |
-| `set_flag`    | object | Hard-state flags to set or clear. |
-| `set_stat`    | object | **Optional.** Stat deltas to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are integer changes (positive or negative). E.g., `{ "STR": -4, "DEX": -4, "CON": -4 }` for fall damage. |
-| `reveals`     | string | Hint text; added to the player's known information for future GMBriefings. |
-| `chain_check` | object | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See Chained check below. |
+| `set_flag`        | object | Hard-state flags to set or clear. |
+| `set_stat`        | object | **Optional.** Stat deltas to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are integer changes (positive or negative). E.g., `{ "STR": -4, "DEX": -4, "CON": -4 }` for fall damage. |
+| `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
+| `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
+| `chain_check`     | object | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See Chained check below. |
 
 #### Chained check (`chain_check`)
 
@@ -527,6 +528,16 @@ follower.
     "set_entity_state": { "<entity_id>": { "<field>": <value> } },
     "set_flag": { "<flag_name>": true | false },
     "narrative": "string (canonical narration when dialogue ends)"
+  },
+  "dialogue_paths": {
+    "<path_id>": {
+      "description": "What this dialogue path represents — surfaced to LLM Call 1 as a map of path_id → description.",
+      "condition": { /* condition object */ },
+      "check": { /* roll or stat_check */ },
+      "success": { /* result */ },
+      "failure": { /* result */ },
+      "result": { /* deterministic result */ }
+    }
   }
 }
 ```
@@ -541,6 +552,44 @@ follower.
 | `attitude_limits` | object | Integer attitude bounds (see below). |
 | `will_reveal`     | object | Gated dialogue topics. Each topic has a `description`, a `conditions` array (all must be true for the topic to be revealable), and optional `set_flag` / `set_entity_state` side effects. When LLM Call 2 tags a topic as revealed via `knowledge_tags`, the engine validates conditions and applies the side effects. |
 | `on_dialogue_exit`| object | Effects applied by the engine when dialogue mode exits for this NPC. Contains optional `set_entity_state`, `set_flag`, and `narrative` fields. This is the mechanism for NPCs that die, flee, transform, or otherwise change state when conversation ends — whether the player leaves, uses `ends_dialogue`, or a stall is detected. |
+| `dialogue_paths`  | object | **Optional.** Named special dialogue paths that trigger mechanical effects when the player uses them via a `talk` action with `dialogue_path` set. Each path has a required `description` and may have a `condition`, a probabilistic `check` (+`success`/`failure`), or a deterministic `result`. The path ID is the machine key used in the `talk` action; the `description` is surfaced to LLM Call 1 in `entities_visible` as `{path_id: description}` so it can match player intent to the right path. |
+
+#### `dialogue_paths` object
+
+```json
+{
+  "flatter": {
+    "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
+    "condition": { "require": "attitude:spider < 0" },
+    "check": { "type": "stat_check", "stat": "CHA", "dc": 12, "repeatable": true },
+    "success": {
+      "narrative": "The spider preens at your praise.",
+      "adjust_attitude": { "spider": 1 }
+    },
+    "failure": {
+      "narrative": "The spider hisses indifferently."
+    }
+  },
+  "inform_spider_dead": {
+    "description": "Tell Korbar that the spider has been dealt with.",
+    "condition": { "require": "flag:spider_fled == true" },
+    "result": {
+      "adjust_attitude": { "korbar": 3 }
+    }
+  }
+}
+```
+
+| Field       | Type   | Description |
+|-------------|--------|-------------|
+| `description` | string | **Required.** Human-readable description of what this path represents. This text is surfaced to LLM Call 1 as the value in `entities_visible[*].dialogue_paths[path_id]`, so the LLM can match player input to the right path. Phrase it as a player intent (e.g., "Compliment the spider's hunting prowess" or "Tell Korbar the spider is dead"). |
+| `condition` | object | Optional. If present, all conditions must be met for the path to be usable. |
+| `check`     | object | Optional. A `roll` or `stat_check`. If present, `success` is required. |
+| `success`   | object | Result applied when the check succeeds. |
+| `failure`   | object | Result applied when the check fails. |
+| `result`    | object | Deterministic result when no `check` is present. Mutually exclusive with `check`. |
+
+Path results support the same fields as interaction `Result` objects: `narrative`, `set_flag`, `set_stat`, `adjust_attitude`, `reveals`, `chain_check`.
 
 #### Knowledge tag validation (`will_reveal` flow)
 

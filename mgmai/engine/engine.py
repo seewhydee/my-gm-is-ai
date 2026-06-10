@@ -409,6 +409,13 @@ def _build_room_after(
         notes = soft.entity_notes.get(eid, [])[-5:]
         entity_soft = soft.surfaced_soft_items.get(eid, [])
 
+        path_descriptions: dict[str, str] = {}
+        if entity.type == "npc" and entity.dialogue_guidelines:
+            path_descriptions = {
+                path_id: path.description
+                for path_id, path in entity.dialogue_guidelines.dialogue_paths.items()
+            }
+
         entities_visible.append(
             BriefingEntity(
                 id=eid,
@@ -418,6 +425,7 @@ def _build_room_after(
                 state=entity_state,
                 entity_notes=notes,
                 soft_items=list(entity_soft),
+                dialogue_paths=path_descriptions,
             )
         )
 

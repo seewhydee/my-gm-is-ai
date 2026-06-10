@@ -178,6 +178,41 @@ class TestEntityVisibility:
         )
         assert korbar.type == "npc"
 
+    def test_dialogue_paths_included_for_npc(self, state_manager):
+        from mgmai.models.corpus import DialoguePath, Result
+        state_manager.hard_state.player.location = "bag_floor"
+        state_manager.corpus.entities["korbar"].dialogue_guidelines.dialogue_paths[
+            "test_path"
+        ] = DialoguePath(
+            description="Test path description for the assembler.",
+            result=Result(narrative="Test"),
+        )
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        korbar = next(
+            e for e in result.current_room.entities_visible if e.id == "korbar"
+        )
+        assert korbar.dialogue_paths == {
+            "test_path": "Test path description for the assembler."
+        }
+
+    def test_dialogue_paths_empty_for_non_npc(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        handkerchief = next(
+            e for e in result.current_room.entities_visible if e.id == "handkerchief"
+        )
+        assert handkerchief.dialogue_paths == {}
+
 
 class TestExitFiltering:
     """Exit filtering: hidden omitted, conditions checked."""

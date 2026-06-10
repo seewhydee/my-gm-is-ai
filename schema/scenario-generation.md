@@ -122,10 +122,9 @@ For every mechanic described (not tied to a specific entity), note:
 ### 1E. Flag list
 
 Enumerate every flag mentioned or implied. A flag is any boolean state condition
-that changes during play. Examples: `spider_fled`, `injured`, `handkerchief_moved`,
-`padlock_unlocked`, `player_escaped`.
+that changes during play. Examples: `spider_fled`, `injured`, `handkerchief_moved`, `padlock_unlocked`, `player_escaped`.
 
-Note initial values (almost always `false`).
+Note what initial value each should have.
 
 Add a `flags_declared` field as a top-level corpus array (alongside
 `adventure`, `rooms`, `entities`, `mechanics`) listing all flag names
@@ -135,12 +134,12 @@ cross-validation (after all corpus sections are complete).
 
 ### 1F. Stat system (if applicable)
 
-If the scenario uses stat checks (STR, DEX, INT, etc.), note:
+If the scenario uses stat checks, note:
 - Which stats are used
 - The resolution system (typically d20)
 - Whether the scenario specifies player stat values, or defaults (e.g., all 10s)
 
-If the scenario has no stat checks, note that no stats block is needed.
+If the scenario has no stat checks, no stats block is needed.
 
 ---
 
@@ -160,7 +159,7 @@ If the scenario has no stat checks, note that no stats block is needed.
 **Input:** Entity list from Step 1.
 **Output:** The full `"entities"` block for `corpus.json`.
 
-For each entity in the list from Step 1, produce a complete entity definition
+For each entity in the list from Step 1, produce an entity definition
 following the schema in [`corpus.md`](corpus.md) (§2 Entities).
 
 ### 2A. State fields
@@ -192,21 +191,25 @@ For every conversational NPC, produce a `dialogue_guidelines` block:
   "firewall" against LLM confabulation. Be specific.
   - Example: `["will warn about the spider", "expresses satisfaction if spider is dead"]`
   - Example: `["will never agree to fight the spider", "will not follow into the secret compartment"]`
-- **`knows`**: All facts the NPC possesses. Every piece of information the NPC
-  can potentially share, even if gated.
-- **`attitude_limits`**: Integer bounds from the scenario.
-  - `min` / `max`: The range. A hostile spider never goes positive: `-5` to `0`.
-    A friendly dwarf can go from `-10` to `10`.
+- **`knows`**: All facts the NPC possesses. Every piece of plot-relevant
+  information the NPC can potentially share, even if gated.
+- **`attitude_limits`**: Integer bounds to attitude.
+  - `min` / `max`: The range. If not specified by the scenario,
+    a sensible default is `-10` to `10`, but NPCs that the scenario
+	assumes to be permanently hostile could run from `-10` to `0`;
+    use your judgment.
   - `step_per_turn`: Maximum attitude change per turn. Default `1` unless the
     scenario says otherwise.
   - `initial`: Starting attitude. Default `0`.
 - **`will_reveal`**: Gated topics. See below.
+- **`dialogue_paths`**: Special conversation paths with mechanical effects.
+  See below.
 
-**The `will_reveal` topics:**
+#### `will_reveal` topics
 
 For every secret or piece of information the NPC can reveal, create a topic.
-Each topic's `conditions` array must include every gate mentioned in the
-scenario. All conditions in the array are ANDed together.
+Each topic's `conditions` array should include every gate mentioned in the
+scenario; the conditions in the array are ANDed together.
 
 ```json
 "will_reveal": {
@@ -224,7 +227,7 @@ scenario. All conditions in the array are ANDed together.
 Each topic may also carry `set_flag` and `set_entity_state` side effects — these
 are applied by the engine when the LLM Call tags the topic as revealed in dialogue.
 
-**`on_dialogue_exit`:**
+#### `on_dialogue_exit`
 
 If the NPC undergoes a state change when dialogue ends (the player walks away,
 uses `ends_dialogue`, or a stall is detected), add an `on_dialogue_exit` block.
@@ -243,32 +246,56 @@ Engine behaviour: when dialogue mode exits (regardless of cause — player leave
 ends_dialogue, or stall timeout), the engine applies these effects after the
 `on_dialogue_exit.narrative` is passed as `triggered_narration` to LLM Call 2.
 
-**Hostile NPC dialogue pattern:**
+#### `dialogue_paths`
 
-Some NPCs start hostile (negative attitude) but can be improved through
-dialogue, unlocking mechanical benefits. Model this as:
+Define special conversation paths that trigger mechanical effects when the
+player invokes them via a `talk` action with `dialogue_path` set. This is useful
+for social interactions tied to stat checks (flatter, intimidate), delivering plot-critical information, or any dialogue with engine-resolved consequences.
 
-- Set `attitude_limits.initial` to the starting negative value (e.g., `-2`)
-- Set `attitude_limits.max` to the highest possible attitude (e.g., `0`)
-- Set `step_per_turn` to limit single-turn attitude shifts (e.g., `1`)
-- In `can`, list dialogue actions that improve attitude: `["can be flattered with CHA checks (DC 12)"]`
-- Use `will_reveal` topics gated on attitude thresholds
-- In `behavior`, use `encounter_rules` with conditions checking both flags
-  and attitudes (e.g., combat only triggers if `attitude < 0`)
+**Path ID vs. description:** Each dialogue path has two parts:
+- **Path ID** — the machine key (e.g., `flatter`, `inform_spider_dead`). This is what the `talk` action sets as `dialogue_path`, and what the engine uses to look up the path.
+- **Description** — a required human-readable string explaining what the path represents. This is surfaced to LLM Call 1 in `current_room.entities_visible[*].dialogue_paths` as a map of `{path_id: description}`. LLM Call 1 uses the description to decide whether the player's input matches a defined path. Without the description, the LLM only has an opaque ID and cannot reliably classify dialogue intent.
 
-Example: a spider that starts at -2 attitude, can be flattered up to 0
-(max), and at 0 can be persuaded to flee:
+Write descriptions as clear player-intent phrases (e.g., "Praise the spider to improve its attitude" or "Tell Korbar that the spider has been dealt with").
+
+Each path may have:
+- `description`: required context for LLM Call 1 (see above)
+- `condition`: gates when the path is available
+- `check` + `success`/`failure`: a probabilistic stat check with outcomes
+- `result`: a deterministic outcome when no check is needed
+
+Path results support the same fields as interaction results (`narrative`,
+`set_flag`, `set_stat`, `adjust_attitude`, `reveals`, `chain_check`).
+
+Example: a spider that can be flattered with a CHA check to improve attitude:
 
 ```json
-"dialogue_guidelines": {
-  "personality": "A giant spider, hungry and malicious. It speaks grudgingly.",
-  "attitude_limits": { "min": -5, "max": 0, "step_per_turn": 1, "initial": -2 },
-  "can": ["can be flattered to improve attitude", "will let player through if persuaded at attitude 0"],
-  "cannot": ["will never make agreements", "will lie about letting the player through"],
-  "will_reveal": {
-    "spider_knowledge": {
-      "description": "The spider knows of Korbar as prey it hasn't caught yet.",
-      "conditions": ["attitude:spider >= -2"]
+"dialogue_paths": {
+  "flatter": {
+    "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
+    "condition": { "require": "attitude:spider < 0" },
+    "check": { "type": "stat_check", "stat": "CHA", "dc": 12, "repeatable": true },
+    "success": {
+      "narrative": "The spider preens at your praise.",
+      "adjust_attitude": { "spider": 1 }
+    },
+    "failure": {
+      "narrative": "The spider hisses indifferently."
+    }
+  }
+}
+```
+
+Another example: delivering specific information to an NPC:
+
+```json
+"dialogue_paths": {
+  "inform_spider_dead": {
+    "description": "Tell Korbar that the spider has been dealt with.",
+    "condition": { "require": "flag:spider_fled == true" },
+    "result": {
+      "narrative": "Korbar's eyes widen with disbelief, then relief.",
+      "adjust_attitude": { "korbar": 3 }
     }
   }
 }
@@ -404,10 +431,7 @@ the schema in [`corpus.md`](corpus.md) (§1 Rooms).
 
 Write full second-person present-tense prose for `description`. It should be
 sufficient for both room entry and re-examination. Include what the player
-sees, hears, smells, and any notable features.
-
-**Do not** include clues gated behind a rigorous search or NPC reveal — those
-are returned by the engine as examine outcomes, not as the base description.
+sees, hears, smells, and any notable features.  DO NOT include clues gated behind a rigorous search or NPC reveal.
 
 Surface-level impressions only. "You see a pile of rubbish" is fine. "You see
 a giant iron key hidden beneath a handkerchief" is not — that should be an
@@ -418,26 +442,16 @@ on-examine event or revealed by dialogue.
 List the entity IDs (from Step 2) that are physically in this room at game
 start.
 
-- Features spanning multiple rooms should appear in every room they span
 - Hidden entities (e.g., a key in a secret compartment) are still listed in
   the room that contains them — the room access gating prevents the player
   from reaching them until revealed
+- Features spanning multiple rooms should appear in every room they span
 
-**Hidden entity reveal pattern:**
+#### Hidden entity reveal pattern
 
-Some entities are not initially visible to the player — the spider in the
-webs, the handkerchief in the rubbish, etc. Currently, the engine does NOT
-support filtering entities from `entities_visible` based on state fields.
-All entities in `entities_present` are shown to the LLM regardless.
+Some entities are not initially visible to the player — e.g., a spider hidden in the webs.  For such entities, list the entity in `entities_present`** as normal. The LLM will see it in the GMBriefing and will be instructed not to narrate it until the player discovers it.
 
-Until entity-level hiding is implemented in the engine, model hidden
-entities with this workaround:
-
-1. **List the entity in `entities_present`** as normal. The LLM will see
-   it in the GMBriefing and must be instructed not to narrate it until
-   the player discovers it.
-2. **Add an `on_examine` event** on the room or a covering entity that
-   gates the discovery on a stat check:
+Usually, the scenario will provide some mechanism for uncovering the hidden entity.  For example, it could be revealed by an `on_examine` event gated by a stat check:
 
    ```json
    {
@@ -456,26 +470,7 @@ entities with this workaround:
    }
    ```
 
-3. **For the NPC's `behavior` trigger**, gate combat on the noticing flag:
-
-   ```json
-   "triggers_on": ["exit_force_through_web"],
-   "encounter_rules": [
-     {
-       "condition": { "require": "flag:spider_noticed == true" },
-       ...
-     }
-   ]
-   ```
-
-4. **For the entity's `description`**, write a vague description that
-   doesn't spoil the discovery. The `on_examine` success narrative adds
-   the dramatic reveal.
-
-This approach relies on the LLM respecting the discovery gate in narration.
-It is not enforcement — a disobedient LLM could narrate the spider before
-the player notices it. A proper entity-level hidden/revealed mechanism
-would need engine support.
+If a hidden entity seems to have no revelation mechanism, it could be a scenario bug; you should implement the json faithfully as written in the scenario, but do surface the issue during your post-generation report.
 
 ### 3C. Soft items
 
@@ -483,7 +478,7 @@ Plausible generic items the player might pick up. These should be
 environmentally appropriate items with no plot significance.
 
 **Test:** Will a condition, mechanic, or specific interaction reference this
-thing by name? If yes → it should be a proper entity, not a soft item.
+thing by name? If yes, it should be a proper entity, not a soft item.
 
 ### 3D. Exits
 
@@ -504,7 +499,7 @@ For every exit described in the scenario, produce an exit object:
   and stay in place. Use for patterns like "dragging the heavy key requires
   STR check to move between rooms".
 
-**`on_traverse` effect fields:**
+#### `on_traverse` effect fields
 
 | Field | Description |
 |-------|-------------|
@@ -514,7 +509,7 @@ For every exit described in the scenario, produce an exit object:
 | `skip_if` | Condition object — if met, the traverse effect (narrative, flag setting, etc.) is skipped |
 | `narrative_skip` | Alternative prose when the effect is skipped via `skip_if` |
 
-**`traversal_check` fields:**
+#### `traversal_check` fields
 
 | Field | Description |
 |-------|-------------|
@@ -523,7 +518,7 @@ For every exit described in the scenario, produce an exit object:
 | `skip_check_if` | Optional condition — if met, the check is skipped entirely (bypasses `condition`) |
 | `failure_narrative` | Prose shown when the check fails |
 
-**When to use `traversal_check` vs `conditions`:**
+#### When to use `traversal_check` vs `conditions`
 
 | Pattern | Use |
 |---------|-----|
@@ -532,10 +527,10 @@ For every exit described in the scenario, produce an exit object:
 | "Secret compartment is hidden until noticed" | `hidden: true` + companion interaction that sets flag + `conditions: [ { "require": "flag:... == true" } ]` |
 | "Dropping down is one-way" | `one_way: true` (and a separate exit to go back up) |
 
-**Clearable obstacle pattern (one-time obstacle):**
+#### Clearable obstacle pattern (one-time obstacle)
 
 When the player must overcome an obstacle to pass (e.g., force through a
-web), and once cleared the obstacle is no longer an impediment:
+spider's web), and once cleared the obstacle is no longer an impediment:
 
 1. Add a `traversal_check` on the blocked exit with the initial check
 2. On check success, set a flag via the exit's `on_traverse.set_flag`
@@ -560,63 +555,30 @@ web), and once cleared the obstacle is no longer an impediment:
 }
 ```
 
-**Global traversal check (item weight):**
+#### Global traversal check (item weight)
 
-If carrying a certain item makes every exit harder (e.g., a heavy key),
+If carrying a certain item makes every exit harder (e.g., a heavy body),
 the same `traversal_check` must be duplicated on **every exit** the player
 can use while carrying it. There is currently no mechanism to apply a
 traversal check globally — per-exit duplication is the required pattern.
 
 ```json
-"exit_climb_down_handle": {
-  "target_room": "axe_handle_upper",
+"exit_up_stairs": {
+  "target_room": "foyer",
   "traversal_check": {
-    "condition": { "require": "inventory:rusty_key" },
+    "condition": { "require": "inventory:dead_body" },
     "check": { "type": "stat_check", "stat": "STR", "dc": 13, "repeatable": true },
-    "skip_check_if": { "require": "entity:korbar.following == true" },
-    "failure_narrative": "The giant key is too heavy to haul up the handle."
+    "skip_check_if": { "require": "entity:butler.following == true" },
+    "failure_narrative": "The body is too heavy to haul up the stairs."
   }
 }
 ```
 
-Apply this same block to every relevant exit. Use `skip_check_if` when an
-NPC follower can bypass the weight requirement.
+Apply this same block to every relevant exit. Use `skip_check_if` there is a way to skip the requirement.
 
-**Approach-specific traversal effects (different drop penalties):**
+#### Explicit win traversal action
 
-When the same action (dropping) has different consequences depending on
-which room triggers it, use `on_traverse.set_stat` with different values
-on each exit:
-
-```json
-// On the Axe Head drop exit:
-"on_traverse": {
-  "narrative": "You leap into the darkness and land hard among the rubbish below.",
-  "set_stat": { "STR": -4, "DEX": -4, "CON": -4 }
-}
-
-// On the Axe Handle Upper drop exit:
-"on_traverse": {
-  "narrative": "You drop down and land heavily, spraining your ankle.",
-  "set_stat": { "DEX": -2, "CON": -2 }
-}
-
-// On the Axe Handle Lower drop exit:
-"on_traverse": {
-  "narrative": "You drop down safely onto the rubbish pile below."
-}
-```
-
-Each exit's `on_traverse` can set different stat deltas because each exit is
-a distinct object. The engine applies `set_stat` as hard-state deltas when
-the player traverses that exit.
-
-**Explicit win action:**
-
-For win conditions that require an explicit player action (not just a
-passively met condition), create an exit that represents that final action.
-Target it to a virtual exit room (not a real room) or use an interaction
-that sets the final flag:
+For win conditions that require an explicit player action in a specific room, one implementation trick is to create an exit representing that final action.  Target it to a virtual exit room (not a real room) or use an interaction that sets the final flag:
 
 ```json
 {
@@ -636,26 +598,6 @@ Then reference `flag:player_entered_vault` in the win condition's
 `condition`. This ensures the player must explicitly choose the final
 action, which is distinct from the engine passively detecting a condition.
 
-**Special case — exits that require an NPC to be present:**
-
-If an exit's availability depends on whether an NPC is in the room (e.g.,
-Korbar helping carry the key), use an `entity:` condition:
-
-```json
-"conditions": [{ "unless": "entity:korbar.following == true" }]
-```
-
-This means: "the exit has a traversal check unless Korbar is following."
-Together with a separate exit for the "Korbar helps" case, or with
-`traversal_check.skip_check_if`:
-
-```json
-"traversal_check": {
-  "check": { "type": "stat_check", "stat": "STR", "dc": 13 },
-  "skip_check_if": { "require": "entity:korbar.following == true" }
-}
-```
-
 ### 3E. Interactions (room-level)
 
 Define interactions only for room-specific actions that aren't covered by
@@ -665,9 +607,9 @@ Each interaction must have:
 - **`id`**: snake_case, unique within the room
 - **`label`**: short UI label
 - **`description`**: what the player is attempting
-- `check` + `success` + `failure`, **or** `result` (deterministic)
+- `check` + `success` + `failure`, or `result` (deterministic)
 
-**Deterministic (no check):**
+#### Deterministic (no check)
 ```json
 {
   "id": "leave_secret_compartment",
@@ -677,7 +619,7 @@ Each interaction must have:
 }
 ```
 
-**Probabilistic (with check):**
+#### Probabilistic (with check)
 ```json
 {
   "id": "rummage_rubbish",
@@ -699,11 +641,10 @@ Each interaction must have:
 }
 ```
 
-**Using_results for item-specific overrides:**
+#### Using_results for item-specific overrides
 
 When an interaction has different outcomes depending on what the player uses,
-define a `using_results` map. This allows the same interaction to resolve
-differently based on the `using` parameter of the `interact` action:
+you may define a `using_results` map. This allows the same interaction to resolve differently based on the `using` parameter of the `interact` action:
 
 ```json
 {
@@ -741,7 +682,7 @@ differently based on the `using` parameter of the `interact` action:
 }
 ```
 
-**Chained checks pattern:**
+#### Chained checks pattern
 
 When a check result triggers a follow-up check (for escalating consequences,
 multiple stages, or branching outcomes), encode the follow-up as
@@ -787,7 +728,7 @@ a narrative outcome:
 ```
 
 When the chain check's final failure sets a game-over flag, pair it with
-a `lose` mechanic in Step 4B:
+a `lose` mechanic:
 
 ```json
 "fell_to_chasm": {
@@ -800,37 +741,31 @@ a `lose` mechanic in Step 4B:
 }
 ```
 
-**Escalating DC pattern (repeated interactions):**
+#### Stat-check-gated attitude changes via `dialogue_paths`
 
-When the same interaction can be repeated with increasing difficulty (e.g.,
-Korbar's CHA check: DC 9, 12, 15), model it as multiple interaction entries
-with mutually exclusive conditions:
+When a scenario calls for a CHA check (or other stat check) to mechanically change an NPC's attitude during special dialogue paths, define a `dialogue_path` in the NPC's `dialogue_guidelines`. The player uses a `talk` action with `dialogue_path` set to the path ID; the engine resolves the check
+and applies `adjust_attitude` (or other results) directly.
+
+Example: a spider that can be flattered with a CHA check to improve attitude:
 
 ```json
-{
-  "id": "cheer_korbar_1",
-  "label": "Comfort Korbar",
-  "description": "Try to cheer up the miserable dwarf.",
-  "check": {
-    "type": "stat_check",
-    "stat": "CHA",
-    "dc": 9,
-    "repeatable": false
-  },
-  "success": {
-    "narrative": "Korbar seems a little better.",
-    "set_entity_state": { "korbar": { "attitude": 1 } }
-  },
-  "failure": {
-    "narrative": "Korbar shrugs you off."
+"dialogue_paths": {
+  "flatter": {
+    "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
+    "condition": { "require": "attitude:spider < 0" },
+    "check": {
+      "type": "stat_check",
+      "stat": "CHA",
+      "dc": 12,
+      "repeatable": true
+    },
+    "success": {
+      "narrative": "The spider preens at your praise.",
+      "adjust_attitude": { "spider": 1 }
+    }
   }
 }
 ```
-
-Separate interactions are needed because the schema does not support dynamic
-DC scaling. Use conditions on each entry to ensure only the appropriate one
-is available. The engine tracks which interaction IDs have been attempted
-(and their outcomes) via `checks_attempted` in soft state.
 
 **NPC action blocking pattern:**
 
@@ -1256,6 +1191,8 @@ cross-file consistency issues.
   `corpus.mechanics`
 - [ ] Every NPC with `dialogue_guidelines.will_reveal` entries has
   matching `set_flag` / `set_entity_state` values that exist
+- [ ] Every `adjust_attitude` key references a valid NPC entity that has
+  `attitude` declared in `state_fields`
 
 ### Corpus self-consistency
 

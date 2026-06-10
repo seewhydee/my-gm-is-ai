@@ -328,6 +328,47 @@ def resolve_talk(
             error=f"NPC '{target_npc}' is dead",
         )
 
+    # Resolve dialogue path if specified
+    path_result: ResolutionResult | None = None
+    if action.dialogue_path and npc_entity.dialogue_guidelines:
+        path = npc_entity.dialogue_guidelines.dialogue_paths.get(action.dialogue_path)
+        if path is None:
+            return ResolutionResult(
+                success=False,
+                error=f"Dialogue path '{action.dialogue_path}' not found for NPC '{target_npc}'",
+            )
+        if path.condition and not evaluate(path.condition, hard, soft, corpus):
+            return ResolutionResult(
+                success=False,
+                error=f"Conditions not met for dialogue path '{action.dialogue_path}'",
+            )
+        if path.check:
+            synthetic_inter = Interaction(
+                id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
+                label="",
+                check=path.check,
+                success=path.success,
+                failure=path.failure,
+            )
+            path_result = _resolve_interaction_check(
+                synthetic_inter, hard, soft, corpus, room_id
+            )
+        elif path.result:
+            path_result = _resolve_interaction_result(
+                path.result, hard, soft, corpus, room_id
+            )
+        else:
+            path_result = ResolutionResult(
+                success=True,
+                hard_changes=HardStateChanges(),
+                room_after_id=room_id,
+            )
+
+    # If the path resolution itself failed (invalid, not just check failure),
+    # do not enter dialogue.
+    if path_result is not None and not path_result.success:
+        return path_result
+
     turn = hard.turn_count
     dialogue_exited = None
 
@@ -342,6 +383,17 @@ def resolve_talk(
 
     if action.ends_dialogue:
         dialogue_exited = exit_dialogue(soft, corpus, hard)
+
+    if path_result is not None:
+        return ResolutionResult(
+            success=True,
+            hard_changes=path_result.hard_changes or HardStateChanges(),
+            triggered_narration=list(path_result.triggered_narration or []),
+            revealed_hints=list(path_result.revealed_hints or []),
+            room_after_id=room_id,
+            dialogue_exited=dialogue_exited,
+            rolls=list(path_result.rolls or []),
+        )
 
     return ResolutionResult(
         success=True,
@@ -622,7 +674,7 @@ def _resolve_roll_check_chain(
     })
 
     if result:
-        _apply_result(result, changes, narrative, revealed_hints)
+        _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
         if result.chain_check:
             _resolve_chained_check(
                 result.chain_check, hard, soft, corpus, room_id,
@@ -696,7 +748,7 @@ def _resolve_stat_check_chain(
     })
 
     if result:
-        _apply_result(result, changes, narrative, revealed_hints)
+        _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
         if result.chain_check:
             _resolve_chained_check(
                 result.chain_check, hard, soft, corpus, room_id,
@@ -833,7 +885,7 @@ def _resolve_roll_check(
 
     revealed_hints: list[str] = []
     if result:
-        _apply_result(result, changes, narrative, revealed_hints)
+        _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
         if result.chain_check:
             _resolve_chained_check(
                 result.chain_check, hard, soft, corpus, room_id,
@@ -930,7 +982,7 @@ def _resolve_stat_check(
     }]
 
     if result:
-        _apply_result(result, changes, narrative, revealed_hints)
+        _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
         if result.chain_check:
             _resolve_chained_check(
                 result.chain_check, hard, soft, corpus, room_id,
@@ -984,7 +1036,7 @@ def _resolve_interaction_result(
     narrative: list[str] = []
     revealed_hints: list[str] = []
 
-    _apply_result(result, changes, narrative, revealed_hints)
+    _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
     if result.chain_check:
         rolls: list[dict[str, Any]] = []
         _resolve_chained_check(
@@ -1014,6 +1066,8 @@ def _apply_result(
     changes: HardStateChanges,
     narrative: list[str],
     revealed_hints: list[str],
+    hard: HardGameState | None = None,
+    corpus: ModuleCorpus | None = None,
 ) -> None:
     if result.narrative:
         narrative.append(result.narrative)
@@ -1030,6 +1084,35 @@ def _apply_result(
     if result.set_stat:
         for stat_key, delta in result.set_stat.items():
             changes.stat_changes[stat_key] = changes.stat_changes.get(stat_key, 0) + delta
+    if result.adjust_attitude and hard is not None and corpus is not None:
+        for npc_id, delta in result.adjust_attitude.items():
+            npc_entity = corpus.entities.get(npc_id)
+            if npc_entity is None or npc_entity.type != "npc":
+                continue
+            guidelines = npc_entity.dialogue_guidelines
+            if guidelines is None:
+                continue
+            limits = guidelines.attitude_limits
+            entity_state = hard.entity_states.get(npc_id, {})
+            current = entity_state.get("attitude")
+            if current is None:
+                current = limits.initial
+            current = int(current)
+            new_value = current + delta
+            # Clamp to [min, max]
+            new_value = max(limits.min, min(new_value, limits.max))
+            # Respect step_per_turn
+            if abs(new_value - current) > limits.step_per_turn:
+                step = limits.step_per_turn
+                if new_value > current:
+                    new_value = current + step
+                else:
+                    new_value = current - step
+                new_value = max(limits.min, min(new_value, limits.max))
+            if npc_id not in hard.entity_states:
+                hard.entity_states[npc_id] = {}
+            hard.entity_states[npc_id]["attitude"] = new_value
+            changes.entity_state_changes.setdefault(npc_id, {})["attitude"] = new_value
     if result.reveals:
         revealed_hints.append(result.reveals)
 
@@ -1113,7 +1196,7 @@ def _fire_on_examine_events(
             if result.rolls:
                 rolls.extend(result.rolls)
         elif event.result:
-            _apply_result(event.result, changes, narrative, revealed_hints)
+            _apply_result(event.result, changes, narrative, revealed_hints, hard, corpus)
             if event.result.chain_check:
                 _resolve_chained_check(
                     event.result.chain_check, hard, soft, corpus, room_id,

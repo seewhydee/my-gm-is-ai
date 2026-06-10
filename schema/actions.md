@@ -89,7 +89,10 @@ Soft State, for the ruling LLM (call 1).
         "description": "A huge, hungry spider lurking in the dense webs.",
         "state": { "alive": true, "fled": false },
         "entity_notes": [],
-        "soft_items": []
+        "soft_items": [],
+        "dialogue_paths": {
+          "flatter": "Praise the spider's hunting prowess to improve its attitude toward the player."
+        }
       },
       {
         "id": "webs_dense",
@@ -191,7 +194,10 @@ Soft State, for the ruling LLM (call 1).
 2. **Current room**: fetched by ID from the module corpus. Includes 
    `entities_visible`, listing all non-concealed entities in the room.
    Each of these entity entries includes the entity ID, current hard
-   state, and entity notes (up to 3 most recent).
+   state, and entity notes (up to 3 most recent). For NPCs with
+   `dialogue_guidelines.dialogue_paths`, `entities_visible[*].dialogue_paths`
+   is a map of `{path_id: description}` so LLM Call 1 can match player intent
+   to the correct special dialogue path.
 
 3. **Soft items** in the room (from `room.soft_items`) are listed directly.
    Entity-specific soft items are listed under each entity's entry.
@@ -362,6 +368,7 @@ The LLM must output a single structured action, corresponding to the player's in
 | `utterance`      | string  | no       | Verbatim spoken words the player's character says. May be absent if the player is describing speech indirectly or the input is purely non-verbal (e.g., nodding, gesturing). |
 | `detail`         | string  | yes      | Non-verbal context: tone, body language, actions accompanying the speech. |
 | `ends_dialogue`  | boolean | no       | If `true`, signals that the player intends to end the conversation. The engine will archive the conversation log to the NPC's `entity_notes` and clear `dialogue_state.active_npc`. |
+| `dialogue_path`  | string  | no       | If the player is attempting a specific special dialogue path (e.g., flatter, intimidate, persuade, deliver specific information), set this to the path ID declared in the NPC's `dialogue_guidelines.dialogue_paths`. LLM Call 1 receives each path's `description` in `current_room.entities_visible[*].dialogue_paths` as `{path_id: description}` and should use that description to match player intent to the correct path ID. The engine resolves the path's condition, check, and results. Omit for freeform conversation. |
 
 **Engine validation:**
 - `target` must be an NPC entity present in the current room, with `state.alive` true.

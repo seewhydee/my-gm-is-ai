@@ -66,6 +66,7 @@ class Result(BaseModel):
     remove_item: Optional[str] = None
     set_flag: Optional[Dict[str, bool]] = None
     set_stat: Optional[Dict[str, int]] = None
+    adjust_attitude: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
     chain_check: Optional[ChainedCheck] = None
 
@@ -224,6 +225,27 @@ class DialogueExit(BaseModel):
     narrative: Optional[str] = None
 
 
+class DialoguePath(BaseModel):
+    description: str
+    condition: Optional[ConditionExpression] = None
+    check: Optional[CheckType] = None
+    success: Optional[Result] = None
+    failure: Optional[Result] = None
+    result: Optional[Result] = None
+
+    @model_validator(mode="after")
+    def check_mutually_exclusive(self) -> "DialoguePath":
+        has_check = self.check is not None
+        has_result = self.result is not None
+        if has_check and has_result:
+            raise ValueError(
+                "DialoguePath must have either check (+success/+failure) or result, not both"
+            )
+        if has_check and self.success is None:
+            raise ValueError("DialoguePath with 'check' must also have 'success'")
+        return self
+
+
 class DialogueGuidelines(BaseModel):
     personality: str
     on_encounter: str = ""
@@ -233,6 +255,7 @@ class DialogueGuidelines(BaseModel):
     attitude_limits: AttitudeLimits
     will_reveal: Dict[str, WillRevealEntry] = Field(default_factory=dict)
     on_dialogue_exit: Optional[DialogueExit] = None
+    dialogue_paths: Dict[str, DialoguePath] = Field(default_factory=dict)
 
 
 class BranchOutcome(BaseModel):
