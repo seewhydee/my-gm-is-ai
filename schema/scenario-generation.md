@@ -390,8 +390,6 @@ Exactly one entity with `type: "player"`.
 - [ ] Entities that span multiple rooms have `spans_rooms` and appear in each
   room's `entities_present`
 - [ ] NPCs that refuse to enter certain rooms have `follower_blacklist`
-- [ ] Hidden entities (not initially visible) have a `revealed` boolean
-  state_field and are omitted from `entities_present`
 
 ---
 
@@ -428,15 +426,19 @@ start.
 
 **Hidden entity reveal pattern:**
 
-Some entities are not initially visible to the player — they are concealed
-till a WIS check, a dialogue revelation, or some other action reveals them.
-Model this by:
+Some entities are not initially visible to the player — the spider in the
+webs, the handkerchief in the rubbish, etc. Currently, the engine does NOT
+support filtering entities from `entities_visible` based on state fields.
+All entities in `entities_present` are shown to the LLM regardless.
 
-1. **Omitting the entity from `entities_present`** at game start. The entity
-   still exists in the `entities` block, but the engine does not surface it
-   to the player until it's revealed.
-2. **Adding an `on_enter` or `on_examine` event** (on the room or a
-   covering entity) that sets a flag when the player discovers it:
+Until entity-level hiding is implemented in the engine, model hidden
+entities with this workaround:
+
+1. **List the entity in `entities_present`** as normal. The LLM will see
+   it in the GMBriefing and must be instructed not to narrate it until
+   the player discovers it.
+2. **Add an `on_examine` event** on the room or a covering entity that
+   gates the discovery on a stat check:
 
    ```json
    {
@@ -450,32 +452,31 @@ Model this by:
      },
      "success": {
        "narrative": "You notice eight glittering eyes watching you from above.",
-       "set_flag": { "spider_noticed": true },
-       "set_entity_state": { "spider": { "revealed": true } }
+       "set_flag": { "spider_noticed": true }
      }
    }
    ```
 
-3. **Declaring a `revealed` field** in the entity's `state_fields` so the
-   entity becomes visible in the GMBriefing when `true`:
+3. **For the NPC's `behavior` trigger**, gate combat on the noticing flag:
 
    ```json
-   "state_fields": {
-     "alive": { "type": "boolean", "description": "..." },
-     "fled": { "type": "boolean", "description": "..." },
-     "revealed": { "type": "boolean", "description": "Whether the entity is visible to the player." }
-   }
+   "triggers_on": ["exit_force_through_web"],
+   "encounter_rules": [
+     {
+       "condition": { "require": "flag:spider_noticed == true" },
+       ...
+     }
+   ]
    ```
 
-When `revealed` is omitted or `false`, the Context Assembler excludes the
-entity from `entities_visible` in the GMBriefing. The engine surfaces it
-once the state field becomes `true` (set via `on_examine` success,
-`will_reveal` side effects, or any other mechanism).
+4. **For the entity's `description`**, write a vague description that
+   doesn't spoil the discovery. The `on_examine` success narrative adds
+   the dramatic reveal.
 
-3. **Also using `revealed: false` as the initial** `entity_states` value.
-
-This keeps the entity out of the player's awareness until a specific trigger
-reveals it, without losing the entity's definition or its interactions.
+This approach relies on the LLM respecting the discovery gate in narration.
+It is not enforcement — a disobedient LLM could narrate the spider before
+the player notices it. A proper entity-level hidden/revealed mechanism
+would need engine support.
 
 ### 3C. Soft items
 
@@ -1275,8 +1276,8 @@ cross-file consistency issues.
 - [ ] `hard_state.player.location` matches the room with `is_start_room: true`
 - [ ] Every entity with `state_fields` has a complete `entity_states` entry
 - [ ] `entity_states` contains no fields not declared in the entity's `state_fields`
-- [ ] Hidden entities (entities omitted from `entities_present`) have
-  `revealed: false` in their `entity_states` entry
+- [ ] Entities that are narratively hidden (e.g., spider in webs) are still
+  listed in `entities_present` until engine-level entity hiding is supported
 - [ ] `entity_states` contains all fields declared in the entity's `state_fields`
 - [ ] Every NPC has `attitude` in both `state_fields` and `entity_states`
 - [ ] NPC attitude values are within the `[min, max]` range from their
@@ -1444,9 +1445,10 @@ All IDs must be **snake_case, lowercase ASCII**:
     failure cannot set `game_over` directly. Instead, use `set_flag` in the
     failure result and add a `lose` mechanic watching that flag.
 
-16. **Hidden entities**: Entities that start invisible to the player should
-    be omitted from `entities_present` and have a `revealed` state field.
-    The engine surfaces them when `revealed` becomes `true`.
+16. **Entity-level hiding not yet supported**: The engine does not currently
+    filter entities from the GMBriefing based on state. Entities in
+    `entities_present` are always visible to the LLM. Hidden entity patterns
+    currently rely on LLM compliance and gated interactions.
 
 17. **Global traversal checks**: There is no mechanism to apply a
     traversal_check to all exits at once. If carrying an item affects
