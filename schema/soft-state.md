@@ -21,7 +21,7 @@ continuity (NPC moods, environmental details, conversation memory).
   "soft_inventory":    ["string", ...],
   "room_notes":        { "<room_id>": ["string", ...] },
   "entity_notes":      { "<entity_id>": ["string", ...] },
-  "npc_revelations":   { "<npc_entity_id>": [{ "topic_id": "...", "description": "..." }] },
+  "player_knowledge":  [ { "topic_id": "...", "description": "...", "source_type": "...", "source_id": "...", "turn_learned": 0 } ],
   "turn_history":      [ { /* turn log entry */ } ],
   "surfaced_soft_items": { "<room_or_entity_id>": ["string", ...] },
   "dialogue_state":    { /* active NPC conversation state */ }
@@ -177,38 +177,50 @@ that NPC is the active speaker.
 
 ---
 
-## `npc_revelations` — Topics revealed by NPCs
+## `player_knowledge` — Topics the player has learned
 
 ```json
-{
-  "korbar": [
-    { "topic_id": "padlock_mechanism", "description": "How the exterior padlock can be opened from inside" },
-    { "topic_id": "secret_compartment", "description": "A hidden cache inside the axe head" }
-  ]
-}
+[
+  {
+    "topic_id": "padlock_mechanism",
+    "description": "How the exterior padlock can be opened from inside",
+    "source_type": "npc_dialogue",
+    "source_id": "korbar",
+    "turn_learned": 4
+  },
+  {
+    "topic_id": "secret_compartment",
+    "description": "A hidden cache inside the axe head",
+    "source_type": "npc_dialogue",
+    "source_id": "korbar",
+    "turn_learned": 6
+  }
+]
 ```
 
-Records which `will_reveal` topics each NPC has revealed to the player. Each
-entry is an object containing the topic ID and its `description` from the
-corpus. Populated exclusively by the engine during post-validation of LLM
+Records which topics the player has learned during play. Each entry is a
+`KnowledgeEntry` object containing the topic ID, its description, how it was
+learned (`source_type` and optional `source_id`), and the turn number when it
+was recorded. Populated exclusively by the engine during post-validation of LLM
 Call 2's `knowledge_tags`.
 
 ### Population rules
 
 | Trigger                                             | Engine action |
 |-----------------------------------------------------|---------------|
-| LLM Call 2 emits `knowledge_tags.npc_revealed`      | For each topic ID, the engine checks against the active NPC's `will_reveal` entries. If the topic exists and all its `conditions` are met, the engine applies the topic's `set_flag` and `set_entity_state` side effects, then appends `{ topic_id, description }` to `npc_revelations[<npc_id>]`. |
+| LLM Call 2 emits `knowledge_tags.npc_revealed`      | For each topic ID, the engine checks against the active NPC's `will_reveal` entries. If the topic exists and all its `conditions` are met, the engine applies the topic's `set_flag` and `set_entity_state` side effects, then appends a `KnowledgeEntry` to `player_knowledge`. |
 | Tag references unknown topic                        | Silently rejected. |
 | Tag references topic with unmet conditions          | Silently rejected. |
-| Duplicate topic ID (already in `npc_revelations`)   | Skipped (no duplicate entries). |
+| Duplicate topic ID (already in `player_knowledge`)  | Skipped (no duplicate entries). |
 
 ### Usage in GMBriefing
 
-- The Context Assembler includes `npc_revelations` as a top-level
-  `npc_revelations` block in the GMBriefing so LLM Call 1 knows what the
-  player has learned from each NPC.
+- The Context Assembler produces `player_knowledge_topics: List[str]` — a flat
+  list of topic IDs the player has learned — and includes it in the GMBriefing
+  so LLM Call 1 knows what the player has learned.
 - When `dialogue_state.active_npc` is set, the `dialogue_context` block
-  also includes `revealed_topics` (just the topic IDs) for quick reference.
+  includes `revealed_topics` (just the topic IDs for the current NPC) for quick
+  reference.
 
 ---
 
@@ -479,7 +491,7 @@ post-validates them against the NPC's `attitude_limits` using the same rules:
   "soft_inventory": [],
   "room_notes": {},
   "entity_notes": {},
-  "npc_revelations": {},
+  "player_knowledge": [],
   "surfaced_soft_items": {},
   "turn_history": [],
   "dialogue_state": {

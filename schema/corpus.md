@@ -113,7 +113,8 @@ room, able to retry next turn.
     "check": {
       "type": "stat_check",
       "stat": "STR",
-      "dc": 13
+      "dc": 13,
+      "repeatable": true
     },
     "condition": { "require": "inventory:rusty_key" },
     "skip_check_if": { "require": "flag:korbar_helps_key == true" },
@@ -330,7 +331,8 @@ triggers a DEX check to catch the slipping key.
     "check": {
       "type": "stat_check",
       "stat": "DEX",
-      "dc": 8
+      "dc": 8,
+      "repeatable": true
     },
     "success": {
       "narrative": "You catch it just in time.",
@@ -604,8 +606,8 @@ authority while letting the creative LLM control dialogue timing:
    revealed in its spoken dialogue.
 3. The engine post-validates each tag: is it a declared `will_reveal` topic
    for this NPC? Are all conditions met? If so, the engine applies the topic's
-   `set_flag` and `set_entity_state` side effects, and records the topic ID
-   and its `description` in `soft_state.npc_revelations`.
+   `set_flag` and `set_entity_state` side effects, and records a
+   `KnowledgeEntry` in `soft_state.player_knowledge`.
 4. On subsequent turns, the Context Assembler includes revealed topics (with
    descriptions) in the GMBriefing, so LLM Call 1 knows what the player has
    learned.
@@ -638,7 +640,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
       "condition": { /* condition object */ },
       "outcome": "death | flee | roll | stat_check",
       "threshold": 0.50,
-      "check": { "type": "stat_check", "stat": "STR", "dc": 12 },
+      "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
       "narrative": "string",
       "set_flags": { "<flag>": true },
       "on_success": { "outcome": "...", "set_flags": {}, "narrative": "..." },
@@ -669,7 +671,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
     {
       "condition": { "require": "tag:weapon" },
       "outcome": "stat_check",
-      "check": { "type": "stat_check", "stat": "STR", "dc": 17 },
+      "check": { "type": "stat_check", "stat": "STR", "dc": 17, "repeatable": true },
       "on_success": { "outcome": "flee", "narrative": "You overpower Korbar." },
       "on_failure": { "outcome": "death", "narrative": "Korbar overpowers you." }
     }
@@ -695,7 +697,7 @@ Game-over conditions live here too.
         "condition": { /* condition object */ },
         "outcome": "death | flee | roll | stat_check",
         "threshold": 0.50,
-        "check": { "type": "stat_check", "stat": "STR", "dc": 12 },
+        "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
         "on_success": { "outcome": "...", "set_flags": {}, "narrative": "..." },
         "on_failure": { "outcome": "...", "narrative": "..." },
         "narrative": "string",

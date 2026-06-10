@@ -129,14 +129,7 @@ Soft State, for the ruling LLM (call 1).
     }
   },
 
-  "npc_revelations": {
-    "korbar": [
-      {
-        "topic_id": "padlock_mechanism",
-        "description": "How the exterior padlock can be opened from inside"
-      }
-    ]
-  },
+  "player_knowledge_topics": ["padlock_mechanism"],
 
   "recent_history": [
     {
@@ -218,9 +211,10 @@ Soft State, for the ruling LLM (call 1).
 
 7. **NPC attitudes** includes attitudes for all known NPCs.
 
-8. **NPC revelations** are drawn from `soft_state.npc_revelations`. Each NPC
-   with revealed topics lists them with their `will_reveal` descriptions, so
-   LLM Call 1 knows what the player has learned from each NPC.
+8. **Player knowledge** is drawn from `soft_state.player_knowledge`. The
+   Context Assembler produces `player_knowledge_topics: List[str]` — a flat
+   list of topic IDs the player has learned — so LLM Call 1 knows what the
+   player has learned.
 
 9. **Dialogue context** is included when `soft_state.dialogue_state.active_npc`
    is non-null. The block contains the active NPC's identity, attitude,

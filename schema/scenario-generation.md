@@ -307,23 +307,15 @@ back"), model each as a separate rule with its own `condition`:
   {
     "condition": { "require": "tag:weapon" },
     "outcome": "stat_check",
-    "check": { "type": "stat_check", "stat": "STR", "dc": 10 },
+    "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
     "on_success": {
       "outcome": "flee",
       "narrative": "You land a solid blow. The spider hisses and flees.",
       "set_flags": { "spider_fled": true }
     },
     "on_failure": {
-      "outcome": "stat_check",
-      "check": { "type": "stat_check", "stat": "DEX", "dc": 10 },
-      "on_success": {
-        "outcome": "death",
-        "narrative": "The spider strikes back! You dodge, barely."
-      },
-      "on_failure": {
-        "outcome": "death",
-        "narrative": "The spider's venom fills your veins. Everything goes dark."
-      }
+      "outcome": "death",
+      "narrative": "The spider strikes back! Its venom fills your veins."
     }
   },
   {
@@ -700,7 +692,8 @@ a narrative outcome:
       "check": {
         "type": "stat_check",
         "stat": "DEX",
-        "dc": 10
+        "dc": 10,
+        "repeatable": true
       },
       "success": {
         "narrative": "You throw yourself aside as darts whistle past your head."
@@ -901,7 +894,7 @@ They follow the same rule structure as NPC behavior encounter_rules:
     {
       "condition": { "require": "room:axe_head.is_current == true" },
       "outcome": "stat_check",
-      "check": { "type": "stat_check", "stat": "DEX", "dc": 8 },
+      "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
       "on_success": {
         "narrative": "You drop down and land heavily, but survive."
       },
@@ -1099,7 +1092,6 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
   "entity_notes": {},
   "surfaced_soft_items": {},
   "checks_attempted": {},
-  "npc_revelations": {},
   "revealed_hints": [],
   "turn_history": [],
   "dialogue_state": {
@@ -1128,18 +1120,16 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 5. **`checks_attempted`** — `{}`. Records which non-repeatable checks have
    been attempted. Starts as empty dict.
 
-6. **`npc_revelations`** — always `{}`. Populated during play when NPCs
-   reveal gated topics.
-
-7. **`revealed_hints`** — `[]`. Stores `reveals` strings from successful
+6. **`revealed_hints`** — `[]`. Stores `reveals` strings from successful
    interactions. Starts empty.
 
-8. **`turn_history`** — always `[]`.
+7. **`turn_history`** — always `[]`.
 
-9. **`dialogue_state`** — always the null structure shown above.
+8. **`dialogue_state`** — always the null structure shown above.
 
-10. **`player_knowledge`** — `[]`. List of revelation descriptions accumulated
-    during play (from `reveals` fields in Result objects). Starts empty.
+9. **`player_knowledge`** — `[]`. List of knowledge entries accumulated
+    during play (from NPC dialogue revelations and `reveals` fields in
+    Result objects). Starts empty.
 
 ---
 
@@ -1149,7 +1139,6 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 - [ ] `surfaced_soft_items` is `{}`
 - [ ] `checks_attempted` is `{}`
 - [ ] `revealed_hints` is `[]`
-- [ ] `npc_revelations` is `{}`
 - [ ] `dialogue_state.active_npc` is `null`
 - [ ] `dialogue_state.conversation_log` is `[]`
 - [ ] `dialogue_state.topics_discussed` is `[]`
@@ -1214,7 +1203,7 @@ cross-file consistency issues.
 
 - [ ] Every NPC in corpus has `attitude` initialised in `entity_states`
 - [ ] `dialogue_state` has the standard null structure
-- [ ] `npc_revelations` is `{}`
+- [ ] `player_knowledge` is `[]`
 
 ---
 
