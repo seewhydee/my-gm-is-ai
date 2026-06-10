@@ -611,30 +611,30 @@ Each exit's `on_traverse` can set different stat deltas because each exit is
 a distinct object. The engine applies `set_stat` as hard-state deltas when
 the player traverses that exit.
 
-**Multi-step escape action:**
+**Explicit win action:**
 
-For win conditions that require an explicit player action (e.g., "squirm
-free through the rip"), create an exit that represents the escape action.
+For win conditions that require an explicit player action (not just a
+passively met condition), create an exit that represents that final action.
 Target it to a virtual exit room (not a real room) or use an interaction
 that sets the final flag:
 
 ```json
 {
-  "id": "exit_squirm_free",
-  "direction": "Squirm free through the rip into freedom",
-  "target_room": "free_at_last",
+  "id": "exit_enter_vault",
+  "direction": "Enter the treasure vault",
+  "target_room": "vault_interior",
   "hidden": true,
-  "conditions": [{ "require": "flag:padlock_unlocked == true" }],
+  "conditions": [{ "require": "flag:vault_unlocked == true" }],
   "on_traverse": {
-    "narrative": "You squeeze through the rip and tumble out into the open air.",
-    "set_flag": { "player_escaped": true }
+    "narrative": "You turn the heavy wheel and the vault door swings open, revealing glittering treasure within.",
+    "set_flag": { "player_entered_vault": true }
   }
 }
 ```
 
-Then reference `flag:player_escaped` in the win condition's `condition`.
-This ensures the player must explicitly choose the escape action, which
-is distinct from the engine passively detecting a condition.
+Then reference `flag:player_entered_vault` in the win condition's
+`condition`. This ensures the player must explicitly choose the final
+action, which is distinct from the engine passively detecting a condition.
 
 **Special case — exits that require an NPC to be present:**
 
@@ -741,58 +741,62 @@ differently based on the `using` parameter of the `interact` action:
 }
 ```
 
-**Chain-check-to-game-over pattern:**
+**Chained checks pattern:**
 
-When a failed check triggers a follow-up check, and that failure leads to
-a game-over, encode it as `chain_check` on the first check's failure result.
-The chain check's failure sets a flag, and a `lose` mechanic watches for
-that flag:
+When a check result triggers a follow-up check (for escalating consequences,
+multiple stages, or branching outcomes), encode the follow-up as
+`chain_check` on the success or failure result of the first check.
+
+The typical structure is: a failed (or succeeded) check leads to a second
+check with its own success/failure branches. The second check's failure may
+set a flag that a game-over mechanic watches for, or it may simply produce
+a narrative outcome:
 
 ```json
 {
-  "id": "key_insertion",
-  "label": "Push the key through the rip into the padlock",
-  "description": "Insert the giant key into the padlock outside the Bag.",
+  "id": "vault_trap",
+  "label": "Disarm the vault trap",
+  "description": "Attempt to disarm the pressure plate.",
   "check": {
     "type": "stat_check",
-    "stat": "STR",
+    "stat": "DEX",
     "dc": 12,
     "repeatable": true
   },
   "success": {
-    "narrative": "With a grunt, you push the key through the rip and into the padlock.",
-    "set_flag": { "padlock_unlocked": true }
+    "narrative": "You carefully disable the pressure plate. The vault is safe."
   },
   "failure": {
-    "narrative": "You fumble. The heavy key slips!",
+    "narrative": "The mechanism clicks. Dart shooters whir to life!",
     "chain_check": {
       "check": {
         "type": "stat_check",
         "stat": "DEX",
-        "dc": 8
+        "dc": 10
       },
       "success": {
-        "narrative": "You catch the key just in time."
+        "narrative": "You throw yourself aside as darts whistle past your head."
       },
       "failure": {
-        "narrative": "The key falls through the rip and disappears into the Astral Plane forever.",
-        "set_flag": { "key_lost_to_astral": true }
+        "narrative": "A dart catches you in the shoulder. Poison seeps into your veins.",
+        "set_flag": { "poisoned": true }
       }
     }
   }
 }
 ```
 
-Then in Step 4B, create a `lose` mechanic that checks the flag:
+When the chain check's final failure sets a game-over flag, pair it with
+a `lose` mechanic in Step 4B:
 
 ```json
-"key_dropped_through_rip": {
-  "id": "key_dropped_through_rip",
+"fell_to_chasm": {
+  "id": "fell_to_chasm",
   "type": "lose",
-  "description": "Player drops the key through the rip.",
-  "condition": { "require": "flag:key_lost_to_astral == true" },
-  "narrative": "You are trapped forever inside the Bag of Holding.",
-  "trigger_id": "key_lost"
+  "description": "Player falls into the chasm.",
+  "condition": { "require": "flag:fallen_into_chasm == true" },
+  "narrative": "You lose your footing and tumble into the darkness below.",
+  "trigger_id": "chasm_fall"
 }
 ```
 
@@ -999,35 +1003,35 @@ Model win and loss conditions as mechanic entries with `type: "win"` or
 `"lose"`:
 
 ```json
-"escape": {
-  "id": "escape",
+"completed_quest": {
+  "id": "completed_quest",
   "type": "win",
-  "description": "Player unlocks the padlock and escapes.",
+  "description": "Player completes the main quest.",
   "condition": {
     "all": [
-      "flag:padlock_unlocked == true",
+      "flag:artifact_retrieved == true",
       "flag:player_escaped == true"
     ]
   },
-  "narrative": "You turn the key. The padlock springs open. You squirm through the rip and tumble into the Astral Plane — and then you're falling, falling, until you land on solid ground, outside the Bag.",
-  "trigger_id": "escaped"
+  "narrative": "You emerge into the morning light, the ancient artifact clutched to your chest. Your quest is complete.",
+  "trigger_id": "quest_complete"
 }
 ```
 
 ```json
-"key_dropped_through_rip": {
-  "id": "key_dropped_through_rip",
+"death_by_fall": {
+  "id": "death_by_fall",
   "type": "lose",
-  "description": "Player drops the key through the rip into the Astral Plane.",
-  "condition": { "require": "flag:key_lost_to_astral == true" },
-  "narrative": "The key falls into the Astral Plane, lost forever. You are trapped in the Bag of Holding.",
-  "trigger_id": "key_lost"
+  "description": "Player falls into the chasm.",
+  "condition": { "require": "flag:fallen_into_chasm == true" },
+  "narrative": "You lose your footing and tumble into the darkness below. The fall is long, and then there is nothing.",
+  "trigger_id": "chasm_fall"
 }
 ```
 
-For multi-step win conditions (e.g., unlock padlock AND escape), use `"all"`
-to combine separate flags. Each flag should be set by a different interaction,
-exit, or encounter along the critical path.
+For multi-step win conditions, use `"all"` to combine separate flags. Each
+flag should be set by a different interaction, exit, or encounter along the
+critical path.
 
 ### 4C. Stats block (if applicable)
 
