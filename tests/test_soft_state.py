@@ -320,7 +320,7 @@ class TestSoftGameState:
         import json
         from pathlib import Path
 
-        path = Path(__file__).resolve().parent.parent / "adventures" / "bag-of-holding" / "soft-state.json"
+        path = Path(__file__).resolve().parent / "fixtures" / "soft-state.json"
         data = json.loads(path.read_text())
         s = SoftGameState.model_validate(data)
         assert s.soft_inventory == []

@@ -108,7 +108,7 @@ class TestHardGameState:
         import json
         from pathlib import Path
 
-        path = Path(__file__).resolve().parent.parent / "adventures" / "bag-of-holding" / "hard-state.json"
+        path = Path(__file__).resolve().parent / "fixtures" / "hard-state.json"
         data = json.loads(path.read_text())
         h = HardGameState.model_validate(data)
         assert h.player.location == "axe_head"

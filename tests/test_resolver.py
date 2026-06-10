@@ -27,19 +27,18 @@ from mgmai.models.actions import (
     OocDiscussionAction,
 )
 
-ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
-BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
 def _load_hard():
     return HardGameState.model_validate(
-        json.loads((BAG_OF_HOLDING / "hard-state.json").read_text())
+        json.loads((FIXTURES_DIR / "hard-state.json").read_text())
     )
 
 
 def _load_soft():
     return SoftGameState.model_validate(
-        json.loads((BAG_OF_HOLDING / "soft-state.json").read_text())
+        json.loads((FIXTURES_DIR / "soft-state.json").read_text())
     )
 
 

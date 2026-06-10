@@ -1,0 +1,29 @@
+{
+  "player": {
+    "location": "axe_head",
+    "inventory": []
+  },
+  "flags": {
+    "injured": false,
+    "stunned": false,
+    "spider_fled": false,
+    "handkerchief_noticed": false,
+    "handkerchief_moved": false,
+    "padlock_unlocked": false
+  },
+  "room_states": {
+    "axe_head": { "visited": false },
+    "axe_handle_upper": { "visited": false },
+    "axe_handle_lower": { "visited": false },
+    "bag_floor": { "visited": false },
+    "secret_compartment": { "visited": false }
+  },
+  "entity_states": {
+    "player": { "alive": true },
+    "stuck_fly": { "alive": true, "attitude": 0 },
+    "spider": { "alive": true, "fled": false, "attitude": -5 },
+    "korbar": { "alive": true, "told_secret": false, "attitude": 0 }
+  },
+  "turn_count": 0,
+  "game_over": null
+}

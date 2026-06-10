@@ -27,18 +27,18 @@ from mgmai.models.corpus import Interaction, Result, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 
-BAG = Path(__file__).resolve().parent.parent / "adventures" / "bag-of-holding"
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
 def _load_hard(**overrides):
-    data = json.loads((BAG / "hard-state.json").read_text())
+    data = json.loads((FIXTURES_DIR / "hard-state.json").read_text())
     for eid, fields in overrides.items():
         data.setdefault("entity_states", {}).setdefault(eid, {}).update(fields)
     return HardGameState.model_validate(data)
 
 
 def _load_soft():
-    return SoftGameState.model_validate(json.loads((BAG / "soft-state.json").read_text()))
+    return SoftGameState.model_validate(json.loads((FIXTURES_DIR / "soft-state.json").read_text()))
 
 
 def _load_corpus(sample_corpus_dict):

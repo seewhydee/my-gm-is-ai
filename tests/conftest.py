@@ -9,13 +9,14 @@ from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.state.manager import StateManager
 
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
 BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
 
 
 @pytest.fixture(scope="session")
 def sample_corpus_dict() -> dict:
-    path = BAG_OF_HOLDING / "corpus.json"
+    path = FIXTURES_DIR / "corpus.json"
     return json.loads(path.read_text())
 
 
@@ -26,13 +27,13 @@ def sample_corpus(sample_corpus_dict: dict) -> ModuleCorpus:
 
 @pytest.fixture(scope="session")
 def sample_hard_state() -> HardGameState:
-    path = BAG_OF_HOLDING / "hard-state.json"
+    path = FIXTURES_DIR / "hard-state.json"
     return HardGameState.model_validate(json.loads(path.read_text()))
 
 
 @pytest.fixture(scope="session")
 def sample_soft_state() -> SoftGameState:
-    path = BAG_OF_HOLDING / "soft-state.json"
+    path = FIXTURES_DIR / "soft-state.json"
     return SoftGameState.model_validate(json.loads(path.read_text()))
 
 

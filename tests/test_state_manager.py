@@ -9,18 +9,17 @@ from mgmai.models.actions import HardStateChanges
 from mgmai.models.soft_state import SoftStatePatch, TurnHistoryEntry
 
 
-ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
-BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
 @pytest.fixture
 def manager() -> StateManager:
-    return StateManager(BAG_OF_HOLDING)
+    return StateManager(FIXTURES_DIR)
 
 
 class TestLoadAndValidation:
     def test_load_all_success(self) -> None:
-        sm = StateManager(BAG_OF_HOLDING)
+        sm = StateManager(FIXTURES_DIR)
         assert sm.corpus is not None
         assert sm.hard_state is not None
         assert sm.soft_state is not None
@@ -30,89 +29,89 @@ class TestLoadAndValidation:
 
     def test_load_individual_methods(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm._validate_cross_references()
         assert sm.corpus.rooms["axe_head"].name == "Axe Head"
 
     def test_invalid_player_location(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.player.location = "nonexistent_room"
         with pytest.raises(ValueError, match="Player location"):
             sm._validate_cross_references()
 
     def test_invalid_inventory_item(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.player.inventory.append("magic_wand")
         with pytest.raises(ValueError, match="inventory references unknown"):
             sm._validate_cross_references()
 
     def test_invalid_room_state_room(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.room_states["void"] = {"visited": False}
         with pytest.raises(ValueError, match="room_states references unknown room"):
             sm._validate_cross_references()
 
     def test_invalid_entity_state_entity(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.entity_states["ghost"] = {"alive": True}
         with pytest.raises(ValueError, match="entity_states references unknown entity"):
             sm._validate_cross_references()
 
     def test_undeclared_entity_state_field(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.entity_states["spider"]["magic_level"] = 9000
         with pytest.raises(ValueError, match="undeclared state field"):
             sm._validate_cross_references()
 
     def test_invalid_room_note_room(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.soft_state.room_notes["void"] = ["spooky"]
         with pytest.raises(ValueError, match="room_notes references unknown room"):
             sm._validate_cross_references()
 
     def test_invalid_entity_note_entity(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.soft_state.entity_notes["ghost"] = ["spooky"]
         with pytest.raises(ValueError, match="entity_notes references unknown entity"):
             sm._validate_cross_references()
 
     def test_invalid_npc_attitudes_entity(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.entity_states["battleaxe"] = {"attitude": 5}
         with pytest.raises(ValueError, match="not 'npc'"):
             sm._validate_cross_references()
 
     def test_npc_attitude_below_min(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         # korbar's attitude_limits.min is -5 in the sample corpus
         sm.hard_state.entity_states["korbar"]["attitude"] = -10
         with pytest.raises(ValueError, match="below minimum"):
@@ -120,9 +119,9 @@ class TestLoadAndValidation:
 
     def test_npc_attitude_above_max(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         # korbar's attitude_limits.max is 10 in the sample corpus
         sm.hard_state.entity_states["korbar"]["attitude"] = 15
         with pytest.raises(ValueError, match="above maximum"):
@@ -130,9 +129,9 @@ class TestLoadAndValidation:
 
     def test_invalid_player_knowledge_non_npc(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         from mgmai.models.soft_state import KnowledgeEntry
         sm.soft_state.player_knowledge = [
             KnowledgeEntry(
@@ -148,9 +147,9 @@ class TestLoadAndValidation:
 
     def test_invalid_player_knowledge_topic(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         from mgmai.models.soft_state import KnowledgeEntry
         sm.soft_state.player_knowledge = [
             KnowledgeEntry(
@@ -166,9 +165,9 @@ class TestLoadAndValidation:
 
     def test_multiple_errors_collected(self) -> None:
         sm = StateManager()
-        sm.corpus = StateManager.load_corpus(BAG_OF_HOLDING / "corpus.json")
-        sm.hard_state = StateManager.load_hard_state(BAG_OF_HOLDING / "hard-state.json")
-        sm.soft_state = StateManager.load_soft_state(BAG_OF_HOLDING / "soft-state.json")
+        sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
+        sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
+        sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.player.location = "bad_room"
         sm.hard_state.room_states["bad_room2"] = {}
         with pytest.raises(ValueError) as exc_info:
