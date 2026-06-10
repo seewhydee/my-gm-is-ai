@@ -225,7 +225,7 @@ scenario; the conditions in the array are ANDed together.
 ```
 
 Each topic may also carry `set_flag` and `set_entity_state` side effects — these
-are applied by the engine when the LLM Call tags the topic as revealed in dialogue.
+are applied by the engine when the LLM tags the topic as revealed in dialogue.
 
 #### `on_dialogue_exit`
 
@@ -244,7 +244,7 @@ All fields are optional.
 
 Engine behaviour: when dialogue mode exits (regardless of cause — player leaves,
 ends_dialogue, or stall timeout), the engine applies these effects after the
-`on_dialogue_exit.narrative` is passed as `triggered_narration` to LLM Call 2.
+`on_dialogue_exit.narrative` is passed as `triggered_narration` to the LLM narrator.
 
 #### `dialogue_paths`
 
@@ -252,20 +252,22 @@ Define special conversation paths that trigger mechanical effects when the
 player invokes them via a `talk` action with `dialogue_path` set. This is useful
 for social interactions tied to stat checks (flatter, intimidate), delivering plot-critical information, or any dialogue with engine-resolved consequences.
 
-**Path ID vs. description:** Each dialogue path has two parts:
-- **Path ID** — the machine key (e.g., `flatter`, `inform_spider_dead`). This is what the `talk` action sets as `dialogue_path`, and what the engine uses to look up the path.
-- **Description** — a required human-readable string explaining what the path represents. This is surfaced to LLM Call 1 in `current_room.entities_visible[*].dialogue_paths` as a map of `{path_id: description}`. LLM Call 1 uses the description to decide whether the player's input matches a defined path. Without the description, the LLM only has an opaque ID and cannot reliably classify dialogue intent.
+Each dialogue path has:
 
-Write descriptions as clear player-intent phrases (e.g., "Praise the spider to improve its attitude" or "Tell Korbar that the spider has been dealt with").
-
-Each path may have:
-- `description`: required context for LLM Call 1 (see above)
+- **Path ID** (required): the machine key (e.g., `flatter`,
+  `inform_spy_dead`).  This is what the `talk` action sets as
+  `dialogue_path`, and what the engine uses to look up the path.
+- `description` (required): a required human-readable string
+  explaining what the path represents. This is surfaced to the LLM as
+  a map of `{path_id: description}`, which uses the description to
+  decide whether the player's input matches a defined path.  Write
+  descriptions as clear player-intent phrases (e.g., "Praise the
+  spider to flatter it" or "Tell Bruce the spy has been dealt with").
 - `condition`: gates when the path is available
 - `check` + `success`/`failure`: a probabilistic stat check with outcomes
-- `result`: a deterministic outcome when no check is needed
-
-Path results support the same fields as interaction results (`narrative`,
-`set_flag`, `set_stat`, `adjust_attitude`, `reveals`, `chain_check`).
+- `result`: a deterministic outcome when no check is needed.  Path
+  results support the same fields as interaction results (`narrative`,
+  `set_flag`, `set_stat`, `adjust_attitude`, etc.).
 
 Example: a spider that can be flattered with a CHA check to improve attitude:
 
@@ -281,21 +283,6 @@ Example: a spider that can be flattered with a CHA check to improve attitude:
     },
     "failure": {
       "narrative": "The spider hisses indifferently."
-    }
-  }
-}
-```
-
-Another example: delivering specific information to an NPC:
-
-```json
-"dialogue_paths": {
-  "inform_spider_dead": {
-    "description": "Tell Korbar that the spider has been dealt with.",
-    "condition": { "require": "flag:spider_fled == true" },
-    "result": {
-      "narrative": "Korbar's eyes widen with disbelief, then relief.",
-      "adjust_attitude": { "korbar": 3 }
     }
   }
 }
