@@ -6,6 +6,7 @@ from mgmai.models.soft_state import (
     ConversationLogEntry,
     SoftGameState,
 )
+from mgmai.engine.utils import get_following_npc_ids
 
 DIALOGUE_MAX_LOG_ENTRIES = 10
 DIALOGUE_STALL_LIMIT = 3
@@ -112,6 +113,11 @@ def check_room_change_exit(
 
     new_room_data = corpus.rooms.get(new_room)
     if new_room_data and npc_id in new_room_data.entities_present:
+        return None
+
+    # Following NPCs travel with the player; don't exit dialogue.
+    follower_ids = get_following_npc_ids(hard, corpus)
+    if npc_id in follower_ids:
         return None
 
     return _archive_and_exit(soft, npc_id, corpus, hard)

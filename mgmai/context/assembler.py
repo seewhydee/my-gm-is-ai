@@ -18,6 +18,7 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.conditions import evaluate
+from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs
 
 
 def assemble(
@@ -87,6 +88,8 @@ def _build_room(
             )
         )
 
+    inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
+
     exits_available: list[BriefingExit] = []
     for ex in room.exits:
         if ex.hidden:
@@ -121,7 +124,11 @@ def _build_room(
             )
         )
 
-    for eid in room.entities_present:
+    entity_ids: set[str] = set(room.entities_present)
+    for eid in get_following_npc_ids(hard, corpus):
+        entity_ids.add(eid)
+
+    for eid in sorted(entity_ids):
         entity = corpus.entities.get(eid)
         if entity is None:
             continue

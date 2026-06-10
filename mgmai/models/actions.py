@@ -138,6 +138,7 @@ class HardStateChanges(BaseModel):
     flags_cleared: List[str] = Field(default_factory=list)
     room_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     entity_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    stat_changes: Dict[str, int] = Field(default_factory=dict)
 
     def merge(self, other: "HardStateChanges") -> "HardStateChanges":
         """Merge another HardStateChanges into this one in-place."""
@@ -151,6 +152,8 @@ class HardStateChanges(BaseModel):
             self.room_state_changes.setdefault(room_id, {}).update(changes)
         for entity_id, changes in other.entity_state_changes.items():
             self.entity_state_changes.setdefault(entity_id, {}).update(changes)
+        for stat_key, delta in other.stat_changes.items():
+            self.stat_changes[stat_key] = self.stat_changes.get(stat_key, 0) + delta
         return self
 
     def has_changes(self) -> bool:
@@ -163,6 +166,7 @@ class HardStateChanges(BaseModel):
             or bool(self.flags_cleared)
             or bool(self.room_state_changes)
             or bool(self.entity_state_changes)
+            or bool(self.stat_changes)
         )
 
 

@@ -26,6 +26,7 @@ from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEn
 from mgmai.state.manager import StateManager
 from mgmai.engine.conditions import evaluate, get_condition_detail
 from mgmai.engine.resolver import resolve_action, ResolutionResult
+from mgmai.engine.utils import inject_following_npcs, get_following_npc_ids
 from mgmai.engine.encounters import (
     apply_flee_effects,
     resolve_encounter,
@@ -467,6 +468,8 @@ def _build_room_after(
     room_notes = soft.room_notes.get(room_id, [])[-5:]
     room_soft_items = soft.surfaced_soft_items.get(room_id, [])
 
+    inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
+
     return BriefingRoom(
         id=room_id,
         name=room.name,
@@ -490,7 +493,13 @@ def _build_will_reveal_readiness(
     if room is None:
         return result
 
+    npc_ids: set[str] = set()
     for eid in room.entities_present:
+        npc_ids.add(eid)
+    for eid in get_following_npc_ids(hard, corpus):
+        npc_ids.add(eid)
+
+    for eid in sorted(npc_ids):
         entity = corpus.entities.get(eid)
         if entity is None or entity.type != "npc":
             continue
@@ -535,7 +544,13 @@ def _build_npc_attitude_limits(
     if room is None:
         return result
 
+    npc_ids: set[str] = set()
     for eid in room.entities_present:
+        npc_ids.add(eid)
+    for eid in get_following_npc_ids(hard, corpus):
+        npc_ids.add(eid)
+
+    for eid in sorted(npc_ids):
         entity = corpus.entities.get(eid)
         if entity is None or entity.type != "npc":
             continue

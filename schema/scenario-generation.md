@@ -271,6 +271,35 @@ Two check types are supported: `roll` (flat probability) and `stat_check` (abili
   triggering, revealing information the player would immediately notice, entity
   state changes on first visit.
 
+#### On-examine events
+
+Rooms and entities can carry `on_examine` events that fire when the player
+examines them. Use these for examine-gated stat checks (e.g., "an INT check to
+deduce the glow is magical") or conditional discoveries.
+
+```json
+{
+  "id": "study_canvas_glow",
+  "condition": { "unless": "flag:glow_noticed == true" },
+  "rigorous_only": false,
+  "check": {
+    "type": "stat_check",
+    "stat": "INT",
+    "dc": 12,
+    "repeatable": true
+  },
+  "success": {
+    "narrative": "You deduce the glow is magical — a side effect of the Bag's magic.",
+    "set_flag": { "glow_noticed": true },
+    "reveals": "The canvas walls glow with residual magic."
+  }
+}
+```
+
+- `rigorous_only: true` gates the event on the examine action's `rigorous` flag.
+- Events fire in array order; the base entity/room description is returned first.
+- Results may include `set_stat` for injury penalties (see Result object above).
+
 ### 3.3 `entities`
 
 Each entity is keyed by a unique entity ID:
@@ -428,6 +457,22 @@ Each entity is keyed by a unique entity ID:
 - When `outcome: roll`, `threshold` and `on_success`/`on_failure` are used.
 - `on_flee`: applied when a flee outcome triggers. Sets flags (e.g.
   `spider_fled`) and records behavioural effects for the narrating LLM.
+
+##### `follower_blacklist` (for follower NPCs)
+
+If an NPC can become a follower (via `state_fields.following`), you may
+optionally set `follower_blacklist` to an array of room IDs the NPC refuses
+to enter. When the player moves into a blacklisted room, the engine
+automatically clears the NPC's `following` state and adds a narrative note.
+
+```json
+{
+  "korbar": {
+    "type": "npc",
+    "follower_blacklist": ["secret_compartment"]
+  }
+}
+```
 
 #### `item` type
 
@@ -850,6 +895,17 @@ and has `attitude` declared in their corpus `state_fields`.
   currently supported system).
 - [ ] If corpus has no `stats`: no `stat_check` interactions, no `stat:`
   conditions, and `hard_state.player.stats` is absent.
+- [ ] Every `set_stat` in a result object references stat keys declared in
+  `stats.definitions`. If corpus has no `stats` block, no `set_stat` results
+  are present.
+- [ ] Every `on_examine` event with a `check` has both `success` (required)
+  and optionally `failure`.
+- [ ] Every `on_examine` event without a `check` has a `result` (and no
+  `success`/`failure`).
+- [ ] Every `follower_blacklist` entry on an NPC entity references a valid
+  room ID.
+- [ ] Every `skip_check_if` condition in a `traversal_check` references flags,
+  inventory, entity states, or attitudes that exist in the corpus/hard state.
 
 ---
 

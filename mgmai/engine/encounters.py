@@ -5,6 +5,7 @@ import random
 from mgmai.models.corpus import (
     EncounterRule,
     ModuleCorpus,
+    StatCheck,
 )
 from mgmai.models.hard_state import HardGameState, GameOverState
 from mgmai.models.soft_state import SoftGameState
@@ -85,6 +86,70 @@ def _apply_encounter_rule(
             "flee_effects": flee_data,
             "rolls": [],
         }
+
+    if outcome == "stat_check":
+        if rule.check is None:
+            return {
+                "outcome": "none",
+                "narrative": None,
+                "set_flags": {},
+                "game_over": None,
+                "flee_effects": None,
+                "rolls": [],
+            }
+
+        encounter_rolls: list = []
+        success = _resolve_encounter_stat_check(rule, hard, corpus, encounter_rolls)
+        branch = rule.on_success if success else rule.on_failure
+
+        if branch is None:
+            return {
+                "outcome": f"stat_check_{'success' if success else 'failure'}",
+                "narrative": rule.narrative,
+                "set_flags": rule.set_flags or {},
+                "game_over": None,
+                "flee_effects": None,
+                "rolls": encounter_rolls,
+            }
+
+        sub_outcome = branch.outcome if branch else "none"
+        result: dict = {
+            "outcome": sub_outcome,
+            "narrative": branch.narrative if branch else rule.narrative,
+            "set_flags": {},
+            "game_over": None,
+            "flee_effects": None,
+            "rolls": encounter_rolls,
+        }
+
+        if rule.set_flags:
+            for flag, val in rule.set_flags.items():
+                result["set_flags"][flag] = val
+        if branch.set_flags:
+            for flag, val in branch.set_flags.items():
+                result["set_flags"][flag] = val
+
+        if sub_outcome == "death":
+            result["game_over"] = {
+                "type": "lose",
+                "trigger": npc_id or "encounter",
+            }
+        elif sub_outcome == "flee":
+            flee_data = None
+            if npc_id:
+                npc = corpus.entities.get(npc_id)
+                if npc and npc.behavior and npc.behavior.on_flee:
+                    flee_obj = npc.behavior.on_flee
+                    for flag, val in flee_obj.set_flags.items():
+                        result["set_flags"][flag] = val
+                    flee_data = {
+                        "set_flags": flee_obj.set_flags,
+                        "set_entity_state": flee_obj.set_entity_state,
+                        "effect": flee_obj.effect,
+                    }
+            result["flee_effects"] = flee_data
+
+        return result
 
     if outcome == "roll":
         if rule.threshold is None:
@@ -212,3 +277,66 @@ def apply_flee_effects(
         if entity_id not in hard.entity_states:
             hard.entity_states[entity_id] = {}
         hard.entity_states[entity_id].update(state_changes)
+
+
+def _resolve_encounter_stat_check(
+    rule: EncounterRule,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    rolls: list,
+) -> bool:
+    """Resolve a stat_check outcome for an encounter rule. Returns True if passed."""
+    if rule.check is None:
+        return True
+
+    check = rule.check
+    stats_block = corpus.stats
+    if stats_block is None:
+        return True
+
+    player_stats = hard.player.stats
+    if player_stats is None or check.stat not in player_stats:
+        return True
+
+    stat_value = player_stats[check.stat]
+    res_system = stats_block.resolution_system
+    if res_system != "d20":
+        return True
+
+    from mgmai.engine.stat_checks import compute_d20_modifier
+
+    computed_mod = compute_d20_modifier(stat_value)
+    total_mod = computed_mod + check.modifier
+
+    params = (check.resolution_params or {}).get("d20", {})
+    advantage = params.get("advantage", False)
+    disadvantage = params.get("disadvantage", False)
+
+    raw_roll: int
+    if advantage and not disadvantage:
+        raw_roll = max(random.randint(1, 20), random.randint(1, 20))
+    elif disadvantage and not advantage:
+        raw_roll = min(random.randint(1, 20), random.randint(1, 20))
+    else:
+        raw_roll = random.randint(1, 20)
+
+    total = raw_roll + total_mod
+    success_flag = total >= check.dc
+
+    rolls.append({
+        "encounter_id": getattr(rule, 'id', 'encounter'),
+        "type": "stat_check",
+        "stat": check.stat,
+        "dc": check.dc,
+        "modifier": total_mod,
+        "computed_mod": computed_mod,
+        "flat_mod": check.modifier,
+        "raw_roll": raw_roll,
+        "total": total,
+        "margin": total - check.dc,
+        "success": success_flag,
+        "advantage": advantage,
+        "disadvantage": disadvantage,
+    })
+
+    return success_flag

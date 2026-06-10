@@ -44,6 +44,7 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
     "exits": [ { /* exit */ } ],
     "interactions": [ { /* interaction */ } ],
     "on_enter": [ { /* on_enter event */ } ],
+    "on_examine": [ { /* on_examine event */ } ],
     "is_start_room": false
   }
 }
@@ -58,6 +59,7 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 | `exits`              | array     | no       | Available exits from this room. |
 | `interactions`       | array     | no       | Defined interactions the player can perform in this room. |
 | `on_enter`           | array     | no       | Events that fire when the player first enters the room. May be one-shot or conditional. |
+| `on_examine`         | array     | no       | Events that fire when the player examines this room. Each is an `OnExamineEvent` (see below). |
 | `is_start_room`      | boolean   | no       | Exactly one room should have this set to `true`. Player starts here. |
 
 ### Exit object
@@ -69,20 +71,22 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
   "target_room": "<room_id>",
   "conditions": [ { /* condition */ } ],
   "on_traverse": { /* traversal effect */ },
+  "traversal_check": { /* traversal check (optional) */ },
   "hidden": false,
   "one_way": false
 }
 ```
 
-| Field          | Type    | Required | Description |
-|----------------|---------|----------|-------------|
-| `id`           | string  | yes      | Unique exit identifier, referenced by `move` action `target`. |
-| `direction`    | string  | yes      | Human-readable direction label for LLM context. |
-| `target_room`  | string  | yes      | Room ID the player ends up in after traversing. |
-| `conditions`   | array   | no       | Conditions that must be satisfied for the exit to be available. |
-| `on_traverse`  | object  | no       | Effects applied when the player uses this exit: `set_flag`, `trigger_encounter`, etc. |
-| `hidden`       | boolean | no       | If `true`, the exit is omitted from `exits_available` in GMBriefing until its reveal condition is met (e.g., `flag:handkerchief_moved == true`). The reveal condition is evaluated by the engine based on hard-state flags. |
-| `one_way`      | boolean | no       | If `true`, the exit cannot be traversed in reverse. |
+| Field             | Type    | Required | Description |
+|-------------------|---------|----------|-------------|
+| `id`              | string  | yes      | Unique exit identifier, referenced by `move` action `target`. |
+| `direction`       | string  | yes      | Human-readable direction label for LLM context. |
+| `target_room`     | string  | yes      | Room ID the player ends up in after traversing. |
+| `conditions`      | array   | no       | Conditions that must be satisfied for the exit to be available. |
+| `on_traverse`     | object  | no       | Effects applied when the player successfully traverses the exit: `set_flag`, `trigger_encounter`, etc. |
+| `traversal_check` | object  | no       | **Optional.** A check (roll or stat_check) that must be passed to succeed at traversing this exit. On failure, the player stays in the current room. See Traversal check below. |
+| `hidden`          | boolean | no       | If `true`, the exit is omitted from `exits_available` in GMBriefing until its reveal condition is met (e.g., `flag:handkerchief_moved == true`). The reveal condition is evaluated by the engine based on hard-state flags. |
+| `one_way`         | boolean | no       | If `true`, the exit cannot be traversed in reverse. |
 
 #### Exit `on_traverse` effects
 
@@ -95,6 +99,35 @@ The `on_traverse` object supports these fields; all are optional:
 | `trigger_encounter` | string           | Triggers a named encounter from `mechanics`. |
 | `skip_if`           | condition object | Condition under which the effect is skipped. |
 | `narrative_skip`    | string           | Short narrative for when the effect is skipped. |
+
+#### Traversal check (`traversal_check`)
+
+An optional check that gates successful room traversal. Unlike `conditions` (which
+determine whether the exit is shown/available at all), a `traversal_check` makes the
+exit available but risky — the player may fail the check and remain in the current
+room, able to retry next turn.
+
+```json
+{
+  "traversal_check": {
+    "check": {
+      "type": "stat_check",
+      "stat": "STR",
+      "dc": 13
+    },
+    "condition": { "require": "inventory:rusty_key" },
+    "skip_check_if": { "require": "flag:korbar_helps_key == true" },
+    "failure_narrative": "You strain to haul the key but can't make progress."
+  }
+}
+```
+
+| Field               | Type                | Description |
+|---------------------|---------------------|-------------|
+| `check`             | CheckType           | The check to roll: a `roll` or `stat_check`. |
+| `condition`         | condition object    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
+| `skip_check_if`     | condition object    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition` — use this for "don't check when NPC helps" patterns. |
+| `failure_narrative` | string              | **Optional.** Narration text shown when the traversal check fails. |
 
 ### Condition object
 
@@ -176,7 +209,8 @@ They can be defined at the room level or on individual entities.
   "check": { /* roll check or null */ },
   "success": { /* result */ },
   "failure": { /* result or null */ },
-  "result": { /* result (used when no check is present) */ }
+  "result": { /* result (used when no check is present) */ },
+  "using_results": { /* item-specific overrides (optional) */ }
 }
 ```
 
@@ -191,6 +225,7 @@ They can be defined at the room level or on individual entities.
 | `success`              | object       | no       | Result when the check succeeds. |
 | `failure`              | object       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
 | `result`               | object       | no       | Deterministic result (used when no `check` is present). |
+| `using_results`        | object       | no       | **Optional.** Dict mapping item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `interact` action's `using` field matches a key, the override replaces the interaction's own `check`/`success`/`failure`/`result`. Each override may optionally carry its own `check` (allowing different DCs per item, e.g. STR DC 14 bare-handed vs. DC 10 with a weapon), or a plain `result`. Overrides are leaf-level — the override's check+success+failure (or result) fully replaces the interaction's defaults. |
 
 Interactions include generic types available everywhere (e.g., `attack`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item. Picking up items should use the `transfer` action instead.
 
@@ -264,7 +299,9 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
   "add_item": "<item_id> (optional, adds to player inventory)",
   "remove_item": "<item_id> (optional)",
   "set_flag": { "<flag_name>": true | false },
-  "reveals": "string (hint text for the player's future reference)"
+  "set_stat": { "<stat_key>": <delta> },
+  "reveals": "string (hint text for the player's future reference)",
+  "chain_check": { /* chained check (optional) */ }
 }
 ```
 
@@ -274,7 +311,46 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 | `add_item`    | string | Item entity ID to add to hard inventory. |
 | `remove_item` | string | Item entity ID to remove from hard inventory. |
 | `set_flag`    | object | Hard-state flags to set or clear. |
+| `set_flag`    | object | Hard-state flags to set or clear. |
+| `set_stat`    | object | **Optional.** Stat deltas to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are integer changes (positive or negative). E.g., `{ "STR": -4, "DEX": -4, "CON": -4 }` for fall damage. |
 | `reveals`     | string | Hint text; added to the player's known information for future GMBriefings. |
+| `chain_check` | object | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See Chained check below. |
+
+#### Chained check (`chain_check`)
+
+A chained check allows a result to trigger an immediate follow-up check (roll or stat
+check) with its own success/failure outcomes. This supports nested resolution within a
+single turn — for example, a key insertion that requires a STR check, and on failure
+triggers a DEX check to catch the slipping key.
+
+```json
+{
+  "chain_check": {
+    "check": {
+      "type": "stat_check",
+      "stat": "DEX",
+      "dc": 8
+    },
+    "success": {
+      "narrative": "You catch it just in time.",
+      "set_flag": { "key_caught": true }
+    },
+    "failure": {
+      "narrative": "The key slips through your fingers and falls into the Astral Plane.",
+      "set_flag": { "key_lost_to_astral": true }
+    }
+  }
+}
+```
+
+| Field     | Type                | Description |
+|-----------|---------------------|-------------|
+| `check`   | CheckType           | The chained check to resolve (roll or stat_check). |
+| `success` | Result              | Result to apply if the chained check succeeds. |
+| `failure` | Result (optional)   | Result to apply if the chained check fails. |
+
+Nested chaining is supported — a chained check's result may itself contain another
+`chain_check`, up to a maximum depth of 3.
 
 ---
 
@@ -305,6 +381,49 @@ fields and applies all that are present. Fields can be combined — for example,
 an on_enter event can simultaneously set a flag, modify entity state, and
 initiate dialogue with an NPC.
 
+### On-examine event object
+
+On-examine events fire when the player performs an `examine` action on the
+entity or room that carries them. They support stat checks, conditional
+gating, and rigorous-search-only gating — enabling patterns like "examining
+the canvas walls triggers an INT check to deduce the glow is magical."
+
+```json
+{
+  "id": "string (unique within the entity or room)",
+  "condition": { "require": "flag:glow_noticed == false" },
+  "rigorous_only": false,
+  "check": {
+    "type": "stat_check",
+    "stat": "INT",
+    "dc": 12,
+    "repeatable": true
+  },
+  "success": {
+    "narrative": "You deduce that the faint luminescence is magical in nature — a side effect of the Bag's magic.",
+    "set_flag": { "glow_noticed": true },
+    "reveals": "The glow is magical."
+  },
+  "failure": null
+}
+```
+
+| Field            | Type            | Description |
+|------------------|-----------------|-------------|
+| `id`             | string          | Unique event identifier within the parent entity or room. |
+| `condition`      | object\|null    | Condition object. If null, fires every time the entity/room is examined. |
+| `rigorous_only`  | boolean         | If `true`, the event only fires when the examine action has `rigorous: true`. Default `false`. |
+| `check`          | CheckType       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
+| `success`        | Result          | Result applied when the check passes. Required if `check` is present. |
+| `failure`        | Result\|null    | Result applied when the check fails. Optional; if absent, nothing happens on failure. |
+| `result`         | Result\|null    | Deterministic result applied when no `check` is present. Mutually exclusive with `check`. |
+
+The base `description` of the entity/room is returned first in the narration;
+on-examine event narratives are appended after it. Results may carry
+`set_flag`, `set_stat`, `add_item`, and `chain_check` like any other result.
+Multiple on-examine events on the same target all fire (in array order) if
+their conditions are met.
+
 ---
 
 ## `entities` — Entity definitions
@@ -322,9 +441,11 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
     "draggable": false,
     "dragging_note": "string",
     "interactions": [ { /* interaction */ } ],
+    "on_examine": [ { /* on_examine event */ } ],
     "dialogue_guidelines": { /* only for npc type */ },
     "behavior": { /* only for npc (monster) type */ },
-    "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } }
+    "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } },
+    "follower_blacklist": ["<room_id>", ...]
   }
 }
 ```
@@ -339,9 +460,45 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `draggable`            | bool   | item          | If true, the item can be dragged but occupies the player (no other manual actions while dragging). |
 | `dragging_note`        | string | item          | Narrative note describing the encumbrance. |
 | `interactions`         | array  | all           | Interactions available on this entity specifically. Follows the same Interaction object schema. |
+| `on_examine`           | array  | all           | Events that fire when the player examines this entity. Each is an `OnExamineEvent` (see above). |
 | `dialogue_guidelines`  | object | npc           | See below. |
 | `behavior`             | object | npc (monster) | Encounter rules for combat-capable NPCs. See below. |
 | `state_fields`         | object | all           | Declaration of mutable state fields for this entity. The engine initialises these from `hard_state.json` and tracks changes. |
+| `follower_blacklist`   | array  | npc           | **Optional.** List of room IDs this NPC refuses to enter when following the player. If the player moves into a blacklisted room, the NPC's `following` state is cleared and a narrative note is generated. |
+
+#### NPC follower convention (`following` state field)
+
+An NPC entity can be declared as a **follower** — a companion that moves with the
+player between rooms. To enable this, include a boolean `following` field in the
+NPC's `state_fields`:
+
+```json
+"state_fields": {
+  "alive": { "type": "boolean", "description": "..." },
+  "attitude": { "type": "number", "description": "..." },
+  "following": { "type": "boolean", "description": "Whether this NPC follows the player between rooms." }
+}
+```
+
+When `entity_states[<npc_id>].following` is `true`, the engine:
+
+- Injects the NPC into the visible entity list for whatever room the player is in
+  (both the GMBriefing and the EngineResult), so the LLM is always aware of them.
+- Makes the NPC targetable for `examine`, `interact`, `talk`, and `transfer`
+  actions regardless of room.
+- Does not terminate dialogue when the player moves rooms — the follower remains
+  in active conversation.
+- Includes the follower in `will_reveal_readiness` and `npc_attitude_limits`
+  blocks sent to LLM Call 2.
+
+`following` defaults to `false` (not present in `entity_states`). Any interaction
+result can set it to `true` via `set_entity_state` (e.g., after convincing the
+NPC to join), and to `false` to dismiss the follower.
+
+This convention is engine-level, not corpus-level — no new top-level fields or
+schema changes are needed; any NPC that declares `following` in its
+`state_fields` and has it set to `true` in `entity_states` will be treated as a
+follower.
 
 ### `dialogue_guidelines` (for NPC type)
 
@@ -427,11 +584,12 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
 ```json
 {
   "triggers_on": ["<exit_id>", "<interaction_id>", ...],
-  "encounter_rules": [
+    "encounter_rules": [
     {
       "condition": { /* condition object */ },
-      "outcome": "death | flee | roll",
+      "outcome": "death | flee | roll | stat_check",
       "threshold": 0.50,
+      "check": { "type": "stat_check", "stat": "STR", "dc": 12 },
       "narrative": "string",
       "set_flags": { "<flag>": true },
       "on_success": { "outcome": "...", "set_flags": {}, "narrative": "..." },
@@ -453,8 +611,20 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
   is applied. Conditions are condition objects (see Condition object section)
   evaluated against hard state (flags, inventory, entity states) and soft state
   (attitudes).
-- For phase 1 (kill-or-be-killed resolution), outcomes are `death` (player
-  dies → game over), `flee` (creature flees), or `roll` (check-based).
+- For phase 1 (kill-or-be-killed resolution), outcomes are:
+  - `death` — player dies, game over.
+  - `flee` — creature flees, applying `on_flee` effects.
+  - `roll` — flat probability check using `threshold`; branches on `on_success`/`on_failure`.
+  - `stat_check` — ability-score-based check using a `StatCheck` definition; branches on `on_success`/`on_failure`. The `check` field (a `StatCheck` object) is required when outcome is `stat_check`. Example:
+    ```json
+    {
+      "condition": { "require": "tag:weapon" },
+      "outcome": "stat_check",
+      "check": { "type": "stat_check", "stat": "STR", "dc": 17 },
+      "on_success": { "outcome": "flee", "narrative": "You overpower Korbar." },
+      "on_failure": { "outcome": "death", "narrative": "Korbar overpowers you." }
+    }
+    ```
 
 ---
 
@@ -474,8 +644,9 @@ Game-over conditions live here too.
     "rules": [
       {
         "condition": { /* condition object */ },
-        "outcome": "death | flee | roll",
+        "outcome": "death | flee | roll | stat_check",
         "threshold": 0.50,
+        "check": { "type": "stat_check", "stat": "STR", "dc": 12 },
         "on_success": { "outcome": "...", "set_flags": {}, "narrative": "..." },
         "on_failure": { "outcome": "...", "narrative": "..." },
         "narrative": "string",

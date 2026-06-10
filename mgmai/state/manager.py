@@ -370,6 +370,16 @@ class StateManager:
                             f"{field_name}"
                         )
 
+        for stat_key in changes.stat_changes:
+            if corpus is None or corpus.stats is None:
+                errors.append(
+                    f"stat_changes references '{stat_key}' but corpus has no stats block"
+                )
+            elif stat_key not in corpus.stats.definitions:
+                errors.append(
+                    f"stat_changes references undeclared stat: {stat_key}"
+                )
+
         if errors:
             raise ValueError("\n".join(errors))
 
@@ -399,6 +409,11 @@ class StateManager:
             if entity_id not in self.hard_state.entity_states:
                 self.hard_state.entity_states[entity_id] = {}
             self.hard_state.entity_states[entity_id].update(entity_changes)
+
+        if changes.stat_changes and self.hard_state.player.stats is not None:
+            for stat_key, delta in changes.stat_changes.items():
+                if stat_key in self.hard_state.player.stats:
+                    self.hard_state.player.stats[stat_key] += delta
 
     def apply_soft_patches(self, patches: list[SoftStatePatch | dict[str, Any]]) -> None:
         """Apply a list of validated ``SoftStatePatch`` objects to soft state."""

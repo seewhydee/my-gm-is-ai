@@ -83,6 +83,11 @@ mgmai --debug adventures/bag-of-holding
 # or: python -m mgmai.cli --debug adventures/bag-of-holding
 ```
 
-## License
+## Copyright and License
 
-GPL-3.0 — see [LICENSE](LICENSE).
+My GM Is AI is (C) 2026 Chong Yidong (cyd@stupidchicken.com).
+
+It is free software licensed under the terms of the GNU General Public
+Licencse (GPL), version 3.0.  See [LICENSE](LICENSE).
+
+The sample adventure(s) in the `adventure/` folder are based on original works copyrighted by various authors, used and distributed under Creative Commons-type licenses.  Refer to those files for the copyright and licensing information.

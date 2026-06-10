@@ -54,12 +54,20 @@ class ParameterSignature(BaseModel):
     using: Optional[List[str]] = None
 
 
+class ChainedCheck(BaseModel):
+    check: CheckType
+    success: Result
+    failure: Optional[Result] = None
+
+
 class Result(BaseModel):
     narrative: Optional[str] = None
     add_item: Optional[str] = None
     remove_item: Optional[str] = None
     set_flag: Optional[Dict[str, bool]] = None
+    set_stat: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
+    chain_check: Optional[ChainedCheck] = None
 
 
 class RollCheck(BaseModel):
@@ -84,6 +92,23 @@ class StatCheck(BaseModel):
 CheckType = RollCheck | StatCheck
 
 
+class UsingResultOverride(BaseModel):
+    check: Optional[CheckType] = None
+    success: Optional[Result] = None
+    failure: Optional[Result] = None
+    result: Optional[Result] = None
+
+    @model_validator(mode="after")
+    def check_mutually_exclusive(self) -> UsingResultOverride:
+        has_check = self.check is not None
+        has_result = self.result is not None
+        if has_check and has_result:
+            raise ValueError("UsingResultOverride must have either check (+success/+failure) or result, not both")
+        if has_check and self.success is None:
+            raise ValueError("UsingResultOverride with 'check' must also have 'success'")
+        return self
+
+
 class Interaction(BaseModel):
     id: str
     label: str
@@ -94,6 +119,7 @@ class Interaction(BaseModel):
     success: Optional[Result] = None
     failure: Optional[Result] = None
     result: Optional[Result] = None
+    using_results: Optional[Dict[str, UsingResultOverride]] = None
 
     @model_validator(mode="after")
     def check_mutually_exclusive(self) -> Interaction:
@@ -114,6 +140,13 @@ class TraversalEffect(BaseModel):
     narrative_skip: Optional[str] = None
 
 
+class TraversalCheck(BaseModel):
+    check: CheckType
+    condition: Optional[ConditionExpression] = None
+    skip_check_if: Optional[ConditionExpression] = None
+    failure_narrative: Optional[str] = None
+
+
 class Exit(BaseModel):
     id: str
     direction: str
@@ -122,6 +155,7 @@ class Exit(BaseModel):
     on_traverse: Optional[TraversalEffect] = None
     hidden: bool = False
     one_way: bool = False
+    traversal_check: Optional[TraversalCheck] = None
 
 
 class OnEnterEvent(BaseModel):
@@ -133,6 +167,26 @@ class OnEnterEvent(BaseModel):
     trigger_dialogue: Optional[str] = None
 
 
+class OnExamineEvent(BaseModel):
+    id: str
+    condition: Optional[ConditionExpression] = None
+    rigorous_only: bool = False
+    check: Optional[CheckType] = None
+    success: Optional[Result] = None
+    failure: Optional[Result] = None
+    result: Optional[Result] = None
+
+    @model_validator(mode="after")
+    def check_mutually_exclusive(self) -> OnExamineEvent:
+        has_check = self.check is not None
+        has_result = self.result is not None
+        if has_check and has_result:
+            raise ValueError("OnExamineEvent must have either check (+success/+failure) or result, not both")
+        if has_check and self.success is None:
+            raise ValueError("OnExamineEvent with 'check' must also have 'success'")
+        return self
+
+
 class Room(BaseModel):
     name: str
     description: str
@@ -141,6 +195,7 @@ class Room(BaseModel):
     exits: List[Exit] = Field(default_factory=list)
     interactions: List[Interaction] = Field(default_factory=list)
     on_enter: List[OnEnterEvent] = Field(default_factory=list)
+    on_examine: List[OnExamineEvent] = Field(default_factory=list)
     is_start_room: bool = False
 
 
@@ -188,8 +243,9 @@ class BranchOutcome(BaseModel):
 
 class EncounterRule(BaseModel):
     condition: ConditionExpression
-    outcome: Literal["death", "flee", "roll"]
+    outcome: Literal["death", "flee", "roll", "stat_check"]
     threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    check: Optional[StatCheck] = None
     narrative: Optional[str] = None
     set_flags: Optional[Dict[str, bool]] = None
     on_success: Optional[BranchOutcome] = None
@@ -217,9 +273,11 @@ class Entity(BaseModel):
     draggable: bool = False
     dragging_note: Optional[str] = None
     interactions: List[Interaction] = Field(default_factory=list)
+    on_examine: List[OnExamineEvent] = Field(default_factory=list)
     dialogue_guidelines: Optional[DialogueGuidelines] = None
     behavior: Optional[Behavior] = None
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
+    follower_blacklist: Optional[List[str]] = None
 
     @model_validator(mode="after")
     def check_type_specific_fields(self) -> Entity:
