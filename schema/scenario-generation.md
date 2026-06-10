@@ -128,9 +128,11 @@ that changes during play. Examples: `spider_fled`, `injured`, `handkerchief_move
 
 Note initial values (almost always `false`).
 
-In Step 2, add a `flags_declared` field to the corpus — a flat array listing
-all flag names used in conditions, set_flag results, and encounters. This is
-a convenience field for validation and debugging.
+Add a `flags_declared` field as a top-level corpus array (alongside
+`adventure`, `rooms`, `entities`, `mechanics`) listing all flag names
+used in conditions, set_flag results, and encounters. This is a
+convenience field for validation and debugging. Generate it during
+cross-validation (after all corpus sections are complete).
 
 ### 1F. Stat system (if applicable)
 
@@ -1172,10 +1174,10 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
   "soft_inventory": [],
   "room_notes": {},
   "entity_notes": {},
-  "surfaced_soft_items": [],
+  "surfaced_soft_items": {},
   "checks_attempted": {},
   "npc_revelations": {},
-  "revealed_hints": {},
+  "revealed_hints": [],
   "turn_history": [],
   "dialogue_state": {
     "active_npc": null,
@@ -1197,8 +1199,8 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 
 3. **`entity_notes`** — `{}`. Same as room_notes.
 
-4. **`surfaced_soft_items`** — `[]`. Tracks which soft items have been
-   discovered per room/entity. Starts empty.
+4. **`surfaced_soft_items`** — `{}`. Tracks which soft items have been
+   discovered per room/entity. Starts as empty dict.
 
 5. **`checks_attempted`** — `{}`. Records which non-repeatable checks have
    been attempted. Starts as empty dict.
@@ -1206,7 +1208,7 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 6. **`npc_revelations`** — always `{}`. Populated during play when NPCs
    reveal gated topics.
 
-7. **`revealed_hints`** — `{}`. Stores `reveals` strings from successful
+7. **`revealed_hints`** — `[]`. Stores `reveals` strings from successful
    interactions. Starts empty.
 
 8. **`turn_history`** — always `[]`.
@@ -1221,9 +1223,9 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 ### Step 6 validation checklist
 
 - [ ] `soft_inventory` is `[]`
-- [ ] `surfaced_soft_items` is `[]`
+- [ ] `surfaced_soft_items` is `{}`
 - [ ] `checks_attempted` is `{}`
-- [ ] `revealed_hints` is `{}`
+- [ ] `revealed_hints` is `[]`
 - [ ] `npc_revelations` is `{}`
 - [ ] `dialogue_state.active_npc` is `null`
 - [ ] `dialogue_state.conversation_log` is `[]`
