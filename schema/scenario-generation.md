@@ -97,7 +97,6 @@ For every distinct entity mentioned, note:
   - `npc` — characters that can talk or fight
   - `feature` — environmental objects (walls, piles, handkerchiefs)
   - `item` — objects that can be picked up
-  - `trap` — hazards with mechanical consequences
 - **Description** — canonical prose for examine action
 - **Dialogue** — does it talk? Note personality, knows, attitude gating
 - **Behavior** — does it fight? Note triggers, combat rules
@@ -173,8 +172,6 @@ every entity, think about what changes during play:
   required for NPCs), `hidden` (boolean), `following` (boolean)
 - Features: `opened` (boolean), `revealed` (boolean), `activated` (boolean)
 - Items: none usually (items just exist in inventory)
-- Traps: `triggered` (boolean), `activated` (boolean)
-
 ```json
 "state_fields": {
   "alive": { "type": "boolean", "description": "Whether the spider is alive." },

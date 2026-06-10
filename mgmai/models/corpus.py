@@ -265,7 +265,7 @@ class Behavior(BaseModel):
 
 
 class Entity(BaseModel):
-    type: Literal["player", "feature", "npc", "trap", "item"]
+    type: Literal["player", "feature", "npc", "item"]
     description: str
     spans_rooms: Optional[List[str]] = None
     soft_items: List[str] = Field(default_factory=list)

@@ -493,15 +493,6 @@ class TestEntity:
         assert e.dialogue_guidelines is None
         assert e.behavior is None
 
-    def test_trap_entity_type(self) -> None:
-        e = Entity.model_validate({
-            "type": "trap",
-            "description": "A spike trap hidden in the floor.",
-            "state_fields": {"triggered": {"type": "boolean", "description": "Whether the trap has triggered."}},
-        })
-        assert e.type == "trap"
-        assert e.state_fields["triggered"].type == "boolean"
-
     def test_entity_with_interactions(self) -> None:
         e = Entity.model_validate({
             "type": "feature",

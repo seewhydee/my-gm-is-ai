@@ -433,7 +433,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 ```json
 {
   "<entity_id>": {
-    "type": "player | feature | npc | trap | item",
+    "type": "player | feature | npc | item",
     "description": "string",
     "spans_rooms": ["<room_id>", ...],
     "soft_items": ["string", ...],
@@ -452,7 +452,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 
 | Field                  | Type   | Applies to    | Description |
 |------------------------|--------|---------------|-------------|
-| `type`                 | enum   | all           | `player`, `feature`, `npc`, `trap`, `item`. The `player` type is reserved for the player character entity. |
+| `type`                 | enum   | all           | `player`, `feature`, `npc`, `item`. The `player` type is reserved for the player character entity. |
 | `description`          | string | all           | Canonical description returned for `examine` action. |
 | `spans_rooms`          | array  | feature       | List of room IDs this entity is visible in (e.g., a battleaxe spanning multiple rooms). |
 | `soft_items`           | array  | all           | Plausible generic items found on/in this entity (e.g., a corpse might have `["loose change", "torn parchment"]`). Same semantics as room soft_items. |

@@ -526,7 +526,7 @@ def resolve_interact(
 
     if inter.parameter_signature:
         sig = inter.parameter_signature
-        entity_types = {"player", "feature", "npc", "trap", "item"}
+        entity_types = {"player", "feature", "npc", "item"}
         if sig.target:
             target_type = target_entity.type if target_entity else "soft_item"
             allowed = set(sig.target)

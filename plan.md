@@ -71,7 +71,7 @@ If LLM Call 1 produces a malformed or impossible action, the system retries once
 **Module Corpus** (read-only). The digital equivalent of a printed adventure module. JSON loaded at startup, never modified during play. Contains:
 
 - *Rooms* as graph nodes.  Each has a prose description, a list of entities present, available exits (with conditions, traversal effects, and hidden/reveal logic), special interactions, and on-enter events (one-shot or conditional).
-- *Entities* have typed categories — `player`, `feature`, `npc`, `trap`, `item`. Each has descriptive prose, special interactions, and declarations of mutable state fields. NPCs carry `dialogue_guidelines` (personality, knowledge constraints, attitude-gated secrets) that are surfaced to the LLM. Monster-type NPCs carry `behavior` blocks defining encounter rules and outcomes.
+- *Entities* have typed categories — `player`, `feature`, `npc`, `item`. Each has descriptive prose, special interactions, and declarations of mutable state fields. NPCs carry `dialogue_guidelines` (personality, knowledge constraints, attitude-gated secrets) that are surfaced to the LLM. Monster-type NPCs carry `behavior` blocks defining encounter rules and outcomes.
 - *Interactions* are named interactions that can be performed by or on entities or rooms.
   Each has a parameter signature (target, using, etc.).
 - *Mechanics* are named rules involving aspects of game state not tied to specific rooms or entities.  These includes game-over conditions (win/lose).
