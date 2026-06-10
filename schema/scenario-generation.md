@@ -170,7 +170,7 @@ Every mutable property of an entity must be declared in `state_fields`. For
 every entity, think about what changes during play:
 
 - NPCs: `alive` (boolean), `fled` (boolean), `attitude` (number, always
-  required for NPCs), `told_secret` (boolean), `following` (boolean)
+  required for NPCs), `hidden` (boolean), `following` (boolean)
 - Features: `opened` (boolean), `revealed` (boolean), `activated` (boolean)
 - Items: none usually (items just exist in inventory)
 - Traps: `triggered` (boolean), `activated` (boolean)

@@ -15,7 +15,7 @@ An NPC is an entity with `type: "npc"` in the module corpus. NPCs carry two opti
       "state_fields": {
         "alive":    { "type": "boolean", "description": "Whether the NPC is alive" },
         "attitude": { "type": "number",  "description": "Disposition toward the player" },
-        "told_secret": { "type": "boolean", "description": "Whether the NPC has shared the secret" }
+        "hidden":   { "type": "boolean", "description": "Whether the NPC is hidden from view" }
       },
       "dialogue_guidelines": { ... },
       "behavior": { ... }
@@ -31,7 +31,7 @@ NPCs declare their mutable hard-state fields in `state_fields`. Two fields are t
 - **`alive`** (`boolean`): If `false`, the NPC is dead. Dead NPCs cannot participate in dialogue, have their attitude changed, or reveal knowledge.
 - **`attitude`** (`number`): The NPC's disposition toward the player. Stored in hard game state (`entity_states.<npc_id>.attitude`). Validated and mutated exclusively by the engine.
 
-Additional fields like `told_secret`, `fled`, etc. can be declared as needed by adventure authors.
+Additional fields like `hidden`, `injured`, `following`, etc. can be declared as needed by adventure authors.
 
 ---
 
