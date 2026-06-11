@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from mgmai.engine.conditions import evaluate
+
 try:
     from rich.console import Console
     from rich.markdown import Markdown
@@ -241,12 +243,34 @@ class Display:
             self.print(f"[Unknown room: {hs.player.location}]")
             return
 
+        visible_exits = []
+        for e in room.exits:
+            if e.hidden:
+                if e.conditions:
+                    all_met = True
+                    for cond in e.conditions:
+                        if not evaluate(cond, hs, state_loader.soft_state, corpus):
+                            all_met = False
+                            break
+                    if not all_met:
+                        continue
+                else:
+                    continue
+            elif e.conditions:
+                all_met = True
+                for cond in e.conditions:
+                    if not evaluate(cond, hs, state_loader.soft_state, corpus):
+                        all_met = False
+                        break
+                if not all_met:
+                    continue
+            visible_exits.append(e)
+
         if RICH_AVAILABLE:
             lines = [f"[bold bright_white]{room.name}[/bold bright_white]", ""]
             lines.append(room.description)
             lines.append("")
 
-            visible_exits = [e for e in room.exits if not e.hidden]
             if visible_exits:
                 exit_lines = [
                     f"* {e.direction}" + (" [dim](one-way)[/dim]" if e.one_way else "")
@@ -271,7 +295,6 @@ class Display:
             print()
             print(room.description)
             print()
-            visible_exits = [e for e in room.exits if not e.hidden]
             if visible_exits:
                 print("Exits:")
                 for e in visible_exits:

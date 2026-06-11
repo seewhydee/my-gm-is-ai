@@ -250,8 +250,8 @@ class TestExitFiltering:
             "look",
         )
         exit_ids = [e.id for e in result.current_room.exits_available]
-        # Hidden exits are always omitted from briefing per plan
-        assert "exit_enter_secret_flap" not in exit_ids
+        # Hidden exit appears in briefing once its conditions are met
+        assert "exit_enter_secret_flap" in exit_ids
 
     def test_condition_gated_exit_omitted_when_not_met(self, state_manager):
         state_manager.hard_state.player.location = "bag_floor"

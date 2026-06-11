@@ -101,8 +101,18 @@ def _build_room(
     exits_available: list[BriefingExit] = []
     for ex in room.exits:
         if ex.hidden:
-            continue
-        if ex.conditions:
+            # Hidden exits are revealed only when their conditions are met
+            if ex.conditions:
+                all_met = True
+                for cond in ex.conditions:
+                    if not evaluate(cond, hard, soft, corpus):
+                        all_met = False
+                        break
+                if not all_met:
+                    continue
+            else:
+                continue
+        elif ex.conditions:
             all_met = True
             for cond in ex.conditions:
                 if not evaluate(cond, hard, soft, corpus):
