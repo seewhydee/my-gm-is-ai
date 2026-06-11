@@ -190,13 +190,6 @@ def resolve(
             enc_rolls = enc_result.get("rolls") or []
             rolls.extend(enc_rolls)
 
-    if resolution.encounter_trigger and game_over is None:
-        interact_target = getattr(player_action, "target", None)
-        if interact_target:
-            npc = corpus.entities.get(interact_target)
-            if npc and npc.behavior and "attack" in (npc.behavior.triggers_on or []):
-                pass
-
     if hard.game_over is None:
         _check_game_over_mechanics(hard, soft, corpus, game_over_ref := [None])
         if game_over_ref[0]:

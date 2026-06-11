@@ -391,7 +391,7 @@ NPCs with a `behavior` block can trigger **encounters** — combat or other stru
 }
 ```
 
-When the player uses `interact` with `interaction_id: "attack"` targeting an NPC with a `behavior` block, the engine dispatches to encounter resolution. Encounters can result in player death, NPC death, NPC fleeing, or simple dice rolls with success/failure branches — all resolved by the deterministic engine, not the LLM.
+When the player uses an interaction whose ID matches an entry in the target NPC's `behavior.triggers_on` list, the engine dispatches to encounter resolution. For example, an NPC with `"triggers_on": ["attack"]` will trigger combat when the player targets it with `interaction_id: "attack"`. Encounters can result in player death, NPC death, NPC fleeing, or dice rolls with success/failure branches — all resolved by the deterministic engine, not the LLM.
 
 Encounter outcomes (death, flee, etc.) update hard state, which in turn gates dialogue, attitude changes, and knowledge revelation for that NPC.
 

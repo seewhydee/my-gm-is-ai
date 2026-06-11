@@ -420,6 +420,13 @@
         },
         "will_reveal": {}
       },
+      "interactions": [
+        {
+          "id": "attack",
+          "label": "Attack",
+          "description": "Attack the spider."
+        }
+      ],
       "behavior": {
         "triggers_on": [
           "exit_through_webs",
@@ -637,6 +644,13 @@
           }
         }
       },
+      "interactions": [
+        {
+          "id": "attack",
+          "label": "Attack",
+          "description": "Attack Korbar."
+        }
+      ],
       "behavior": {
         "triggers_on": [
           "attack"

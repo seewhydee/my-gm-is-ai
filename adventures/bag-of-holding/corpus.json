@@ -139,8 +139,15 @@
           }
         }
       },
+      "interactions": [
+        {
+          "id": "attack",
+          "label": "Attack",
+          "description": "Attack the spider."
+        }
+      ],
       "behavior": {
-        "triggers_on": ["exit_through_webs_down", "exit_through_webs_up"],
+        "triggers_on": ["exit_through_webs_down", "exit_through_webs_up", "attack"],
         "encounter_rules": [
           {
             "condition": { "unless": "tag:weapon" },
@@ -266,8 +273,15 @@
           }
         }
       },
+      "interactions": [
+        {
+          "id": "attack",
+          "label": "Attack",
+          "description": "Attack Korbar."
+        }
+      ],
       "behavior": {
-        "triggers_on": [],
+        "triggers_on": ["attack"],
         "encounter_rules": [
           {
             "condition": { "any": [

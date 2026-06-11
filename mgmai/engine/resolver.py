@@ -534,29 +534,24 @@ def resolve_interact(
     matches: list[tuple[Interaction, str]] = []
 
     if target_entity:
-        for inter in target_entity.interactions:
-            if inter.id == interaction_id:
-                matches.append((inter, "entity"))
-        if interaction_id == "attack":
-            npc_entity = corpus.entities.get(target_id)
-            if npc_entity and npc_entity.type == "npc" and npc_entity.behavior:
-                entity_state = hard.entity_states.get(target_id, {})
-                if entity_state.get("alive") is False:
-                    return ResolutionResult(
-                        success=False,
-                        error=f"NPC '{target_id}' is dead",
-                    )
-                encounter_trigger = target_id
+        if target_entity.type == "npc" and target_entity.behavior:
+            entity_state = hard.entity_states.get(target_id, {})
+            if entity_state.get("alive") is False:
+                return ResolutionResult(
+                    success=False,
+                    error=f"NPC '{target_id}' is dead",
+                )
+            if interaction_id in (target_entity.behavior.triggers_on or []):
                 return ResolutionResult(
                     success=True,
                     hard_changes=HardStateChanges(),
-                    encounter_trigger=encounter_trigger,
+                    encounter_trigger=target_id,
                     room_after_id=room_id,
                 )
-            return ResolutionResult(
-                success=False,
-                error=f"Nothing to attack — '{target_id}' is not a valid combat target",
-            )
+
+        for inter in target_entity.interactions:
+            if inter.id == interaction_id:
+                matches.append((inter, "entity"))
 
     for inter in room.interactions:
         if inter.id == interaction_id:

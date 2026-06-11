@@ -1,18 +1,19 @@
 # My GM is AI
 
-An AI-driven Game Master (GM) for single-player RPGs.  The objective: replicate the tabletop RPG experience without needing friends.
+An experimental AI-driven Game Master (GM) for single-player RPGs.  The goal: replicate the tabletop RPG experience without friends.
 
-Unlike freeform AI roleplay chatbots, this AI GM system is not optimized for crafting naturalistic interlocutors with emotional depth, nor can it create open-ended adventures.  Instead, the AI GM runs a pre-generated adventure module faithfully.  You, the player, can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens.  Like a human GM, the AI GM aims to strike a balance between creativity and rules adherence.
+Unlike freeform AI roleplay chatbots, this AI GM system is not optimized for crafting naturalistic interlocutors with emotional depth, nor does it create open-ended adventures.  Instead, the AI GM runs a pre-generated adventure module faithfully.  You, the player, can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens.  Like a human GM, the AI GM aims to strike a balance between creativity and rules adherence.
 
-This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Player stats and combat are not yet implemented.
+This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Combat is not yet implemented.
 
 ## Documentation
 
-Detailed documentation is in the `doc/` folder:
+The design documentation is in the `doc/` folder:
 
-- **[doc/intro.md](doc/intro.md)** — Architecture guide: goals, design philosophy, per-turn pipeline, data stores, player action types, directory structure.
-- **[doc/validation.md](doc/validation.md)** — Human validation plan: running validation scripts, writing sequence files, reviewing logs.
-- **[doc/player-stats.md](doc/player-stats.md)** — Planned player stats extension (STR/DEX/CON/INT/WIS/CHA) for future development.
+- [doc/intro.md](doc/intro.md): Architecture guide.
+- [doc/npcs.md](doc/npcs.md): Implementation of non-player characters.
+- [doc/player-stats.md](doc/player-stats.md) — Player stats (WIP).
+- [doc/soft-items.md](doc/soft-items.md) — Extensible nondescript items.
 
 ## How It Works
 
@@ -89,5 +90,7 @@ My GM Is AI is (C) 2026 Chong Yidong (cyd@stupidchicken.com).
 
 It is free software licensed under the terms of the GNU General Public
 Licencse (GPL), version 3.0.  See [LICENSE](LICENSE).
+
+Dedicated to the memory of Logan Goh (1980-2026): programmer, gamer, dreamer.
 
 The sample adventure(s) in the `adventure/` folder are based on original works copyrighted by various authors, used and distributed under Creative Commons-type licenses.  Refer to those files for the copyright and licensing information.
