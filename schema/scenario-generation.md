@@ -171,11 +171,19 @@ every entity, think about what changes during play:
   required for NPCs), `hidden` (boolean), `following` (boolean)
 - Features: `opened` (boolean), `revealed` (boolean), `activated` (boolean)
 - Items: none usually (items just exist in inventory)
+
+The engine recognises `hidden` as a special state field. When an entity has
+`hidden: true` in `entity_states`, the engine **excludes it from all LLM
+briefings** (`entities_visible`). Set `hidden: false` (e.g. via an interaction
+result's `set_entity_state`) to make the entity visible again. This provides
+engine-enforced entity hiding.
+
 ```json
 "state_fields": {
   "alive": { "type": "boolean", "description": "Whether the spider is alive." },
   "fled": { "type": "boolean", "description": "Whether the spider has fled." },
-  "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 10." }
+  "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 10." },
+  "hidden": { "type": "boolean", "description": "Whether the entity is hidden from view." }
 }
 ```
 
@@ -395,6 +403,10 @@ Exactly one entity with `type: "player"`.
 - [ ] Entities that span multiple rooms have `spans_rooms` and appear in each
   room's `entities_present`
 - [ ] NPCs that refuse to enter certain rooms have `follower_blacklist`
+- [ ] Every entity with `hidden` in `state_fields` has `hidden` initialised
+  in `entity_states`
+- [ ] Every entity with `hidden: true` in initial `entity_states` has at
+  least one companion `on_examine` or interaction that can set `hidden: false`
 
 ---
 
@@ -428,14 +440,31 @@ start.
 
 #### Hidden entity reveal pattern
 
-Some entities are not initially visible to the player — e.g., a spider hidden in the webs.  For such entities, list the entity in `entities_present`** as normal. The LLM will see it in the GMBriefing and will be instructed not to narrate it until the player discovers it.
+Some entities are not initially visible to the player — e.g., a spider hidden
+in the webs. Use this pattern for engine-enforced hiding:
 
-Usually, the scenario will provide some mechanism for uncovering the hidden entity.  For example, it could be revealed by an `on_examine` event gated by a stat check:
+1. **Declare `hidden` in the entity's `state_fields`** (see Step 2A)
+
+2. **Set `hidden: true` in the entity's `entity_states`** in hard-state.json.
+   The engine will exclude this entity from `entities_visible` in all LLM
+   briefings until `hidden` is set to `false`.
+
+3. **The room description must not spoil the hidden entity.** Write only
+   surface-level impressions. The dramatic reveal comes from the
+   `on_examine` success narrative.
+
+4. **The entity's `description` should be vague** — hint at the unknown
+   rather than describing the fully visible creature. Example for a hidden
+   spider: "Something large stirs in the shadows above, just beyond your
+   field of view."
+
+5. **Add an `on_examine` event** (on the room or a covering entity) that
+   reveals the entity when the player discovers it:
 
    ```json
    {
      "id": "notice_spider",
-     "condition": { "require": "entity:spider.fled == false" },
+     "condition": { "require": "entity:spider.hidden == true" },
      "check": {
        "type": "stat_check",
        "stat": "WIS",
@@ -444,12 +473,25 @@ Usually, the scenario will provide some mechanism for uncovering the hidden enti
      },
      "success": {
        "narrative": "You notice eight glittering eyes watching you from above.",
+       "set_entity_state": { "spider": { "hidden": false } },
        "set_flag": { "spider_noticed": true }
      }
    }
    ```
 
-If a hidden entity seems to have no revelation mechanism, it could be a scenario bug; you should implement the json faithfully as written in the scenario, but do surface the issue during your post-generation report.
+When the check succeeds, the engine sets `spider.hidden = false`. The next
+turn's briefing includes the spider in `entities_visible`. The narrator LLM
+(Call 2) also sees the revealed entity in `room_after` immediately after
+the discovery action is resolved.
+
+6. **Validation:** Every entity with `hidden: true` in its initial
+   `entity_states` must have at least one companion `on_examine` or
+   interaction that can set `hidden: false`. Without one, the entity is
+   permanently invisible.
+
+If a hidden entity seems to have no revelation mechanism, it could be a
+scenario bug; you should implement the JSON faithfully as written in the
+scenario, but do surface the issue during your post-generation report.
 
 ### 3C. Soft items
 
@@ -1192,8 +1234,9 @@ cross-file consistency issues.
 - [ ] `hard_state.player.location` matches the room with `is_start_room: true`
 - [ ] Every entity with `state_fields` has a complete `entity_states` entry
 - [ ] `entity_states` contains no fields not declared in the entity's `state_fields`
-- [ ] Entities that are narratively hidden (e.g., spider in webs) are still
-  listed in `entities_present` until engine-level entity hiding is supported
+- [ ] Entities with `hidden: true` in initial `entity_states` are still
+  listed in the room's `entities_present` (the engine handles filtering
+  based on the state field)
 - [ ] `entity_states` contains all fields declared in the entity's `state_fields`
 - [ ] Every NPC has `attitude` in both `state_fields` and `entity_states`
 - [ ] NPC attitude values are within the `[min, max]` range from their
@@ -1361,10 +1404,11 @@ All IDs must be **snake_case, lowercase ASCII**:
     failure cannot set `game_over` directly. Instead, use `set_flag` in the
     failure result and add a `lose` mechanic watching that flag.
 
-16. **Entity-level hiding not yet supported**: The engine does not currently
-    filter entities from the GMBriefing based on state. Entities in
-    `entities_present` are always visible to the LLM. Hidden entity patterns
-    currently rely on LLM compliance and gated interactions.
+16. **Hidden entities need a reveal mechanism**: Every entity with
+    `hidden: true` in its initial `entity_states` must have a companion
+    `on_examine` event or interaction that sets `hidden: false`. Without one,
+    the entity is permanently invisible to the LLM. The room description
+    and entity description must not spoil the hidden entity's nature.
 
 17. **Global traversal checks**: There is no mechanism to apply a
     traversal_check to all exits at once. If carrying an item affects

@@ -81,7 +81,8 @@
       "state_fields": {
         "alive": { "type": "boolean", "description": "Whether the spider is alive." },
         "fled": { "type": "boolean", "description": "Whether the spider has fled after being wounded." },
-        "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 0." }
+        "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 0." },
+        "hidden": { "type": "boolean", "description": "Whether the entity is hidden from view." }
       },
       "dialogue_guidelines": {
         "personality": "Stupid, malicious, and hungry. The spider speaks in short hissing sentences. It is arrogant about its hunting prowess and views the player as prey. Too suspicious to make deals, but vain enough to be flattered. It knows of Korbar only as 'the delicious-looking two-legs' it hasn't managed to catch yet.",

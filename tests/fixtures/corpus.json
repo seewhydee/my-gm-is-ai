@@ -393,6 +393,10 @@
         "attitude": {
           "type": "number",
           "description": "The spider's disposition toward the player. Positive is friendly."
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "Whether the entity is hidden from view."
         }
       },
       "dialogue_guidelines": {

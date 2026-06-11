@@ -403,6 +403,8 @@ def _build_room_after(
             continue
 
         entity_state = hard.entity_states.get(eid, {})
+        if entity_state.get("hidden", False):
+            continue
         if entity.type == "item" and eid in hard.player.inventory:
             continue
 

@@ -1,14 +1,6 @@
 # Engine-level limitations (scenario generation)
 
-## 1. Entity-level hiding not supported
-   The engine surfaces every entity in `entities_present` to the LLM
-   unconditionally — there's no `hidden` flag on entities (only on
-   exits). The spider in the webs and the handkerchief in the rubbish
-   currently rely on LLM compliance. A `hidden: true` field on entity
-   definitions, or a `revealed` state field that the GMBriefing filters
-   on, would be needed for engine-enforced entity visibility.
-
-## 2. No global traversal check mechanism
+## 1. No global traversal check mechanism
    If carrying an item (like the heavy key) affects movement, the
    `traversal_check` must be duplicated on every exit. There's no
    engine-level way to say "when item X is in inventory, apply check

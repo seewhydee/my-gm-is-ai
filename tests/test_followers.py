@@ -102,6 +102,14 @@ class TestInjectFollowingNpcs:
         inject_following_npcs(entities, "axe_head", hard, soft, corpus)
         assert len(entities) == 0
 
+    def test_no_inject_if_hidden(self, sample_corpus_dict):
+        corpus = _load_corpus(sample_corpus_dict)
+        hard = _load_hard(spider={"following": True, "hidden": True})
+        soft = _load_soft()
+        entities: list[BriefingEntity] = []
+        inject_following_npcs(entities, "bag_floor", hard, soft, corpus)
+        assert len(entities) == 0
+
 
 class TestFindEntityInRoomFollowers:
     @pytest.fixture
@@ -217,5 +225,33 @@ class TestResolveWithFollower:
 
         hard.player.location = "axe_handle_lower"
         room_after = _build_room_after("axe_handle_lower", hard, soft, corpus)
+        visible_ids = [e.id for e in room_after.entities_visible]
+        assert "korbar" in visible_ids
+
+
+class TestBuildRoomAfterHidden:
+    """_build_room_after filters hidden entities."""
+
+    def test_hidden_entity_filtered(self, sample_corpus_dict):
+        corpus = _load_corpus(sample_corpus_dict)
+        hard = _load_hard(spider={"hidden": True})
+        soft = _load_soft()
+        room_after = _build_room_after("axe_handle_lower", hard, soft, corpus)
+        visible_ids = [e.id for e in room_after.entities_visible]
+        assert "spider" not in visible_ids
+
+    def test_hidden_entity_appears_when_revealed(self, sample_corpus_dict):
+        corpus = _load_corpus(sample_corpus_dict)
+        hard = _load_hard(spider={"hidden": False})
+        soft = _load_soft()
+        room_after = _build_room_after("axe_handle_lower", hard, soft, corpus)
+        visible_ids = [e.id for e in room_after.entities_visible]
+        assert "spider" in visible_ids
+
+    def test_entity_without_hidden_field_appears(self, sample_corpus_dict):
+        corpus = _load_corpus(sample_corpus_dict)
+        hard = _load_hard()
+        soft = _load_soft()
+        room_after = _build_room_after("bag_floor", hard, soft, corpus)
         visible_ids = [e.id for e in room_after.entities_visible]
         assert "korbar" in visible_ids

@@ -214,6 +214,47 @@ class TestEntityVisibility:
         assert handkerchief.dialogue_paths == {}
 
 
+class TestEntityHidden:
+    """Hidden entity filtering: entities with `hidden: true` are omitted."""
+
+    def test_hidden_entity_filtered_from_entities_visible(self, state_manager):
+        state_manager.hard_state.player.location = "axe_handle_lower"
+        state_manager.hard_state.entity_states["spider"]["hidden"] = True
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        entity_ids = [e.id for e in result.current_room.entities_visible]
+        assert "spider" not in entity_ids
+
+    def test_hidden_entity_appears_when_revealed(self, state_manager):
+        state_manager.hard_state.player.location = "axe_handle_lower"
+        # Entity starts hidden, then is revealed
+        state_manager.hard_state.entity_states["spider"]["hidden"] = False
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        entity_ids = [e.id for e in result.current_room.entities_visible]
+        assert "spider" in entity_ids
+
+    def test_entity_without_hidden_field_always_visible(self, state_manager):
+        state_manager.hard_state.player.location = "bag_floor"
+        # korbar has no 'hidden' state field — should always be visible
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        entity_ids = [e.id for e in result.current_room.entities_visible]
+        assert "korbar" in entity_ids
+
+
 class TestExitFiltering:
     """Exit filtering: hidden omitted, conditions checked."""
 

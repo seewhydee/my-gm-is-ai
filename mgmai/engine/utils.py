@@ -37,6 +37,8 @@ def inject_following_npcs(
             continue
         entity = corpus.entities[eid]
         entity_state = hard.entity_states.get(eid, {})
+        if entity_state.get("hidden", False):
+            continue
         notes = soft.entity_notes.get(eid, [])[-5:]
         entity_soft = soft.surfaced_soft_items.get(eid, [])
         path_descriptions: dict[str, str] = {}
