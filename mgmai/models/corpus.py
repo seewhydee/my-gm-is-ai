@@ -66,6 +66,7 @@ class Result(BaseModel):
     remove_item: Optional[str] = None
     set_flag: Optional[Dict[str, bool]] = None
     set_stat: Optional[Dict[str, int]] = None
+    set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
     adjust_attitude: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
     chain_check: Optional[ChainedCheck] = None

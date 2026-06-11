@@ -1084,6 +1084,12 @@ def _apply_result(
     if result.set_stat:
         for stat_key, delta in result.set_stat.items():
             changes.stat_changes[stat_key] = changes.stat_changes.get(stat_key, 0) + delta
+    if result.set_entity_state and hard is not None:
+        for ent_id, state_changes in result.set_entity_state.items():
+            if ent_id not in hard.entity_states:
+                hard.entity_states[ent_id] = {}
+            hard.entity_states[ent_id].update(state_changes)
+            changes.entity_state_changes.setdefault(ent_id, {}).update(state_changes)
     if result.adjust_attitude and hard is not None and corpus is not None:
         for npc_id, delta in result.adjust_attitude.items():
             npc_entity = corpus.entities.get(npc_id)

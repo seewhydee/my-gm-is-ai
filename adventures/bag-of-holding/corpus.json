@@ -38,7 +38,8 @@
       "description": "A giant fly, about the size of a dog, stuck fast in the sticky webbing. Its compound eyes glitter weakly and its wings twitch feebly. It's clearly near death.",
       "state_fields": {
         "alive": { "type": "boolean", "description": "Whether the fly is still alive." },
-        "attitude": { "type": "number", "description": "Attitude toward the player, 0 to 5." }
+        "attitude": { "type": "number", "description": "Attitude toward the player, 0 to 5." },
+        "hidden": { "type": "boolean", "description": "Whether the fly is hidden from view among the webbing." }
       },
       "dialogue_guidelines": {
         "personality": "A weak, dying insect speaking in a nasally whine. Resigned to its fate but spiteful enough to offer a warning about the spider. Too weak to offer more than a few words before expiring.",
@@ -166,7 +167,7 @@
 
     "korbar": {
       "type": "npc",
-      "description": "A female Dwarf in heavy, rusted iron platemail that clatters noisily with her every movement. She sits amidst the rubbish, drunk and miserable, beneath a makeshift shelter made from a giant overturned soup ladle. Her red-rimmed eyes peer out from beneath a dented helm. She is unarmed — the battleaxe was hers, once, when she was full-sized outside the Bag.",
+		"description": "A female Dwarf in heavy, rusted iron platemail that clatters noisily with her every movement. She sits amidst the rubbish, drunk and miserable, beneath a makeshift shelter made from a giant overturned soup ladle. Her red-rimmed eyes peer out from beneath a dented helm. She seems to be unarmed.",
       "state_fields": {
         "alive": { "type": "boolean", "description": "Whether Korbar is alive and conscious." },
         "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 10." },
@@ -189,7 +190,6 @@
         "cannot": [
           "will never agree to fight the spider",
           "will not enter the secret compartment",
-          "will never leave the Bag on her own initiative",
           "will never stop drinking entirely"
         ],
         "knows": [
@@ -329,7 +329,8 @@
           "label": "Look through the rip",
           "description": "Poke your head through the rip in the canvas to see what lies beyond.",
           "result": {
-            "narrative": "You carefully balance on the tip of the axe blade and poke your head through the rip. Beyond is a vast gray featureless expanse. Looking around, you see the exterior of what looks like a colossal... bag? Its canvas neck is bunched together with a massive iron padlock that dangles down to where you are — barely within reach. The padlock is firmly closed."
+              "narrative": "You carefully balance on the tip of the axe blade and poke your head through the rip. Beyond is a vast gray featureless expanse. Looking around, you see the exterior of what looks like a colossal... Bag? Above you, its canvas neck is bunched shut by a massive iron padlock, which dangles down to where you are — barely within reach. The padlock is firmly closed.",
+              "set_entity_state": { "padlock": { "hidden": false } }
           }
         },
         {
@@ -354,6 +355,14 @@
       ],
       "on_examine": [
         {
+          "id": "reveal_padlock",
+          "condition": { "unless": "entity:padlock.hidden == false" },
+          "result": {
+            "narrative": "Through the rip, you can make out a massive iron padlock dangling on the outside of the canvas wall. It is firmly closed around what looks like the neck of this place, keeping it sealed shut.",
+            "set_entity_state": { "padlock": { "hidden": false } }
+          }
+        },
+        {
           "id": "recognize_astral_plane",
           "condition": { "unless": "flag:astral_plane_recognized == true" },
           "check": {
@@ -375,7 +384,9 @@
     "padlock": {
       "type": "feature",
       "description": "A massive iron padlock, visible through the rip in the canvas. It is firmly closed around the neck of the Bag, keeping it sealed shut. The keyhole is large enough to accommodate the giant iron key.",
-      "state_fields": {},
+      "state_fields": {
+        "hidden": { "type": "boolean", "description": "Whether the padlock is hidden from view." }
+      },
       "interactions": [
         {
           "id": "insert_key_into_padlock",
@@ -504,6 +515,7 @@
           "success": {
             "narrative": "As you search the rubbish more carefully, something catches your eye — a disgustingly damp giant handkerchief, draped over a section of the floor in a way that seems... deliberate. It's not just random trash. Someone arranged this.",
             "set_flag": { "handkerchief_noticed": true },
+            "set_entity_state": { "handkerchief": { "hidden": false } },
             "reveals": "A damp handkerchief is draped unnaturally over part of the floor, as if concealing something."
           },
           "failure": null
@@ -514,7 +526,9 @@
     "handkerchief": {
       "type": "feature",
       "description": "A giant handkerchief, damp and vaguely disgusting. It's draped over part of the canvas floor in an unnatural way, as if deliberately placed to conceal something underneath.",
-      "state_fields": {},
+      "state_fields": {
+        "hidden": { "type": "boolean", "description": "Whether the handkerchief is hidden from view." }
+      },
       "soft_items": ["damp handkerchief"]
     },
 
@@ -609,7 +623,8 @@
           },
           "success": {
             "narrative": "As you examine the strange masses stuck in the webbing, one of them twitches. You lean closer and make out the form of a giant fly, about the size of a dog, its wings pinned by sticky strands. Its compound eyes swivel weakly toward you, and a faint, nasally groan escapes its mouthparts.",
-            "set_flag": { "fly_found": true }
+            "set_flag": { "fly_found": true },
+            "set_entity_state": { "stuck_fly": { "hidden": false } }
           },
           "failure": null
         }
@@ -702,7 +717,8 @@
           },
           "success": {
             "narrative": "Your eyes adjust to the gloom, and you catch a glint of movement above. Eight glittering eyes stare back at you from the shadows. A huge spider — easily twice your size — lurks in the webbing, watching your every move.",
-            "set_flag": { "spider_noticed": true }
+            "set_flag": { "spider_noticed": true },
+            "set_entity_state": { "spider": { "hidden": false } }
           },
           "failure": null
         }
