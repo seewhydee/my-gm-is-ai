@@ -107,17 +107,20 @@ def main(argv: list[str] | None = None) -> None:
         credentials=credentials,
     )
 
-    if not api_key:
-        api_key = _prompt_for_api_key(display, config_dir, credentials)
-
-    # Resolve model name: CLI arg > env var > config file > default
+    # Resolve model name preliminarily: CLI arg > env var > config file
     env_model = os.environ.get("MGMAI_MODEL")
-    model_name = args.model or env_model or app_config.model_name or "deepseek-v4-flash"
-    config = get_model_config(model_name)
+    model_name = args.model or env_model or app_config.model_name
 
-    # Resolve base URL: CLI arg > env var > config file > registry default
+    # Resolve base URL preliminarily: CLI arg > env var > config file
     env_url = os.environ.get("MGMAI_BASE_URL")
     base_url = args.base_url or env_url or app_config.base_url
+
+    if not api_key:
+        api_key, model_name, base_url = _prompt_for_credentials(
+            display, config_dir, credentials, app_config,
+        )
+
+    config = get_model_config(model_name)
     if base_url:
         config = replace(config, base_url=base_url)
 
@@ -177,32 +180,45 @@ def main(argv: list[str] | None = None) -> None:
     loop.start()
 
 
-def _prompt_for_api_key(
+def _prompt_for_credentials(
     display: Display,
     config_dir: Path,
     credentials: Credentials,
-) -> str:
-    """Prompt the user for an API key and save it to credentials.json.
+    app_config: AppConfig,
+) -> tuple[str, str, str]:
+    """Prompt for LLM credentials when no API key is found.
 
+    Returns ``(api_key, model_name, base_url)``.
     Falls back to a non-interactive error message when stdin is not a TTY
     (e.g. in tests or CI environments).
     """
     if not sys.stdin.isatty():
         display.render_error(
-            "MGMAI_API_KEY environment variable is not set and no "
-            "credentials were found. Set MGMAI_API_KEY, pass --api-key, "
-            "or run interactively to be prompted."
+            "No model credentials found.  Set the MGMAI_BASE_URL,"
+            " MGMAI_MODEL, and MGMAI_API_KEY env vars, or pass"
+            " --base-url, --model, and --api-key, or run interactively"
+            " to be prompted."
         )
         sys.exit(1)
 
+    default_model = app_config.model_name
+    default_url = app_config.base_url or "https://api.deepseek.com"
+
     display.print("\n[yellow]No API key found from environment or saved credentials.[/yellow]")
     display.print(
-        "You can set the [bold]MGMAI_API_KEY[/bold] environment variable to skip this prompt.\n"
-        "You can also run [bold]/models[/bold] in-game to manage model and API key settings.\n"
+        "Please enter your LLM configuration below. Press Enter to accept defaults.\n"
     )
 
+    base_url = input(f"Base URL [{default_url}]: ").strip()
+    if not base_url:
+        base_url = default_url
+
+    model_name = input(f"Model name [{default_model}]: ").strip()
+    if not model_name:
+        model_name = default_model
+
     while True:
-        api_key = getpass.getpass("Enter your API key: ").strip()
+        api_key = getpass.getpass("API key: ").strip()
         if api_key:
             break
         display.print("[red]API key cannot be empty.[/red]")
@@ -210,11 +226,18 @@ def _prompt_for_api_key(
     credentials.api_key = api_key
     try:
         save_credentials(credentials, config_dir)
-        display.print("[green]API key saved.[/green]\n")
     except OSError as e:
-        display.print(f"[yellow]Could not save API key: {e}[/yellow]\n")
+        display.print(f"[yellow]Could not save API key: {e}[/yellow]")
 
-    return api_key
+    app_config.model_name = model_name
+    app_config.base_url = base_url
+    try:
+        save_app_config(app_config, config_dir)
+    except OSError as e:
+        display.print(f"[yellow]Could not save configuration: {e}[/yellow]")
+
+    display.print("[green]Configuration saved.[/green]\n")
+    return api_key, model_name, base_url
 
 
 if __name__ == "__main__":

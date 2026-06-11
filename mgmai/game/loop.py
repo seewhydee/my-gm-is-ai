@@ -66,7 +66,7 @@ class GameLoop:
             try:
                 line = input("> ")
             except (EOFError, KeyboardInterrupt):
-                self._display.print()
+                self._display.print("")
                 self._do_exit()
                 return
 

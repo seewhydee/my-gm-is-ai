@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mgmai.cli import main
+from mgmai.config import AppConfig, Credentials
 
 ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
 BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
@@ -27,8 +28,11 @@ class TestCliArguments:
 
     def test_missing_api_key(self, monkeypatch, capsys) -> None:
         monkeypatch.delenv("MGMAI_API_KEY", raising=False)
-        with pytest.raises(SystemExit) as exc_info:
-            main([str(BAG_OF_HOLDING)])
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+        with patch("mgmai.cli.load_credentials", return_value=Credentials()):
+            with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
+                with pytest.raises(SystemExit) as exc_info:
+                    main([str(BAG_OF_HOLDING)])
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "MGMAI_API_KEY" in captured.out

@@ -147,8 +147,6 @@ class Display:
                 parts.append(f"Flags: {', '.join(active_flags)}")
             print(f"  {' | '.join(parts)}")
 
-        self._render_character_sheet(state_loader)
-
     def _render_character_sheet(self, state_loader: Any) -> None:
         hard = state_loader.hard_state
         corpus = state_loader.corpus

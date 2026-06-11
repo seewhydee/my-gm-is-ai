@@ -4,7 +4,7 @@ NPCs are characters the player can interact with. This document covers how NPCs 
 
 ## NPC Definition in the Corpus
 
-An NPC is an entity with `type: "npc"` in the module corpus. NPCs carry two optional blocks not available to other entity types: `dialogue_guidelines` and `behavior`.
+An NPC is an entity with `type: "npc"` in the module corpus.  NPCs carry two optional blocks not available to other entity types: `dialogue_guidelines` and `behavior`.
 
 ```json
 {
@@ -26,14 +26,13 @@ An NPC is an entity with `type: "npc"` in the module corpus. NPCs carry two opti
 
 ### State Fields
 
-NPCs declare their mutable hard-state fields in `state_fields`. Two fields are treated specially by the system:
+NPCs declare their mutable hard-state fields in `state_fields`.  Two fields are treated specially by the system:
 
-- **`alive`** (`boolean`): If `false`, the NPC is dead. Dead NPCs cannot participate in dialogue, have their attitude changed, or reveal knowledge.
-- **`attitude`** (`number`): The NPC's disposition toward the player. Stored in hard game state (`entity_states.<npc_id>.attitude`). Validated and mutated exclusively by the engine.
+- **`alive`** (`boolean`): If `false`, the NPC is dead.  Dead NPCs cannot participate in dialogue, have their attitude changed, or reveal knowledge.
+- **`attitude`** (`number`): The NPC's disposition toward the player.  Stored in hard game state (`entity_states.<npc_id>.attitude`).  Validated and mutated exclusively by the engine.
 
 Additional fields like `hidden`, `injured`, `following`, etc. can be declared as needed by adventure authors.
 
----
 
 ## Dialogue Guidelines
 
@@ -97,10 +96,9 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
 | `on_dialogue_exit` | Optional effects applied when dialogue ends (see Dialogue Lifecycle). |
 | `dialogue_paths` | Special conversation paths with mechanical effects (see below). |
 
-
 ## Special Dialogue Paths (`dialogue_paths`)
 
-`dialogue_paths` defines special conversation routes that have engine-resolved mechanical consequences. They are useful for:
+`dialogue_paths` defines special conversation routes that have engine-resolved mechanical consequences.  They are useful for:
 - Social approaches tied to stat checks (`flatter`, `intimidate`, `persuade`).
 - Delivering plot-critical information (`inform_spider_dead`).
 - Any dialogue moment where the engine needs to apply results directly (`adjust_attitude`, `set_flag`, `set_stat`, etc.).
@@ -111,7 +109,7 @@ Each path has two parts:
 - **Path ID** — the machine key used in the `talk` action's `dialogue_path` field and looked up by the engine.
 - **Description** — a required human-readable string that explains what the path represents.
 
-The description is **essential** because it is the only context LLM Call 1 has for deciding whether a player's input matches a defined path. LLM Call 1 receives the paths in `current_room.entities_visible[*].dialogue_paths` as a map of `{path_id: description}`. It reads the description, decides if the player's intent fits, and outputs the matching path ID in the `talk` action.
+The description is **essential** because it is the only context LLM Call 1 has for deciding whether a player's input matches a defined path.  LLM Call 1 receives the paths in `current_room.entities_visible[*].dialogue_paths` as a map of `{path_id: description}`.  It reads the description, decides if the player's intent fits, and outputs the matching path ID in the `talk` action.
 
 Write descriptions as clear player-intent phrases:
 - Good: `"Praise the spider's hunting prowess to improve its attitude."`
@@ -160,9 +158,9 @@ Write descriptions as clear player-intent phrases:
 ## Attitude System
 
 Each NPC has a numeric **attitude** value representing their disposition toward the player:
-- **Positive** (> 0): friendly, helpful, trusting
-- **Zero**: neutral
-- **Negative** (< 0): hostile, suspicious, unfriendly
+- Positive: friendly, helpful, trusting
+- Zero: neutral
+- Negative: hostile, suspicious, unfriendly
 
 ### Storage
 
@@ -181,7 +179,7 @@ Defined per-NPC in `dialogue_guidelines.attitude_limits`:
 
 ### Flow: How Attitude Changes
 
-1. Unlike most other aspects of hard state, attitude is altered by **LLM Call 2** (the prose narrator), not LLM Call 1.  When LLM Call 2 emits its narration, it may optionally include an `attitude_changes` block in the JSON response:
+1. Unlike most other aspects of hard state, attitude can be altered by **LLM Call 2** (the prose narrator).  When LLM Call 2 emits its narration, it may optionally include an `attitude_changes` block in the JSON response:
    ```json
    "attitude_changes": {
      "korbar": {
@@ -192,7 +190,7 @@ Defined per-NPC in `dialogue_guidelines.attitude_limits`:
    }
    ```
 
-2. **Post-validation** (`post_validate_attitude_changes`) checks each proposal against:
+2. The post-validation engine step then checks each proposal against a set of conditions:
    - NPC exists and is alive
    - NPC has `dialogue_guidelines`
    - `old_value` matches the current hard-state attitude
@@ -201,9 +199,8 @@ Defined per-NPC in `dialogue_guidelines.attitude_limits`:
    - `reason` is non-empty
    - If `step_per_turn == 0`, all changes are rejected
 
-3. **Accepted changes** are written to `hard.entity_states.<npc_id>.attitude`. **Rejected changes** are returned in `EngineResult.attitude_changes_rejected` with explanations.
-
-Currently, rejection does not alter the narration received by the player.  This could change in future versions.
+3. Accepted changes are written to hard state.  Rejected changes are returned with explanations.
+   Currently, rejection does not alter the narration received by the player.  This could change in future versions.
 
 ### Attitude in the GMBriefing
 
@@ -224,15 +221,12 @@ The prose template provides guidance to LLM Call 2 on appropriate attitude chang
 | ±2 | Significant interactions: genuine gift, meaningful help, serious threat |
 | ±3 | Exceptional moments: saving the NPC's life, deep betrayal |
 
----
 
 ## Knowledge Revelation (`will_reveal`)
 
 Certain pieces of knowledge that are plot/mechanics relevant are tracked with unique topic IDs.  For example, a secret door may appear in a room only if the player has learned of its existence (from an NPC, reading a note, etc.).
 
-NPCs have a `will_reveal` field specifying what topics they can potentially inform the player about.  As for non-plot-relevant topics, the LLM narrator can deal freely with those.
-
-Each topic under `will_reveal` has:
+NPCs have a `will_reveal` field specifying what topics they can potentially inform the player about.  Each topic ID is accompanied by:
 
 | Field | Description |
 |-------|-------------|
@@ -241,7 +235,7 @@ Each topic under `will_reveal` has:
 | `set_flag` | Optional flags to set when the topic is revealed |
 | `set_entity_state` | Optional entity state changes when the topic is revealed |
 
-Conditions use the usual condition syntax and can reference attitude (`attitude:korbar >= 2`), flags (`flag:spider_fled == true`), inventory, and other state.
+Conditions use the usual condition syntax and can reference NPC attitude, flags, inventory, and other state.
 
 ### Flow: How Knowledge Is Revealed
 
@@ -267,7 +261,8 @@ Conditions use the usual condition syntax and can reference attitude (`attitude:
      }
    }
    ```
-   This is sent to LLM Call 2 *only*. Each condition includes its original string, whether it's met, and a `detail` showing the current state value.  This aids the LLM in roleplaying why a topic is unavailable (e.g., "I'd tell you more, but not while that spider's still loose").
+
+  This is sent to LLM Call 2 *only*.  Each condition includes its original string, whether it's met, and a `detail` showing the current state value.  This aids the LLM in roleplaying why a topic is unavailable (e.g., "I'd tell you more, but not while that spider's still loose").
 
 2. LLM Call 2 decides whether the NPC actually reveals a topic during narration. If so, it generates a `knowledge_tags` block that helps tracks what topics the player has uncovered:
    ```json
@@ -279,7 +274,7 @@ Conditions use the usual condition syntax and can reference attitude (`attitude:
 
 ### Player Knowledge Tracking
 
-Revealed topics are stored in `SoftGameState.player_knowledge`, a flat list of `KnowledgeEntry` records:
+Revealed topics are stored in `SoftGameState.player_knowledge`, a flat list of `KnowledgeEntry` records indexed by topic (not by source):
 
 ```python
 class KnowledgeEntry(BaseModel):
@@ -290,15 +285,13 @@ class KnowledgeEntry(BaseModel):
     turn_learned: int
 ```
 
-Note that knowledge is indexed by topic, not by source — the system tracks *what* the player knows, with source as metadata rather than the primary key.
+For the GMBriefing, the Context Assembler produces `player_knowledge_topics` — a flat list of topic IDs the player has learned.  Full descriptions are available from the corpus `will_reveal` entries when needed by LLM Call 2.  This avoids duplicating description text in every briefing.
 
-For the GMBriefing, the Context Assembler produces `player_knowledge_topics: List[str]` — a flat list of topic IDs the player has learned. Full descriptions are available from the corpus `will_reveal` entries when needed by LLM Call 2. This avoids duplicating description text in every briefing.
-
-The system deduplicates by `topic_id` across **all** sources. If the player already knows topic X (from an interaction, a previous NPC, or any source), a later NPC who meets the conditions for the same topic will not re-reveal it — the post-validation silently skips duplicate entries.
+The system deduplicates by `topic_id` across **all** sources.  If the player already knows topic X (from an interaction, a previous NPC, or any source), a later NPC who meets the conditions for the same topic will not re-reveal it.  The post-validation silently skips duplicate entries.
 
 ### Interaction with Dialogue Context
 
-When dialogue mode is active, the `DialogueContext.revealed_topics` field shows which topics the *current* NPC has revealed. This is computed by filtering `player_knowledge` for entries with `source_id == active_npc_id`.
+When dialogue mode is active, the `DialogueContext.revealed_topics` field shows which topics the *current* NPC has revealed.  This is computed by filtering `player_knowledge` for entries with `source_id == active_npc_id`.
 
 
 ## Dialogue Lifecycle
@@ -318,13 +311,13 @@ Each `talk` action during active dialogue:
 - Records the player's utterance (or a paraphrase of the detail) to the conversation log
 - Resets the stall counter to 0
 
-LLM Call 2 can produce an `npc_response` — the verbatim NPC speech. This response is appended to the conversation log by the game loop. Topics from `knowledge_tags` are tracked in `dialogue_state.topics_discussed`.
+LLM Call 2 can produce an `npc_response` — the verbatim NPC speech.  This response is appended to the conversation log by the game loop.  Topics from `knowledge_tags` are tracked in `dialogue_state.topics_discussed`.
 
 The conversation log is capped at **10 entries** (scrolls, keeping the most recent).
 
 ### Stall Detection
 
-If the player takes actions other than `talk` while in dialogue mode, the **stall counter** increments. After **3 non-talk turns** (not counting `ooc_discussion`), the dialogue exits automatically. This prevents dialogue mode from lingering when the player has moved on.
+If the player takes actions other than `talk` while in dialogue mode, the **stall counter** increments. After **3 non-talk turns** (not counting `ooc_discussion`), the dialogue exits automatically.  This prevents dialogue mode from lingering when the player has moved on.
 
 ### Exiting Dialogue
 
@@ -344,7 +337,7 @@ On exit:
 4. If the NPC's `dialogue_guidelines.on_dialogue_exit` defines `set_flag` or `set_entity_state` side effects, they are applied to hard state
 5. Dialogue state is cleared (`active_npc = null`, log and topics reset)
 
-The `on_dialogue_exit.narrative` field, if present, is surfaced in the `DialogueExitedResult` for LLM Call 2 to potentially weave into narration. The `conversation_note` field in the prose template instructs the LLM on the expected format: a self-contained paragraph covering what was discussed, information exchanged, promises made, and the NPC's disposition. See `schema/soft-state.md §Archival` for details.
+The `on_dialogue_exit.narrative` field, if present, is surfaced in the `DialogueExitedResult` for LLM Call 2 to potentially weave into narration.  The `conversation_note` field in the prose template instructs the LLM on the expected format: a self-contained paragraph covering what was discussed, information exchanged, promises made, and the NPC's disposition.  See `schema/soft-state.md §Archival` for details.
 
 ### Dialogue Context in the GMBriefing
 
@@ -357,7 +350,7 @@ When dialogue is active, the Context Assembler injects a `dialogue_context` bloc
 | `topics_discussed` | List of topic strings discussed so far |
 | `revealed_topics` | Topic IDs this NPC has already revealed to the player |
 
-This context is available to **both LLM calls** via the GMBriefing. LLM Call 1 uses it to correctly classify inputs that mix action narration with in-character speech. LLM Call 2 uses it for conversational continuity and character-consistent responses.
+This context is available to **both LLM calls** via the GMBriefing.  LLM Call 1 uses it to correctly classify inputs that mix action narration with in-character speech.  LLM Call 2 uses it for conversational continuity and character-consistent responses.
 
 When dialogue is inactive, `dialogue_context` is `null`.
 
@@ -400,7 +393,7 @@ NPCs with a `behavior` block can trigger **encounters** — combat or other stru
 
 When the player uses `interact` with `interaction_id: "attack"` targeting an NPC with a `behavior` block, the engine dispatches to encounter resolution. Encounters can result in player death, NPC death, NPC fleeing, or simple dice rolls with success/failure branches — all resolved by the deterministic engine, not the LLM.
 
-Encounter outcomes (death, flee, etc.) update hard state (`entity_states.<npc>.alive`), which in turn gates dialogue, attitude changes, and knowledge revelation for that NPC.
+Encounter outcomes (death, flee, etc.) update hard state, which in turn gates dialogue, attitude changes, and knowledge revelation for that NPC.
 
 
 ## Summary: Per-Turn NPC Data Flow
