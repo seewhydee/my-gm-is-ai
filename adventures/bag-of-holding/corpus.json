@@ -9,7 +9,7 @@
     },
     "introduction": "You wake up. The last thing you remember is a night out on the town. Now you seem to be in a giant cave made of... canvas?",
     "atmosphere": {
-      "setting": "You are a person shrunk down and trapped inside a magical Bag of Holding — a pocket dimension containing a giant battleaxe, discarded adventuring supplies, and a dwarf who has been lost here for years.",
+		"setting": "You are a person trapped inside a mysterious cave, which contains a gigantic battleaxe and other oddities.  How do you escape?",
       "tone": "Whimsical and slightly dark. The world is absurd but internally coherent. Danger is real — death lurks in the webbing — but the tone is more Pratchett than Lovecraft."
     }
   },
@@ -165,7 +165,7 @@
 
     "korbar": {
       "type": "npc",
-      "description": "A female Dwarf in heavy, rusted iron platemail that clatters noisily with her every movement. She sits amidst the rubbish on the Bag Floor, drunk and miserable, beneath a makeshift shelter made from a giant overturned soup ladle. Her red-rimmed eyes peer out from beneath a dented helm. She is unarmed — the battleaxe was hers, once, when she was full-sized outside the Bag.",
+      "description": "A female Dwarf in heavy, rusted iron platemail that clatters noisily with her every movement. She sits amidst the rubbish, drunk and miserable, beneath a makeshift shelter made from a giant overturned soup ladle. Her red-rimmed eyes peer out from beneath a dented helm. She is unarmed — the battleaxe was hers, once, when she was full-sized outside the Bag.",
       "state_fields": {
         "alive": { "type": "boolean", "description": "Whether Korbar is alive and conscious." },
         "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 10." },
@@ -309,9 +309,9 @@
             "repeatable": true
           },
           "success": {
-            "narrative": "You study the faint luminescence for a moment and realize it has no natural source. The glow is magical in nature — a side effect of the Bag's dimensional magic seeping into the fabric.",
+            "narrative": "You study the faint luminescence for a moment and realize it has no natural source. The glow is magical in nature.",
             "set_flag": { "glow_noticed": true },
-            "reveals": "The glow coming from the canvas walls is magical — a side effect of the Bag of Holding's dimensional magic."
+            "reveals": "The glow coming from the canvas walls is magical."
           },
           "failure": null
         }
@@ -328,7 +328,7 @@
           "label": "Look through the rip",
           "description": "Poke your head through the rip in the canvas to see what lies beyond.",
           "result": {
-            "narrative": "You carefully balance on the tip of the axe blade and poke your head through the rip. Beyond is a vast gray nothing — an endless, featureless expanse. Looking around, you can see the exterior of the giant Bag, its canvas neck bunched together with a massive iron padlock, barely within reach. The padlock is firmly closed."
+            "narrative": "You carefully balance on the tip of the axe blade and poke your head through the rip. Beyond is a vast gray featureless expanse. Looking around, you see the exterior of what looks like a colossal... bag? Its canvas neck is bunched together with a massive iron padlock that dangles down to where you are — barely within reach. The padlock is firmly closed."
           }
         },
         {
