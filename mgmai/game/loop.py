@@ -1,8 +1,52 @@
 from __future__ import annotations
 
+import atexit
 import json
+import os
 from pathlib import Path
 from typing import Any, Optional
+
+try:
+    import readline
+
+    _HISTORY_FILE = os.path.expanduser("~/.config/mgmai/history")
+    _HISTORY_LENGTH = 1000
+    _HAS_READLINE = True
+except ImportError:
+    _HAS_READLINE = False
+
+
+def _setup_readline() -> None:
+    if not _HAS_READLINE:
+        return
+    readline.parse_and_bind("set editing-mode emacs")
+    readline.parse_and_bind("Control-d: delete-char")
+    readline.parse_and_bind('"\\e[3~": delete-char')
+    readline.parse_and_bind("Control-h: backward-delete-char")
+
+
+def _load_history() -> None:
+    if not _HAS_READLINE:
+        return
+    _setup_readline()
+    try:
+        readline.read_history_file(_HISTORY_FILE)
+    except (FileNotFoundError, PermissionError):
+        pass
+    readline.set_history_length(_HISTORY_LENGTH)
+
+
+def _save_history() -> None:
+    if not _HAS_READLINE:
+        return
+    try:
+        os.makedirs(os.path.dirname(_HISTORY_FILE), exist_ok=True)
+        readline.write_history_file(_HISTORY_FILE)
+    except (OSError, PermissionError):
+        pass
+
+
+atexit.register(_save_history)
 
 from mgmai.context.assembler import assemble
 from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
@@ -62,6 +106,7 @@ class GameLoop:
     # --- REPL ---
 
     def _repl(self) -> None:
+        _load_history()
         while self._running:
             try:
                 line = input("> ")
@@ -72,6 +117,9 @@ class GameLoop:
 
             if not line.strip():
                 continue
+
+            if _HAS_READLINE:
+                readline.add_history(line)
 
             if self._commands.handle(line):
                 continue
