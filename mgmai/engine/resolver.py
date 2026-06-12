@@ -480,29 +480,63 @@ def resolve_transfer(
                 available_pool.update(target_ent.soft_items)
 
     surfaced: dict[str, list[str]] = {}
+    triggered_narration: list[str] = []
+    revealed_hints: list[str] = []
+    rolls: list[dict[str, Any]] = []
 
     for item in taken_items:
-        if item in available_pool:
-            changes.inventory_added.append(item)
-            # Surface the soft item on its source
-            if target_is_room:
-                if room.soft_items and item in room.soft_items:
-                    surfaced.setdefault(room_id, []).append(item)
-                else:
-                    for eid in room.entities_present:
-                        ent = corpus.entities.get(eid)
-                        if ent and ent.soft_items and item in ent.soft_items:
-                            surfaced.setdefault(eid, []).append(item)
-                            break
-            elif target_is_entity:
-                target_ent = corpus.entities.get(target_id)
-                if target_ent and target_ent.soft_items and item in target_ent.soft_items:
-                    surfaced.setdefault(target_id, []).append(item)
-        else:
+        if item not in available_pool:
             return ResolutionResult(
                 success=False,
                 error=f"Item '{item}' is not available from '{target_id}'",
             )
+
+        item_entity = corpus.entities.get(item)
+        if item_entity and item_entity.take_check:
+            synthetic = Interaction(
+                id=f"take_{item}",
+                label="",
+                check=item_entity.take_check.check,
+                success=item_entity.take_check.success,
+                failure=item_entity.take_check.failure,
+            )
+            check_result = _resolve_interaction_check(
+                synthetic, hard, soft, corpus, room_id
+            )
+            if not check_result.success:
+                return check_result
+            if check_result.hard_changes:
+                changes.merge(check_result.hard_changes)
+            if check_result.triggered_narration:
+                triggered_narration.extend(check_result.triggered_narration)
+            if check_result.revealed_hints:
+                revealed_hints.extend(check_result.revealed_hints)
+            if check_result.rolls:
+                rolls.extend(check_result.rolls)
+
+            check_succeeded = False
+            for roll in check_result.rolls:
+                if "success" in roll:
+                    check_succeeded = roll["success"]
+                    break
+            if not check_succeeded:
+                continue
+
+        changes.inventory_added.append(item)
+        # Surface the soft item on its source
+        if target_is_room:
+            if room.soft_items and item in room.soft_items:
+                surfaced.setdefault(room_id, []).append(item)
+            else:
+                for eid in room.entities_present:
+                    ent = corpus.entities.get(eid)
+                    if ent and ent.soft_items and item in ent.soft_items:
+                        surfaced.setdefault(eid, []).append(item)
+                        break
+        elif target_is_entity:
+            target_ent = corpus.entities.get(target_id)
+            if target_ent and target_ent.soft_items and item in target_ent.soft_items:
+                surfaced.setdefault(target_id, []).append(item)
 
     # Given soft items: surface on the target (they now reside there)
     for item in given_items:
@@ -515,6 +549,9 @@ def resolve_transfer(
         soft_patches=soft_patches,
         room_after_id=room_id,
         surfaced_soft_items=surfaced,
+        triggered_narration=triggered_narration,
+        revealed_hints=revealed_hints,
+        rolls=rolls,
     )
 
 

@@ -18,6 +18,7 @@
     "fly_found": false,
     "handkerchief_noticed": false,
     "handkerchief_moved": false,
+    "toenail_sword_noticed": false,
     "padlock_unlocked": false,
     "glow_noticed": false,
     "astral_plane_recognized": false,
@@ -42,7 +43,8 @@
     "stuck_fly": { "alive": true, "attitude": 0, "hidden": true },
     "spider": { "alive": true, "fled": false, "attitude": -2, "hidden": true },
     "korbar": { "alive": true, "attitude": 0, "following": false, "told_secret": false },
-    "handkerchief": { "hidden": true }
+    "handkerchief": { "hidden": true },
+    "toenail_sword": { "hidden": true }
   },
   "turn_count": 0,
   "game_over": null

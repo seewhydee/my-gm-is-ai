@@ -128,6 +128,20 @@ class UsingResultOverride(BaseModel):
         return self
 
 
+class TakeCheck(BaseModel):
+    """A check required to take an item via a transfer action."""
+
+    check: CheckType
+    success: Optional[Result] = None
+    failure: Optional[Result] = None
+
+    @model_validator(mode="after")
+    def check_success_on_check(self) -> "TakeCheck":
+        if self.check is not None and self.success is None:
+            raise ValueError("TakeCheck with 'check' must also have 'success'")
+        return self
+
+
 class Interaction(BaseModel):
     id: str
     label: str
@@ -315,6 +329,7 @@ class Entity(BaseModel):
     tags: List[str] = Field(default_factory=list)
     draggable: bool = False
     dragging_note: Optional[str] = None
+    take_check: Optional[TakeCheck] = None
     interactions: List[Interaction] = Field(default_factory=list)
     on_examine: List[OnExamineEvent] = Field(default_factory=list)
     dialogue_guidelines: Optional[DialogueGuidelines] = None

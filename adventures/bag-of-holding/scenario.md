@@ -183,9 +183,9 @@ The player also notices that the proportions of the rubbish aren't all
 equal; it seems the Bag's magic shrinks items by different amounts to
 get them to fit.
 
-If the player rummages through the rubbish, a successful DEX check (DC
-10) lets them pull out a sharp object: a giant toenail clipping that
-can be wielded as a weapon.
+Examining the rubbish, the player also notices a sharp object: a giant
+toenail clipping that can be wielded as a weapon.  Removing it
+requires a successful DEX check (DC 8).
 
 Upon subsequent examination, a hard WIS check (DC 18) lets them notice
 a disgustingly damp giant handkerchief that seems to be draped in an

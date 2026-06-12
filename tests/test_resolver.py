@@ -42,6 +42,12 @@ from mgmai.models.actions import (
     WaitAction,
     OocDiscussionAction,
 )
+from mgmai.models.corpus import (
+    Result,
+    RollCheck,
+    StatCheck,
+    TakeCheck,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -678,3 +684,54 @@ class TestResolveTalkDialoguePaths:
         result = resolve_talk(action, hard, soft, corpus)
         assert result.success is True
         assert not result.hard_changes.has_changes()
+
+
+class TestResolveTransferTakeCheck:
+    def test_take_check_success_adds_item(self, state_manager, monkeypatch):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        key = corpus.entities["rusty_key"]
+        key.take_check = TakeCheck(
+            check=RollCheck(threshold=0.5, repeatable=True),
+            success=Result(narrative="You pry the key loose."),
+            failure=Result(narrative="The key slips from your grasp."),
+        )
+        monkeypatch.setattr("random.random", lambda: 0.1)
+        action = TransferAction(
+            action_type="transfer",
+            target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert "rusty_key" in result.hard_changes.inventory_added
+        assert result.rolls[0]["success"] is True
+        assert "You pry the key loose." in result.triggered_narration
+
+    def test_take_check_failure_does_not_add_item(self, state_manager, monkeypatch):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        key = corpus.entities["rusty_key"]
+        key.take_check = TakeCheck(
+            check=RollCheck(threshold=0.5, repeatable=True),
+            success=Result(narrative="You pry the key loose."),
+            failure=Result(narrative="The key slips from your grasp."),
+        )
+        monkeypatch.setattr("random.random", lambda: 0.9)
+        action = TransferAction(
+            action_type="transfer",
+            target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert "rusty_key" not in result.hard_changes.inventory_added
+        assert result.rolls[0]["success"] is False
+        assert "The key slips from your grasp." in result.triggered_narration
+

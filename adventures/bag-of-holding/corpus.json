@@ -447,26 +447,6 @@
       "soft_items": ["copper piece", "empty potion bottle", "cork", "wad of lint", "moldy sandwich crust"],
       "interactions": [
         {
-          "id": "rummage_rubbish",
-          "label": "Rummage through rubbish",
-          "description": "Dig through the pile of giant-sized rubbish, searching for anything useful.",
-          "condition": { "unless": "inventory:toenail_sword" },
-          "check": {
-            "type": "stat_check",
-            "stat": "DEX",
-            "dc": 10,
-            "repeatable": true,
-            "note": "Search the rubbish pile for useful items."
-          },
-          "success": {
-            "narrative": "Your hands close on something sharp amidst the debris — a giant toenail clipping, hard and curved like a scimitar. It's disgusting, but it's also the closest thing to a weapon you've found in here.",
-            "add_item": "toenail_sword"
-          },
-          "failure": {
-            "narrative": "You sift through the rubbish but find nothing of immediate use — just more copper pieces, wadded-up tissues, and something sticky you'd rather not identify."
-          }
-        },
-        {
           "id": "move_handkerchief",
           "label": "Haul aside the handkerchief",
           "description": "Grab the damp handkerchief and drag it aside to see what's underneath.",
@@ -482,6 +462,16 @@
       ],
       "on_examine": [
         {
+          "id": "notice_toenail_sword",
+          "condition": { "unless": "flag:toenail_sword_noticed == true" },
+          "result": {
+            "narrative": "As you sift through the rubbish, something catches your eye — a giant toenail clipping, curved and wickedly sharp along one edge. It's buried under a damp sandwich crust and a wad of lint, but it looks like it could be used as a makeshift weapon if you can fish it out.",
+            "set_flag": { "toenail_sword_noticed": true },
+            "set_entity_state": { "toenail_sword": { "hidden": false } },
+            "reveals": "A giant toenail clipping is buried in the rubbish. It could serve as a makeshift weapon, but pulling it free will take a steady hand."
+          }
+        },
+        {
           "id": "recognize_supplies",
           "condition": { "unless": "flag:rubbish_recognized == true" },
           "check": {
@@ -491,9 +481,9 @@
             "repeatable": true
           },
           "success": {
-            "narrative": "As you study the rubbish, a realization dawns: these are adventuring supplies. Potion bottles, rations, coins — exactly the kind of things you'd find in an adventurer's pack. Your own pack, now missing, contained much the same assortment. Whatever shrank you also shrank your belongings.",
+              "narrative": "As you study the rubbish, a realization dawns: these are adventuring supplies. Potion bottles, rations, coins — exactly the kind of things you'd find in an adventurer's pack. Your own pack, now missing, contained much the same assortment.",
             "set_flag": { "rubbish_recognized": true },
-            "reveals": "The rubbish is actually adventuring supplies. Your own pack contained similar items — these may be your own belongings, enlarged after you were shrunk."
+            "reveals": "The rubbish is actually adventuring supplies. You're inside an adventurer's pack."
           },
           "failure": null
         },
@@ -577,7 +567,25 @@
     "toenail_sword": {
       "type": "item",
       "description": "A giant toenail clipping, curved and razor-sharp along one edge. It's about the size of a short sword and, despite its unpleasant origin, is perfectly serviceable as a weapon. The keratin is surprisingly hard.",
-      "tags": ["weapon"]
+      "tags": ["weapon"],
+      "state_fields": {
+        "hidden": { "type": "boolean", "description": "Whether the clipping is still buried in the rubbish pile." }
+      },
+      "take_check": {
+        "check": {
+          "type": "stat_check",
+          "stat": "DEX",
+          "dc": 8,
+          "repeatable": true,
+          "note": "Dig the sharp toenail clipping out of the rubbish without losing it."
+        },
+        "success": {
+          "narrative": "You manage to work the clipping free of the rubbish, gripping it carefully. It's disgusting, but it will serve as a weapon."
+        },
+        "failure": {
+          "narrative": "You grab for the clipping, but it shifts among the moldy sandwiches and loose corks, slipping out of reach. You'll have to try again."
+        }
+      }
     },
 
     "rusty_key": {
@@ -795,7 +803,7 @@
     "bag_floor": {
       "name": "Bag Floor",
       "description": "You are on the floor of the cave, surrounded by a loose, sprawling pile of giant-sized rubbish. The faint glow of the canvas walls illuminates copper pieces like shields, empty potion bottles as tall as you, used corks like footstools, wads of lint, moldy sandwiches, and other, less identifiable items. The base of the giant battleaxe rests in the center of the pile, its handle stretching up into the darkness — you could clamber back up from here. Near one edge of the pile, a makeshift shelter of scrap metal and a giant overturned soup ladle looks distinctly... inhabited.",
-      "entities_present": ["canvas_walls", "korbar", "rubbish_pile", "handkerchief"],
+      "entities_present": ["canvas_walls", "korbar", "rubbish_pile", "handkerchief", "toenail_sword"],
       "soft_items": ["copper piece", "empty potion bottle", "cork", "wad of lint", "moldy sandwich crust"],
       "exits": [
         {
@@ -912,6 +920,7 @@
   },
 
   "flags_declared": [
+    "toenail_sword_noticed",
     "spider_fled",
     "spider_noticed",
     "webs_cleared",

@@ -95,6 +95,7 @@ The `on_traverse` object supports these fields; all are optional:
 | Field               | Type             | Description |
 |---------------------|------------------|-------------|
 | `set_flag`          | object           | Sets hard-state flags: `{ "<flag_name>": true\|false, ... }`. |
+| `set_room_state`    | object           | **Optional.** Sets per-room state on traversal: `{ "<room_id>": { "<field>": <value>, ... } }`. Commonly used to record which room the player entered from, so downstream conditions can gate exits/ interactions with `room:<room_id>.<field>`. |
 | `narrative`         | string           | Pre-written prose for the traverse event. |
 | `trigger_encounter` | string           | Triggers a named encounter from `mechanics`. |
 | `skip_if`           | condition object | Condition under which the effect is skipped. |
@@ -313,6 +314,7 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 | `add_item`    | string | Item entity ID to add to hard inventory. |
 | `remove_item` | string | Item entity ID to remove from hard inventory. |
 | `set_flag`        | object | Hard-state flags to set or clear. |
+| `set_room_state`  | object | **Optional.** Per-room state changes: `{ "<room_id>": { "<field>": <value>, ... } }`. Useful for recording entry direction or other room-specific state that conditions can read via `room:<room_id>.<field>`. |
 | `set_stat`        | object | **Optional.** Stat deltas to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are integer changes (positive or negative). E.g., `{ "STR": -4, "DEX": -4, "CON": -4 }` for fall damage. |
 | `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
 | `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
@@ -366,6 +368,7 @@ Nested chaining is supported — a chained check's result may itself contain ano
   "narrative": "string",
   "set_flag": { "<flag_name>": true | false },
   "set_entity_state": { "<entity_id>": { "<field>": <value> } },
+  "set_room_state": { "<room_id>": { "<field>": <value> } },
   "trigger_dialogue": "<npc_entity_id>"
 }
 ```
@@ -377,6 +380,7 @@ Nested chaining is supported — a chained check's result may itself contain ano
 | `narrative`         | string          | Canonical narration text. |
 | `set_flag`          | object          | Hard-state flags to set or clear. |
 | `set_entity_state`  | object          | Entity state changes to apply. Keys are entity IDs; values are `{ "field": value }` maps. The engine validates that the entity exists and the field is declared in the entity's `state_fields`. |
+| `set_room_state`    | object          | **Optional.** Room state changes to apply. Keys are room IDs; values are `{ "field": value }` maps. Useful for recording entry direction or other room-specific state. |
 | `trigger_dialogue`  | string          | If set, the engine automatically initiates dialogue mode with the named NPC entity. The NPC must be of type `npc` and present in the current room. The on_enter narrative (if any) fires first, then dialogue is activated. |
 
 The engine detects which effects to apply from the presence of the effect
@@ -462,6 +466,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `tags`                 | array  | item          | Semantic tags for mechanical matching (e.g., `"weapon"`, `"key_item"`, `"draggable"`). |
 | `draggable`            | bool   | item          | If true, the item can be dragged but occupies the player (no other manual actions while dragging). |
 | `dragging_note`        | string | item          | Narrative note describing the encumbrance. |
+| `take_check`           | object | item          | **Optional.** A check (with `success` / `failure` results) that must be passed when the player attempts to pick up this item via a `transfer` action. |
 | `interactions`         | array  | all           | Interactions available on this entity specifically. Follows the same Interaction object schema. |
 | `on_examine`           | array  | all           | Events that fire when the player examines this entity. Each is an `OnExamineEvent` (see above). |
 | `dialogue_guidelines`  | object | npc           | See below. |
