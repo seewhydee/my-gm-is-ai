@@ -83,6 +83,7 @@ class Result(BaseModel):
     set_flag: Optional[Dict[str, bool]] = None
     set_stat: Optional[Dict[str, int]] = None
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
+    set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
     adjust_attitude: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
     chain_check: Optional[ChainedCheck] = None
@@ -152,6 +153,7 @@ class Interaction(BaseModel):
 
 class TraversalEffect(BaseModel):
     set_flag: Optional[Dict[str, bool]] = None
+    set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
     narrative: Optional[str] = None
     trigger_encounter: Optional[str] = None
     skip_if: Optional[ConditionExpression] = None
@@ -182,6 +184,7 @@ class OnEnterEvent(BaseModel):
     narrative: Optional[str] = None
     set_flag: Optional[Dict[str, bool]] = None
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
+    set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
     trigger_dialogue: Optional[str] = None
 
 

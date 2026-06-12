@@ -224,6 +224,18 @@ class TestInteraction:
         assert i.result.remove_item == "key"
         assert i.result.reveals == "You see the way out."
 
+    def test_result_with_set_room_state(self) -> None:
+        i = Interaction.model_validate({
+            "id": "record_entry",
+            "label": "Record entry",
+            "result": {
+                "narrative": "Recorded.",
+                "set_room_state": {"room_a": {"_entered_from": "room_b"}},
+            },
+        })
+        assert i.result is not None
+        assert i.result.set_room_state == {"room_a": {"_entered_from": "room_b"}}
+
     def test_empty_interaction_is_valid(self) -> None:
         i = Interaction.model_validate({
             "id": "look",
@@ -578,6 +590,17 @@ class TestExit:
         assert e.on_traverse.set_flag == {"injured": True}
         assert e.on_traverse.narrative == "You hurt yourself."
 
+    def test_exit_with_traversal_set_room_state(self) -> None:
+        e = Exit.model_validate({
+            "id": "enter_room",
+            "direction": "Enter the room",
+            "target_room": "room_a",
+            "on_traverse": {
+                "set_room_state": {"room_a": {"_entered_from": "room_b"}},
+            },
+        })
+        assert e.on_traverse.set_room_state == {"room_a": {"_entered_from": "room_b"}}
+
     def test_traversal_trigger_encounter(self) -> None:
         e = Exit.model_validate({
             "id": "exit_webs",
@@ -759,6 +782,13 @@ class TestOnEnterEvent:
             "set_entity_state": {"secret_door": {"alive": False}},
         })
         assert event.set_entity_state == {"secret_door": {"alive": False}}
+
+    def test_with_set_room_state(self) -> None:
+        event = OnEnterEvent.model_validate({
+            "id": "record_entry",
+            "set_room_state": {"room_a": {"_entered_from": "room_b"}},
+        })
+        assert event.set_room_state == {"room_a": {"_entered_from": "room_b"}}
 
     def test_missing_id_raises(self) -> None:
         with pytest.raises(ValidationError):

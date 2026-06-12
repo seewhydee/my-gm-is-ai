@@ -29,7 +29,7 @@
   "entities": {
     "player": {
       "type": "player",
-      "description": "You are an ordinary adventurer, currently shrunk to a fraction of your normal size. You woke up here with no memory of how you arrived, wearing your usual clothes and carrying nothing but your wits.",
+      "description": "You are an ordinary adventurer. You woke up here with no memory of how you arrived, wearing your usual clothes and carrying nothing but your wits.",
       "state_fields": {}
     },
 
@@ -183,7 +183,7 @@
       },
       "dialogue_guidelines": {
         "personality": "Cynical, bitter, and drunk — but lonely enough that kindness cracks her shell. Korbar speaks with a dwarven brogue, grumbling and cursing, but there is deep hurt beneath the bluster. Her adventuring party abandoned her here years ago, and she has given up hope of escape. She is terrified of spiders in general and this one in particular, and will never agree to fight it.",
-        "on_encounter": "A clanking noise draws your attention to a makeshift shelter of scrap. Beneath an overturned soup ladle sits a stocky dwarf woman in plate armor, glaring at you with bloodshot eyes. 'Oh great,' she slurs. 'Another one. You gonna stare, or you gonna introduce yerself?'",
+        "on_encounter": "A clanking noise draws your attention to a makeshift shelter of scrap. Beneath an overturned soup ladle sits a stocky dwarf woman in plate armor, glaring at you with bloodshot eyes. 'Oh great,' she slurs. 'Company.'",
         "can": [
           "will share information about the spider freely",
           "will explain how the Bag of Holding works (if attitude >= 1)",
@@ -442,7 +442,7 @@
 
     "rubbish_pile": {
       "type": "feature",
-      "description": "A loose, sprawling pile of giant-sized rubbish covers the floor. You can make out copper pieces the size of shields, empty potion bottles as tall as you are, used corks like footstools, wads of lint the size of pillows, and moldy sandwiches that smell about as bad as you'd expect. The heap is chaotic and unstable — who knows what might be buried in there?",
+      "description": "A loose, sprawling pile of giant-sized rubbish covers the floor. You can make out copper pieces the size of shields, empty potion bottles as tall as you are, used corks like footstools, wads of lint the size of pillows, and moldy sandwiches that smell about as bad as you'd expect. The heap is chaotic and unstable. Who knows what might be buried in there?",
       "state_fields": {},
       "soft_items": ["copper piece", "empty potion bottle", "cork", "wad of lint", "moldy sandwich crust"],
       "interactions": [
@@ -546,6 +546,34 @@
       "soft_items": ["damp handkerchief"]
     },
 
+    "dense_webbing": {
+      "type": "feature",
+      "description": "Thick, sticky webs densely packed around the axe handle. The strands crisscross the path in layers, shimmering faintly in the dim glow. Shadows move strangely in the depths of the webbing, and the whole mass smells faintly of dust and old silk.",
+      "state_fields": {},
+      "on_examine": [
+        {
+          "id": "notice_spider_in_dense_webbing",
+          "condition": { "all": [
+            { "unless": "flag:spider_noticed == true" },
+            { "require": "entity:spider.fled == false" }
+          ]},
+          "check": {
+            "type": "stat_check",
+            "stat": "WIS",
+            "dc": 12,
+            "repeatable": true,
+            "note": "Notice the spider concealed in the shadows above the dense webbing."
+          },
+          "success": {
+            "narrative": "Your eyes adjust to the gloom, and you catch a glint of movement above. Eight glittering eyes stare back at you from the shadows. A huge spider — easily twice your size — lurks in the webbing, watching your every move.",
+            "set_flag": { "spider_noticed": true },
+            "set_entity_state": { "spider": { "hidden": false } }
+          },
+          "failure": null
+        }
+      ]
+    },
+
     "toenail_sword": {
       "type": "item",
       "description": "A giant toenail clipping, curved and razor-sharp along one edge. It's about the size of a short sword and, despite its unpleasant origin, is perfectly serviceable as a weapon. The keratin is surprisingly hard.",
@@ -564,7 +592,7 @@
   "rooms": {
     "axe_head": {
       "name": "Axe Head",
-      "description": "You are standing on the head of a giant battleaxe, tilted at an angle against the canvas wall. The blade is wide enough to walk on — barely — and the handle slopes downward into the murky darkness like a narrow sidewalk. Above you, just past head height, the canvas walls converge into a low dome, scrunching shut at the center. The walls emit a faint luminescence, enough to see by. Near the top of the blade, a small rip in the canvas reveals a sliver of gray light from outside.",
+		"description": "You are standing on the head of a giant battleaxe, tilted at an angle against the canvas wall. The blade is wide enough to walk on, and the handle slopes downward into the murky darkness like a narrow sidewalk. Above you, just past head height, the canvas walls converge into a low dome, scrunching shut at the center. The walls emit a faint luminescence, enough to see by. Near the top of the blade, a small rip in the canvas reveals a sliver of gray light from outside.",
       "entities_present": ["canvas_walls", "rip_in_canvas", "padlock"],
       "soft_items": ["loose flake of rust", "frayed canvas thread"],
       "is_start_room": true,
@@ -607,7 +635,12 @@
           "id": "exit_down_handle_to_lower",
           "direction": "Climb down the axe handle toward the denser webs",
           "target_room": "axe_handle_lower",
-          "conditions": []
+          "conditions": [],
+          "on_traverse": {
+            "set_room_state": {
+              "axe_handle_lower": { "_entered_from": "axe_handle_upper" }
+            }
+          }
         },
         {
           "id": "exit_drop_from_upper",
@@ -647,21 +680,28 @@
 
     "axe_handle_lower": {
       "name": "Axe Handle (Lower)",
-      "description": "You are on the lower section of the axe handle, where the webs are very dense. Thick, sticky strands crisscross the path both upward and downward, making passage extremely difficult. The faint glow from the canvas walls barely penetrates here, casting everything in deep shadow. Peering over the side of the handle, you can make out numerous irregularly-shaped objects below — it looks like you could drop down safely from here. The shapes resemble giant potion bottles, copper pieces, corks, and what might be moldy sandwiches. If you listen carefully, you can hear a faint clanking and muttering from below.",
-      "entities_present": ["canvas_walls", "spider"],
+      "description": "You are on the lower section of the axe handle, where the webs are very dense. Thick, sticky strands crisscross the path both upward and downward, making passage extremely difficult. The faint glow from the canvas walls barely penetrates here, casting everything in deep shadow. Peering over the side of the handle, you can make out numerous irregularly-shaped objects below — it looks like you could drop down safely from here.",
+      "entities_present": ["canvas_walls", "spider", "dense_webbing"],
       "soft_items": ["thick strand of webbing", "dense web clump"],
       "exits": [
         {
           "id": "exit_up_handle_from_lower",
           "direction": "Climb up the axe handle toward the upper section",
           "target_room": "axe_handle_upper",
-          "conditions": []
+          "conditions": [{ "any": [
+            "room:axe_handle_lower._entered_from == axe_handle_upper",
+            "flag:webs_cleared == true",
+            "room:axe_handle_lower._entered_from == unknown"
+          ]}]
         },
         {
-          "id": "exit_through_webs_down",
-          "direction": "Force your way through the dense webs downward",
-          "target_room": "bag_floor",
-          "conditions": [],
+          "id": "exit_through_webs_up",
+          "direction": "Force your way through the dense webs upward",
+          "target_room": "axe_handle_upper",
+          "conditions": [{ "all": [
+            "room:axe_handle_lower._entered_from == bag_floor",
+            "flag:webs_cleared == false"
+          ]}],
           "traversal_check": {
             "condition": { "require": "flag:webs_cleared == false" },
             "check": {
@@ -669,7 +709,7 @@
               "stat": "STR",
               "dc": 14,
               "repeatable": true,
-              "note": "Force through the dense webbing. DC 14 bare-handed; the scenario calls for DC 10 with a weapon (see generation report)."
+              "note": "Force through the dense webbing upward."
             },
             "skip_check_if": { "require": "flag:webs_cleared == true" },
             "failure_narrative": "You strain against the sticky webs, but they hold fast. You can't break through — yet."
@@ -681,10 +721,23 @@
           }
         },
         {
-          "id": "exit_through_webs_up",
-          "direction": "Force your way through the dense webs upward",
-          "target_room": "axe_handle_upper",
-          "conditions": [],
+          "id": "exit_down_handle_to_floor",
+          "direction": "Walk down the axe handle to the bag base",
+          "target_room": "bag_floor",
+          "conditions": [{ "any": [
+            "room:axe_handle_lower._entered_from == bag_floor",
+            "flag:webs_cleared == true",
+            "room:axe_handle_lower._entered_from == unknown"
+          ]}]
+        },
+        {
+          "id": "exit_through_webs_down",
+          "direction": "Force your way through the dense webs downward",
+          "target_room": "bag_floor",
+          "conditions": [{ "all": [
+            "room:axe_handle_lower._entered_from == axe_handle_upper",
+            "flag:webs_cleared == false"
+          ]}],
           "traversal_check": {
             "condition": { "require": "flag:webs_cleared == false" },
             "check": {
@@ -692,7 +745,7 @@
               "stat": "STR",
               "dc": 14,
               "repeatable": true,
-              "note": "Force through the dense webbing upward."
+              "note": "Force through the dense webbing. DC 14 bare-handed; the scenario calls for DC 10 with a weapon (see generation report)."
             },
             "skip_check_if": { "require": "flag:webs_cleared == true" },
             "failure_narrative": "You strain against the sticky webs, but they hold fast. You can't break through — yet."
@@ -741,7 +794,7 @@
 
     "bag_floor": {
       "name": "Bag Floor",
-      "description": "You are on the floor of the Bag, surrounded by a loose, sprawling pile of giant-sized rubbish. The faint glow of the canvas walls illuminates copper pieces like shields, empty potion bottles as tall as you, used corks like footstools, wads of lint, moldy sandwiches, and other, less identifiable items. The base of the giant battleaxe rests in the center of the pile, its handle stretching up into the darkness — you could clamber back up from here. Near one edge of the pile, a makeshift shelter of scrap metal and a giant overturned soup ladle looks distinctly... inhabited.",
+      "description": "You are on the floor of the cave, surrounded by a loose, sprawling pile of giant-sized rubbish. The faint glow of the canvas walls illuminates copper pieces like shields, empty potion bottles as tall as you, used corks like footstools, wads of lint, moldy sandwiches, and other, less identifiable items. The base of the giant battleaxe rests in the center of the pile, its handle stretching up into the darkness — you could clamber back up from here. Near one edge of the pile, a makeshift shelter of scrap metal and a giant overturned soup ladle looks distinctly... inhabited.",
       "entities_present": ["canvas_walls", "korbar", "rubbish_pile", "handkerchief"],
       "soft_items": ["copper piece", "empty potion bottle", "cork", "wad of lint", "moldy sandwich crust"],
       "exits": [
@@ -749,7 +802,12 @@
           "id": "exit_climb_up_handle_from_floor",
           "direction": "Climb up the axe handle",
           "target_room": "axe_handle_lower",
-          "conditions": []
+          "conditions": [],
+          "on_traverse": {
+            "set_room_state": {
+              "axe_handle_lower": { "_entered_from": "bag_floor" }
+            }
+          }
         },
         {
           "id": "exit_enter_secret_compartment",

@@ -274,6 +274,9 @@ def resolve_move(
                         changes.flags_cleared.append(flag)
                     else:
                         changes.flags_set[flag] = val
+            if trav.set_room_state:
+                for target_room_id, state_changes in trav.set_room_state.items():
+                    changes.room_state_changes.setdefault(target_room_id, {}).update(state_changes)
             if trav.trigger_encounter:
                 encounter_trigger = trav.trigger_encounter
 
@@ -285,17 +288,13 @@ def resolve_move(
             error=f"Reverse traversal of one-way exit from '{exit_data.target_room}' to '{room_id}' is blocked",
         )
 
+    base_state = dict(room_states)
+    base_state["visited"] = True
     if exit_data.one_way:
-        changes.room_state_changes[exit_data.target_room] = {
-            **room_states,
-            "visited": True,
-            "_one_way_from": {**one_way_from, room_id: True},
-        }
-    else:
-        changes.room_state_changes[exit_data.target_room] = {
-            **room_states,
-            "visited": True,
-        }
+        base_state["_one_way_from"] = {**one_way_from, room_id: True}
+    # Merge with any room state changes already accumulated (e.g., from on_traverse.set_room_state)
+    existing_changes = changes.room_state_changes.get(exit_data.target_room, {})
+    changes.room_state_changes[exit_data.target_room] = {**base_state, **existing_changes}
 
     # --- follower_blacklist: stop followers who refuse this room ---
     _check_follower_blacklist(hard, corpus, exit_data.target_room, narrative)
@@ -1101,6 +1100,12 @@ def _apply_result(
                 hard.entity_states[ent_id] = {}
             hard.entity_states[ent_id].update(state_changes)
             changes.entity_state_changes.setdefault(ent_id, {}).update(state_changes)
+    if result.set_room_state and hard is not None:
+        for room_id, state_changes in result.set_room_state.items():
+            if room_id not in hard.room_states:
+                hard.room_states[room_id] = {}
+            hard.room_states[room_id].update(state_changes)
+            changes.room_state_changes.setdefault(room_id, {}).update(state_changes)
     if result.adjust_attitude and hard is not None and corpus is not None:
         for npc_id, delta in result.adjust_attitude.items():
             npc_entity = corpus.entities.get(npc_id)

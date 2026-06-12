@@ -629,6 +629,12 @@ def _fire_on_enter_events(
                     hard.entity_states[ent_id] = {}
                 hard.entity_states[ent_id].update(state_changes)
 
+        if event.set_room_state:
+            for target_room_id, state_changes in event.set_room_state.items():
+                if target_room_id not in hard.room_states:
+                    hard.room_states[target_room_id] = {}
+                hard.room_states[target_room_id].update(state_changes)
+
         if event.narrative:
             triggered_narration.append(event.narrative)
 

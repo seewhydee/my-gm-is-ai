@@ -33,7 +33,7 @@
   "room_states": {
     "axe_head": { "visited": false },
     "axe_handle_upper": { "visited": false },
-    "axe_handle_lower": { "visited": false },
+    "axe_handle_lower": { "visited": false, "_entered_from": "unknown" },
     "bag_floor": { "visited": false },
     "secret_compartment": { "visited": false }
   },
