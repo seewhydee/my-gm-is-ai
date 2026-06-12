@@ -184,7 +184,7 @@ class Display:
             row_stats = stat_entries[i : i + 3]
             pair_parts = []
             for key, val in row_stats:
-                mod = compute_modifier(val, corpus.stats.resolution_system)
+                mod = compute_modifier(val, corpus.stats.system)
                 sign = "+" if mod >= 0 else ""
                 pair_parts.append(f"{key} {val:>2} ({sign}{mod})")
             lines.append("   ".join(pair_parts))

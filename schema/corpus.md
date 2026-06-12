@@ -280,7 +280,7 @@ Interactions use one of two check types: `roll` (flat probability) or `stat_chec
 | `note`             | string  | no       | Optional designer note. |
 
 The engine dispatches `stat_check` to the active resolution system (declared in
-`stats.resolution_system`), which computes the dice formula and produces a
+`stats.system`), which computes the dice formula and produces a
 success/failure outcome.
 
 **Resolution systems:**
@@ -757,14 +757,14 @@ no stat system — existing adventures work unchanged.
     "WIS": { "name": "Wisdom", "description": "Perception" },
     "CHA": { "name": "Charisma", "description": "Force of personality" }
   },
-  "resolution_system": "d20"
+  "system": "d20"
 }
 ```
 
 | Field               | Type   | Required | Description |
 |---------------------|--------|----------|-------------|
 | `definitions`       | object | yes      | Dict of stat key → `{ name, description }`. Keys are short uppercase identifiers (e.g. `"STR"`). |
-| `resolution_system` | string | yes      | Named resolution system. Currently supported: `"d20"`. |
+| `system` | string | yes      | Named resolution system. Currently supported: `"d20"`. |
 
 ### Resolution system abstraction
 

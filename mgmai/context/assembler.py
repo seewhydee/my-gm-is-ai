@@ -231,7 +231,7 @@ def _build_player_stats(
     stats_block = corpus.stats
     result: dict[str, PlayerStatEntry] = {}
     for stat_key, stat_value in hard.player.stats.items():
-        mod = compute_modifier(stat_value, stats_block.resolution_system)
+        mod = compute_modifier(stat_value, stats_block.system)
         result[stat_key] = PlayerStatEntry(value=stat_value, modifier=mod)
     return result
 

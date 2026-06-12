@@ -752,7 +752,7 @@ def _resolve_stat_check_chain(
         return
 
     stat_value = player_stats[check.stat]
-    res_system = stats_block.resolution_system
+    res_system = stats_block.system
     if res_system != "d20":
         return
 
@@ -821,7 +821,7 @@ def _resolve_traversal_check(
         if player_stats is None or check.stat not in player_stats:
             return True
         stat_value = player_stats[check.stat]
-        res_system = stats_block.resolution_system
+        res_system = stats_block.system
         if res_system != "d20":
             return True
 
@@ -971,7 +971,7 @@ def _resolve_stat_check(
         )
 
     stat_value = player_stats[check.stat]
-    res_system = stats_block.resolution_system
+    res_system = stats_block.system
 
     if res_system != "d20":
         return ResolutionResult(

@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -169,3 +170,88 @@ class TestCliBoot:
 
         _, kwargs = mock_loop_cls.call_args
         assert kwargs["debug"] is False
+
+
+class TestCharSheetCli:
+    """Tests for the --char-sheet CLI argument."""
+
+    def _write_sheet(self, tmp_path: Path, data: dict) -> Path:
+        sheet_path = tmp_path / "char_sheet.json"
+        sheet_path.write_text(json.dumps(data), encoding="utf-8")
+        return sheet_path
+
+    def test_char_sheet_applies_custom_stats(self, monkeypatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        mock_loop = MagicMock()
+        sheet = self._write_sheet(tmp_path, {
+            "system": "d20",
+            "player": {
+                "stats": {
+                    "STR": 18,
+                    "DEX": 14,
+                    "CON": 12,
+                    "INT": 10,
+                    "WIS": 8,
+                    "CHA": 16,
+                }
+            }
+        })
+
+        with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
+            with patch("mgmai.cli.LLMClient"):
+                main([str(BAG_OF_HOLDING), "--char-sheet", str(sheet)])
+
+        mock_loop.start.assert_called_once()
+        args, _ = mock_loop_cls.call_args
+        state_manager = args[0]
+        assert state_manager.hard_state.player.stats["STR"] == 18
+        assert state_manager.hard_state.player.stats["CHA"] == 16
+
+    def test_char_sheet_and_load_mutually_exclusive(
+        self, monkeypatch, capsys, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        sheet = self._write_sheet(tmp_path, {"system": "d20", "player": {"stats": {}}})
+
+        with pytest.raises(SystemExit) as exc_info:
+            main([str(BAG_OF_HOLDING), "--load", str(sheet), "--char-sheet", str(sheet)])
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "both --char-sheet and --load" in captured.out
+
+    def test_char_sheet_missing_file(self, monkeypatch, capsys) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+
+        with pytest.raises(SystemExit) as exc_info:
+            main([str(BAG_OF_HOLDING), "--char-sheet", "nonexistent.json"])
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Character sheet file not found" in captured.out
+
+    def test_char_sheet_invalid_json(self, monkeypatch, capsys, tmp_path: Path) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        sheet = tmp_path / "bad.json"
+        sheet.write_text("not json", encoding="utf-8")
+
+        with pytest.raises(SystemExit) as exc_info:
+            main([str(BAG_OF_HOLDING), "--char-sheet", str(sheet)])
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Invalid JSON" in captured.out
+
+    def test_char_sheet_system_mismatch(self, monkeypatch, capsys, tmp_path: Path) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        sheet = self._write_sheet(tmp_path, {
+            "system": "gurps",
+            "player": {"stats": {"STR": 18}}
+        })
+
+        with pytest.raises(SystemExit) as exc_info:
+            main([str(BAG_OF_HOLDING), "--char-sheet", str(sheet)])
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "does not match" in captured.out

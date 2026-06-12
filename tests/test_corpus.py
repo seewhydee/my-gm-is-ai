@@ -1057,22 +1057,22 @@ class TestStatsBlock:
             "definitions": {
                 "STR": {"name": "Strength", "description": "Physical might"},
             },
-            "resolution_system": "d20",
+            "system": "d20",
         })
         assert sb.definitions["STR"].name == "Strength"
-        assert sb.resolution_system == "d20"
+        assert sb.system == "d20"
 
     def test_default_system(self) -> None:
         sb = StatsBlock.model_validate({
             "definitions": {"STR": {"name": "Strength", "description": ""}},
         })
-        assert sb.resolution_system == "d20"
+        assert sb.system == "d20"
 
     def test_unsupported_system_raises(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown resolution_system"):
+        with pytest.raises(ValidationError, match="Unknown system"):
             StatsBlock.model_validate({
                 "definitions": {"STR": {"name": "Strength", "description": ""}},
-                "resolution_system": "gurps",
+                "system": "gurps",
             })
 
     def test_definitions_can_hold_six_stats(self) -> None:

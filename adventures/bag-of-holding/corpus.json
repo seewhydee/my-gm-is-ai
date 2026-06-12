@@ -23,7 +23,7 @@
       "WIS": { "name": "Wisdom", "description": "Perception, intuition, noticing details." },
       "CHA": { "name": "Charisma", "description": "Social influence, persuasion, flattery." }
     },
-    "resolution_system": "d20"
+    "system": "d20"
   },
 
   "entities": {

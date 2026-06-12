@@ -7,6 +7,19 @@ At present, we implement a rudimentary player stat system, supporting the follow
 3. Adventure module-level references to stats in conditions and interactions.
 4. A **resolution system abstraction** that decouples adventures from specific RPG editions (D&D 5e, Pathfinder, GURPS, etc.).
 
+## Character Sheets
+
+You can use a custom player character sheet for a new game:
+
+```bash
+mgmai adventures/bag-of-holding --char-sheet my-character.json
+# or: python -m mgmai.cli adventures/bag-of-holding --char-sheet my-character.json
+```
+
+The character sheet JSON must declare the RPG `system` (e.g. `"d20"`) and may
+override any field under `player`, such as `stats`, `location`, or `inventory`.
+`--char-sheet` cannot be combined with `--load`.
+
 ## Design Overview
 
 ### Stat definitions in the corpus
@@ -28,13 +41,13 @@ An optional `stats` block in `corpus.json` declares which stats the adventure us
       "WIS": { "name": "Wisdom", "description": "Perception" },
       "CHA": { "name": "Charisma", "description": "Force of personality" }
     },
-    "resolution_system": "d20"
+    "system": "d20"
   }
 }
 ```
 
 - `definitions` is a dict of stat keys → `{ name, description }`.
-- `resolution_system` references a named built-in (currently only `d20`).
+- `system` references a named built-in (currently only `d20`).
 - If `stats` is absent, the adventure has no stat system — existing adventures work unchanged.
 
 ### Player stats in hard state
@@ -107,7 +120,7 @@ The following files need modification or addition:
 
 | Area | Change |
 |------|--------|
-| **Corpus schema** | Add `stats` block with definitions + resolution_system. Replace flat `Check` model with `RollCheck | StatCheck` discriminated union. |
+| **Corpus schema** | Add `stats` block with definitions + `system`. Replace flat `Check` model with `RollCheck | StatCheck` discriminated union. |
 | **Hard state schema** | Add optional `player.stats`. |
 | **Briefing schema** | Add `PlayerStatEntry` model; include `player_stats` in GMBriefing. |
 | **Conditions evaluator** | Add `stat` domain to condition parser regex and evaluation branch. |

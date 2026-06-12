@@ -389,14 +389,14 @@ class StatDefinition(BaseModel):
 
 class StatsBlock(BaseModel):
     definitions: Dict[str, StatDefinition]
-    resolution_system: str = "d20"
+    system: str = "d20"
 
     @model_validator(mode="after")
-    def check_resolution_system(self) -> StatsBlock:
+    def check_system(self) -> StatsBlock:
         supported = {"d20"}
-        if self.resolution_system not in supported:
+        if self.system not in supported:
             raise ValueError(
-                f"Unknown resolution_system: {self.resolution_system!r}. "
+                f"Unknown system: {self.system!r}. "
                 f"Supported: {supported}"
             )
         return self

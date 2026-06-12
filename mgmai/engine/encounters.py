@@ -315,7 +315,7 @@ def _resolve_encounter_stat_check(
         return True
 
     stat_value = player_stats[check.stat]
-    res_system = stats_block.resolution_system
+    res_system = stats_block.system
     if res_system != "d20":
         return True
 

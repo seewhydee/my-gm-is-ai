@@ -68,6 +68,13 @@ def main(argv: list[str] | None = None) -> None:
         help="Load a saved game instead of starting fresh",
     )
     parser.add_argument(
+        "--char-sheet",
+        dest="char_sheet",
+        default=None,
+        metavar="FILE",
+        help="Path to a custom player character sheet JSON file (new games only)",
+    )
+    parser.add_argument(
         "--config-dir",
         default=None,
         metavar="DIR",
@@ -177,6 +184,10 @@ def main(argv: list[str] | None = None) -> None:
     state_manager = StateManager()
     state_manager._config_dir = config_dir
 
+    if args.load_file and args.char_sheet:
+        display.render_error("Cannot specify both --char-sheet and --load")
+        sys.exit(1)
+
     try:
         if args.load_file:
             load_path = Path(args.load_file)
@@ -189,7 +200,18 @@ def main(argv: list[str] | None = None) -> None:
             )
         else:
             state_manager.load_all(adventure_path)
+            if args.char_sheet:
+                char_sheet_path = Path(args.char_sheet)
+                if not char_sheet_path.is_file():
+                    display.render_error(
+                        f"Character sheet file not found: {args.char_sheet}"
+                    )
+                    sys.exit(1)
+                state_manager.apply_char_sheet(char_sheet_path)
     except FileNotFoundError as e:
+        display.render_error(str(e))
+        sys.exit(1)
+    except ValueError as e:
         display.render_error(str(e))
         sys.exit(1)
     except Exception as e:

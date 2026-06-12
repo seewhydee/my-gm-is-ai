@@ -63,7 +63,7 @@ class TestComputeModifier:
         assert compute_modifier(14, "d20") == 2
 
     def test_unknown_system_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown resolution system"):
+        with pytest.raises(ValueError, match="Unknown system"):
             compute_modifier(14, "gurps")
 
 

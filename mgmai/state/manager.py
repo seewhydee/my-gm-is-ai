@@ -21,10 +21,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 log = logging.getLogger(__name__)
 
 from mgmai.models.corpus import ModuleCorpus
-from mgmai.models.hard_state import HardGameState
+from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from mgmai.models.actions import HardStateChanges
 
@@ -97,6 +99,89 @@ class StateManager:
         self.corpus = self.load_corpus(corpus_path)
         self.hard_state = self.load_hard_state(hard_path)
         self.soft_state = self.load_soft_state(soft_path)
+
+        self._validate_cross_references()
+        self._validate_player_stats()
+
+    def apply_char_sheet(self, path: str | Path) -> None:
+        """Load and apply a custom player character sheet.
+
+        The sheet must declare its RPG system (matching ``corpus.stats.system``
+        when the adventure has one) and may override any field on
+        ``PlayerState``. Unknown fields under ``"player"`` are ignored for
+        forward compatibility. After merging, the state is fully re-validated.
+
+        Raises:
+            StateNotLoadedError: If no state is loaded.
+            FileNotFoundError: If the sheet file does not exist.
+            ValueError: If the sheet is malformed or incompatible with the
+                loaded adventure.
+        """
+        if not self.loaded:
+            raise StateNotLoadedError("State has not been loaded")
+
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Character sheet file not found: {path}")
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in character sheet: {e}") from e
+
+        self._apply_char_sheet_data(data)
+
+    def _apply_char_sheet_data(self, data: dict[str, Any]) -> None:
+        """Apply an already-parsed character sheet dict to the loaded state."""
+        if not isinstance(data, dict):
+            raise ValueError("Character sheet must be a JSON object")
+
+        assert self.corpus is not None
+        assert self.hard_state is not None
+
+        has_stats_system = self.corpus.stats is not None
+        sheet_system = data.get("system")
+
+        if has_stats_system:
+            if sheet_system is None:
+                raise ValueError(
+                    "Character sheet must specify 'system' matching the "
+                    "adventure's RPG system"
+                )
+            expected = self.corpus.stats.system
+            if sheet_system != expected:
+                raise ValueError(
+                    f"Character sheet system '{sheet_system}' does not match "
+                    f"adventure system '{expected}'"
+                )
+        else:
+            if sheet_system is not None:
+                raise ValueError(
+                    "Adventure has no stat system; character sheet must not "
+                    "specify 'system'"
+                )
+
+        if "player" not in data:
+            raise ValueError("Character sheet must contain a 'player' object")
+        player_overrides = data["player"]
+        if not isinstance(player_overrides, dict):
+            raise ValueError("'player' must be an object")
+
+        if not has_stats_system and player_overrides.get("stats") is not None:
+            raise ValueError(
+                "Adventure has no stat system; character sheet must not "
+                "specify 'player.stats'"
+            )
+
+        for field, value in player_overrides.items():
+            if field not in PlayerState.model_fields:
+                continue  # forward compatibility: ignore unknown fields
+            try:
+                setattr(self.hard_state.player, field, value)
+            except ValidationError as e:
+                raise ValueError(
+                    f"Invalid value for 'player.{field}': {e}"
+                ) from e
 
         self._validate_cross_references()
         self._validate_player_stats()

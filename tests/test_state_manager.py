@@ -26,6 +26,7 @@ from mgmai.models.soft_state import SoftStatePatch, TurnHistoryEntry
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
 
 
 @pytest.fixture
@@ -574,3 +575,140 @@ class TestSaveState:
         fresh = StateManager()
         fresh.load_save(save_path)
         assert fresh.hard_state is not None
+
+
+class TestApplyCharSheet:
+    def test_applies_custom_stats(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm._apply_char_sheet_data({
+            "system": "d20",
+            "player": {
+                "stats": {
+                    "STR": 18,
+                    "DEX": 14,
+                    "CON": 12,
+                    "INT": 10,
+                    "WIS": 8,
+                    "CHA": 16,
+                }
+            }
+        })
+        assert sm.hard_state.player.stats is not None
+        assert sm.hard_state.player.stats["STR"] == 18
+        assert sm.hard_state.player.stats["CHA"] == 16
+
+    def test_missing_system_raises(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        with pytest.raises(ValueError, match="must specify 'system'"):
+            sm._apply_char_sheet_data({
+                "player": {"stats": {"STR": 18}}
+            })
+
+    def test_system_mismatch_raises(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        with pytest.raises(ValueError, match="does not match"):
+            sm._apply_char_sheet_data({
+                "system": "gurps",
+                "player": {"stats": {"STR": 18}}
+            })
+
+    def test_unknown_stat_raises(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        with pytest.raises(ValueError, match="not defined"):
+            sm._apply_char_sheet_data({
+                "system": "d20",
+                "player": {"stats": {"STR": 18, "LUCK": 10}}
+            })
+
+    def test_generic_merge_location_and_inventory(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm._apply_char_sheet_data({
+            "system": "d20",
+            "player": {
+                "location": "bag_floor",
+                "inventory": ["toenail_sword"],
+                "stats": {
+                    "STR": 15,
+                    "DEX": 14,
+                    "CON": 13,
+                    "INT": 10,
+                    "WIS": 8,
+                    "CHA": 12,
+                }
+            }
+        })
+        assert sm.hard_state.player.location == "bag_floor"
+        assert "toenail_sword" in sm.hard_state.player.inventory
+        assert sm.hard_state.player.stats["STR"] == 15
+
+    def test_invalid_location_raises(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        with pytest.raises(ValueError, match="not a valid room"):
+            sm._apply_char_sheet_data({
+                "system": "d20",
+                "player": {
+                    "location": "void",
+                    "stats": {
+                        "STR": 15,
+                        "DEX": 14,
+                        "CON": 13,
+                        "INT": 10,
+                        "WIS": 8,
+                        "CHA": 12,
+                    }
+                }
+            })
+
+    def test_invalid_inventory_raises(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        with pytest.raises(ValueError, match="unknown entity"):
+            sm._apply_char_sheet_data({
+                "system": "d20",
+                "player": {
+                    "inventory": ["magic_wand"],
+                    "stats": {
+                        "STR": 15,
+                        "DEX": 14,
+                        "CON": 13,
+                        "INT": 10,
+                        "WIS": 8,
+                        "CHA": 12,
+                    }
+                }
+            })
+
+    def test_unknown_player_fields_ignored(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm._apply_char_sheet_data({
+            "system": "d20",
+            "player": {
+                "future_field": 123,
+                "stats": {
+                    "STR": 15,
+                    "DEX": 14,
+                    "CON": 13,
+                    "INT": 10,
+                    "WIS": 8,
+                    "CHA": 12,
+                }
+            }
+        })
+        assert not hasattr(sm.hard_state.player, "future_field")
+
+    def test_stats_without_corpus_stats_raises(self) -> None:
+        sm = StateManager(FIXTURES_DIR)
+        with pytest.raises(ValueError, match="no stat system"):
+            sm._apply_char_sheet_data({
+                "system": "d20",
+                "player": {"stats": {"STR": 18}}
+            })
+
+    def test_apply_before_load_raises(self) -> None:
+        sm = StateManager()
+        with pytest.raises(StateNotLoadedError, match="State has not been loaded"):
+            sm.apply_char_sheet("char_sheet.json")
+
+    def test_file_not_found(self) -> None:
+        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        with pytest.raises(FileNotFoundError, match="Character sheet file not found"):
+            sm.apply_char_sheet("nonexistent.json")

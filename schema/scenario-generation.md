@@ -1004,7 +1004,7 @@ If the scenario uses stat checks, add a `stats` block to the corpus:
     "WIS": { "name": "Wisdom", "description": "Perception" },
     "CHA": { "name": "Charisma", "description": "Force of personality" }
   },
-  "resolution_system": "d20"
+  "system": "d20"
 }
 ```
 
