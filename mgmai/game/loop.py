@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -30,6 +31,8 @@ try:
     _HAS_READLINE = True
 except ImportError:
     _HAS_READLINE = False
+
+log = logging.getLogger(__name__)
 
 
 def _setup_readline() -> None:
@@ -70,6 +73,7 @@ from mgmai.engine.post_validate import apply_post_validation
 from mgmai.engine.stat_checks import format_stat_check_prefix
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
+from mgmai.logging import TurnLogger, format_state_snapshot
 from mgmai.game.commands import Commands
 from mgmai.game.display import Display
 from mgmai.state.manager import StateManager
@@ -102,6 +106,7 @@ class GameLoop:
         self._running = False
         self._chat_log: list[dict[str, str]] = []
         self._config_dir = Path(config_dir) if config_dir else None
+        self._turn_log = TurnLogger()
         self._commands = Commands(
             state_loader=state_manager,
             render=self._display.print,
@@ -147,6 +152,10 @@ class GameLoop:
 
     def _run_turn(self, player_input: str) -> None:
         self._chat_log.append({"role": "player", "content": player_input})
+        self._turn_log.begin_turn(
+            self._state.hard_state.turn_count + 1 if self._state.hard_state else 0,
+            player_input,
+        )
 
         chain_depth = 0
         current_input = player_input
@@ -156,6 +165,7 @@ class GameLoop:
         while chain_depth < MAX_CHAIN_LENGTH:
             narration = self._execute_turn(current_input, player_input, chain_depth)
             if narration is None:
+                self._turn_log.end_turn()
                 return
 
             result = self._last_result
@@ -190,6 +200,7 @@ class GameLoop:
 
             # Check for game over and handle end-of-turn bookkeeping
             self._finalize_turn(narration)
+            self._turn_log.end_turn()
             return
 
         if narration:
@@ -200,6 +211,7 @@ class GameLoop:
             self._chat_log.append({"role": "gm", "content": narration})
             self._display.render_narration(narration)
             self._finalize_turn(narration)
+        self._turn_log.end_turn()
 
     # ------------------------------------------------------------------
     # single-turn execution
@@ -222,11 +234,8 @@ class GameLoop:
         # 1. Context Assembler → GMBriefing
         briefing = assemble(corpus, hard, soft, current_input)
 
-        if self._commands.debug:
-            self._display.print(
-                "\n[dim]--- GMBriefing ---[/dim]\n"
-                + briefing.model_dump_json(indent=2)
-            )
+        log.debug("--- GMBriefing ---\n%s", briefing.model_dump_json(indent=2))
+        self._turn_log.log_step("briefing", briefing.model_dump(mode="json"))
 
         # 2. LLM Call 1 → PlayerAction (with retry on malformed output)
         try:
@@ -235,11 +244,8 @@ class GameLoop:
             self._display.render_narration(FALLBACK_NARRATION)
             return None
 
-        if self._commands.debug:
-            self._display.print(
-                "\n[dim]--- PlayerAction ---[/dim]\n"
-                + action.model_dump_json(indent=2)
-            )
+        log.debug("--- PlayerAction ---\n%s", action.model_dump_json(indent=2))
+        self._turn_log.log_step("parsed_action", action.model_dump(mode="json"))
 
         # 3. Engine → EngineResult
         result = resolve(
@@ -251,11 +257,13 @@ class GameLoop:
         self._last_result = result
         self._last_action = action
 
-        if self._commands.debug:
-            self._display.print(
-                "\n[dim]--- EngineResult ---[/dim]\n"
-                + result.model_dump_json(indent=2)
-            )
+        log.debug("--- EngineResult ---\n%s", result.model_dump_json(indent=2))
+        self._turn_log.log_step("engine_result", result.model_dump(mode="json"))
+
+        log.debug(
+            "--- State After Turn ---\n%s",
+            json.dumps(format_state_snapshot(hard, soft), indent=2),
+        )
 
         # 4. LLM Call 2 → ProseOutput
         try:
@@ -267,11 +275,8 @@ class GameLoop:
                 narration = check_prefix + narration
             return narration
 
-        if self._commands.debug:
-            self._display.print(
-                "\n[dim]--- ProseOutput ---[/dim]\n"
-                + prose.model_dump_json(indent=2)
-            )
+        log.debug("--- ProseOutput ---\n%s", prose.model_dump_json(indent=2))
+        self._turn_log.log_step("parsed_prose", prose.model_dump(mode="json"))
 
         # 4.5 Feed dialogue state from prose output
         if action.action_type != "ooc_discussion":
@@ -380,23 +385,19 @@ class GameLoop:
         user_prompt = briefing.model_dump_json(indent=2)
 
         raw = self._llm.call_ruling(system_prompt, user_prompt)
-
-        if self._commands.debug:
-            self._display.print(f"\n[dim]--- LLM Call 1 raw ---[/dim]\n{raw}")
+        log.debug("--- LLM Call 1 raw ---\n%s", raw)
 
         try:
             return parse_player_action(raw)
         except LLMOutputError:
-            if self._commands.debug:
-                self._display.print("[yellow]LLM Call 1 retry after parse error[/yellow]")
+            log.debug("LLM Call 1 retry after parse error")
             retry_prompt = (
                 user_prompt
                 + "\n\n[ERROR FROM PREVIOUS ATTEMPT: Your JSON was invalid. "
                 + "Please ensure valid JSON with a correct 'action_type' discriminator.]"
             )
             raw = self._llm.call_ruling(system_prompt, retry_prompt)
-            if self._commands.debug:
-                self._display.print(f"\n[dim]--- LLM Call 1 retry raw ---[/dim]\n{raw}")
+            log.debug("--- LLM Call 1 retry raw ---\n%s", raw)
             return parse_player_action(raw)
 
     def _call_prose(self, briefing, action, result):
@@ -428,9 +429,7 @@ class GameLoop:
         user_prompt = json.dumps(user_data, indent=2)
 
         raw = self._llm.call_prose(system_prompt, user_prompt)
-
-        if self._commands.debug:
-            self._display.print(f"\n[dim]--- LLM Call 2 raw ---[/dim]\n{raw}")
+        log.debug("--- LLM Call 2 raw ---\n%s", raw)
 
         return parse_prose_output(raw)
 
@@ -442,7 +441,24 @@ class GameLoop:
     def _on_game_loaded(self) -> None:
         self._chat_log.clear()
         self._last_result = None
+        self._turn_log = TurnLogger()
 
     def _do_exit(self) -> None:
         self._running = False
+        self._save_turn_log()
         self._display.render_goodbye()
+
+    def _save_turn_log(self) -> None:
+        if not self._turn_log._turns:
+            return
+        try:
+            log_path = self._get_turn_log_path()
+            self._turn_log.save(log_path)
+            log.info("Turn log saved to %s", log_path)
+        except Exception:
+            log.debug("Could not save turn log", exc_info=True)
+
+    def _get_turn_log_path(self) -> Path:
+        if self._config_dir:
+            return self._config_dir / "turn-log.json"
+        return Path("turn-log.json")

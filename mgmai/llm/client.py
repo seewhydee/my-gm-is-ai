@@ -16,11 +16,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from openai import OpenAI
 
 from mgmai.llm.model_config import ModelConfig
+
+log = logging.getLogger(__name__)
 
 
 class LLMClient:

@@ -171,7 +171,7 @@ class TestExecuteTurn:
         assert narration.startswith("**[DEX check: success]**")
         assert "You dart past the trap." in narration
 
-    def test_debug_mode_prints_extra(self, state_manager, fake_display) -> None:
+    def test_debug_mode_logs_extra(self, state_manager, fake_display, caplog) -> None:
         llm = FakeLLMClient(
             ruling_response=_wait_action_json(),
             prose_response=_prose_json(),
@@ -179,11 +179,11 @@ class TestExecuteTurn:
         loop = GameLoop(state_manager, llm, display=fake_display)
         loop._commands._debug = True
 
-        loop._execute_turn("wait", "wait", 0)
+        with caplog.at_level("DEBUG", logger="mgmai"):
+            loop._execute_turn("wait", "wait", 0)
 
-        # Debug prints briefing, action, engine result, prose output, raw LLM
-        print_calls = [c for c in fake_display.print.call_args_list]
-        assert len(print_calls) >= 4
+        debug_messages = [r.message for r in caplog.records if r.levelno == 10]
+        assert len(debug_messages) >= 4
 
 
 class TestRunTurn:

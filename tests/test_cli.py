@@ -147,3 +147,25 @@ class TestCliBoot:
 
         _, kwargs = mock_loop_cls.call_args
         assert kwargs["debug"] is True
+
+    def test_log_level_passed_to_loop(self, monkeypatch) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        mock_loop = MagicMock()
+
+        with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
+            with patch("mgmai.cli.LLMClient"):
+                main([str(BAG_OF_HOLDING), "--log", "DEBUG"])
+
+        _, kwargs = mock_loop_cls.call_args
+        assert kwargs["debug"] is True
+
+    def test_log_info_debug_false(self, monkeypatch) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        mock_loop = MagicMock()
+
+        with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
+            with patch("mgmai.cli.LLMClient"):
+                main([str(BAG_OF_HOLDING), "--log", "INFO"])
+
+        _, kwargs = mock_loop_cls.call_args
+        assert kwargs["debug"] is False

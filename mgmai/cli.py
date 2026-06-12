@@ -42,6 +42,7 @@ from mgmai.config import (
     save_app_config,
     save_credentials,
 )
+from mgmai.logging import setup_logging
 from mgmai.state.manager import StateManager
 from mgmai.llm.client import LLMClient
 from mgmai.llm.model_config import get_model_config, list_known_models
@@ -76,7 +77,21 @@ def main(argv: list[str] | None = None) -> None:
         "--debug",
         action="store_true",
         default=False,
-        help="Enable debug mode (shows GMBriefing/EngineResult per turn)",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--log",
+        default=None,
+        metavar="LEVEL",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR",
+                 "debug", "info", "warning", "error"],
+        help="Set log level (DEBUG, INFO, WARNING, ERROR; default: INFO)",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=None,
+        metavar="FILE",
+        help="Write log output to FILE in addition to the console",
     )
     parser.add_argument(
         "--version",
@@ -99,6 +114,10 @@ def main(argv: list[str] | None = None) -> None:
         help="Model name (overrides MGMAI_MODEL env var and saved config)",
     )
     args = parser.parse_args(argv)
+
+    log_level = (args.log or ("DEBUG" if args.debug else "INFO")).upper()
+    setup_logging(level=log_level, log_file=args.log_file)
+    debug = log_level == "DEBUG"
 
     display = Display()
 
@@ -189,7 +208,7 @@ def main(argv: list[str] | None = None) -> None:
     loop = GameLoop(
         state_manager,
         llm_client,
-        debug=args.debug,
+        debug=debug,
         display=display,
         config_dir=config_dir,
     )

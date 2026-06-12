@@ -21,6 +21,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from mgmai.llm.model_config import get_model_config, list_known_models
+from mgmai.logging import get_level, set_level
+
+import logging
+
+_DEBUG_LEVEL = logging.DEBUG
+_INFO_LEVEL = logging.INFO
 
 
 class Commands:
@@ -153,9 +159,14 @@ class Commands:
             self._render(f"[red]Load failed: {e}[/red]")
 
     def _cmd_debug(self, _: str) -> None:
-        self._debug = not self._debug
-        state = "ON" if self._debug else "OFF"
-        self._render(f"[yellow]Debug mode: {state}[/yellow]")
+        if get_level() <= _DEBUG_LEVEL:
+            set_level("INFO")
+            self._debug = False
+            self._render("[yellow]Debug mode: OFF[/yellow]")
+        else:
+            set_level("DEBUG")
+            self._debug = True
+            self._render("[yellow]Debug mode: ON[/yellow]")
 
     def _cmd_models(self, _: str) -> None:
         self._render("\n[bold]Model Configuration[/bold]\n")

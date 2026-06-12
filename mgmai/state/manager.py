@@ -17,8 +17,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
