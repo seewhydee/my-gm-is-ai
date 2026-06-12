@@ -3,9 +3,13 @@
 Copyright (C) 2023 Sam Seer
 
 Adapted from an adventure submitted to the 2023 One Page Dungeon
-Competition (https://www.dungeoncontest.com/opdc-2023), and
+Competition (https://www.dungeoncontest.com/opdc-2023), which was
 distributed under the Creative Commons Attribution-ShareAlike 4.0
-International License.
+International License (CC-BY-SA-4.0).
+
+The derived scenario file (scenario.md), and the json files generated
+from it (corpus.json, hard-state.json, and soft-state.json), are
+distributed under the CC-BY-SA-4.0 license.
 
 =======================================================================
 
