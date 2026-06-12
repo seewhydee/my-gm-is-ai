@@ -16,6 +16,8 @@
 
 """Stat check computation utilities."""
 
+from typing import Any
+
 
 def compute_d20_modifier(stat_value: int) -> int:
     """D&D 5e-style ability modifier: (stat - 10) // 2, floored."""
@@ -27,3 +29,35 @@ def compute_modifier(stat_value: int, resolution_system: str) -> int:
     if resolution_system == "d20":
         return compute_d20_modifier(stat_value)
     raise ValueError(f"Unknown resolution system: {resolution_system!r}")
+
+
+def format_stat_check_prefix(rolls: list[dict[str, Any]]) -> str:
+    """Return a markdown-formatted prefix summarizing any stat checks.
+
+    The prefix is intended to be prepended to the narration shown to the
+    player after a player action that involved one or more stat checks.
+    Only rolls with ``type == "stat_check"`` are summarised.  If no such
+    rolls exist, an empty string is returned.
+
+    Example output::
+
+        **[STR check: failed]**
+
+        **[DEX check: success]**
+
+    """
+    summaries: list[str] = []
+    for roll in rolls:
+        if roll.get("type") != "stat_check":
+            continue
+        stat = roll.get("stat")
+        success = roll.get("success")
+        if stat is None or success is None:
+            continue
+        outcome = "success" if success else "failed"
+        summaries.append(f"**[{stat} check: {outcome}]**")
+
+    if not summaries:
+        return ""
+
+    return "\n\n".join(summaries) + "\n\n"

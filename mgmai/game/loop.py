@@ -67,6 +67,7 @@ atexit.register(_save_history)
 from mgmai.context.assembler import assemble
 from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
 from mgmai.engine.post_validate import apply_post_validation
+from mgmai.engine.stat_checks import format_stat_check_prefix
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
 from mgmai.game.commands import Commands
@@ -261,6 +262,9 @@ class GameLoop:
             prose = self._call_prose(briefing, action, result)
         except LLMOutputError:
             narration = result.triggered_narration[0] if result.triggered_narration else TURN_ERROR_NARRATION
+            check_prefix = format_stat_check_prefix(result.rolls)
+            if check_prefix:
+                narration = check_prefix + narration
             return narration
 
         if self._commands.debug:
@@ -311,7 +315,11 @@ class GameLoop:
                 )
                 self._last_result = result
 
-        return prose.narration
+        narration = prose.narration
+        check_prefix = format_stat_check_prefix(result.rolls)
+        if check_prefix:
+            narration = check_prefix + narration
+        return narration
 
     # ------------------------------------------------------------------
     # turn finalization

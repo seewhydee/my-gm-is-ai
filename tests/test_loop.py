@@ -124,6 +124,53 @@ class TestExecuteTurn:
         # Falls back to first triggered narration or error narration
         assert narration == TURN_ERROR_NARRATION
 
+    def test_stat_check_prefix_prepended_to_prose(self, state_manager, fake_display) -> None:
+        """When engine result contains stat-check rolls, prefix prose narration."""
+        from mgmai.models.actions import EngineResult
+
+        engine_result = EngineResult(
+            success=True,
+            action_type="interact",
+            target="spider",
+            rolls=[{"type": "stat_check", "stat": "STR", "dc": 10, "success": False}],
+        )
+
+        llm = FakeLLMClient(
+            ruling_response=_wait_action_json(),
+            prose_response=_prose_json("Your sword swings wide."),
+        )
+        loop = GameLoop(state_manager, llm, display=fake_display)
+
+        with patch("mgmai.game.loop.resolve", return_value=engine_result):
+            narration = loop._execute_turn("attack spider", "attack spider", 0)
+
+        assert narration.startswith("**[STR check: failed]**")
+        assert "Your sword swings wide." in narration
+
+    def test_stat_check_prefix_prepended_to_fallback(self, state_manager, fake_display) -> None:
+        """When prose fails to parse, prefix the fallback narration with check info."""
+        from mgmai.models.actions import EngineResult
+
+        engine_result = EngineResult(
+            success=True,
+            action_type="interact",
+            target="spider",
+            rolls=[{"type": "stat_check", "stat": "DEX", "dc": 12, "success": True}],
+            triggered_narration=["You dart past the trap."],
+        )
+
+        llm = FakeLLMClient(
+            ruling_response=_wait_action_json(),
+            prose_response="not valid json",
+        )
+        loop = GameLoop(state_manager, llm, display=fake_display)
+
+        with patch("mgmai.game.loop.resolve", return_value=engine_result):
+            narration = loop._execute_turn("dodge trap", "dodge trap", 0)
+
+        assert narration.startswith("**[DEX check: success]**")
+        assert "You dart past the trap." in narration
+
     def test_debug_mode_prints_extra(self, state_manager, fake_display) -> None:
         llm = FakeLLMClient(
             ruling_response=_wait_action_json(),

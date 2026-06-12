@@ -23,7 +23,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mgmai.engine.stat_checks import compute_d20_modifier, compute_modifier
+from mgmai.engine.stat_checks import compute_d20_modifier, compute_modifier, format_stat_check_prefix
 from mgmai.models.corpus import ModuleCorpus, StatCheck, StatsBlock, StatDefinition, RollCheck, CheckType
 
 
@@ -65,3 +65,39 @@ class TestComputeModifier:
     def test_unknown_system_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown resolution system"):
             compute_modifier(14, "gurps")
+
+
+class TestFormatStatCheckPrefix:
+    def test_empty_when_no_rolls(self) -> None:
+        assert format_stat_check_prefix([]) == ""
+
+    def test_empty_when_no_stat_checks(self) -> None:
+        rolls = [{"type": "roll_check", "threshold": 0.5, "result": 0.3, "success": True}]
+        assert format_stat_check_prefix(rolls) == ""
+
+    def test_single_success(self) -> None:
+        rolls = [{"type": "stat_check", "stat": "STR", "dc": 10, "success": True}]
+        assert format_stat_check_prefix(rolls) == "**[STR check: success]**\n\n"
+
+    def test_single_failure(self) -> None:
+        rolls = [{"type": "stat_check", "stat": "DEX", "dc": 12, "success": False}]
+        assert format_stat_check_prefix(rolls) == "**[DEX check: failed]**\n\n"
+
+    def test_multiple_checks(self) -> None:
+        rolls = [
+            {"type": "stat_check", "stat": "STR", "dc": 10, "success": True},
+            {"type": "stat_check", "stat": "DEX", "dc": 12, "success": False},
+        ]
+        assert format_stat_check_prefix(rolls) == (
+            "**[STR check: success]**\n\n**[DEX check: failed]**\n\n"
+        )
+
+    def test_ignores_incomplete_entries(self) -> None:
+        rolls = [
+            {"type": "stat_check", "stat": "STR", "success": True},
+            {"type": "stat_check", "success": False},
+            {"type": "stat_check", "stat": "CON", "success": True},
+        ]
+        assert format_stat_check_prefix(rolls) == (
+            "**[STR check: success]**\n\n**[CON check: success]**\n\n"
+        )
