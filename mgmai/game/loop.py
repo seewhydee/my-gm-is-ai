@@ -76,6 +76,7 @@ from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_ou
 from mgmai.logging import TurnLogger, format_state_snapshot
 from mgmai.game.commands import Commands
 from mgmai.game.display import Display
+from mgmai.game.input_normalizer import normalize_player_input
 from mgmai.state.manager import StateManager
 
 
@@ -158,7 +159,7 @@ class GameLoop:
         )
 
         chain_depth = 0
-        current_input = player_input
+        current_input = normalize_player_input(player_input)
         room_changed = False
         examined_room = False
 

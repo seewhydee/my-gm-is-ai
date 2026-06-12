@@ -115,6 +115,7 @@ Only propose patches that are plausible given the current room and player state.
 - **For ambiguous or impossible actions**, fall back to `wait` and use `detail` to explain the ambiguity so the narrator can address it.
 - **Soft items**: Items without item IDs (like "rock", "stick", "pebble") that are plausibly present in a room based on its description. You may propose adding them to soft inventory via patches. Do not invent magical or plot-significant items.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
+- **Interactive-fiction shortcuts**: Classic IF abbreviations such as `n` (go north), `x` (examine), `i` (inventory), and `z` (wait) are expanded into full phrases before you see them. Treat the expanded phrase as the player's intent.
 
 ---
 

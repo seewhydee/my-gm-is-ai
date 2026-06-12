@@ -90,6 +90,15 @@ class Commands:
   /debug                Toggle debug mode (shows GMBriefing/EngineResult)
   /models               Configure model and API key
 
+[bold]Shortcuts[/bold]
+  Classic interactive-fiction abbreviations are expanded automatically:
+    n, s, e, w, u, d     Go in that direction
+    x <target>           Examine <target> (x alone = look around)
+    l                    Look around
+    i, inv               Check inventory
+    z                    Wait
+    t <npc>              Talk to <npc>
+
 [bold]Tips[/bold]
   Type natural language to describe what your character does.
   The GM will interpret your intent and narrate the outcome.
