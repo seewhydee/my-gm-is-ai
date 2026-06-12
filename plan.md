@@ -305,3 +305,132 @@ Save file: a JSON file containing both `hard_state` and `soft_state` (merged int
 ### 6. Soft state contradiction detection
 
 The engine does basic contradiction checks on soft-state patches (e.g., can't say "spider is dead" if `entity_states.spider.alive == true`). This is done via simple keyword matching against entity names + state fields, not via a second LLM call. It won't catch subtle contradictions but will catch the obvious ones.
+
+---
+
+## Custom Player Character Sheets
+
+### Goal
+
+Allow players to supply a custom character sheet JSON file when starting a new adventure, overriding the default stats in `hard-state.json`. The custom sheet can only be specified at new-game time, not when loading a save. If omitted, behaviour is unchanged (default stats from `hard-state.json` are used).
+
+### Design constraints
+
+1. **New-game only**: The `--char-sheet` flag is mutually exclusive with `--load`. Passing both is an error.
+2. **Backward-compatible default**: No custom sheet — use defaults from `hard-state.json.player.stats`, as now.
+3. **Affects only player stats currently**, but the mechanism should be generic enough to accommodate future fields (skills, HP, resources, etc.) without architectural changes.
+4. **Validation**: Custom sheet values must pass the same cross-references that the defaults do — every stat key must exist in `corpus.stats.definitions`.
+
+### Schema: custom char sheet JSON
+
+A simple JSON file:
+
+```json
+{
+  "player": {
+    "stats": {
+      "STR": 15,
+      "DEX": 14,
+      "CON": 13,
+      "INT": 10,
+      "WIS": 8,
+      "CHA": 12
+    }
+  }
+}
+```
+
+The top-level key `"player"` mirrors the structure of `HardGameState.player`. For future fields, add more keys under `player` — e.g. `"hit_points": 30`, `"level": 1`, `"skills": {...}`. The merge logic is a shallow merge within each top-level key of the `player` block.
+
+### Files to change
+
+#### 1. `mgmai/cli.py` — `main()`
+
+- Add `--char-sheet` CLI argument (`argparse`): path to a JSON char sheet file.
+- In the `--load` branch, reject `--char-sheet` with an error message.
+- After `state_manager.load_all()` on the new-game path, apply the custom sheet if provided.
+- Pass the resolved char-sheet data through to `StateManager` — either as a method call or as a field on `StateManager`.
+
+**Detail:** The new-game flow in `main()` currently:
+
+```python
+state_manager.load_all(adventure_path)
+```
+
+Change to:
+
+```python
+state_manager.load_all(adventure_path)
+if args.char_sheet:
+    state_manager.apply_char_sheet(args.char_sheet)
+```
+
+#### 2. `mgmai/state/manager.py` — `StateManager`
+
+Add `apply_char_sheet(path: str | Path) -> None` method:
+
+1. Load the JSON file.
+2. Validate it contains a `"player"` key with expected structure.
+3. If `corpus.stats` is `None` but the sheet contains `player.stats`, raise an error (adventure has no stat system).
+4. If `corpus.stats` is present, validate each stat key in the sheet against `corpus.stats.definitions` (same logic as `_validate_player_stats()`).
+5. Merge sheet values into `self.hard_state.player`: for `stats`, do a key-by-key override (replace the whole dict). For future keys, use a shallow copy/update pattern.
+6. Call `_validate_player_stats()` again to confirm consistency after the merge.
+
+**Validation rules (future-proofing):**
+
+- Any key in `sheet["player"]` that corresponds to a known field on `PlayerState` is merged.
+- Unknown top-level keys under `"player"` are silently ignored (allows forward-compatible sheets).
+- For known keys that are dicts (like `stats`), the merge is a full dict replacement, not a per-key patch — the sheet must supply all values for that field.
+- Validation errors produce user-friendly messages (not stack traces): missing stat keys, unknown stat keys, non-integer values, out-of-range values (e.g. 3–18 for D&D-style).
+
+#### 3. `mgmai/cli.py` — error messages
+
+Add user-facing error handling:
+
+- `--char-sheet` file not found → `display.render_error("Character sheet file not found: ...")`
+- `--char-sheet` + `--load` → `display.render_error("Cannot specify both --char-sheet and --load")`
+- Invalid sheet JSON / missing keys → `display.render_error` with description
+
+### Data flow: custom stats through the system
+
+```
+CLI --char-sheet flag
+  → StateManager.apply_char_sheet()
+    → merges into hard_state.player.stats
+      → subsequent GMBriefing includes custom stats via _build_player_stats()
+      → engine resolves stat_check using custom values
+      → display shows custom values in character sheet panel
+      → save files include custom values (no special handling needed)
+      → load_save() restores custom values from save (no special handling)
+```
+
+No changes needed to the briefing model, engine resolver, stat checks module, conditions evaluator, or display — they all read `hard_state.player.stats` dynamically.
+
+### Future-proofing pattern
+
+The generic approach:
+
+```python
+def apply_char_sheet(self, sheet: dict) -> None:
+    player_overrides = sheet.get("player", {})
+    for field, value in player_overrides.items():
+        if not hasattr(self.hard_state.player, field):
+            continue  # forward-compat: skip unknown fields
+        if isinstance(getattr(self.hard_state.player, field), dict):
+            # Dict fields (stats, future reserves) → full replacement
+            setattr(self.hard_state.player, field, value)
+        else:
+            # Scalar fields (future: hit_points, level) → direct assignment
+            setattr(self.hard_state.player, field, value)
+```
+
+This means adding a new field to `PlayerState` Pydantic model + the corpus definitions automatically makes it overridable via the char sheet, with no changes to the merge logic.
+
+### Future extensions (not in scope for initial implementation)
+
+- Named / reusable character presets stored in the adventure directory.
+- Multi-character import/export.
+- Interactive stat allocation prompt at game start (point-buy, roll).
+- Non-stat player attributes (HP, class, level, skills, spell slots).
+- Per-NPC stat overrides (this phase: player character only).
+- Validation of stat ranges per resolution system (e.g. d20 expects 3–18, GURPS 3d6 expects 8–15). For now, any integer is accepted.
