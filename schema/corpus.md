@@ -791,7 +791,11 @@ Intelligence score.
 
 ## Example Module
 
-In the reference implementation, the module corpus is loaded once at startup from
-a JSON file (e.g., `adventures/bag-of-holding/corpus.json`). The engine holds it
-in memory as a read-only data structure. No vector database or semantic search is
-needed — all lookups are by deterministic ID.
+In the reference implementation, the module corpus is loaded once at
+startup from a JSON file. The engine holds it in memory as a read-only
+data structure. No vector database or semantic search is needed — all
+lookups are by deterministic ID.
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

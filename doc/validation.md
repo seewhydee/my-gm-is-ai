@@ -415,3 +415,8 @@ For each turn in the log, check:
 - [ ] Dialogue context present when in dialogue; absent when not
 - [ ] No infinite loops, repeated errors, or blank outputs
 - [ ] `/exit` terminates cleanly
+
+
+> **Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>**  
+> This document is part of My GM is AI, licensed under the GNU GPL v3.  
+> See [LICENSE](../LICENSE) for the full license text.

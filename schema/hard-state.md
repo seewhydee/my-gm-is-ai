@@ -278,3 +278,7 @@ All of these are reflected in the `hard_state_changes` block of EngineResult.
   "game_over": null
 }
 ```
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

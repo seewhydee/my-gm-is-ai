@@ -429,3 +429,7 @@ Hard State updated    Soft State updated
   (attitude, flags,     (player_knowledge,
    entity_states)        dialogue_state, etc.)
 ```
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

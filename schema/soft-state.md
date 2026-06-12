@@ -503,3 +503,7 @@ post-validates them against the NPC's `attitude_limits` using the same rules:
   }
 }
 ```
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

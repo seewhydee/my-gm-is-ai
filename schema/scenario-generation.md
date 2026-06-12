@@ -1422,3 +1422,7 @@ All IDs must be **snake_case, lowercase ASCII**:
 19. **`on_dialogue_exit` for post-dialogue state changes**: If an NPC dies,
     flees, or changes state when dialogue ends (not during dialogue), use
     `on_dialogue_exit` rather than an interaction result.
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

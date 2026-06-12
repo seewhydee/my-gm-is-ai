@@ -190,3 +190,7 @@ The following are on the roadmap for future phases:
 
 - **Combat phase**: Replace the placeholder stat check-based combat resolutions with iterative rounds, HP tracking, damage rolls, etc.
 - **Semantic search**: Explore augmenting the deterministic ID lookup with vector embeddings for larger adventure modules.
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

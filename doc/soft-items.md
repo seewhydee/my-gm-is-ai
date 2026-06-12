@@ -217,3 +217,7 @@ knowledge. The engine then validates against the corpus — if the cave has
 | `mgmai/engine/engine.py` | Persists surfaced items; populates `_build_room_after` with surfaced items. |
 | `mgmai/context/assembler.py` | Populates `BriefingRoom.soft_items` and `BriefingEntity.soft_items` from surfaced items. |
 | `doc/soft-items.md` | This document. |
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

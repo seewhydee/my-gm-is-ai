@@ -125,3 +125,7 @@ The following files need modification or addition:
 2. **LLM knowledge**: Include the full player_stats block in the GMBriefing (not just the relevant stat) so the LLM understands the character holistically.
 
 3. **Portability**: Eventually we want to import/export player stat blocks across adventures. The design uses `hard_state.player.stats` as a pure data dict, making this straightforward later.
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

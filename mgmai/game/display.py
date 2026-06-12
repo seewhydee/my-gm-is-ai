@@ -1,3 +1,19 @@
+# My GM is AI — an AI-driven Game Master for tabletop RPG adventures
+# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from __future__ import annotations
 
 from typing import Any
@@ -234,6 +250,38 @@ class Display:
             print()
 
     # --- helpers ---
+
+    @staticmethod
+    def format_exits(room: Any, indent: int = 0) -> str:
+        """Format a room's visible exits as a string suitable for appending
+        to narration.  ``room`` is a BriefingRoom or a corpus Room.
+
+        Returns an empty string if there are no visible exits.
+        """
+        exits: list = getattr(room, "exits_available", None)
+        if exits is None:
+            exits = getattr(room, "exits", [])
+
+        visible: list = []
+        for e in exits:
+            hidden = getattr(e, "hidden", False)
+            if hidden:
+                continue
+            direction = getattr(e, "direction", "")
+            one_way = getattr(e, "one_way", False)
+            label = f"* {direction}"
+            if one_way:
+                label += " (one-way)"
+            visible.append(label)
+
+        if not visible:
+            return ""
+
+        prefix = " " * indent
+        lines = [f"\n\n{prefix}**Exits:**"]
+        for v in visible:
+            lines.append(f"{prefix}{v}")
+        return "\n".join(lines)
 
     def _render_room(self, state_loader: Any) -> None:
         corpus = state_loader.corpus

@@ -1,3 +1,19 @@
+# My GM is AI — an AI-driven Game Master for tabletop RPG adventures
+# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from __future__ import annotations
 
 import atexit
@@ -133,6 +149,8 @@ class GameLoop:
 
         chain_depth = 0
         current_input = player_input
+        room_changed = False
+        examined_room = False
 
         while chain_depth < MAX_CHAIN_LENGTH:
             narration = self._execute_turn(current_input, player_input, chain_depth)
@@ -140,6 +158,16 @@ class GameLoop:
                 return
 
             result = self._last_result
+            action = self._last_action
+
+            if result and result.success:
+                if action and action.action_type == "move" and \
+                   result.hard_state_changes and \
+                   result.hard_state_changes.player_location is not None:
+                    room_changed = True
+                elif action and action.action_type == "examine" and \
+                     result.room_after and action.target == result.room_after.id:
+                    examined_room = True
 
             if (
                 result
@@ -151,6 +179,11 @@ class GameLoop:
                 chain_depth += 1
                 continue
 
+            if result and result.room_after and (room_changed or examined_room):
+                exits_text = self._display.format_exits(result.room_after)
+                if exits_text:
+                    narration = narration + exits_text
+
             self._chat_log.append({"role": "gm", "content": narration})
             self._display.render_narration(narration)
 
@@ -159,6 +192,10 @@ class GameLoop:
             return
 
         if narration:
+            if result and result.room_after and (room_changed or examined_room):
+                exits_text = self._display.format_exits(result.room_after)
+                if exits_text:
+                    narration = narration + exits_text
             self._chat_log.append({"role": "gm", "content": narration})
             self._display.render_narration(narration)
             self._finalize_turn(narration)
@@ -211,6 +248,7 @@ class GameLoop:
             player_input_echo=original_input,
         )
         self._last_result = result
+        self._last_action = action
 
         if self._commands.debug:
             self._display.print(
@@ -391,6 +429,7 @@ class GameLoop:
     # --- internal ---
 
     _last_result: Any = None
+    _last_action: Any = None
 
     def _on_game_loaded(self) -> None:
         self._chat_log.clear()

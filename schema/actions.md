@@ -838,3 +838,7 @@ direction, the LLM should adapt.
 - **Semantic search / RAG**: Once adventures grow beyond the five-room scale,
   deterministic ID lookups can be augmented with vector embeddings for entity
   descriptions and player queries.
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).
