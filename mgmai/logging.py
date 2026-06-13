@@ -38,10 +38,8 @@ LOG_LEVELS = {
 }
 
 
-def setup_logging(
-    level: str = "INFO",
-    log_file: str | Path | None = None,
-) -> None:
+def setup_logging(level: str = "INFO",
+                  log_file: str | Path | None = None) -> None:
     """Configure the root logger for MGMAI.
 
     Parameters
@@ -50,11 +48,10 @@ def setup_logging(
         One of ``DEBUG``, ``INFO``, ``WARNING``, ``ERROR``.
     log_file:
         Optional path to a log file.  When provided, all log messages
-        (at *level* and above) are written to this file in addition to
-        the console.
+        (at *level* and above) are written to this file.
     """
-    numeric_level = LOG_LEVELS.get(level.upper(), logging.INFO)
 
+    numeric_level = LOG_LEVELS.get(level.upper(), logging.INFO)
     root = logging.getLogger("mgmai")
     root.setLevel(logging.DEBUG)
     root.handlers.clear()
@@ -69,14 +66,12 @@ def setup_logging(
         log_path.parent.mkdir(parents=True, exist_ok=True)
         fh = logging.FileHandler(str(log_path), encoding="utf-8")
         fh.setLevel(logging.DEBUG)
-        fh.setFormatter(
-            logging.Formatter("%(asctime)s %(name)s %(levelname)s: %(message)s")
-        )
+        fh.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s: %(message)s"))
         root.addHandler(fh)
 
 
 def get_level() -> int:
-    """Return the current numeric log level of the ``mgmai`` logger."""
+    """Return the current numeric log level."""
     return logging.getLogger("mgmai").level
 
 
@@ -85,9 +80,7 @@ def set_level(level: str) -> None:
     numeric_level = LOG_LEVELS.get(level.upper(), logging.INFO)
     root = logging.getLogger("mgmai")
     for handler in root.handlers:
-        if isinstance(handler, logging.StreamHandler) and not isinstance(
-            handler, logging.FileHandler
-        ):
+        if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
             handler.setLevel(numeric_level)
 
 
@@ -131,16 +124,12 @@ class TurnLogger:
     def save(self, path: str | Path) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({"turns": self._turns}, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        path.write_text(json.dumps({"turns": self._turns},
+                                   indent=2, ensure_ascii=False),
+                        encoding="utf-8")
 
 
-def format_state_snapshot(
-    hard: Any,
-    soft: Any,
-) -> dict[str, Any]:
+def format_state_snapshot(hard: Any, soft: Any) -> dict[str, Any]:
     """Build a lightweight state snapshot dict for logging."""
     return {
         "player_location": hard.player.location,

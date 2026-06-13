@@ -53,76 +53,53 @@ from mgmai.game.loop import GameLoop
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="mgmai",
-        description="My GM is AI — an AI-driven Game Master for tabletop RPG adventures",
-    )
+        description="My GM is AI — an AI-driven Game Master for tabletop RPG adventures")
+
+    ## Adventure settings
     parser.add_argument(
-        "adventure",
-        nargs="?",
-        help="Path to adventure directory (must contain corpus.json, hard-state.json, soft-state.json)",
-    )
+        "adventure", nargs="?",
+        help="Path to adventure directory (must contain corpus.json, hard-state.json, soft-state.json)")
+
     parser.add_argument(
-        "--load",
-        dest="load_file",
-        default=None,
-        metavar="FILE",
-        help="Load a saved game instead of starting fresh",
-    )
+        "--load", dest="load_file", default=None, metavar="FILE",
+        help="Load a saved game instead of starting fresh")
+
     parser.add_argument(
-        "--char-sheet",
-        dest="char_sheet",
-        default=None,
-        metavar="FILE",
-        help="Path to a custom player character sheet JSON file (new games only)",
-    )
+        "--char-sheet", dest="char_sheet", default=None, metavar="FILE",
+        help="Path to a custom player character sheet")
+
+    ## Not sure we need this, but...
     parser.add_argument(
-        "--config-dir",
-        default=None,
-        metavar="DIR",
-        help="Override the config directory (default: platform-appropriate user config dir)",
-    )
+        "--config-dir", default=None, metavar="DIR",
+        help="Path to config directory, overriding user default")
+
+    ## Logging and debugging
+    parser.add_argument("--debug", action="store_true", default=False,
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--log-level", default=None,
+                        metavar="LEVEL",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR",
+                                 "debug", "info", "warning", "error"],
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--log-file", default=None, metavar="FILE",
+                        help="Write log output to FILE")
+
+    parser.add_argument("--version", action="version",
+                        version="mgmai 0.1.0")
+
+    ## LLM settings
     parser.add_argument(
-        "--debug",
-        action="store_true",
-        default=False,
-        help=argparse.SUPPRESS,
-    )
+        "--api-key", default=None,
+        help="API key (overrides MGMAI_API_KEY and saved credentials)")
     parser.add_argument(
-        "--log",
-        default=None,
-        metavar="LEVEL",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR",
-                 "debug", "info", "warning", "error"],
-        help="Set log level (DEBUG, INFO, WARNING, ERROR; default: INFO)",
-    )
+        "--base-url", default=None,
+        help="API base URL (overrides MGMAI_BASE_URL and saved config)")
     parser.add_argument(
-        "--log-file",
-        default=None,
-        metavar="FILE",
-        help="Write log output to FILE in addition to the console",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="mgmai 0.1.0",
-    )
-    parser.add_argument(
-        "--api-key",
-        default=None,
-        help="API key (overrides MGMAI_API_KEY env var and saved credentials)",
-    )
-    parser.add_argument(
-        "--base-url",
-        default=None,
-        help="API base URL (overrides MGMAI_BASE_URL env var and saved config)",
-    )
-    parser.add_argument(
-        "--model",
-        default=None,
-        help="Model name (overrides MGMAI_MODEL env var and saved config)",
-    )
+        "--model", default=None,
+        help="Model name (overrides MGMAI_MODEL and saved config)")
     args = parser.parse_args(argv)
 
-    log_level = (args.log or ("DEBUG" if args.debug else "INFO")).upper()
+    log_level = (args.log_level or ("DEBUG" if args.debug else "INFO")).upper()
     setup_logging(level=log_level, log_file=args.log_file)
     debug = log_level == "DEBUG"
 
@@ -130,10 +107,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.adventure is None:
         display.print(
-            "[bold]Usage:[/bold] python -m mgmai.cli <adventure_path> [--load FILE]\n\n"
-            "Example:\n"
-            "  python -m mgmai.cli adventures/bag-of-holding\n"
-            "  python -m mgmai.cli adventures/bag-of-holding --load save.json\n"
+            "[bold]Usage:[/bold] python -m mgmai.cli [OPTIONS] <adventure_path>\n"
+            "Try --help for more information\n"
         )
         sys.exit(0)
 
@@ -143,11 +118,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # Resolve API key: CLI arg > env var > credentials file
     env_key = os.environ.get("MGMAI_API_KEY")
-    api_key = resolve_api_key(
-        cli_arg=args.api_key,
-        env_var=env_key,
-        credentials=credentials,
-    )
+    api_key = resolve_api_key(cli_arg=args.api_key,
+                              env_var=env_key,
+                              credentials=credentials)
 
     # Resolve model name preliminarily: CLI arg > env var > config file
     env_model = os.environ.get("MGMAI_MODEL")
@@ -159,24 +132,16 @@ def main(argv: list[str] | None = None) -> None:
 
     if not api_key:
         api_key, model_name, base_url = _prompt_for_credentials(
-            display, config_dir, credentials, app_config,
-        )
+            display, config_dir, credentials, app_config)
 
     config = get_model_config(model_name)
     if base_url:
         config = replace(config, base_url=base_url)
 
-    # Environment variables can still override individual temperatures for
-    # quick experimentation, but the registry is the authoritative source.
-    ruling_temp = os.environ.get("MGMAI_RULING_TEMPERATURE")
-    prose_temp = os.environ.get("MGMAI_PROSE_TEMPERATURE")
-    if ruling_temp is not None:
-        config = replace(config, ruling_temperature=float(ruling_temp))
-    elif app_config.ruling_temperature is not None:
+    ## Read model temperatures from config
+    if app_config.ruling_temperature is not None:
         config = replace(config, ruling_temperature=app_config.ruling_temperature)
-    if prose_temp is not None:
-        config = replace(config, prose_temperature=float(prose_temp))
-    elif app_config.prose_temperature is not None:
+    if app_config.prose_temperature is not None:
         config = replace(config, prose_temperature=app_config.prose_temperature)
 
     adventure_path = Path(args.adventure)
@@ -195,17 +160,13 @@ def main(argv: list[str] | None = None) -> None:
                 display.render_error(f"Save file not found: {args.load_file}")
                 sys.exit(1)
             adv_path = state_manager.load_save(load_path)
-            display.print(
-                f"[green]Resuming from {args.load_file} (adventure: {adv_path})[/green]"
-            )
+            display.print(f"[green]Resuming from {args.load_file} (adventure: {adv_path})[/green]")
         else:
             state_manager.load_all(adventure_path)
             if args.char_sheet:
                 char_sheet_path = Path(args.char_sheet)
                 if not char_sheet_path.is_file():
-                    display.render_error(
-                        f"Character sheet file not found: {args.char_sheet}"
-                    )
+                    display.render_error(f"Character sheet file not found: {args.char_sheet}")
                     sys.exit(1)
                 state_manager.apply_char_sheet(char_sheet_path)
     except FileNotFoundError as e:
@@ -222,18 +183,10 @@ def main(argv: list[str] | None = None) -> None:
     app_config.adventure_path = str(adventure_path.resolve())
     save_app_config(app_config, config_dir)
 
-    llm_client = LLMClient(
-        api_key=api_key,
-        config=config,
-    )
+    llm_client = LLMClient(api_key=api_key, config=config)
 
-    loop = GameLoop(
-        state_manager,
-        llm_client,
-        debug=debug,
-        display=display,
-        config_dir=config_dir,
-    )
+    loop = GameLoop(state_manager, llm_client, debug=debug,
+                    display=display, config_dir=config_dir)
     loop.start()
 
 
@@ -245,9 +198,8 @@ def _prompt_for_credentials(
 ) -> tuple[str, str, str]:
     """Prompt for LLM credentials when no API key is found.
 
-    Returns ``(api_key, model_name, base_url)``.
-    Falls back to a non-interactive error message when stdin is not a TTY
-    (e.g. in tests or CI environments).
+    Return ``(api_key, model_name, base_url)``.
+    Print a non-interactive error message if stdin is not a TTY
     """
     if not sys.stdin.isatty():
         display.render_error(

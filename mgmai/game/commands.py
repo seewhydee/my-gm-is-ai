@@ -26,8 +26,6 @@ from mgmai.logging import get_level, set_level
 import logging
 
 _DEBUG_LEVEL = logging.DEBUG
-_INFO_LEVEL = logging.INFO
-
 
 class Commands:
     def __init__(

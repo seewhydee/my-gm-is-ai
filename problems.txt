@@ -1,3 +1,12 @@
+# Low-hanging fruit
+
+## Fix error message
+In cli.py, instead of "[bold]Usage:[/bold] python -m mgmai.cli [OPTIONS] <adventure_path>\n", extract the actual command used to call the script.
+
+## Temperature defaults should be model-specific
+If the user config does not specify a ruling/prose temperature, we
+set it to a default -- but that default depends on the model!
+
 # Engine-level limitations (scenario generation)
 
 ## 1. No global traversal check mechanism

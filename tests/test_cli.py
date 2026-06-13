@@ -155,7 +155,7 @@ class TestCliBoot:
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
             with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING), "--log", "DEBUG"])
+                main([str(BAG_OF_HOLDING), "--log-level", "DEBUG"])
 
         _, kwargs = mock_loop_cls.call_args
         assert kwargs["debug"] is True
@@ -166,7 +166,7 @@ class TestCliBoot:
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
             with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING), "--log", "INFO"])
+                main([str(BAG_OF_HOLDING), "--log-level", "INFO"])
 
         _, kwargs = mock_loop_cls.call_args
         assert kwargs["debug"] is False
