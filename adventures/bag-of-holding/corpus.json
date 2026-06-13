@@ -618,7 +618,8 @@
           "conditions": [],
           "on_traverse": {
             "narrative": "You steel yourself and step off the axe head into the darkness. The fall is terrifying — you plummet through the murky air before crashing into the pile of rubbish below. The impact is brutal, leaving you severely injured.",
-            "set_flag": { "severely_injured": true }
+            "set_flag": { "severely_injured": true },
+            "set_stat": { "STR": -4, "DEX": -4, "CON": -4 }
           }
         }
       ],
@@ -657,7 +658,8 @@
           "conditions": [],
           "on_traverse": {
             "narrative": "You drop from the handle into the darkness. You land hard on the pile of rubbish below, twisting your ankle in the process. Pain lances up your leg, but you can still move.",
-            "set_flag": { "sprained_ankle": true }
+            "set_flag": { "sprained_ankle": true },
+            "set_stat": { "DEX": -2, "CON": -2 }
           }
         }
       ],

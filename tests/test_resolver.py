@@ -48,8 +48,11 @@ from mgmai.models.corpus import (
     StatCheck,
     TakeCheck,
 )
+from mgmai.state.manager import StateManager
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
+BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
 
 
 def _load_hard():
@@ -222,6 +225,27 @@ class TestResolveMove:
         action = MoveAction(action_type="move", target="exit_climb_down_handle", detail="Climbing down")
         result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.hard_changes.room_state_changes.get("axe_handle_upper", {}).get("visited") is True
+
+    def test_drop_exit_applies_stat_damage_from_head(self):
+        manager = StateManager(BAG_OF_HOLDING)
+        action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
+        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus)
+        assert result.success is True
+        assert result.hard_changes.player_location == "bag_floor"
+        assert result.hard_changes.stat_changes == {
+            "STR": -4, "DEX": -4, "CON": -4,
+        }
+
+    def test_drop_exit_applies_stat_damage_from_upper(self):
+        manager = StateManager(BAG_OF_HOLDING)
+        manager.hard_state.player.location = "axe_handle_upper"
+        action = MoveAction(action_type="move", target="exit_drop_from_upper", detail="Dropping down")
+        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus)
+        assert result.success is True
+        assert result.hard_changes.player_location == "bag_floor"
+        assert result.hard_changes.stat_changes == {
+            "DEX": -2, "CON": -2,
+        }
 
 
 class TestResolveTalk:

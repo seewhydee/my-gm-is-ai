@@ -31,6 +31,7 @@ from mgmai.models.actions import (
     TransferAction,
     WaitAction,
 )
+from mgmai.state.manager import StateManager
 
 ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
 BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
@@ -50,6 +51,25 @@ class TestEngineFullFlow:
         assert state_manager.hard_state.turn_count == 1
         assert result.room_after is not None
         assert result.room_after.id == "axe_handle_upper"
+
+    def test_fall_damage_reduces_player_stats(self):
+        manager = StateManager(BAG_OF_HOLDING)
+        action = MoveAction(
+            action_type="move",
+            target="exit_drop_from_head",
+            detail="Dropping from the axe head",
+        )
+        result = resolve(action, manager)
+        assert result.success is True
+        assert manager.hard_state.player.location == "bag_floor"
+        assert manager.hard_state.player.stats == {
+            "STR": 6, "DEX": 6, "CON": 6,
+            "INT": 10, "WIS": 10, "CHA": 10,
+        }
+        assert result.hard_state_changes is not None
+        assert result.hard_state_changes.stat_changes == {
+            "STR": -4, "DEX": -4, "CON": -4,
+        }
 
     def test_resolve_move_fail(self, state_manager):
         action = MoveAction(

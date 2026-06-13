@@ -277,6 +277,11 @@ def resolve_move(
             if trav.set_room_state:
                 for target_room_id, state_changes in trav.set_room_state.items():
                     changes.room_state_changes.setdefault(target_room_id, {}).update(state_changes)
+            if trav.set_stat:
+                for stat_key, delta in trav.set_stat.items():
+                    changes.stat_changes[stat_key] = (
+                        changes.stat_changes.get(stat_key, 0) + delta
+                    )
             if trav.trigger_encounter:
                 encounter_trigger = trav.trigger_encounter
 

@@ -525,6 +525,7 @@ For every exit described in the scenario, produce an exit object:
 | Field | Description |
 |-------|-------------|
 | `set_flag` | Object of flags to set on traversal: `{ "<name>": true/false }` |
+| `set_stat` | **Optional.** Stat deltas to apply on traversal: `{ "<stat>": <delta> }`. Use for fall damage, traps, etc. Keys must be declared in `corpus.stats.definitions`. |
 | `narrative` | Canonical prose for the traversal event, passed as `triggered_narration` to LLM Call 2 |
 | `trigger_encounter` | Mechanic ID to trigger on traversal (e.g., `"fall_damage"`) |
 | `skip_if` | Condition object — if met, the traverse effect (narrative, flag setting, etc.) is skipped |
@@ -942,7 +943,8 @@ They follow the same rule structure as NPC behavior encounter_rules:
       },
       "on_failure": {
         "outcome": "flee",
-        "narrative": "You fall hard and injure yourself badly."
+        "narrative": "You fall hard and injure yourself badly.",
+        "set_stat": { "STR": -4, "DEX": -4, "CON": -4 }
       }
     }
   ]

@@ -166,6 +166,7 @@ class Interaction(BaseModel):
 class TraversalEffect(BaseModel):
     set_flag: Optional[Dict[str, bool]] = None
     set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
+    set_stat: Optional[Dict[str, int]] = None
     narrative: Optional[str] = None
     trigger_encounter: Optional[str] = None
     skip_if: Optional[ConditionExpression] = None
@@ -292,6 +293,7 @@ class DialogueGuidelines(BaseModel):
 class BranchOutcome(BaseModel):
     outcome: str
     set_flags: Optional[Dict[str, bool]] = None
+    set_stat: Optional[Dict[str, int]] = None
     narrative: Optional[str] = None
 
 
@@ -302,6 +304,7 @@ class EncounterRule(BaseModel):
     check: Optional[StatCheck] = None
     narrative: Optional[str] = None
     set_flags: Optional[Dict[str, bool]] = None
+    set_stat: Optional[Dict[str, int]] = None
     on_success: Optional[BranchOutcome] = None
     on_failure: Optional[BranchOutcome] = None
 

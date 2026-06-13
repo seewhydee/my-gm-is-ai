@@ -192,6 +192,12 @@ def resolve(
             if enc_result["flee_effects"]:
                 apply_flee_effects(enc_result["flee_effects"], hard)
 
+            set_stat = enc_result.get("set_stat") or {}
+            if set_stat:
+                state_manager.apply_hard_changes(
+                    HardStateChanges(stat_changes=dict(set_stat))
+                )
+
             if enc_result["game_over"]:
                 go = enc_result["game_over"]
                 hard.game_over = GameOverState(type=go["type"], trigger=go["trigger"])

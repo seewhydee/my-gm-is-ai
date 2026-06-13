@@ -96,6 +96,7 @@ The `on_traverse` object supports these fields; all are optional:
 |---------------------|------------------|-------------|
 | `set_flag`          | object           | Sets hard-state flags: `{ "<flag_name>": true\|false, ... }`. |
 | `set_room_state`    | object           | **Optional.** Sets per-room state on traversal: `{ "<room_id>": { "<field>": <value>, ... } }`. Commonly used to record which room the player entered from, so downstream conditions can gate exits/ interactions with `room:<room_id>.<field>`. |
+| `set_stat`          | object           | **Optional.** Stat deltas to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are integer changes (positive or negative). E.g., `{ "STR": -4, "DEX": -4, "CON": -4 }` for fall damage. |
 | `narrative`         | string           | Pre-written prose for the traverse event. |
 | `trigger_encounter` | string           | Triggers a named encounter from `mechanics`. |
 | `skip_if`           | condition object | Condition under which the effect is skipped. |
@@ -648,8 +649,9 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
       "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
       "narrative": "string",
       "set_flags": { "<flag>": true },
-      "on_success": { "outcome": "...", "set_flags": {}, "narrative": "..." },
-      "on_failure": { "outcome": "...", "narrative": "..." }
+      "set_stat": { "<stat_key>": <delta> },
+      "on_success": { "outcome": "...", "set_flags": {}, "set_stat": {}, "narrative": "..." },
+      "on_failure": { "outcome": "...", "set_flags": {}, "set_stat": {}, "narrative": "..." }
     }
   ],
   "on_flee": {
@@ -667,6 +669,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
   is applied. Conditions are condition objects (see Condition object section)
   evaluated against hard state (flags, inventory, entity states) and soft state
   (attitudes).
+- `set_stat` (optional) applies stat deltas to the player when the rule fires. When a branch (`on_success`/`on_failure`) also carries `set_stat`, the branch values override rule-level values for the same stat key.
 - For phase 1 (kill-or-be-killed resolution), outcomes are:
   - `death` — player dies, game over.
   - `flee` — creature flees, applying `on_flee` effects.
@@ -703,17 +706,18 @@ Game-over conditions live here too.
         "outcome": "death | flee | roll | stat_check",
         "threshold": 0.50,
         "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
-        "on_success": { "outcome": "...", "set_flags": {}, "narrative": "..." },
-        "on_failure": { "outcome": "...", "narrative": "..." },
+        "on_success": { "outcome": "...", "set_flags": {}, "set_stat": {}, "narrative": "..." },
+        "on_failure": { "outcome": "...", "set_flags": {}, "set_stat": {}, "narrative": "..." },
         "narrative": "string",
-        "set_flags": {}
+        "set_flags": {},
+        "set_stat": {}
       }
     ]
   }
 }
 ```
 
-Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are condition objects (see Condition object section).
+Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are condition objects (see Condition object section). Rule and branch `set_stat` objects follow the same delta semantics as interaction `Result.set_stat`.
 
 ### Game-over conditions
 

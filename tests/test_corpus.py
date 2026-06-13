@@ -590,6 +590,18 @@ class TestExit:
         assert e.on_traverse.set_flag == {"injured": True}
         assert e.on_traverse.narrative == "You hurt yourself."
 
+    def test_exit_with_traversal_set_stat(self) -> None:
+        e = Exit.model_validate({
+            "id": "fall",
+            "direction": "Jump down",
+            "target_room": "bottom",
+            "on_traverse": {
+                "set_stat": {"STR": -4, "DEX": -4, "CON": -4},
+                "narrative": "You crash to the ground.",
+            },
+        })
+        assert e.on_traverse.set_stat == {"STR": -4, "DEX": -4, "CON": -4}
+
     def test_exit_with_traversal_set_room_state(self) -> None:
         e = Exit.model_validate({
             "id": "enter_room",
@@ -846,6 +858,15 @@ class TestBranchOutcome:
                 "set_flags": {"x": True},
             })
 
+    def test_with_set_stat(self) -> None:
+        b = BranchOutcome.model_validate({
+            "outcome": "flee",
+            "set_flags": {"spider_fled": True},
+            "set_stat": {"STR": -4, "DEX": -4, "CON": -4},
+            "narrative": "The spider flees, but you are badly hurt.",
+        })
+        assert b.set_stat == {"STR": -4, "DEX": -4, "CON": -4}
+
 
 class TestCredits:
     def test_all_fields(self) -> None:
@@ -1005,6 +1026,22 @@ class TestEncounterRule:
         assert r.on_failure is not None
         assert r.on_failure.outcome == "death"
         assert r.on_failure.narrative == "The spider overpowers you."
+
+    def test_with_set_stat(self) -> None:
+        r = EncounterRule.model_validate({
+            "condition": {"require": "flag:falling == true"},
+            "outcome": "stat_check",
+            "check": {"type": "stat_check", "stat": "DEX", "dc": 10, "repeatable": True},
+            "set_stat": {"CON": -2},
+            "on_failure": {
+                "outcome": "flee",
+                "set_stat": {"STR": -4, "CON": -4},
+                "narrative": "You land badly.",
+            },
+        })
+        assert r.set_stat == {"CON": -2}
+        assert r.on_failure is not None
+        assert r.on_failure.set_stat == {"STR": -4, "CON": -4}
 
 
 class TestBehavior:
