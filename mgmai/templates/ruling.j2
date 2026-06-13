@@ -90,7 +90,7 @@ Only propose patches that are plausible given the current room and player state.
 
 0. **OOC Discussion**: For when the player is talking to the GM, not role-playing or committing to an action. Choose this if the player asks for a simple clarification about a previous narration ("is the statue on the table or floor?"). For a more detailed question that implies scrutinizing an entity ("does the statue look heavy enough to lift?"), use `examine` instead.
 
-1. **Movement**: If the player wants to go somewhere, use `move`. Target must be an exit ID from the current room. If the player specifies an exit that doesn't exist, or the choice of exit is ambiguous, fall back on `wait` and explain the problem in `detail`.
+1. **Movement**: If the player wants to go somewhere, use `move`. Target must be an exit ID from the current room. The target must be an exit that the player's input directly names or clearly implies — do **not** map a vague direction or a non-existent exit to the "closest" available exit. If the player specifies an exit that doesn't exist, or the choice of exit is ambiguous, fall back on `wait` and explain the problem in `detail`.
 
 2. **Examination**: Looking at something, searching, reading, inspecting. Use `rigorous: true` for deep searches. Use `using` when specifying a tool (e.g. "examine the lock with the magnifying glass").
 
@@ -135,6 +135,17 @@ Output: `{"action_type": "interact", "target": "spider", "interaction_id": "atta
 
 Input: "ooc: wait, what room am I in again?"
 Output: `{"action_type": "ooc_discussion", "detail": "Player asks what room they are in", "follow_up": null, "proposed_soft_state_patches": []}`
+
+### Invalid or ambiguous movement — fall back to `wait`
+
+Input: "go north" (no exit to the north is available in the current room)
+Output: `{"action_type": "wait", "detail": "Player tries to go north, but there is no exit to the north", "follow_up": null, "proposed_soft_state_patches": []}`
+
+Input: "go through the door" (two doors are available)
+Output: `{"action_type": "wait", "detail": "Player wants to go through a door, but it is unclear which door", "follow_up": null, "proposed_soft_state_patches": []}`
+
+Input: "go down the axe handle" (matching exit available)
+Output: `{"action_type": "move", "target": "exit_climb_down_handle", "detail": "Player climbs carefully down the axe handle", "follow_up": null, "proposed_soft_state_patches": []}`
 
 ---
 

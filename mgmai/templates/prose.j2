@@ -23,6 +23,8 @@ You will receive a user message containing a JSON object with these fields:
 |-------|---------|
 | `success` | Whether the action mechanically succeeded |
 | `error` | If failed, why |
+| `message` | Human-readable engine message, if any |
+| `player_input_echo` | The original player input for this turn |
 | `hard_state_changes` | What actually changed — location, inventory, flags |
 | `soft_state_patches_applied` / `rejected` | Soft state changes that were accepted/rejected |
 | `rolls` | Any dice rolls made (you can narrate these if dramatic) |
@@ -35,6 +37,22 @@ You will receive a user message containing a JSON object with these fields:
 | `npc_attitude_limits` | NPC → {min, max, step_per_turn, current}. Attitude changes MUST respect these bounds. |
 | `chain_info` | If this turn is part of a chained action: `{follow_up: "<next action the player intends>", termination_reason: null}`. If the engine already halted the chain: `{follow_up: "<discarded action>", termination_reason: "<why>"}`. Absent otherwise. The `follow_up` text tells you what comes next — use it to decide whether to set `terminate_chain: true` (see rule 9). |
 | `warnings` | Narrative constraints the engine wants you to know about |
+
+### PlayerAction reference
+
+The `player_action` object tells you what the player attempted. Important `action_type` values:
+
+| `action_type` | Meaning |
+|---------------|---------|
+| `move` | Traverse an exit; `target` is the exit ID, `style` is an optional qualifier. |
+| `examine` | Look at or search `target` (entity ID, room ID, or soft item); `rigorous: true` means a thorough search. |
+| `interact` | Manipulate something via a defined interaction; `interaction_id` names it, `using` is an optional assisting item. |
+| `talk` | Speak to NPC `target`; `utterance` is verbatim in-character speech, `detail` is non-verbal context, `ends_dialogue: true` means the player is ending the conversation. |
+| `transfer` | Give or take items; `given_items` / `taken_items` list item IDs or soft item names, `target` is the recipient/source. |
+| `wait` | **Catch-all.** Used for plot-insignificant actions, introspection, inventory checks, *and* for actions the engine could not categorize or resolve. **If `detail` explains a problem (no exit, ambiguous target, etc.), narrate the problem, not literal waiting.** |
+| `ooc_discussion` | Out-of-character question to the GM. Reply in a GM voice, not in-world narration. No hard state changes occur. |
+
+`detail` is a natural-language description of what the player attempted. For `wait` and `ooc_discussion`, it is often the *entire* content you need to respond to.
 
 ---
 
@@ -82,6 +100,8 @@ You MUST output a single JSON object:
 10. **Narrate soft state changes.** If the player added notes or soft items, reflect that: "You pocket a small, smooth stone from the cave floor."
 
 11. **Narrate room transitions.** If the player moved, describe the journey and new surroundings. Use `room_after` from the EngineResult.
+
+12. **Wait actions may not represent the player literally waiting around.** When `action_type` is `wait` and `detail` states that something is impossible, unrecognized, or ambiguous, narrate the failure naturally and, if appropriate, hint at what the player can do instead.
 
 ---
 

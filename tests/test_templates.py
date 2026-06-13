@@ -41,6 +41,12 @@ class TestRulingTemplate:
         assert "ooc_discussion" in output
         assert "Critical Constraints" in output
 
+    def test_contains_invalid_movement_fallback_examples(self) -> None:
+        output = render_ruling()
+        assert "Invalid or ambiguous movement" in output
+        assert "no exit to the north" in output
+        assert "unclear which door" in output
+
     def test_renders_multiple_times(self) -> None:
         out1 = render_ruling()
         out2 = render_ruling()
