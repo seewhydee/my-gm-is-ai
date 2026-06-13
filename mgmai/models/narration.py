@@ -15,21 +15,16 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-
 from typing import Dict, List, Optional
-
 from pydantic import BaseModel, Field
-
 
 class AttitudeChange(BaseModel):
     old_value: int
     new_value: int
     reason: str
 
-
 class KnowledgeTags(BaseModel):
     npc_revealed: Optional[Dict[str, List[str]]] = None
-
 
 class NarrationOutput(BaseModel):
     narration: str

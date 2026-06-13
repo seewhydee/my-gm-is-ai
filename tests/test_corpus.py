@@ -1069,7 +1069,7 @@ class TestStatsBlock:
         assert sb.system == "d20"
 
     def test_unsupported_system_raises(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown system"):
+        with pytest.raises(ValidationError, match="Unknown RPG system"):
             StatsBlock.model_validate({
                 "definitions": {"STR": {"name": "Strength", "description": ""}},
                 "system": "gurps",

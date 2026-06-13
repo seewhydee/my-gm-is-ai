@@ -15,9 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-
 from typing import Any, Dict, List, Literal, Optional, Union
-
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -122,7 +120,7 @@ class UsingResultOverride(BaseModel):
         has_check = self.check is not None
         has_result = self.result is not None
         if has_check and has_result:
-            raise ValueError("UsingResultOverride must have either check (+success/+failure) or result, not both")
+            raise ValueError("UsingResultOverride must have either check or result, not both")
         if has_check and self.success is None:
             raise ValueError("UsingResultOverride with 'check' must also have 'success'")
         return self
@@ -159,7 +157,7 @@ class Interaction(BaseModel):
         has_check = self.check is not None
         has_result = self.result is not None
         if has_check and has_result:
-            raise ValueError("Interaction must have either check (+success/+failure) or result, not both")
+            raise ValueError("Interaction must have either check or result, not both")
         if has_check and self.success is None:
             raise ValueError("Interaction with 'check' must also have 'success'")
         return self
@@ -216,7 +214,7 @@ class OnExamineEvent(BaseModel):
         has_check = self.check is not None
         has_result = self.result is not None
         if has_check and has_result:
-            raise ValueError("OnExamineEvent must have either check (+success/+failure) or result, not both")
+            raise ValueError("OnExamineEvent must have either check or result, not both")
         if has_check and self.success is None:
             raise ValueError("OnExamineEvent with 'check' must also have 'success'")
         return self
@@ -273,8 +271,7 @@ class DialoguePath(BaseModel):
         has_result = self.result is not None
         if has_check and has_result:
             raise ValueError(
-                "DialoguePath must have either check (+success/+failure) or result, not both"
-            )
+                "DialoguePath must have either check or result, not both")
         if has_check and self.success is None:
             raise ValueError("DialoguePath with 'check' must also have 'success'")
         return self
@@ -342,13 +339,11 @@ class Entity(BaseModel):
         if self.type != "npc" and self.dialogue_guidelines is not None:
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'dialogue_guidelines'. "
-                f"Only 'npc' entities may carry dialogue_guidelines."
-            )
+                f"Only 'npc' entities may carry dialogue_guidelines.")
         if self.type != "npc" and self.behavior is not None:
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'behavior'. "
-                f"Only 'npc' entities may carry behavior."
-            )
+                f"Only 'npc' entities may carry behavior.")
         return self
 
 
@@ -368,8 +363,7 @@ class Mechanic(BaseModel):
         if is_game_over and is_encounter:
             raise ValueError(
                 "Mechanic must be either a game-over condition (type, condition, trigger_id) "
-                "or an encounter (rules), not both"
-            )
+                "or an encounter (rules), not both")
         if is_game_over:
             if self.condition is None:
                 raise ValueError("Game-over mechanic requires 'condition'")
@@ -377,8 +371,7 @@ class Mechanic(BaseModel):
                 raise ValueError("Game-over mechanic requires 'trigger_id'")
         if not is_game_over and not is_encounter:
             raise ValueError(
-                "Mechanic must have either 'type' (game-over) or 'rules' (encounter)"
-            )
+                "Mechanic must have either 'type' (game-over) or 'rules' (encounter)")
         return self
 
 
@@ -395,10 +388,7 @@ class StatsBlock(BaseModel):
     def check_system(self) -> StatsBlock:
         supported = {"d20"}
         if self.system not in supported:
-            raise ValueError(
-                f"Unknown system: {self.system!r}. "
-                f"Supported: {supported}"
-            )
+            raise ValueError(f"Unknown RPG system: {self.system!r}. ")
         return self
 
 

@@ -15,11 +15,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
-
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
-
 from mgmai.models.briefing import BriefingRoom
 from mgmai.models.narration import AttitudeChange
 from mgmai.models.soft_state import SoftStatePatch
@@ -72,8 +69,7 @@ class TransferAction(_BaseAction):
         if (gi is None or len(gi) == 0) and (ti is None or len(ti) == 0):
             raise ValueError(
                 "TransferAction must have at least one of given_items or "
-                "taken_items be non-empty"
-            )
+                "taken_items be non-empty")
         return self
 
 
@@ -101,9 +97,7 @@ PlayerActionType = Annotated[
 _player_action_adapter = TypeAdapter(PlayerActionType)
 
 
-def validate_player_action(
-    data: dict,
-) -> (
+def validate_player_action(data: dict) -> (
     MoveAction
     | ExamineAction
     | InteractAction
