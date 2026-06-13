@@ -8,4 +8,4 @@
 
 - **Multi-NPC conversations**: currently we only handle conversing with one NPC at a time, this should be extended.
 
-- **Character sheet improvements **: LLM-aided prompt for character sheet generation; save character sheets in .config/mgmai.
+- **Character sheet improvements**: LLM-aided prompt for character sheet generation; save character sheets in .config/mgmai.
