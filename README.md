@@ -64,7 +64,7 @@ mgmai adventures/bag-of-holding --load save.json
 # or: python -m mgmai.cli adventures/bag-of-holding --load save.json
 ```
 
-During play, type natural-language commands. Examples:
+During play, type commands in natural language, e.g.:
 
 ```
 > look around
@@ -73,16 +73,18 @@ During play, type natural-language commands. Examples:
 > I nod at the innkeeper. "I need accommodation for a day or so. I prefer a quiet chamber and a bed free of vermin."
 ```
 
-Use `/help` during play for available commands.
+Use `/help` during play for a list of special commands.
 
-## Debug Mode
+## Scenario Generation
 
-Run with `--debug` to display the internal Game Master briefing and engine result for each turn:
+To construct a playable scenario, write up a "scenario file" in
+natural language, describing the adventure as systematically as
+possible, and save it in `adventures/SCENARIO-ID/scenario.md`.
+See `adventures/bag-of-holding/scenario.md` for an example.
 
-```bash
-mgmai --debug adventures/bag-of-holding
-# or: python -m mgmai.cli --debug adventures/bag-of-holding
-```
+Then, fire up an LLM of your choice and instruct it to follow the
+steps in `schema/scenario-generation.md` to convert your scenario file
+into JSON.
 
 ## Copyright and License
 
