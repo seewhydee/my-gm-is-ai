@@ -146,20 +146,17 @@ class StateManager:
             if sheet_system is None:
                 raise ValueError(
                     "Character sheet must specify 'system' matching the "
-                    "adventure's RPG system"
-                )
+                    "adventure's RPG system")
             expected = self.corpus.stats.system
             if sheet_system != expected:
                 raise ValueError(
                     f"Character sheet system '{sheet_system}' does not match "
-                    f"adventure system '{expected}'"
-                )
+                    f"adventure system '{expected}'")
         else:
             if sheet_system is not None:
                 raise ValueError(
                     "Adventure has no stat system; character sheet must not "
-                    "specify 'system'"
-                )
+                    "specify 'system'")
 
         if "player" not in data:
             raise ValueError("Character sheet must contain a 'player' object")
@@ -170,8 +167,7 @@ class StateManager:
         if not has_stats_system and player_overrides.get("stats") is not None:
             raise ValueError(
                 "Adventure has no stat system; character sheet must not "
-                "specify 'player.stats'"
-            )
+                "specify 'player.stats'")
 
         for field, value in player_overrides.items():
             if field not in PlayerState.model_fields:
@@ -179,9 +175,7 @@ class StateManager:
             try:
                 setattr(self.hard_state.player, field, value)
             except ValidationError as e:
-                raise ValueError(
-                    f"Invalid value for 'player.{field}': {e}"
-                ) from e
+                raise ValueError(f"Invalid value for '{field}': {e}") from e
 
         self._validate_cross_references()
         self._validate_player_stats()
@@ -197,19 +191,14 @@ class StateManager:
 
         errors: list[str] = []
 
-        # Every room referenced in hard_state.room_states must exist in corpus
-        for room_id in self.hard_state.room_states:
-            if room_id not in self.corpus.rooms:
-                errors.append(
-                    f"hard_state.room_states references unknown room: {room_id}"
-                )
+        def _check_ids(list_to_validate, valid_ids, id_type):
+            for idtag in list_to_validate:
+                if idtag not in valid_ids:
+                    errors.append(f"No matching {id_type}: {idtag}")
 
-        # Every entity referenced in hard_state.entity_states must exist in corpus
-        for entity_id in self.hard_state.entity_states:
-            if entity_id not in self.corpus.entities:
-                errors.append(
-                    f"hard_state.entity_states references unknown entity: {entity_id}"
-                )
+        # Every room and entity in hard_state.room_states must exist in corpus
+        _check_ids(self.hard_state.room_states, self.corpus.rooms, "room")
+        _check_ids(self.hard_state.entity_states, self.corpus.entities, "entity")
 
         # Every field in hard_state.entity_states must match declared state_fields
         for entity_id, state in self.hard_state.entity_states.items():
@@ -219,44 +208,20 @@ class StateManager:
             declared = self.corpus.entities[entity_id].state_fields
             for field_name in state:
                 if field_name not in declared:
-                    errors.append(
-                        f"Entity '{entity_id}' has undeclared state field: {field_name}"
-                    )
+                    errors.append(f"Entity '{entity_id}' has undeclared state field: {field_name}")
 
         # Player location must be a valid room
         if self.hard_state.player.location not in self.corpus.rooms:
-            errors.append(
-                f"Player location '{self.hard_state.player.location}' is not a valid room"
-            )
+            errors.append(f"No matching room: {self.hard_state.player.location}")
 
-        # Inventory items must exist in corpus
-        for item_id in self.hard_state.player.inventory:
-            if item_id not in self.corpus.entities:
-                errors.append(
-                    f"Player inventory references unknown entity: {item_id}"
-                )
-
-        # Every entity in every room's entities_present must exist in corpus
+        # Inventory items and in-room entities must exist in corpus
+        _check_ids(self.hard_state.player.inventory, self.corpus.entities, "entity")
         for room_id, room in self.corpus.rooms.items():
-            for entity_id in room.entities_present:
-                if entity_id not in self.corpus.entities:
-                    errors.append(
-                        f"Room '{room_id}' references unknown entity: {entity_id}"
-                    )
+            _check_ids(room.entities_present, self.corpus.entities, "entity")
 
-        # Soft state: room_notes keys must be valid rooms
-        for room_id in self.soft_state.room_notes:
-            if room_id not in self.corpus.rooms:
-                errors.append(
-                    f"soft_state.room_notes references unknown room: {room_id}"
-                )
-
-        # Soft state: entity_notes keys must be valid entities
-        for entity_id in self.soft_state.entity_notes:
-            if entity_id not in self.corpus.entities:
-                errors.append(
-                    f"soft_state.entity_notes references unknown entity: {entity_id}"
-                )
+        # Validate soft state
+        _check_ids(self.soft_state.room_notes,   self.corpus.rooms,    "room")
+        _check_ids(self.soft_state.entity_notes, self.corpus.entities, "entity")
 
         # Validate entity_states attitude fields against corpus attitude_limits
         for entity_id, state in self.hard_state.entity_states.items():
@@ -268,8 +233,7 @@ class StateManager:
             if entity.type != "npc":
                 errors.append(
                     f"hard_state.entity_states['{entity_id}'] has attitude but "
-                    f"entity type is '{entity.type}', not 'npc'"
-                )
+                    f"entity type is '{entity.type}', not 'npc'")
                 continue
             value = state["attitude"]
             guidelines = entity.dialogue_guidelines
@@ -277,44 +241,33 @@ class StateManager:
                 if value < guidelines.attitude_limits.min:
                     errors.append(
                         f"hard_state.entity_states['{entity_id}'].attitude = {value} is below "
-                        f"minimum {guidelines.attitude_limits.min}"
-                    )
+                        f"minimum {guidelines.attitude_limits.min}")
                 if value > guidelines.attitude_limits.max:
                     errors.append(
                         f"hard_state.entity_states['{entity_id}'].attitude = {value} is above "
-                        f"maximum {guidelines.attitude_limits.max}"
-                    )
+                        f"maximum {guidelines.attitude_limits.max}")
 
         # Validate flags against corpus declaration if provided
         if self.corpus.flags_declared is not None:
             declared_set = set(self.corpus.flags_declared)
             for flag in self.hard_state.flags:
                 if flag not in declared_set:
-                    errors.append(
-                        f"hard_state.flags contains undeclared flag: {flag}"
-                    )
+                    errors.append(f"Hard state has undeclared flag {flag}")
 
         # Soft state: player_knowledge entries must reference valid entities/sources
         for entry in self.soft_state.player_knowledge:
             if entry.source_type == "npc_dialogue" and entry.source_id is not None:
                 if entry.source_id not in self.corpus.entities:
-                    errors.append(
-                        f"soft_state.player_knowledge references unknown entity: "
-                        f"{entry.source_id}"
-                    )
+                    errors.append(f"No matching entity: {entry.source_id}")
                 elif self.corpus.entities[entry.source_id].type != "npc":
-                    errors.append(
-                        f"soft_state.player_knowledge references non-NPC entity: "
-                        f"{entry.source_id}"
-                    )
+                    errors.append(f"No matching entity: {entry.source_id}")
                 else:
                     guidelines = self.corpus.entities[entry.source_id].dialogue_guidelines
                     will_reveal = guidelines.will_reveal if guidelines else {}
                     if entry.topic_id not in will_reveal:
                         errors.append(
                             f"NPC '{entry.source_id}' knowledge topic_id "
-                            f"'{entry.topic_id}' is not in will_reveal"
-                        )
+                            f"'{entry.topic_id}' is not in will_reveal")
 
         if errors:
             raise ValueError("\n".join(errors))
@@ -327,21 +280,15 @@ class StateManager:
 
         if corpus.stats is None:
             if hard.player.stats is not None:
-                raise ValueError(
-                    "player.stats is present but corpus has no stats block"
-                )
+                raise ValueError("Corpus stats block missing")
             return
 
         if hard.player.stats is None:
-            raise ValueError(
-                "corpus defines stats but player.stats is missing"
-            )
+            raise ValueError("Player stats missing")
 
         for stat_key in hard.player.stats:
             if stat_key not in corpus.stats.definitions:
-                raise ValueError(
-                    f"Player stat '{stat_key}' is not defined in corpus.stats.definitions"
-                )
+                raise ValueError(f"Player stat '{stat_key}' is not defined")
 
     # ------------------------------------------------------------------
     # Accessors
@@ -363,12 +310,8 @@ class StateManager:
     # Persistence
     # ------------------------------------------------------------------
 
-    def save_state(
-        self,
-        save_dir: str | Path,
-        filename: str = "save.json",
-        latest_narration: str | None = None,
-    ) -> Path:
+    def save_state(self, save_dir: str | Path, filename: str = "save.json",
+                   latest_narration: str | None = None) -> Path:
         """Serialize hard + soft state (and optional latest narration) to disk.
 
         Returns the path to the written file.
@@ -391,10 +334,8 @@ class StateManager:
         if latest_narration is not None:
             payload["latest_narration"] = latest_narration
 
-        save_path.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        save_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False),
+                             encoding="utf-8")
         return save_path
 
     def save(self, path: str | Path) -> None:
@@ -435,8 +376,7 @@ class StateManager:
                     if corpus_id is not None and corpus_id != save_adventure_id:
                         raise ValueError(
                             f"Save file adventure_id '{save_adventure_id}' does not match "
-                            f"corpus adventure_id '{corpus_id}'."
-                        )
+                            f"corpus adventure_id '{corpus_id}'.")
 
         return adv_path or ""
 
@@ -458,31 +398,22 @@ class StateManager:
         corpus = self.corpus
         for room_id in changes.room_state_changes:
             if corpus is None or room_id not in corpus.rooms:
-                errors.append(f"room_state_changes references unknown room: {room_id}")
+                errors.append(f"No matching room: {room_id}")
 
         for entity_id, entity_changes in changes.entity_state_changes.items():
             if corpus is None or entity_id not in corpus.entities:
-                errors.append(
-                    f"entity_state_changes references unknown entity: {entity_id}"
-                )
+                errors.append(f"No matching entity: {entity_id}")
             else:
                 declared = corpus.entities[entity_id].state_fields
                 for field_name in entity_changes:
                     if field_name not in declared:
-                        errors.append(
-                            f"Entity '{entity_id}' state change has undeclared field: "
-                            f"{field_name}"
-                        )
+                        errors.append(f"Entity '{entity_id}' state change has undeclared field {field_name}")
 
         for stat_key in changes.stat_changes:
             if corpus is None or corpus.stats is None:
-                errors.append(
-                    f"stat_changes references '{stat_key}' but corpus has no stats block"
-                )
+                errors.append(f"stat_changes references '{stat_key}' but corpus has no stats block")
             elif stat_key not in corpus.stats.definitions:
-                errors.append(
-                    f"stat_changes references undeclared stat: {stat_key}"
-                )
+                errors.append(f"stat_changes references undeclared stat: {stat_key}")
 
         if errors:
             raise ValueError("\n".join(errors))
@@ -536,9 +467,7 @@ class StateManager:
                 if target not in self.soft_state.room_notes:
                     self.soft_state.room_notes[target] = []
                 if not isinstance(patch.new_value, str):
-                    raise ValueError(
-                        f"room_note patch new_value must be a string, got {type(patch.new_value).__name__}"
-                    )
+                    raise ValueError(f"room_note patch has invalid value {type(patch.new_value).__name__}")
                 self.soft_state.room_notes[target].append(patch.new_value)
 
             elif field == "entity_note":
@@ -548,24 +477,18 @@ class StateManager:
                 if target not in self.soft_state.entity_notes:
                     self.soft_state.entity_notes[target] = []
                 if not isinstance(patch.new_value, str):
-                    raise ValueError(
-                        f"entity_note patch new_value must be a string, got {type(patch.new_value).__name__}"
-                    )
+                    raise ValueError(f"entity_note patch has invalid value {type(patch.new_value).__name__}")
                 self.soft_state.entity_notes[target].append(patch.new_value)
 
             elif field == "soft_inventory_add":
                 if not isinstance(patch.new_value, str):
-                    raise ValueError(
-                        f"soft_inventory_add patch new_value must be a string, got {type(patch.new_value).__name__}"
-                    )
+                    raise ValueError(f"soft_inventory_add has invalid value {type(patch.new_value).__name__}")
                 self.soft_state.soft_inventory.append(patch.new_value)
 
             elif field == "soft_inventory_remove":
                 value = patch.new_value
                 if not isinstance(value, str):
-                    raise ValueError(
-                        f"soft_inventory_remove patch new_value must be a string, got {type(value).__name__}"
-                    )
+                    raise ValueError(f"soft_inventory_remove has invalid value {type(value).__name__}")
                 if value in self.soft_state.soft_inventory:
                     self.soft_state.soft_inventory.remove(value)
 

@@ -58,7 +58,7 @@ class TestLoadAndValidation:
         sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.player.location = "nonexistent_room"
-        with pytest.raises(ValueError, match="Player location"):
+        with pytest.raises(ValueError, match="No matching room"):
             sm._validate_cross_references()
 
     def test_invalid_inventory_item(self) -> None:
@@ -67,7 +67,7 @@ class TestLoadAndValidation:
         sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.player.inventory.append("magic_wand")
-        with pytest.raises(ValueError, match="inventory references unknown"):
+        with pytest.raises(ValueError, match="No matching entity: "):
             sm._validate_cross_references()
 
     def test_invalid_room_state_room(self) -> None:
@@ -76,7 +76,7 @@ class TestLoadAndValidation:
         sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.room_states["void"] = {"visited": False}
-        with pytest.raises(ValueError, match="room_states references unknown room"):
+        with pytest.raises(ValueError, match="No matching room: "):
             sm._validate_cross_references()
 
     def test_invalid_entity_state_entity(self) -> None:
@@ -85,7 +85,7 @@ class TestLoadAndValidation:
         sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.entity_states["ghost"] = {"alive": True}
-        with pytest.raises(ValueError, match="entity_states references unknown entity"):
+        with pytest.raises(ValueError, match="No matching entity"):
             sm._validate_cross_references()
 
     def test_undeclared_entity_state_field(self) -> None:
@@ -103,7 +103,7 @@ class TestLoadAndValidation:
         sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.soft_state.room_notes["void"] = ["spooky"]
-        with pytest.raises(ValueError, match="room_notes references unknown room"):
+        with pytest.raises(ValueError, match="No matching room"):
             sm._validate_cross_references()
 
     def test_invalid_entity_note_entity(self) -> None:
@@ -112,7 +112,7 @@ class TestLoadAndValidation:
         sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.soft_state.entity_notes["ghost"] = ["spooky"]
-        with pytest.raises(ValueError, match="entity_notes references unknown entity"):
+        with pytest.raises(ValueError, match="No matching entity: "):
             sm._validate_cross_references()
 
     def test_invalid_npc_attitudes_entity(self) -> None:
@@ -159,7 +159,7 @@ class TestLoadAndValidation:
                 turn_learned=1,
             ),
         ]
-        with pytest.raises(ValueError, match="non-NPC entity"):
+        with pytest.raises(ValueError, match="No matching entity: "):
             sm._validate_cross_references()
 
     def test_invalid_player_knowledge_topic(self) -> None:
@@ -264,7 +264,7 @@ class TestApplyHardChanges:
         assert manager.hard_state.room_states["secret_compartment"]["visited"] is True
 
     def test_room_state_changes_unknown_room_raises(self, manager: StateManager) -> None:
-        with pytest.raises(ValueError, match="unknown room"):
+        with pytest.raises(ValueError, match="No matching room: "):
             manager.apply_hard_changes(
                 HardStateChanges(room_state_changes={"void": {"visited": True}})
             )
@@ -283,7 +283,7 @@ class TestApplyHardChanges:
         assert manager.hard_state.entity_states["korbar"]["alive"] is True
 
     def test_entity_state_changes_unknown_entity_raises(self, manager: StateManager) -> None:
-        with pytest.raises(ValueError, match="unknown entity"):
+        with pytest.raises(ValueError, match="No matching entity: "):
             manager.apply_hard_changes(
                 HardStateChanges(entity_state_changes={"ghost": {"alive": True}})
             )
@@ -407,7 +407,7 @@ class TestApplySoftPatches:
             new_value=123,
             reason="Test.",
         )
-        with pytest.raises(ValueError, match="must be a string"):
+        with pytest.raises(ValueError, match="has invalid value"):
             manager.apply_soft_patches([patch])
 
     def test_entity_note_non_string_raises(self, manager: StateManager) -> None:
@@ -417,7 +417,7 @@ class TestApplySoftPatches:
             new_value={"bad": "value"},
             reason="Test.",
         )
-        with pytest.raises(ValueError, match="must be a string"):
+        with pytest.raises(ValueError, match="has invalid value"):
             manager.apply_soft_patches([patch])
 
     def test_soft_inventory_add_non_string_raises(self, manager: StateManager) -> None:
@@ -426,7 +426,7 @@ class TestApplySoftPatches:
             new_value=123,
             reason="Test.",
         )
-        with pytest.raises(ValueError, match="must be a string"):
+        with pytest.raises(ValueError, match="has invalid value"):
             manager.apply_soft_patches([patch])
 
     def test_soft_inventory_remove_non_string_raises(self, manager: StateManager) -> None:
@@ -435,7 +435,7 @@ class TestApplySoftPatches:
             new_value=["list"],
             reason="Test.",
         )
-        with pytest.raises(ValueError, match="must be a string"):
+        with pytest.raises(ValueError, match="has invalid value"):
             manager.apply_soft_patches([patch])
 
 
@@ -643,7 +643,7 @@ class TestApplyCharSheet:
 
     def test_invalid_location_raises(self) -> None:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
-        with pytest.raises(ValueError, match="not a valid room"):
+        with pytest.raises(ValueError, match="No matching room"):
             sm._apply_char_sheet_data({
                 "system": "d20",
                 "player": {
@@ -661,7 +661,7 @@ class TestApplyCharSheet:
 
     def test_invalid_inventory_raises(self) -> None:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
-        with pytest.raises(ValueError, match="unknown entity"):
+        with pytest.raises(ValueError, match="No matching entity: "):
             sm._apply_char_sheet_data({
                 "system": "d20",
                 "player": {
