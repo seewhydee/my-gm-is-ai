@@ -30,8 +30,9 @@ class ModelConfig:
 
     name: str
     base_url: str
-    ruling_temperature: float
-    prose_temperature: float
+    ruling_temperature: float | None = None
+    prose_temperature: float | None = None
+    label: str | None = None
     extra_body: dict[str, Any] | None = None
     supports_json_mode: bool = True
 
@@ -41,30 +42,35 @@ class ModelConfig:
 # ------------------------------------------------------------------
 
 _MODEL_REGISTRY: dict[str, ModelConfig] = {
-    "Deepseek v4 Flash": ModelConfig(
+    "deepseek-v4-flash": ModelConfig(
         name="deepseek-v4-flash",
+        label="Deepseek v4 Flash (Deepseek API)",
         base_url="https://api.deepseek.com",
-        ruling_temperature=0.9,
+        ruling_temperature=1.0,
         prose_temperature=1.1,
-        extra_body={"thinking": {"type": "disabled" } } ),
-
-    "Kimi K2.6": ModelConfig(
+        extra_body={"thinking": {"type": "disabled"}},
+    ),
+    "kimi-k2.6": ModelConfig(
         name="kimi-k2.6",
+        label="Kimi K2.6 (Moonshot API)",
         base_url="https://api.moonshot.ai/v1",
-        ruling_temperature=0.3,
-        prose_temperature=0.3),
-
-    "Xiaomi Mimo 2.5": ModelConfig(
+        ruling_temperature=None,
+        prose_temperature=None,
+    ),
+    "mimo-v2.5": ModelConfig(
         name="mimo-v2.5",
+        label="Mimo 2.5 (Xiaomi API)",
         base_url="https://api.xiaomimimo.com/v1",
-        ruling_temperature=0.3,
-        prose_temperature=0.3),
-
-    "Mistral Small 4": ModelConfig(
+        ruling_temperature=0.6,
+        prose_temperature=0.7,
+    ),
+    "mistral-small-2603": ModelConfig(
         name="mistral-small-2603",
+        label="Mistral Small 4 (Mistral API)",
         base_url="https://api.mistral.ai/v1",
         ruling_temperature=0.65,
-        prose_temperature=0.75),
+        prose_temperature=0.75,
+    ),
 }
 
 # ------------------------------------------------------------------
@@ -93,8 +99,6 @@ def get_model_config(model_name: str, base_url: str | None = None) -> ModelConfi
         config = ModelConfig(
             name=model_name,
             base_url=base_url,
-            ruling_temperature=0.7,
-            prose_temperature=0.9,
             extra_body=None,
         )
 
@@ -107,6 +111,11 @@ def get_model_config(model_name: str, base_url: str | None = None) -> ModelConfi
 def list_known_models() -> list[str]:
     """Return the names of all models in the registry."""
     return list(_MODEL_REGISTRY.keys())
+
+
+def get_known_model_labels() -> dict[str, str]:
+    """Return a mapping of model name to human-readable label."""
+    return {name: (config.label or name) for name, config in _MODEL_REGISTRY.items()}
 
 
 def register_model(config: ModelConfig) -> None:

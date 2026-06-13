@@ -20,7 +20,7 @@ import getpass
 from pathlib import Path
 from typing import Any, Callable
 
-from mgmai.llm.model_config import get_model_config, list_known_models
+from mgmai.llm.model_config import get_known_model_labels, get_model_config
 from mgmai.logging import get_level, set_level
 
 import logging
@@ -200,12 +200,13 @@ class Commands:
         self._render("")
 
         # --- Model selection ---
-        known = list_known_models()
+        known = get_known_model_labels()
+        known_names = list(known.keys())
         self._render("[bold]Known models:[/bold]")
-        for i, name in enumerate(known, 1):
+        for i, (name, label) in enumerate(known.items(), 1):
             cfg = get_model_config(name)
             marker = " [dim](current)[/dim]" if name == current_model else ""
-            self._render(f"  {i}. [cyan]{name}[/cyan]{marker} — {cfg.base_url}")
+            self._render(f"  {i}. [cyan]{label}[/cyan]{marker} — {cfg.base_url}")
         self._render(f"  {len(known) + 1}. [yellow]Custom model...[/yellow]")
 
         try:
@@ -218,7 +219,7 @@ class Commands:
             try:
                 idx = int(choice)
                 if 1 <= idx <= len(known):
-                    new_model = known[idx - 1]
+                    new_model = known_names[idx - 1]
                 elif idx == len(known) + 1:
                     new_model = input("  Enter model name: ").strip()
                     if not new_model:

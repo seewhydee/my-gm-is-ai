@@ -20,6 +20,8 @@ import pytest
 
 from mgmai.llm.model_config import (
     ModelConfig,
+    _MODEL_REGISTRY,
+    get_known_model_labels,
     get_model_config,
     list_known_models,
     register_model,
@@ -30,8 +32,9 @@ class TestGetModelConfig:
     def test_returns_registry_entry_for_known_model(self):
         config = get_model_config("deepseek-v4-flash")
         assert config.name == "deepseek-v4-flash"
+        assert config.label == "Deepseek v4 Flash (Deepseek API)"
         assert config.base_url == "https://api.deepseek.com"
-        assert config.ruling_temperature == 0.9
+        assert config.ruling_temperature == 1.0
         assert config.prose_temperature == 1.1
         assert config.extra_body == {"thinking": {"type": "disabled"}}
 
@@ -39,12 +42,17 @@ class TestGetModelConfig:
         with pytest.raises(ValueError, match="Unknown model 'gpt-4o'"):
             get_model_config("gpt-4o")
 
+    def test_kimi_omits_temperatures(self):
+        config = get_model_config("kimi-k2.6")
+        assert config.ruling_temperature is None
+        assert config.prose_temperature is None
+
     def test_unknown_model_with_base_url_returns_generic_default(self):
         config = get_model_config("gpt-4o", base_url="https://api.openai.com/v1")
         assert config.name == "gpt-4o"
         assert config.base_url == "https://api.openai.com/v1"
-        assert config.ruling_temperature == 0.7
-        assert config.prose_temperature == 0.9
+        assert config.ruling_temperature is None
+        assert config.prose_temperature is None
         assert config.extra_body is None
 
     def test_base_url_override_for_known_model(self):
@@ -67,6 +75,31 @@ class TestListKnownModels:
         models = list_known_models()
         assert "deepseek-v4-flash" in models
 
+    def test_returns_names_not_labels(self):
+        models = list_known_models()
+        assert "Deepseek v4 Flash" not in models
+        assert all(isinstance(m, str) for m in models)
+
+
+class TestGetKnownModelLabels:
+    def test_maps_names_to_labels(self):
+        labels = get_known_model_labels()
+        assert labels["deepseek-v4-flash"] == "Deepseek v4 Flash (Deepseek API)"
+        assert "kimi-k2.6" in labels
+
+    def test_falls_back_to_name_when_label_missing(self):
+        register_model(ModelConfig(
+            name="unlabeled-model",
+            base_url="https://example.com",
+            ruling_temperature=0.5,
+            prose_temperature=0.6,
+        ))
+        try:
+            labels = get_known_model_labels()
+            assert labels["unlabeled-model"] == "unlabeled-model"
+        finally:
+            _MODEL_REGISTRY.pop("unlabeled-model", None)
+
 
 class TestRegisterModel:
     def test_adds_new_model_to_registry(self):
@@ -77,9 +110,11 @@ class TestRegisterModel:
             prose_temperature=0.6,
         )
         register_model(config)
-
-        retrieved = get_model_config("test-model")
-        assert retrieved == config
+        try:
+            retrieved = get_model_config("test-model")
+            assert retrieved == config
+        finally:
+            _MODEL_REGISTRY.pop("test-model", None)
 
     def test_overwrites_existing_model(self):
         original = get_model_config("deepseek-v4-flash")

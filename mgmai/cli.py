@@ -45,7 +45,7 @@ from mgmai.config import (
 from mgmai.logging import setup_logging
 from mgmai.state.manager import StateManager
 from mgmai.llm.client import LLMClient
-from mgmai.llm.model_config import get_model_config, list_known_models
+from mgmai.llm.model_config import get_known_model_labels, get_model_config
 from mgmai.game.display import Display
 from mgmai.game.loop import GameLoop
 
@@ -141,9 +141,9 @@ def main(argv: list[str] | None = None) -> None:
     env_url = os.environ.get("MGMAI_BASE_URL")
     base_url = args.base_url or env_url or app_config.base_url
 
-    if not api_key:
-        api_key, model_name, base_url = _prompt_for_credentials(
-            display, config_dir, credentials, app_config)
+    api_key, model_name, base_url = _prompt_for_llm_config(
+        display, config_dir, credentials, app_config,
+        api_key, model_name, base_url)
 
     config = get_model_config(model_name, base_url=base_url)
 
@@ -199,47 +199,114 @@ def main(argv: list[str] | None = None) -> None:
     loop.start()
 
 
-def _prompt_for_credentials(
+def _prompt_for_llm_config(
     display: Display,
     config_dir: Path,
     credentials: Credentials,
     app_config: AppConfig,
+    api_key: str,
+    model_name: str,
+    base_url: str | None,
 ) -> tuple[str, str, str]:
-    """Prompt for LLM credentials when no API key is found.
+    """Prompt for any missing LLM configuration.
 
-    Return ``(api_key, model_name, base_url)``.
-    Print a non-interactive error message if stdin is not a TTY
+    Returns ``(api_key, model_name, base_url)`` with defaults applied.
+    Print a non-interactive error message if stdin is not a TTY.
     """
+    # Resolve what we have. A known model supplies its own base URL.
+    model_cfg = None
+    resolved_base_url = base_url
+    if model_name:
+        try:
+            model_cfg = get_model_config(model_name, base_url=base_url)
+            resolved_base_url = model_cfg.base_url
+        except ValueError:
+            pass
+
+    missing_api_key = not api_key
+    missing_model = not model_name
+    missing_base_url = model_cfg is None and not resolved_base_url
+
+    if not (missing_api_key or missing_model or missing_base_url):
+        return api_key, model_name, resolved_base_url or ""
+
     if not sys.stdin.isatty():
+        missing: list[str] = []
+        if missing_api_key:
+            missing.append("MGMAI_API_KEY or --api-key")
+        if missing_model:
+            missing.append("MGMAI_MODEL or --model")
+        if missing_base_url:
+            missing.append("MGMAI_BASE_URL or --base-url")
         display.render_error(
-            "No model credentials found.  Set the MGMAI_BASE_URL,"
-            " MGMAI_MODEL, and MGMAI_API_KEY env vars, or pass"
-            " --base-url, --model, and --api-key, or run interactively"
-            " to be prompted."
+            "Missing LLM configuration: " + ", ".join(missing) + ". "
+            "Set the corresponding env vars, pass the CLI options, "
+            "or run interactively to be prompted."
         )
         sys.exit(1)
 
-    default_model = app_config.model_name
-    default_url = app_config.base_url or "https://api.deepseek.com"
+    display.print("\n[yellow]Some LLM configuration is missing.[/yellow]")
+    display.print("Please select a model or enter a custom configuration.\n")
 
-    display.print("\n[yellow]No API key found from environment or saved credentials.[/yellow]")
-    display.print(
-        "Please enter your LLM configuration below. Press Enter to accept defaults.\n"
-    )
-
-    base_url = input(f"Base URL [{default_url}]: ").strip()
-    if not base_url:
-        base_url = default_url
-
-    model_name = input(f"Model name [{default_model}]: ").strip()
-    if not model_name:
-        model_name = default_model
+    labels = get_known_model_labels()
+    names = list(labels.keys())
+    for i, (name, label) in enumerate(labels.items(), 1):
+        marker = " [dim](current)[/dim]" if name == model_name else ""
+        display.print(f"  {i}. {label}{marker}")
+    custom_idx = len(labels) + 1
+    display.print(f"  {custom_idx}. Custom model...")
 
     while True:
-        api_key = getpass.getpass("API key: ").strip()
-        if api_key:
+        choice = input("\nSelect model number: ").strip()
+        if not choice:
+            display.print("[red]Please enter a number.[/red]")
+            continue
+        try:
+            idx = int(choice)
+        except ValueError:
+            display.print("[red]Please enter a number.[/red]")
+            continue
+        if 1 <= idx <= len(labels):
+            model_cfg = get_model_config(names[idx - 1])
+            model_name = model_cfg.name
+            base_url = model_cfg.base_url
             break
-        display.print("[red]API key cannot be empty.[/red]")
+        if idx == custom_idx:
+            default = model_name or app_config.model_name or ""
+            prompt = f"Model name [{default}]: " if default else "Model name: "
+            while True:
+                value = input(prompt).strip()
+                if value:
+                    model_name = value
+                    break
+                if model_name:
+                    break
+                display.print("[red]Model name cannot be empty.[/red]")
+
+            default = base_url or app_config.base_url or ""
+            prompt = f"Base URL [{default}]: " if default else "Base URL: "
+            while True:
+                value = input(prompt).strip()
+                if value:
+                    base_url = value
+                    break
+                if base_url:
+                    break
+                display.print("[red]Base URL cannot be empty for a custom model.[/red]")
+            break
+        display.print("[red]Invalid selection.[/red]")
+
+    # Prompt for API key if missing; allow Enter to keep an existing key.
+    if missing_api_key or not api_key:
+        while True:
+            hint = "keep current" if api_key else "required"
+            new_key = getpass.getpass(f"API key [{hint}]: ").strip()
+            if new_key:
+                api_key = new_key
+                break
+            if api_key:
+                break
+            display.print("[red]API key cannot be empty.[/red]")
 
     credentials.api_key = api_key
     try:

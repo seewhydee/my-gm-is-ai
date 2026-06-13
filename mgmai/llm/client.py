@@ -72,15 +72,16 @@ class LLMClient:
     # ------------------------------------------------------------------
 
     def _call(self, system_prompt: str, user_prompt: str,
-              temperature: float) -> str:
+              temperature: float | None) -> str:
         kwargs: dict[str, Any] = {
             "model": self._config.name,
-            "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         }
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         if self._config.supports_json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         if self._config.extra_body is not None:

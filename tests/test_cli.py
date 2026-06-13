@@ -70,6 +70,86 @@ class TestCliArguments:
         assert "mgmai" in captured.out
 
 
+class TestCliPrompting:
+    """Tests for the interactive LLM configuration prompt."""
+
+    def _run_prompt_test(
+        self,
+        monkeypatch,
+        inputs: list[str],
+        passwords: list[str],
+        cli_args: list[str],
+    ) -> MagicMock:
+        """Run main with mocked stdin/getpass and return the LLMClient mock."""
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        input_iter = iter(inputs)
+        pass_iter = iter(passwords)
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(input_iter))
+        monkeypatch.setattr("getpass.getpass", lambda _prompt="": next(pass_iter))
+
+        mock_loop = MagicMock()
+        with patch("mgmai.cli.GameLoop", return_value=mock_loop):
+            with patch("mgmai.cli.LLMClient") as mock_llm_cls:
+                with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
+                    with patch("mgmai.cli.load_credentials", return_value=Credentials()):
+                        with patch("mgmai.cli.save_app_config"):
+                            with patch("mgmai.cli.save_credentials"):
+                                main(cli_args)
+        return mock_llm_cls
+
+    def test_prompts_for_api_key_when_model_known(self, monkeypatch) -> None:
+        monkeypatch.delenv("MGMAI_API_KEY", raising=False)
+        monkeypatch.delenv("MGMAI_BASE_URL", raising=False)
+        monkeypatch.delenv("MGMAI_MODEL", raising=False)
+
+        mock_llm_cls = self._run_prompt_test(
+            monkeypatch,
+            inputs=["1"],  # select deepseek-v4-flash
+            passwords=["prompted-key"],
+            cli_args=[str(BAG_OF_HOLDING)],
+        )
+
+        _, kwargs = mock_llm_cls.call_args
+        assert kwargs["api_key"] == "prompted-key"
+        assert kwargs["config"].name == "deepseek-v4-flash"
+        assert kwargs["config"].base_url == "https://api.deepseek.com"
+
+    def test_prompts_for_custom_model_when_base_url_missing(self, monkeypatch) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "existing-key")
+        monkeypatch.delenv("MGMAI_BASE_URL", raising=False)
+
+        mock_llm_cls = self._run_prompt_test(
+            monkeypatch,
+            inputs=[
+                "5",                       # custom model
+                "",                        # keep model name from --model
+                "https://api.openai.com/v1",  # base URL
+                "",                        # keep API key
+            ],
+            passwords=[""],
+            cli_args=[str(BAG_OF_HOLDING), "--model", "gpt-4o"],
+        )
+
+        _, kwargs = mock_llm_cls.call_args
+        assert kwargs["api_key"] == "existing-key"
+        assert kwargs["config"].name == "gpt-4o"
+        assert kwargs["config"].base_url == "https://api.openai.com/v1"
+
+    def test_non_tty_reports_missing_base_url(self, monkeypatch, capsys) -> None:
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        monkeypatch.delenv("MGMAI_BASE_URL", raising=False)
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+
+        with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
+            with patch("mgmai.cli.load_credentials", return_value=Credentials()):
+                with pytest.raises(SystemExit) as exc_info:
+                    main([str(BAG_OF_HOLDING), "--model", "unknown-model"])
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "MGMAI_BASE_URL" in captured.out
+
+
 class TestCliBoot:
     """Tests for the CLI boot sequence with mocked dependencies."""
 
