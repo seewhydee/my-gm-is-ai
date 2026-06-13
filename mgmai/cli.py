@@ -64,7 +64,7 @@ def _invocation_name() -> str:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="mgmai",
-        description="My GM is AI — an AI-driven Game Master for tabletop RPG adventures")
+        description="My GM is AI: a Game Master for tabletop-style RPG adventures")
 
     ## Adventure settings
     parser.add_argument(

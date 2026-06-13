@@ -41,15 +41,31 @@ class ModelConfig:
 # ------------------------------------------------------------------
 
 _MODEL_REGISTRY: dict[str, ModelConfig] = {
-    "deepseek-v4-flash": ModelConfig(
+    "Deepseek v4 Flash": ModelConfig(
         name="deepseek-v4-flash",
         base_url="https://api.deepseek.com",
         ruling_temperature=0.9,
         prose_temperature=1.1,
-        extra_body={"thinking": {"type": "disabled"}},
-    ),
-}
+        extra_body={"thinking": {"type": "disabled" } } ),
 
+    "Kimi K2.6": ModelConfig(
+        name="kimi-k2.6",
+        base_url="https://api.moonshot.ai/v1",
+        ruling_temperature=0.3,
+        prose_temperature=0.3),
+
+    "Xiaomi Mimo 2.5": ModelConfig(
+        name="mimo-v2.5",
+        base_url="https://api.xiaomimimo.com/v1",
+        ruling_temperature=0.3,
+        prose_temperature=0.3),
+
+    "Mistral Small 4": ModelConfig(
+        name="mistral-small-2603",
+        base_url="https://api.mistral.ai/v1",
+        ruling_temperature=0.65,
+        prose_temperature=0.75),
+}
 
 # ------------------------------------------------------------------
 # Public API
