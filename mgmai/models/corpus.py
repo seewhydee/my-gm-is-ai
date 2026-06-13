@@ -68,6 +68,11 @@ class ParameterSignature(BaseModel):
     using: Optional[List[str]] = None
 
 
+class StatModifier(BaseModel):
+    mode: Literal["delta", "set"] = "delta"
+    value: int
+
+
 class ChainedCheck(BaseModel):
     check: CheckType
     success: Result
@@ -79,7 +84,7 @@ class Result(BaseModel):
     add_item: Optional[str] = None
     remove_item: Optional[str] = None
     set_flag: Optional[Dict[str, bool]] = None
-    set_stat: Optional[Dict[str, int]] = None
+    alter_stat: Optional[Dict[str, StatModifier]] = None
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
     set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
     adjust_attitude: Optional[Dict[str, int]] = None
@@ -166,7 +171,7 @@ class Interaction(BaseModel):
 class TraversalEffect(BaseModel):
     set_flag: Optional[Dict[str, bool]] = None
     set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
-    set_stat: Optional[Dict[str, int]] = None
+    alter_stat: Optional[Dict[str, StatModifier]] = None
     narrative: Optional[str] = None
     trigger_encounter: Optional[str] = None
     skip_if: Optional[ConditionExpression] = None
@@ -293,7 +298,7 @@ class DialogueGuidelines(BaseModel):
 class BranchOutcome(BaseModel):
     outcome: str
     set_flags: Optional[Dict[str, bool]] = None
-    set_stat: Optional[Dict[str, int]] = None
+    alter_stat: Optional[Dict[str, StatModifier]] = None
     narrative: Optional[str] = None
 
 
@@ -304,7 +309,7 @@ class EncounterRule(BaseModel):
     check: Optional[StatCheck] = None
     narrative: Optional[str] = None
     set_flags: Optional[Dict[str, bool]] = None
-    set_stat: Optional[Dict[str, int]] = None
+    alter_stat: Optional[Dict[str, StatModifier]] = None
     on_success: Optional[BranchOutcome] = None
     on_failure: Optional[BranchOutcome] = None
 

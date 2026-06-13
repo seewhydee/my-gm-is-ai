@@ -31,6 +31,7 @@ from mgmai.models.actions import (
     TransferAction,
     WaitAction,
 )
+from mgmai.models.corpus import StatModifier
 from mgmai.state.manager import StateManager
 
 ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
@@ -67,8 +68,8 @@ class TestEngineFullFlow:
             "INT": 10, "WIS": 10, "CHA": 10,
         }
         assert result.hard_state_changes is not None
-        assert result.hard_state_changes.stat_changes == {
-            "STR": -4, "DEX": -4, "CON": -4,
+        assert result.hard_state_changes.stat_modifiers == {
+            "STR": StatModifier(value=-4), "DEX": StatModifier(value=-4), "CON": StatModifier(value=-4),
         }
 
     def test_resolve_move_fail(self, state_manager):

@@ -22,6 +22,7 @@ from mgmai.models.corpus import (
     EncounterRule,
     ModuleCorpus,
     StatCheck,
+    StatModifier,
 )
 from mgmai.models.hard_state import HardGameState, GameOverState
 from mgmai.models.soft_state import SoftGameState
@@ -52,7 +53,7 @@ def resolve_encounter(
         "outcome": "none",
         "narrative": None,
         "set_flags": {},
-        "set_stat": {},
+        "alter_stat": {},
         "game_over": None,
         "flee_effects": None,
         "rolls": [],
@@ -73,7 +74,7 @@ def _apply_encounter_rule(
             "outcome": "death",
             "narrative": rule.narrative,
             "set_flags": rule.set_flags or {},
-            "set_stat": rule.set_stat or {},
+            "alter_stat": rule.alter_stat or {},
             "game_over": {
                 "type": "lose",
                 "trigger": npc_id or "encounter",
@@ -100,7 +101,7 @@ def _apply_encounter_rule(
             "outcome": "flee",
             "narrative": rule.narrative,
             "set_flags": set_flags,
-            "set_stat": rule.set_stat or {},
+            "alter_stat": rule.alter_stat or {},
             "game_over": None,
             "flee_effects": flee_data,
             "rolls": [],
@@ -112,7 +113,7 @@ def _apply_encounter_rule(
                 "outcome": "none",
                 "narrative": None,
                 "set_flags": {},
-                "set_stat": {},
+                "alter_stat": {},
                 "game_over": None,
                 "flee_effects": None,
                 "rolls": [],
@@ -127,7 +128,7 @@ def _apply_encounter_rule(
                 "outcome": f"stat_check_{'success' if success else 'failure'}",
                 "narrative": rule.narrative,
                 "set_flags": rule.set_flags or {},
-                "set_stat": rule.set_stat or {},
+                "alter_stat": rule.alter_stat or {},
                 "game_over": None,
                 "flee_effects": None,
                 "rolls": encounter_rolls,
@@ -138,7 +139,7 @@ def _apply_encounter_rule(
             "outcome": sub_outcome,
             "narrative": branch.narrative if branch else rule.narrative,
             "set_flags": {},
-            "set_stat": {},
+            "alter_stat": {},
             "game_over": None,
             "flee_effects": None,
             "rolls": encounter_rolls,
@@ -151,10 +152,10 @@ def _apply_encounter_rule(
             for flag, val in branch.set_flags.items():
                 result["set_flags"][flag] = val
 
-        if rule.set_stat:
-            result["set_stat"].update(rule.set_stat)
-        if branch.set_stat:
-            result["set_stat"].update(branch.set_stat)
+        if rule.alter_stat:
+            result["alter_stat"].update(rule.alter_stat)
+        if branch.alter_stat:
+            result["alter_stat"].update(branch.alter_stat)
 
         if sub_outcome == "death":
             result["game_over"] = {
@@ -184,7 +185,7 @@ def _apply_encounter_rule(
                 "outcome": "none",
                 "narrative": None,
                 "set_flags": {},
-                "set_stat": {},
+                "alter_stat": {},
                 "game_over": None,
                 "flee_effects": None,
                 "rolls": [],
@@ -198,7 +199,7 @@ def _apply_encounter_rule(
                 "outcome": f"roll_{'success' if success else 'failure'}",
                 "narrative": rule.narrative,
                 "set_flags": rule.set_flags or {},
-                "set_stat": rule.set_stat or {},
+                "alter_stat": rule.alter_stat or {},
                 "game_over": None,
                 "flee_effects": None,
                 "rolls": [{
@@ -214,7 +215,7 @@ def _apply_encounter_rule(
             "outcome": sub_outcome,
             "narrative": branch.narrative if branch else rule.narrative,
             "set_flags": {},
-            "set_stat": {},
+            "alter_stat": {},
             "game_over": None,
             "flee_effects": None,
             "rolls": [{
@@ -232,10 +233,10 @@ def _apply_encounter_rule(
             for flag, val in branch.set_flags.items():
                 result["set_flags"][flag] = val
 
-        if rule.set_stat:
-            result["set_stat"].update(rule.set_stat)
-        if branch.set_stat:
-            result["set_stat"].update(branch.set_stat)
+        if rule.alter_stat:
+            result["alter_stat"].update(rule.alter_stat)
+        if branch.alter_stat:
+            result["alter_stat"].update(branch.alter_stat)
 
         if sub_outcome == "death":
             result["game_over"] = {
@@ -263,7 +264,7 @@ def _apply_encounter_rule(
         "outcome": "none",
         "narrative": None,
         "set_flags": {},
-        "set_stat": {},
+        "alter_stat": {},
         "game_over": None,
         "flee_effects": None,
         "rolls": [],

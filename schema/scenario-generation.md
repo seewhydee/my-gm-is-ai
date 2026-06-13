@@ -275,7 +275,7 @@ Each dialogue path has:
 - `check` + `success`/`failure`: a probabilistic stat check with outcomes
 - `result`: a deterministic outcome when no check is needed.  Path
   results support the same fields as interaction results (`narrative`,
-  `set_flag`, `set_stat`, `adjust_attitude`, etc.).
+  `set_flag`, `alter_stat`, `adjust_attitude`, etc.).
 
 Example: a spider that can be flattered with a CHA check to improve attitude:
 
@@ -525,7 +525,7 @@ For every exit described in the scenario, produce an exit object:
 | Field | Description |
 |-------|-------------|
 | `set_flag` | Object of flags to set on traversal: `{ "<name>": true/false }` |
-| `set_stat` | **Optional.** Stat deltas to apply on traversal: `{ "<stat>": <delta> }`. Use for fall damage, traps, etc. Keys must be declared in `corpus.stats.definitions`. |
+| `alter_stat` | **Optional.** Stat modifiers to apply on traversal: `{ "<stat>": { "mode": "delta"|"set", "value": <int> } }` (mode defaults to `"delta"`). Use for fall damage, traps, etc. Keys must be declared in `corpus.stats.definitions`. |
 | `narrative` | Canonical prose for the traversal event, passed as `triggered_narration` to LLM Call 2 |
 | `trigger_encounter` | Mechanic ID to trigger on traversal (e.g., `"fall_damage"`) |
 | `skip_if` | Condition object — if met, the traverse effect (narrative, flag setting, etc.) is skipped |
@@ -944,7 +944,7 @@ They follow the same rule structure as NPC behavior encounter_rules:
       "on_failure": {
         "outcome": "flee",
         "narrative": "You fall hard and injure yourself badly.",
-        "set_stat": { "STR": -4, "DEX": -4, "CON": -4 }
+        "alter_stat": { "STR": { "value": -4 }, "DEX": { "value": -4 }, "CON": { "value": -4 } }
       }
     }
   ]
@@ -1228,8 +1228,8 @@ cross-file consistency issues.
 - [ ] Every stat check (stat_check type) references a stat key in
   `corpus.stats.definitions` (if stats block exists; otherwise, no stat_check
   should appear)
-- [ ] Every `set_stat` result references a stat key in `stats.definitions`
-  (if stats block exists; otherwise, no set_stat should appear)
+- [ ] Every `alter_stat` result references a stat key in `stats.definitions`
+  (if stats block exists; otherwise, no alter_stat should appear)
 
 ### Hard-state checks
 

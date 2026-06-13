@@ -39,6 +39,7 @@ from mgmai.models.corpus import (
     Result,
     RollCheck,
     StatCheck,
+    StatModifier,
     TraversalCheck,
     UsingResultOverride,
 )
@@ -277,11 +278,21 @@ def resolve_move(
             if trav.set_room_state:
                 for target_room_id, state_changes in trav.set_room_state.items():
                     changes.room_state_changes.setdefault(target_room_id, {}).update(state_changes)
-            if trav.set_stat:
-                for stat_key, delta in trav.set_stat.items():
-                    changes.stat_changes[stat_key] = (
-                        changes.stat_changes.get(stat_key, 0) + delta
-                    )
+            if trav.alter_stat:
+                for stat_key, mod in trav.alter_stat.items():
+                    if mod.mode == "set":
+                        changes.stat_modifiers[stat_key] = mod
+                    else:
+                        existing = changes.stat_modifiers.get(stat_key)
+                        if existing is not None and existing.mode == "set":
+                            changes.stat_modifiers[stat_key] = StatModifier(
+                                mode="set", value=existing.value + mod.value
+                            )
+                        else:
+                            prev = existing.value if existing else 0
+                            changes.stat_modifiers[stat_key] = StatModifier(
+                                mode="delta", value=prev + mod.value
+                            )
             if trav.trigger_encounter:
                 encounter_trigger = trav.trigger_encounter
 
@@ -1133,9 +1144,21 @@ def _apply_result(
                 changes.flags_cleared.append(flag)
             else:
                 changes.flags_set[flag] = val
-    if result.set_stat:
-        for stat_key, delta in result.set_stat.items():
-            changes.stat_changes[stat_key] = changes.stat_changes.get(stat_key, 0) + delta
+    if result.alter_stat:
+        for stat_key, mod in result.alter_stat.items():
+            if mod.mode == "set":
+                changes.stat_modifiers[stat_key] = mod
+            else:
+                existing = changes.stat_modifiers.get(stat_key)
+                if existing is not None and existing.mode == "set":
+                    changes.stat_modifiers[stat_key] = StatModifier(
+                        mode="set", value=existing.value + mod.value
+                    )
+                else:
+                    prev = existing.value if existing else 0
+                    changes.stat_modifiers[stat_key] = StatModifier(
+                        mode="delta", value=prev + mod.value
+                    )
     if result.set_entity_state and hard is not None:
         for ent_id, state_changes in result.set_entity_state.items():
             if ent_id not in hard.entity_states:

@@ -96,7 +96,7 @@ The `on_traverse` object supports these fields; all are optional:
 |---------------------|------------------|-------------|
 | `set_flag`          | object           | Sets hard-state flags: `{ "<flag_name>": true\|false, ... }`. |
 | `set_room_state`    | object           | **Optional.** Sets per-room state on traversal: `{ "<room_id>": { "<field>": <value>, ... } }`. Commonly used to record which room the player entered from, so downstream conditions can gate exits/ interactions with `room:<room_id>.<field>`. |
-| `set_stat`          | object           | **Optional.** Stat deltas to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are integer changes (positive or negative). E.g., `{ "STR": -4, "DEX": -4, "CON": -4 }` for fall damage. |
+| `alter_stat`        | object           | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). E.g., `{ "STR": { "value": -4 } }` for fall damage, `{ "INT": { "mode": "set", "value": 3 } }` for a curse. |
 | `narrative`         | string           | Pre-written prose for the traverse event. |
 | `trigger_encounter` | string           | Triggers a named encounter from `mechanics`. |
 | `skip_if`           | condition object | Condition under which the effect is skipped. |
@@ -302,7 +302,7 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
   "add_item": "<item_id> (optional, adds to player inventory)",
   "remove_item": "<item_id> (optional)",
   "set_flag": { "<flag_name>": true | false },
-  "set_stat": { "<stat_key>": <delta> },
+  "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
   "adjust_attitude": { "<npc_id>": <delta> },
   "reveals": "string (hint text for the player's future reference)",
   "chain_check": { /* chained check (optional) */ }
@@ -316,7 +316,7 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 | `remove_item` | string | Item entity ID to remove from hard inventory. |
 | `set_flag`        | object | Hard-state flags to set or clear. |
 | `set_room_state`  | object | **Optional.** Per-room state changes: `{ "<room_id>": { "<field>": <value>, ... } }`. Useful for recording entry direction or other room-specific state that conditions can read via `room:<room_id>.<field>`. |
-| `set_stat`        | object | **Optional.** Stat deltas to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are integer changes (positive or negative). E.g., `{ "STR": -4, "DEX": -4, "CON": -4 }` for fall damage. |
+| `alter_stat`        | object | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). Use `"delta"` for damage/buffs (e.g., fall damage: `{ "STR": { "value": -4 } }`); use `"set"` for absolute assignment (e.g., a curse: `{ "INT": { "mode": "set", "value": 3 } }`). |
 | `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
 | `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
 | `chain_check`     | object | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See Chained check below. |
@@ -428,7 +428,7 @@ the canvas walls triggers an INT check to deduce the glow is magical."
 
 The base `description` of the entity/room is returned first in the narration;
 on-examine event narratives are appended after it. Results may carry
-`set_flag`, `set_stat`, `add_item`, and `chain_check` like any other result.
+`set_flag`, `alter_stat`, `add_item`, and `chain_check` like any other result.
 Multiple on-examine events on the same target all fire (in array order) if
 their conditions are met.
 
@@ -597,7 +597,7 @@ follower.
 | `failure`   | object | Result applied when the check fails. |
 | `result`    | object | Deterministic result when no `check` is present. Mutually exclusive with `check`. |
 
-Path results support the same fields as interaction `Result` objects: `narrative`, `set_flag`, `set_stat`, `adjust_attitude`, `reveals`, `chain_check`.
+Path results support the same fields as interaction `Result` objects: `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`, `chain_check`.
 
 #### Knowledge tag validation (`will_reveal` flow)
 
@@ -649,9 +649,9 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
       "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
       "narrative": "string",
       "set_flags": { "<flag>": true },
-      "set_stat": { "<stat_key>": <delta> },
-      "on_success": { "outcome": "...", "set_flags": {}, "set_stat": {}, "narrative": "..." },
-      "on_failure": { "outcome": "...", "set_flags": {}, "set_stat": {}, "narrative": "..." }
+      "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
+      "on_success": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "narrative": "..." },
+      "on_failure": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "narrative": "..." }
     }
   ],
   "on_flee": {
@@ -669,7 +669,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
   is applied. Conditions are condition objects (see Condition object section)
   evaluated against hard state (flags, inventory, entity states) and soft state
   (attitudes).
-- `set_stat` (optional) applies stat deltas to the player when the rule fires. When a branch (`on_success`/`on_failure`) also carries `set_stat`, the branch values override rule-level values for the same stat key.
+- `alter_stat` (optional) applies stat modifiers to the player when the rule fires. Each value is `{ "mode": "delta"|"set", "value": <int> }` (mode defaults to `"delta"`). When a branch (`on_success`/`on_failure`) also carries `alter_stat`, the branch values override rule-level values for the same stat key.
 - For phase 1 (kill-or-be-killed resolution), outcomes are:
   - `death` — player dies, game over.
   - `flee` — creature flees, applying `on_flee` effects.
@@ -706,18 +706,18 @@ Game-over conditions live here too.
         "outcome": "death | flee | roll | stat_check",
         "threshold": 0.50,
         "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
-        "on_success": { "outcome": "...", "set_flags": {}, "set_stat": {}, "narrative": "..." },
-        "on_failure": { "outcome": "...", "set_flags": {}, "set_stat": {}, "narrative": "..." },
+        "on_success": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "narrative": "..." },
+        "on_failure": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "narrative": "..." },
         "narrative": "string",
         "set_flags": {},
-        "set_stat": {}
+        "alter_stat": {}
       }
     ]
   }
 }
 ```
 
-Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are condition objects (see Condition object section). Rule and branch `set_stat` objects follow the same delta semantics as interaction `Result.set_stat`.
+Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are condition objects (see Condition object section). Rule and branch `alter_stat` objects follow the same modifier semantics as interaction `Result.alter_stat`.
 
 ### Game-over conditions
 

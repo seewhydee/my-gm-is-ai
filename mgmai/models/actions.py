@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
 from mgmai.models.briefing import BriefingRoom
+from mgmai.models.corpus import StatModifier
 from mgmai.models.narration import AttitudeChange
 from mgmai.models.soft_state import SoftStatePatch
 
@@ -149,7 +150,8 @@ class HardStateChanges(BaseModel):
     flags_cleared: List[str] = Field(default_factory=list)
     room_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     entity_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    stat_changes: Dict[str, int] = Field(default_factory=dict)
+    stat_modifiers: Dict[str, StatModifier] = Field(default_factory=dict)
+    old_stat_values: Dict[str, int] = Field(default_factory=dict)
 
     def merge(self, other: "HardStateChanges") -> "HardStateChanges":
         """Merge another HardStateChanges into this one in-place."""
@@ -163,8 +165,23 @@ class HardStateChanges(BaseModel):
             self.room_state_changes.setdefault(room_id, {}).update(changes)
         for entity_id, changes in other.entity_state_changes.items():
             self.entity_state_changes.setdefault(entity_id, {}).update(changes)
-        for stat_key, delta in other.stat_changes.items():
-            self.stat_changes[stat_key] = self.stat_changes.get(stat_key, 0) + delta
+        for stat_key, mod in other.stat_modifiers.items():
+            if mod.mode == "set":
+                self.stat_modifiers[stat_key] = mod
+            else:
+                existing = self.stat_modifiers.get(stat_key)
+                if existing is not None and existing.mode == "set":
+                    self.stat_modifiers[stat_key] = StatModifier(
+                        mode="set", value=existing.value + mod.value
+                    )
+                else:
+                    prev = existing.value if existing else 0
+                    self.stat_modifiers[stat_key] = StatModifier(
+                        mode="delta", value=prev + mod.value
+                    )
+        for stat_key, old_val in other.old_stat_values.items():
+            if stat_key not in self.old_stat_values:
+                self.old_stat_values[stat_key] = old_val
         return self
 
     def has_changes(self) -> bool:
@@ -177,7 +194,7 @@ class HardStateChanges(BaseModel):
             or bool(self.flags_cleared)
             or bool(self.room_state_changes)
             or bool(self.entity_state_changes)
-            or bool(self.stat_changes)
+            or bool(self.stat_modifiers)
         )
 
 

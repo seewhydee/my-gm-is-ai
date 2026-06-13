@@ -33,6 +33,7 @@ from mgmai.models.corpus import (
     ConditionExpression,
     ModuleCorpus,
     StatCheck,
+    StatModifier,
 )
 from mgmai.models.hard_state import HardGameState, GameOverState
 from mgmai.models.soft_state import SoftGameState
@@ -169,7 +170,7 @@ class TestResolveEncounter:
         assert result["outcome"] == "flee"
         assert result["narrative"] == "First rule fires."
 
-    def test_rule_level_set_stat_on_death(self, sample_corpus):
+    def test_rule_level_alter_stat_on_death(self, sample_corpus):
         hard = _load_hard()
         soft = _load_soft()
         rules = [
@@ -177,14 +178,14 @@ class TestResolveEncounter:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="death",
                 narrative="You die.",
-                set_stat={"CON": -4},
+                alter_stat={"CON": StatModifier(value=-4)},
             ),
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus)
         assert result["outcome"] == "death"
-        assert result["set_stat"] == {"CON": -4}
+        assert result["alter_stat"] == {"CON": StatModifier(value=-4)}
 
-    def test_branch_set_stat_on_stat_check(self, sample_corpus, monkeypatch):
+    def test_branch_alter_stat_on_stat_check(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
         monkeypatch.setattr("mgmai.engine.encounters.random.randint", lambda a, b: 20)
@@ -195,16 +196,16 @@ class TestResolveEncounter:
                 check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
                 on_success={
                     "outcome": "flee",
-                    "set_stat": {"DEX": -2},
+                    "alter_stat": {"DEX": StatModifier(value=-2)},
                     "narrative": "You dodge, but twist an ankle.",
                 },
             ),
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus)
         assert result["outcome"] == "flee"
-        assert result["set_stat"] == {"DEX": -2}
+        assert result["alter_stat"] == {"DEX": StatModifier(value=-2)}
 
-    def test_branch_set_stat_overrides_rule_set_stat(self, sample_corpus, monkeypatch):
+    def test_branch_alter_stat_overrides_rule_alter_stat(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
         monkeypatch.setattr("mgmai.engine.encounters.random.randint", lambda a, b: 20)
@@ -213,17 +214,17 @@ class TestResolveEncounter:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
                 check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
-                set_stat={"CON": -2},
+                alter_stat={"CON": StatModifier(value=-2)},
                 on_success={
                     "outcome": "flee",
-                    "set_stat": {"STR": -4, "CON": -4},
+                    "alter_stat": {"STR": StatModifier(value=-4), "CON": StatModifier(value=-4)},
                     "narrative": "You land badly despite rolling well.",
                 },
             ),
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus)
         assert result["outcome"] == "flee"
-        assert result["set_stat"] == {"CON": -4, "STR": -4}
+        assert result["alter_stat"] == {"CON": StatModifier(value=-4), "STR": StatModifier(value=-4)}
 
 
 class TestShouldTriggerBehavior:

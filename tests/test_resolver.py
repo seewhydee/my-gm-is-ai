@@ -46,6 +46,7 @@ from mgmai.models.corpus import (
     Result,
     RollCheck,
     StatCheck,
+    StatModifier,
     TakeCheck,
 )
 from mgmai.state.manager import StateManager
@@ -232,8 +233,8 @@ class TestResolveMove:
         result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus)
         assert result.success is True
         assert result.hard_changes.player_location == "bag_floor"
-        assert result.hard_changes.stat_changes == {
-            "STR": -4, "DEX": -4, "CON": -4,
+        assert result.hard_changes.stat_modifiers == {
+            "STR": StatModifier(value=-4), "DEX": StatModifier(value=-4), "CON": StatModifier(value=-4),
         }
 
     def test_drop_exit_applies_stat_damage_from_upper(self):
@@ -243,8 +244,8 @@ class TestResolveMove:
         result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus)
         assert result.success is True
         assert result.hard_changes.player_location == "bag_floor"
-        assert result.hard_changes.stat_changes == {
-            "DEX": -2, "CON": -2,
+        assert result.hard_changes.stat_modifiers == {
+            "DEX": StatModifier(value=-2), "CON": StatModifier(value=-2),
         }
 
 

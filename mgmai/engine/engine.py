@@ -192,10 +192,10 @@ def resolve(
             if enc_result["flee_effects"]:
                 apply_flee_effects(enc_result["flee_effects"], hard)
 
-            set_stat = enc_result.get("set_stat") or {}
-            if set_stat:
+            alter_stat = enc_result.get("alter_stat") or {}
+            if alter_stat:
                 state_manager.apply_hard_changes(
-                    HardStateChanges(stat_changes=dict(set_stat))
+                    HardStateChanges(stat_modifiers=dict(alter_stat))
                 )
 
             if enc_result["game_over"]:
@@ -703,6 +703,15 @@ def _summarize_resolution(
             parts.append(f"Flags set: {', '.join(flags)}")
         if hc.flags_cleared:
             parts.append(f"Flags cleared: {', '.join(hc.flags_cleared)}")
+        if hc.stat_modifiers:
+            stat_descs = []
+            for stat_key, mod in hc.stat_modifiers.items():
+                if mod.mode == "set":
+                    stat_descs.append(f"{stat_key}={mod.value}")
+                else:
+                    sign = "+" if mod.value >= 0 else ""
+                    stat_descs.append(f"{stat_key}{sign}{mod.value}")
+            parts.append(f"Stats: {', '.join(stat_descs)}")
     if resolution.encounter_trigger:
         parts.append(f"Encounter: {resolution.encounter_trigger}")
     if resolution.triggered_narration:

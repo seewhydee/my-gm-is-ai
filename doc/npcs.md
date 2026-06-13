@@ -101,7 +101,7 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
 `dialogue_paths` defines special conversation routes that have engine-resolved mechanical consequences.  They are useful for:
 - Social approaches tied to stat checks (`flatter`, `intimidate`, `persuade`).
 - Delivering plot-critical information (`inform_spider_dead`).
-- Any dialogue moment where the engine needs to apply results directly (`adjust_attitude`, `set_flag`, `set_stat`, etc.).
+- Any dialogue moment where the engine needs to apply results directly (`adjust_attitude`, `set_flag`, `alter_stat`, etc.).
 
 ### Path ID vs. description
 

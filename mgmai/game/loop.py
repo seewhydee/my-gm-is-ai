@@ -70,7 +70,7 @@ atexit.register(_save_history)
 from mgmai.context.assembler import assemble
 from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
 from mgmai.engine.post_validate import apply_post_validation
-from mgmai.engine.stat_checks import format_stat_check_prefix
+from mgmai.engine.stat_checks import format_stat_check_prefix, format_stat_change_prefix
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
 from mgmai.logging import TurnLogger, format_state_snapshot
@@ -274,6 +274,11 @@ class GameLoop:
             check_prefix = format_stat_check_prefix(result.rolls)
             if check_prefix:
                 narration = check_prefix + narration
+            hc = result.hard_state_changes
+            if hc and hc.stat_modifiers:
+                stat_prefix = format_stat_change_prefix(hc.stat_modifiers, hc.old_stat_values)
+                if stat_prefix:
+                    narration = stat_prefix + narration
             return narration
 
         log.debug("--- ProseOutput ---\n%s", prose.model_dump_json(indent=2))
@@ -325,6 +330,11 @@ class GameLoop:
         check_prefix = format_stat_check_prefix(result.rolls)
         if check_prefix:
             narration = check_prefix + narration
+        hc = result.hard_state_changes
+        if hc and hc.stat_modifiers:
+            stat_prefix = format_stat_change_prefix(hc.stat_modifiers, hc.old_stat_values)
+            if stat_prefix:
+                narration = stat_prefix + narration
         return narration
 
     # ------------------------------------------------------------------

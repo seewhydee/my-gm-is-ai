@@ -409,11 +409,11 @@ class StateManager:
                     if field_name not in declared:
                         errors.append(f"Entity '{entity_id}' state change has undeclared field {field_name}")
 
-        for stat_key in changes.stat_changes:
+        for stat_key in changes.stat_modifiers:
             if corpus is None or corpus.stats is None:
-                errors.append(f"stat_changes references '{stat_key}' but corpus has no stats block")
+                errors.append(f"stat_modifiers references '{stat_key}' but corpus has no stats block")
             elif stat_key not in corpus.stats.definitions:
-                errors.append(f"stat_changes references undeclared stat: {stat_key}")
+                errors.append(f"stat_modifiers references undeclared stat: {stat_key}")
 
         if errors:
             raise ValueError("\n".join(errors))
@@ -445,10 +445,16 @@ class StateManager:
                 self.hard_state.entity_states[entity_id] = {}
             self.hard_state.entity_states[entity_id].update(entity_changes)
 
-        if changes.stat_changes and self.hard_state.player.stats is not None:
-            for stat_key, delta in changes.stat_changes.items():
+        if changes.stat_modifiers and self.hard_state.player.stats is not None:
+            for stat_key, mod in changes.stat_modifiers.items():
                 if stat_key in self.hard_state.player.stats:
-                    self.hard_state.player.stats[stat_key] += delta
+                    changes.old_stat_values.setdefault(
+                        stat_key, self.hard_state.player.stats[stat_key]
+                    )
+                    if mod.mode == "set":
+                        self.hard_state.player.stats[stat_key] = mod.value
+                    else:
+                        self.hard_state.player.stats[stat_key] += mod.value
 
     def apply_soft_patches(self, patches: list[SoftStatePatch | dict[str, Any]]) -> None:
         """Apply a list of validated ``SoftStatePatch`` objects to soft state."""

@@ -18,6 +18,8 @@
 
 from typing import Any
 
+from mgmai.models.corpus import StatModifier
+
 
 def compute_d20_modifier(stat_value: int) -> int:
     """D&D 5e-style ability modifier: (stat - 10) // 2, floored."""
@@ -56,6 +58,39 @@ def format_stat_check_prefix(rolls: list[dict[str, Any]]) -> str:
             continue
         outcome = "success" if success else "failed"
         summaries.append(f"**[{stat} check: {outcome}]**")
+
+    if not summaries:
+        return ""
+
+    return "\n\n".join(summaries) + "\n\n"
+
+
+def format_stat_change_prefix(
+    stat_modifiers: dict[str, StatModifier],
+    old_stat_values: dict[str, int],
+) -> str:
+    """Return a markdown-formatted prefix summarizing any stat changes.
+
+    The prefix is intended to be prepended to the narration shown to the
+    player after a player action that altered stats.  If no modifiers
+    exist, an empty string is returned.
+
+    Example output::
+
+        **[STR -4 (now 6)]**
+
+        **[INT set to 3]**
+
+    """
+    summaries: list[str] = []
+    for stat_key, mod in stat_modifiers.items():
+        old_val = old_stat_values.get(stat_key)
+        if mod.mode == "set":
+            summaries.append(f"**[{stat_key} set to {mod.value}]**")
+        elif old_val is not None:
+            new_val = old_val + mod.value
+            sign = "+" if mod.value >= 0 else ""
+            summaries.append(f"**[{stat_key} {sign}{mod.value} (now {new_val})]**")
 
     if not summaries:
         return ""
