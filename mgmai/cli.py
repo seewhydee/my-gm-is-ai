@@ -50,6 +50,17 @@ from mgmai.game.display import Display
 from mgmai.game.loop import GameLoop
 
 
+def _invocation_name() -> str:
+    """Return the command name to show in usage messages.
+
+    When the module is executed with ``python -m mgmai.cli``, report that
+    form. Otherwise fall back to the basename of the executable/script.
+    """
+    if __spec__ is not None:
+        return f"python -m {__spec__.name}"
+    return os.path.basename(sys.argv[0])
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="mgmai",
@@ -107,7 +118,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.adventure is None:
         display.print(
-            "[bold]Usage:[/bold] python -m mgmai.cli [OPTIONS] <adventure_path>\n"
+            f"[bold]Usage:[/bold] {_invocation_name()} [OPTIONS] <adventure_path>\n"
             "Try --help for more information\n"
         )
         sys.exit(0)
@@ -134,9 +145,7 @@ def main(argv: list[str] | None = None) -> None:
         api_key, model_name, base_url = _prompt_for_credentials(
             display, config_dir, credentials, app_config)
 
-    config = get_model_config(model_name)
-    if base_url:
-        config = replace(config, base_url=base_url)
+    config = get_model_config(model_name, base_url=base_url)
 
     ## Read model temperatures from config
     if app_config.ruling_temperature is not None:

@@ -35,8 +35,12 @@ class TestGetModelConfig:
         assert config.prose_temperature == 1.1
         assert config.extra_body == {"thinking": {"type": "disabled"}}
 
-    def test_returns_generic_default_for_unknown_model(self):
-        config = get_model_config("gpt-4o")
+    def test_unknown_model_without_base_url_raises(self):
+        with pytest.raises(ValueError, match="Unknown model 'gpt-4o'"):
+            get_model_config("gpt-4o")
+
+    def test_unknown_model_with_base_url_returns_generic_default(self):
+        config = get_model_config("gpt-4o", base_url="https://api.openai.com/v1")
         assert config.name == "gpt-4o"
         assert config.base_url == "https://api.openai.com/v1"
         assert config.ruling_temperature == 0.7

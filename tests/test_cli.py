@@ -117,11 +117,16 @@ class TestCliBoot:
 
     def test_model_override(self, monkeypatch) -> None:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        monkeypatch.delenv("MGMAI_BASE_URL", raising=False)
         mock_loop = MagicMock()
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop):
             with patch("mgmai.cli.LLMClient") as mock_llm_cls:
-                main([str(BAG_OF_HOLDING), "--model", "gpt-4o"])
+                main([
+                    str(BAG_OF_HOLDING),
+                    "--model", "gpt-4o",
+                    "--base-url", "https://example.com",
+                ])
 
         _, kwargs = mock_llm_cls.call_args
         assert kwargs["config"].name == "gpt-4o"

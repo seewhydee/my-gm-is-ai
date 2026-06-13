@@ -60,19 +60,23 @@ def get_model_config(model_name: str, base_url: str | None = None) -> ModelConfi
     """Return the configuration for *model_name*.
 
     If the model is present in the registry its stored settings are used.
-    For unknown models a generic safe default is returned so that the
-    system can still function while encouraging the user to add an entry
-    to the registry for optimal results.
+    For unknown models a generic safe default is returned only when a
+    *base_url* is provided; otherwise an error is raised so that the
+    system does not silently default to a vendor URL.
 
-    An optional *base_url* overrides the value stored in the registry (or
-    the generic default).
+    An optional *base_url* overrides the value stored in the registry.
     """
     if model_name in _MODEL_REGISTRY:
         config = _MODEL_REGISTRY[model_name]
     else:
+        if base_url is None:
+            raise ValueError(
+                f"Unknown model '{model_name}' and no base_url provided. "
+                "Pass --base-url or register the model."
+            )
         config = ModelConfig(
             name=model_name,
-            base_url=base_url or "https://api.openai.com/v1",
+            base_url=base_url,
             ruling_temperature=0.7,
             prose_temperature=0.9,
             extra_body=None,

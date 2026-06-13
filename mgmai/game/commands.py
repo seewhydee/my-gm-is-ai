@@ -252,20 +252,31 @@ class Commands:
             self._render("  [dim]API key unchanged.[/dim]")
 
         # --- Base URL ---
-        model_cfg = get_model_config(new_model)
-        default_url = model_cfg.base_url
+        try:
+            model_cfg = get_model_config(new_model)
+            default_url = model_cfg.base_url
+        except ValueError:
+            default_url = ""
+
         self._render(f"\n[bold]Base URL[/bold]")
-        self._render(f"  Default: [dim]{default_url}[/dim]")
-        self._render("  (leave blank to use default)")
+        if default_url:
+            self._render(f"  Default: [dim]{default_url}[/dim]")
+            self._render("  (leave blank to use default)")
+        else:
+            self._render("  [yellow]A base URL is required for this model.[/yellow]")
         try:
             new_url = input("  Enter base URL: ").strip()
         except (EOFError, KeyboardInterrupt):
             self._render("")
             return
 
+        if not new_url and not default_url:
+            self._render("[red]Base URL cannot be empty for a custom model.[/red]")
+            return
+
         # --- Save config ---
         app_config.model_name = new_model
-        app_config.base_url = new_url if new_url else None
+        app_config.base_url = new_url if new_url else default_url
         try:
             save_app_config(app_config, self._config_dir)
             self._render(f"\n[green]Config saved.[/green]")

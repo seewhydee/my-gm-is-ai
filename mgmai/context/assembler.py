@@ -214,38 +214,37 @@ def _build_player_stats(hard: HardGameState,
     return result
 
 
+_CONVERSATION_LOG_CAP = 5
+
+
 def _pair_conversation_log(log: list[object]) -> list[dict[str, object]]:
-    """Pair player+NPC entries into exchanges, cap at 5 most recent.
+    """Pair player+NPC entries into exchanges, capped at the most recent.
 
     Adjacent player→NPC entries become one exchange dict.
     Unpaired entries get their own dict.
-    Returns the last 5 exchanges.
+    Returns the last ``_CONVERSATION_LOG_CAP`` exchanges.
     """
     from mgmai.models.soft_state import ConversationLogEntry
 
     exchanges: list[dict[str, object]] = []
-    i = 0
-    while i < len(log):
+    i = len(log) - 1
+    while i >= 0 and len(exchanges) < _CONVERSATION_LOG_CAP:
         entry = log[i]
         assert isinstance(entry, ConversationLogEntry)
-        if entry.speaker == "player":
-            exchange: dict[str, object] = {"player": entry.text}
-            if i + 1 < len(log):
-                next_entry = log[i + 1]
-                assert isinstance(next_entry, ConversationLogEntry)
-                if next_entry.speaker == "npc":
-                    exchange["npc"] = next_entry.text
-                    i += 2
-                else:
-                    i += 1
-            else:
-                i += 1
+        if entry.speaker == "npc":
+            exchange: dict[str, object] = {"npc": entry.text}
+            if i - 1 >= 0:
+                prev_entry = log[i - 1]
+                assert isinstance(prev_entry, ConversationLogEntry)
+                if prev_entry.speaker == "player":
+                    exchange["player"] = prev_entry.text
+                    i -= 1
             exchanges.append(exchange)
         else:
-            exchanges.append({"npc": entry.text})
-            i += 1
+            exchanges.append({"player": entry.text})
+        i -= 1
 
-    return exchanges[-5:]
+    return list(reversed(exchanges))
 
 
 def _build_player_knowledge(soft: SoftGameState) -> list[str]:
