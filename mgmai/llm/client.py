@@ -36,15 +36,9 @@ class LLMClient:
     responsibility.
     """
 
-    def __init__(
-        self,
-        api_key: str,
-        config: ModelConfig,
-    ) -> None:
-        self._client = OpenAI(
-            api_key=api_key,
-            base_url=config.base_url,
-        )
+    def __init__(self, api_key: str, config: ModelConfig) -> None:
+        self._client = OpenAI(api_key=api_key,
+                              base_url=config.base_url)
         self._config = config
 
     # ------------------------------------------------------------------
@@ -60,8 +54,7 @@ class LLMClient:
         return self._call(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=self._config.ruling_temperature,
-        )
+            temperature=self._config.ruling_temperature)
 
     def call_prose(self, system_prompt: str, user_prompt: str) -> str:
         """LLM Call 2: narrate engine outcome → prose + optional blocks.
@@ -72,19 +65,14 @@ class LLMClient:
         return self._call(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=self._config.prose_temperature,
-        )
+            temperature=self._config.prose_temperature)
 
     # ------------------------------------------------------------------
     # internal
     # ------------------------------------------------------------------
 
-    def _call(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float,
-    ) -> str:
+    def _call(self, system_prompt: str, user_prompt: str,
+              temperature: float) -> str:
         kwargs: dict[str, Any] = {
             "model": self._config.name,
             "temperature": temperature,

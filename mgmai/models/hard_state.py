@@ -15,9 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-
 from typing import Any, Dict, Optional
-
 from pydantic import BaseModel, Field, model_validator
 
 

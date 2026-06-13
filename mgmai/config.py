@@ -35,22 +35,11 @@ SAVES_DIRNAME = "saves"
 # Paths
 # ------------------------------------------------------------------
 
-
-def _get_config_dir() -> Path:
-    """Return the platform-appropriate config directory for mgmai.
-
-    Linux:   ~/.config/mgmai
-    macOS:   ~/Library/Preferences/mgmai
-    Windows: %APPDATA%/mgmai
-    """
-    return Path(user_config_dir(APP_NAME))
-
-
 def get_config_dir(config_dir_override: str | Path | None = None) -> Path:
-    """Return the config directory, respecting an optional override."""
+    """Return the user's config directory."""
     if config_dir_override is not None:
         return Path(config_dir_override)
-    return _get_config_dir()
+    return Path(user_config_dir(APP_NAME))
 
 
 def get_config_file(config_dir: str | Path | None = None) -> Path:
@@ -61,29 +50,21 @@ def get_credentials_file(config_dir: str | Path | None = None) -> Path:
     return get_config_dir(config_dir) / CREDENTIALS_FILENAME
 
 
-def get_saves_dir(
-    adventure_name: str | None = None,
-    config_dir: str | Path | None = None,
-) -> Path:
+def get_saves_dir(adventure_name: str | None = None,
+                  config_dir: str | Path | None = None) -> Path:
     """Return the saves directory, optionally scoped to an adventure."""
     base = get_config_dir(config_dir) / SAVES_DIRNAME
-    if adventure_name:
-        return base / adventure_name
-    return base
+    return base / adventure_name if adventure_name else base
 
 
-def get_autosave_path(
-    adventure_name: str,
-    config_dir: str | Path | None = None,
-) -> Path:
+def get_autosave_path(adventure_name: str,
+                      config_dir: str | Path | None = None) -> Path:
     return get_saves_dir(adventure_name, config_dir) / "autosave.json"
 
 
 # ------------------------------------------------------------------
 # Config
 # ------------------------------------------------------------------
-
-
 @dataclass
 class AppConfig:
     """Persistent user configuration stored in config.json."""
@@ -131,23 +112,19 @@ def load_app_config(config_dir: str | Path | None = None) -> AppConfig:
     return AppConfig.from_dict(data)
 
 
-def save_app_config(
-    config: AppConfig,
-    config_dir: str | Path | None = None,
-) -> None:
+def save_app_config(config: AppConfig,
+                    config_dir: str | Path | None = None) -> None:
     """Write user config to config.json, creating directories as needed."""
     path = get_config_file(config_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(config.to_dict(), indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+        encoding="utf-8")
 
 
 # ------------------------------------------------------------------
 # Credentials
 # ------------------------------------------------------------------
-
 
 @dataclass
 class Credentials:
@@ -175,10 +152,8 @@ def load_credentials(config_dir: str | Path | None = None) -> Credentials:
     return Credentials.from_dict(data)
 
 
-def save_credentials(
-    credentials: Credentials,
-    config_dir: str | Path | None = None,
-) -> None:
+def save_credentials(credentials: Credentials,
+                     config_dir: str | Path | None = None) -> None:
     """Write credentials to credentials.json and set mode 0600.
 
     Creates the config directory if needed.  On platforms that do not
@@ -188,8 +163,7 @@ def save_credentials(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(credentials.to_dict(), indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+        encoding="utf-8")
     try:
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
     except OSError:
@@ -201,12 +175,10 @@ def save_credentials(
 # ------------------------------------------------------------------
 
 
-def resolve_api_key(
-    *,
-    cli_arg: str | None = None,
-    env_var: str | None = None,
-    credentials: Credentials | None = None,
-) -> str:
+def resolve_api_key(*,
+                    cli_arg: str | None = None,
+                    env_var: str | None = None,
+                    credentials: Credentials | None = None) -> str:
     """Return the first non-empty API key from the given sources.
 
     Priority: *cli_arg* > *env_var* > *credentials*.

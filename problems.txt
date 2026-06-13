@@ -3,9 +3,13 @@
 ## Fix error message
 In cli.py, instead of "[bold]Usage:[/bold] python -m mgmai.cli [OPTIONS] <adventure_path>\n", extract the actual command used to call the script.
 
-## Temperature defaults should be model-specific
-If the user config does not specify a ruling/prose temperature, we
-set it to a default -- but that default depends on the model!
+## Improve convo log code
+In _pair_conversation_log, convert the log cap into a defined
+constant, and break inside the loop instead of assembling the whole
+list first.  I wonder also if the code can be written more cleanly.
+
+## get_model_config should not default to OpenAI's URL
+If there's no base_url, just raise an error.
 
 # Engine-level limitations (scenario generation)
 

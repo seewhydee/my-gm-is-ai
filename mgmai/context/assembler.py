@@ -31,8 +31,8 @@ from mgmai.models.briefing import (
     DialogueContext,
     GMBriefing,
     PlayerStateBriefing,
-    PlayerStatEntry,
-)
+    PlayerStatEntry)
+
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
@@ -40,20 +40,17 @@ from mgmai.engine.conditions import evaluate
 from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs
 
 
-def assemble(
-    corpus: ModuleCorpus,
-    hard: HardGameState,
-    soft: SoftGameState,
-    player_input: str,
-) -> GMBriefing:
+def assemble(corpus: ModuleCorpus,
+             hard: HardGameState,
+             soft: SoftGameState,
+             player_input: str) -> GMBriefing:
     """Build a GMBriefing from the current corpus + game state."""
     room_id = hard.player.location
     room = corpus.rooms.get(room_id)
     if room is None:
         raise ValueError(f"Player location '{room_id}' not found in corpus")
 
-    atmosphere = corpus.adventure.atmosphere
-
+    atmosphere   = corpus.adventure.atmosphere
     player_stats = _build_player_stats(hard, corpus)
 
     return GMBriefing(
@@ -67,19 +64,16 @@ def assemble(
         recent_history=_build_recent_history(soft),
         dialogue_context=_build_dialogue_context(soft, hard, corpus),
         revealed_hints=list(soft.revealed_hints),
-        player_input=player_input,
-    )
+        player_input=player_input)
 
 
-def _build_room(
-    room_id: str,
-    room: object,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-) -> BriefingRoom:
+def _build_room(room_id: str,
+                room: object,
+                hard: HardGameState,
+                soft: SoftGameState,
+                corpus: ModuleCorpus) -> BriefingRoom:
+
     from mgmai.models.corpus import Room as CorpusRoom
-
     assert isinstance(room, CorpusRoom)
 
     entities_visible: list[BriefingEntity] = []
@@ -113,9 +107,7 @@ def _build_room(
                 state=dict(entity_state),
                 entity_notes=list(notes),
                 soft_items=list(entity_soft),
-                dialogue_paths=path_descriptions,
-            )
-        )
+                dialogue_paths=path_descriptions))
 
     inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
 
@@ -142,13 +134,10 @@ def _build_room(
             if not all_met:
                 continue
         exits_available.append(
-            BriefingExit(
-                id=ex.id,
-                direction=ex.direction,
-                target_room=ex.target_room,
-                hidden=ex.hidden,
-            )
-        )
+            BriefingExit(id=ex.id,
+                         direction=ex.direction,
+                         target_room=ex.target_room,
+                         hidden=ex.hidden))
 
     interactions_available: list[BriefingInteraction] = []
     for inter in room.interactions:
@@ -156,12 +145,9 @@ def _build_room(
             if not evaluate(inter.condition, hard, soft, corpus):
                 continue
         interactions_available.append(
-            BriefingInteraction(
-                id=inter.id,
-                label=inter.label,
-                description=inter.description,
-            )
-        )
+            BriefingInteraction(id=inter.id,
+                                label=inter.label,
+                                description=inter.description))
 
     entity_ids: set[str] = set(room.entities_present)
     for eid in get_following_npc_ids(hard, corpus):
@@ -179,12 +165,9 @@ def _build_room(
                 if not evaluate(inter.condition, hard, soft, corpus):
                     continue
             interactions_available.append(
-                BriefingInteraction(
-                    id=inter.id,
-                    label=inter.label,
-                    description=inter.description,
-                )
-            )
+                BriefingInteraction(id=inter.id,
+                                    label=inter.label,
+                                    description=inter.description))
 
     room_notes = soft.room_notes.get(room_id, [])[-5:]
     room_soft_items = soft.surfaced_soft_items.get(room_id, [])
@@ -197,15 +180,13 @@ def _build_room(
         entities_visible=entities_visible,
         exits_available=exits_available,
         interactions_available=interactions_available,
-        room_notes=list(room_notes),
-    )
+        room_notes=list(room_notes))
 
 
 def _build_player_state(
-    hard: HardGameState,
-    soft: SoftGameState,
-    player_stats: Optional[dict[str, PlayerStatEntry]],
-) -> PlayerStateBriefing:
+        hard: HardGameState,
+        soft: SoftGameState,
+        player_stats: Optional[dict[str, PlayerStatEntry]]) -> PlayerStateBriefing:
     active_flags = {k: v for k, v in hard.flags.items() if v}
     player_entity_notes = soft.entity_notes.get("player", [])
 
@@ -215,14 +196,11 @@ def _build_player_state(
         soft_inventory=list(soft.soft_inventory),
         active_flags=active_flags,
         entity_notes=list(player_entity_notes),
-        player_stats=player_stats,
-    )
+        player_stats=player_stats)
 
 
-def _build_player_stats(
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-) -> Optional[dict[str, PlayerStatEntry]]:
+def _build_player_stats(hard: HardGameState,
+                        corpus: ModuleCorpus) -> Optional[dict[str, PlayerStatEntry]]:
     if hard.player.stats is None or corpus.stats is None:
         return None
 
@@ -236,9 +214,7 @@ def _build_player_stats(
     return result
 
 
-def _pair_conversation_log(
-    log: list[object],
-) -> list[dict[str, object]]:
+def _pair_conversation_log(log: list[object]) -> list[dict[str, object]]:
     """Pair player+NPC entries into exchanges, cap at 5 most recent.
 
     Adjacent player→NPC entries become one exchange dict.
@@ -272,32 +248,24 @@ def _pair_conversation_log(
     return exchanges[-5:]
 
 
-def _build_player_knowledge(
-    soft: SoftGameState,
-) -> list[str]:
+def _build_player_knowledge(soft: SoftGameState) -> list[str]:
     return [entry.topic_id for entry in soft.player_knowledge]
 
 
-def _build_recent_history(
-    soft: SoftGameState,
-) -> list[BriefingHistoryEntry]:
+def _build_recent_history(soft: SoftGameState) -> list[BriefingHistoryEntry]:
     non_ooc = [e for e in soft.turn_history if e.ruled_action.get("action_type") != "ooc_discussion"]
     last_five = non_ooc[-5:]
     return [
-        BriefingHistoryEntry(
-            turn=entry.turn,
-            summary=entry.engine_result_summary,
-            location_after=entry.location_after,
-        )
+        BriefingHistoryEntry(turn=entry.turn,
+                             summary=entry.engine_result_summary,
+                             location_after=entry.location_after)
         for entry in last_five
     ]
 
 
-def _build_dialogue_context(
-    soft: SoftGameState,
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-) -> DialogueContext | None:
+def _build_dialogue_context(soft: SoftGameState,
+                            hard: HardGameState,
+                            corpus: ModuleCorpus) -> DialogueContext | None:
     ds = soft.dialogue_state
     if ds.active_npc is None:
         return None
@@ -333,9 +301,7 @@ def _build_dialogue_context(
             id=npc_id,
             name=getattr(npc, "name", npc_id),
             attitude=attitude,
-            dialogue_guidelines=guidelines,
-        ),
+            dialogue_guidelines=guidelines),
         recent_exchanges=recent_exchanges,
         topics_discussed=list(ds.topics_discussed),
-        revealed_topics=revealed_topics,
-    )
+        revealed_topics=revealed_topics)
