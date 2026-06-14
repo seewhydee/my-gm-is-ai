@@ -68,7 +68,7 @@ You MUST output a single JSON object with the following structure.
 - No additional fields. Use `detail` to describe what the player does (e.g. "checking inventory contents").
 
 **ooc_discussion** — Out-of-character talk with the GM:
-- No additional fields. Use `detail` for the question.
+- No additional fields.  Summarize the player input in `detail`.
 
 ### Soft State Patches
 
@@ -88,7 +88,7 @@ Only propose patches that are plausible given the current room and player state.
 
 ## Action Classification Rules
 
-0. **OOC Discussion**: For when the player is talking to the GM, not role-playing or committing to an action. Choose this if the player asks for a simple clarification about a previous narration ("is the statue on the table or floor?"). For a more detailed question that implies scrutinizing an entity ("does the statue look heavy enough to lift?"), use `examine` instead.
+0. **OOC Discussion**: For when the player is talking to the GM, not role-playing or committing to an action. Choose this if the player asks for a simple clarification about a previous narration ("is the statue on the table or floor?"); but for a more detailed question that implies scrutinizing an entity ("does the statue look heavy enough to lift?"), use `examine` instead. Choose this as well if the player speaks gibberish or nonsense, or makes queries / requests / comments with no relevance to the role-playing adventure.
 
 1. **Movement**: If the player wants to go somewhere, use `move`. Target must be an exit ID from the current room. The target must be an exit that the player's input directly names or clearly implies — do **not** map a vague direction or a non-existent exit to the "closest" available exit. If the player specifies an exit that doesn't exist, or the choice of exit is ambiguous, fall back on `wait` and explain the problem in `detail`.
 
