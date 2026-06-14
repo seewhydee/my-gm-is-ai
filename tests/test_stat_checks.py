@@ -23,48 +23,94 @@ from unittest.mock import patch
 
 import pytest
 
-from mgmai.engine.stat_checks import compute_d20_modifier, compute_modifier, format_stat_check_prefix
+from mgmai.engine.stat_checks import compute_5e_modifier, compute_modifier, format_stat_check_prefix, roll_d20
 from mgmai.models.corpus import ModuleCorpus, StatCheck, StatsBlock, StatDefinition, RollCheck, CheckType
 
 
-class TestComputeD20Modifier:
-    """Stat modifier computation for d20 system."""
+class TestCompute5eModifier:
+    """Stat modifier computation for 5e system."""
 
     def test_10_yields_0(self) -> None:
-        assert compute_d20_modifier(10) == 0
+        assert compute_5e_modifier(10) == 0
 
     def test_12_yields_1(self) -> None:
-        assert compute_d20_modifier(12) == 1
+        assert compute_5e_modifier(12) == 1
 
     def test_14_yields_2(self) -> None:
-        assert compute_d20_modifier(14) == 2
+        assert compute_5e_modifier(14) == 2
 
     def test_8_yields_neg1(self) -> None:
-        assert compute_d20_modifier(8) == -1
+        assert compute_5e_modifier(8) == -1
 
     def test_9_yields_neg1(self) -> None:
-        assert compute_d20_modifier(9) == -1
+        assert compute_5e_modifier(9) == -1
 
     def test_3_yields_neg4(self) -> None:
-        assert compute_d20_modifier(3) == -4
+        assert compute_5e_modifier(3) == -4
 
     def test_18_yields_4(self) -> None:
-        assert compute_d20_modifier(18) == 4
+        assert compute_5e_modifier(18) == 4
 
     def test_20_yields_5(self) -> None:
-        assert compute_d20_modifier(20) == 5
+        assert compute_5e_modifier(20) == 5
 
     def test_1_yields_neg5(self) -> None:
-        assert compute_d20_modifier(1) == -5
+        assert compute_5e_modifier(1) == -5
 
 
 class TestComputeModifier:
-    def test_d20_delegates(self) -> None:
-        assert compute_modifier(14, "d20") == 2
+    def test_5e_delegates(self) -> None:
+        assert compute_modifier(14, "5e") == 2
 
     def test_unknown_system_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown system"):
             compute_modifier(14, "gurps")
+
+
+class TestRollD20:
+    """Advantage / disadvantage dice rolling for 5e."""
+
+    def test_normal_roll_is_single_d20(self, monkeypatch) -> None:
+        vals = iter([15])
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: next(vals))
+        result = roll_d20()
+        assert result == 15
+
+    def test_advantage_takes_higher(self, monkeypatch) -> None:
+        vals = iter([3, 17])
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: next(vals))
+        result = roll_d20(advantage=True)
+        assert result == 17
+
+    def test_advantage_takes_higher_reversed(self, monkeypatch) -> None:
+        vals = iter([17, 3])
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: next(vals))
+        result = roll_d20(advantage=True)
+        assert result == 17
+
+    def test_disadvantage_takes_lower(self, monkeypatch) -> None:
+        vals = iter([3, 17])
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: next(vals))
+        result = roll_d20(disadvantage=True)
+        assert result == 3
+
+    def test_disadvantage_takes_lower_reversed(self, monkeypatch) -> None:
+        vals = iter([17, 3])
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: next(vals))
+        result = roll_d20(disadvantage=True)
+        assert result == 3
+
+    def test_both_cancel_to_normal(self, monkeypatch) -> None:
+        vals = iter([8, 15, 7])
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: next(vals))
+        result = roll_d20(advantage=True, disadvantage=True)
+        assert result == 8
+
+    def test_neither_is_normal(self, monkeypatch) -> None:
+        vals = iter([11])
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: next(vals))
+        result = roll_d20(advantage=False, disadvantage=False)
+        assert result == 11
 
 
 class TestFormatStatCheckPrefix:

@@ -1111,16 +1111,16 @@ class TestStatsBlock:
             "definitions": {
                 "STR": {"name": "Strength", "description": "Physical might"},
             },
-            "system": "d20",
+            "system": "5e",
         })
         assert sb.definitions["STR"].name == "Strength"
-        assert sb.system == "d20"
+        assert sb.system == "5e"
 
     def test_default_system(self) -> None:
         sb = StatsBlock.model_validate({
             "definitions": {"STR": {"name": "Strength", "description": ""}},
         })
-        assert sb.system == "d20"
+        assert sb.system == "5e"
 
     def test_unsupported_system_raises(self) -> None:
         with pytest.raises(ValidationError, match="Unknown RPG system"):
@@ -1153,14 +1153,14 @@ class TestStatCheck:
             "stat": "STR",
             "dc": 15,
             "modifier": 2,
-            "resolution_params": {"d20": {"advantage": True}},
+            "resolution_params": {"5e": {"advantage": True}},
             "opposed_by": "entity:spider.DEX",
             "repeatable": True,
             "note": "A strength check",
             "skill": "athletics",
         })
         assert sc.modifier == 2
-        assert sc.resolution_params == {"d20": {"advantage": True}}
+        assert sc.resolution_params == {"5e": {"advantage": True}}
         assert sc.opposed_by == "entity:spider.DEX"
         assert sc.skill == "athletics"
 

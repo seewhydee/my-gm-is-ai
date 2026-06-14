@@ -769,25 +769,19 @@ def _resolve_stat_check_chain(
 
     stat_value = player_stats[check.stat]
     res_system = stats_block.system
-    if res_system != "d20":
+    if res_system != "5e":
         return
 
-    from mgmai.engine.stat_checks import compute_d20_modifier
+    from mgmai.engine.stat_checks import compute_5e_modifier, roll_d20
 
-    computed_mod = compute_d20_modifier(stat_value)
+    computed_mod = compute_5e_modifier(stat_value)
     total_mod = computed_mod + check.modifier
 
-    params = (check.resolution_params or {}).get("d20", {})
+    params = (check.resolution_params or {}).get("5e", {})
     advantage = params.get("advantage", False)
     disadvantage = params.get("disadvantage", False)
 
-    raw_roll: int
-    if advantage and not disadvantage:
-        raw_roll = max(random.randint(1, 20), random.randint(1, 20))
-    elif disadvantage and not advantage:
-        raw_roll = min(random.randint(1, 20), random.randint(1, 20))
-    else:
-        raw_roll = random.randint(1, 20)
+    raw_roll = roll_d20(advantage=advantage, disadvantage=disadvantage)
 
     total = raw_roll + total_mod
     success_flag = total >= check.dc
@@ -838,15 +832,15 @@ def _resolve_traversal_check(
             return True
         stat_value = player_stats[check.stat]
         res_system = stats_block.system
-        if res_system != "d20":
+        if res_system != "5e":
             return True
 
-        from mgmai.engine.stat_checks import compute_d20_modifier
+        from mgmai.engine.stat_checks import compute_5e_modifier, roll_d20
 
-        computed_mod = compute_d20_modifier(stat_value)
+        computed_mod = compute_5e_modifier(stat_value)
         total_mod = computed_mod + check.modifier
 
-        params = (check.resolution_params or {}).get("d20", {})
+        params = (check.resolution_params or {}).get("5e", {})
         advantage = params.get("advantage", False)
         disadvantage = params.get("disadvantage", False)
 
@@ -989,29 +983,23 @@ def _resolve_stat_check(
     stat_value = player_stats[check.stat]
     res_system = stats_block.system
 
-    if res_system != "d20":
+    if res_system != "5e":
         return ResolutionResult(
             success=False,
             error=f"Unsupported resolution system: {res_system!r}",
         )
 
-    from mgmai.engine.stat_checks import compute_d20_modifier
+    from mgmai.engine.stat_checks import compute_5e_modifier, roll_d20
 
-    computed_mod = compute_d20_modifier(stat_value)
+    computed_mod = compute_5e_modifier(stat_value)
     total_mod = computed_mod + check.modifier
 
     # advantage / disadvantage
-    params = (check.resolution_params or {}).get("d20", {})
+    params = (check.resolution_params or {}).get("5e", {})
     advantage = params.get("advantage", False)
     disadvantage = params.get("disadvantage", False)
 
-    raw_roll: int
-    if advantage and not disadvantage:
-        raw_roll = max(random.randint(1, 20), random.randint(1, 20))
-    elif disadvantage and not advantage:
-        raw_roll = min(random.randint(1, 20), random.randint(1, 20))
-    else:
-        raw_roll = random.randint(1, 20)
+    raw_roll = roll_d20(advantage=advantage, disadvantage=disadvantage)
 
     total = raw_roll + total_mod
     success_flag = total >= check.dc

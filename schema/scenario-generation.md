@@ -136,7 +136,7 @@ cross-validation (after all corpus sections are complete).
 
 If the scenario uses stat checks, note:
 - Which stats are used
-- The resolution system (typically d20)
+- The resolution system (typically 5e)
 - Whether the scenario specifies player stat values, or defaults (e.g., all 10s)
 
 If the scenario has no stat checks, no stats block is needed.
@@ -1006,14 +1006,14 @@ If the scenario uses stat checks, add a `stats` block to the corpus:
     "WIS": { "name": "Wisdom", "description": "Perception" },
     "CHA": { "name": "Charisma", "description": "Force of personality" }
   },
-  "system": "d20"
+  "system": "5e"
 }
 ```
 
 Rules:
 - Only declare stats actually used in stat_check interactions or stat: conditions
 - If no stat checks exist in the scenario, omit this block entirely
-- Resolution system is always `"d20"` for now
+- Resolution system is always `"5e"` for now
 
 ---
 
@@ -1071,7 +1071,7 @@ Follow this exact structure:
    starting items (extremely rare). Even if the player "has" something narratively,
    it's usually a soft item or entity in the start room.
 
-3. **`player.stats`** — only if the corpus has a `stats` block. Under d20,
+3. **`player.stats`** — only if the corpus has a `stats` block. Under 5e,
    typical values range 3-18 with 10 as average. If the scenario doesn't specify
    stat values, use 10 across all stats declared in the corpus definitions.
 
@@ -1390,7 +1390,7 @@ All IDs must be **snake_case, lowercase ASCII**:
 11. **Prose style**: All `description`, `narrative`, and `introduction` fields
     should be in second-person present tense ("You see... You are...").
 
-12. **Stat value ranges**: Under d20, stat values typically range 3-18. DCs
+12. **Stat value ranges**: Under 5e, stat values typically range 3-18. DCs
     should match character capabilities: stat 10 (+0 modifier) has ~55% vs
     DC 10, ~30% vs DC 15, ~5% vs DC 20. Do not set impossible DCs without
     an alternative path.

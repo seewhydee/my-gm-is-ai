@@ -581,7 +581,7 @@ class TestApplyCharSheet:
     def test_applies_custom_stats(self) -> None:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
         sm._apply_char_sheet_data({
-            "system": "d20",
+            "system": "5e",
             "player": {
                 "stats": {
                     "STR": 18,
@@ -616,14 +616,14 @@ class TestApplyCharSheet:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
         with pytest.raises(ValueError, match="not defined"):
             sm._apply_char_sheet_data({
-                "system": "d20",
+                "system": "5e",
                 "player": {"stats": {"STR": 18, "LUCK": 10}}
             })
 
     def test_generic_merge_location_and_inventory(self) -> None:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
         sm._apply_char_sheet_data({
-            "system": "d20",
+            "system": "5e",
             "player": {
                 "location": "bag_floor",
                 "inventory": ["toenail_sword"],
@@ -645,7 +645,7 @@ class TestApplyCharSheet:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
         with pytest.raises(ValueError, match="No matching room"):
             sm._apply_char_sheet_data({
-                "system": "d20",
+                "system": "5e",
                 "player": {
                     "location": "void",
                     "stats": {
@@ -663,7 +663,7 @@ class TestApplyCharSheet:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
         with pytest.raises(ValueError, match="No matching entity: "):
             sm._apply_char_sheet_data({
-                "system": "d20",
+                "system": "5e",
                 "player": {
                     "inventory": ["magic_wand"],
                     "stats": {
@@ -680,7 +680,7 @@ class TestApplyCharSheet:
     def test_unknown_player_fields_ignored(self) -> None:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
         sm._apply_char_sheet_data({
-            "system": "d20",
+            "system": "5e",
             "player": {
                 "future_field": 123,
                 "stats": {
@@ -699,7 +699,7 @@ class TestApplyCharSheet:
         sm = StateManager(FIXTURES_DIR)
         with pytest.raises(ValueError, match="no stat system"):
             sm._apply_char_sheet_data({
-                "system": "d20",
+                "system": "5e",
                 "player": {"stats": {"STR": 18}}
             })
 

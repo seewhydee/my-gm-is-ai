@@ -390,11 +390,11 @@ class StatDefinition(BaseModel):
 
 class StatsBlock(BaseModel):
     definitions: Dict[str, StatDefinition]
-    system: str = "d20"
+    system: str = "5e"
 
     @model_validator(mode="after")
     def check_system(self) -> StatsBlock:
-        supported = {"d20"}
+        supported = {"5e"}
         if self.system not in supported:
             raise ValueError(f"Unknown RPG system: {self.system!r}. ")
         return self

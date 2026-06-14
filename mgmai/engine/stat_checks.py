@@ -16,20 +16,36 @@
 
 """Stat check computation utilities."""
 
+import random
 from typing import Any
 
 from mgmai.models.corpus import StatModifier
 
 
-def compute_d20_modifier(stat_value: int) -> int:
+def roll_d20(advantage: bool = False, disadvantage: bool = False) -> int:
+    """Roll 1d20 with optional advantage or disadvantage.
+
+    D&D 5e rules: roll two d20s, take the higher with advantage
+    or the lower with disadvantage. If both or neither are set,
+    roll a single d20.
+    """
+    if advantage and not disadvantage:
+        return max(random.randint(1, 20), random.randint(1, 20))
+    elif disadvantage and not advantage:
+        return min(random.randint(1, 20), random.randint(1, 20))
+    else:
+        return random.randint(1, 20)
+
+
+def compute_5e_modifier(stat_value: int) -> int:
     """D&D 5e-style ability modifier: (stat - 10) // 2, floored."""
     return (stat_value - 10) // 2
 
 
 def compute_modifier(stat_value: int, system: str) -> int:
     """Compute a stat modifier given a resolution system identifier."""
-    if system == "d20":
-        return compute_d20_modifier(stat_value)
+    if system == "5e":
+        return compute_5e_modifier(stat_value)
     raise ValueError(f"Unknown system: {system!r}")
 
 

@@ -269,7 +269,7 @@ class TestCharSheetCli:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
         mock_loop = MagicMock()
         sheet = self._write_sheet(tmp_path, {
-            "system": "d20",
+            "system": "5e",
             "player": {
                 "stats": {
                     "STR": 18,
@@ -296,7 +296,7 @@ class TestCharSheetCli:
         self, monkeypatch, capsys, tmp_path: Path
     ) -> None:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
-        sheet = self._write_sheet(tmp_path, {"system": "d20", "player": {"stats": {}}})
+        sheet = self._write_sheet(tmp_path, {"system": "5e", "player": {"stats": {}}})
 
         with pytest.raises(SystemExit) as exc_info:
             main([str(BAG_OF_HOLDING), "--load", str(sheet), "--char-sheet", str(sheet)])

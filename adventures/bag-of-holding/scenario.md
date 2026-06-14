@@ -12,7 +12,7 @@ town. Now you seem to be in a giant cave made of... canvas?
 
 ## RPG Mechanics
 
-The d20 system is used to describe stat checks.
+The 5e system is used to describe stat checks.
 
 ## Rooms
 
@@ -122,7 +122,7 @@ section).
 
 ### Stat checks
 
-Stat checks will use the d20 system.  Until we get proper character
+Stat checks will use the 5e system.  Until we get proper character
 sheets in place, initialize the player character with 10 on every
 stat.
 

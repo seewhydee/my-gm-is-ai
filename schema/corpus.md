@@ -274,7 +274,7 @@ Interactions use one of two check types: `roll` (flat probability) or `stat_chec
 | `stat`             | string  | yes      | Stat key (e.g. `"STR"`, `"DEX"`). Must be declared in `stats.definitions`. |
 | `dc`               | integer | yes      | Difficulty class (target number). Typical range: 5 (trivial) to 25 (nearly impossible). |
 | `modifier`         | integer | no       | Flat situational modifier (default 0). E.g. `-2` for a slippery surface. |
-| `resolution_params`| object  | no       | System-specific options. For `d20`: `{ "advantage": true }` or `{ "disadvantage": true }`. |
+| `resolution_params`| object  | no       | System-specific options. For `5e`: `{ "advantage": true }` or `{ "disadvantage": true }`. |
 | `repeatable`       | boolean | yes      | Whether the check can be retried. |
 | `opposed_by`       | string  | no       | Reserved for future NPC opposed checks. |
 | `skill`            | string  | no       | Reserved for future skill checks. |
@@ -288,7 +288,7 @@ success/failure outcome.
 
 | System | Formula                              | Use case |
 |--------|--------------------------------------|----------|
-| `d20`  | roll(1d20) + (stat-10)//2 + modifier >= DC | D&D-style (3–18 stats, DC 5–25) |
+| `5e`  | roll(1d20) + (stat-10)//2 + modifier >= DC | D&D 5e ability checks with advantage/disadvantage |
 
 The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 `flat` for diceless).
@@ -761,14 +761,14 @@ no stat system — existing adventures work unchanged.
     "WIS": { "name": "Wisdom", "description": "Perception" },
     "CHA": { "name": "Charisma", "description": "Force of personality" }
   },
-  "system": "d20"
+  "system": "5e"
 }
 ```
 
 | Field               | Type   | Required | Description |
 |---------------------|--------|----------|-------------|
 | `definitions`       | object | yes      | Dict of stat key → `{ name, description }`. Keys are short uppercase identifiers (e.g. `"STR"`). |
-| `system` | string | yes      | Named resolution system. Currently supported: `"d20"`. |
+| `system` | string | yes      | Named resolution system. Currently supported: `"5e"`. |
 
 ### Resolution system abstraction
 
@@ -787,7 +787,7 @@ integer value. On startup, the engine validates that:
   hard state (and vice versa).
 
 The Context Assembler computes each stat's modifier from the resolution system
-(e.g., `(stat - 10) // 2` for d20) and includes the full `player_stats` block
+(e.g., `(stat - 10) // 2` for 5e) and includes the full `player_stats` block
 in the GMBriefing so the LLM knows the player's capabilities without doing math.
 
 ### Stat condition domain

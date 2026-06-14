@@ -16,7 +16,7 @@ mgmai adventures/bag-of-holding --char-sheet my-character.json
 # or: python -m mgmai.cli adventures/bag-of-holding --char-sheet my-character.json
 ```
 
-The character sheet JSON must declare the RPG `system` (e.g. `"d20"`) and may
+The character sheet JSON must declare the RPG `system` (e.g. `"5e"`) and may
 override any field under `player`, such as `stats`, `location`, or `inventory`.
 `--char-sheet` cannot be combined with `--load`.
 
@@ -41,13 +41,13 @@ An optional `stats` block in `corpus.json` declares which stats the adventure us
       "WIS": { "name": "Wisdom", "description": "Perception" },
       "CHA": { "name": "Charisma", "description": "Force of personality" }
     },
-    "system": "d20"
+    "system": "5e"
   }
 }
 ```
 
 - `definitions` is a dict of stat keys → `{ name, description }`.
-- `system` references a named built-in (currently only `d20`).
+- `system` references a named built-in (currently only `5e`).
 - If `stats` is absent, the adventure has no stat system — existing adventures work unchanged.
 
 ### Player stats in hard state
@@ -75,7 +75,7 @@ This check type exists alongside the `roll` (flat percentage) check:
 | `stat` | Stat key (must be defined in corpus.stats.definitions) |
 | `dc` | Difficulty class (or target number) |
 | `modifier` | Flat situational modifier (default 0) |
-| `resolution_params` | System-specific options (e.g., advantage for d20) |
+| `resolution_params` | System-specific options (e.g., advantage for 5e) |
 | `repeatable` | Whether the check can be retried |
 | `opposed_by` | Reserved for future NPC opposed checks |
 | `skill` | Reserved for future skill checks |
@@ -88,11 +88,11 @@ The resolution system defines **how stat checks translate to probability**, deco
 
 | System | Formula | Use case |
 |--------|---------|----------|
-| `d20` | roll(1d20) + (stat-10)//2 + modifier >= DC | D&D-style (3-18 stats, DC 10-20) |
+| `5e` | roll(1d20) + (stat-10)//2 + modifier >= DC | D&D 5e ability checks with advantage/disadvantage |
 | `3d6` | 3d6 <= stat + modifier | GURPS-style |
 | `flat` | stat + modifier >= DC | Diceless / point-buy |
 
-Currently only `d20` is implemented. The schema reserves the space for additional systems; the engine dispatches via a named lookup.
+Currently only `5e` is implemented. The schema reserves the space for additional systems; the engine dispatches via a named lookup.
 
 ### GMBriefing extension
 
@@ -125,7 +125,7 @@ The following files need modification or addition:
 | **Briefing schema** | Add `PlayerStatEntry` model; include `player_stats` in GMBriefing. |
 | **Conditions evaluator** | Add `stat` domain to condition parser regex and evaluation branch. |
 | **Engine resolver** | Add `_resolve_stat_check()`; dispatch on check type. |
-| **Stat checks module** (new) | Standalone `compute_d20_modifier()` and `compute_modifier()` functions. |
+| **Stat checks module** (new) | Standalone `compute_5e_modifier()`, `roll_d20()`, and `compute_modifier()` functions. |
 | **Context Assembler** | Pass corpus to player-state builder; compute and include `player_stats`. |
 | **State manager** | Add `_validate_player_stats()` on load/new-game. |
 | **Console display** | Add character sheet Rich panel. |
