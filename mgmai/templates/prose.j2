@@ -109,7 +109,11 @@ You MUST output a single JSON object:
 
 ## NPC Response
 
-If the player is in dialogue with an NPC and the NPC would speak this turn, include `npc_response` with the exact words the NPC says. Use the NPC's `dialogue_guidelines` (personality, speech patterns, knowledge constraints) from the briefing's `dialogue_context`.
+If the player is in dialogue with an NPC and the NPC would speak this turn, you MUST include their exact spoken words inside `narration`, woven naturally into the prose. For example: `"As if!" The dwarf laughs bitterly.` or `She peers at you. "What brings a body like you here?"`
+
+Also fill `npc_response` with the same exact words — this is used by the logging system for conversation state tracking.
+
+Use the NPC's `dialogue_guidelines` (personality, speech patterns, knowledge constraints) from the briefing's `dialogue_context`.
 
 The NPC should:
 - Stay in character per their dialogue guidelines
