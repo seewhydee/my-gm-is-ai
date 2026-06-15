@@ -4,7 +4,7 @@ An experimental AI-driven Game Master (GM) for single-player RPGs.  The goal: re
 
 Unlike freeform AI roleplay chatbots, this AI GM system is not optimized for crafting naturalistic interlocutors with emotional depth, nor does it create open-ended adventures.  Instead, the AI GM runs a pre-generated adventure module faithfully.  You, the player, can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens.  Like a human GM, the AI GM aims to strike a balance between creativity and rules adherence.
 
-This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Combat is not yet implemented.
+This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Major subsystems, like combat and inventory management, are unimplemented or barely implemented.
 
 ## Documentation
 
