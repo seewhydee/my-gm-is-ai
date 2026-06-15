@@ -178,6 +178,40 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
                 f"Mechanic '{mech_id}' has invalid type '{mech.type}' (expected 'win' or 'lose')"
             )
 
+    # 10. CombatBlock validation
+    from mgmai.engine.combat import parse_damage_dice
+    for entity_id, entity in corpus.entities.items():
+        if entity.combat is None:
+            continue
+        cb = entity.combat
+        if cb.hp <= 0:
+            errors.append(
+                f"Entity '{entity_id}' CombatBlock.hp must be positive, got {cb.hp}"
+            )
+        if cb.ac < 0:
+            errors.append(
+                f"Entity '{entity_id}' CombatBlock.ac must be non-negative, got {cb.ac}"
+            )
+        try:
+            parse_damage_dice(cb.dmg)
+        except ValueError:
+            errors.append(
+                f"Entity '{entity_id}' CombatBlock.dmg is not a valid damage "
+                f"expression: '{cb.dmg}'"
+            )
+        if "current_hp" not in entity.state_fields:
+            errors.append(
+                f"Entity '{entity_id}' has CombatBlock but no 'current_hp' "
+                f"declared in state_fields"
+            )
+        # Check current_hp is initialized in hard state
+        if entity_id in hard.entity_states:
+            if "current_hp" not in hard.entity_states[entity_id]:
+                errors.append(
+                    f"Entity '{entity_id}' has CombatBlock but 'current_hp' is "
+                    f"not set in hard-state.json"
+                )
+
     return errors
 
 

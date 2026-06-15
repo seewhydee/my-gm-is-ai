@@ -27,9 +27,11 @@ from mgmai.models.briefing import (
     BriefingHistoryEntry,
     BriefingInteraction,
     BriefingRoom,
+    CombatBriefing,
     DialogueActiveNpc,
     DialogueContext,
     GMBriefing,
+    PlayerCombatStats,
     PlayerStateBriefing,
     PlayerStatEntry)
 
@@ -52,6 +54,7 @@ def assemble(corpus: ModuleCorpus,
 
     atmosphere   = corpus.adventure.atmosphere
     player_stats = _build_player_stats(hard, corpus)
+    combat_state = _build_combat_state(hard, corpus)
 
     return GMBriefing(
         adventure_title=corpus.adventure.title,
@@ -64,7 +67,8 @@ def assemble(corpus: ModuleCorpus,
         recent_history=_build_recent_history(soft),
         dialogue_context=_build_dialogue_context(soft, hard, corpus),
         revealed_hints=list(soft.revealed_hints),
-        player_input=player_input)
+        player_input=player_input,
+        combat_state=combat_state)
 
 
 def _build_room(room_id: str,
@@ -98,6 +102,10 @@ def _build_room(room_id: str,
                 for path_id, path in entity.dialogue_guidelines.dialogue_paths.items()
             }
 
+        combat_block_dict = None
+        if entity.combat is not None:
+            combat_block_dict = entity.combat.model_dump(mode="json")
+
         entities_visible.append(
             BriefingEntity(
                 id=eid,
@@ -107,7 +115,8 @@ def _build_room(room_id: str,
                 state=dict(entity_state),
                 entity_notes=list(notes),
                 soft_items=list(entity_soft),
-                dialogue_paths=path_descriptions))
+                dialogue_paths=path_descriptions,
+                combat_block=combat_block_dict))
 
     inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
 
@@ -190,13 +199,24 @@ def _build_player_state(
     active_flags = {k: v for k, v in hard.flags.items() if v}
     player_entity_notes = soft.entity_notes.get("player", [])
 
+    combat_stats = None
+    if hard.player.current_hp is not None:
+        from mgmai.engine.combat import get_player_ac, get_player_max_hp
+        combat_stats = PlayerCombatStats(
+            current_hp=hard.player.current_hp,
+            max_hp=hard.player.max_hp or get_player_max_hp(hard),
+            ac=get_player_ac(hard),
+            proficiency_bonus=hard.player.proficiency_bonus or 2,
+        )
+
     return PlayerStateBriefing(
         location=hard.player.location,
         hard_inventory=list(hard.player.inventory),
         soft_inventory=list(soft.soft_inventory),
         active_flags=active_flags,
         entity_notes=list(player_entity_notes),
-        player_stats=player_stats)
+        player_stats=player_stats,
+        combat_stats=combat_stats)
 
 
 def _build_player_stats(hard: HardGameState,
@@ -304,3 +324,47 @@ def _build_dialogue_context(soft: SoftGameState,
         recent_exchanges=recent_exchanges,
         topics_discussed=list(ds.topics_discussed),
         revealed_topics=revealed_topics)
+
+
+def _build_combat_state(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> CombatBriefing | None:
+    """Build a CombatBriefing when combat is active."""
+    combat = hard.combat
+    if combat is None or not combat.active:
+        return None
+
+    initiative = combat.initiative_order
+    current_actor = (
+        initiative[combat.current_index]
+        if combat.current_index < len(initiative)
+        else "?"
+    )
+
+    combatants: list[dict[str, Any]] = []
+    for cid in combat.combatants:
+        if cid == "player":
+            combatants.append({
+                "id": "player",
+                "name": "Player",
+                "current_hp": hard.player.current_hp or 0,
+                "max_hp": hard.player.max_hp or 0,
+            })
+        else:
+            entity = corpus.entities.get(cid)
+            name = getattr(entity, "name", cid) if entity else cid
+            state = hard.entity_states.get(cid, {})
+            combatants.append({
+                "id": cid,
+                "name": name,
+                "current_hp": state.get("current_hp") or 0,
+                "max_hp": (entity.combat.hp if entity and entity.combat else 0),
+            })
+
+    return CombatBriefing(
+        round_number=combat.round_number,
+        initiative_order=list(initiative),
+        current_actor=current_actor,
+        combatants=combatants,
+    )

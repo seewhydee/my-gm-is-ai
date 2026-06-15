@@ -17,11 +17,18 @@
 from __future__ import annotations
 from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field, model_validator
+from mgmai.models.combat import CombatState
+
 
 class PlayerState(BaseModel):
     location: str
     inventory: list[str] = Field(default_factory=list)
     stats: Optional[Dict[str, int]] = None
+    level: int = 1
+    current_hp: Optional[int] = None
+    max_hp: Optional[int] = None
+    ac: Optional[int] = None
+    proficiency_bonus: Optional[int] = None
 
 class GameOverState(BaseModel):
     type: str  # "win" or "lose"
@@ -34,6 +41,7 @@ class HardGameState(BaseModel):
     entity_states: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     turn_count: int = 0
     game_over: Optional[GameOverState] = None
+    combat: Optional[CombatState] = None
 
     @model_validator(mode="after")
     def check_turn_count_non_negative(self) -> HardGameState:

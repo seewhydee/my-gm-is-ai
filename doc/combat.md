@@ -1,0 +1,296 @@
+# Combat System
+
+MGMAI supports a rudimentary, multi-round combat phase modelled after
+D&D 5e but described in corpus-agnostic terms so other RPG systems can be
+plugged in later.  Combat is a **phase** in the game loop, analogous to
+dialogue mode: when active, the set of valid player actions narrows to
+*attack* and *flee*.
+
+---
+
+## Quickstart
+
+To give an NPC combat capability, add a `combat` block and declare
+`current_hp` in `state_fields`:
+
+```json
+{
+  "goblin_scout": {
+    "type": "npc",
+    "description": "A scrawny goblin with a rusty knife.",
+    "state_fields": {
+      "alive": { "type": "boolean", "description": "Is the goblin alive?" },
+      "current_hp": { "type": "number", "description": "Current hit points." }
+    },
+    "combat": {
+      "hp": 7,
+      "ac": 12,
+      "atk": 4,
+      "dmg": "1d6+2",
+      "initiative_mod": 2,
+      "flee_dc": 10
+    }
+  }
+}
+```
+
+Also set `current_hp` in `hard-state.json`:
+
+```json
+"entity_states": {
+  "goblin_scout": {
+    "alive": true,
+    "current_hp": 7
+  }
+}
+```
+
+That's it.  When the player uses an `interact` action with
+`interaction_id: "attack"` targeting this NPC, combat begins.
+
+---
+
+## Data Model
+
+### `CombatBlock` (on NPC entities in `corpus.json`)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hp` | int (≥ 1) | *required* | Maximum hit points |
+| `ac` | int | *required* | Armour Class |
+| `atk` | int | *required* | Attack bonus (ability mod + proficiency) |
+| `dmg` | str | `"1d6"` | Damage expression, e.g. `"1d6+2"`, `"2d4"`, `"1d8+1"` |
+| `initiative_mod` | int | `0` | DEX-like modifier for initiative rolls |
+| `flee_dc` | int | `10` | Difficulty class for the player to flee |
+
+All values are **pre-computed** by the adventure author — the engine does
+not derive them from ability scores for NPCs.
+
+### `PlayerState` extensions
+
+The player gains optional combat fields on `HardGameState.player`:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `level` | int | `1` | Character level |
+| `current_hp` | int? | `None` | Current hit points (initialised from CON at combat start) |
+| `max_hp` | int? | `None` | Maximum hit points (computed from CON if absent) |
+| `ac` | int? | `None` | Armour Class (computed from DEX if absent) |
+| `proficiency_bonus` | int? | `None` | Proficiency bonus (defaults to `2`) |
+
+When the adventure has a `corpus.stats` block and a field is absent, the
+engine computes defaults at combat-start time:
+
+- `max_hp` = 8 + CON modifier (minimum 1)
+- `ac` = 10 + DEX modifier
+- `proficiency_bonus` = 2 (level 1)
+
+### `CombatState` (on `HardGameState.combat`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `active` | bool | `True` when combat is live |
+| `combatants` | list[str] | Entity IDs plus `"player"` |
+| `initiative_order` | list[str] | Sorted turn order (highest initiative first) |
+| `current_index` | int | Index into `initiative_order` of next actor |
+| `round_number` | int | Current round (starts at 1) |
+| `log` | list[CombatLogEntry] | Per-round event log |
+
+---
+
+## Combat Flow
+
+### Entering Combat
+
+Combat starts in one of two ways:
+
+1. **Direct attack** — The player uses `interact` + `interaction_id: "attack"`
+   on an NPC that has a `CombatBlock` but does **not** have a `behavior` block
+   with `triggers_on` that includes `"attack"`.
+2. **Encounter outcome `"combat"`** — An NPC's `behavior.encounter_rules` or a
+   `mechanics` encounter returns outcome `"combat"`.
+
+On entry:
+- Player HP is initialised from CON if not already set.
+- Each enemy's `current_hp` is initialised from their `CombatBlock.hp`.
+- Initiative is rolled once: `d20 + DEX_modifier` (player) or
+  `d20 + initiative_mod` (NPC).  Ties are broken by modifier then coin flip.
+- Any enemy who rolled higher than the player takes their turn immediately.
+- The player's narrated attack does **not** deal damage on this turn — it
+  only triggers combat entry.
+- Dialogue mode is exited if active.
+
+### Turn Order
+
+The engine processes turns in initiative order.  The player is prompted
+only when `initiative_order[current_index] == "player"`.
+
+### Player Actions in Combat
+
+When combat is active, only two action types are valid:
+
+| Action | Description |
+|--------|-------------|
+| `combat` (`combat_action: "attack"`) | Attack a combatant.  `target` must be an entity ID in `combatants`. |
+| `move` | Attempt to flee (see below). |
+
+All other actions (`examine`, `talk`, `transfer`, `interact`) are rejected
+by the engine while combat is active.
+
+### Attack Resolution
+
+**Player attack:**
+
+- Attack roll: `d20 + STR_modifier + proficiency_bonus` (melee only).
+  - Natural 1: auto-miss.
+  - Natural 20: auto-hit and critical.
+- Compare total vs target's `CombatBlock.ac`.
+- Damage on hit:
+  - Unarmed / no weapon tag: `1d6 + STR_modifier`.
+  - Any item in inventory with `tag: "weapon"`: `1d8 + STR_modifier`.
+  - Critical: double the number of damage dice; modifier added once.
+- If the target's `current_hp` drops to ≤ 0, it dies: `alive` is set to
+  `false` and it is removed from `combatants`.
+
+**NPC attack:**
+
+- Attack roll: `d20 + CombatBlock.atk` vs player AC.
+  - Same natural-1 / natural-20 rules.
+- Damage: parsed from `CombatBlock.dmg` (e.g., `"1d6+2"`).
+- Critical: double dice, modifier once.
+- If the player's `current_hp` drops to ≤ 0, `game_over` is set with
+  `type: "lose"` and `trigger: "player_death"`.
+
+After the player's turn, all surviving enemies take their turns in
+initiative order.  Then the round advances.
+
+### Ending Combat
+
+Combat ends when:
+
+- All enemies are dead → victory.  Control returns to normal exploration.
+- The player dies → game over (defeat).
+- The player successfully flees.
+
+### Fleeing
+
+When the player uses `move` during combat:
+
+1. The target exit must be a valid, accessible exit from the current room.
+2. Roll a DEX check: `d20 + DEX_modifier` vs the **highest** `flee_dc`
+   among active enemies.
+3. **Success**: combat ends, the player moves to the target room.
+   `on_traverse` effects are **not** evaluated.
+4. **Failure**: the player stays, turn is consumed, and remaining enemy
+   turns are resolved normally.
+
+---
+
+## Display and Narration
+
+### Combat Status Panel
+
+Between combat turns, the console UI shows a status panel:
+
+```
+┌─ Combat: Round 2 ──────────────────────────────────────┐
+│ Initiative: Player → Spider → Goblin                    │
+│                                                         │
+│ Player    HP ████████░░ 10/12                           │
+│ Spider    HP ██████████ 18/18                           │
+│ Goblin    HP ████░░░░░░  5/10                           │
+│                                                         │
+│ It's your turn.                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Combat Prefix
+
+Before each narrated combat turn, a brief prefix summarises the round's
+mechanical events (e.g., `**Spider attacks you: hit for 3 damage.**`).
+This is prepended to the LLM's narration so the player always sees the
+authoritative dice results.
+
+---
+
+## Examples
+
+### NPC with combat stats (corpus.json)
+
+```json
+{
+  "spider": {
+    "type": "npc",
+    "description": "A hairy spider the size of a dog.",
+    "state_fields": {
+      "alive": { "type": "boolean", "description": "Is the spider alive?" },
+      "fled": { "type": "boolean", "description": "Has the spider fled?" },
+      "current_hp": { "type": "number", "description": "Current hit points." }
+    },
+    "behavior": {
+      "triggers_on": ["attack"],
+      "encounter_rules": [
+        {
+          "condition": { "require": "spider_fled" },
+          "outcome": "combat",
+          "narrative": "The spider, cornered, skitters forward to attack!"
+        }
+      ]
+    },
+    "combat": {
+      "hp": 18,
+      "ac": 13,
+      "atk": 5,
+      "dmg": "1d8+3",
+      "initiative_mod": 3,
+      "flee_dc": 12
+    }
+  }
+}
+```
+
+Here the encounter system first checks `spider_fled`.  If the spider
+already fled, the `"combat"` outcome triggers the combat system instead
+of the old one-shot resolution.
+
+### Player character sheet with combat stats
+
+```json
+{
+  "system": "5e",
+  "player": {
+    "level": 1,
+    "stats": {
+      "STR": 16,
+      "DEX": 14,
+      "CON": 12,
+      "INT": 10,
+      "WIS": 8,
+      "CHA": 10
+    },
+    "current_hp": 10,
+    "max_hp": 10,
+    "ac": 14,
+    "proficiency_bonus": 2
+  }
+}
+```
+
+---
+
+## Limitations (Phase 1)
+
+The minimum viable combat system deliberately excludes:
+
+- Gear / equipment (beyond weapon tag detection)
+- Movement / positioning / tactical maps
+- Spellcasting and class features
+- Conditions (poisoned, stunned, etc.)
+- Death saving throws
+- Healing during combat
+- Multi-attack, reactions, opportunity attacks
+- NPC-vs-NPC combat
+- NPC-initiated fleeing
+- Enemy AI / decision-making (enemies always attack)
+
+These may be added in future phases.

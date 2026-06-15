@@ -81,6 +81,78 @@ def format_stat_check_prefix(rolls: list[dict[str, Any]]) -> str:
     return "\n\n".join(summaries) + "\n\n"
 
 
+def format_combat_prefix(
+    combat_log: list[dict[str, Any]],
+    corpus: Any = None,
+) -> str:
+    """Return a markdown-formatted prefix summarizing combat events.
+
+    The prefix is prepended to LLM Call 2 narration after a combat turn.
+    Example output::
+
+        **Spider attacks you: hit for 3 damage.**
+        **You attack Goblin: miss.**
+
+    Returns an empty string if there are no combat log entries.
+    """
+    if not combat_log:
+        return ""
+
+    summaries: list[str] = []
+    for entry in combat_log:
+        actor = entry.get("actor", "?")
+        action = entry.get("action", "?")
+        target = entry.get("target", "?")
+
+        if action == "death":
+            if actor == "player":
+                summaries.append("**You have been slain!**")
+            else:
+                name = _entity_name(actor, corpus)
+                summaries.append(f"**{name} is dead!**")
+        elif action == "attack":
+            hit = entry.get("hit")
+            damage = entry.get("damage")
+            crit = entry.get("critical")
+
+            if actor == "player":
+                name = "You attack"
+            else:
+                name = f"{_entity_name(actor, corpus)} attacks"
+
+            if target == "player":
+                target_name = "you"
+            else:
+                target_name = _entity_name(target, corpus)
+
+            if hit:
+                crit_str = " (CRIT!)" if crit else ""
+                dmg_str = f" for {damage} damage{crit_str}" if damage is not None else ""
+                summaries.append(f"**{name} {target_name}: hit{dmg_str}.**")
+            else:
+                summaries.append(f"**{name} {target_name}: miss.**")
+        elif action == "flee":
+            hit = entry.get("hit")
+            if hit:
+                summaries.append("**You break away from combat!**")
+            else:
+                summaries.append("**You fail to escape!**")
+
+    if not summaries:
+        return ""
+
+    return "\n\n".join(summaries) + "\n\n"
+
+
+def _entity_name(entity_id: str, corpus: Any) -> str:
+    """Resolve an entity id to a display name using the corpus."""
+    if corpus and hasattr(corpus, "entities"):
+        entity = corpus.entities.get(entity_id)
+        if entity:
+            return getattr(entity, "name", entity_id) or entity_id
+    return entity_id
+
+
 def format_stat_change_prefix(
     stat_modifiers: dict[str, StatModifier],
     old_stat_values: dict[str, int],

@@ -31,7 +31,7 @@ You MUST output a single JSON object with the following structure.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `action_type` | string | One of: `move`, `examine`, `interact`, `talk`, `transfer`, `wait`, `ooc_discussion` |
+| `action_type` | string | One of: `move`, `examine`, `interact`, `talk`, `transfer`, `combat`, `wait`, `ooc_discussion` |
 | `detail` | string | Natural-language description of what the player attempts |
 | `follow_up` | string|null | If the player described a chained action, put the rest here (omit or null otherwise) |
 | `proposed_soft_state_patches` | array | Soft state changes (see below). Empty array if none. |
@@ -67,6 +67,11 @@ You MUST output a single JSON object with the following structure.
 **wait** — Pass time or do something plot-insignificant:
 - No additional fields. Use `detail` to describe what the player does (e.g. "checking inventory contents").
 
+**combat** — Attack during combat:
+- `target` (string, required): Entity ID of the combatant to attack
+- `combat_action` (string, required): Must be `"attack"`
+- Only valid when `combat_state` is present in the briefing.
+
 **ooc_discussion** — Out-of-character talk with the GM:
 - No additional fields.  Summarize the player input in `detail`.
 
@@ -101,7 +106,9 @@ Only propose patches that are plausible given the current room and player state.
 
 5. **Transfer**: Giving items to someone or taking items from someone/somewhere. Hard items use item IDs.  Soft items use their names; only items that are plausibly available should be taken.
 
-6. **Wait**: Catch-all for actions that don't fit other types — introspection (looking through inventory), non-interactive observation, actions the GM can't resolve.
+6. **Combat**: When `combat_state` is present in the briefing, the only valid actions are `combat` (to attack a combatant) and `move` (to attempt to flee). The target must be an active combatant listed in `combat_state.combatants`. Do not use any other action type while combat is active.
+
+7. **Wait**: Catch-all for actions that don't fit other types — introspection (looking through inventory), non-interactive observation, actions the GM can't resolve.
 
 ---
 
@@ -116,6 +123,7 @@ Only propose patches that are plausible given the current room and player state.
 - **Soft items**: Items without item IDs (like "rock", "stick", "pebble") that are plausibly present in a room based on its description. You may propose adding them to soft inventory via patches. Do not invent magical or plot-significant items.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
 - **Interactive-fiction shortcuts**: Classic IF abbreviations such as `n` (go north), `x` (examine), `i` (inventory), and `z` (wait) are expanded into full phrases before you see them. Treat the expanded phrase as the player's intent.
+- **Combat awareness**: When `combat_state` is present, combat is active. Only use `combat` (attack) or `move` (flee) actions. The target for `combat` must be an ID from `combat_state.combatants`. The player cannot examine rooms, talk to NPCs, or take items during combat.
 
 ---
 

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from mgmai.models.actions import (
+    CombatAction,
     DialogueExitedResult,
     ExamineAction,
     HardStateChanges,
@@ -43,6 +44,7 @@ from mgmai.models.corpus import (
     TraversalCheck,
     UsingResultOverride,
 )
+from mgmai.models.combat import CombatLogEntry
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch
 from mgmai.engine.conditions import evaluate
@@ -64,6 +66,10 @@ class ResolutionResult:
     triggered_narration: list[str] = field(default_factory=list)
     revealed_hints: list[str] = field(default_factory=list)
     encounter_trigger: str | None = None
+    combat_trigger: list[str] | None = None
+    combat_log: list[CombatLogEntry] = field(default_factory=list)
+    combat_triggered: bool = False
+    game_over_trigger: str | None = None
     on_enter_events: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     room_after_id: str | None = None
@@ -616,6 +622,20 @@ def resolve_interact(
                     encounter_trigger=target_id,
                     room_after_id=room_id,
                 )
+
+        # If NPC has a CombatBlock but no behavior trigger matched, and the
+        # interaction is an attack, start combat directly.
+        if interaction_id == "attack" and target_entity.combat is not None:
+            from mgmai.engine.combat import enter_combat
+            entry = enter_combat([target_id], hard, corpus)
+            return ResolutionResult(
+                success=True,
+                hard_changes=entry["hard_changes"],
+                combat_triggered=True,
+                combat_log=entry["combat_log"],
+                game_over_trigger="player_death" if entry["game_over"] else None,
+                room_after_id=room_id,
+            )
 
         for inter in target_entity.interactions:
             if inter.id == interaction_id:
@@ -1311,6 +1331,57 @@ def _check_follower_blacklist(
             )
 
 
+def _resolve_combat_action(
+    action: CombatAction,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> ResolutionResult:
+    """Resolve a CombatAction via the combat module."""
+    from mgmai.engine.combat import resolve_combat_turn
+
+    result = resolve_combat_turn(action, hard, corpus)
+    if not result["success"]:
+        return ResolutionResult(
+            success=False,
+            error=result.get("error"),
+        )
+
+    return ResolutionResult(
+        success=True,
+        hard_changes=result["hard_changes"],
+        combat_log=result["combat_log"],
+        game_over_trigger="player_death" if result["game_over"] else None,
+        room_after_id=hard.player.location,
+    )
+
+
+def _resolve_combat_flee(
+    action: MoveAction,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> ResolutionResult:
+    """Resolve a flee attempt (move during combat) via the combat module."""
+    from mgmai.engine.combat import resolve_combat_turn
+
+    result = resolve_combat_turn(action, hard, corpus)
+    if not result["success"]:
+        return ResolutionResult(
+            success=False,
+            error=result.get("error"),
+        )
+
+    return ResolutionResult(
+        success=True,
+        hard_changes=result["hard_changes"],
+        combat_log=result["combat_log"],
+        room_after_id=(
+            result["hard_changes"].player_location
+            if result["hard_changes"] and result["hard_changes"].player_location
+            else hard.player.location
+        ),
+    )
+
+
 def resolve_action(
     action: Any,
     hard: HardGameState,
@@ -1319,6 +1390,11 @@ def resolve_action(
 ) -> ResolutionResult:
     """Dispatch a PlayerAction to the appropriate resolver."""
     action_type = action.action_type
+
+    # During combat, move actions become flee attempts
+    if action_type == "move" and hard.combat is not None and hard.combat.active:
+        return _resolve_combat_flee(action, hard, corpus)
+
     if action_type == "move":
         return resolve_move(action, hard, soft, corpus)
     elif action_type == "examine":
@@ -1329,6 +1405,8 @@ def resolve_action(
         return resolve_talk(action, hard, soft, corpus)
     elif action_type == "transfer":
         return resolve_transfer(action, hard, soft, corpus)
+    elif action_type == "combat":
+        return _resolve_combat_action(action, hard, corpus)
     elif action_type == "wait":
         return resolve_wait(action, hard, soft, corpus)
     elif action_type == "ooc_discussion":

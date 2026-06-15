@@ -210,6 +210,15 @@ class StateManager:
                 if field_name not in declared:
                     errors.append(f"Entity '{entity_id}' has undeclared state field: {field_name}")
 
+        # Entities with combat blocks must declare current_hp in state_fields
+        for entity_id, entity in self.corpus.entities.items():
+            if entity.combat is not None:
+                if "current_hp" not in entity.state_fields:
+                    errors.append(
+                        f"Entity '{entity_id}' has combat block but no "
+                        f"'current_hp' in state_fields"
+                    )
+
         # Player location must be a valid room
         if self.hard_state.player.location not in self.corpus.rooms:
             errors.append(f"No matching room: {self.hard_state.player.location}")
@@ -444,6 +453,11 @@ class StateManager:
             if entity_id not in self.hard_state.entity_states:
                 self.hard_state.entity_states[entity_id] = {}
             self.hard_state.entity_states[entity_id].update(entity_changes)
+
+        if changes.player_hp_delta is not None:
+            self.hard_state.player.current_hp = (
+                (self.hard_state.player.current_hp or 0) + changes.player_hp_delta
+            )
 
         if changes.stat_modifiers and self.hard_state.player.stats is not None:
             for stat_key, mod in changes.stat_modifiers.items():

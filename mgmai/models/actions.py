@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
 from mgmai.models.briefing import BriefingRoom
+from mgmai.models.combat import CombatLogEntry
 from mgmai.models.corpus import StatModifier
 from mgmai.models.narration import AttitudeChange
 from mgmai.models.soft_state import SoftStatePatch
@@ -78,6 +79,12 @@ class WaitAction(_BaseAction):
     action_type: Literal["wait"]
 
 
+class CombatAction(_BaseAction):
+    action_type: Literal["combat"]
+    combat_action: Literal["attack"]
+    target: str
+
+
 class OocDiscussionAction(_BaseAction):
     action_type: Literal["ooc_discussion"]
 
@@ -90,6 +97,7 @@ PlayerActionType = Annotated[
         TalkAction,
         TransferAction,
         WaitAction,
+        CombatAction,
         OocDiscussionAction,
     ],
     Field(discriminator="action_type"),
@@ -105,6 +113,7 @@ def validate_player_action(data: dict) -> (
     | TalkAction
     | TransferAction
     | WaitAction
+    | CombatAction
     | OocDiscussionAction
 ):
     return _player_action_adapter.validate_python(data)
@@ -125,6 +134,7 @@ class PlayerAction:
         | TalkAction
         | TransferAction
         | WaitAction
+        | CombatAction
         | OocDiscussionAction
     ):
         return _player_action_adapter.validate_python(data)
@@ -137,6 +147,7 @@ class PlayerAction:
         | TalkAction
         | TransferAction
         | WaitAction
+        | CombatAction
         | OocDiscussionAction
     ):
         return _player_action_adapter.validate_json(json_str)
@@ -152,6 +163,7 @@ class HardStateChanges(BaseModel):
     entity_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     stat_modifiers: Dict[str, StatModifier] = Field(default_factory=dict)
     old_stat_values: Dict[str, int] = Field(default_factory=dict)
+    player_hp_delta: Optional[int] = None
 
     def merge(self, other: "HardStateChanges") -> "HardStateChanges":
         """Merge another HardStateChanges into this one in-place."""
@@ -182,6 +194,11 @@ class HardStateChanges(BaseModel):
         for stat_key, old_val in other.old_stat_values.items():
             if stat_key not in self.old_stat_values:
                 self.old_stat_values[stat_key] = old_val
+        if other.player_hp_delta is not None:
+            if self.player_hp_delta is not None:
+                self.player_hp_delta += other.player_hp_delta
+            else:
+                self.player_hp_delta = other.player_hp_delta
         return self
 
     def has_changes(self) -> bool:
@@ -195,6 +212,7 @@ class HardStateChanges(BaseModel):
             or bool(self.room_state_changes)
             or bool(self.entity_state_changes)
             or bool(self.stat_modifiers)
+            or self.player_hp_delta is not None
         )
 
 
@@ -276,3 +294,5 @@ class EngineResult(BaseModel):
     chain_info: Optional[ChainInfo] = None
     revealed_hints: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
+    combat_triggered: bool = False
+    combat_log: list[CombatLogEntry] = Field(default_factory=list)

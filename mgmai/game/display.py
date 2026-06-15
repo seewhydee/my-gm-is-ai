@@ -139,6 +139,11 @@ class Display:
         if hard is None:
             return
 
+        # Combat status takes priority
+        if hard.combat is not None and hard.combat.active:
+            self._render_combat_status(hard, state_loader)
+            return
+
         loc = hard.player.location
         inv = hard.player.inventory
         turn = hard.turn_count
@@ -164,6 +169,83 @@ class Display:
             if active_flags:
                 parts.append(f"Flags: {', '.join(active_flags)}")
             print(f"  {' | '.join(parts)}")
+
+    def _render_combat_status(self, hard: Any, state_loader: Any) -> None:
+        """Render a compact combat status panel between turns."""
+        corpus = state_loader.corpus
+        combat = hard.combat
+
+        hp_bar_width = 10
+
+        def _hp_bar(current: int, max_hp: int) -> str:
+            if max_hp <= 0:
+                return " " * hp_bar_width
+            filled = max(0, min(hp_bar_width, round(current / max_hp * hp_bar_width)))
+            empty = hp_bar_width - filled
+            return "\u2588" * filled + "\u2591" * empty
+
+        if RICH_AVAILABLE:
+            from rich.panel import Panel
+            from rich.text import Text
+
+            lines: list[str] = []
+            lines.append(f"[bold]Combat: Round {combat.round_number}[/bold]")
+            lines.append("")
+
+            initiative_str = " \u2192 ".join(
+                f"[cyan]{c}[/cyan]" if c == "player" else c
+                for c in combat.initiative_order
+            )
+            lines.append(f"[dim]Initiative:[/dim] {initiative_str}")
+            lines.append("")
+
+            for cid in combat.combatants:
+                if cid == "player":
+                    name = "[bold bright_white]Player[/bold bright_white]"
+                    current = hard.player.current_hp or 0
+                    max_hp = hard.player.max_hp or 0
+                else:
+                    entity = corpus.entities.get(cid) if corpus else None
+                    name = getattr(entity, "name", cid) if entity else cid
+                    state = hard.entity_states.get(cid, {})
+                    current = state.get("current_hp") or 0
+                    max_hp = (entity.combat.hp if entity and entity.combat else 0)
+
+                bar = _hp_bar(current, max_hp)
+                lines.append(
+                    f"{name:<15} HP {bar} {current}/{max_hp}"
+                )
+
+            lines.append("")
+            lines.append("[dim italic]It's your turn.[/dim italic]")
+
+            self._console.print()
+            self._console.print(
+                Panel("\n".join(lines), border_style="red", padding=(0, 1))
+            )
+            self._console.print()
+        else:
+            print()
+            print(f"=== Combat: Round {combat.round_number} ===")
+            initiative_str = " -> ".join(combat.initiative_order)
+            print(f"Initiative: {initiative_str}")
+            print()
+            for cid in combat.combatants:
+                if cid == "player":
+                    name = "Player"
+                    current = hard.player.current_hp or 0
+                    max_hp = hard.player.max_hp or 0
+                else:
+                    entity = corpus.entities.get(cid) if corpus else None
+                    name = getattr(entity, "name", cid) if entity else cid
+                    state = hard.entity_states.get(cid, {})
+                    current = state.get("current_hp") or 0
+                    max_hp = (entity.combat.hp if entity and entity.combat else 0)
+                bar = _hp_bar(current, max_hp)
+                print(f"  {name:<15} HP {bar} {current}/{max_hp}")
+            print()
+            print("  It's your turn.")
+            print()
 
     def _render_character_sheet(self, state_loader: Any) -> None:
         hard = state_loader.hard_state

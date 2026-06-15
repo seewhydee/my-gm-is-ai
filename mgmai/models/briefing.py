@@ -35,6 +35,7 @@ class BriefingEntity(BaseModel):
     entity_notes: List[str] = Field(default_factory=list)
     soft_items: List[str] = Field(default_factory=list)
     dialogue_paths: Dict[str, str] = Field(default_factory=dict)
+    combat_block: Optional[dict[str, Any]] = None
 
 
 class BriefingExit(BaseModel):
@@ -60,6 +61,13 @@ class PlayerStatEntry(BaseModel):
     modifier: int
 
 
+class PlayerCombatStats(BaseModel):
+    current_hp: int
+    max_hp: int
+    ac: int
+    proficiency_bonus: int
+
+
 class PlayerStateBriefing(BaseModel):
     location: str
     hard_inventory: List[str] = Field(default_factory=list)
@@ -67,6 +75,7 @@ class PlayerStateBriefing(BaseModel):
     active_flags: Dict[str, bool] = Field(default_factory=dict)
     entity_notes: List[str] = Field(default_factory=list)
     player_stats: Optional[Dict[str, PlayerStatEntry]] = None
+    combat_stats: Optional[PlayerCombatStats] = None
 
 
 class BriefingHistoryEntry(BaseModel):
@@ -89,6 +98,13 @@ class DialogueContext(BaseModel):
     revealed_topics: List[str] = Field(default_factory=list)
 
 
+class CombatBriefing(BaseModel):
+    round_number: int
+    initiative_order: list[str]
+    current_actor: str
+    combatants: list[dict[str, Any]]  # [{id, name, current_hp, max_hp}]
+
+
 class GMBriefing(BaseModel):
     adventure_title: str
     setting: str
@@ -101,3 +117,4 @@ class GMBriefing(BaseModel):
     dialogue_context: Optional[DialogueContext] = None
     revealed_hints: List[str] = Field(default_factory=list)
     player_input: str
+    combat_state: Optional[CombatBriefing] = None

@@ -304,7 +304,7 @@ class BranchOutcome(BaseModel):
 
 class EncounterRule(BaseModel):
     condition: ConditionExpression
-    outcome: Literal["death", "flee", "roll", "stat_check"]
+    outcome: Literal["death", "flee", "roll", "stat_check", "combat"]
     threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     check: Optional[StatCheck] = None
     narrative: Optional[str] = None
@@ -341,6 +341,7 @@ class Entity(BaseModel):
     behavior: Optional[Behavior] = None
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
     follower_blacklist: Optional[List[str]] = None
+    combat: Optional[CombatBlock] = None
 
     @model_validator(mode="after")
     def check_type_specific_fields(self) -> Entity:
@@ -352,6 +353,10 @@ class Entity(BaseModel):
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'behavior'. "
                 f"Only 'npc' entities may carry behavior.")
+        if self.type != "npc" and self.combat is not None:
+            raise ValueError(
+                f"Entity type '{self.type}' must not have 'combat'. "
+                f"Only 'npc' entities may carry combat.")
         return self
 
 
@@ -386,6 +391,20 @@ class Mechanic(BaseModel):
 class StatDefinition(BaseModel):
     name: str
     description: str
+
+
+class CombatBlock(BaseModel):
+    """NPC combat stat block (5e-flavoured but corpus-agnostic).
+
+    All values are pre-computed by the adventure author.  NPCs without
+    this block cannot participate in HP-based combat.
+    """
+    hp: int = Field(gt=0)
+    ac: int
+    atk: int
+    dmg: str = "1d6"
+    initiative_mod: int = 0
+    flee_dc: int = 10
 
 
 class StatsBlock(BaseModel):

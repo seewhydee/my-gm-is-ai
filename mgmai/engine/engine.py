@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 from mgmai.models.actions import (
     AttitudeLimitsCurrent,
     ChainInfo,
+    CombatLogEntry,
     ConditionStatus,
     EncounterOutcome,
     EngineResult,
@@ -175,6 +176,8 @@ def resolve(
     encounter_outcome: dict[str, Any] | None = None
     game_over = None
     rolls: list[dict[str, Any]] = list(resolution.rolls or [])
+    combat_triggered = False
+    combat_log: list[CombatLogEntry] = []
 
     if resolution.encounter_trigger:
         npc_id = resolution.encounter_trigger
@@ -214,6 +217,54 @@ def resolve(
             )
             enc_rolls = enc_result.get("rolls") or []
             rolls.extend(enc_rolls)
+
+            # Combat entry via encounter outcome
+            if enc_result["outcome"] == "combat":
+                from mgmai.engine.combat import enter_combat
+                combat_entry = enter_combat([npc_id], hard, corpus)
+                combat_triggered = True
+                combat_log = combat_entry["combat_log"]
+                if combat_entry.get("hard_changes"):
+                    hard_changes.merge(combat_entry["hard_changes"])
+                    state_manager.apply_hard_changes(combat_entry["hard_changes"])
+                if combat_entry.get("game_over"):
+                    hard.game_over = GameOverState(
+                        type="lose", trigger="player_death"
+                    )
+                    game_over = GameOverResult(
+                        type="lose", trigger="player_death"
+                    )
+                # Exit dialogue when combat starts
+                if soft.dialogue_state.active_npc is not None:
+                    from mgmai.engine.dialogue import exit_dialogue
+                    resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+
+    # Handle direct combat trigger from resolver (NPC with CombatBlock, no behavior)
+    if resolution.combat_triggered:
+        combat_triggered = True
+        combat_log = list(resolution.combat_log or [])
+        if resolution.game_over_trigger:
+            hard.game_over = GameOverState(
+                type="lose", trigger=resolution.game_over_trigger
+            )
+            game_over = GameOverResult(
+                type="lose", trigger=resolution.game_over_trigger
+            )
+        # Exit dialogue when combat starts
+        if soft.dialogue_state.active_npc is not None:
+            from mgmai.engine.dialogue import exit_dialogue
+            resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+
+    # Handle combat log from subsequent combat turns
+    if resolution.combat_log and not combat_triggered:
+        combat_log = list(resolution.combat_log)
+        if resolution.game_over_trigger:
+            hard.game_over = GameOverState(
+                type="lose", trigger=resolution.game_over_trigger
+            )
+            game_over = GameOverResult(
+                type="lose", trigger=resolution.game_over_trigger
+            )
 
     if hard.game_over is None:
         _check_game_over_mechanics(hard, soft, corpus, game_over_ref := [None])
@@ -299,6 +350,8 @@ def resolve(
         chain_info=chain_info,
         revealed_hints=resolution.revealed_hints or [],
         warnings=warnings,
+        combat_triggered=combat_triggered,
+        combat_log=combat_log,
     )
 
 

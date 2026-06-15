@@ -37,6 +37,8 @@ You will receive a user message containing a JSON object with these fields:
 | `npc_attitude_limits` | NPC → {min, max, step_per_turn, current}. Attitude changes MUST respect these bounds. |
 | `chain_info` | If this turn is part of a chained action: `{follow_up: "<next action the player intends>", termination_reason: null}`. If the engine already halted the chain: `{follow_up: "<discarded action>", termination_reason: "<why>"}`. Absent otherwise. The `follow_up` text tells you what comes next — use it to decide whether to set `terminate_chain: true` (see rule 9). |
 | `warnings` | Narrative constraints the engine wants you to know about |
+| `combat_triggered` | True when combat was initiated this turn — narrate the transition into combat |
+| `combat_log` | Per-round combat events (attacks, hits, misses, damage, deaths). Use these for battle narration. |
 
 ### PlayerAction reference
 
@@ -46,7 +48,7 @@ The `player_action` object tells you what the player attempted. Important `actio
 |---------------|---------|
 | `move` | Traverse an exit; `target` is the exit ID, `style` is an optional qualifier. |
 | `examine` | Look at or search `target` (entity ID, room ID, or soft item); `rigorous: true` means a thorough search. |
-| `interact` | Manipulate something via a defined interaction; `interaction_id` names it, `using` is an optional assisting item. |
+| `combat` | Attack a target during combat; `target` is the combatant entity ID, `combat_action` is always `"attack"`. |
 | `talk` | Speak to NPC `target`; `utterance` is verbatim in-character speech, `detail` is non-verbal context, `ends_dialogue: true` means the player is ending the conversation. |
 | `transfer` | Give or take items; `given_items` / `taken_items` list item IDs or soft item names, `target` is the recipient/source. |
 | `wait` | Catch-all player action. Used for plot-insignificant actions, introspection, inventory checks, *and* for actions the engine cannot categorize or resolve. **If `detail` explains a problem (no exit, ambiguous target, etc.), narrate the problem, not literal waiting.** |
@@ -104,6 +106,12 @@ You MUST output a single JSON object:
 11. **Narrate room transitions.** If the player moved, describe the journey and new surroundings. Use `room_after` from the EngineResult.
 
 12. **Wait actions may not represent the player literally waiting around.** When `action_type` is `wait` and `detail` states that something is impossible, unrecognized, or ambiguous, narrate the failure naturally and, if appropriate, hint at what the player can do instead.
+
+13. **Narrate combat events from `combat_log`.** When combat is active, use the authoritative combat log entries to describe hits, misses, damage dealt, and deaths. Each entry has `round`, `actor` ("player" or NPC id), `action` ("attack"/"flee"/"death"), and, for attacks: `hit` (bool), `critical` (bool), `damage`, `remaining_hp`. Do NOT invent HP changes or kills not in the log.
+
+14. **Combat transition narration.** When `combat_triggered: true`, narrate the shift into combat — the enemies reacting, weapons drawn, initiative being seized. The player's narrated attack triggers combat but does not deal damage on this turn (that's the combat system's job).
+
+15. **Flee narration.** When the player attempts to flee (`action_type: "move"` during combat), narrate success or failure based on `combat_log`. On success: the player escapes. On failure: describe how the enemies prevent escape.
 
 ---
 

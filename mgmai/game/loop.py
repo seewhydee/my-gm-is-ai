@@ -70,7 +70,11 @@ atexit.register(_save_history)
 from mgmai.context.assembler import assemble
 from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
 from mgmai.engine.post_validate import apply_post_validation
-from mgmai.engine.stat_checks import format_stat_check_prefix, format_stat_change_prefix
+from mgmai.engine.stat_checks import (
+    format_stat_check_prefix,
+    format_stat_change_prefix,
+    format_combat_prefix,
+)
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
 from mgmai.logging import TurnLogger, format_state_snapshot
@@ -339,6 +343,14 @@ class GameLoop:
             stat_prefix = format_stat_change_prefix(hc.stat_modifiers, hc.old_stat_values)
             if stat_prefix:
                 narration = stat_prefix + narration
+        # Prepend combat summary prefix
+        if result.combat_log:
+            combat_prefix = format_combat_prefix(
+                [e if isinstance(e, dict) else e.model_dump() for e in result.combat_log],
+                corpus,
+            )
+            if combat_prefix:
+                narration = combat_prefix + narration
         return narration
 
     # ------------------------------------------------------------------

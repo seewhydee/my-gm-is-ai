@@ -83,6 +83,17 @@ def _apply_encounter_rule(
             "rolls": [],
         }
 
+    if outcome == "combat":
+        return {
+            "outcome": "combat",
+            "narrative": rule.narrative,
+            "set_flags": rule.set_flags or {},
+            "alter_stat": rule.alter_stat or {},
+            "game_over": None,
+            "flee_effects": None,
+            "rolls": [],
+        }
+
     if outcome == "flee":
         flee_data = None
         set_flags = dict(rule.set_flags or {})
