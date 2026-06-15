@@ -118,6 +118,7 @@ class TestAxeHandleLowerWebbing:
         self, bag_state_manager, monkeypatch
     ):
         hard = bag_state_manager.hard_state
+        soft = bag_state_manager.soft_state
         hard.player.location = "axe_handle_lower"
         hard.player.inventory = ["toenail_sword"]
 
@@ -135,21 +136,26 @@ class TestAxeHandleLowerWebbing:
 
         assert result.success is True
         assert hard.flags["webs_cleared"] is True
-        assert len(result.rolls) == 1
-        roll = result.rolls[0]
-        assert roll["type"] == "stat_check"
-        assert roll["stat"] == "STR"
-        assert roll["dc"] == 10
-        assert roll["success"] is True
+        # Two rolls: cut_webbing + spider encounter
+        assert len(result.rolls) == 2
+        cut_roll = result.rolls[0]
+        assert cut_roll["type"] == "stat_check"
+        assert cut_roll["stat"] == "STR"
+        assert cut_roll["dc"] == 10
+        assert cut_roll["success"] is True
+        # Encounter outcome: spider attack with weapon -> stat_check STR DC 10 -> success -> flee
+        assert result.encounter_outcome is not None
+        assert result.encounter_outcome.outcome == "flee"
+        assert hard.flags["spider_fled"] is True
 
-    def test_cut_webbing_with_sword_fails_but_gets_a_check(
+    def test_cut_webbing_with_sword_fails_but_triggers_spider(
         self, bag_state_manager, monkeypatch
     ):
         hard = bag_state_manager.hard_state
         hard.player.location = "axe_handle_lower"
         hard.player.inventory = ["toenail_sword"]
 
-        # STR 10 + roll 5 = total 5, failing DC 10.
+        # STR 10 + roll 5 = total 5, failing DC 10 for both cut and spider attack.
         monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: 5)
 
         action = InteractAction(
@@ -161,15 +167,21 @@ class TestAxeHandleLowerWebbing:
         )
         result = resolve(action, bag_state_manager)
 
-        # The action resolves; the check itself fails.
+        # Action succeeds (interaction resolved), but the check itself fails.
         assert result.success is True
         assert hard.flags["webs_cleared"] is False
-        assert len(result.rolls) == 1
-        roll = result.rolls[0]
-        assert roll["type"] == "stat_check"
-        assert roll["stat"] == "STR"
-        assert roll["dc"] == 10
-        assert roll["success"] is False
+        # Two rolls: cut_webbing (fail) + spider encounter (fail -> death)
+        assert len(result.rolls) == 2
+        cut_roll = result.rolls[0]
+        assert cut_roll["type"] == "stat_check"
+        assert cut_roll["stat"] == "STR"
+        assert cut_roll["dc"] == 10
+        assert cut_roll["success"] is False
+        # Spider encounter: armed, but failed STR check -> game over
+        assert result.encounter_outcome is not None
+        assert result.encounter_outcome.outcome == "death"
+        assert result.game_over is not None
+        assert result.game_over.type == "lose"
 
     def test_cut_webbing_not_usable_without_weapon(self, bag_state_manager):
         hard = bag_state_manager.hard_state
@@ -184,5 +196,8 @@ class TestAxeHandleLowerWebbing:
         )
         result = resolve(action, bag_state_manager)
 
-        assert result.success is False
+        # Interaction condition fails (no weapon), but spider encounter still triggers
         assert "condition" in result.error.lower() or "not found" in result.error.lower()
+        # Spider encounter: bare-handed -> death
+        assert result.game_over is not None
+        assert result.game_over.type == "lose"

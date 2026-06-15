@@ -680,10 +680,22 @@ def resolve_interact(
 
     inter, source = matches[0]
 
+    # Check if any room NPC's behavior triggers on this interaction
+    auto_encounter_npc: str | None = None
+    for entity_id in room.entities_present:
+        entity = corpus.entities.get(entity_id)
+        if entity and entity.type == "npc" and entity.behavior:
+            if interaction_id in (entity.behavior.triggers_on or []):
+                entity_state = hard.entity_states.get(entity_id, {})
+                if entity_state.get("alive") is not False:
+                    auto_encounter_npc = entity_id
+                    break
+
     if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
         return ResolutionResult(
             success=False,
             error=f"Conditions not met for interaction '{interaction_id}'",
+            encounter_trigger=auto_encounter_npc,
         )
 
     if inter.parameter_signature:
@@ -698,6 +710,7 @@ def resolve_interact(
                 return ResolutionResult(
                     success=False,
                     error=f"Target type '{target_type}' not allowed for interaction '{interaction_id}' (expected: {sig.target})",
+                    encounter_trigger=auto_encounter_npc,
                 )
         if sig.using and action.using:
             using_entity = corpus.entities.get(action.using)
@@ -709,22 +722,24 @@ def resolve_interact(
                 return ResolutionResult(
                     success=False,
                     error=f"Using item type '{using_type}' not allowed for interaction '{interaction_id}' (expected: {sig.using})",
+                    encounter_trigger=auto_encounter_npc,
                 )
 
     if inter.check:
-        return _resolve_interaction_check(inter, hard, soft, corpus, room_id)
+        return _resolve_interaction_check(inter, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
 
     if inter.using_results and action.using:
         item_override = inter.using_results.get(action.using)
         if item_override is not None:
-            return _resolve_using_override(item_override, hard, soft, corpus, room_id)
+            return _resolve_using_override(item_override, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
 
     if inter.result:
-        return _resolve_interaction_result(inter.result, hard, soft, corpus, room_id)
+        return _resolve_interaction_result(inter.result, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
 
     return ResolutionResult(
         success=False,
         error=f"Interaction '{interaction_id}' has no defined result",
+        encounter_trigger=auto_encounter_npc,
     )
 
 
@@ -937,6 +952,7 @@ def _resolve_interaction_check(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     room_id: str,
+    encounter_trigger: str | None = None,
 ) -> ResolutionResult:
     check = inter.check
     if check is None:
@@ -952,9 +968,9 @@ def _resolve_interaction_check(
             )
 
     if isinstance(check, StatCheck):
-        return _resolve_stat_check(inter, check, hard, soft, corpus, room_id)
+        return _resolve_stat_check(inter, check, hard, soft, corpus, room_id, encounter_trigger)
     else:
-        return _resolve_roll_check(inter, check, hard, soft, corpus, room_id)
+        return _resolve_roll_check(inter, check, hard, soft, corpus, room_id, encounter_trigger)
 
 
 def _resolve_roll_check(
@@ -964,6 +980,7 @@ def _resolve_roll_check(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     room_id: str,
+    encounter_trigger: str | None = None,
 ) -> ResolutionResult:
     roll = random.random()
     success_flag = roll < check.threshold
@@ -1003,6 +1020,7 @@ def _resolve_roll_check(
         revealed_hints=revealed_hints,
         room_after_id=room_id,
         rolls=rolls,
+        encounter_trigger=encounter_trigger,
     )
 
 
@@ -1013,6 +1031,7 @@ def _resolve_stat_check(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     room_id: str,
+    encounter_trigger: str | None = None,
 ) -> ResolutionResult:
     stats_block = corpus.stats
     if stats_block is None:
@@ -1094,6 +1113,7 @@ def _resolve_stat_check(
         revealed_hints=revealed_hints,
         room_after_id=room_id,
         rolls=rolls,
+        encounter_trigger=encounter_trigger,
     )
 
 
@@ -1103,6 +1123,7 @@ def _resolve_using_override(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     room_id: str,
+    encounter_trigger: str | None = None,
 ) -> ResolutionResult:
     """Resolve a using_results override, which may carry its own check."""
     if override.check:
@@ -1114,9 +1135,9 @@ def _resolve_using_override(
             success=override.success,
             failure=override.failure,
         )
-        return _resolve_interaction_check(synthetic_inter, hard, soft, corpus, room_id)
+        return _resolve_interaction_check(synthetic_inter, hard, soft, corpus, room_id, encounter_trigger)
     if override.result:
-        return _resolve_interaction_result(override.result, hard, soft, corpus, room_id)
+        return _resolve_interaction_result(override.result, hard, soft, corpus, room_id, encounter_trigger)
     return ResolutionResult(
         success=False,
         error="UsingResultOverride has neither check nor result",
@@ -1129,6 +1150,7 @@ def _resolve_interaction_result(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     room_id: str,
+    encounter_trigger: str | None = None,
 ) -> ResolutionResult:
     changes = HardStateChanges()
     narrative: list[str] = []
@@ -1148,6 +1170,7 @@ def _resolve_interaction_result(
             revealed_hints=revealed_hints,
             room_after_id=room_id,
             rolls=rolls,
+            encounter_trigger=encounter_trigger,
         )
 
     return ResolutionResult(
@@ -1156,6 +1179,7 @@ def _resolve_interaction_result(
         triggered_narration=narrative,
         revealed_hints=revealed_hints,
         room_after_id=room_id,
+        encounter_trigger=encounter_trigger,
     )
 
 

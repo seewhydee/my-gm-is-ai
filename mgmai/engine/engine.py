@@ -124,6 +124,90 @@ def resolve(
 
     resolution = resolve_action(player_action, hard, soft, corpus)
 
+    # Process encounter triggers even on failed resolutions (e.g., spider
+    # attacks when a bare-handed cut attempt fails the condition check).
+    encounter_outcome: dict[str, Any] | None = None
+    game_over = None
+    rolls: list[dict[str, Any]] = list(resolution.rolls or [])
+    combat_triggered = False
+    combat_log: list[CombatLogEntry] = []
+    hard_changes = HardStateChanges()
+
+    if resolution.encounter_trigger:
+        trigger_id = resolution.encounter_trigger
+
+        # Try NPC behavior first, then mechanic fallback
+        npc = corpus.entities.get(trigger_id)
+        encounter_rules = None
+        encounter_source_id = trigger_id
+
+        if npc and npc.behavior:
+            encounter_rules = npc.behavior.encounter_rules
+        else:
+            mech = corpus.mechanics.get(trigger_id)
+            if mech and mech.rules:
+                if mech.condition and not evaluate(mech.condition, hard, soft, corpus):
+                    pass
+                else:
+                    encounter_rules = mech.rules
+
+        if encounter_rules:
+            enc_result = resolve_encounter(
+                encounter_rules, hard, soft, corpus, encounter_source_id
+            )
+            if enc_result["narrative"]:
+                resolution.triggered_narration.append(enc_result["narrative"])
+
+            set_flags = enc_result.get("set_flags") or {}
+            for flag, val in set_flags.items():
+                hard.flags[flag] = val
+
+            if enc_result["flee_effects"]:
+                apply_flee_effects(enc_result["flee_effects"], hard)
+
+            alter_stat = enc_result.get("alter_stat") or {}
+            if alter_stat:
+                state_manager.apply_hard_changes(
+                    HardStateChanges(stat_modifiers=dict(alter_stat))
+                )
+
+            if enc_result["game_over"]:
+                go = enc_result["game_over"]
+                hard.game_over = GameOverState(type=go["type"], trigger=go["trigger"])
+                game_over = GameOverResult(
+                    type=go["type"],
+                    trigger=go["trigger"],
+                    narrative=enc_result.get("narrative"),
+                )
+
+            encounter_outcome = EncounterOutcome(
+                encounter_id=encounter_source_id,
+                outcome=enc_result["outcome"],
+                narrative_brief=enc_result.get("narrative"),
+            )
+            enc_rolls = enc_result.get("rolls") or []
+            rolls.extend(enc_rolls)
+
+            # Combat entry via encounter outcome
+            if enc_result["outcome"] == "combat":
+                from mgmai.engine.combat import enter_combat
+                combat_entry = enter_combat([encounter_source_id], hard, corpus)
+                combat_triggered = True
+                combat_log = combat_entry["combat_log"]
+                if combat_entry.get("hard_changes"):
+                    hard_changes.merge(combat_entry["hard_changes"])
+                    state_manager.apply_hard_changes(combat_entry["hard_changes"])
+                if combat_entry.get("game_over"):
+                    hard.game_over = GameOverState(
+                        type="lose", trigger="player_death"
+                    )
+                    game_over = GameOverResult(
+                        type="lose", trigger="player_death"
+                    )
+                # Exit dialogue when combat starts
+                if soft.dialogue_state.active_npc is not None:
+                    resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+
     if not resolution.success:
         chain_info = None
         if player_action.follow_up:
@@ -138,9 +222,12 @@ def resolve(
             error=resolution.error,
             player_input_echo=player_input_echo,
             chain_info=chain_info,
+            game_over=game_over,
+            encounter_outcome=encounter_outcome,
+            rolls=rolls,
         )
 
-    hard_changes = resolution.hard_changes or HardStateChanges()
+    hard_changes.merge(resolution.hard_changes or HardStateChanges())
 
     old_room = hard.player.location
 
@@ -175,71 +262,6 @@ def resolve(
     for hint in resolution.revealed_hints or []:
         if hint not in soft.revealed_hints:
             soft.revealed_hints.append(hint)
-
-    encounter_outcome: dict[str, Any] | None = None
-    game_over = None
-    rolls: list[dict[str, Any]] = list(resolution.rolls or [])
-    combat_triggered = False
-    combat_log: list[CombatLogEntry] = []
-
-    if resolution.encounter_trigger:
-        npc_id = resolution.encounter_trigger
-        npc = corpus.entities.get(npc_id)
-        if npc and npc.behavior:
-            encounter_rules = npc.behavior.encounter_rules
-            enc_result = resolve_encounter(encounter_rules, hard, soft, corpus, npc_id)
-            if enc_result["narrative"]:
-                resolution.triggered_narration.append(enc_result["narrative"])
-
-            set_flags = enc_result.get("set_flags") or {}
-            for flag, val in set_flags.items():
-                hard.flags[flag] = val
-
-            if enc_result["flee_effects"]:
-                apply_flee_effects(enc_result["flee_effects"], hard)
-
-            alter_stat = enc_result.get("alter_stat") or {}
-            if alter_stat:
-                state_manager.apply_hard_changes(
-                    HardStateChanges(stat_modifiers=dict(alter_stat))
-                )
-
-            if enc_result["game_over"]:
-                go = enc_result["game_over"]
-                hard.game_over = GameOverState(type=go["type"], trigger=go["trigger"])
-                game_over = GameOverResult(
-                    type=go["type"],
-                    trigger=go["trigger"],
-                    narrative=enc_result.get("narrative"),
-                )
-
-            encounter_outcome = EncounterOutcome(
-                encounter_id=npc_id,
-                outcome=enc_result["outcome"],
-                narrative_brief=enc_result.get("narrative"),
-            )
-            enc_rolls = enc_result.get("rolls") or []
-            rolls.extend(enc_rolls)
-
-            # Combat entry via encounter outcome
-            if enc_result["outcome"] == "combat":
-                from mgmai.engine.combat import enter_combat
-                combat_entry = enter_combat([npc_id], hard, corpus)
-                combat_triggered = True
-                combat_log = combat_entry["combat_log"]
-                if combat_entry.get("hard_changes"):
-                    hard_changes.merge(combat_entry["hard_changes"])
-                    state_manager.apply_hard_changes(combat_entry["hard_changes"])
-                if combat_entry.get("game_over"):
-                    hard.game_over = GameOverState(
-                        type="lose", trigger="player_death"
-                    )
-                    game_over = GameOverResult(
-                        type="lose", trigger="player_death"
-                    )
-                # Exit dialogue when combat starts
-                if soft.dialogue_state.active_npc is not None:
-                    resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
     # Handle direct combat trigger from resolver (NPC with CombatBlock, no behavior)
     if resolution.combat_triggered:

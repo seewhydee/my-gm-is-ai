@@ -147,7 +147,7 @@
         }
       ],
       "behavior": {
-        "triggers_on": ["exit_through_webs_down", "exit_through_webs_up", "attack"],
+        "triggers_on": ["exit_through_webs_down", "exit_through_webs_up", "attack", "cut_webbing"],
         "encounter_rules": [
           {
             "condition": { "unless": "tag:weapon" },
@@ -738,7 +738,10 @@
             "room:axe_handle_lower._entered_from == axe_handle_upper",
             "flag:webs_cleared == true",
             "room:axe_handle_lower._entered_from == unknown"
-          ]}]
+          ]}],
+          "on_traverse": {
+            "trigger_encounter": "spider_attack"
+          }
         },
         {
           "id": "exit_through_webs_up",
@@ -774,7 +777,10 @@
             "room:axe_handle_lower._entered_from == bag_floor",
             "flag:webs_cleared == true",
             "room:axe_handle_lower._entered_from == unknown"
-          ]}]
+          ]}],
+          "on_traverse": {
+            "trigger_encounter": "spider_attack"
+          }
         },
         {
           "id": "exit_through_webs_down",
@@ -906,6 +912,7 @@
       "id": "spider_attack",
       "description": "The spider attacks when the player tries to force through the webs in Axe Handle (Lower). Resolved via Korbar's behavior.encounter_rules.",
       "type": null,
+      "condition": { "unless": "entity:spider.fled == true" },
       "rules": [
         {
           "condition": { "unless": "tag:weapon" },
