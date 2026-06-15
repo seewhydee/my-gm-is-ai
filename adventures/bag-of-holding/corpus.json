@@ -376,6 +376,41 @@
           "failure": {
             "narrative": "You try to squeeze through, but the rip is too tight. After a few moments of struggle, you pull yourself back inside. Probably for the best."
           }
+        },
+        {
+          "id": "insert_key_into_padlock",
+          "label": "Push key through rip into padlock",
+          "description": "Haul the giant key up to the rip and push it through into the padlock on the exterior of the Bag.",
+          "condition": { "require": "inventory:rusty_key" },
+          "check": {
+            "type": "stat_check",
+            "stat": "STR",
+            "dc": 12,
+            "repeatable": true,
+            "note": "Push the heavy key through the rip and into the padlock."
+          },
+          "success": {
+            "narrative": "With a grunt of effort, you push the giant key through the rip. It slides into the padlock with a satisfying *clunk*. You turn it, and the padlock springs open! The neck of the Bag loosens. You can feel fresh air — real air — seeping in from above.",
+            "set_flag": { "padlock_unlocked": true }
+          },
+          "failure": {
+            "narrative": "You strain to maneuver the heavy key through the rip, but your grip slips. The key teeters on the edge...",
+            "chain_check": {
+              "check": {
+                "type": "stat_check",
+                "stat": "DEX",
+                "dc": 8,
+                "repeatable": true
+              },
+              "success": {
+                "narrative": "You snatch the key back just in time, heart pounding. That was too close."
+              },
+              "failure": {
+                "narrative": "The key slips through your fingers and tumbles through the rip into the gray void. It disappears into the nothingness of the Astral Plane, gone forever. You realize with a sinking feeling that was your only way out.",
+                "set_flag": { "key_lost_to_astral": true }
+              }
+            }
+          }
         }
       ],
       "on_examine": [
