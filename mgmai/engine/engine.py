@@ -239,7 +239,6 @@ def resolve(
                     )
                 # Exit dialogue when combat starts
                 if soft.dialogue_state.active_npc is not None:
-                    from mgmai.engine.dialogue import exit_dialogue
                     resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
     # Handle direct combat trigger from resolver (NPC with CombatBlock, no behavior)
@@ -255,7 +254,6 @@ def resolve(
             )
         # Exit dialogue when combat starts
         if soft.dialogue_state.active_npc is not None:
-            from mgmai.engine.dialogue import exit_dialogue
             resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
     # Handle combat log from subsequent combat turns

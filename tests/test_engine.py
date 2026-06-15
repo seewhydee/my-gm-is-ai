@@ -227,6 +227,32 @@ class TestEngineDialogueIntegration:
         assert result.success is True
         assert state_manager.soft_state.dialogue_state.active_npc == "korbar"
 
+    def test_non_talk_action_exits_dialogue_on_stall(self, state_manager):
+        """Regression test: non-talk action while in dialogue triggers stall exit.
+
+        This used to raise UnboundLocalError because ``exit_dialogue`` was
+        imported locally only inside combat branches, leaving the stall-exit
+        path with an unbound local name.
+        """
+        from mgmai.engine.dialogue import enter_dialogue
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        hard.player.location = "bag_floor"
+        enter_dialogue(soft, "korbar", hard.turn_count, "Hello", "Greeting")
+        soft.dialogue_state.stall_counter = 2
+
+        action = WaitAction(
+            action_type="wait",
+            detail="Standing awkwardly silent",
+        )
+        result = resolve(action, state_manager)
+
+        assert result.success is True
+        assert result.dialogue_exited is not None
+        assert result.dialogue_exited.npc_id == "korbar"
+        assert soft.dialogue_state.active_npc is None
+
     def test_talk_ends_dialogue(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
