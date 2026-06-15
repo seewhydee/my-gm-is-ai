@@ -148,6 +148,11 @@
       ],
       "behavior": {
         "triggers_on": ["exit_through_webs_down", "exit_through_webs_up", "attack", "cut_webbing"],
+        "on_flee": {
+          "set_flags": {},
+          "set_entity_state": { "spider": { "fled": true, "hidden": true } },
+          "effect": "scuttles away into the shadows and disappears from the game"
+        },
         "encounter_rules": [
           {
             "condition": { "all": [
