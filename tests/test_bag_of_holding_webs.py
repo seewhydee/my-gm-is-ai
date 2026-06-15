@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from mgmai.engine.engine import resolve
-from mgmai.models.actions import MoveAction
+from mgmai.models.actions import InteractAction, MoveAction
 from mgmai.state.manager import StateManager
 
 ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
@@ -113,3 +113,76 @@ class TestAxeHandleLowerWebbing:
         assert "exit_drop_from_lower" in exit_ids
         assert "exit_through_webs_up" not in exit_ids
         assert "exit_through_webs_down" not in exit_ids
+
+    def test_cut_webbing_with_sword_succeeds_and_clears_webs(
+        self, bag_state_manager, monkeypatch
+    ):
+        hard = bag_state_manager.hard_state
+        hard.player.location = "axe_handle_lower"
+        hard.player.inventory = ["toenail_sword"]
+
+        # STR 10 + roll 15 = total 15, beating DC 10.
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: 15)
+
+        action = InteractAction(
+            action_type="interact",
+            target="dense_webbing",
+            interaction_id="cut_webbing",
+            using="toenail_sword",
+            detail="Player slashes through the dense webbing with the toenail sword.",
+        )
+        result = resolve(action, bag_state_manager)
+
+        assert result.success is True
+        assert hard.flags["webs_cleared"] is True
+        assert len(result.rolls) == 1
+        roll = result.rolls[0]
+        assert roll["type"] == "stat_check"
+        assert roll["stat"] == "STR"
+        assert roll["dc"] == 10
+        assert roll["success"] is True
+
+    def test_cut_webbing_with_sword_fails_but_gets_a_check(
+        self, bag_state_manager, monkeypatch
+    ):
+        hard = bag_state_manager.hard_state
+        hard.player.location = "axe_handle_lower"
+        hard.player.inventory = ["toenail_sword"]
+
+        # STR 10 + roll 5 = total 5, failing DC 10.
+        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: 5)
+
+        action = InteractAction(
+            action_type="interact",
+            target="dense_webbing",
+            interaction_id="cut_webbing",
+            using="toenail_sword",
+            detail="Player slashes through the dense webbing with the toenail sword.",
+        )
+        result = resolve(action, bag_state_manager)
+
+        # The action resolves; the check itself fails.
+        assert result.success is True
+        assert hard.flags["webs_cleared"] is False
+        assert len(result.rolls) == 1
+        roll = result.rolls[0]
+        assert roll["type"] == "stat_check"
+        assert roll["stat"] == "STR"
+        assert roll["dc"] == 10
+        assert roll["success"] is False
+
+    def test_cut_webbing_not_usable_without_weapon(self, bag_state_manager):
+        hard = bag_state_manager.hard_state
+        hard.player.location = "axe_handle_lower"
+        hard.player.inventory = []
+
+        action = InteractAction(
+            action_type="interact",
+            target="dense_webbing",
+            interaction_id="cut_webbing",
+            detail="Player tries to tear through the webbing bare-handed.",
+        )
+        result = resolve(action, bag_state_manager)
+
+        assert result.success is False
+        assert "condition" in result.error.lower() or "not found" in result.error.lower()

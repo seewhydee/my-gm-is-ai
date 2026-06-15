@@ -562,6 +562,29 @@
           },
           "failure": null
         }
+      ],
+      "interactions": [
+        {
+          "id": "cut_webbing",
+          "label": "Cut webbing",
+          "description": "Hack or slash through the dense webbing with a weapon or cutting tool.",
+          "parameter_signature": { "target": ["entity"], "using": ["item"] },
+          "condition": { "require": "tag:weapon" },
+          "check": {
+            "type": "stat_check",
+            "stat": "STR",
+            "dc": 10,
+            "repeatable": true,
+            "note": "Cut through the dense webbing while armed (DC 10 with a weapon)."
+          },
+          "success": {
+            "narrative": "You hack through the sticky webs, tearing a path clear.",
+            "set_flag": { "webs_cleared": true }
+          },
+          "failure": {
+            "narrative": "You slash at the webs, but the sticky strands tangle your blade and refuse to part."
+          }
+        }
       ]
     },
 

@@ -120,7 +120,11 @@ def resolve_examine(
         return ResolutionResult(success=False, error=f"Current room '{room_id}' not found in corpus")
 
     if action.using is not None:
-        if action.using not in hard.player.inventory and action.using not in soft.soft_inventory:
+        if (
+            action.using not in hard.player.inventory
+            and action.using not in hard.player.equipped
+            and action.using not in soft.soft_inventory
+        ):
             return ResolutionResult(
                 success=False,
                 error=f"Item '{action.using}' is not in your inventory",
@@ -610,7 +614,11 @@ def resolve_interact(
         return ResolutionResult(success=False, error=f"Room '{room_id}' not found")
 
     if action.using is not None:
-        if action.using not in hard.player.inventory and action.using not in soft.soft_inventory:
+        if (
+            action.using not in hard.player.inventory
+            and action.using not in hard.player.equipped
+            and action.using not in soft.soft_inventory
+        ):
             return ResolutionResult(
                 success=False,
                 error=f"Item '{action.using}' is not in your inventory",
