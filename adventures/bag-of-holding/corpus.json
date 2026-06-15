@@ -150,12 +150,18 @@
         "triggers_on": ["exit_through_webs_down", "exit_through_webs_up", "attack", "cut_webbing"],
         "encounter_rules": [
           {
-            "condition": { "unless": "tag:weapon" },
+            "condition": { "all": [
+              { "unless": "tag:weapon" },
+              { "require": "entity:spider.fled == false" }
+            ]},
             "outcome": "death",
             "narrative": "Bare-handed, you are no match for the spider. It overpowers you with terrifying speed, and its venom quickly does its work. Everything goes dark."
           },
           {
-            "condition": { "require": "tag:weapon" },
+            "condition": { "all": [
+              { "require": "tag:weapon" },
+              { "require": "entity:spider.fled == false" }
+            ]},
             "outcome": "stat_check",
             "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": false, "note": "Land a blow on the spider with a weapon." },
             "on_success": {
@@ -738,10 +744,7 @@
             "room:axe_handle_lower._entered_from == axe_handle_upper",
             "flag:webs_cleared == true",
             "room:axe_handle_lower._entered_from == unknown"
-          ]}],
-          "on_traverse": {
-            "trigger_encounter": "spider_attack"
-          }
+          ]}]
         },
         {
           "id": "exit_through_webs_up",
@@ -766,7 +769,7 @@
           "on_traverse": {
             "narrative": "You burst through the sticky webs, tearing a path through the dense strands.",
             "set_flag": { "webs_cleared": true },
-            "trigger_encounter": "spider_attack"
+            "trigger_encounter": "spider"
           }
         },
         {
@@ -777,10 +780,7 @@
             "room:axe_handle_lower._entered_from == bag_floor",
             "flag:webs_cleared == true",
             "room:axe_handle_lower._entered_from == unknown"
-          ]}],
-          "on_traverse": {
-            "trigger_encounter": "spider_attack"
-          }
+          ]}]
         },
         {
           "id": "exit_through_webs_down",
@@ -805,7 +805,7 @@
           "on_traverse": {
             "narrative": "You burst through the sticky webs, tearing a path through the dense strands.",
             "set_flag": { "webs_cleared": true },
-            "trigger_encounter": "spider_attack"
+            "trigger_encounter": "spider"
           }
         },
         {
@@ -908,34 +908,6 @@
   },
 
   "mechanics": {
-    "spider_attack": {
-      "id": "spider_attack",
-      "description": "The spider attacks when the player tries to force through the webs in Axe Handle (Lower). Resolved via Korbar's behavior.encounter_rules.",
-      "type": null,
-      "condition": { "unless": "entity:spider.fled == true" },
-      "rules": [
-        {
-          "condition": { "unless": "tag:weapon" },
-          "outcome": "death",
-          "narrative": "Bare-handed, you are no match for the spider. It overpowers you with terrifying speed, and its venom quickly does its work. Everything goes dark."
-        },
-        {
-          "condition": { "require": "tag:weapon" },
-          "outcome": "stat_check",
-          "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": false },
-          "on_success": {
-            "outcome": "flee",
-            "narrative": "You swing your weapon and land a solid blow! The spider hisses in pain, then scuttles away into the shadows, disappearing from the game.",
-            "set_flags": { "spider_fled": true }
-          },
-          "on_failure": {
-            "outcome": "death",
-            "narrative": "Your blow glances off the spider's tough carapace. It strikes back with lightning speed, fangs sinking deep. Venom floods your veins. Everything goes dark."
-          }
-        }
-      ]
-    },
-
     "win_escape_bag": {
       "id": "win_escape_bag",
       "description": "The player unlocks the padlock and opens the Bag from the inside, escaping into the world beyond.",

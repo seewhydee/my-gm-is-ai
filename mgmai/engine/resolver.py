@@ -687,7 +687,7 @@ def resolve_interact(
         if entity and entity.type == "npc" and entity.behavior:
             if interaction_id in (entity.behavior.triggers_on or []):
                 entity_state = hard.entity_states.get(entity_id, {})
-                if entity_state.get("alive") is not False:
+                if entity_state.get("alive") is not False and entity_state.get("fled") is not True:
                     auto_encounter_npc = entity_id
                     break
 
