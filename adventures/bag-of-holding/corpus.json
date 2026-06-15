@@ -445,6 +445,7 @@
       "description": "A loose, sprawling pile of giant-sized rubbish covers the floor. You can make out copper pieces the size of shields, empty potion bottles as tall as you are, used corks like footstools, wads of lint the size of pillows, and moldy sandwiches that smell about as bad as you'd expect. The heap is chaotic and unstable. Who knows what might be buried in there?",
       "state_fields": {},
       "soft_items": ["copper piece", "empty potion bottle", "cork", "wad of lint", "moldy sandwich crust"],
+      "contained_entities": ["toenail_sword"],
       "interactions": [
         {
           "id": "move_handkerchief",

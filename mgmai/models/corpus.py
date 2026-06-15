@@ -331,6 +331,7 @@ class Entity(BaseModel):
     description: str
     spans_rooms: Optional[List[str]] = None
     soft_items: List[str] = Field(default_factory=list)
+    contained_entities: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     draggable: bool = False
     dragging_note: Optional[str] = None

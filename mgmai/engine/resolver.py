@@ -500,6 +500,23 @@ def resolve_transfer(
                 available_pool.add(target_id)
             if target_ent.soft_items:
                 available_pool.update(target_ent.soft_items)
+            if target_ent.contained_entities:
+                available_pool.update(target_ent.contained_entities)
+        # Fallback: add room-level items that are not nested inside any
+        # other entity in the room (via contained_entities).
+        claimed_entities: set[str] = set()
+        for eid in room.entities_present:
+            if eid == target_id:
+                continue
+            ent = corpus.entities.get(eid)
+            if ent and ent.contained_entities:
+                claimed_entities.update(ent.contained_entities)
+        for eid in room.entities_present:
+            ent = corpus.entities.get(eid)
+            if ent and ent.type == "item" and eid not in claimed_entities:
+                available_pool.add(eid)
+        room_soft = room.soft_items or []
+        available_pool.update(room_soft)
 
     surfaced: dict[str, list[str]] = {}
     triggered_narration: list[str] = []
