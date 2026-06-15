@@ -6,28 +6,9 @@ Unlike freeform AI roleplay chatbots, this AI GM system is not optimized for cra
 
 This is a work in progress.  Right now, there is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Major subsystems, like combat and inventory management, are unimplemented or barely implemented.
 
-## Documentation
-
-The design documentation is in the `doc/` folder:
-
-- [doc/intro.md](doc/intro.md): Architecture guide.
-- [doc/npcs.md](doc/npcs.md): Implementation of non-player characters.
-- [doc/player-stats.md](doc/player-stats.md) — Player stats (WIP).
-- [doc/soft-items.md](doc/soft-items.md) — Extensible nondescript items.
-
-## How It Works
-
-Each turn, your natural language input flows through a three-stage pipeline:
-
-1. **Ruling** — A large language mode (LLM) call interprets your intent and produces a structured action.
-2. **Engine resolution** — A deterministic engine validates the action against the adventure module's rules and the current game state, rolls virtual dice, etc.
-3. **Prose narration** — A second LLM call weaves the outcome into natural prose, respecting narrative requirements like keeping secrets hidden.
-
-The adventures will be generated from handwritten RPG scenarios, which are converted into game logic with the help of LLM assistants.  This setup is done ahead of time, just as a human GM prepares adventure modules before each play session.  In time, it is hoped that the conversion process becomes powerful enough to accommodate complex adventure modules written for tabletop play.
-
 ## Installation and setup
 
-Requires Python 3 with some packages (Pydantic, Rich, Openai, Jinja2, Platformdirs).  You can install them all via `pip`:
+Requires Python 3 with some standard packages (pydantic, rich, openai, jinja2, platformdirs).  You can install them all via `pip`:
 
 ```bash
 pip install -e .
@@ -41,7 +22,7 @@ export MGMAI_MODEL="deepseek-v4-flash"
 export MGMAI_API_KEY="your-api-key"
 ```
 
-Alternatively, on first launch you will be prompted for this information.  These credentials, as well as save files, are saved to `~/.config/mgmai/`.
+Alternatively, on first launch you will be prompted for this information.  These credentials, as well as save files, are saved to `~/.config/mgmai/`.  A cheap fast model is recommended.
 
 ## Usage
 
@@ -75,16 +56,32 @@ During play, type commands in natural language, e.g.:
 
 Use `/help` during play for a list of special commands.
 
+## How It Works
+
+Each turn, the player's natural language input flows through a three-stage pipeline:
+
+1. **Ruling** — A large language mode (LLM) call interprets your intent and produces a structured action.
+2. **Engine resolution** — A deterministic engine validates the action against the adventure module's rules and the current game state, rolls virtual dice, etc.
+3. **Prose narration** — A second LLM call weaves the outcome into natural prose, respecting narrative requirements like keeping secrets hidden.
+
+The adventures are generated from handwritten RPG scenarios, converted into game logic with the help of LLM assistants.  This setup is done ahead of time, just as a human GM prepares adventure modules before each play session.  In time, it is hoped that the conversion process becomes powerful enough to accommodate complex adventure modules written for tabletop play.
+
 ## Scenario Generation
 
-To construct a playable scenario, write up a "scenario file" in
-natural language, describing the adventure as systematically as
-possible, and save it in `adventures/SCENARIO-ID/scenario.md`.
-See `adventures/bag-of-holding/scenario.md` for an example.
+To construct a playable scenario, write up a "scenario file" in natural language, describing the adventure as systematically as possible, and save it in `adventures/SCENARIO-ID/scenario.md`. See `adventures/bag-of-holding/scenario.md` for an example.
 
-Then, fire up an LLM of your choice and instruct it to follow the
-steps in `schema/scenario-generation.md` to convert your scenario file
-into JSON.
+Then fire up an LLM of your choice and instruct it to follow the steps in `schema/scenario-generation.md`.  This will convert your scenario file into JSON.
+
+Finally, playtest extensively, and ask the LLM to fix the scenario's JSON files until it works satisfactorily (or not).
+
+## Documentation
+
+The design documentation is in the `doc/` folder:
+
+- [doc/intro.md](doc/intro.md): Architecture guide.
+- [doc/npcs.md](doc/npcs.md): Implementation of non-player characters.
+- [doc/player-stats.md](doc/player-stats.md) — Player stats (WIP).
+- [doc/soft-items.md](doc/soft-items.md) — Extensible nondescript items.
 
 ## Copyright and License
 
