@@ -56,6 +56,14 @@ class BriefingRoom(BaseModel):
     room_notes: List[str] = Field(default_factory=list)
 
 
+class EquippedItemBriefing(BaseModel):
+    id: str
+    name: str
+    description: str
+    equip_tags: list[str] = Field(default_factory=list)
+    effects_summary: str = ""
+
+
 class PlayerStatEntry(BaseModel):
     value: int
     modifier: int
@@ -72,6 +80,9 @@ class PlayerStateBriefing(BaseModel):
     location: str
     hard_inventory: List[str] = Field(default_factory=list)
     soft_inventory: List[str] = Field(default_factory=list)
+    equipped_items: List[EquippedItemBriefing] = Field(default_factory=list)
+    effective_ac: int = 10
+    effective_stats: Optional[Dict[str, int]] = None
     active_flags: Dict[str, bool] = Field(default_factory=dict)
     entity_notes: List[str] = Field(default_factory=list)
     player_stats: Optional[Dict[str, PlayerStatEntry]] = None

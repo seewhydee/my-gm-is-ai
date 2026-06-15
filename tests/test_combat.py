@@ -330,7 +330,19 @@ class TestCombatEntry:
         result = enter_combat(["goblin"], hard, combat_npc_corpus)
         assert hard.entity_states["goblin"]["current_hp"] == 7
 
-    def test_enter_combat_inits_player_hp(self, combat_npc_corpus):
+    def test_enter_combat_inits_player_hp(self, combat_npc_corpus, monkeypatch):
+        """Player HP initialises to max_hp even if enemies go first in initiative.
+
+        The goblin's attack roll and initiative rolls are forced to a natural 1
+        (automatic miss) so that only the HP initialisation is tested, not the
+        RNG-dependent damage resolution.
+        """
+        # Pin all d20 rolls to 1 (natural miss) and tiebreakers to 0.5 so the
+        # HP initialisation assertion isn't polluted by random damage from
+        # pre-player NPC turns.
+        monkeypatch.setattr(random, "randint", lambda a, b: 1)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
         hard = HardGameState.model_validate({
             "player": {
                 "location": "room1",

@@ -93,25 +93,104 @@ def _get_stat(stats: dict[str, int] | None, key: str) -> int:
     return stats.get(key, 10)
 
 
-def get_player_attack_bonus(hard: HardGameState, corpus: ModuleCorpus) -> int:
-    """Compute player melee attack bonus: STR modifier + proficiency."""
-    stats = hard.player.stats
+def compute_effective_stats(
+    hard_state: HardGameState,
+    corpus: ModuleCorpus,
+) -> dict[str, int] | None:
+    """Build effective stats from permanent baseline + equipped item effects.
+
+    Per plan.md §4d: start with hard.player.stats, apply set modifiers
+    first, then delta modifiers from each equipped item's equip_effects.
+    Returns None if the player has no stats block.
+    """
+    from mgmai.models.corpus import StatModifier
+    from copy import deepcopy
+
+    base = hard_state.player.stats
+    if base is None:
+        return None
+
+    effective = dict(base)
+
+    for item_id in hard_state.player.equipped:
+        entity = corpus.entities.get(item_id)
+        if entity is None or entity.equip_block is None:
+            continue
+        for stat_key, mod in entity.equip_block.equip_effects.items():
+            if mod.mode == "set":
+                effective[mod.stat] = mod.value
+            elif mod.mode == "delta" and mod.stat in effective:
+                effective[mod.stat] += mod.value
+
+    return effective
+
+
+def get_player_attack_bonus(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    effective_stats: dict[str, int] | None = None,
+) -> int:
+    """Compute player melee attack bonus: STR modifier + proficiency + weapon bonuses.
+
+    If effective_stats is provided (from compute_effective_stats), uses those
+    instead of hard.player.stats so equipment-based stat changes apply.
+    """
     from mgmai.engine.stat_checks import compute_5e_modifier
+
+    stats = effective_stats if effective_stats is not None else hard.player.stats
     str_mod = compute_5e_modifier(_get_stat(stats, "STR"))
     prof = hard.player.proficiency_bonus or 2
-    return str_mod + prof
+
+    # Sum attack_bonus from all equipped weapons
+    weapon_bonus = 0
+    for item_id in hard.player.equipped:
+        entity = corpus.entities.get(item_id)
+        if entity and entity.equip_block and "weapon" in entity.equip_block.equip_tags:
+            weapon_bonus += entity.equip_block.attack_bonus
+
+    return str_mod + prof + weapon_bonus
 
 
-def get_player_damage_expr(hard: HardGameState, corpus: ModuleCorpus) -> str:
+def get_player_damage_expr(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: object = None,
+    effective_stats: dict[str, int] | None = None,
+) -> str:
     """Determine player damage expression.
 
-    Weapon in inventory (``tag:weapon``) → ``1d8 + STR_mod``.
-    Unarmed → ``1d6 + STR_mod``.
+    Priority (highest first):
+    1. Equipped weapon damage_expr from equip_block.
+    2. Improvised weapon (from soft.improvised_weapon).
+    3. Any item tagged ``weapon`` in inventory (legacy fallback) → ``1d8 + STR_mod``.
+    4. Unarmed → ``1d6 + STR_mod``.
     """
-    stats = hard.player.stats
     from mgmai.engine.stat_checks import compute_5e_modifier
+
+    stats = effective_stats if effective_stats is not None else hard.player.stats
     str_mod = compute_5e_modifier(_get_stat(stats, "STR"))
 
+    # Check equipped weapons first
+    for item_id in hard.player.equipped:
+        entity = corpus.entities.get(item_id)
+        if entity and entity.equip_block and "weapon" in entity.equip_block.equip_tags:
+            base = entity.equip_block.damage_expr
+            if str_mod >= 0:
+                return f"{base}+{str_mod}"
+            else:
+                return f"{base}{str_mod}"
+
+    # Check improvised weapon
+    if soft is not None:
+        from mgmai.models.soft_state import SoftGameState
+        if isinstance(soft, SoftGameState) and soft.improvised_weapon is not None:
+            base = soft.improvised_weapon.damage_expr
+            if str_mod >= 0:
+                return f"{base}+{str_mod}"
+            else:
+                return f"{base}{str_mod}"
+
+    # Legacy: check inventory for weapon tag
     has_weapon = False
     for item_id in hard.player.inventory:
         entity = corpus.entities.get(item_id)
@@ -126,8 +205,53 @@ def get_player_damage_expr(hard: HardGameState, corpus: ModuleCorpus) -> str:
         return f"{base}{str_mod}"
 
 
+def compute_player_ac(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> int:
+    """Compute player AC with equipment modifiers.
+
+    Per plan.md §4c:
+    1. Base AC = 10 + DEX mod (or hard.player.ac if explicitly set).
+    2. Apply ac_override from equipped items (use max).
+    3. Add all ac_bonus values from equipped items.
+    """
+    from mgmai.engine.stat_checks import compute_5e_modifier
+
+    # Step 1: Base AC
+    if hard.player.ac is not None:
+        base_ac = hard.player.ac
+    else:
+        stats = hard.player.stats
+        base_ac = 10 + compute_5e_modifier(_get_stat(stats, "DEX"))
+
+    # Step 2: Apply ac_override (highest wins)
+    ac_override = None
+    for item_id in hard.player.equipped:
+        entity = corpus.entities.get(item_id)
+        if entity and entity.equip_block and entity.equip_block.ac_override is not None:
+            if ac_override is None or entity.equip_block.ac_override > ac_override:
+                ac_override = entity.equip_block.ac_override
+
+    effective_ac = ac_override if ac_override is not None else base_ac
+
+    # Step 3: Add all ac_bonus values
+    for item_id in hard.player.equipped:
+        entity = corpus.entities.get(item_id)
+        if entity and entity.equip_block:
+            effective_ac += entity.equip_block.ac_bonus
+
+    return effective_ac
+
+
 def get_player_ac(hard: HardGameState) -> int:
-    """Return player AC.  Computed from DEX if not explicitly set."""
+    """Return player AC (backward-compatible, equipment-unaware).
+
+    Used by the combat engine to compute NPC hit chance against the player.
+    Note: the combat engine currently calls this directly.  After the gear
+    implementation is complete, call sites should use compute_player_ac()
+    with corpus access for full equipment-aware AC.
+    """
     if hard.player.ac is not None:
         return hard.player.ac
     stats = hard.player.stats
@@ -202,7 +326,11 @@ def _resolve_npc_attack(
     """
     from mgmai.engine.stat_checks import roll_d20 as _d20
 
-    player_ac = get_player_ac(hard)
+    # Use equipment-aware AC when the player has equipped items
+    if hard.player.equipped:
+        player_ac = compute_player_ac(hard, corpus)
+    else:
+        player_ac = get_player_ac(hard)
     attack_roll = _d20()
     attack_total = attack_roll + combat_block.atk
     critical = attack_roll == 20

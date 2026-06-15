@@ -44,6 +44,7 @@ resolve mechanics.
 |------------|----------|-------------|
 | `location` | string   | Current room ID. Must match a key in the module corpus `rooms`. |
 | `inventory`| string[] | List of item entity IDs the player is carrying (hard inventory). |
+| `equipped` | string[] | List of item entity IDs the player currently has equipped. Items in `equipped` are NOT in `inventory` — equipping moves the ID from one list to the other. Defaults to `[]`. |
 | `stats`    | object   | Player ability scores. Optional dict of stat key → integer value. Keys must match `stats.definitions` in the corpus. When stats are present in the corpus, this field should also be present (and vice versa). The engine validates key consistency on startup. |
 
 ### Inventory rules
@@ -60,6 +61,21 @@ resolve mechanics.
 5. The engine checks `tag:weapon` by scanning items in inventory
    for the `"weapon"` tag in the entity definition, not by specific item ID.
    This allows future modules to have multiple weapon types.
+
+### Equipment rules
+
+Parallel to `inventory`, `equipped` tracks items the player is actively wearing
+or wielding:
+
+1. Items in `equipped` are referenced by entity ID, matching `inventory`.
+2. Equipping an item: the engine removes the ID from `inventory` and appends it
+   to `equipped`. The tag conflict resolver runs first (see `corpus.md` § `equip_block`).
+3. Unequipping an item: the engine removes the ID from `equipped` and appends it
+   to `inventory`.
+4. Equipment stat modifiers are computed on-the-fly — `hard.player.stats` remains
+   the permanent baseline and is never modified by equipment.
+5. `equipped` defaults to `[]` for backward compatibility with old save files
+   that do not contain the field.
 
 ---
 
@@ -227,6 +243,8 @@ The engine mutates hard state through these operations:
 | `clear_flag`           | `flags.<name>`                 |
 | `set_room_state`       | `room_states.<id>.<field>`     |
 | `set_entity_state`     | `entity_states.<id>.<field>`   |
+| `equip_item`           | `player.equipped`              |
+| `unequip_item`         | `player.equipped`              |
 | `increment_turn`       | `turn_count`                   |
 | `set_game_over`        | `game_over`                    |
 

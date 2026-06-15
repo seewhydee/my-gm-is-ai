@@ -1,6 +1,6 @@
 # My GM is AI — Architecture Guide
 
-The objective of this software is to implement an AI-driven Game Master (GM) that can replicate key aspects of the tabletop RPG experience.  It attempts to function like a human GM running a pre-written adventure module: the GM knows and follows the rules, but also accommodates the player's intentions and provides customized narrative flavor.
+This is an **experimental** software project to implement an AI-driven Game Master (GM) that replicates the tabletop RPG experience.  It attempts to function like a human GM running a pre-written adventure module: the GM knows and follows the rules, but also accommodates the player's intentions and provides customized narrative flavor.
 
 The system uses a large language model (LLM) to drive interpretation and narration, and a deterministic engine to impose game mechanics.  LLMs are excellent at natural-language understanding and prose generation, but unreliable for rule enforcement and state tracking.  By splitting these responsibilities, we hope to get the best of both worlds: the LLM interprets player intent, constructs structured actions, and weaves outcomes into compelling prose; the engine validates actions against the rules, resolves mechanics, and constrains the narrative output to the actual game state.
 
@@ -183,14 +183,6 @@ mgmai/
         ├── hard-state.json
         └── soft-state.json
 ```
-
-## Planned Extensions
-
-The following are on the roadmap for future phases:
-
-- **Combat phase**: Replace the placeholder stat check-based combat resolutions with iterative rounds, HP tracking, damage rolls, etc.
-- **Semantic search**: Explore augmenting the deterministic ID lookup with vector embeddings for larger adventure modules.
-
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
 > This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

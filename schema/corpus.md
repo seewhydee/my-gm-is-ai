@@ -186,12 +186,13 @@ Condition strings use the format `<domain>:<key> <op> <value>`:
 | `flag`       | `flag:door_opened == true`       | Refers to a key in `hard_state.flags`. |
 | `inventory`  | `inventory:rusty_key`            | Checks if an item entity ID is in the player's hard inventory. |
 | `item`       | `item:rusty_key`                 | Alias for `inventory`. |
-| `tag`        | `tag:weapon`                     | Checks if the player's inventory contains any item with this tag. |
+| `tag`        | `tag:weapon`                     | Checks if the player's inventory **or equipped items** contain any item with this tag. Scans both lists for backward compatibility. |
 | `entity`     | `entity:spider.alive == true`    | Checks an entity's hard state field. |
 | `room`       | `room:axe_head.visited == true`  | Checks a room state field. |
 | `attitude`   | `attitude:korbar >= 2`           | Checks an NPC's soft-state attitude value. Defaults to the corpus `attitude_limits.initial` if absent from soft state. |
 | `topic`      | `topic:abandonment`              | Checks if a topic ID has been discussed in the current dialogue (present in `soft_state.dialogue_state.topics_discussed`). |
 | `stat`       | `stat:STR >= 12`                 | Checks the player's stat value against a threshold. Stat must be declared in `corpus.stats.definitions`; the player's value comes from `hard_state.player.stats`. |
+| `equipped`   | `equipped:toenail_sword`         | Checks if an item entity ID is in the player's `equipped` list. Also accepts tag names — `equipped:weapon` is true if any equipped item has the tag `"weapon"`. |
 
 Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`, `<= <number>`, `< <number>`.
 
@@ -474,6 +475,38 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `behavior`             | object | npc (monster) | Encounter rules for combat-capable NPCs. See below. |
 | `state_fields`         | object | all           | Declaration of mutable state fields for this entity. The engine initialises these from `hard_state.json` and tracks changes. |
 | `follower_blacklist`   | array  | npc           | **Optional.** List of room IDs this NPC refuses to enter when following the player. If the player moves into a blacklisted room, the NPC's `following` state is cleared and a narrative note is generated. |
+| `equip_block`          | object | item          | **Optional.** `EquipBlock` describing how the item interacts with the equipment system (see below). Items without this block cannot be equipped. |
+
+### `equip_block` — Equipment block (`EquipBlock`)
+
+Optional. Only present on item-type entities. Describes how an item interacts
+with the equipment system. Items without this block cannot be equipped.
+
+```json
+{
+  "equip_tags": ["weapon"],
+  "incompatible_with": ["shield"],
+  "equip_effects": { "STR": { "mode": "delta", "value": 1 } },
+  "ac_override": null,
+  "ac_bonus": 0,
+  "two_handed": false,
+  "max_equipped": 1,
+  "damage_expr": "1d8",
+  "attack_bonus": 0
+}
+```
+
+| Field               | Type       | Required | Description |
+|---------------------|------------|----------|-------------|
+| `equip_tags`        | `[string]` | yes      | Category tags — e.g. `["headwear"]`, `["weapon"]`, `["armor","heavy"]`, `["shield"]`, `["ring"]`. |
+| `incompatible_with` | `[string]` | no       | Tags that conflict with this item. The engine checks all already-equipped items: if any of *their* `equip_tags` intersects this list, the equip is rejected. Default empty means items conflict with anything sharing their own primary `equip_tag` (first element). |
+| `equip_effects`     | `{string: {mode, value}}` | no | Stat changes applied while equipped. Keys are stat names (e.g. `"STR"`); values follow `StatModifier`: `{"mode": "delta"|"set", "value": int}`. Set modifiers apply first, then delta. |
+| `ac_override`       | `int|null` | no       | If set, player AC becomes this value (e.g. heavy plate: 18). Mutually exclusive in spirit with `ac_bonus` — the highest override among equipped items takes effect. |
+| `ac_bonus`          | `int`      | no       | Added to player's base AC. Stacks across equipped items. Used for shields, light/medium armour, rings of protection. |
+| `two_handed`        | `bool`     | no       | If true, equipping this weapon is incompatible with any other item tagged `"handwear"`, `"weapon"`, or `"shield"`. |
+| `max_equipped`      | `int|null` | no       | How many items of this primary tag may be equipped simultaneously. `1` = standard (one helmet). `2` = rings. `null` = unlimited. Default `1`. The engine uses the *highest* value among items sharing the same primary `equip_tag`. |
+| `damage_expr`       | `string`   | no       | Damage dice expression when wielded (e.g. `"1d6"`, `"2d4"`). Only meaningful when `"weapon"` is in `equip_tags`. Default `"1d8"`. |
+| `attack_bonus`      | `int`      | no       | Flat bonus added to attack rolls. A "+1 sword" has `attack_bonus: 1`. Stacks across equipped weapons. Default `0`. |
 
 #### NPC follower convention (`following` state field)
 

@@ -67,6 +67,15 @@ You MUST output a single JSON object with the following structure.
 **wait** — Pass time or do something plot-insignificant:
 - No additional fields. Use `detail` to describe what the player does (e.g. "checking inventory contents").
 
+**equip** — Equip an item from inventory:
+- `target` (string, required): Entity ID of the item to equip
+- `unequip_targets` (array of strings, optional): Items to unequip first (e.g., swapping weapons)
+- The item must have an `equip_block` in the corpus — not all items are equippable
+- Only valid when not in combat (armour doffing takes minutes)
+
+**unequip** — Unequip a worn item:
+- `target` (string, required): Entity ID of the currently equipped item to remove
+
 **combat** — Attack during combat:
 - `target` (string, required): Entity ID of the combatant to attack
 - `combat_action` (string, required): Must be `"attack"`
@@ -90,6 +99,47 @@ Use `proposed_soft_state_patches` to request changes to soft state that can acco
 Only propose patches that are plausible given the current room and player state. The engine will validate and reject impossible patches.
 
 ---
+
+## Equipment Rules
+
+The player can equip and unequip items in their inventory. Use common sense:
+a character can wear one helmet, one suit of armour, one pair of gauntlets,
+one pair of boots, a couple of rings, and wield one weapon per hand (or one
+two-handed weapon that occupies both hands). Items that don't fit overlap
+categories cannot both be worn — you can't wear two helmets, or plate mail
+under a robe.
+
+When the player asks to equip something:
+- If it makes sense, propose an `equip` action with the item's entity ID.
+- If something must be unequipped first, propose `unequip_targets` in the
+  `equip` action (this unequips the conflicting item and equips the new one
+  in one turn).
+- If the request is nonsensical ("I wear the rusty key as a hat"), fall back
+  to `wait` with a brief explanation.
+
+When the player asks to remove something they're wearing:
+- Propose an `unequip` action with the item's entity ID.
+
+Currently equipped items are listed in `player_state.equipped_items`. Each has
+an `id`, `name`, `description`, `equip_tags`, and `effects_summary`.
+
+### Improvised Weapons
+
+The player may improvise weapons from the environment. Propose a
+`set_improvised_weapon` soft-state patch (field: "set_improvised_weapon") with
+reasonable `damage_expr` and `attack_bonus` values when the player picks up
+and wields a non-standard object as a weapon. Use `clears_after_turn: true`
+for fragile or one-shot improvised items (a bottle shatters on impact).
+Otherwise the weapon persists; the player or a future turn can clear it by
+setting `set_improvised_weapon` to `null`.
+
+### Gear in combat
+
+Use common sense for equipment changes during combat. Doffing armor is never
+allowed during combat (it takes minutes by tabletop convention). Swapping
+weapons (sheathing one, drawing another) is reasonable in one turn — use
+`unequip_targets` together with `equip` to express this atomically. Picking
+up an object from the ground as an improvised weapon is also one action.
 
 ## Action Classification Rules
 

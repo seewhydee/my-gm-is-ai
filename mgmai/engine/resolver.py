@@ -23,6 +23,7 @@ from typing import Any, Optional
 from mgmai.models.actions import (
     CombatAction,
     DialogueExitedResult,
+    EquipAction,
     ExamineAction,
     HardStateChanges,
     InteractAction,
@@ -30,6 +31,7 @@ from mgmai.models.actions import (
     OocDiscussionAction,
     TalkAction,
     TransferAction,
+    UnequipAction,
     WaitAction,
 )
 from mgmai.models.corpus import (
@@ -1399,6 +1401,153 @@ def _resolve_combat_flee(
     )
 
 
+def resolve_equip(
+    action: EquipAction,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> ResolutionResult:
+    """Resolve an equip action with tag conflict validation.
+
+    Logic per plan.md §4a:
+    0. Unequip targets first (atomically).
+    1. Validate target in inventory.
+    2. Look up EquipBlock from corpus.
+    3. Reject if equip_block is None.
+    4. Build incompatible tag set.
+    5. Check each already-equipped item for conflicts.
+    6. Check max_equipped for the primary tag group.
+    7. On success: move from inventory to equipped.
+    """
+    target = action.target
+    room_id = hard.player.location
+
+    # Step 0: Validate and process unequip_targets
+    for uid in action.unequip_targets:
+        if uid not in hard.player.equipped:
+            return ResolutionResult(
+                success=False,
+                error=f"Cannot unequip '{uid}': not currently equipped",
+            )
+
+    # Step 1: Validate target in inventory
+    if target not in hard.player.inventory:
+        return ResolutionResult(
+            success=False,
+            error=f"Item '{target}' is not in your inventory",
+        )
+
+    # Step 2-3: Look up EquipBlock
+    item_entity = corpus.entities.get(target)
+    if item_entity is None:
+        return ResolutionResult(
+            success=False,
+            error=f"Item '{target}' not found in corpus",
+        )
+    eb = item_entity.equip_block
+    if eb is None:
+        return ResolutionResult(
+            success=False,
+            error=f"Item '{target}' cannot be equipped (no equip_block)",
+        )
+
+    # Build post-unequip state for conflict checking
+    # (conceptually remove unequip_targets from equipped)
+    still_equipped = [eid for eid in hard.player.equipped if eid not in action.unequip_targets]
+
+    # Step 4: Build incompatible tags
+    incompatible = set(eb.incompatible_with)
+    if eb.two_handed:
+        incompatible.update(["handwear", "weapon", "shield"])
+    if not incompatible and eb.equip_tags:
+        # Default: conflicts with items sharing the primary tag
+        incompatible.add(eb.equip_tags[0])
+
+    # Step 5: Check conflicts with already-equipped items
+    for eid in still_equipped:
+        eq_entity = corpus.entities.get(eid)
+        if eq_entity is None or eq_entity.equip_block is None:
+            continue
+        eq_tags = set(eq_entity.equip_block.equip_tags)
+        if eq_tags & incompatible:
+            return ResolutionResult(
+                success=False,
+                error=f"Cannot equip '{target}': conflicts with equipped item '{eid}' "
+                      f"(tags: {eq_tags & incompatible})",
+            )
+
+    # Step 6: Check max_equipped
+    if eb.equip_tags:
+        primary_tag = eb.equip_tags[0]
+        # Collect max_equipped from all items sharing this primary tag
+        max_limit = eb.max_equipped
+        for eid in still_equipped:
+            eq_entity = corpus.entities.get(eid)
+            if eq_entity and eq_entity.equip_block:
+                if eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == primary_tag:
+                    other_max = eq_entity.equip_block.max_equipped
+                    if other_max is None:
+                        max_limit = None
+                    elif max_limit is not None:
+                        max_limit = max(max_limit, other_max)
+        if max_limit is not None:
+            current_count = sum(
+                1 for eid in still_equipped
+                if (_e := corpus.entities.get(eid)) and _e.equip_block
+                and _e.equip_block.equip_tags and _e.equip_block.equip_tags[0] == primary_tag
+            )
+            if current_count >= max_limit:
+                return ResolutionResult(
+                    success=False,
+                    error=f"Cannot equip '{target}': tag '{primary_tag}' limit "
+                          f"({max_limit}) would be exceeded (currently {current_count})",
+                )
+
+    # Step 7: Success — move target from inventory to equipped
+    changes = HardStateChanges()
+    changes.inventory_removed.append(target)
+    changes.equipped_added.append(target)
+    for uid in action.unequip_targets:
+        changes.equipped_removed.append(uid)
+        changes.inventory_added.append(uid)
+    changes.equipment_changed = True
+
+    return ResolutionResult(
+        success=True,
+        hard_changes=changes,
+        room_after_id=room_id,
+    )
+
+
+def resolve_unequip(
+    action: UnequipAction,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> ResolutionResult:
+    """Resolve an unequip action per plan.md §4b."""
+    target = action.target
+    room_id = hard.player.location
+
+    # Validate target is equipped
+    if target not in hard.player.equipped:
+        return ResolutionResult(
+            success=False,
+            error=f"Item '{target}' is not currently equipped",
+        )
+
+    changes = HardStateChanges()
+    changes.equipped_removed.append(target)
+    changes.inventory_added.append(target)
+    changes.equipment_changed = True
+
+    return ResolutionResult(
+        success=True,
+        hard_changes=changes,
+        room_after_id=room_id,
+    )
+
+
 def resolve_action(
     action: Any,
     hard: HardGameState,
@@ -1426,6 +1575,10 @@ def resolve_action(
         return _resolve_combat_action(action, hard, corpus)
     elif action_type == "wait":
         return resolve_wait(action, hard, soft, corpus)
+    elif action_type == "equip":
+        return resolve_equip(action, hard, soft, corpus)
+    elif action_type == "unequip":
+        return resolve_unequip(action, hard, soft, corpus)
     elif action_type == "ooc_discussion":
         return resolve_ooc(action, hard, soft, corpus)
     else:

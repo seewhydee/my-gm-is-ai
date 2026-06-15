@@ -682,6 +682,11 @@
       "tags": [
         "weapon"
       ],
+      "equip_block": {
+        "equip_tags": ["weapon"],
+        "damage_expr": "1d6",
+        "attack_bonus": 0
+      },
       "state_fields": {}
     },
     "rusty_key": {

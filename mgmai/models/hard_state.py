@@ -23,6 +23,7 @@ from mgmai.models.combat import CombatState
 class PlayerState(BaseModel):
     location: str
     inventory: list[str] = Field(default_factory=list)
+    equipped: list[str] = Field(default_factory=list)
     stats: Optional[Dict[str, int]] = None
     level: int = 1
     current_hp: Optional[int] = None

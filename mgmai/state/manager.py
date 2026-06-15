@@ -223,8 +223,9 @@ class StateManager:
         if self.hard_state.player.location not in self.corpus.rooms:
             errors.append(f"No matching room: {self.hard_state.player.location}")
 
-        # Inventory items and in-room entities must exist in corpus
+        # Inventory items, equipped items, and in-room entities must exist in corpus
         _check_ids(self.hard_state.player.inventory, self.corpus.entities, "entity")
+        _check_ids(self.hard_state.player.equipped, self.corpus.entities, "entity")
         for room_id, room in self.corpus.rooms.items():
             _check_ids(room.entities_present, self.corpus.entities, "entity")
 
@@ -437,6 +438,15 @@ class StateManager:
             if item in self.hard_state.player.inventory:
                 self.hard_state.player.inventory.remove(item)
 
+        # Equipment changes: move IDs between inventory and equipped
+        for item in changes.equipped_added:
+            if item not in self.hard_state.player.equipped:
+                self.hard_state.player.equipped.append(item)
+
+        for item in changes.equipped_removed:
+            if item in self.hard_state.player.equipped:
+                self.hard_state.player.equipped.remove(item)
+
         for flag, value in changes.flags_set.items():
             self.hard_state.flags[flag] = value
 
@@ -512,6 +522,22 @@ class StateManager:
                 if value in self.soft_state.soft_inventory:
                     self.soft_state.soft_inventory.remove(value)
 
+            elif field == "appearance_note_add":
+                if not isinstance(patch.new_value, str):
+                    raise ValueError(f"appearance_note_add has invalid value {type(patch.new_value).__name__}")
+                self.soft_state.appearance_notes.append(patch.new_value)
+
+            elif field == "set_improvised_weapon":
+                from mgmai.models.soft_state import ImprovisedWeapon
+                if patch.new_value is None:
+                    self.soft_state.improvised_weapon = None
+                elif isinstance(patch.new_value, dict):
+                    self.soft_state.improvised_weapon = ImprovisedWeapon.model_validate(patch.new_value)
+                elif isinstance(patch.new_value, ImprovisedWeapon):
+                    self.soft_state.improvised_weapon = patch.new_value
+                else:
+                    raise ValueError(f"set_improvised_weapon has invalid value type {type(patch.new_value).__name__}")
+
             else:
                 # Should not reach here because SoftStatePatch validates the field,
                 # but we keep it for defensiveness.
@@ -531,3 +557,14 @@ class StateManager:
             entry = TurnHistoryEntry.model_validate(entry)
 
         self.soft_state.turn_history.append(entry)
+
+    def clear_expired_improvised_weapon(self) -> None:
+        """Auto-clear improvised weapon if its clears_after_turn is true.
+
+        Called by the engine before each player turn resolution.
+        """
+        if self.soft_state is None:
+            return
+        iw = self.soft_state.improvised_weapon
+        if iw is not None and iw.clears_after_turn:
+            self.soft_state.improvised_weapon = None

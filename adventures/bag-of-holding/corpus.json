@@ -569,6 +569,11 @@
       "type": "item",
       "description": "A giant toenail clipping, curved and razor-sharp along one edge. It's about the size of a short sword and, despite its unpleasant origin, is perfectly serviceable as a weapon. The keratin is surprisingly hard.",
       "tags": ["weapon"],
+      "equip_block": {
+        "equip_tags": ["weapon"],
+        "damage_expr": "1d6",
+        "attack_bonus": 0
+      },
       "state_fields": {
         "hidden": { "type": "boolean", "description": "Whether the clipping is still buried in the rubbish pile." }
       },

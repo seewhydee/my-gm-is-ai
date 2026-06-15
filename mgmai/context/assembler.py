@@ -30,6 +30,7 @@ from mgmai.models.briefing import (
     CombatBriefing,
     DialogueActiveNpc,
     DialogueContext,
+    EquippedItemBriefing,
     GMBriefing,
     PlayerCombatStats,
     PlayerStateBriefing,
@@ -62,7 +63,7 @@ def assemble(corpus: ModuleCorpus,
         tone=atmosphere.tone if atmosphere else "",
         turn=hard.turn_count,
         current_room=_build_room(room_id, room, hard, soft, corpus),
-        player_state=_build_player_state(hard, soft, player_stats),
+        player_state=_build_player_state(hard, soft, player_stats, corpus),
         player_knowledge_topics=_build_player_knowledge(soft),
         recent_history=_build_recent_history(soft),
         dialogue_context=_build_dialogue_context(soft, hard, corpus),
@@ -195,17 +196,57 @@ def _build_room(room_id: str,
 def _build_player_state(
         hard: HardGameState,
         soft: SoftGameState,
-        player_stats: Optional[dict[str, PlayerStatEntry]]) -> PlayerStateBriefing:
+        player_stats: Optional[dict[str, PlayerStatEntry]],
+        corpus: ModuleCorpus) -> PlayerStateBriefing:
     active_flags = {k: v for k, v in hard.flags.items() if v}
     player_entity_notes = soft.entity_notes.get("player", [])
 
+    # Build equipped items briefing
+    equipped_items: list[EquippedItemBriefing] = []
+    for item_id in hard.player.equipped:
+        entity = corpus.entities.get(item_id)
+        if entity is None:
+            continue
+        equip_tags = []
+        effects_summary = ""
+        if entity.equip_block:
+            equip_tags = list(entity.equip_block.equip_tags)
+            parts = []
+            for stat_key, mod in entity.equip_block.equip_effects.items():
+                if mod.mode == "set":
+                    parts.append(f"{stat_key} = {mod.value}")
+                else:
+                    sign = "+" if mod.value >= 0 else ""
+                    parts.append(f"{stat_key} {sign}{mod.value}")
+            if entity.equip_block.ac_override is not None:
+                parts.append(f"AC {entity.equip_block.ac_override}")
+            if entity.equip_block.ac_bonus != 0:
+                parts.append(f"AC +{entity.equip_block.ac_bonus}")
+            if "weapon" in entity.equip_block.equip_tags:
+                parts.append(f"{entity.equip_block.damage_expr} damage")
+                if entity.equip_block.attack_bonus != 0:
+                    parts.append(f"+{entity.equip_block.attack_bonus} to hit")
+            effects_summary = ", ".join(parts)
+        equipped_items.append(EquippedItemBriefing(
+            id=item_id,
+            name=getattr(entity, "name", item_id),
+            description=entity.description,
+            equip_tags=equip_tags,
+            effects_summary=effects_summary,
+        ))
+
+    # Effective stats and AC
+    from mgmai.engine.combat import compute_player_ac, compute_effective_stats
+    effective_ac = compute_player_ac(hard, corpus)
+    effective_stats = compute_effective_stats(hard, corpus)
+
     combat_stats = None
     if hard.player.current_hp is not None:
-        from mgmai.engine.combat import get_player_ac, get_player_max_hp
+        from mgmai.engine.combat import get_player_max_hp
         combat_stats = PlayerCombatStats(
             current_hp=hard.player.current_hp,
             max_hp=hard.player.max_hp or get_player_max_hp(hard),
-            ac=get_player_ac(hard),
+            ac=effective_ac,
             proficiency_bonus=hard.player.proficiency_bonus or 2,
         )
 
@@ -213,6 +254,9 @@ def _build_player_state(
         location=hard.player.location,
         hard_inventory=list(hard.player.inventory),
         soft_inventory=list(soft.soft_inventory),
+        equipped_items=equipped_items,
+        effective_ac=effective_ac,
+        effective_stats=effective_stats,
         active_flags=active_flags,
         entity_notes=list(player_entity_notes),
         player_stats=player_stats,

@@ -73,6 +73,23 @@ class StatModifier(BaseModel):
     value: int
 
 
+class EquipBlock(BaseModel):
+    """Describes how an item interacts with the equipment system.
+
+    Only present on item-type entities.  ``None`` means the item cannot
+    be equipped (keys, potions, quest items, etc.).
+    """
+    equip_tags: list[str]
+    incompatible_with: list[str] = Field(default_factory=list)
+    equip_effects: Dict[str, StatModifier] = Field(default_factory=dict)
+    ac_override: int | None = None
+    ac_bonus: int = 0
+    two_handed: bool = False
+    max_equipped: int | None = 1
+    damage_expr: str = "1d8"
+    attack_bonus: int = 0
+
+
 class ChainedCheck(BaseModel):
     check: CheckType
     success: Result
@@ -343,6 +360,7 @@ class Entity(BaseModel):
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
     follower_blacklist: Optional[List[str]] = None
     combat: Optional[CombatBlock] = None
+    equip_block: Optional[EquipBlock] = None
 
     @model_validator(mode="after")
     def check_type_specific_fields(self) -> Entity:
@@ -358,6 +376,10 @@ class Entity(BaseModel):
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'combat'. "
                 f"Only 'npc' entities may carry combat.")
+        if self.type != "item" and self.equip_block is not None:
+            raise ValueError(
+                f"Entity type '{self.type}' must not have 'equip_block'. "
+                f"Only 'item' entities may carry equip_block.")
         return self
 
 

@@ -24,7 +24,9 @@ continuity (NPC moods, environmental details, conversation memory).
   "player_knowledge":  [ { "topic_id": "...", "description": "...", "source_type": "...", "source_id": "...", "turn_learned": 0 } ],
   "turn_history":      [ { /* turn log entry */ } ],
   "surfaced_soft_items": { "<room_or_entity_id>": ["string", ...] },
-  "dialogue_state":    { /* active NPC conversation state */ }
+  "dialogue_state":    { /* active NPC conversation state */ },
+  "appearance_notes":  ["string", ...],
+  "improvised_weapon": { /* ImprovisedWeapon or null */ }
 }
 ```
 
@@ -423,6 +425,94 @@ verbatim exchange indefinitely in the active dialogue state.
 
 ---
 
+---
+
+## `appearance_notes` — Player visual appearance
+
+```json
+["tattered cloak pulled from a goblin corpse", "ornamental circlet of woven grass"]
+```
+
+Freeform narrative notes about the player's visual appearance from improvised /
+narrative-only equipment. Displayed in the GMBriefing's player-state section so
+both LLMs can reference them. Carries no mechanical effect — for that, use
+hard-state equipment.
+
+### Patch format
+
+```json
+{
+  "field": "appearance_note_add",
+  "new_value": "tattered cloak pulled from a goblin corpse",
+  "reason": "Player described wearing the goblin cloak as a trophy."
+}
+```
+
+### Validation rules
+
+1. `new_value` must be a non-empty string.
+2. Notes accumulate in order; the Context Assembler may cap them at the
+   briefing stage to avoid context bloat.
+
+---
+
+## `improvised_weapon` — Temporary weapon
+
+```json
+{
+  "damage_expr": "1d4",
+  "attack_bonus": 0,
+  "description": "broken bottle",
+  "clears_after_turn": true
+}
+```
+
+An `ImprovisedWeapon` object set by the LLM when the player grabs a non-standard
+object and uses it as a weapon (chair leg, broken bottle, heavy rock). It takes
+lower priority than a properly equipped weapon but higher than unarmed combat.
+
+| Field               | Type    | Default  | Description |
+|---------------------|---------|----------|-------------|
+| `damage_expr`       | string  | `"1d6"`  | Damage dice expression. |
+| `attack_bonus`      | int     | `0`      | Flat attack bonus. |
+| `description`       | string  | `""`     | Narrative description. |
+| `clears_after_turn` | bool    | `false`  | If true, automatically cleared at the start of the next player turn (one-shot use). |
+
+### Patch format
+
+Set an improvised weapon:
+
+```json
+{
+  "field": "set_improvised_weapon",
+  "new_value": {
+    "damage_expr": "1d4",
+    "attack_bonus": 0,
+    "description": "broken bottle",
+    "clears_after_turn": true
+  },
+  "reason": "Player picked up a broken bottle as a weapon."
+}
+```
+
+Clear an improvised weapon (set to `null`):
+
+```json
+{
+  "field": "set_improvised_weapon",
+  "new_value": null,
+  "reason": "The bottle shatters after the blow."
+}
+```
+
+### Validation rules
+
+1. `new_value` must be either a valid `ImprovisedWeapon` object or `null`.
+2. The combat engine consults this field in `get_player_damage_expr()`:
+   equipped weapon → improvised weapon → inventory weapon tag (legacy) → unarmed.
+
+---
+
 ## SoftStatePatch reference
 
 The general soft-state patch format that LLM Call 1 outputs in
@@ -442,7 +532,7 @@ The general soft-state patch format that LLM Call 1 outputs in
 | Field       | Type           | Description |
 |-------------|----------------|-------------|
 | `entity_id` | string\|null   | Target entity ID for `entity_note`. Null for `room_note`. |
-| `field`     | string         | One of `room_note`, `entity_note`, `soft_inventory_add`, `soft_inventory_remove`. Attitude changes are proposed separately by LLM Call 2 — see below. |
+| `field`     | string         | One of `room_note`, `entity_note`, `soft_inventory_add`, `soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon`. Attitude changes are proposed separately by LLM Call 2 — see below. |
 | `target_id` | string\|null   | For `room_note`, the room ID. Null for entity-level patches. |
 | `old_value` | any\|null      | Expected current value (for validation). Null for add-only patches. |
 | `new_value` | any            | Proposed new value. |
@@ -456,6 +546,8 @@ The general soft-state patch format that LLM Call 1 outputs in
 | `entity_note`             | string   | Non-empty, non-contradictory | Appended to `entity_notes[entity_id]`. |
 | `soft_inventory_add`      | string   | Must match a soft item in the current room or a present entity | Appended to `soft_inventory[]`. |
 | `soft_inventory_remove`   | string   | Must exist in `soft_inventory` | Removed from `soft_inventory[]`. |
+| `appearance_note_add`     | string   | Non-empty string               | Appended to `appearance_notes[]`. |
+| `set_improvised_weapon`   | dict\|null | Valid `ImprovisedWeapon` dict or `null` | Sets or clears `improvised_weapon`. |
 
 ### Full validation rules (LLM Call 1 patches)
 
@@ -467,6 +559,8 @@ The general soft-state patch format that LLM Call 1 outputs in
 | Reason required | `reason` must be non-empty. |
 | No hard-state contradiction | Notes cannot assert facts that contradict hard-state flags or entity states. |
 | Soft inventory source | `soft_inventory_add` must reference a soft item present in the current room or a present entity. |
+| Appearance note value | `appearance_note_add.new_value` must be a non-empty string. |
+| Improvised weapon shape | `set_improvised_weapon.new_value` must be a valid `ImprovisedWeapon` object or `null`. |
 
 ### Attitude changes (LLM Call 2)
 

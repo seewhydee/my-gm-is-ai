@@ -89,6 +89,17 @@ class OocDiscussionAction(_BaseAction):
     action_type: Literal["ooc_discussion"]
 
 
+class EquipAction(_BaseAction):
+    action_type: Literal["equip"]
+    target: str
+    unequip_targets: list[str] = Field(default_factory=list)
+
+
+class UnequipAction(_BaseAction):
+    action_type: Literal["unequip"]
+    target: str
+
+
 PlayerActionType = Annotated[
     Union[
         MoveAction,
@@ -99,6 +110,8 @@ PlayerActionType = Annotated[
         WaitAction,
         CombatAction,
         OocDiscussionAction,
+        EquipAction,
+        UnequipAction,
     ],
     Field(discriminator="action_type"),
 ]
@@ -115,6 +128,8 @@ def validate_player_action(data: dict) -> (
     | WaitAction
     | CombatAction
     | OocDiscussionAction
+    | EquipAction
+    | UnequipAction
 ):
     return _player_action_adapter.validate_python(data)
 
@@ -136,6 +151,8 @@ class PlayerAction:
         | WaitAction
         | CombatAction
         | OocDiscussionAction
+        | EquipAction
+        | UnequipAction
     ):
         return _player_action_adapter.validate_python(data)
 
@@ -149,6 +166,8 @@ class PlayerAction:
         | WaitAction
         | CombatAction
         | OocDiscussionAction
+        | EquipAction
+        | UnequipAction
     ):
         return _player_action_adapter.validate_json(json_str)
 
@@ -157,6 +176,9 @@ class HardStateChanges(BaseModel):
     player_location: Optional[str] = None
     inventory_added: List[str] = Field(default_factory=list)
     inventory_removed: List[str] = Field(default_factory=list)
+    equipped_added: List[str] = Field(default_factory=list)
+    equipped_removed: List[str] = Field(default_factory=list)
+    equipment_changed: bool = False
     flags_set: Dict[str, bool] = Field(default_factory=dict)
     flags_cleared: List[str] = Field(default_factory=list)
     room_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
@@ -171,6 +193,10 @@ class HardStateChanges(BaseModel):
             self.player_location = other.player_location
         self.inventory_added.extend(other.inventory_added)
         self.inventory_removed.extend(other.inventory_removed)
+        self.equipped_added.extend(other.equipped_added)
+        self.equipped_removed.extend(other.equipped_removed)
+        if other.equipment_changed:
+            self.equipment_changed = True
         self.flags_set.update(other.flags_set)
         self.flags_cleared.extend(other.flags_cleared)
         for room_id, changes in other.room_state_changes.items():
@@ -207,6 +233,9 @@ class HardStateChanges(BaseModel):
             self.player_location is not None
             or bool(self.inventory_added)
             or bool(self.inventory_removed)
+            or bool(self.equipped_added)
+            or bool(self.equipped_removed)
+            or self.equipment_changed
             or bool(self.flags_set)
             or bool(self.flags_cleared)
             or bool(self.room_state_changes)

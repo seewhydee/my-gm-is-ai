@@ -29,10 +29,19 @@ class KnowledgeEntry(BaseModel):
     turn_learned: int
 
 
+class ImprovisedWeapon(BaseModel):
+    """Temporary weapon created from a non-standard object."""
+    damage_expr: str = "1d6"
+    attack_bonus: int = 0
+    description: str = ""
+    clears_after_turn: bool = False
+
+
 class SoftStatePatch(BaseModel):
     entity_id: Optional[str] = None
     field: Literal[
-        "room_note", "entity_note", "soft_inventory_add", "soft_inventory_remove"
+        "room_note", "entity_note", "soft_inventory_add", "soft_inventory_remove",
+        "appearance_note_add", "set_improvised_weapon"
     ]
     target_id: Optional[str] = None
     old_value: Optional[Any] = None
@@ -57,6 +66,18 @@ class SoftStatePatch(BaseModel):
                 )
             if self.entity_id is None:
                 raise ValueError("entity_note patch requires entity_id")
+        elif self.field == "appearance_note_add":
+            if self.target_id is not None:
+                raise ValueError(
+                    "appearance_note_add patch must not have target_id"
+                )
+            if not isinstance(self.new_value, str) or not self.new_value.strip():
+                raise ValueError("appearance_note_add new_value must be a non-empty string")
+        elif self.field == "set_improvised_weapon":
+            if self.target_id is not None:
+                raise ValueError(
+                    "set_improvised_weapon patch must not have target_id"
+                )
         return self
 
 
@@ -105,3 +126,5 @@ class SoftGameState(BaseModel):
     surfaced_soft_items: Dict[str, List[str]] = Field(default_factory=dict)
     checks_attempted: Dict[str, List[str]] = Field(default_factory=dict)
     revealed_hints: List[str] = Field(default_factory=list)
+    appearance_notes: List[str] = Field(default_factory=list)
+    improvised_weapon: Optional[ImprovisedWeapon] = None

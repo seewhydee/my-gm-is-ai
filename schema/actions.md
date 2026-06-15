@@ -117,6 +117,17 @@ Soft State, for the ruling LLM (call 1).
     "location": "axe_handle_lower",
     "hard_inventory": ["iron_sword"],
     "soft_inventory": ["rock"],
+    "equipped_items": [
+      {
+        "id": "toenail_sword",
+        "name": "Giant Toenail Clipping",
+        "description": "A giant toenail clipping, curved and razor-sharp...",
+        "equip_tags": ["weapon"],
+        "effects_summary": "1d6 damage"
+      }
+    ],
+    "effective_ac": 14,
+    "effective_stats": null,
     "active_flags": { "injured": false, "stunned": false },
     "entity_notes": [],
     "player_stats": {
@@ -470,6 +481,61 @@ rule questions, or meta-discussion.
 
 ---
 
+#### `equip` -- Equip an item
+
+```json
+{
+  "action_type": "equip",
+  "target": "toenail_sword",
+  "unequip_targets": [],
+  "detail": "Player draws the toenail sword and holds it ready.",
+  "follow_up": null,
+  "proposed_soft_state_patches": []
+}
+```
+
+| Field              | Type     | Required | Description |
+|--------------------|----------|----------|-------------|
+| `target`           | string   | yes      | Entity ID of the item to equip. Must be in `player.inventory` and must have an `equip_block`. |
+| `unequip_targets`  | string[] | no       | Items to unequip as part of the same action (for weapon swaps). Each must be in `player.equipped`. The engine unequips them before checking conflicts for the new item. |
+
+**Engine validation** (in order):
+1. Each `unequip_target` must be in `player.equipped`.
+2. `target` must be in `player.inventory`.
+3. `target` must have a non-null `equip_block`.
+4. Build the incompatible tag set from `incompatible_with`, implicit defaults,
+   and `two_handed`.
+5. Check each already-equipped item (post-unequip) for tag conflicts — reject
+   if any overlap.
+6. Check `max_equipped` for the primary tag group.
+7. On success: move `target` from `inventory` → `equipped`; move
+   `unequip_targets` from `equipped` → `inventory`.
+
+---
+
+#### `unequip` -- Unequip an item
+
+```json
+{
+  "action_type": "unequip",
+  "target": "toenail_sword",
+  "detail": "Player sheathes the toenail sword.",
+  "follow_up": null,
+  "proposed_soft_state_patches": []
+}
+```
+
+| Field    | Type   | Required | Description |
+|----------|--------|----------|-------------|
+| `target` | string | yes      | Entity ID of the item to unequip. Must be in `player.equipped`. |
+
+**Engine validation:**
+- `target` must be in `player.equipped`.
+- On success: move `target` from `equipped` → `inventory`. Set
+  `equipment_changed: true`.
+
+---
+
 ### 2.2 Follow-up: Chained actions
 
 Players often describe multi-step plans in a single input (e.g., "I pick up
@@ -519,6 +585,8 @@ whether to continue the chain:
 | `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source  |
 | `wait`            | null (no target)                                | none; advances turn counter                |
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
+| `equip`           | entity_id of item in inventory                  | must have `equip_block`; validates tag conflicts and `max_equipped` |
+| `unequip`         | entity_id of item in equipped                   | must be currently equipped                 |
 
 ---
 
@@ -539,8 +607,9 @@ full format and validation rules are detailed in `soft-state.md`. In summary:
 ```
 
 Supported fields: `room_note`, `entity_note`, `soft_inventory_add`,
-`soft_inventory_remove`. (Attitude changes are proposed by LLM Call 2 via
-`attitude_changes`, not by LLM Call 1.)
+`soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon`.
+(Attitude changes are proposed by LLM Call 2 via `attitude_changes`, not by
+LLM Call 1.)
 
 ---
 

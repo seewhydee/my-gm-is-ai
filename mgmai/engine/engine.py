@@ -119,6 +119,9 @@ def resolve(
             ),
         )
 
+    # Auto-clear expired improvised weapons before resolving the action
+    state_manager.clear_expired_improvised_weapon()
+
     resolution = resolve_action(player_action, hard, soft, corpus)
 
     if not resolution.success:

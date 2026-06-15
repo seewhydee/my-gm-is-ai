@@ -24,7 +24,7 @@ from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import ConditionStatus
 
-DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item|stat"
+DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item|stat|equipped"
 CONDITION_RE = re.compile(
     rf"^({DOMAINS}):([\w.-]+)"
     rf"(?:\s*(==|>=|>|<=|<)\s*(.+))?$"
@@ -85,6 +85,10 @@ def evaluate_condition_string(
         if corpus is None:
             raise ValueError(f"tag condition requires corpus: {raw!r}")
         for item_id in hard_state.player.inventory:
+            entity = corpus.entities.get(item_id)
+            if entity is not None and key in entity.tags:
+                return True
+        for item_id in hard_state.player.equipped:
             entity = corpus.entities.get(item_id)
             if entity is not None and key in entity.tags:
                 return True
@@ -159,6 +163,19 @@ def evaluate_condition_string(
         if stat_val is None:
             return False
         return _compare(stat_val, op, value)
+
+    if domain == "equipped":
+        if op is not None:
+            raise ValueError(f"equipped condition must not have operator: {raw!r}")
+        # key can be an entity ID or a tag
+        if key in hard_state.player.equipped:
+            return True
+        if corpus is not None:
+            for item_id in hard_state.player.equipped:
+                entity = corpus.entities.get(item_id)
+                if entity is not None and key in entity.tags:
+                    return True
+        return False
 
     raise ValueError(f"Unknown condition domain: {domain}")
 
@@ -322,10 +339,14 @@ def get_condition_detail(
                 key in entity.tags
                 for item_id in hard_state.player.inventory
                 if (entity := corpus.entities.get(item_id)) is not None
+            ) or any(
+                key in entity.tags
+                for item_id in hard_state.player.equipped
+                if (entity := corpus.entities.get(item_id)) is not None
             )
         else:
             found = False
-        detail = f"item with tag '{key}' in inventory: {found}"
+        detail = f"item with tag '{key}' in inventory or equipped: {found}"
 
     elif domain == "entity":
         if "." in key:
@@ -352,6 +373,18 @@ def get_condition_detail(
     elif domain == "stat":
         current_val = (hard_state.player.stats or {}).get(key)
         detail = f"stat {key} = {current_val}"
+
+    elif domain == "equipped":
+        in_equipped = key in hard_state.player.equipped
+        if not in_equipped and corpus is not None:
+            found_tag = any(
+                key in entity.tags
+                for item_id in hard_state.player.equipped
+                if (entity := corpus.entities.get(item_id)) is not None
+            )
+        else:
+            found_tag = False
+        detail = f"equipped contains '{key}': {in_equipped or found_tag}"
 
     else:
         detail = f"unknown domain '{domain}' for '{raw}'"
