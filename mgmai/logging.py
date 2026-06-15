@@ -16,16 +16,13 @@
 
 """Logging infrastructure for MGMAI.
 
-Provides ``setup_logging()`` to configure the Python logging system, and
-``TurnLogger`` to accumulate structured per-turn data that can be saved
-to a JSON file for post-hoc analysis.
+Provides ``setup_logging()`` to configure the Python logging system.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -82,51 +79,6 @@ def set_level(level: str) -> None:
     for handler in root.handlers:
         if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
             handler.setLevel(numeric_level)
-
-
-class TurnLogger:
-    """Accumulates structured per-turn data for JSON log saving.
-
-    Usage::
-
-        turn_log = TurnLogger()
-        turn_log.begin_turn(1, "look around")
-        turn_log.log_step("briefing", briefing_dict)
-        turn_log.end_turn()
-        turn_log.save(Path("turns.json"))
-    """
-
-    def __init__(self) -> None:
-        self._turns: list[dict[str, Any]] = []
-        self._current: dict[str, Any] | None = None
-
-    def begin_turn(self, turn_num: int, player_input: str) -> None:
-        self._current = {
-            "turn": turn_num,
-            "player_input": player_input,
-            "chain_steps": [],
-        }
-
-    def log_step(self, key: str, data: Any) -> None:
-        if self._current is None:
-            return
-        step = self._current["chain_steps"]
-        if step and key not in step[-1]:
-            step[-1][key] = data
-        else:
-            step.append({key: data})
-
-    def end_turn(self) -> None:
-        if self._current is not None:
-            self._turns.append(self._current)
-            self._current = None
-
-    def save(self, path: str | Path) -> None:
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"turns": self._turns},
-                                   indent=2, ensure_ascii=False),
-                        encoding="utf-8")
 
 
 def format_state_snapshot(hard: Any, soft: Any) -> dict[str, Any]:

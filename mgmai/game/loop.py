@@ -77,7 +77,7 @@ from mgmai.engine.stat_checks import (
 )
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
-from mgmai.logging import TurnLogger, format_state_snapshot
+from mgmai.logging import format_state_snapshot
 from mgmai.game.commands import Commands
 from mgmai.game.display import Display
 from mgmai.game.input_normalizer import normalize_player_input
@@ -111,7 +111,6 @@ class GameLoop:
         self._running = False
         self._chat_log: list[dict[str, str]] = []
         self._config_dir = Path(config_dir) if config_dir else None
-        self._turn_log = TurnLogger()
         self._commands = Commands(
             state_loader=state_manager,
             render=self._display.print,
@@ -157,10 +156,6 @@ class GameLoop:
 
     def _run_turn(self, player_input: str) -> None:
         self._chat_log.append({"role": "player", "content": player_input})
-        self._turn_log.begin_turn(
-            self._state.hard_state.turn_count + 1 if self._state.hard_state else 0,
-            player_input,
-        )
 
         chain_depth = 0
         current_input = normalize_player_input(player_input)
@@ -170,7 +165,6 @@ class GameLoop:
         while chain_depth < MAX_CHAIN_LENGTH:
             narration = self._execute_turn(current_input, player_input, chain_depth)
             if narration is None:
-                self._turn_log.end_turn()
                 return
 
             result = self._last_result
@@ -205,7 +199,6 @@ class GameLoop:
 
             # Check for game over and handle end-of-turn bookkeeping
             self._finalize_turn(narration)
-            self._turn_log.end_turn()
             return
 
         if narration:
@@ -216,7 +209,6 @@ class GameLoop:
             self._chat_log.append({"role": "gm", "content": narration})
             self._display.render_narration(narration)
             self._finalize_turn(narration)
-        self._turn_log.end_turn()
 
     # ------------------------------------------------------------------
     # single-turn execution
@@ -240,7 +232,6 @@ class GameLoop:
         briefing = assemble(corpus, hard, soft, current_input)
 
         log.debug("--- GMBriefing ---\n%s", briefing.model_dump_json(indent=2))
-        self._turn_log.log_step("briefing", briefing.model_dump(mode="json"))
 
         # 2. LLM Call 1 → PlayerAction (with retry on malformed output)
         try:
@@ -250,7 +241,6 @@ class GameLoop:
             return None
 
         log.debug("--- PlayerAction ---\n%s", action.model_dump_json(indent=2))
-        self._turn_log.log_step("parsed_action", action.model_dump(mode="json"))
 
         # 3. Engine → EngineResult
         result = resolve(
@@ -263,7 +253,6 @@ class GameLoop:
         self._last_action = action
 
         log.debug("--- EngineResult ---\n%s", result.model_dump_json(indent=2))
-        self._turn_log.log_step("engine_result", result.model_dump(mode="json"))
 
         log.debug(
             "--- State After Turn ---\n%s",
@@ -286,7 +275,6 @@ class GameLoop:
             return narration
 
         log.debug("--- ProseOutput ---\n%s", prose.model_dump_json(indent=2))
-        self._turn_log.log_step("parsed_prose", prose.model_dump(mode="json"))
 
         # 4.5 Feed dialogue state from prose output
         if action.action_type != "ooc_discussion":
@@ -468,24 +456,7 @@ class GameLoop:
     def _on_game_loaded(self) -> None:
         self._chat_log.clear()
         self._last_result = None
-        self._turn_log = TurnLogger()
 
     def _do_exit(self) -> None:
         self._running = False
-        self._save_turn_log()
         self._display.render_goodbye()
-
-    def _save_turn_log(self) -> None:
-        if not self._turn_log._turns:
-            return
-        try:
-            log_path = self._get_turn_log_path()
-            self._turn_log.save(log_path)
-            log.info("Turn log saved to %s", log_path)
-        except Exception:
-            log.debug("Could not save turn log", exc_info=True)
-
-    def _get_turn_log_path(self) -> Path:
-        if self._config_dir:
-            return self._config_dir / "turn-log.json"
-        return Path("turn-log.json")
