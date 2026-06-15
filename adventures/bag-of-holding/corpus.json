@@ -452,21 +452,6 @@
       "state_fields": {},
       "soft_items": ["copper piece", "empty potion bottle", "cork", "wad of lint", "moldy sandwich crust"],
       "contained_entities": ["toenail_sword"],
-      "interactions": [
-        {
-          "id": "move_handkerchief",
-          "label": "Haul aside the handkerchief",
-          "description": "Grab the damp handkerchief and drag it aside to see what's underneath.",
-          "condition": { "all": [
-            { "require": "flag:handkerchief_noticed == true" },
-            { "unless": "flag:handkerchief_moved == true" }
-          ]},
-          "result": {
-            "narrative": "You grab a fistful of the damp, vaguely disgusting fabric and haul it aside. Beneath it, set into the canvas floor, is a concealed flap — just large enough to squeeze through. A dark space yawns below.",
-            "set_flag": { "handkerchief_moved": true }
-          }
-        }
-      ],
       "on_examine": [
         {
           "id": "notice_toenail_sword",
@@ -540,7 +525,22 @@
       "state_fields": {
         "hidden": { "type": "boolean", "description": "Whether the handkerchief is hidden from view." }
       },
-      "soft_items": ["damp handkerchief"]
+      "soft_items": ["damp handkerchief"],
+      "interactions": [
+        {
+          "id": "move_handkerchief",
+          "label": "Haul aside the handkerchief",
+          "description": "Grab the damp handkerchief and drag it aside to see what's underneath.",
+          "condition": { "all": [
+            { "require": "flag:handkerchief_noticed == true" },
+            { "unless": "flag:handkerchief_moved == true" }
+          ]},
+          "result": {
+            "narrative": "You grab a fistful of the damp, vaguely disgusting fabric and haul it aside. Beneath it, set into the canvas floor, is a concealed flap — just large enough to squeeze through. A dark space yawns below.",
+            "set_flag": { "handkerchief_moved": true }
+          }
+        }
+      ]
     },
 
     "dense_webbing": {
