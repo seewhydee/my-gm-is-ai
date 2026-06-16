@@ -41,6 +41,7 @@ class Commands:
         on_load: Callable[[], None] | None = None,
         config_dir: str | Path | None = None,
         model_config: object | None = None,
+        on_model_change: Callable[[str, object], None] | None = None,
     ):
         self._state = state_loader
         self._render = render
@@ -49,6 +50,7 @@ class Commands:
         self._on_load = on_load
         self._config_dir = Path(config_dir) if config_dir else None
         self._model_config = model_config
+        self._on_model_change = on_model_change
 
     @property
     def debug(self) -> bool:
@@ -301,15 +303,20 @@ class Commands:
             self._render("[red]Base URL cannot be empty for a custom model.[/red]")
             return
 
-        # --- Save config ---
+        # --- Save config and hot-swap ---
         app_config.model_name = new_model
         app_config.base_url = new_url if new_url else default_url
         try:
             save_app_config(app_config, self._config_dir)
-            self._render(f"\n[green]Config saved.[/green]")
-            self._render(f"  Model: [cyan]{new_model}[/cyan]")
-            if new_url:
-                self._render(f"  Base URL: {new_url}")
-            self._render("  [dim]Changes take effect on next game start.[/dim]")
         except OSError as e:
             self._render(f"\n[red]Could not save config: {e}[/red]")
+            return
+
+        self._render(f"\n[green]Switched to [cyan]{new_model}[/cyan][/green]")
+
+        if self._on_model_change:
+            effective_url = new_url if new_url else None
+            new_cfg = get_model_config(new_model, base_url=effective_url,
+                                       custom_models=custom_models)
+            self._on_model_change(credentials.api_key, new_cfg)
+            self._model_config = new_cfg
