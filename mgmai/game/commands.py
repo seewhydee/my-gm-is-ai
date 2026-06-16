@@ -20,7 +20,11 @@ import getpass
 from pathlib import Path
 from typing import Any, Callable
 
-from mgmai.llm.model_config import get_known_model_labels, get_model_config
+from mgmai.llm.model_config import (
+    get_known_model_labels,
+    get_model_config,
+    load_custom_models,
+)
 from mgmai.logging import get_level, set_level
 
 import logging
@@ -36,6 +40,7 @@ class Commands:
         debug: bool = False,
         on_load: Callable[[], None] | None = None,
         config_dir: str | Path | None = None,
+        model_config: object | None = None,
     ):
         self._state = state_loader
         self._render = render
@@ -43,6 +48,7 @@ class Commands:
         self._debug = debug
         self._on_load = on_load
         self._config_dir = Path(config_dir) if config_dir else None
+        self._model_config = model_config
 
     @property
     def debug(self) -> bool:
@@ -66,7 +72,7 @@ class Commands:
             "save": self._cmd_save,
             "load": self._cmd_load,
             "debug": self._cmd_debug,
-            "models": self._cmd_models,
+            "model": self._cmd_model,
         }.get(cmd)
 
         if handler is None:
@@ -86,7 +92,7 @@ class Commands:
   /save [filename]      Save game (default: save.json)
   /load <filename>      Load a saved game
   /debug                Toggle debug mode (shows GMBriefing/EngineResult)
-  /models               Configure model and API key
+  /model                Show current model details and switch model
 
 [bold]Shortcuts[/bold]
   Classic interactive-fiction abbreviations are expanded automatically:
@@ -175,9 +181,34 @@ class Commands:
             self._debug = True
             self._render("[yellow]Debug mode: ON[/yellow]")
 
-    def _cmd_models(self, _: str) -> None:
-        self._render("\n[bold]Model Configuration[/bold]\n")
+    def _cmd_model(self, _: str) -> None:
+        self._render("\n[bold]Current Model[/bold]\n")
 
+        if self._model_config is None:
+            self._render("  [dim]Model configuration not available.[/dim]")
+            return
+
+        mc = self._model_config
+        self._render(f"  Name:               [cyan]{mc.name}[/cyan]")
+        if mc.label and mc.label != mc.name:
+            self._render(f"  Label:              {mc.label}")
+        self._render(f"  Base URL:           [dim]{mc.base_url}[/dim]")
+
+        rt = "API default" if mc.ruling_temperature is None else str(mc.ruling_temperature)
+        pt = "API default" if mc.prose_temperature is None else str(mc.prose_temperature)
+        self._render(f"  Ruling temperature: {rt}")
+        self._render(f"  Prose temperature:  {pt}")
+
+        self._render(f"  JSON mode:          {'on' if mc.supports_json_mode else 'off'}")
+        self._render(f"  Request timeout:    {mc.request_timeout:.0f}s")
+        self._render(f"  Max tokens (ruling): {mc.ruling_max_tokens}")
+        self._render(f"  Max tokens (prose):  {mc.prose_max_tokens}")
+
+        if mc.extra_body:
+            import json
+            self._render(f"  extra_body:         [dim]{json.dumps(mc.extra_body)}[/dim]")
+
+        # --- Model switching ---
         from mgmai.config import (
             load_app_config,
             load_credentials,
@@ -187,54 +218,51 @@ class Commands:
 
         app_config = load_app_config(self._config_dir)
         credentials = load_credentials(self._config_dir)
+        custom_models = load_custom_models(self._config_dir)
 
         current_model = app_config.model_name or "deepseek-v4-flash"
-        current_api = credentials.api_key or "(not set)"
-        if current_api and current_api != "(not set)":
-            current_api = current_api[:4] + "..." + current_api[-4:] if len(current_api) > 8 else "***"
 
-        self._render(f"  Current model:    [cyan]{current_model}[/cyan]")
-        self._render(f"  Current API key:  [dim]{current_api}[/dim]")
-        if app_config.base_url:
-            self._render(f"  Current base URL: [dim]{app_config.base_url}[/dim]")
         self._render("")
-
-        # --- Model selection ---
-        known = get_known_model_labels()
+        known = get_known_model_labels(custom_models=custom_models)
         known_names = list(known.keys())
-        self._render("[bold]Known models:[/bold]")
+        self._render("[bold]Switch model[/bold]")
+        self._render("  (Enter to keep current)\n")
         for i, (name, label) in enumerate(known.items(), 1):
-            cfg = get_model_config(name)
+            cfg = get_model_config(name, custom_models=custom_models)
             marker = " [dim](current)[/dim]" if name == current_model else ""
             self._render(f"  {i}. [cyan]{label}[/cyan]{marker} — {cfg.base_url}")
         self._render(f"  {len(known) + 1}. [yellow]Custom model...[/yellow]")
 
         try:
-            choice = input("\n  Select model number (or Enter to keep current): ").strip()
+            choice = input("\n  Select model number: ").strip()
         except (EOFError, KeyboardInterrupt):
             self._render("")
             return
 
-        if choice:
-            try:
-                idx = int(choice)
-                if 1 <= idx <= len(known):
-                    new_model = known_names[idx - 1]
-                elif idx == len(known) + 1:
-                    new_model = input("  Enter model name: ").strip()
-                    if not new_model:
-                        self._render("[red]Model name cannot be empty.[/red]")
-                        return
-                else:
-                    self._render("[red]Invalid selection.[/red]")
+        if not choice:
+            return
+
+        try:
+            idx = int(choice)
+            if 1 <= idx <= len(known):
+                new_model = known_names[idx - 1]
+            elif idx == len(known) + 1:
+                new_model = input("  Enter model name: ").strip()
+                if not new_model:
+                    self._render("[red]Model name cannot be empty.[/red]")
                     return
-            except ValueError:
-                new_model = choice
-        else:
-            new_model = current_model
+            else:
+                self._render("[red]Invalid selection.[/red]")
+                return
+        except ValueError:
+            new_model = choice
 
         # --- API key ---
-        self._render(f"\n[bold]API Key[/bold]")
+        current_api = credentials.api_key or "(not set)"
+        if current_api and current_api != "(not set)":
+            current_api = current_api[:4] + "..." + current_api[-4:] if len(current_api) > 8 else "***"
+
+        self._render(f"\n[bold]API Key[/bold]  [dim](current: {current_api})[/dim]")
         self._render("  (leave blank to keep current)")
         try:
             new_key = getpass.getpass("  Enter API key: ").strip()
@@ -249,12 +277,10 @@ class Commands:
                 self._render("  [green]API key saved.[/green]")
             except OSError as e:
                 self._render(f"  [yellow]Could not save API key: {e}[/yellow]")
-        else:
-            self._render("  [dim]API key unchanged.[/dim]")
 
         # --- Base URL ---
         try:
-            model_cfg = get_model_config(new_model)
+            model_cfg = get_model_config(new_model, custom_models=custom_models)
             default_url = model_cfg.base_url
         except ValueError:
             default_url = ""
@@ -281,10 +307,9 @@ class Commands:
         try:
             save_app_config(app_config, self._config_dir)
             self._render(f"\n[green]Config saved.[/green]")
-            self._render(
-                f"  Model: [cyan]{new_model}[/cyan]"
-                + (f"  Base URL: {new_url if new_url else default_url}" if new_url else "")
-            )
+            self._render(f"  Model: [cyan]{new_model}[/cyan]")
+            if new_url:
+                self._render(f"  Base URL: {new_url}")
             self._render("  [dim]Changes take effect on next game start.[/dim]")
         except OSError as e:
             self._render(f"\n[red]Could not save config: {e}[/red]")

@@ -82,6 +82,7 @@ The design documentation is in the `doc/` folder:
 - [doc/npcs.md](doc/npcs.md): Implementation of non-player characters.
 - [doc/player-stats.md](doc/player-stats.md) — Player stats (WIP).
 - [doc/soft-items.md](doc/soft-items.md) — Extensible nondescript items.
+- [doc/models.md](doc/models.md) — LLM model configuration guide.
 
 ## Copyright and License
 

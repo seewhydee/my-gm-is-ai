@@ -118,6 +118,7 @@ class GameLoop:
             debug=debug,
             on_load=self._on_game_loaded,
             config_dir=config_dir,
+            model_config=getattr(llm_client, "_config", None),
         )
 
     @property

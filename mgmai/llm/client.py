@@ -57,7 +57,8 @@ class LLMClient:
         return self._call(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=self._config.ruling_temperature)
+            temperature=self._config.ruling_temperature,
+            max_tokens=self._config.ruling_max_tokens)
 
     def call_prose(self, system_prompt: str, user_prompt: str) -> str:
         """LLM Call 2: narrate engine outcome → prose + optional blocks.
@@ -68,20 +69,23 @@ class LLMClient:
         return self._call(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=self._config.prose_temperature)
+            temperature=self._config.prose_temperature,
+            max_tokens=self._config.prose_max_tokens)
 
     # ------------------------------------------------------------------
     # internal
     # ------------------------------------------------------------------
 
     def _call(self, system_prompt: str, user_prompt: str,
-              temperature: float | None) -> str:
+              temperature: float | None,
+              max_tokens: int) -> str:
         kwargs: dict[str, Any] = {
             "model": self._config.name,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            "max_tokens": max_tokens,
         }
         if temperature is not None:
             kwargs["temperature"] = temperature
