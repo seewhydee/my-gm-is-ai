@@ -35,6 +35,7 @@ class ModelConfig:
     label: str | None = None
     extra_body: dict[str, Any] | None = None
     supports_json_mode: bool = True
+    request_timeout: float = 300.0
 
 
 # ------------------------------------------------------------------
@@ -100,6 +101,7 @@ def get_model_config(model_name: str, base_url: str | None = None) -> ModelConfi
             name=model_name,
             base_url=base_url,
             extra_body=None,
+            supports_json_mode=False,
         )
 
     if base_url is not None:

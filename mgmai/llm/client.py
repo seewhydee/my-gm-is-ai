@@ -37,8 +37,11 @@ class LLMClient:
     """
 
     def __init__(self, api_key: str, config: ModelConfig) -> None:
-        self._client = OpenAI(api_key=api_key,
-                              base_url=config.base_url)
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url=config.base_url,
+            timeout=config.request_timeout,
+        )
         self._config = config
 
     # ------------------------------------------------------------------
