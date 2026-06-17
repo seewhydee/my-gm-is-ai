@@ -24,7 +24,7 @@ from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import ConditionStatus
 
-DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item|stat|equipped"
+DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item|stat|equipped|event"
 CONDITION_RE = re.compile(
     rf"^({DOMAINS}):([\w.-]+)"
     rf"(?:\s*(==|>=|>|<=|<)\s*(.+))?$"
@@ -57,6 +57,7 @@ def evaluate_condition_string(
     hard_state: HardGameState,
     soft_state: SoftGameState,
     corpus: ModuleCorpus | None,
+    event_ctx: dict | None = None,
 ) -> bool:
     """Evaluate a single bare condition string against game state.
 
@@ -177,6 +178,18 @@ def evaluate_condition_string(
                     return True
         return False
 
+    if domain == "event":
+        if event_ctx is None:
+            return False
+        if op is None or value is None:
+            raise ValueError(
+                f"event condition requires operator and value: {raw!r}"
+            )
+        ctx_val = event_ctx.get(key)
+        if ctx_val is None:
+            return False
+        return _compare(ctx_val, op, value)
+
     raise ValueError(f"Unknown condition domain: {domain}")
 
 
@@ -252,33 +265,34 @@ def evaluate(
     hard_state: HardGameState,
     soft_state: SoftGameState,
     corpus: ModuleCorpus | None = None,
+    event_ctx: dict | None = None,
 ) -> bool:
     """Evaluate a ``ConditionExpression`` (or bare string) against game state.
 
     ``corpus`` is required when evaluating ``tag`` conditions.
     """
     if isinstance(condition, str):
-        return evaluate_condition_string(condition, hard_state, soft_state, corpus)
+        return evaluate_condition_string(condition, hard_state, soft_state, corpus, event_ctx)
 
     if condition.require is not None:
         return evaluate_condition_string(
-            condition.require, hard_state, soft_state, corpus
+            condition.require, hard_state, soft_state, corpus, event_ctx
         )
 
     if condition.unless is not None:
         return not evaluate_condition_string(
-            condition.unless, hard_state, soft_state, corpus
+            condition.unless, hard_state, soft_state, corpus, event_ctx
         )
 
     if condition.any_of is not None:
         return any(
-            evaluate(item, hard_state, soft_state, corpus)
+            evaluate(item, hard_state, soft_state, corpus, event_ctx)
             for item in condition.any_of
         )
 
     if condition.all_of is not None:
         return all(
-            evaluate(item, hard_state, soft_state, corpus)
+            evaluate(item, hard_state, soft_state, corpus, event_ctx)
             for item in condition.all_of
         )
 
@@ -290,9 +304,10 @@ def evaluate_require(
     hard_state: HardGameState,
     soft_state: SoftGameState,
     corpus: ModuleCorpus | None = None,
+    event_ctx: dict | None = None,
 ) -> bool:
     """Convenience: evaluate exactly as ``evaluate`` would."""
-    return evaluate(condition, hard_state, soft_state, corpus)
+    return evaluate(condition, hard_state, soft_state, corpus, event_ctx)
 
 
 def get_condition_detail(
@@ -300,6 +315,7 @@ def get_condition_detail(
     hard_state: HardGameState,
     soft_state: SoftGameState,
     corpus: ModuleCorpus | None = None,
+    event_ctx: dict | None = None,
 ) -> ConditionStatus:
     """Evaluate a condition string and return status with current-value detail.
 
@@ -308,7 +324,7 @@ def get_condition_detail(
     *why* a condition is or isn't met.
     """
     domain, key, op, value = parse_condition_string(raw)
-    met = evaluate_condition_string(raw, hard_state, soft_state, corpus)
+    met = evaluate_condition_string(raw, hard_state, soft_state, corpus, event_ctx)
 
     if domain == "flag":
         current = hard_state.flags.get(key, False)
@@ -385,6 +401,10 @@ def get_condition_detail(
         else:
             found_tag = False
         detail = f"equipped contains '{key}': {in_equipped or found_tag}"
+
+    elif domain == "event":
+        ctx_val = (event_ctx or {}).get(key)
+        detail = f"event {key} = {ctx_val}"
 
     else:
         detail = f"unknown domain '{domain}' for '{raw}'"
