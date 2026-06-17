@@ -79,6 +79,8 @@ class ResolutionResult:
     soft_patches: list[SoftStatePatch] = field(default_factory=list)
     rolls: list[dict[str, Any]] = field(default_factory=list)
     surfaced_soft_items: dict[str, list[str]] = field(default_factory=dict)
+    events: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    immediate_changes: HardStateChanges = field(default_factory=HardStateChanges)
 
 
 def resolve_wait(
@@ -239,6 +241,13 @@ def resolve_move(
             )
 
     traversal_rolls: list[dict[str, Any]] = []
+    traversal_events: list[tuple[str, dict[str, Any]]] = [
+        ("traversal.attempted", {
+            "exit_id": target_exit_id,
+            "from_room": room_id,
+            "to_room": exit_data.target_room,
+        })
+    ]
     if exit_data.traversal_check:
         trav_check = exit_data.traversal_check
         should_check = True
@@ -257,13 +266,21 @@ def resolve_move(
                 narrative_result = list(traversal_narrative)
                 if trav_check.failure_narrative:
                     narrative_result.append(trav_check.failure_narrative)
-                return ResolutionResult(
+                result = ResolutionResult(
                     success=True,
                     hard_changes=HardStateChanges(),
                     triggered_narration=narrative_result,
                     room_after_id=room_id,
                     rolls=traversal_rolls,
                 )
+                result.events.append(
+                    ("traversal.failed", {
+                        "exit_id": target_exit_id,
+                        "from_room": room_id,
+                        "fail_reason": "check_failed",
+                    })
+                )
+                return result
 
     changes = HardStateChanges(player_location=exit_data.target_room)
     narrative: list[str] = []
@@ -327,6 +344,14 @@ def resolve_move(
     # --- follower_blacklist: stop followers who refuse this room ---
     _check_follower_blacklist(hard, corpus, exit_data.target_room, narrative)
 
+    traversal_events.append(
+        ("traversal.succeeded", {
+            "exit_id": target_exit_id,
+            "from_room": room_id,
+            "to_room": exit_data.target_room,
+        })
+    )
+
     return ResolutionResult(
         success=True,
         hard_changes=changes,
@@ -334,6 +359,7 @@ def resolve_move(
         encounter_trigger=encounter_trigger,
         room_after_id=exit_data.target_room,
         rolls=traversal_rolls,
+        events=traversal_events,
     )
 
 
@@ -414,18 +440,28 @@ def resolve_talk(
 
     turn = hard.turn_count
     dialogue_exited = None
+    talk_events: list[tuple[str, dict[str, Any]]] = []
 
     current_active = soft.dialogue_state.active_npc
     if current_active is not None and current_active != target_npc:
         dialogue_exited = exit_dialogue(soft, corpus, hard)
+        talk_events.append(("dialogue.ended", {
+            "npc_id": current_active,
+            "reason": "switched_npc",
+        }))
 
     if soft.dialogue_state.active_npc is None:
         enter_dialogue(soft, target_npc, turn, action.utterance, action.detail)
+        talk_events.append(("dialogue.started", {"npc_id": target_npc}))
     else:
         append_player_turn(soft, target_npc, turn, action.utterance, action.detail)
 
     if action.ends_dialogue:
         dialogue_exited = exit_dialogue(soft, corpus, hard)
+        talk_events.append(("dialogue.ended", {
+            "npc_id": target_npc,
+            "reason": "ends_dialogue",
+        }))
 
     if path_result is not None:
         return ResolutionResult(
@@ -436,6 +472,7 @@ def resolve_talk(
             room_after_id=room_id,
             dialogue_exited=dialogue_exited,
             rolls=list(path_result.rolls or []),
+            events=talk_events,
         )
 
     return ResolutionResult(
@@ -443,6 +480,7 @@ def resolve_talk(
         hard_changes=HardStateChanges(),
         room_after_id=room_id,
         dialogue_exited=dialogue_exited,
+        events=talk_events,
     )
 
 
@@ -473,10 +511,15 @@ def resolve_transfer(
 
     changes = HardStateChanges()
     soft_patches: list[SoftStatePatch] = []
+    item_events: list[tuple[str, dict[str, Any]]] = []
 
     for item in given_items:
         if item in hard.player.inventory:
             changes.inventory_removed.append(item)
+            item_events.append(("item.lost", {
+                "item_id": item,
+                "reason": "transfer",
+            }))
         elif item in soft.soft_inventory:
             soft_patches.append(
                 SoftStatePatch(
@@ -568,6 +611,10 @@ def resolve_transfer(
                 continue
 
         changes.inventory_added.append(item)
+        item_events.append(("item.acquired", {
+            "item_id": item,
+            "source": "transfer",
+        }))
         # Surface the soft item on its source
         if target_is_room:
             if room.soft_items and item in room.soft_items:
@@ -597,6 +644,7 @@ def resolve_transfer(
         triggered_narration=triggered_narration,
         revealed_hints=revealed_hints,
         rolls=rolls,
+        events=item_events,
     )
 
 
@@ -680,6 +728,12 @@ def resolve_interact(
 
     inter, source = matches[0]
 
+    interaction_event = ("interaction.used", {
+        "interaction_id": interaction_id,
+        "target_id": target_id,
+        "using_item": action.using,
+    })
+
     # Check if any room NPC's behavior triggers on this interaction
     auto_encounter_npc: str | None = None
     for entity_id in room.entities_present:
@@ -696,6 +750,7 @@ def resolve_interact(
             success=False,
             error=f"Conditions not met for interaction '{interaction_id}'",
             encounter_trigger=auto_encounter_npc,
+            events=[interaction_event],
         )
 
     if inter.parameter_signature:
@@ -711,6 +766,7 @@ def resolve_interact(
                     success=False,
                     error=f"Target type '{target_type}' not allowed for interaction '{interaction_id}' (expected: {sig.target})",
                     encounter_trigger=auto_encounter_npc,
+                    events=[interaction_event],
                 )
         if sig.using and action.using:
             using_entity = corpus.entities.get(action.using)
@@ -723,23 +779,31 @@ def resolve_interact(
                     success=False,
                     error=f"Using item type '{using_type}' not allowed for interaction '{interaction_id}' (expected: {sig.using})",
                     encounter_trigger=auto_encounter_npc,
+                    events=[interaction_event],
                 )
 
     if inter.check:
-        return _resolve_interaction_check(inter, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
+        result = _resolve_interaction_check(inter, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
+        result.events.insert(0, interaction_event)
+        return result
 
     if inter.using_results and action.using:
         item_override = inter.using_results.get(action.using)
         if item_override is not None:
-            return _resolve_using_override(item_override, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
+            result = _resolve_using_override(item_override, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
+            result.events.append(interaction_event)
+            return result
 
     if inter.result:
-        return _resolve_interaction_result(inter.result, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
+        result = _resolve_interaction_result(inter.result, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc)
+        result.events.append(interaction_event)
+        return result
 
     return ResolutionResult(
         success=False,
         error=f"Interaction '{interaction_id}' has no defined result",
         encounter_trigger=auto_encounter_npc,
+        events=[interaction_event],
     )
 
 
@@ -1548,6 +1612,10 @@ def resolve_equip(
         success=True,
         hard_changes=changes,
         room_after_id=room_id,
+        events=[("equipment.changed", {
+            "added": [target],
+            "removed": action.unequip_targets,
+        })],
     )
 
 
@@ -1577,6 +1645,9 @@ def resolve_unequip(
         success=True,
         hard_changes=changes,
         room_after_id=room_id,
+        events=[("equipment.changed", {
+            "removed": [target],
+        })],
     )
 
 

@@ -47,6 +47,7 @@ from mgmai.state.manager import StateManager
 from mgmai.engine.conditions import evaluate, get_condition_detail
 from mgmai.engine.resolver import resolve_action, ResolutionResult
 from mgmai.engine.utils import inject_following_npcs, get_following_npc_ids
+from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
 from mgmai.engine.encounters import (
     apply_flee_effects,
     resolve_encounter,
@@ -228,10 +229,18 @@ def resolve(
         )
 
     hard_changes.merge(resolution.hard_changes or HardStateChanges())
+    hard_changes.merge(resolution.immediate_changes)
 
+    old_flags = dict(hard.flags)
+    old_stats = dict(hard.player.stats or {})
     old_room = hard.player.location
 
     state_manager.apply_hard_changes(hard_changes)
+
+    # Derive state-change events from the diff
+    state_events = _derive_state_events(
+        hard_changes, old_flags, old_stats, hard,
+    )
 
     engine_soft_patches = list(resolution.soft_patches or [])
     if engine_soft_patches:
@@ -300,7 +309,14 @@ def resolve(
 
     on_enter_results: list[OnEnterEventResult] = []
     new_room = resolution.room_after_id or hard.player.location
+    room_transition_events: list[tuple[str, dict[str, Any]]] = []
     if new_room != old_room:
+        room_transition_events.append(
+            ("room.exited", {"room_id": old_room})
+        )
+        room_transition_events.append(
+            ("room.entered", {"room_id": new_room})
+        )
         on_enter_results = _fire_on_enter_events(
             new_room, hard, soft, corpus, resolution.triggered_narration
         )
@@ -324,6 +340,39 @@ def resolve(
             stall_exited = increment_stall(soft)
             if stall_exited:
                 resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+
+    # Dispatch all collected events through the reaction system
+    all_events = (
+        [("turn.start", {"turn_number": hard.turn_count})]
+        + list(resolution.events)
+        + state_events
+        + room_transition_events
+    )
+    # Add dialogue.ended if dialogue was exited during this turn
+    if resolution.dialogue_exited:
+        npc_id = (
+            resolution.dialogue_exited.get("npc_id")
+            if isinstance(resolution.dialogue_exited, dict)
+            else getattr(resolution.dialogue_exited, "npc_id", None)
+        )
+        if npc_id:
+            all_events.append(("dialogue.ended", {
+                "npc_id": npc_id,
+                "reason": "stall" if action_type != "talk" else "player_left",
+            }))
+
+    _dispatch_events(
+        all_events, hard, soft, corpus, state_manager,
+        HardStateChanges(),
+    )
+
+    # Dispatch turn.end event
+    turn_end_ctx = {"turn_number": hard.turn_count}
+    _dispatch_events(
+        [("turn.end", turn_end_ctx)],
+        hard, soft, corpus, state_manager,
+        HardStateChanges(),
+    )
 
     hard.turn_count += 1
 
@@ -759,6 +808,145 @@ def _check_game_over_mechanics(
                 narrative=mech.narrative,
             )
             return
+
+
+# ------------------------------------------------------------------
+# Event dispatch helpers
+# ------------------------------------------------------------------
+
+
+def _derive_state_events(
+    hard_changes: HardStateChanges,
+    old_flags: dict[str, bool],
+    old_stats: dict[str, int],
+    hard: HardGameState,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Derive state-change events from the HardStateChanges diff."""
+    events: list[tuple[str, dict[str, Any]]] = []
+
+    # flag.set / flag.cleared
+    for flag, val in hard_changes.flags_set.items():
+        old_val = old_flags.get(flag)
+        if old_val is True and val is False:
+            events.append(("flag.cleared", {"flag_name": flag}))
+        elif not old_val and val is True:
+            events.append(("flag.set", {"flag_name": flag}))
+
+    for flag in hard_changes.flags_cleared:
+        if old_flags.get(flag):
+            events.append(("flag.cleared", {"flag_name": flag}))
+
+    # entity_state.changed
+    for entity_id, entity_changes in hard_changes.entity_state_changes.items():
+        for field, new_value in entity_changes.items():
+            events.append(("entity_state.changed", {
+                "entity_id": entity_id,
+                "field": field,
+                "new_value": new_value,
+            }))
+
+    # stat.changed
+    for stat_key, mod in hard_changes.stat_modifiers.items():
+        old_val = old_stats.get(stat_key, 0)
+        new_stats = hard.player.stats or {}
+        new_val = new_stats.get(stat_key, old_val)
+        delta = new_val - old_val
+        events.append(("stat.changed", {
+            "stat_name": stat_key,
+            "old_value": old_val,
+            "new_value": new_val,
+            "delta": delta,
+        }))
+
+    # attitude.changed (detected from entity_state_changes)
+    for entity_id, entity_changes in hard_changes.entity_state_changes.items():
+        if "attitude" in entity_changes:
+            new_att = entity_changes["attitude"]
+            old_att = hard.entity_states.get(entity_id, {}).get("attitude", 0)
+            try:
+                new_att_num = int(new_att) if not isinstance(new_att, bool) else (1 if new_att else 0)
+                old_att_num = int(old_att) if not isinstance(old_att, bool) else (1 if old_att else 0)
+            except (ValueError, TypeError):
+                new_att_num, old_att_num = 0, 0
+            events.append(("attitude.changed", {
+                "npc_id": entity_id,
+                "old_value": old_att_num,
+                "new_value": new_att_num,
+                "delta": new_att_num - old_att_num,
+            }))
+
+    # item.acquired / item.lost (from inventory changes)
+    for item in hard_changes.inventory_added:
+        events.append(("item.acquired", {
+            "item_id": item,
+            "source": "interaction",
+        }))
+    for item in hard_changes.inventory_removed:
+        events.append(("item.lost", {
+            "item_id": item,
+            "reason": "interaction",
+        }))
+
+    # equipment.changed
+    if hard_changes.equipment_changed:
+        events.append(("equipment.changed", {
+            "added": hard_changes.equipped_added,
+            "removed": hard_changes.equipped_removed,
+        }))
+
+    # player.damaged / player.healed
+    if hard_changes.player_hp_delta is not None:
+        hp_delta = hard_changes.player_hp_delta
+        new_hp = hard.player.current_hp or 0
+        if hp_delta < 0:
+            events.append(("player.damaged", {
+                "amount": abs(hp_delta),
+                "new_hp": new_hp,
+            }))
+        elif hp_delta > 0:
+            events.append(("player.healed", {
+                "amount": hp_delta,
+                "new_hp": new_hp,
+            }))
+
+    return events
+
+
+def _dispatch_events(
+    events: list[tuple[str, dict[str, Any]]],
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    state_manager: Any,
+    immediate_changes: HardStateChanges,
+) -> None:
+    """Dispatch a batch of events through the reaction system.
+
+    For each event, finds matching reactions (immediate + deferred).
+    Immediate reactions have their effects accumulated into
+    *immediate_changes*.  Deferred reactions are dispatched after all
+    events have been processed.
+    """
+    deferred: list[tuple[Reaction, str | None]] = []
+
+    for event_type, context in events:
+        matches = find_matching_reactions(
+            event_type, context, hard, soft, corpus,
+        )
+        immed = [(r, o) for r, o in matches if r.phase == "immediate"]
+        defd = [(r, o) for r, o in matches if r.phase != "immediate"]
+
+        if immed:
+            dispatch_reactions(
+                immed, hard, soft, corpus, state_manager,
+                immediate_changes=immediate_changes,
+            )
+        deferred.extend(defd)
+
+    if deferred:
+        dispatch_reactions(
+            deferred, hard, soft, corpus, state_manager,
+        )
 
 
 def _summarize_resolution(

@@ -624,3 +624,27 @@ enabling infinite regress.
 | Legacy adapter correctness (all old trigger types → reactions) | `tests/test_legacy_adapter.py` |
 | End-to-end: adventure with reactions behaves correctly | `tests/test_engine.py` (extend) |
 | Existing adventures work unchanged after migration | Run full test suite on `bag-of-holding` |
+
+---
+
+## Phase 3 Implementation Notes
+
+### Completed in Phase 3
+
+- **`engine/event_bus.py`**: Implemented `find_matching_reactions()`, `dispatch_reactions()`, and encounter resolution from reactions.  "self" resolution is handled in `dispatch_reactions()` before effects are applied.
+- **`ResolutionResult`**: Added `events` (list of `(event_type, context)` tuples) and `immediate_changes` (HardStateChanges accumulator).
+- **Resolver instrumentation**: Events are emitted for `traversal.attempted`/`succeeded`/`failed`, `interaction.used`, `dialogue.started`/`ended`, `item.acquired`/`lost`, and `equipment.changed`.
+- **Engine integration**: Added `_derive_state_events()` (flag, stat, attitude, entity state, player damage/heal, equipment, item events) and `_dispatch_events()` (batches events, separates immediate/deferred).  `turn.start` and `turn.end` events are emitted.  Room transition events (`room.exited`/`room.entered`) are emitted.
+- **Encounter triggering from reactions**: `_resolve_reaction_encounter()` handles both NPC behavior and mechanic lookup.
+
+### Known Gaps / Remaining Work for Phase 3
+
+1. **Immediate reactions are not dispatched at emit time**: The plan requires immediate reactions on `interaction.used`, `traversal.attempted`, and `room.entered` to fire synchronously *before* the action check/resolution.  Currently, all reactions (immediate + deferred) are dispatched together after `resolve_action()` returns.  To fix this, `state_manager` (or the event bus) must be threaded into resolver functions so immediate dispatch can happen at event emission time.
+
+2. **Source metadata on check events**: The plan requires `check.passed` / `check.failed` events to carry `source_id` and `source_type` (e.g., `source_type: "interaction"`, `source_id: "attack"`).  These events are not yet emitted.  This requires modifying `_resolve_interaction_check`, `_resolve_stat_check`, `_resolve_roll_check`, `_resolve_traversal_check`, `_resolve_stat_check_chain`, `_resolve_roll_check_chain`, `_fire_on_examine_events`, and `_resolve_encounter_stat_check` to produce structured check results.
+
+3. **Chain-check event emission from reactions**: When a `ReactionEffects.result` contains a `chain_check`, the resolved check should emit `check.passed` / `check.failed` events with `source_type: "reaction"` and `source_id: <reaction.id>`.  Currently, chain checks resolve silently within `_apply_result()`.
+
+4. **Legacy `_fire_on_enter_events()` still active**: This is per the Phase 4 plan (Legacy Trigger Adapter).  No change needed yet.
+
+5. **`context/assembler.py` not updated**: The plan mentions updating the assembler for reaction-produced state changes, but with the current architecture, reaction effects modify state directly and the assembler reads the final state — no structural change is needed.  This may become relevant in Phase 4 when on-enter events are fully migrated to reactions.
