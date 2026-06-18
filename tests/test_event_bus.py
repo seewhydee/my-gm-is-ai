@@ -18,10 +18,12 @@ from mgmai.engine.event_bus import (
 from mgmai.engine.engine import _derive_state_events
 from mgmai.engine.engine import resolve
 from mgmai.engine.resolver import _apply_result, resolve_action
-from mgmai.models.actions import HardStateChanges, InteractAction
+from mgmai.models.actions import HardStateChanges, InteractAction, TalkAction
 from mgmai.models.corpus import (
     ConditionExpression,
+    EncounterRule,
     Entity,
+    GameOverTrigger,
     Interaction,
     Mechanic,
     Reaction,
@@ -31,6 +33,19 @@ from mgmai.models.corpus import (
     StatModifier,
 )
 from mgmai.models.hard_state import HardGameState
+from mgmai.state.manager import StateManager
+
+
+@pytest.fixture
+def fresh_state_manager(state_manager):
+    """Return a StateManager with a deep-copied corpus so tests can mutate it."""
+    import copy
+    manager = StateManager()
+    manager.corpus = copy.deepcopy(state_manager.corpus)
+    manager.hard_state = copy.deepcopy(state_manager.hard_state)
+    manager.soft_state = copy.deepcopy(state_manager.soft_state)
+    manager._adventure_dir = state_manager._adventure_dir
+    return manager
 
 
 class TestApplyResultAccumulator:
@@ -501,3 +516,250 @@ class TestStateChangeEventDerivation:
         changes = HardStateChanges()
         events = _derive_state_events(changes, old_flags={}, old_stats={}, old_entity_states={}, hard=hard)
         assert events == []
+
+
+class TestReactionTriggerEncounter:
+    """Deferred reactions can trigger encounters via trigger_encounter."""
+
+    def test_deferred_trigger_encounter_runs_mechanic_rules(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        # Add a simple encounter mechanic that sets a flag when it fires.
+        corpus.mechanics["test_ambush"] = Mechanic(
+            id="test_ambush",
+            description="Test ambush",
+            rules=[
+                EncounterRule(
+                    condition=ConditionExpression(require="entity:player.alive == true"),
+                    outcome="flee",
+                    set_flags={"ambush_fled": True},
+                    narrative="The ambush flees.",
+                )
+            ],
+        )
+
+        # Add a room reaction that triggers the encounter on turn.start.
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="trigger_ambush",
+            on="turn.start",
+            effects=ReactionEffects(trigger_encounter="test_ambush"),
+        ))
+
+        # A harmless wait action so the turn resolves.
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("ambush_fled") is True
+        assert "The ambush flees." in engine_result.triggered_narration
+
+
+class TestReactionTriggerDialogue:
+    """Reactions can start dialogue via trigger_dialogue."""
+
+    def test_deferred_trigger_dialogue_starts_dialogue(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="korbar_approaches",
+            on="turn.start",
+            effects=ReactionEffects(trigger_dialogue="korbar"),
+        ))
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert soft.dialogue_state.active_npc == "korbar"
+
+
+class TestReactionGameOver:
+    """Reactions can end the game via game_over effect."""
+
+    def test_reaction_game_over_sets_hard_state(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="sudden_death",
+            on="turn.start",
+            effects=ReactionEffects(
+                game_over=GameOverTrigger(type="lose", trigger_id="pitfall")
+            ),
+        ))
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert engine_result.game_over is not None
+        assert engine_result.game_over.type == "lose"
+        assert engine_result.game_over.trigger == "pitfall"
+        assert hard.game_over is not None
+        assert hard.game_over.type == "lose"
+
+
+class TestDialogueEndedNoDuplicate:
+    """dialogue.ended is emitted exactly once per exit."""
+
+    def setup_method(self):
+        reset_disabled_once()
+
+    def test_ends_dialogue_emits_single_event(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        # A non-once reaction on dialogue.ended adds an item.  If the event
+        # were emitted twice, the item would appear twice in inventory.
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="on_dialogue_end",
+            on="dialogue.ended",
+            effects=ReactionEffects(result=Result(add_item="rusty_key")),
+        ))
+
+        # Enter dialogue with Korbar.
+        enter = TalkAction(
+            action_type="talk",
+            target="korbar",
+            detail="talk to korbar",
+        )
+        resolve(enter, state_manager)
+        assert soft.dialogue_state.active_npc == "korbar"
+
+        # End dialogue.
+        end = TalkAction(
+            action_type="talk",
+            target="korbar",
+            ends_dialogue=True,
+            detail="say goodbye",
+        )
+        engine_result = resolve(end, state_manager)
+
+        assert engine_result.success is True
+        assert soft.dialogue_state.active_npc is None
+        # The item should have been added exactly once.
+        assert hard.player.inventory.count("rusty_key") == 1
+
+
+class TestDialoguePathSourceType:
+    """Dialogue path checks report source_type 'dialogue_path'."""
+
+    def test_dialogue_path_check_source_type(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        from mgmai.models.corpus import DialoguePath, RollCheck
+
+        # Add a dialogue path with a roll check to Korbar.
+        korbar = corpus.entities["korbar"]
+        korbar.dialogue_guidelines.dialogue_paths["ask_secret"] = DialoguePath(
+            description="Ask Korbar about the secret.",
+            check=RollCheck(threshold=1.0, repeatable=True),
+            success=Result(narrative="Korbar whispers the secret."),
+        )
+
+        # A reaction that only fires when the check event has source_type dialogue_path.
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="track_dialogue_path_check",
+            on="check.passed",
+            condition=ConditionExpression(require="event:source_type == dialogue_path"),
+            effects=ReactionEffects(result=Result(set_flag={"dialogue_path_check_seen": True})),
+        ))
+
+        action = TalkAction(
+            action_type="talk",
+            target="korbar",
+            dialogue_path="ask_secret",
+            detail="ask about secret",
+        )
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("dialogue_path_check_seen") is True
+
+
+class TestReactionCombatLogPropagation:
+    """Combat entries from reaction-triggered encounters propagate combat_log."""
+
+    def test_reaction_encounter_combat_log_propagated(self, fresh_state_manager, monkeypatch):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        from mgmai.models.combat import CombatLogEntry, CombatState
+
+        fake_log = [CombatLogEntry(round=1, actor="spider", action="surprise")]
+
+        def fake_enter_combat(enemy_ids, hard, corpus):
+            hard.combat = CombatState(
+                active=True,
+                combatants=["player"] + list(enemy_ids),
+                initiative_order=["player"] + list(enemy_ids),
+                round_number=1,
+            )
+            return {
+                "hard_changes": HardStateChanges(),
+                "combat_log": fake_log,
+                "game_over": False,
+            }
+
+        # Patch enter_combat in its source module so the import inside
+        # _resolve_reaction_encounter picks up the fake version.
+        import mgmai.engine.combat as combat_module
+        monkeypatch.setattr(combat_module, "enter_combat", fake_enter_combat)
+
+        corpus.mechanics["test_combat"] = Mechanic(
+            id="test_combat",
+            description="Test combat encounter",
+            rules=[
+                EncounterRule(
+                    condition=ConditionExpression(require="entity:player.alive == true"),
+                    outcome="combat",
+                )
+            ],
+        )
+
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="trigger_combat",
+            on="turn.start",
+            effects=ReactionEffects(trigger_encounter="test_combat"),
+        ))
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert engine_result.combat_triggered is True
+        assert any(
+            entry.actor == "spider" and entry.action == "surprise"
+            for entry in engine_result.combat_log
+        )

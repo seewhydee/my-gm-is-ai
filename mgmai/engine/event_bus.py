@@ -29,6 +29,7 @@ from mgmai.models.corpus import (
 from mgmai.models.hard_state import HardGameState, GameOverState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import HardStateChanges
+from mgmai.models.combat import CombatLogEntry
 from mgmai.engine.conditions import evaluate
 
 MAX_RECURSION_DEPTH = 5
@@ -149,6 +150,7 @@ def dispatch_reactions(
     triggered_narration: list[str] | None = None,
     revealed_hints: list[str] | None = None,
     encounter_fired_ref: list[bool] | None = None,
+    combat_log: list[CombatLogEntry] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Apply effects for a list of pre-matched ``(reaction, owner_id)`` tuples.
 
@@ -166,9 +168,10 @@ def dispatch_reactions(
     ``resolution.encounter_trigger`` and letting ``engine.resolve()`` run the
     encounter through the normal pipeline.
 
-    *triggered_narration* and *revealed_hints* are optional output lists.
-    When provided, narrative text and hint reveals from reaction results are
-    appended to them so the caller can merge them into the final EngineResult.
+    *triggered_narration*, *revealed_hints*, and *combat_log* are optional
+    output lists.  When provided, narrative text, hint reveals, and combat
+    log entries from reaction results are appended so the caller can merge
+    them into the final EngineResult.
 
     Reactions with ``once=True`` are disabled in-memory after firing.
 
@@ -234,6 +237,7 @@ def dispatch_reactions(
                         resolved.trigger_encounter, hard, soft, corpus, state_manager,
                         changes=changes,
                         triggered_narration=triggered_narration,
+                        combat_log=combat_log,
                     )
                     new_events.extend(enc_events)
 
@@ -269,7 +273,7 @@ def dispatch_reactions(
                 more, hard, soft, corpus, state_manager,
                 changes, depth + 1, encounter_trigger_ref,
                 triggered_narration, revealed_hints,
-                encounter_fired_ref,
+                encounter_fired_ref, combat_log,
             )
             new_events.extend(more_events)
 
@@ -358,6 +362,7 @@ def _resolve_reaction_encounter(
     state_manager: Any,
     changes: HardStateChanges | None = None,
     triggered_narration: list[str] | None = None,
+    combat_log: list[CombatLogEntry] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Resolve an encounter triggered by a reaction.
 
@@ -445,6 +450,8 @@ def _resolve_reaction_encounter(
                 state_manager.apply_hard_changes(combat_entry["hard_changes"])
         if combat_entry.get("game_over"):
             hard.game_over = GameOverState(type="lose", trigger="player_death")
+        if combat_entry.get("combat_log") and combat_log is not None:
+            combat_log.extend(combat_entry["combat_log"])
         events.append(("combat.started", {"combatant_ids": [source_id]}))
 
     return events

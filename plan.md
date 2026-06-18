@@ -60,11 +60,11 @@ Each event has a **type** (string identifier) and a **context** (flat
 | `traversal.attempted` | `exit_id`, `from_room`, `to_room` | Player attempts to traverse an exit (before the traversal check) |
 | `traversal.succeeded` | `exit_id`, `from_room`, `to_room` | Exit traversal succeeds |
 | `traversal.failed` | `exit_id`, `from_room`, `fail_reason` | TraversalCheck fails |
-| `check.passed` | `check_type` (`stat_check`\|`roll`), `stat?`, `dc?`, `threshold?`, `source_id`, `source_type` (`interaction`\|`examine`\|`traversal`\|`dialogue_path`) | Any check succeeds |
+| `check.passed` | `check_type` (`stat_check`\|`roll`), `stat?`, `dc?`, `threshold?`, `source_id`, `source_type` (`interaction`\|`examine`\|`traversal`\|`dialogue_path`\|`reaction`) | Any check succeeds |
 | `check.failed` | same as `check.passed` | Any check fails |
 | `interaction.used` | `interaction_id`, `target_id`, `using_item?` | An interaction is attempted (before check) |
 | `dialogue.started` | `npc_id` | enter_dialogue() called |
-| `dialogue.ended` | `npc_id`, `reason` (`player_left`\|`ends_dialogue`\|`stall`\|`room_change`\|`combat`) | exit_dialogue() called |
+| `dialogue.ended` | `npc_id`, `reason` (`player_left`\|`ends_dialogue`\|`switched_npc`\|`stall`\|`room_change`\|`combat`) | exit_dialogue() called |
 | `combat.started` | `combatant_ids` (list) | Combat phase begins |
 | `combat.ended` | `reason` (`victory`\|`defeat`\|`fled`) | Combat phase ends |
 | `item.acquired` | `item_id`, `source` (`transfer`\|`interaction`\|`examine`\|`equip`) | Item enters inventory |
@@ -90,6 +90,11 @@ Each event has a **type** (string identifier) and a **context** (flat
 | `adventure.start` | `{}` | First turn of the adventure (fires once) |
 | `turn.start` | `turn_number` | Beginning of each engine.resolve() call (after action validation) |
 | `turn.end` | `turn_number` | End of engine.resolve(), before building EngineResult |
+
+**Notes on not-yet-fully-implemented events:** `adventure.start` is defined in
+the event model but is not currently emitted. `combat.started` is emitted when
+a reaction-triggered encounter resolves to combat, but not yet from the main
+encounter path or direct combat entry. `combat.ended` is not yet emitted.
 
 #### 3.2 Context availability in conditions
 
@@ -189,9 +194,15 @@ Mechanic.reactions: list[Reaction]   # globally scoped (mechanics are adventure-
 ```
 
 `Mechanic` also gains a backward-compatible `reactions` field alongside the
-existing `type`/`condition`/`trigger_id` and `rules` fields.  When `reactions`
-is present and non-empty, the engine uses reactions.  When absent, the existing
-mechanic logic applies unchanged.
+existing `type`/`condition`/`trigger_id` and `rules` fields.  A mechanic may be:
+- A game-over condition (`type` + `condition` + `trigger_id`)
+- An encounter (`rules`)
+- Reaction-only (`reactions` — no `type` or `rules` required)
+
+At least one of these must be present.  When `reactions` is non-empty, the
+engine dispatches them like any other reaction.  The mechanic's `condition`
+field is only used for game-over and encounter mechanics; reaction-only
+mechanics use per-reaction `condition` fields instead.
 
 Entity-scoped reactions are active when the entity is alive and has not fled.
 The engine checks `entity_state.get("alive") is not False and
@@ -252,19 +263,22 @@ ID in all relevant effect fields, then applies the resolved effects normally.
 #### 6.1 Core components (`engine/event_bus.py` — new file)
 
 ```
-emit(event_type, context, hard, soft, corpus, state_manager) -> list[Reaction]
-    Collects all matching reactions from rooms/entities/mechanics,
-    dispatches them in priority order, applies effects via state_manager,
-    collects any new events triggered by reaction effects (recursive, max depth 5).
-
-dispatch_reactions(reactions, hard, soft, corpus, state_manager) -> list[dict]
+dispatch_reactions(reactions, hard, soft, corpus, state_manager,
+                   changes=None, depth=0, encounter_trigger_ref=None,
+                   triggered_narration=None, revealed_hints=None,
+                   encounter_fired_ref=None) -> list[tuple[str, dict]]
     Applies ReactionEffects, returns list of events emitted by effects
-    for recursive dispatch.
+    for recursive dispatch.  When triggered_narration/revealed_hints are
+    provided, narrative and reveals from reaction results are appended.
+    encounter_fired_ref is a shared [bool] that guards against multiple
+    encounters in one turn.
 
-find_matching_reactions(event_type, context, hard, soft, corpus) -> list[Reaction]
-    Scans current room, entities present, and all mechanics.
-    Filters by event_type, evaluates condition against state + event_ctx.
-    Skips disabled once-reactions.
+find_matching_reactions(event_type, context, hard, soft, corpus)
+    -> list[tuple[Reaction, str | None]]
+    Scans current room, entities present (including following NPCs), and
+    all mechanics.  Filters by event_type, evaluates condition against
+    state + event_ctx.  Skips disabled once-reactions.
+    Returns (reaction, owner_id) tuples sorted by priority/scope/definition order.
 ```
 
 #### 6.2 Scoping rules
@@ -303,8 +317,13 @@ the time of the event.
   (e.g., a room entry reaction fires once, sets `once` to true internally).
 - State-change events (`flag.set`, `stat.changed`, `entity_state.changed`, etc.)
   are NOT emitted during reaction dispatch.  They are derived once at the end
-  of the turn from the merged `HardStateChanges` diff (see §14.2).  This
-  prevents reaction→state change→reaction cascades during dispatch.
+  of the turn from the merged `HardStateChanges` diff (see §14.2), after all
+  action and reaction state mutations have been applied.  The derived state-
+  change events are dispatched in a single final pass; reactions triggered by
+  that pass may mutate state, but no further state-change events are derived
+  from those mutations.  This prevents reaction→state change→reaction cascades
+  during dispatch while still allowing state-based reactions to observe the
+  final diff in the same turn.
 
 #### 6.5 Immediate vs deferred reactions
 
@@ -332,8 +351,8 @@ Immediate reactions:
 
 - Receive the same event context as deferred reactions.
 - Apply effects through a `HardStateChanges` accumulator passed into the
-  resolver, so their state changes are merged into `ResolutionResult.hard_changes`
-  and applied once by the engine at the end of the turn.  This keeps
+  resolver, so their state changes are merged into `ResolutionResult.immediate_changes`
+  and applied by the engine together with the action's hard changes.  This keeps
   `EngineResult.hard_state_changes` authoritative.
 - May set `resolution.encounter_trigger` to start an encounter, but do not
   resolve encounters themselves.  The outer `engine.resolve()` processes the
@@ -341,6 +360,13 @@ Immediate reactions:
 - Do not emit state-change events from their own state mutations (same rule as
   deferred reactions in §6.4).
 - Are subject to the same recursion depth limit as deferred reactions.
+
+Deferred reaction effects are accumulated into a single `HardStateChanges`
+object per dispatch pass and applied in batches.  The engine applies action
+changes, encounter changes, room-transition reaction changes, and action-event
+reaction changes as distinct batches so that later reactions can observe state
+produced by earlier batches, while all batches are merged into the final diff
+used for state-change event derivation.
 
 Deferred reactions are collected and dispatched in a single batch after action
 resolution.  If a deferred reaction produces new events, those events are handled
@@ -360,7 +386,7 @@ following locations are instrumented:
 | `resolve_move()` | `traversal.attempted` (before check), `traversal.succeeded` (on success), `traversal.failed` (on TraversalCheck failure) |
 | `resolve_interact()` | `interaction.used` (before check), `check.passed` / `check.failed` (after check) |
 | `resolve_examine()` | `check.passed` / `check.failed` (after on_examine checks) |
-| `resolve_talk()` | `dialogue.started` (on enter_dialogue), `dialogue.ended` (on exit/ends_dialogue) |
+| `resolve_talk()` | `dialogue.started` (on enter_dialogue), `dialogue.ended` (on switched_npc / ends_dialogue) |
 | `resolve_transfer()` | `item.acquired` / `item.lost` (after item movement) |
 | `resolve_equip()` / `resolve_unequip()` | `equipment.changed` |
 | `resolve_combat()` | (none — mid-combat events deferred to a future phase; see §14.10) |
@@ -372,15 +398,15 @@ following locations are instrumented:
 | After validation, before `resolve_action()` | `turn.start` |
 | After applying `hard_changes` via `state_manager.apply_hard_changes()` | `flag.set` / `flag.cleared`, `entity_state.changed`, `stat.changed`, `attitude.changed`, `player.damaged` / `player.healed`, `item.acquired` / `item.lost`, `equipment.changed` |
 | After room change detection (`new_room != old_room`) | `room.exited` (old room), `room.entered` (new room) |
-| After dialogue exit | `dialogue.ended` |
-| After combat start/end | `combat.started`, `combat.ended` |
+| After dialogue exit | `dialogue.ended` (for stall / room_change exits; resolver already emitted switched_npc / ends_dialogue) |
+| After combat start/end | `combat.started` (reaction-triggered combat only), `combat.ended` (not yet emitted) |
 | Before building `EngineResult` (game-over mechanics check) | `turn.end` |
 
 **In `engine/encounters.py` (`resolve_encounter()`):**
 
 | Point | Events emitted |
 |---|---|
-| After branch outcome (stat_check/roll) | `check.passed` / `check.failed` |
+| After branch outcome (stat_check/roll) | (deferred — encounter checks have their own outcome tracking; `check.passed`/`check.failed` emission from encounters can be added in a future phase) |
 
 #### 7.2 Event collection approach
 
@@ -397,12 +423,18 @@ immediate_changes: HardStateChanges = field(default_factory=HardStateChanges)
 Each resolver appends `(event_type, context)` tuples to `resolution.events`.
 When an immediate reaction is dispatched, its effects are merged into
 `resolution.immediate_changes`.  The engine reads `resolution.events` after
-`resolve_action()` returns, adds its own engine-level events (state changes,
-room transition, turn end), then calls `emit()` for the combined event list.
+`resolve_action()` returns and dispatches deferred reactions in batches:
+action-level events first, then the derived state-change events, then
+`turn.end`.
+
+State changes produced by deferred reactions are accumulated into a
+`HardStateChanges` object and applied once per batch.  All batches are merged
+into a single accumulator so that state-change events can be derived from the
+complete turn diff at the end.
 
 This avoids threading `event_ctx` through every function in the call stack.
 Immediate reactions are dispatched at the emit point inside the resolver; all
-other reactions are dispatched in one batch at the end.
+other reactions are dispatched in controlled batches at the end of the turn.
 
 #### 7.3 Integration point in `engine.resolve()`
 
@@ -410,43 +442,79 @@ other reactions are dispatched in one batch at the end.
 def resolve(player_action, state_manager, *, chain_depth=0, player_input_echo=None):
     # ... existing setup ...
 
-    # 1. Emit turn.start (before resolve_action so immediate reactions on
-    #    turn.start can influence the action).
-    _emit_event("turn.start", {"turn_number": hard.turn_count}, resolution)
+    # Snapshots taken before any turn effects are applied.
+    old_flags = dict(hard.flags)
+    old_stats = dict(hard.player.stats or {})
+    old_entity_states = copy.deepcopy(hard.entity_states)
+    old_room = hard.player.location
+
+    # Accumulator for the complete turn diff.
+    merged_changes = HardStateChanges()
+
+    # 1. Dispatch deferred turn.start reactions before the action.
+    #    Narrative/reveals are collected separately (resolution doesn't exist yet).
+    turn_start_changes = HardStateChanges()
+    turn_start_narration, turn_start_reveals = [], []
+    _dispatch_events(
+        [("turn.start", {"turn_number": hard.turn_count})],
+        hard, soft, corpus, state_manager, changes=turn_start_changes,
+        triggered_narration=turn_start_narration,
+        revealed_hints=turn_start_reveals,
+    )
+    _apply_and_merge(turn_start_changes)
 
     # 2. Resolve the action (collects events into resolution.events).
     #    Immediate reactions are dispatched inside resolve_action via the event
     #    bus; their effects are accumulated into resolution.immediate_changes.
-    resolution = resolve_action(player_action, hard, soft, corpus)
+    #    Reaction narrative/reveals are appended to resolution.triggered_narration.
+    resolution = resolve_action(player_action, hard, soft, corpus, state_manager)
+    resolution.triggered_narration = turn_start_narration + resolution.triggered_narration
+    resolution.revealed_hints = turn_start_reveals + resolution.revealed_hints
 
-    # 3. Process encounter triggers (existing logic, unchanged)
+    # 3. Process encounter triggers, accumulating effects into merged_changes.
     # ...
 
-    # 4. Apply hard state changes (action + immediate reaction changes)
-    hard_changes.merge(resolution.immediate_changes)
-    old_flags = dict(hard.flags)
-    old_stats = dict(hard.player.stats or {})
-    state_manager.apply_hard_changes(hard_changes)
+    # 4. Apply action + immediate-reaction changes.
+    # ...
 
-    # 5. Derive state-change events from HardStateChanges diff
-    state_events = _derive_state_events(hard_changes, old_flags, old_stats, hard)
+    # Encounter-once-per-turn guard: tracks whether an encounter has already
+    # been resolved this turn (from the resolver or from a reaction).
+    encounter_fired_ref = [encounter_outcome is not None]
 
-    # 6. Collect all events and dispatch deferred reactions
-    all_events = (
-        resolution.events
-        + state_events
-        + _derive_transition_events(old_room, new_room, ...)
+    # 5. Room transition: dispatch room.exited/room.entered reactions.
+    #    Narrative/reveals and the encounter guard are passed through.
+    # ...
+
+    # 6. Dispatch deferred reactions for action-level events.
+    event_changes = HardStateChanges()
+    _dispatch_events(
+        resolution.events, hard, soft, corpus, state_manager, changes=event_changes,
+        triggered_narration=resolution.triggered_narration,
+        revealed_hints=resolution.revealed_hints,
+        encounter_fired_ref=encounter_fired_ref,
     )
-    _dispatch_events(all_events, hard, soft, corpus, state_manager, resolution)
+    _apply_and_merge(event_changes)
 
-    # 7. on_enter is now handled entirely by room.reactions; legacy
-    #    _fire_on_enter_events() is disabled in Phase 4.
+    # 7. Derive state-change events from the merged diff and dispatch them once.
+    state_events = _derive_state_events(
+        merged_changes, old_flags, old_stats, old_entity_states, hard,
+    )
+    _dispatch_events(state_events, hard, soft, corpus, state_manager, changes=None,
+                     triggered_narration=resolution.triggered_narration,
+                     revealed_hints=resolution.revealed_hints,
+                     encounter_fired_ref=encounter_fired_ref)
 
-    # 8. Fire turn.end event and check game-over mechanics
-    turn_end_events = [("turn.end", {"turn_number": hard.turn_count})]
-    _dispatch_events(turn_end_events, hard, soft, corpus, state_manager, resolution)
+    # 8. Fire turn.end event (state changes apply directly; no second derivation).
+    _dispatch_events(
+        [("turn.end", {"turn_number": hard.turn_count})],
+        hard, soft, corpus, state_manager, changes=None,
+        triggered_narration=resolution.triggered_narration,
+        revealed_hints=resolution.revealed_hints,
+        encounter_fired_ref=encounter_fired_ref,
+    )
 
-    # ... rest of existing logic ...
+    # ... build EngineResult using resolution.triggered_narration,
+    #     resolution.revealed_hints, merged_changes, etc. ...
 ```
 
 ### 8. Migration Plan (6 Phases)
@@ -472,47 +540,24 @@ def resolve(player_action, state_manager, *, chain_depth=0, player_input_echo=No
 - Implement `event:` domain handler — lookup key in `event_ctx`, compare
 - All existing call sites pass no `event_ctx` — backward compatible
 
-#### Phase 3: Implement event bus
-**Files:** `engine/event_bus.py` (new), `engine/resolver.py`, `engine/engine.py`,
-`context/assembler.py`
-- Implement `find_matching_reactions()`, `dispatch_reactions()`, `emit()`
-- Add `events: list[tuple[str, dict]]` and `immediate_changes: HardStateChanges`
-  to `ResolutionResult`
-- Implement `"self"` resolution: a single pass in `dispatch_reactions()` that
-  replaces `"self"` in effect fields with the owning entity's ID before applying
-  effects.  This keeps `"self"` awareness in one place.
-- Implement `source_id` / `source_type` wiring for check events: update
-  `_resolve_interaction_check`, `_resolve_stat_check`, `_resolve_roll_check`,
-  `_resolve_traversal_check`, `_resolve_stat_check_chain`,
-  `_resolve_roll_check_chain`, `_fire_on_examine_events`, and
-  `_resolve_encounter_stat_check` to populate check event context with source
-  metadata.  Each returns or appends structured check results including
-  `source_id` and `source_type`.
-- Implement encounter triggering from reactions:
-  - If `trigger_encounter` is an entity ID, use `entity.behavior.encounter_rules`
-  - If it is a mechanic ID, use `mechanic.rules` with mechanic-level condition
-  - Immediate reactions set `resolution.encounter_trigger` (processed by the
-    existing pipeline after `resolve_action()` returns)
-  - Deferred reactions: encounter is processed after deferred reaction dispatch,
-    using the same pipeline
-  - If an encounter already fired this turn, ignore subsequent
-    `trigger_encounter` from reactions (log a warning)
-- Implement `chain_check` event emission: when a reaction's `chain_check`
-  resolves, emit `check.passed` or `check.failed` events with
-  `source_type: "reaction"`, `source_id: reaction.id`
-- Instrument resolver functions to emit action-level events:
-  - `resolve_move()`: `traversal.attempted`, `traversal.succeeded`, `traversal.failed`
-  - `resolve_interact()`: `interaction.used`, `check.passed`, `check.failed`
-  - `resolve_examine()`: `check.passed` / `check.failed` (after on_examine checks)
-  - `resolve_talk()`: `dialogue.started`, `dialogue.ended`
-  - `resolve_transfer()`: `item.acquired`, `item.lost`
-  - `resolve_equip()` / `resolve_unequip()`: `equipment.changed`
-- Add `_derive_state_events()` helper to engine.py
-- Add `_dispatch_events()` call in engine.resolve() after state application
-- Add `turn.start` event (emitted before `resolve_action()`) and `turn.end` event
-- Update `context/assembler.py` to include reaction-produced state changes in
-  the GMBriefing (on_enter_events now come from reactions)
-- Implement both immediate and deferred dispatch (both are Phase 3 features)
+#### Phase 3: Implement event bus (complete)
+**Files:** `engine/event_bus.py` (new), `engine/resolver.py`, `engine/engine.py`
+- ✅ `find_matching_reactions()` and `dispatch_reactions()` implemented
+- ✅ `events` and `immediate_changes` fields on `ResolutionResult`
+- ✅ `"self"` resolution in `dispatch_reactions()`
+- ✅ `check.passed`/`check.failed` events with `source_id`/`source_type` from
+  `_resolve_interaction_check` (interaction/examine) and `_resolve_traversal_check`
+  (traversal).  Chain-check events from reactions use `source_type: "reaction"`.
+- ✅ Encounter triggering from reactions: immediate via `encounter_trigger_ref`,
+  deferred inline via `_resolve_reaction_encounter`.  Encounter-once-per-turn
+  guard via shared `encounter_fired_ref`.
+- ✅ All resolver functions instrumented with action-level events
+- ✅ `_derive_state_events()` and `_dispatch_events()` in engine.py
+- ✅ `turn.start` / `turn.end` lifecycle events
+- ✅ Reaction narrative/reveals propagation via `triggered_narration`/`revealed_hints`
+  output parameters on `dispatch_reactions()` and `_dispatch_events()`
+- ✅ Reaction-only mechanics allowed (`Mechanic.check_shape()` accepts non-empty
+  `reactions` without `type` or `rules`)
 
 At this point, the event bus is fully operational but **no adventure uses
 reactions yet** — all existing triggers still work through legacy code paths.
@@ -545,9 +590,26 @@ legacy `_fire_on_enter_events()` path in `engine.resolve()` is disabled in this
 phase; on-enter behavior is now implemented entirely through reactions.  Unit
 tests should catch any ordering or double-firing regressions.
 
+Note: the encounter-once-per-turn guard (§9 of phase-3a) is already in place.
+The adapter should ensure that at most one reaction per turn produces a
+`trigger_encounter` effect, or rely on the guard to suppress duplicates.
+
 #### Phase 5: Update scenario-generation pipeline
 **Files:** `schema/corpus.md`, `schema/scenario-generation.md`
 - Document the `Reaction` model and `reactions` field
+- Document `check.passed`/`check.failed` events and their `source_type`/
+  `source_id` context keys.  Note that `source_type` can be `"interaction"`,
+  `"examine"`, `"traversal"`, `"dialogue_path"`, or `"reaction"` (for
+  chain-check events from reactions).
+- Document reaction-only mechanics: a `Mechanic` with `reactions` but no `type`
+  or `rules` is valid.  Use for adventure-wide state-based reactions that don't
+  need encounter rules.
+- Document that reaction narrative and reveals propagate to the `EngineResult`:
+  narrative from reaction `result` effects and encounter triggers appears in
+  `triggered_narration`; hint reveals appear in `revealed_hints`.
+- Document the encounter-once-per-turn guard: only one encounter can fire per
+  turn (from either the resolver or deferred reactions).  Subsequent
+  `trigger_encounter` effects are silently ignored with a warning log.
 - Add examples: state-based triggers, chained encounters, room-entry encounters,
   failed-check triggers
 - Update the "Common Pitfalls" section — remove workarounds that reactions
@@ -567,25 +629,7 @@ tests should catch any ordering or double-firing regressions.
 - Remove old fields from Pydantic models (breaking change for old adventures —
   provide a migration script)
 
-### 9. All Known Gaps Addressed
-
-Each issue from `scenario-report.md` and `combat-plan-report.md` maps to
-a reaction-based solution:
-
-| Gap | Reaction-based solution |
-|---|---|
-| **2.1: Spider attacks on ANY web-forcing attempt** | Deferred reaction on spider entity: `on="traversal.failed"`, `condition={require: "event:exit_id == exit_through_webs_down"}`, `effects={trigger_encounter: "self"}`.  Alternatively, an immediate reaction on `traversal.attempted` triggers the encounter before the traversal check. |
-| **2.2: Fall damage stat penalties** | Already fixed in models (`alter_stat` on `TraversalEffect`); already works |
-| **2.3: Per-exit traversal check duplication** | Not fully solved — global traversal checks need a separate mechanism (lightweight, not reaction-based).  Reactions don't help here because TRAVERSAL_CHECKS gate movement, and reactions fire after movement.  Keep the existing workaround for now; a `global_traversal_checks: list[TraversalCheck]` field on `ModuleCorpus` or `Room` can be added orthogonally. |
-| **2.4: Weapon-dependent DC for traversal** | Same as 2.3 — traversal check gating is pre-move, reactions are post-move.  Add `using_results` to `TraversalCheck` as a separate, small model fix. |
-| **2.5: Korbar attacks at attitude -10** | Deferred reaction on korbar entity: `on="attitude.changed"`, `condition={require: "event:new_value <= -10"}`, `effects={trigger_encounter: "self"}` |
-| **2.6: Korbar helps with padlock (skip check)** | Immediate reaction on `interaction.used` for the padlock interaction can set a `korbar_helped` flag if Korbar is present and attitude >= 0; the interaction check is then skipped when that flag is set.  Alternatively, add `skip_check_if` to `Interaction` as a small orthogonal fix. |
-| **2.7: Dropping items through the rip** | Immediate reaction on `interaction.used` with `condition={require: "event:interaction_id == drop_through_rip"}` and `effects={remove_item: "self"}` (where `"self"` resolves from the item entity or `event:using_item` provides the item ID).  Alternatively, add `remove_item_void: str` to `Result` as an orthogonal small fix. |
-| **Nested encounter checks** | Reaction with `chain_check` in effects: a failed check triggers a reaction that runs the follow-up check.  Or simply use chained reactions: reaction A fires on `check.failed`, its effects include a `chain_check` or it emits `check.passed`/`check.failed` events. |
-| **No `trigger_encounter` on `OnEnterEvent`** | Reaction on room: `on="room.entered"`, `effects={trigger_encounter: "spider_ambush"}` |
-| **State-based behavior triggers** | Reaction on entity with any condition referencing entity state, flags, attitude, etc. |
-
-### 10. Events Not Emitted During Reaction Dispatch
+### 9. Events Not Emitted During Reaction Dispatch
 
 A critical rule: **reaction effects that mutate state do NOT emit state-change
 events during dispatch.**  State-change events (`flag.set`, `stat.changed`,
@@ -601,19 +645,7 @@ These are dispatched at the next recursion level (within the depth-5 limit).
 This enables patterns like "on dialogue ended, trigger an encounter" without
 enabling infinite regress.
 
-### 11. Performance Considerations
-
-- **Reaction lookup**: on each event, scan `current_room.reactions` +
-  `entities_present[*].reactions` + `mechanics[*].reactions`.  For a typical
-  5-room adventure with 10 entities and 4 mechanics, this is at most ~20
-  reactions to filter.  Trivial.
-- **Condition evaluation**: reactions that don't match `on` event type are
-  skipped before condition evaluation.  Only matching reactions evaluate
-  conditions (which involves the existing, fast condition evaluator).
-- **Large adventures**: if reaction count becomes a concern (>100), add an
-  index `{event_type: [reaction_ids]}` built at load time.  Not needed now.
-
-### 12. Testing Strategy
+### 10. Testing Strategy
 
 | What to test | File |
 |---|---|
@@ -627,24 +659,39 @@ enabling infinite regress.
 
 ---
 
-## Phase 3 Implementation Notes
-
-### Completed in Phase 3
-
-- **`engine/event_bus.py`**: Implemented `find_matching_reactions()`, `dispatch_reactions()`, and encounter resolution from reactions.  "self" resolution is handled in `dispatch_reactions()` before effects are applied.
-- **`ResolutionResult`**: Added `events` (list of `(event_type, context)` tuples) and `immediate_changes` (HardStateChanges accumulator).
-- **Resolver instrumentation**: Events are emitted for `traversal.attempted`/`succeeded`/`failed`, `interaction.used`, `dialogue.started`/`ended`, `item.acquired`/`lost`, and `equipment.changed`.
-- **Engine integration**: Added `_derive_state_events()` (flag, stat, attitude, entity state, player damage/heal, equipment, item events) and `_dispatch_events()` (batches events, separates immediate/deferred).  `turn.start` and `turn.end` events are emitted.  Room transition events (`room.exited`/`room.entered`) are emitted.
-- **Encounter triggering from reactions**: `_resolve_reaction_encounter()` handles both NPC behavior and mechanic lookup.
-
 ### Known Gaps / Remaining Work for Phase 3
 
-1. **Immediate reactions are not dispatched at emit time**: The plan requires immediate reactions on `interaction.used`, `traversal.attempted`, and `room.entered` to fire synchronously *before* the action check/resolution.  Currently, all reactions (immediate + deferred) are dispatched together after `resolve_action()` returns.  To fix this, `state_manager` (or the event bus) must be threaded into resolver functions so immediate dispatch can happen at event emission time.
+1. **Legacy `_fire_on_enter_events()` still active**: This is per the Phase 4
+   plan (Legacy Trigger Adapter).  No change needed yet.
 
-2. **Source metadata on check events**: The plan requires `check.passed` / `check.failed` events to carry `source_id` and `source_type` (e.g., `source_type: "interaction"`, `source_id: "attack"`).  These events are not yet emitted.  This requires modifying `_resolve_interaction_check`, `_resolve_stat_check`, `_resolve_roll_check`, `_resolve_traversal_check`, `_resolve_stat_check_chain`, `_resolve_roll_check_chain`, `_fire_on_examine_events`, and `_resolve_encounter_stat_check` to produce structured check results.
+2. **`context/assembler.py` not updated**: With the Option B accumulator model,
+   reaction effects are applied through the normal `apply_hard_changes()` path
+   and the assembler reads the final state — no structural change is needed.
+   This may become relevant in Phase 4 when on-enter events are fully migrated
+   to reactions.
 
-3. **Chain-check event emission from reactions**: When a `ReactionEffects.result` contains a `chain_check`, the resolved check should emit `check.passed` / `check.failed` events with `source_type: "reaction"` and `source_id: <reaction.id>`.  Currently, chain checks resolve silently within `_apply_result()`.
+3. **Encounter stat check event emission**: `check.passed`/`check.failed` events
+   are not yet emitted from `_resolve_encounter_stat_check` in `encounters.py`.
+   Encounter checks have their own outcome tracking; this can be added in a
+   future phase if reaction-based encounter check triggers become important.
 
-4. **Legacy `_fire_on_enter_events()` still active**: This is per the Phase 4 plan (Legacy Trigger Adapter).  No change needed yet.
+4. **`adventure.start` not emitted**: Defined in the event model but not
+   currently emitted.
 
-5. **`context/assembler.py` not updated**: The plan mentions updating the assembler for reaction-produced state changes, but with the current architecture, reaction effects modify state directly and the assembler reads the final state — no structural change is needed.  This may become relevant in Phase 4 when on-enter events are fully migrated to reactions.
+5. **`combat.started` / `combat.ended` partially implemented**: `combat.started`
+   is emitted only when a reaction-triggered encounter resolves to combat.
+   `combat.ended` is not yet emitted.
+
+6. **Transfer take_checks don't emit events**: `resolve_transfer` calls
+   `_resolve_interaction_check` without `state_manager` or `resolution`, so
+   `check.passed`/`check.failed` events and immediate reactions don't fire for
+   transfer take_checks.  Fix by threading `state_manager`/`resolution` through
+   the transfer path at `engine/resolver.py:667-668`.
+
+7. **Phase 4 adapter double-firing risk**: The adapter maps traversal effects,
+   behavior triggers, and `on_dialogue_exit` to reactions (see §8 table), but
+   the plan currently only mentions disabling `_fire_on_enter_events()`.  If the
+   other legacy paths remain active in Phase 4, every adapted trigger will fire
+   twice — once through the legacy code path and once through the reaction
+   system.  Either all adapted legacy paths must be disabled in Phase 4, or the
+   adapter should initially only cover paths that are ready for the cutover.

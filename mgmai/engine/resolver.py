@@ -460,8 +460,8 @@ def resolve_talk(
             error=f"NPC '{target_npc}' is dead",
         )
 
-    # Resolve dialogue path if specified
-    path_result: ResolutionResult | None = None
+    # Validate dialogue path early so invalid paths prevent dialogue entry.
+    path = None
     if action.dialogue_path and npc_entity.dialogue_guidelines:
         path = npc_entity.dialogue_guidelines.dialogue_paths.get(action.dialogue_path)
         if path is None:
@@ -474,32 +474,6 @@ def resolve_talk(
                 success=False,
                 error=f"Conditions not met for dialogue path '{action.dialogue_path}'",
             )
-        if path.check:
-            synthetic_inter = Interaction(
-                id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
-                label="",
-                check=path.check,
-                success=path.success,
-                failure=path.failure,
-            )
-            path_result = _resolve_interaction_check(
-                synthetic_inter, hard, soft, corpus, room_id
-            )
-        elif path.result:
-            path_result = _resolve_interaction_result(
-                path.result, hard, soft, corpus, room_id
-            )
-        else:
-            path_result = ResolutionResult(
-                success=True,
-                hard_changes=HardStateChanges(),
-                room_after_id=room_id,
-            )
-
-    # If the path resolution itself failed (invalid, not just check failure),
-    # do not enter dialogue.
-    if path_result is not None and not path_result.success:
-        return path_result
 
     turn = hard.turn_count
     dialogue_exited = None
@@ -540,11 +514,41 @@ def resolve_talk(
 
     result.dialogue_exited = dialogue_exited
 
-    if path_result is not None:
+    # Resolve dialogue path check/result now that dialogue state is set up.
+    # Passing *result* as the resolution accumulator ensures check events are
+    # emitted and immediate reactions can fire.
+    if path is not None:
+        if path.check:
+            synthetic_inter = Interaction(
+                id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
+                label="",
+                check=path.check,
+                success=path.success,
+                failure=path.failure,
+            )
+            path_result = _resolve_interaction_check(
+                synthetic_inter, hard, soft, corpus, room_id,
+                state_manager=state_manager,
+                resolution=result,
+                source_type="dialogue_path",
+            )
+        elif path.result:
+            path_result = _resolve_interaction_result(
+                path.result, hard, soft, corpus, room_id,
+                state_manager=state_manager,
+                resolution=result,
+            )
+        else:
+            path_result = ResolutionResult(
+                success=True,
+                hard_changes=HardStateChanges(),
+                room_after_id=room_id,
+            )
+
         result.hard_changes = path_result.hard_changes or HardStateChanges()
-        result.triggered_narration = list(path_result.triggered_narration or [])
-        result.revealed_hints = list(path_result.revealed_hints or [])
-        result.rolls = list(path_result.rolls or [])
+        result.triggered_narration.extend(path_result.triggered_narration or [])
+        result.revealed_hints.extend(path_result.revealed_hints or [])
+        result.rolls.extend(path_result.rolls or [])
         result.events.extend(path_result.events)
 
     return result
@@ -867,7 +871,7 @@ def resolve_interact(
         result.revealed_hints = check_result.revealed_hints
         result.encounter_trigger = check_result.encounter_trigger or auto_encounter_npc
         result.rolls = check_result.rolls
-        result.events = result.events[:1] + list(check_result.events)
+        result.events.extend(check_result.events)
         return result
 
     if inter.using_results and action.using:
@@ -914,23 +918,26 @@ def _resolve_chained_check(
     state_manager: Any | None = None,
     resolution: ResolutionResult | None = None,
     source_id: str | None = None,
+    source_type: str | None = None,
 ) -> None:
     if depth >= MAX_CHAIN_CHECK_DEPTH:
         return
+    if source_type is None:
+        source_type = "reaction" if source_id else "unknown"
     check = chained.check
     if isinstance(check, StatCheck):
         _resolve_stat_check_chain(
             check, chained.success, chained.failure,
             hard, soft, corpus, room_id,
             changes, narrative, revealed_hints, rolls, depth,
-            state_manager, resolution, source_id,
+            state_manager, resolution, source_id, source_type,
         )
     else:
         _resolve_roll_check_chain(
             check, chained.success, chained.failure,
             hard, soft, corpus, room_id,
             changes, narrative, revealed_hints, rolls, depth,
-            state_manager, resolution, source_id,
+            state_manager, resolution, source_id, source_type,
         )
 
 
@@ -950,7 +957,10 @@ def _resolve_roll_check_chain(
     state_manager: Any | None = None,
     resolution: ResolutionResult | None = None,
     source_id: str | None = None,
+    source_type: str | None = None,
 ) -> None:
+    if source_type is None:
+        source_type = "reaction" if source_id else "unknown"
     roll_val = random.random()
     success_flag = roll_val < check.threshold
 
@@ -969,7 +979,7 @@ def _resolve_roll_check_chain(
             {
                 "check_type": "roll",
                 "threshold": check.threshold,
-                "source_type": "reaction" if source_id else "unknown",
+                "source_type": source_type,
                 "source_id": source_id or "",
             },
             hard, soft, corpus, state_manager, resolution,
@@ -981,7 +991,7 @@ def _resolve_roll_check_chain(
             _resolve_chained_check(
                 result.chain_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, depth + 1,
-                state_manager, resolution, source_id,
+                state_manager, resolution, source_id, source_type,
             )
 
 
@@ -1001,7 +1011,10 @@ def _resolve_stat_check_chain(
     state_manager: Any | None = None,
     resolution: ResolutionResult | None = None,
     source_id: str | None = None,
+    source_type: str | None = None,
 ) -> None:
+    if source_type is None:
+        source_type = "reaction" if source_id else "unknown"
     stats_block = corpus.stats
     if stats_block is None:
         return
@@ -1054,7 +1067,7 @@ def _resolve_stat_check_chain(
                 "check_type": "stat_check",
                 "stat": check.stat,
                 "dc": check.dc,
-                "source_type": "reaction" if source_id else "unknown",
+                "source_type": source_type,
                 "source_id": source_id or "",
             },
             hard, soft, corpus, state_manager, resolution,
@@ -1066,7 +1079,7 @@ def _resolve_stat_check_chain(
             _resolve_chained_check(
                 result.chain_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, depth + 1,
-                state_manager, resolution, source_id,
+                state_manager, resolution, source_id, source_type,
             )
 
 
@@ -1195,9 +1208,13 @@ def _resolve_interaction_check(
             )
 
     if isinstance(check, StatCheck):
-        check_result = _resolve_stat_check(inter, check, hard, soft, corpus, room_id, encounter_trigger)
+        check_result = _resolve_stat_check(
+            inter, check, hard, soft, corpus, room_id, encounter_trigger, source_type
+        )
     else:
-        check_result = _resolve_roll_check(inter, check, hard, soft, corpus, room_id, encounter_trigger)
+        check_result = _resolve_roll_check(
+            inter, check, hard, soft, corpus, room_id, encounter_trigger, source_type
+        )
 
     if resolution is not None and check_result.rolls:
         success_flag = any(r.get("success") for r in check_result.rolls)
@@ -1228,6 +1245,9 @@ def _resolve_roll_check(
     corpus: ModuleCorpus,
     room_id: str,
     encounter_trigger: str | None = None,
+    source_type: str = "interaction",
+    state_manager: Any | None = None,
+    resolution: ResolutionResult | None = None,
 ) -> ResolutionResult:
     roll = random.random()
     success_flag = roll < check.threshold
@@ -1258,6 +1278,7 @@ def _resolve_roll_check(
             _resolve_chained_check(
                 result.chain_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, 0,
+                state_manager, resolution, inter.id, source_type,
             )
 
     return ResolutionResult(
@@ -1279,6 +1300,9 @@ def _resolve_stat_check(
     corpus: ModuleCorpus,
     room_id: str,
     encounter_trigger: str | None = None,
+    source_type: str = "interaction",
+    state_manager: Any | None = None,
+    resolution: ResolutionResult | None = None,
 ) -> ResolutionResult:
     stats_block = corpus.stats
     if stats_block is None:
@@ -1351,6 +1375,7 @@ def _resolve_stat_check(
             _resolve_chained_check(
                 result.chain_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, 0,
+                state_manager, resolution, inter.id, source_type,
             )
 
     return ResolutionResult(
