@@ -143,15 +143,32 @@ def dispatch_reactions(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     state_manager: Any,
-    immediate_changes: HardStateChanges | None = None,
+    changes: HardStateChanges | None = None,
     depth: int = 0,
+    encounter_trigger_ref: list[str | None] | None = None,
+    triggered_narration: list[str] | None = None,
+    revealed_hints: list[str] | None = None,
+    encounter_fired_ref: list[bool] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Apply effects for a list of pre-matched ``(reaction, owner_id)`` tuples.
 
-    *immediate_changes* can be a ``HardStateChanges`` accumulator for immediate
-    reactions (their state mutations are merged into it instead of applied
-    directly).  When ``None`` (deferred mode), state mutations are applied
-    immediately via *state_manager*.
+    *changes* is an optional ``HardStateChanges`` accumulator.  When provided,
+    all state mutations produced by the reactions are merged into it; when
+    ``None``, state mutations are applied immediately via *state_manager*.
+    Using an accumulator lets the caller apply a batch of reaction effects in
+    a single ``apply_hard_changes()`` call and derive state-change events from
+    the merged diff.
+
+    *encounter_trigger_ref* is an optional one-element list used by immediate
+    reactions.  When provided, ``trigger_encounter`` effects append the
+    encounter ID to the list instead of resolving the encounter inline.  The
+    caller (the resolver) is responsible for setting
+    ``resolution.encounter_trigger`` and letting ``engine.resolve()`` run the
+    encounter through the normal pipeline.
+
+    *triggered_narration* and *revealed_hints* are optional output lists.
+    When provided, narrative text and hint reveals from reaction results are
+    appended to them so the caller can merge them into the final EngineResult.
 
     Reactions with ``once=True`` are disabled in-memory after firing.
 
@@ -165,6 +182,11 @@ def dispatch_reactions(
             MAX_RECURSION_DEPTH,
         )
         return []
+
+    # Mutable one-element list shared across recursive calls to track
+    # whether an encounter has already been triggered this turn.
+    if encounter_fired_ref is None:
+        encounter_fired_ref = [False]
 
     new_events: list[tuple[str, dict[str, Any]]] = []
 
@@ -182,18 +204,38 @@ def dispatch_reactions(
             narrative: list[str] = []
             revealed: list[str] = []
             from mgmai.engine.resolver import _apply_result
-            _apply_result(resolved.result, hc, narrative, revealed, hard, corpus)
-            if immediate_changes is not None:
-                immediate_changes.merge(hc)
+            _apply_result(
+                resolved.result, hc, narrative, revealed, hard, corpus, soft,
+                source_id=reaction.id,
+            )
+            if triggered_narration is not None:
+                triggered_narration.extend(narrative)
+            if revealed_hints is not None:
+                revealed_hints.extend(revealed)
+            if changes is not None:
+                changes.merge(hc)
             else:
                 state_manager.apply_hard_changes(hc)
 
-        # --- trigger_encounter ---
+        # --- trigger_encounter (once-per-turn guard) ---
         if resolved.trigger_encounter is not None:
-            enc_events = _resolve_reaction_encounter(
-                resolved.trigger_encounter, hard, soft, corpus, state_manager,
-            )
-            new_events.extend(enc_events)
+            if encounter_trigger_ref is not None:
+                encounter_trigger_ref.append(resolved.trigger_encounter)
+            else:
+                if encounter_fired_ref[0]:
+                    log.warning(
+                        "Ignoring trigger_encounter '%s': an encounter already "
+                        "fired this turn",
+                        resolved.trigger_encounter,
+                    )
+                else:
+                    encounter_fired_ref[0] = True
+                    enc_events = _resolve_reaction_encounter(
+                        resolved.trigger_encounter, hard, soft, corpus, state_manager,
+                        changes=changes,
+                        triggered_narration=triggered_narration,
+                    )
+                    new_events.extend(enc_events)
 
         # --- trigger_dialogue ---
         if resolved.trigger_dialogue is not None:
@@ -225,7 +267,9 @@ def dispatch_reactions(
             )
             more_events = dispatch_reactions(
                 more, hard, soft, corpus, state_manager,
-                immediate_changes, depth + 1,
+                changes, depth + 1, encounter_trigger_ref,
+                triggered_narration, revealed_hints,
+                encounter_fired_ref,
             )
             new_events.extend(more_events)
 
@@ -248,9 +292,9 @@ def _resolve_self(
 ) -> ReactionEffects:
     """Return a copy of *effects* with ``"self"`` replaced by *owner_id*.
 
-    Only resolves fields listed in ``_SELF_FIELDS``.  ``result`` fields
-    carrying ``"self"`` are resolved separately when ``_apply_result``
-    is called — the event bus sets the appropriate entity-state keys.
+    Resolves both the top-level trigger fields and ``Result`` fields
+    ``set_entity_state`` / ``adjust_attitude`` that use ``"self"`` as an
+    entity key.
     """
     if owner_id is None:
         return effects
@@ -312,6 +356,8 @@ def _resolve_reaction_encounter(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     state_manager: Any,
+    changes: HardStateChanges | None = None,
+    triggered_narration: list[str] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Resolve an encounter triggered by a reaction.
 
@@ -340,20 +386,49 @@ def _resolve_reaction_encounter(
     enc_result = resolve_enc(encounter_rules, hard, soft, corpus, source_id)
     events: list[tuple[str, dict[str, Any]]] = []
 
+    # Propagate encounter narrative
+    if enc_result.get("narrative") and triggered_narration is not None:
+        triggered_narration.append(enc_result["narrative"])
+
     # Apply encounter state changes
     set_flags = enc_result.get("set_flags") or {}
-    for flag, val in set_flags.items():
-        hard.flags[flag] = val
+    if set_flags:
+        if changes is not None:
+            changes.flags_set.update(set_flags)
+        else:
+            for flag, val in set_flags.items():
+                hard.flags[flag] = val
 
     if enc_result["flee_effects"]:
         from mgmai.engine.encounters import apply_flee_effects
-        apply_flee_effects(enc_result["flee_effects"], hard)
+        if changes is not None:
+            # Flee effects mutate hard state directly; capture the deltas into
+            # *changes* by snapshotting before/after.
+            pre_flags = dict(hard.flags)
+            pre_entity = {
+                eid: dict(state)
+                for eid, state in hard.entity_states.items()
+            }
+            apply_flee_effects(enc_result["flee_effects"], hard)
+            for flag, val in hard.flags.items():
+                if pre_flags.get(flag) != val:
+                    changes.flags_set[flag] = val
+            for eid, state in hard.entity_states.items():
+                pre = pre_entity.get(eid, {})
+                delta = {k: v for k, v in state.items() if pre.get(k) != v}
+                if delta:
+                    changes.entity_state_changes.setdefault(eid, {}).update(delta)
+        else:
+            apply_flee_effects(enc_result["flee_effects"], hard)
 
     alter_stat = enc_result.get("alter_stat") or {}
     if alter_stat:
-        state_manager.apply_hard_changes(
-            HardStateChanges(stat_modifiers=dict(alter_stat))
-        )
+        if changes is not None:
+            changes.stat_modifiers.update(dict(alter_stat))
+        else:
+            state_manager.apply_hard_changes(
+                HardStateChanges(stat_modifiers=dict(alter_stat))
+            )
 
     if enc_result["game_over"]:
         go = enc_result["game_over"]
@@ -364,7 +439,10 @@ def _resolve_reaction_encounter(
         from mgmai.engine.combat import enter_combat
         combat_entry = enter_combat([source_id], hard, corpus)
         if combat_entry.get("hard_changes"):
-            state_manager.apply_hard_changes(combat_entry["hard_changes"])
+            if changes is not None:
+                changes.merge(combat_entry["hard_changes"])
+            else:
+                state_manager.apply_hard_changes(combat_entry["hard_changes"])
         if combat_entry.get("game_over"):
             hard.game_over = GameOverState(type="lose", trigger="player_death")
         events.append(("combat.started", {"combatant_ids": [source_id]}))

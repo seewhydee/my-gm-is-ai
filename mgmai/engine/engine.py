@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Any
 
@@ -123,21 +124,53 @@ def resolve(
     # Auto-clear expired improvised weapons before resolving the action
     state_manager.clear_expired_improvised_weapon()
 
-    resolution = resolve_action(player_action, hard, soft, corpus)
+    # Snapshots for state-change event derivation.  These are taken before any
+    # reaction or action effects are applied this turn.
+    old_flags = dict(hard.flags)
+    old_stats = dict(hard.player.stats or {})
+    old_entity_states = copy.deepcopy(hard.entity_states)
+    old_room = hard.player.location
 
-    # Process encounter triggers even on failed resolutions (e.g., spider
-    # attacks when a bare-handed cut attempt fails the condition check).
+    # Accumulator for all hard-state changes produced during this turn, used
+    # to derive the final state-change events under Option B.
+    merged_changes = HardStateChanges()
+
+    def _apply_and_merge(batch: HardStateChanges) -> None:
+        """Apply *batch* and merge it into *merged_changes* for diff tracking."""
+        if batch.has_changes():
+            state_manager.apply_hard_changes(batch)
+            merged_changes.merge(batch)
+
+    # 1. Turn-start reactions fire before the action resolves.
+    turn_start_changes = HardStateChanges()
+    turn_start_narration: list[str] = []
+    turn_start_reveals: list[str] = []
+    _dispatch_events(
+        [("turn.start", {"turn_number": hard.turn_count})],
+        hard, soft, corpus, state_manager, changes=turn_start_changes,
+        triggered_narration=turn_start_narration,
+        revealed_hints=turn_start_reveals,
+    )
+    _apply_and_merge(turn_start_changes)
+
+    # 2. Resolve the action.  Immediate reactions fire synchronously inside
+    #    the resolvers and accumulate into resolution.immediate_changes.
+    resolution = resolve_action(player_action, hard, soft, corpus, state_manager)
+
+    # Merge turn-start narration/reveals into resolution.
+    resolution.triggered_narration = turn_start_narration + list(resolution.triggered_narration or [])
+    resolution.revealed_hints = turn_start_reveals + list(resolution.revealed_hints or [])
+
+    # Initialize result-tracking variables.
     encounter_outcome: dict[str, Any] | None = None
     game_over = None
     rolls: list[dict[str, Any]] = list(resolution.rolls or [])
     combat_triggered = False
     combat_log: list[CombatLogEntry] = []
-    hard_changes = HardStateChanges()
 
+    # 3. Process encounter triggers from the action or immediate reactions.
     if resolution.encounter_trigger:
         trigger_id = resolution.encounter_trigger
-
-        # Try NPC behavior first, then mechanic fallback
         npc = corpus.entities.get(trigger_id)
         encounter_rules = None
         encounter_source_id = trigger_id
@@ -159,18 +192,30 @@ def resolve(
             if enc_result["narrative"]:
                 resolution.triggered_narration.append(enc_result["narrative"])
 
+            encounter_changes = HardStateChanges()
             set_flags = enc_result.get("set_flags") or {}
-            for flag, val in set_flags.items():
-                hard.flags[flag] = val
+            if set_flags:
+                encounter_changes.flags_set.update(set_flags)
 
             if enc_result["flee_effects"]:
+                pre_flags = dict(hard.flags)
+                pre_entity = {
+                    eid: dict(state)
+                    for eid, state in hard.entity_states.items()
+                }
                 apply_flee_effects(enc_result["flee_effects"], hard)
+                for flag, val in hard.flags.items():
+                    if pre_flags.get(flag) != val:
+                        encounter_changes.flags_set[flag] = val
+                for eid, state in hard.entity_states.items():
+                    pre = pre_entity.get(eid, {})
+                    delta = {k: v for k, v in state.items() if pre.get(k) != v}
+                    if delta:
+                        encounter_changes.entity_state_changes.setdefault(eid, {}).update(delta)
 
             alter_stat = enc_result.get("alter_stat") or {}
             if alter_stat:
-                state_manager.apply_hard_changes(
-                    HardStateChanges(stat_modifiers=dict(alter_stat))
-                )
+                encounter_changes.stat_modifiers.update(dict(alter_stat))
 
             if enc_result["game_over"]:
                 go = enc_result["game_over"]
@@ -189,26 +234,22 @@ def resolve(
             enc_rolls = enc_result.get("rolls") or []
             rolls.extend(enc_rolls)
 
-            # Combat entry via encounter outcome
             if enc_result["outcome"] == "combat":
                 from mgmai.engine.combat import enter_combat
                 combat_entry = enter_combat([encounter_source_id], hard, corpus)
                 combat_triggered = True
                 combat_log = combat_entry["combat_log"]
                 if combat_entry.get("hard_changes"):
-                    hard_changes.merge(combat_entry["hard_changes"])
-                    state_manager.apply_hard_changes(combat_entry["hard_changes"])
+                    encounter_changes.merge(combat_entry["hard_changes"])
                 if combat_entry.get("game_over"):
-                    hard.game_over = GameOverState(
-                        type="lose", trigger="player_death"
-                    )
-                    game_over = GameOverResult(
-                        type="lose", trigger="player_death"
-                    )
-                # Exit dialogue when combat starts
+                    hard.game_over = GameOverState(type="lose", trigger="player_death")
+                    game_over = GameOverResult(type="lose", trigger="player_death")
                 if soft.dialogue_state.active_npc is not None:
                     resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
+            _apply_and_merge(encounter_changes)
+
+    # On a failed resolution, return early; deferred reactions do not run.
     if not resolution.success:
         chain_info = None
         if player_action.follow_up:
@@ -228,25 +269,17 @@ def resolve(
             rolls=rolls,
         )
 
-    hard_changes.merge(resolution.hard_changes or HardStateChanges())
-    hard_changes.merge(resolution.immediate_changes)
+    # 4. Merge action + immediate-reaction changes and apply them once.
+    action_changes = HardStateChanges()
+    action_changes.merge(resolution.hard_changes or HardStateChanges())
+    action_changes.merge(resolution.immediate_changes)
+    _apply_and_merge(action_changes)
 
-    old_flags = dict(hard.flags)
-    old_stats = dict(hard.player.stats or {})
-    old_room = hard.player.location
-
-    state_manager.apply_hard_changes(hard_changes)
-
-    # Derive state-change events from the diff
-    state_events = _derive_state_events(
-        hard_changes, old_flags, old_stats, hard,
-    )
-
+    # 5. Apply soft patches and persist surfaced items / revealed hints.
     engine_soft_patches = list(resolution.soft_patches or [])
     if engine_soft_patches:
         state_manager.apply_soft_patches(engine_soft_patches)
 
-    # Track surfaced soft items from the resolution
     for entity_or_room_id, items in resolution.surfaced_soft_items.items():
         if entity_or_room_id not in soft.surfaced_soft_items:
             soft.surfaced_soft_items[entity_or_room_id] = []
@@ -260,78 +293,95 @@ def resolve(
         soft,
         corpus,
     )
-
     applied_patches, rejected_patches = soft_patches
     if applied_patches:
         state_manager.apply_soft_patches(applied_patches)
-
     combined_applied = engine_soft_patches + applied_patches
 
-    # Persist revealed hints from interaction results into soft state
     for hint in resolution.revealed_hints or []:
         if hint not in soft.revealed_hints:
             soft.revealed_hints.append(hint)
 
-    # Handle direct combat trigger from resolver (NPC with CombatBlock, no behavior)
+    # 6. Handle direct combat triggers and game-over from resolver.
     if resolution.combat_triggered:
         combat_triggered = True
         combat_log = list(resolution.combat_log or [])
         if resolution.game_over_trigger:
-            hard.game_over = GameOverState(
-                type="lose", trigger=resolution.game_over_trigger
-            )
-            game_over = GameOverResult(
-                type="lose", trigger=resolution.game_over_trigger
-            )
-        # Exit dialogue when combat starts
+            hard.game_over = GameOverState(type="lose", trigger=resolution.game_over_trigger)
+            game_over = GameOverResult(type="lose", trigger=resolution.game_over_trigger)
         if soft.dialogue_state.active_npc is not None:
             resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
-    # Handle combat log from subsequent combat turns
     if resolution.combat_log and not combat_triggered:
         combat_log = list(resolution.combat_log)
         if resolution.game_over_trigger:
-            hard.game_over = GameOverState(
-                type="lose", trigger=resolution.game_over_trigger
-            )
-            game_over = GameOverResult(
-                type="lose", trigger=resolution.game_over_trigger
-            )
+            hard.game_over = GameOverState(type="lose", trigger=resolution.game_over_trigger)
+            game_over = GameOverResult(type="lose", trigger=resolution.game_over_trigger)
 
     if hard.game_over is None:
         _check_game_over_mechanics(hard, soft, corpus, game_over_ref := [None])
         if game_over_ref[0]:
             game_over = game_over_ref[0]
-            hard.game_over = GameOverState(
-                type=game_over.type,
-                trigger=game_over.trigger,
-            )
+            hard.game_over = GameOverState(type=game_over.type, trigger=game_over.trigger)
 
+    # Track whether an encounter has already fired this turn, so that
+    # subsequent reaction trigger_encounter effects are suppressed.
+    encounter_fired_ref = [encounter_outcome is not None]
+
+    # 7. Room transition and room-entered reactions.
     on_enter_results: list[OnEnterEventResult] = []
     new_room = resolution.room_after_id or hard.player.location
-    room_transition_events: list[tuple[str, dict[str, Any]]] = []
+
     if new_room != old_room:
-        room_transition_events.append(
-            ("room.exited", {"room_id": old_room})
+        room_changes = HardStateChanges()
+
+        # room.exited has no immediate phase, so this only dispatches deferred
+        # reactions and accumulates their effects.
+        _dispatch_events(
+            [("room.exited", {"room_id": old_room})],
+            hard, soft, corpus, state_manager, changes=room_changes,
+            triggered_narration=resolution.triggered_narration,
+            revealed_hints=resolution.revealed_hints,
+            encounter_fired_ref=encounter_fired_ref,
         )
-        room_transition_events.append(
-            ("room.entered", {"room_id": new_room})
+
+        # room.entered immediate reactions fire before legacy on-enter events.
+        entered_matches = find_matching_reactions(
+            "room.entered", {"room_id": new_room}, hard, soft, corpus,
         )
+        entered_immediate = [(r, o) for r, o in entered_matches if r.phase == "immediate"]
+        if entered_immediate:
+            dispatch_reactions(
+                entered_immediate, hard, soft, corpus, state_manager,
+                changes=room_changes,
+                triggered_narration=resolution.triggered_narration,
+                revealed_hints=resolution.revealed_hints,
+                encounter_fired_ref=encounter_fired_ref,
+            )
+
+        # Deferred room.entered reactions also accumulate before on-enter.
+        entered_deferred = [(r, o) for r, o in entered_matches if r.phase != "immediate"]
+        if entered_deferred:
+            dispatch_reactions(
+                entered_deferred, hard, soft, corpus, state_manager,
+                changes=room_changes,
+                triggered_narration=resolution.triggered_narration,
+                revealed_hints=resolution.revealed_hints,
+                encounter_fired_ref=encounter_fired_ref,
+            )
+
+        _apply_and_merge(room_changes)
+
         on_enter_results = _fire_on_enter_events(
             new_room, hard, soft, corpus, resolution.triggered_narration
         )
 
-        dialogue_exit = check_room_change_exit(
-            soft, old_room, new_room, corpus, hard
-        )
+        dialogue_exit = check_room_change_exit(soft, old_room, new_room, corpus, hard)
         if dialogue_exit:
             resolution.dialogue_exited = dialogue_exit
 
     if hard.game_over is not None and game_over is None:
-        game_over = GameOverResult(
-            type=hard.game_over.type,
-            trigger=hard.game_over.trigger,
-        )
+        game_over = GameOverResult(type=hard.game_over.type, trigger=hard.game_over.trigger)
 
     if action_type == "talk":
         pass
@@ -341,14 +391,8 @@ def resolve(
             if stall_exited:
                 resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
-    # Dispatch all collected events through the reaction system
-    all_events = (
-        [("turn.start", {"turn_number": hard.turn_count})]
-        + list(resolution.events)
-        + state_events
-        + room_transition_events
-    )
-    # Add dialogue.ended if dialogue was exited during this turn
+    # 8. Dispatch deferred reactions for action-level events.
+    action_events: list[tuple[str, dict[str, Any]]] = list(resolution.events)
     if resolution.dialogue_exited:
         npc_id = (
             resolution.dialogue_exited.get("npc_id")
@@ -356,22 +400,36 @@ def resolve(
             else getattr(resolution.dialogue_exited, "npc_id", None)
         )
         if npc_id:
-            all_events.append(("dialogue.ended", {
+            action_events.append(("dialogue.ended", {
                 "npc_id": npc_id,
                 "reason": "stall" if action_type != "talk" else "player_left",
             }))
 
+    event_changes = HardStateChanges()
     _dispatch_events(
-        all_events, hard, soft, corpus, state_manager,
-        HardStateChanges(),
+        action_events, hard, soft, corpus, state_manager, changes=event_changes,
+        triggered_narration=resolution.triggered_narration,
+        revealed_hints=resolution.revealed_hints,
+        encounter_fired_ref=encounter_fired_ref,
     )
+    _apply_and_merge(event_changes)
 
-    # Dispatch turn.end event
-    turn_end_ctx = {"turn_number": hard.turn_count}
+    # 9. Derive state-change events from the merged diff and dispatch them once.
+    state_events = _derive_state_events(
+        merged_changes, old_flags, old_stats, old_entity_states, hard,
+    )
+    _dispatch_events(state_events, hard, soft, corpus, state_manager, changes=None,
+                     triggered_narration=resolution.triggered_narration,
+                     revealed_hints=resolution.revealed_hints,
+                     encounter_fired_ref=encounter_fired_ref)
+
+    # 10. turn.end reactions (state changes apply directly, no second derivation).
     _dispatch_events(
-        [("turn.end", turn_end_ctx)],
-        hard, soft, corpus, state_manager,
-        HardStateChanges(),
+        [("turn.end", {"turn_number": hard.turn_count})],
+        hard, soft, corpus, state_manager, changes=None,
+        triggered_narration=resolution.triggered_narration,
+        revealed_hints=resolution.revealed_hints,
+        encounter_fired_ref=encounter_fired_ref,
     )
 
     hard.turn_count += 1
@@ -381,8 +439,8 @@ def resolve(
         player_input=player_input_echo or player_action.detail,
         ruled_action=player_action.model_dump(),
         engine_result_summary=_summarize_resolution(resolution, new_room),
-        flags_changed=list(hard_changes.flags_set.keys())
-        + list(hard_changes.flags_cleared),
+        flags_changed=list(merged_changes.flags_set.keys())
+        + list(merged_changes.flags_cleared),
         location_after=new_room,
     )
     state_manager.append_turn_history(turn_entry)
@@ -408,7 +466,7 @@ def resolve(
         target=getattr(player_action, "target", None),
         player_input_echo=player_input_echo,
         room_after=room_after,
-        hard_state_changes=hard_changes,
+        hard_state_changes=merged_changes,
         soft_state_patches_applied=combined_applied,
         soft_state_patches_rejected=rejected_patches,
         rolls=rolls,
@@ -819,6 +877,7 @@ def _derive_state_events(
     hard_changes: HardStateChanges,
     old_flags: dict[str, bool],
     old_stats: dict[str, int],
+    old_entity_states: dict[str, dict[str, Any]],
     hard: HardGameState,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Derive state-change events from the HardStateChanges diff."""
@@ -862,7 +921,7 @@ def _derive_state_events(
     for entity_id, entity_changes in hard_changes.entity_state_changes.items():
         if "attitude" in entity_changes:
             new_att = entity_changes["attitude"]
-            old_att = hard.entity_states.get(entity_id, {}).get("attitude", 0)
+            old_att = old_entity_states.get(entity_id, {}).get("attitude", 0)
             try:
                 new_att_num = int(new_att) if not isinstance(new_att, bool) else (1 if new_att else 0)
                 old_att_num = int(old_att) if not isinstance(old_att, bool) else (1 if old_att else 0)
@@ -918,14 +977,23 @@ def _dispatch_events(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     state_manager: Any,
-    immediate_changes: HardStateChanges,
+    changes: HardStateChanges | None,
+    triggered_narration: list[str] | None = None,
+    revealed_hints: list[str] | None = None,
+    encounter_fired_ref: list[bool] | None = None,
 ) -> None:
-    """Dispatch a batch of events through the reaction system.
+    """Dispatch a batch of deferred reactions for the given events.
 
-    For each event, finds matching reactions (immediate + deferred).
-    Immediate reactions have their effects accumulated into
-    *immediate_changes*.  Deferred reactions are dispatched after all
-    events have been processed.
+    Immediate reactions are assumed to have been fired at event emission
+    time (inside the resolvers).  This function only dispatches reactions
+    with ``phase != "immediate"``.
+
+    When *changes* is provided, reaction state mutations are merged into it
+    so the caller can apply them in a single batch.  When *changes* is
+    ``None``, mutations are applied immediately via *state_manager*.
+
+    *triggered_narration* and *revealed_hints* are optional output lists
+    that collect narrative and reveals from reaction results.
     """
     deferred: list[tuple[Reaction, str | None]] = []
 
@@ -933,19 +1001,17 @@ def _dispatch_events(
         matches = find_matching_reactions(
             event_type, context, hard, soft, corpus,
         )
-        immed = [(r, o) for r, o in matches if r.phase == "immediate"]
-        defd = [(r, o) for r, o in matches if r.phase != "immediate"]
-
-        if immed:
-            dispatch_reactions(
-                immed, hard, soft, corpus, state_manager,
-                immediate_changes=immediate_changes,
-            )
-        deferred.extend(defd)
+        deferred.extend(
+            (r, o) for r, o in matches if r.phase != "immediate"
+        )
 
     if deferred:
         dispatch_reactions(
             deferred, hard, soft, corpus, state_manager,
+            changes=changes,
+            triggered_narration=triggered_narration,
+            revealed_hints=revealed_hints,
+            encounter_fired_ref=encounter_fired_ref,
         )
 
 

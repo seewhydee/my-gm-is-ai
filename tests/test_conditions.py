@@ -989,3 +989,74 @@ class TestEdgeCases:
             "all": ["flag:a == true", "bad:syntax:here"]
         })
         assert not evaluate(condition, hs, ss)
+
+
+class TestEventDomain:
+    def test_event_domain_match(self):
+        hs = make_hard_state()
+        ss = make_soft_state()
+        event_ctx = {"flag_name": "spider_fled"}
+        assert evaluate_condition_string(
+            "event:flag_name == spider_fled", hs, ss, None, event_ctx
+        )
+
+    def test_event_domain_mismatch(self):
+        hs = make_hard_state()
+        ss = make_soft_state()
+        event_ctx = {"flag_name": "other"}
+        assert not evaluate_condition_string(
+            "event:flag_name == spider_fled", hs, ss, None, event_ctx
+        )
+
+    def test_event_domain_numeric_comparison(self):
+        hs = make_hard_state()
+        ss = make_soft_state()
+        event_ctx = {"new_value": -10}
+        assert evaluate_condition_string(
+            "event:new_value <= -10", hs, ss, None, event_ctx
+        )
+        assert not evaluate_condition_string(
+            "event:new_value < -10", hs, ss, None, event_ctx
+        )
+
+    def test_event_domain_missing_key(self):
+        hs = make_hard_state()
+        ss = make_soft_state()
+        event_ctx = {"other_key": "value"}
+        assert not evaluate_condition_string(
+            "event:flag_name == spider_fled", hs, ss, None, event_ctx
+        )
+
+    def test_event_domain_no_context_returns_false(self):
+        hs = make_hard_state()
+        ss = make_soft_state()
+        assert not evaluate_condition_string(
+            "event:flag_name == spider_fled", hs, ss, None, None
+        )
+
+    def test_event_domain_requires_operator(self):
+        hs = make_hard_state()
+        ss = make_soft_state()
+        event_ctx = {"flag_name": "x"}
+        with pytest.raises(ValueError, match="requires operator"):
+            evaluate_condition_string(
+                "event:flag_name", hs, ss, None, event_ctx
+            )
+
+    def test_event_domain_in_condition_expression(self):
+        hs = make_hard_state()
+        ss = make_soft_state()
+        event_ctx = {"exit_id": "exit_north"}
+        cond = ConditionExpression(require="event:exit_id == exit_north")
+        assert evaluate(cond, hs, ss, event_ctx=event_ctx)
+
+    def test_event_domain_boolean_comparison(self):
+        hs = make_hard_state()
+        ss = make_soft_state()
+        event_ctx = {"success": True}
+        assert evaluate_condition_string(
+            "event:success == true", hs, ss, None, event_ctx
+        )
+        assert not evaluate_condition_string(
+            "event:success == false", hs, ss, None, event_ctx
+        )

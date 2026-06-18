@@ -600,8 +600,9 @@ class TestApplyResult:
         result = Result(adjust_attitude={"korbar": 2})
         changes = HardStateChanges()
         _apply_result(result, changes, [], [], hard, corpus)
-        assert hard.entity_states["korbar"]["attitude"] == 2
+        state_manager.apply_hard_changes(changes)
         assert changes.entity_state_changes["korbar"]["attitude"] == 2
+        assert hard.entity_states["korbar"]["attitude"] == 2
 
     def test_adjust_attitude_clamps_to_limits(self, state_manager):
         hard = state_manager.hard_state
@@ -613,6 +614,8 @@ class TestApplyResult:
         result = Result(adjust_attitude={"korbar": 5})
         changes = HardStateChanges()
         _apply_result(result, changes, [], [], hard, corpus)
+        state_manager.apply_hard_changes(changes)
+        assert changes.entity_state_changes["korbar"]["attitude"] == 10
         assert hard.entity_states["korbar"]["attitude"] == 10  # clamped to max
 
     def test_adjust_attitude_respects_step_per_turn(self, state_manager):
@@ -625,6 +628,8 @@ class TestApplyResult:
         result = Result(adjust_attitude={"korbar": 10})
         changes = HardStateChanges()
         _apply_result(result, changes, [], [], hard, corpus)
+        state_manager.apply_hard_changes(changes)
+        assert changes.entity_state_changes["korbar"]["attitude"] == 3
         assert hard.entity_states["korbar"]["attitude"] == 3  # clamped to step_per_turn
 
 

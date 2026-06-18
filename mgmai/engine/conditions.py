@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import re
-from typing import Union
 
 from mgmai.models.corpus import ConditionExpression, ModuleCorpus
 from mgmai.models.hard_state import HardGameState

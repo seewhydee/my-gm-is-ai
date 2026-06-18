@@ -457,6 +457,7 @@ class Mechanic(BaseModel):
     def check_shape(self) -> Mechanic:
         is_game_over = self.type is not None
         is_encounter = self.rules is not None
+        is_reaction_only = bool(self.reactions)
         if is_game_over and is_encounter:
             raise ValueError(
                 "Mechanic must be either a game-over condition (type, condition, trigger_id) "
@@ -466,9 +467,10 @@ class Mechanic(BaseModel):
                 raise ValueError("Game-over mechanic requires 'condition'")
             if self.trigger_id is None:
                 raise ValueError("Game-over mechanic requires 'trigger_id'")
-        if not is_game_over and not is_encounter:
+        if not is_game_over and not is_encounter and not is_reaction_only:
             raise ValueError(
-                "Mechanic must have either 'type' (game-over) or 'rules' (encounter)")
+                "Mechanic must have either 'type' (game-over), 'rules' (encounter), "
+                "or 'reactions'")
         return self
 
 
