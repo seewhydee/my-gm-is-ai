@@ -478,6 +478,13 @@ A reaction fires when a matching game event occurs and its condition is met.
 
 #### Event types
 
+> **Full reference:** See [`events.md`](events.md) for the complete event
+catalog, context-key descriptions, immediate/deferred rules, and known
+implementation gaps.
+
+The summary below lists the most commonly used events. The `on` field of a
+reaction must be one of these event type strings.
+
 **Action-level events:**
 
 | Event | Context keys | Emitted when |
@@ -490,10 +497,10 @@ A reaction fires when a matching game event occurs and its condition is met.
 | `check.passed` | `check_type`, `stat?`, `dc?`, `threshold?`, `source_id`, `source_type` | Any check succeeds |
 | `check.failed` | same as `check.passed` | Any check fails |
 | `interaction.used` | `interaction_id`, `target_id`, `using_item?` | An interaction is attempted |
-| `dialogue.started` | `npc_id` | Dialogue mode enters |
-| `dialogue.ended` | `npc_id`, `reason` | Dialogue mode exits |
+| `dialogue.started` | `npc_id` | Dialogue mode begins |
+| `dialogue.ended` | `npc_id`, `reason` | Dialogue mode ends |
 | `combat.started` | `combatant_ids` | Combat begins |
-| `combat.ended` | `reason` (`victory`\|`defeat`\|`fled`) | Combat ends |
+| `combat.ended` | `reason` | Combat ends |
 | `item.acquired` | `item_id`, `source` | Item enters inventory |
 | `item.lost` | `item_id`, `reason` | Item leaves inventory |
 
@@ -540,8 +547,10 @@ The `event:` domain is only valid during reaction dispatch. Outside dispatch
 | `stat` | The stat key (for stat checks) |
 | `dc` | The difficulty class (for stat checks) |
 | `threshold` | The probability threshold (for rolls) |
-| `source_id` | The interaction, exit, or dialogue path ID that originated the check |
+| `source_id` | The interaction, exit, dialogue path, or reaction ID that originated the check |
 | `source_type` | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, or `"reaction"` |
+
+See [`events.md`](events.md) for additional detail on each event's context.
 
 #### Reaction effects
 
@@ -556,7 +565,7 @@ The `event:` domain is only valid during reaction dispatch. Outside dispatch
 
 | Field               | Type   | Description |
 |---------------------|--------|-------------|
-| `result`            | object | A `Result` object with `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`, etc. Same fields as interaction results. |
+| `result`            | object | A `Result` object — same fields as interaction results: `narrative`, `set_flag`, `set_entity_state`, `set_room_state`, `alter_stat`, `adjust_attitude`, `add_item`, `remove_item`, `reveals`, `chain_check`. |
 | `trigger_encounter` | string | Mechanic ID or entity ID to trigger an encounter. If `"self"`, resolves to the owning entity's ID (for entity-scoped reactions). |
 | `trigger_dialogue`  | string | NPC entity ID to initiate dialogue with. If `"self"`, resolves to the owning entity's ID. |
 | `game_over`         | object | `{ "type": "win"|"lose", "trigger_id": "..." }` — ends the game. |

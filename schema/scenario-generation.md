@@ -10,6 +10,7 @@ the engine requires:
 
 The schemas for these files are defined in:
 - [`corpus.md`](corpus.md) for the Module Corpus
+- [`events.md`](events.md) for the canonical event model and reaction event types
 - [`hard-state.md`](hard-state.md) for Hard Game State
 - [`soft-state.md`](soft-state.md) for Soft Game State
 - [`actions.md`](actions.md) for actions (engine validation logic)
@@ -101,7 +102,9 @@ For every distinct entity mentioned, note:
 - **Description** — canonical prose for examine action
 - **Dialogue** — does it talk? Note personality, knows, attitude gating
 - **Behavior** — does it fight? Note triggers, combat rules
-- **Reactions** — event-driven triggers (e.g., "attacks when player enters", "changes state when dialogue ends")
+- **Reactions** — event-driven triggers (e.g., "attacks when player enters",
+  "changes state when dialogue ends"). See [`events.md`](events.md) for the
+  list of valid event type strings and their context keys.
 - **Tags** — e.g., `weapon`, `key_item`, `draggable`
 - **State fields** — what mutable properties does it have? (alive, fled, opened, etc.)
 - **Interactions** — anything special the player can do with it
@@ -262,7 +265,8 @@ ends_dialogue, or stall timeout), the engine applies these effects after the
 
 Reactions are the preferred mechanism for event-driven entity behavior. Define
 them in the entity's `reactions` array. Entity-scoped reactions are active when
-the entity is present in the current room and alive/not-fled.
+the entity is present in the current room and alive/not-fled. See
+[`events.md`](events.md) for the full list of event types and context keys.
 
 **Common patterns:**
 
@@ -451,7 +455,7 @@ Exactly one entity with `type: "player"`.
   in `entity_states`
 - [ ] Every entity with `hidden: true` in initial `entity_states` has at
   least one companion `on_examine` or interaction that can set `hidden: false`
-- [ ] Entity `reactions` use valid event types and effect fields
+- [ ] Entity `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
 - [ ] Entity `reactions` using `"self"` in `trigger_encounter` or
   `trigger_dialogue` are on entities of the correct type (encounter for any,
   dialogue for `npc` only)
@@ -906,7 +910,8 @@ With `condition: null`, the event fires on first entry only (the engine tracks i
 
 Reactions on rooms fire when the player is in that room. Use them for
 event-driven triggers that respond to game events (flag changes, check
-outcomes, item acquisition, etc.).
+outcomes, item acquisition, etc.). See [`events.md`](events.md) for the full
+list of event types and context keys.
 
 **Common patterns:**
 
@@ -1013,9 +1018,9 @@ section "Step 6". The correct location is Step 3G.
   `parameter_signature` defining accepted types
 - [ ] If interactions reference `using_results`, each key is a valid entity ID
   or `"*"` wildcard
-- [ ] Room `reactions` use valid event types and effect fields
+- [ ] Room `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
 - [ ] Room `reactions` with `event:` conditions reference valid context keys
-  for their event type
+  for their event type (see [`events.md`](events.md))
 
 ---
 
@@ -1099,7 +1104,8 @@ critical path.
 
 For adventure-wide state-based triggers that aren't tied to a specific room or
 entity, create a mechanic with only a `reactions` array (no `type`, `rules`, or
-`trigger_id`).
+`trigger_id`). See [`events.md`](events.md) for the full list of event types
+and context keys.
 
 ```json
 "global_reactions": {
@@ -1193,7 +1199,7 @@ Rules:
 - [ ] If stats block absent: no stat_check interactions or stat: conditions
   exist in rooms/entities
 - [ ] Reaction-only mechanics have `reactions` but no `type` or `rules`
-- [ ] Reaction-only mechanic `reactions` use valid event types and effect fields
+- [ ] Reaction-only mechanic `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
 
 ---
 
@@ -1358,6 +1364,346 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 
 ---
 
+## Appendix: Converting Legacy Triggers to Reactions
+
+This section covers how to convert adventure content that uses legacy trigger
+mechanisms (`on_enter`, `on_traverse`, `behavior.triggers_on`, `on_dialogue_exit`)
+to the reaction system. **Reactions are the preferred mechanism for all new
+adventures.** Legacy triggers are retained for backward compatibility but may be
+removed in a future version.
+
+Each subsection shows the legacy pattern, its reaction equivalent, and a
+concrete conversion example drawn from real adventure content.
+
+### `on_enter` → `room.entered` reactions
+
+Legacy `on_enter` events on rooms fire when the player enters the room. Convert
+them to `Room.reactions` with `on: "room.entered"`.
+
+**Conversion rules:**
+
+| Legacy `on_enter` field | Reaction equivalent |
+|---|---|
+| `condition: null` (one-shot, fires once on first entry) | `once: true` (fires once per adventure load) |
+| `condition: { "require": "..." }` (conditional, fires every entry when met) | `condition: { "require": "..." }` (no `once`) |
+| `narrative` | `effects.result.narrative` |
+| `set_flag` | `effects.result.set_flag` |
+| `set_entity_state` | `effects.result.set_entity_state` |
+| `set_room_state` | `effects.result.set_room_state` |
+| `trigger_dialogue` | `effects.trigger_dialogue` |
+
+**Example — one-shot unconditional event:**
+
+Legacy:
+```json
+{
+  "on_enter": [
+    {
+      "id": "first_entry_axe_head",
+      "condition": null,
+      "narrative": "The axe head leans at an angle. The handle slopes down into darkness."
+    }
+  ]
+}
+```
+
+Reaction equivalent:
+```json
+{
+  "reactions": [
+    {
+      "id": "first_entry_axe_head",
+      "on": "room.entered",
+      "once": true,
+      "effects": {
+        "result": {
+          "narrative": "The axe head leans at an angle. The handle slopes down into darkness."
+        }
+      }
+    }
+  ]
+}
+```
+
+**Example — conditional event with state changes and dialogue trigger:**
+
+Legacy:
+```json
+{
+  "on_enter": [
+    {
+      "id": "fly_groans",
+      "condition": { "require": "entity:stuck_fly.alive == true" },
+      "narrative": "A groaning sound comes from the webbing nearby.",
+      "set_flag": { "fly_warning_given": true },
+      "trigger_dialogue": "stuck_fly"
+    }
+  ]
+}
+```
+
+Reaction equivalent:
+```json
+{
+  "reactions": [
+    {
+      "id": "fly_groans",
+      "on": "room.entered",
+      "condition": { "require": "entity:stuck_fly.alive == true" },
+      "effects": {
+        "result": {
+          "narrative": "A groaning sound comes from the webbing nearby.",
+          "set_flag": { "fly_warning_given": true }
+        },
+        "trigger_dialogue": "stuck_fly"
+      }
+    }
+  ]
+}
+```
+
+### `on_traverse` → exit-scoped `traversal.succeeded` reactions
+
+Legacy `on_traverse` effects on exits fire when the player successfully traverses
+that exit. Convert them to `Room.reactions` (on the source room) with
+`on: "traversal.succeeded"` and a condition matching the exit ID.
+
+**Conversion rules:**
+
+| Legacy `on_traverse` field | Reaction equivalent |
+|---|---|
+| `set_flag` | `effects.result.set_flag` |
+| `set_room_state` | `effects.result.set_room_state` |
+| `alter_stat` | `effects.result.alter_stat` |
+| `narrative` | `effects.result.narrative` |
+| `trigger_encounter` | `effects.trigger_encounter` |
+| `skip_if` | `condition` on the reaction (negated) |
+
+**Key pattern:** Scope the reaction to a specific exit by requiring
+`event:exit_id == <exit_id>` in the condition.
+
+**Example — traversal with stat damage and flag:**
+
+Legacy (on the exit object):
+```json
+{
+  "id": "exit_drop_from_upper",
+  "on_traverse": {
+    "narrative": "You drop from the handle into the darkness. You land hard on the rubbish pile below, twisting your ankle.",
+    "set_flag": { "sprained_ankle": true },
+    "alter_stat": { "DEX": { "value": -2 }, "CON": { "value": -2 } }
+  }
+}
+```
+
+Reaction equivalent (on the source room):
+```json
+{
+  "reactions": [
+    {
+      "id": "drop_from_upper_damage",
+      "on": "traversal.succeeded",
+      "condition": { "require": "event:exit_id == exit_drop_from_upper" },
+      "effects": {
+        "result": {
+          "narrative": "You drop from the handle into the darkness. You land hard on the rubbish pile below, twisting your ankle.",
+          "set_flag": { "sprained_ankle": true },
+          "alter_stat": { "DEX": { "value": -2 }, "CON": { "value": -2 } }
+        }
+      }
+    }
+  ]
+}
+```
+
+**Example — traversal that triggers an encounter:**
+
+Legacy (on the exit object):
+```json
+{
+  "id": "exit_through_webs_up",
+  "on_traverse": {
+    "narrative": "You burst through the sticky webs, tearing a path through the dense strands.",
+    "set_flag": { "webs_cleared": true },
+    "trigger_encounter": "spider"
+  }
+}
+```
+
+Reaction equivalent (on the source room):
+```json
+{
+  "reactions": [
+    {
+      "id": "webs_up_spider_ambush",
+      "on": "traversal.succeeded",
+      "condition": { "require": "event:exit_id == exit_through_webs_up" },
+      "effects": {
+        "result": {
+          "narrative": "You burst through the sticky webs, tearing a path through the dense strands.",
+          "set_flag": { "webs_cleared": true }
+        },
+        "trigger_encounter": "spider"
+      }
+    }
+  ]
+}
+```
+
+**Note:** Remove the `on_traverse` field from the exit object after converting.
+The exit still exists; only the trigger mechanism moves to the room's reactions.
+
+### `behavior.triggers_on` → entity-scoped reactions
+
+Legacy `behavior.triggers_on` on an NPC entity lists exit IDs and interaction
+IDs that trigger combat. Convert them to `Entity.reactions` with
+`on: "interaction.used"` (for interaction-based triggers) or
+`on: "traversal.succeeded"` (for exit-based triggers).
+
+**Conversion rules:**
+
+| Trigger type | Reaction `on` | Condition |
+|---|---|---|
+| Interaction ID (e.g., `"attack"`) | `"interaction.used"` | `{ "require": "event:interaction_id == attack" }` |
+| Exit ID (e.g., `"exit_through_webs_up"`) | `"traversal.succeeded"` | `{ "require": "event:exit_id == exit_through_webs_up" }` |
+
+Use `"self"` in `effects.trigger_encounter` to reference the owning entity.
+
+**Example — mixed interaction and exit triggers:**
+
+Legacy:
+```json
+{
+  "spider": {
+    "behavior": {
+      "triggers_on": ["exit_through_webs_down", "exit_through_webs_up", "attack", "cut_webbing"],
+      "encounter_rules": [ "..." ]
+    }
+  }
+}
+```
+
+Reaction equivalent:
+```json
+{
+  "spider": {
+    "reactions": [
+      {
+        "id": "spider_attack_on_interact",
+        "on": "interaction.used",
+        "condition": {
+          "any": [
+            { "require": "event:interaction_id == attack" },
+            { "require": "event:interaction_id == cut_webbing" }
+          ]
+        },
+        "effects": { "trigger_encounter": "self" }
+      },
+      {
+        "id": "spider_attack_on_webs_down",
+        "on": "traversal.succeeded",
+        "condition": { "require": "event:exit_id == exit_through_webs_down" },
+        "effects": { "trigger_encounter": "self" }
+      },
+      {
+        "id": "spider_attack_on_webs_up",
+        "on": "traversal.succeeded",
+        "condition": { "require": "event:exit_id == exit_through_webs_up" },
+        "effects": { "trigger_encounter": "self" }
+      }
+    ],
+    "behavior": {
+      "encounter_rules": [ "..." ]
+    }
+  }
+}
+```
+
+**Note:** The `behavior.encounter_rules` stay — only `triggers_on` is replaced
+by reactions. The `triggers_on` field is removed from the behavior block.
+
+### `on_dialogue_exit` → entity-scoped `dialogue.ended` reactions
+
+Legacy `on_dialogue_exit` on an NPC entity fires when dialogue mode exits for
+that NPC (player leaves, `ends_dialogue`, stall timeout, or room change). Convert
+to `Entity.reactions` with `on: "dialogue.ended"`.
+
+**Conversion rules:**
+
+| Legacy `on_dialogue_exit` field | Reaction equivalent |
+|---|---|
+| `set_entity_state` | `effects.result.set_entity_state` |
+| `set_flag` | `effects.result.set_flag` |
+| `narrative` | `effects.result.narrative` |
+
+**Key pattern:** Add a condition matching the NPC's entity ID to ensure the
+reaction only fires for this specific NPC's dialogue exit:
+`{ "require": "event:npc_id == <entity_id>" }`.
+
+**Example:**
+
+Legacy:
+```json
+{
+  "stuck_fly": {
+    "dialogue_guidelines": {
+      "on_dialogue_exit": {
+        "set_entity_state": { "stuck_fly": { "alive": false } },
+        "narrative": "The fly's weak groaning ceases. Its tiny body goes still."
+      }
+    }
+  }
+}
+```
+
+Reaction equivalent:
+```json
+{
+  "stuck_fly": {
+    "reactions": [
+      {
+        "id": "fly_dies_after_dialogue",
+        "on": "dialogue.ended",
+        "condition": { "require": "event:npc_id == stuck_fly" },
+        "effects": {
+          "result": {
+            "set_entity_state": { "stuck_fly": { "alive": false } },
+            "narrative": "The fly's weak groaning ceases. Its tiny body goes still."
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+**Note:** Remove the `on_dialogue_exit` block from `dialogue_guidelines` after
+converting. The NPC's `dialogue_guidelines` remain for personality, `will_reveal`,
+`dialogue_paths`, etc.
+
+### Conversion checklist
+
+When converting an adventure's legacy triggers to reactions:
+
+- [ ] Every `on_enter` event has been converted to a `room.entered` reaction
+      on the same room
+- [ ] Every `on_traverse` effect has been converted to a `traversal.succeeded`
+      reaction on the source room, scoped by exit ID
+- [ ] Every `behavior.triggers_on` entry has been converted to an
+      `interaction.used` or `traversal.succeeded` reaction on the same entity
+- [ ] Every `on_dialogue_exit` has been converted to a `dialogue.ended` reaction
+      on the same entity, scoped by NPC ID
+- [ ] Legacy fields (`on_enter`, `on_traverse`, `triggers_on`, `on_dialogue_exit`)
+      have been removed from the JSON after conversion
+- [ ] `behavior.encounter_rules` are preserved (only `triggers_on` is replaced)
+- [ ] `dialogue_guidelines` fields other than `on_dialogue_exit` are preserved
+- [ ] All reaction IDs are unique across the entire adventure
+- [ ] All reactions with `once: true` have unique IDs (once-tracking is global)
+- [ ] Run the full test suite after each conversion step
+- [ ] Playtest to verify behavioral equivalence
+
+---
+
 ## Cross-File Validation (Final)
 
 Run this checklist after all three JSON files are generated. This catches
@@ -1378,6 +1724,7 @@ cross-file consistency issues.
   or entity ID (or is `"self"` on an entity-scoped reaction)
 - [ ] Every `trigger_dialogue` in a reaction references a valid NPC entity ID
   (or is `"self"` on an NPC entity)
+- [ ] Every reaction `on` field is a valid event type (see [`events.md`](events.md))
 - [ ] Every NPC with `dialogue_guidelines.will_reveal` entries has
   matching `set_flag` / `set_entity_state` values that exist
 - [ ] Every `adjust_attitude` key references a valid NPC entity that has

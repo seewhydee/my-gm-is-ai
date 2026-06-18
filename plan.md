@@ -15,7 +15,7 @@
 ### 1. Problem Statement
 
 The current trigger system is fragmented across multiple model types, each with
-a different (and incomplete) set of permissible effects:
+a different (and incomplete) set of permissible effects.
 
 | Trigger location | set_flag | alter_stat | trigger_encounter | trigger_dialogue | chain_check | combat |
 |---|---|---|---|---|---|---|
@@ -39,107 +39,17 @@ and each fix adds an ad-hoc field with its own engine code path.
 Define a **canonical set of game events** that the engine emits after every
 meaningful state transition or action.  Any object (room, entity, mechanic)
 can register **reactions** — `(on_event, condition, effects)` tuples — that
-fire when matching events occur.
+fire when matching events occur.  This replaces six separate trigger mechanisms with one.
 
-This replaces six separate trigger mechanisms with one.  Every combination of
-`<event> × <effect>` works automatically.  State-based triggers become trivial.
+Every combination of `<event> × <effect>` works automatically.
+State-based triggers become trivial.
 
-### 3. Event Model
-
-#### 3.1 Canonical event types
-
-Each event has a **type** (string identifier) and a **context** (flat
-`dict[str, str | int | bool]` of details about the specific occurrence).
-
-**Action-level events (emitted during resolution):**
-
-| Event | Context keys | Emitted when |
-|---|---|---|
-| `room.entered` | `room_id` | Player arrives in a room (including game start) |
-| `room.exited` | `room_id` | Player leaves a room |
-| `traversal.attempted` | `exit_id`, `from_room`, `to_room` | Player attempts to traverse an exit (before the traversal check) |
-| `traversal.succeeded` | `exit_id`, `from_room`, `to_room` | Exit traversal succeeds |
-| `traversal.failed` | `exit_id`, `from_room`, `fail_reason` | TraversalCheck fails |
-| `check.passed` | `check_type` (`stat_check`\|`roll`), `stat?`, `dc?`, `threshold?`, `source_id`, `source_type` (`interaction`\|`examine`\|`traversal`\|`dialogue_path`\|`reaction`) | Any check succeeds |
-| `check.failed` | same as `check.passed` | Any check fails |
-| `interaction.used` | `interaction_id`, `target_id`, `using_item?` | An interaction is attempted (before check) |
-| `dialogue.started` | `npc_id` | enter_dialogue() called |
-| `dialogue.ended` | `npc_id`, `reason` (`player_left`\|`ends_dialogue`\|`switched_npc`\|`stall`\|`room_change`\|`combat`) | exit_dialogue() called |
-| `combat.started` | `combatant_ids` (list) | Combat phase begins |
-| `combat.ended` | `reason` (`victory`\|`defeat`\|`fled`) | Combat phase ends |
-| `item.acquired` | `item_id`, `source` (`transfer`\|`interaction`\|`examine`\|`equip`) | Item enters inventory |
-| `item.lost` | `item_id`, `reason` (`transfer`\|`interaction`\|`destroyed`\|`unequip`) | Item leaves inventory |
-
-**State-change events (emitted after applying HardStateChanges):**
-
-| Event | Context keys | Emitted when |
-|---|---|---|
-| `flag.set` | `flag_name` | A flag transitions to `true` |
-| `flag.cleared` | `flag_name` | A flag transitions to `false` |
-| `entity_state.changed` | `entity_id`, `field`, `new_value` | Any entity state field changes |
-| `attitude.changed` | `npc_id`, `old_value`, `new_value`, `delta` | NPC attitude changes |
-| `stat.changed` | `stat_name`, `old_value`, `new_value`, `delta` | Player stat changes |
-| `equipment.changed` | `added?`, `removed?` | Equipped gear changes |
-| `player.damaged` | `amount`, `new_hp` | Player HP decreases |
-| `player.healed` | `amount`, `new_hp` | Player HP increases |
-
-**Lifecycle events:**
-
-| Event | Context | Emitted when |
-|---|---|---|
-| `adventure.start` | `{}` | First turn of the adventure (fires once) |
-| `turn.start` | `turn_number` | Beginning of each engine.resolve() call (after action validation) |
-| `turn.end` | `turn_number` | End of engine.resolve(), before building EngineResult |
+**Update**: the details of the event model are now documented in schema/events.md, not this planning document.
 
 **Notes on not-yet-fully-implemented events:** `adventure.start` is defined in
 the event model but is not currently emitted. `combat.started` is emitted when
 a reaction-triggered encounter resolves to combat, but not yet from the main
 encounter path or direct combat entry. `combat.ended` is not yet emitted.
-
-#### 3.2 Context availability in conditions
-
-During reaction dispatch, event context is available via a new condition domain:
-
-```
-event:<key> <op> <value>
-```
-
-Examples:
-- `event:interaction_id == attack`
-- `event:flag_name == spider_fled`
-- `event:field == alive`
-- `event:new_value == false`
-- `event:check_type == stat_check`
-- `event:stat == STR`
-
-The `event:` domain is only valid during reaction dispatch.  Outside dispatch
-(e.g., in interaction conditions or game-over mechanics), it evaluates to `false`.
-
-Reactions are added to three existing models as optional lists:
-
-```
-Room.reactions:     list[Reaction]   # scoped to when player is in this room
-Entity.reactions:   list[Reaction]   # scoped to when entity is present in current room
-Mechanic.reactions: list[Reaction]   # globally scoped (mechanics are adventure-wide)
-```
-
-`Mechanic` also gains a backward-compatible `reactions` field alongside the
-existing `type`/`condition`/`trigger_id` and `rules` fields.  A mechanic may be:
-- A game-over condition (`type` + `condition` + `trigger_id`)
-- An encounter (`rules`)
-- Reaction-only (`reactions` — no `type` or `rules` required)
-
-At least one of these must be present.  When `reactions` is non-empty, the
-engine dispatches them like any other reaction.  The mechanic's `condition`
-field is only used for game-over and encounter mechanics; reaction-only
-mechanics use per-reaction `condition` fields instead.
-
-Entity-scoped reactions are active when the entity is alive and has not fled.
-The engine checks `entity_state.get("alive") is not False and
-entity_state.get("fled") is not True`.  The `fled` field is standardized as a
-reserved state field alongside `alive` — adventures that don't declare it in
-`state_fields` simply never have it set, so the check passes naturally.
-Document this in `schema/corpus.md`.
 
 ### 4. Migration Plan (6 Phases)
 
@@ -165,7 +75,7 @@ Document this in `schema/corpus.md`.
 - All existing call sites pass no `event_ctx` — backward compatible
 
 #### Phase 3: Implement event bus (complete)
-**Files:** `engine/event_bus.py` (new), `engine/resolver.py`, `engine/engine.py`
+
 - ✅ `find_matching_reactions()` and `dispatch_reactions()` implemented
 - ✅ `events` and `immediate_changes` fields on `ResolutionResult`
 - ✅ `"self"` resolution in `dispatch_reactions()`
@@ -216,13 +126,9 @@ one trigger type at a time, removing each legacy code path as it becomes unused.
   avoid unintended chains.
 
 #### Phase 5: Convert adventures, remove legacy code paths
-**Files:** adventures (JSON), `engine/engine.py`, `engine/resolver.py`,
-`engine/dialogue.py`
 
 Convert adventures to use reactions and remove legacy code paths as
-they become unused.
-
-Conversion order (one trigger type at a time, playtesting each):
+they become unused.  One trigger type at a time, playtesting each:
 
 1. **`OnEnterEvent` → `Room.reactions`**
    - Convert each room's `on_enter` list to equivalent `on="room.entered"`
