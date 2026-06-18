@@ -45,7 +45,8 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
     "interactions": [ { /* interaction */ } ],
     "on_enter": [ { /* on_enter event */ } ],
     "on_examine": [ { /* on_examine event */ } ],
-    "is_start_room": false
+    "is_start_room": false,
+    "reactions": [ { /* reaction */ } ]
   }
 }
 ```
@@ -61,6 +62,7 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 | `on_enter`           | array     | no       | Events that fire when the player first enters the room. May be one-shot or conditional. |
 | `on_examine`         | array     | no       | Events that fire when the player examines this room. Each is an `OnExamineEvent` (see below). |
 | `is_start_room`      | boolean   | no       | Exactly one room should have this set to `true`. Player starts here. |
+| `reactions`          | array     | no       | Reactions that fire when the player is in this room (see Reactions below). |
 
 ### Exit object
 
@@ -193,8 +195,14 @@ Condition strings use the format `<domain>:<key> <op> <value>`:
 | `topic`      | `topic:abandonment`              | Checks if a topic ID has been discussed in the current dialogue (present in `soft_state.dialogue_state.topics_discussed`). |
 | `stat`       | `stat:STR >= 12`                 | Checks the player's stat value against a threshold. Stat must be declared in `corpus.stats.definitions`; the player's value comes from `hard_state.player.stats`. |
 | `equipped`   | `equipped:toenail_sword`         | Checks if an item entity ID is in the player's `equipped` list. Also accepts tag names — `equipped:weapon` is true if any equipped item has the tag `"weapon"`. |
+| `event`      | `event:exit_id == exit_climb`    | Checks a value in the current event context. Only valid during reaction dispatch (see Reactions below). Outside dispatch, evaluates to `false`. |
 
 Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`, `<= <number>`, `< <number>`.
+
+The `event:` domain is only valid during reaction dispatch. Outside dispatch
+(e.g., in interaction conditions or game-over mechanics), it evaluates to `false`.
+Common context keys: `exit_id`, `interaction_id`, `npc_id`, `flag_name`,
+`source_id`, `check_type`, `stat`, `amount`, `new_hp`.
 
 ---
 
@@ -433,6 +441,260 @@ on-examine event narratives are appended after it. Results may carry
 Multiple on-examine events on the same target all fire (in array order) if
 their conditions are met.
 
+### Reaction object
+
+Reactions are the preferred mechanism for state-based and event-driven triggers.
+A reaction fires when a matching game event occurs and its condition is met.
+
+```json
+{
+  "id": "string (unique within the defining context)",
+  "on": "event type string",
+  "condition": { /* condition object or null */ },
+  "effects": { /* reaction effects */ },
+  "once": false,
+  "priority": 0,
+  "phase": "deferred"
+}
+```
+
+| Field     | Type            | Required | Description |
+|-----------|-----------------|----------|-------------|
+| `id`      | string          | yes      | Unique identifier within the defining context (room, entity, or mechanic). Used for debugging and `once` tracking. Because `once` tracking is global, reaction IDs should be unique across the whole adventure when any reaction uses `once: true`. |
+| `on`      | string          | yes      | Event type to match (see Event types below). |
+| `condition` | object\|null  | no       | Condition evaluated against game state + event context. If null, fires unconditionally when the event occurs. |
+| `effects` | object          | yes      | The effects to apply (see Reaction effects below). |
+| `once`    | boolean         | no       | If `true`, fires at most once per adventure load. Default `false`. For persistent one-shot behavior, prefer flag-gated conditions instead. |
+| `priority` | integer        | no       | Lower values fire earlier. Default `0`. |
+| `phase`   | string          | no       | `"deferred"` (default) or `"immediate"`. Immediate reactions fire before the current action continues; only allowed for `interaction.used`, `traversal.attempted`, and `room.entered`. |
+
+#### Scoping rules
+
+| Reaction defined on... | Active when... |
+|------------------------|----------------|
+| `Room` | Player is currently in that room |
+| `Entity` | Entity is in `entities_present` of the current room AND `alive` is not `false` and `fled` is not `true` |
+| `Mechanic` | Always (mechanics are adventure-wide) |
+
+#### Event types
+
+**Action-level events:**
+
+| Event | Context keys | Emitted when |
+|-------|-------------|-------------|
+| `room.entered` | `room_id` | Player arrives in a room |
+| `room.exited` | `room_id` | Player leaves a room |
+| `traversal.attempted` | `exit_id`, `from_room`, `to_room` | Player attempts to traverse an exit |
+| `traversal.succeeded` | `exit_id`, `from_room`, `to_room` | Exit traversal succeeds |
+| `traversal.failed` | `exit_id`, `from_room`, `fail_reason` | Traversal check fails |
+| `check.passed` | `check_type`, `stat?`, `dc?`, `threshold?`, `source_id`, `source_type` | Any check succeeds |
+| `check.failed` | same as `check.passed` | Any check fails |
+| `interaction.used` | `interaction_id`, `target_id`, `using_item?` | An interaction is attempted |
+| `dialogue.started` | `npc_id` | Dialogue mode enters |
+| `dialogue.ended` | `npc_id`, `reason` | Dialogue mode exits |
+| `combat.started` | `combatant_ids` | Combat begins |
+| `combat.ended` | `reason` (`victory`\|`defeat`\|`fled`) | Combat ends |
+| `item.acquired` | `item_id`, `source` | Item enters inventory |
+| `item.lost` | `item_id`, `reason` | Item leaves inventory |
+
+**State-change events (derived from the turn's state diff):**
+
+| Event | Context keys | Emitted when |
+|-------|-------------|-------------|
+| `flag.set` | `flag_name` | A flag transitions to `true` |
+| `flag.cleared` | `flag_name` | A flag transitions to `false` |
+| `entity_state.changed` | `entity_id`, `field`, `new_value` | Any entity state field changes |
+| `attitude.changed` | `npc_id`, `old_value`, `new_value`, `delta` | NPC attitude changes |
+| `stat.changed` | `stat_name`, `old_value`, `new_value`, `delta` | Player stat changes |
+| `equipment.changed` | `added?`, `removed?` | Equipped gear changes |
+| `player.damaged` | `amount`, `new_hp` | Player HP decreases |
+| `player.healed` | `amount`, `new_hp` | Player HP increases |
+
+**Lifecycle events:**
+
+| Event | Context | Emitted when |
+|-------|---------|-------------|
+| `turn.start` | `turn_number` | Beginning of each turn |
+| `turn.end` | `turn_number` | End of each turn |
+
+#### Event context in conditions
+
+During reaction dispatch, event context values are available via the `event:`
+condition domain. This allows reactions to match on specific event details:
+
+```json
+{ "require": "event:exit_id == exit_climb_down" }
+{ "require": "event:interaction_id == attack" }
+{ "require": "event:npc_id == spider" }
+{ "require": "event:flag_name == spider_fled" }
+```
+
+The `event:` domain is only valid during reaction dispatch. Outside dispatch
+(e.g., in interaction conditions or game-over mechanics), it evaluates to `false`.
+
+#### `check.passed` / `check.failed` context keys
+
+| Key | Description |
+|-----|-------------|
+| `check_type` | `"stat_check"` or `"roll"` |
+| `stat` | The stat key (for stat checks) |
+| `dc` | The difficulty class (for stat checks) |
+| `threshold` | The probability threshold (for rolls) |
+| `source_id` | The interaction, exit, or dialogue path ID that originated the check |
+| `source_type` | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, or `"reaction"` |
+
+#### Reaction effects
+
+```json
+{
+  "result": { /* Result object (same as interaction results) */ },
+  "trigger_encounter": "<mechanic_id or entity_id>",
+  "trigger_dialogue": "<npc_entity_id>",
+  "game_over": { "type": "win|lose", "trigger_id": "string" }
+}
+```
+
+| Field               | Type   | Description |
+|---------------------|--------|-------------|
+| `result`            | object | A `Result` object with `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`, etc. Same fields as interaction results. |
+| `trigger_encounter` | string | Mechanic ID or entity ID to trigger an encounter. If `"self"`, resolves to the owning entity's ID (for entity-scoped reactions). |
+| `trigger_dialogue`  | string | NPC entity ID to initiate dialogue with. If `"self"`, resolves to the owning entity's ID. |
+| `game_over`         | object | `{ "type": "win"|"lose", "trigger_id": "..." }` — ends the game. |
+
+At least one of `result` or the reaction-specific fields (`trigger_encounter`,
+`trigger_dialogue`, `game_over`) must be set.
+
+#### Self-reference for entity-scoped reactions
+
+When a reaction is defined on an entity, the special string `"self"` in effect
+fields resolves to the entity's own ID. This makes reactions portable — copying
+a reaction to a different entity doesn't require editing effect references.
+
+| Effect field | `"self"` resolves to |
+|---|---|
+| `trigger_encounter` | The entity's ID |
+| `trigger_dialogue` | The entity's ID (must be type `npc`) |
+| `result.set_entity_state` key | The entity's ID |
+| `result.adjust_attitude` key | The entity's ID |
+
+#### Ordering and loop prevention
+
+1. Reactions are sorted by `priority` (lower first), then by scope (entity before room before mechanic), then by definition order.
+2. State-change events are derived once at the end of the turn from the complete state diff, after all action and reaction effects have been applied. They are dispatched in a single final pass; reactions triggered by that pass may mutate state, but no further state-change events are derived from those mutations.
+3. Maximum reaction dispatch recursion depth is 5. Exceeding this stops dispatch with a warning.
+4. Only one encounter can fire per turn (from the resolver or from reactions). Subsequent `trigger_encounter` effects are silently ignored.
+
+#### Encounter-once-per-turn guard
+
+Only one encounter can resolve per turn. If a reaction triggers an encounter and
+that encounter has already been triggered (from the resolver or from another
+reaction), the second `trigger_encounter` is silently ignored with a warning log.
+
+#### Nested encounters
+
+A reaction that fires during an encounter can trigger another encounter via
+`trigger_encounter`. The depth-5 recursion limit prevents infinite loops, but
+design reaction conditions carefully to avoid unintended chains.
+
+#### Examples
+
+**State-based trigger (flag change):**
+```json
+{
+  "id": "spider_fled_reaction",
+  "on": "flag.set",
+  "condition": { "require": "event:flag_name == spider_fled" },
+  "effects": {
+    "result": {
+      "narrative": "With the spider gone, the room feels safer.",
+      "set_flag": { "room_cleared": true }
+    }
+  }
+}
+```
+
+**Room-entry encounter:**
+```json
+{
+  "id": "spider_ambush",
+  "on": "room.entered",
+  "condition": { "require": "entity:spider.alive == true" },
+  "effects": { "trigger_encounter": "spider_attack" }
+}
+```
+
+**Chained encounter (reaction → encounter → reaction → encounter):**
+```json
+{
+  "id": "guardian_awakens",
+  "on": "room.entered",
+  "condition": { "require": "event:room_id == cave_depths" },
+  "effects": { "trigger_encounter": "guardian_attack" }
+}
+```
+
+The `guardian_attack` encounter has a rule whose success branch sets `guardian_defeated: true`. A second reaction then fires on that flag:
+
+```json
+{
+  "id": "wraith_appears",
+  "on": "flag.set",
+  "condition": { "require": "event:flag_name == guardian_defeated" },
+  "effects": { "trigger_encounter": "wraith_ambush" }
+}
+```
+
+**Failed-check trigger:**
+```json
+{
+  "id": "web_fail_damage",
+  "on": "check.failed",
+  "condition": {
+    "all": [
+      { "require": "event:source_id == force_through_web" },
+      { "require": "event:check_type == stat_check" }
+    ]
+  },
+  "effects": {
+    "result": {
+      "narrative": "The webs constrict around you.",
+      "alter_stat": { "STR": { "value": -2 } }
+    }
+  }
+}
+```
+
+**Entity-scoped behavior trigger (replaces `behavior.triggers_on`):**
+```json
+{
+  "id": "spider_attack_on_sight",
+  "on": "interaction.used",
+  "condition": { "require": "event:interaction_id == attack" },
+  "effects": { "trigger_encounter": "self" }
+}
+```
+
+**Reaction-only mechanic (adventure-wide trigger):**
+```json
+"global_reactions": {
+  "id": "global_reactions",
+  "description": "Adventure-wide state-based reactions.",
+  "reactions": [
+    {
+      "id": "injury_warning",
+      "on": "player.damaged",
+      "condition": { "require": "event:new_hp <= 3" },
+      "effects": {
+        "result": {
+          "narrative": "You are gravely wounded. One more hit could be your last.",
+          "set_flag": { "near_death": true }
+        }
+      }
+    }
+  ]
+}
+```
+
 ---
 
 ## `entities` — Entity definitions
@@ -451,6 +713,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
     "dragging_note": "string",
     "interactions": [ { /* interaction */ } ],
     "on_examine": [ { /* on_examine event */ } ],
+    "reactions": [ { /* reaction */ } ],
     "dialogue_guidelines": { /* only for npc type */ },
     "behavior": { /* only for npc (monster) type */ },
     "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } },
@@ -471,6 +734,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `take_check`           | object | item          | **Optional.** A check (with `success` / `failure` results) that must be passed when the player attempts to pick up this item via a `transfer` action. |
 | `interactions`         | array  | all           | Interactions available on this entity specifically. Follows the same Interaction object schema. |
 | `on_examine`           | array  | all           | Events that fire when the player examines this entity. Each is an `OnExamineEvent` (see above). |
+| `reactions`            | array  | all           | Reactions scoped to when this entity is present and alive/not-fled (see Reactions below). |
 | `dialogue_guidelines`  | object | npc           | See below. |
 | `behavior`             | object | npc (monster) | Encounter rules for combat-capable NPCs. See below. |
 | `state_fields`         | object | all           | Declaration of mutable state fields for this entity. The engine initialises these from `hard_state.json` and tracks changes. |
@@ -541,6 +805,20 @@ This convention is engine-level, not corpus-level — no new top-level fields or
 schema changes are needed; any NPC that declares `following` in its
 `state_fields` and has it set to `true` in `entity_states` will be treated as a
 follower.
+
+#### Reserved state fields
+
+The engine recognises two reserved boolean state fields for reaction scoping:
+
+- `alive` — entity reactions are active only when `alive` is not `false`. This
+  is conventionally declared for any creature or destructible feature.
+- `fled` — entity reactions are active only when `fled` is not `true`. Declare
+  this for creatures that can flee or be driven off. Adventures that do not use
+  fleeing simply omit the field; it defaults to unset, so the check passes.
+
+Both fields are optional at the schema level, but if an entity has reactions
+and can die or flee, declare the corresponding field so the engine scopes the
+reactions correctly.
 
 ### `dialogue_guidelines` (for NPC type)
 
@@ -726,6 +1004,13 @@ Named mechanics are rules involving aspects of game state not tied to specific
 rooms or entities. They are referenced by exits, interactions, and on_enter events.
 Game-over conditions live here too.
 
+A mechanic can be one of three things:
+- An **encounter** (has `rules`)
+- A **game-over condition** (has `type`, `condition`, `trigger_id`)
+- A **reaction-only mechanic** (has `reactions` only — for adventure-wide state-based triggers)
+
+At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be present.
+
 ### Encounter
 
 ```json
@@ -745,7 +1030,8 @@ Game-over conditions live here too.
         "set_flags": {},
         "alter_stat": {}
       }
-    ]
+    ],
+    "reactions": [ { /* reaction (optional) */ } ]
   }
 }
 ```
@@ -775,6 +1061,25 @@ Rules are evaluated top-to-bottom. The first rule whose `condition` matches is a
 | `condition`   | object | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. Follows the condition object format. |
 | `narrative`   | string | Canonical ending prose passed to LLM Call 2 via `triggered_narration`. |
 | `trigger_id`  | string | Set as `game_over.trigger` in hard state; for debugging and save analysis. |
+
+### Reaction-only mechanic
+
+A mechanic with only `reactions` (no `type`, `rules`, or `trigger_id`) is valid.
+Use this for adventure-wide state-based reactions that don't need encounter rules
+and aren't tied to a specific room or entity.
+
+```json
+{
+  "<mechanic_id>": {
+    "id": "string",
+    "description": "string",
+    "reactions": [ { /* reaction */ } ]
+  }
+}
+```
+
+The mechanic's `condition` field is only used for game-over and encounter
+mechanics. Reaction-only mechanics use per-reaction `condition` fields instead.
 
 ---
 

@@ -703,6 +703,49 @@ class TestDialoguePathSourceType:
         assert hard.flags.get("dialogue_path_check_seen") is True
 
 
+class TestReactionChainCheckEvents:
+    """Chain checks inside reaction results emit check.passed/check.failed events."""
+
+    def test_chain_check_in_reaction_emits_event(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        from mgmai.models.corpus import ChainedCheck, RollCheck
+
+        # A reaction whose result contains a chain_check.
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="reaction_with_chain",
+            on="turn.start",
+            effects=ReactionEffects(result=Result(
+                narrative="The mechanism whirs.",
+                chain_check=ChainedCheck(
+                    check=RollCheck(threshold=1.0, repeatable=True),
+                    success=Result(narrative="You dodge the needle."),
+                ),
+            )),
+        ))
+
+        # A second reaction that only fires if the chain check emits an event
+        # with source_type "reaction".
+        room.reactions.append(Reaction(
+            id="track_reaction_check",
+            on="check.passed",
+            condition=ConditionExpression(require="event:source_type == reaction"),
+            effects=ReactionEffects(result=Result(set_flag={"reaction_check_seen": True})),
+        ))
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("reaction_check_seen") is True
+
+
 class TestReactionCombatLogPropagation:
     """Combat entries from reaction-triggered encounters propagate combat_log."""
 

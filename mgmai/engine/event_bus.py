@@ -202,15 +202,23 @@ def dispatch_reactions(
         resolved = _resolve_self(reaction.effects, owner_id)
 
         # --- apply result (state mutations) ---
+        chain_events: list[tuple[str, dict[str, Any]]] = []
         if resolved.result is not None and resolved.result.has_any_effect():
             hc = HardStateChanges()
             narrative: list[str] = []
             revealed: list[str] = []
-            from mgmai.engine.resolver import _apply_result
+            from mgmai.engine.resolver import _apply_result, ResolutionResult
+            resolution_for_chain = None
+            if resolved.result.chain_check is not None:
+                resolution_for_chain = ResolutionResult(success=True)
             _apply_result(
                 resolved.result, hc, narrative, revealed, hard, corpus, soft,
+                state_manager=None,  # event bus dispatches its own reactions
+                resolution=resolution_for_chain,
                 source_id=reaction.id,
             )
+            if resolution_for_chain is not None:
+                chain_events.extend(resolution_for_chain.events)
             if triggered_narration is not None:
                 triggered_narration.extend(narrative)
             if revealed_hints is not None:
@@ -262,6 +270,10 @@ def dispatch_reactions(
         if resolved.game_over is not None:
             go = resolved.game_over
             hard.game_over = GameOverState(type=go.type, trigger=go.trigger_id)
+
+        # Chain-check events are action-level events that the event bus should
+        # dispatch recursively alongside other reaction-generated events.
+        new_events.extend(chain_events)
 
     # --- recurse ---
     if new_events and depth + 1 < MAX_RECURSION_DEPTH:
