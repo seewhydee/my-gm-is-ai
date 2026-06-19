@@ -682,7 +682,7 @@ class TestResolverIntegration:
     def test_interact_attack_starts_combat(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         """InteractAction with interaction_id='attack' on NPC with CombatBlock starts combat."""
         hard = combat_hard_state.model_copy(deep=True)
-        # goblin has combat block but no behavior with triggers_on=["attack"]
+        # goblin has combat block and no attack-triggered encounter reaction
         # → should enter combat directly
         rand_vals = iter([15, 2])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))

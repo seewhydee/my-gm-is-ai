@@ -25,7 +25,6 @@ from mgmai.models.actions import (
     EngineResult,
     GameOverResult,
     HardStateChanges,
-    OnEnterEventResult,
     PlayerAction,
     RevelationApplied,
     WillRevealReadinessEntry,
@@ -306,17 +305,6 @@ class TestEngineResult:
         assert r.encounter_outcome is not None
         assert r.encounter_outcome.encounter_id == "spider_encounter"
         assert r.encounter_outcome.outcome == "flee"
-
-    def test_with_on_enter_events(self) -> None:
-        r = EngineResult.model_validate({
-            "success": True,
-            "action_type": "move",
-            "on_enter_events": [
-                {"event_id": "welcome_event", "narrative": "Welcome to the bag floor."},
-            ],
-        })
-        assert len(r.on_enter_events) == 1
-        assert r.on_enter_events[0].event_id == "welcome_event"
 
     def test_with_dialogue_exited(self) -> None:
         r = EngineResult.model_validate({

@@ -125,7 +125,7 @@ class TestEngineFullFlow:
         assert result.success is True
         assert hard.flags.get("handkerchief_moved") is True
 
-    def test_on_enter_events_fire(self, state_manager):
+    def test_room_entered_reaction_narration(self, state_manager):
         action = MoveAction(
             action_type="move",
             target="exit_climb_down_handle",

@@ -172,16 +172,19 @@ they become unused.  One trigger type at a time, playtesting each:
 After each conversion step, run the full test suite and playtest.  Delete the
 legacy code path only when no adventure uses it anymore.
 
-#### Phase 6: Remove old model fields
-**Files:** `models/corpus.py`, adventures (JSON)
+#### Phase 6: Remove old model fields ✅
+**Files:** `models/corpus.py`, `models/actions.py`, adventures (JSON), tests,
+documentation
 
 Once all adventures are converted and all legacy code paths removed:
-- Delete `OnEnterEvent`, `TraversalEffect`, `OnExamineEvent` (if migrated),
-  `DialogueExit` models from `corpus.py`
-- Remove `on_enter`, `on_traverse`, `on_examine`, `on_dialogue_exit` fields
-  from `Room`, `Exit`, `Entity` etc.
+- Delete `OnEnterEvent`, `TraversalEffect`, `DialogueExit` models from
+  `corpus.py` (`OnExamineEvent` remains, as `on_examine` is not migrated)
+- Remove `on_enter`, `on_traverse`, `on_dialogue_exit` fields from `Room`,
+  `Exit`, `DialogueGuidelines`
 - Remove `Behavior.triggers_on` field (keep `Behavior.encounter_rules` —
   encounters are still used, just triggered via reactions now)
+- Remove vestigial `OnEnterEventResult` and `EngineResult.on_enter_events`
+- Update adventure JSON, test fixtures, tests, and schema/docs to match
 
 ---
 
@@ -220,9 +223,3 @@ Once all adventures are converted and all legacy code paths removed:
    `_resolve_interaction_result` without threading `resolution`, so any
    `chain_check` on a result-only path runs silently (no events) and no
    `check.*` event is emitted for the path.
-
-7. **Vestigial `EngineResult.on_enter_events` / `OnEnterEventResult`**: The
-   engine no longer populates `EngineResult.on_enter_events` (the
-   `ResolutionResult.on_enter_events` field was removed). These remnants and
-   their deserialization test (`test_with_on_enter_events`) are Phase 6
-   cleanup candidates.

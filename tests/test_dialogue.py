@@ -130,7 +130,7 @@ class TestExitDialogue:
         result = exit_dialogue(soft, state_manager.corpus, state_manager.hard_state)
         assert result is None
 
-    def test_applies_on_dialogue_exit_effects(self, state_manager):
+    def test_exit_dialogue_returns_npc_id(self, state_manager):
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard = state_manager.hard_state

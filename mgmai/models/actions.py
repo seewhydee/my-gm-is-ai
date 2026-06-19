@@ -258,11 +258,6 @@ class EncounterOutcome(BaseModel):
     narrative_brief: Optional[str] = None
 
 
-class OnEnterEventResult(BaseModel):
-    event_id: Optional[str] = None
-    narrative: Optional[str] = None
-
-
 class GameOverResult(BaseModel):
     type: str
     trigger: str
@@ -319,7 +314,6 @@ class EngineResult(BaseModel):
     rolls: List[Dict[str, Any]] = Field(default_factory=list)
     encounter_outcome: Optional[EncounterOutcome] = None
     triggered_narration: List[str] = Field(default_factory=list)
-    on_enter_events: List[OnEnterEventResult] = Field(default_factory=list)
     game_over: Optional[GameOverResult] = None
     dialogue_exited: Optional[DialogueExitedResult] = None
     will_reveal_readiness: Optional[Dict[str, Dict[str, WillRevealReadinessEntry]]] = None

@@ -105,8 +105,10 @@ engine computes defaults at combat-start time:
 Combat starts in one of two ways:
 
 1. **Direct attack** — The player uses `interact` + `interaction_id: "attack"`
-   on an NPC that has a `CombatBlock` but does **not** have a `behavior` block
-   with `triggers_on` that includes `"attack"`.
+   on an NPC that has a `CombatBlock`. If the NPC has an `interaction.used`
+   reaction that triggers an encounter, the encounter rules run first; an
+   encounter outcome of `"combat"` (or a direct attack on an NPC without such
+   a reaction) starts combat.
 2. **Encounter outcome `"combat"`** — An NPC's `behavior.encounter_rules` or a
    `mechanics` encounter returns outcome `"combat"`.
 
@@ -180,7 +182,7 @@ When the player uses `move` during combat:
 2. Roll a DEX check: `d20 + DEX_modifier` vs the **highest** `flee_dc`
    among active enemies.
 3. **Success**: combat ends, the player moves to the target room.
-   `on_traverse` effects are **not** evaluated.
+   `traversal.succeeded` reactions are **not** evaluated.
 4. **Failure**: the player stays, turn is consumed, and remaining enemy
    turns are resolved normally.
 
@@ -228,7 +230,6 @@ authoritative dice results.
       "current_hp": { "type": "number", "description": "Current hit points." }
     },
     "behavior": {
-      "triggers_on": ["attack"],
       "encounter_rules": [
         {
           "condition": { "require": "spider_fled" },
@@ -237,6 +238,14 @@ authoritative dice results.
         }
       ]
     },
+    "reactions": [
+      {
+        "id": "spider_attack_on_sight",
+        "on": "interaction.used",
+        "condition": { "require": "event:interaction_id == attack" },
+        "effects": { "trigger_encounter": "self" }
+      }
+    ],
     "combat": {
       "hp": 18,
       "ac": 13,

@@ -95,9 +95,8 @@ exits, interactions, encounters, and game-over mechanics.
 
 1. **Initialised** from `hard-state.json` at game start.
 2. **Set/cleared** by the engine during:
-   - Exit traversal (`on_traverse.set_flag`)
    - Interaction resolution (`result.set_flag`, `success.set_flag`)
-   - On-enter events (`set_flag`)
+   - Reaction `result.set_flag` effects
    - Encounter outcomes (`set_flags`)
 3. **Read** by the engine to evaluate:
    - Exit conditions

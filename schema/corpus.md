@@ -43,7 +43,6 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
     "soft_items": ["string", ...],
     "exits": [ { /* exit */ } ],
     "interactions": [ { /* interaction */ } ],
-    "on_enter": [ { /* on_enter event */ } ],
     "on_examine": [ { /* on_examine event */ } ],
     "is_start_room": false,
     "reactions": [ { /* reaction */ } ]
@@ -59,7 +58,6 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 | `soft_items`         | string[]  | no       | Plausible generic items that can be found in this room (e.g., `["rock", "loose stone", "dust"]`). These are identified by their general name only — they carry no unique item ID. The engine tracks them in `soft_inventory` when picked up. |
 | `exits`              | array     | no       | Available exits from this room. |
 | `interactions`       | array     | no       | Defined interactions the player can perform in this room. |
-| `on_enter`           | array     | no       | Events that fire when the player first enters the room. May be one-shot or conditional. |
 | `on_examine`         | array     | no       | Events that fire when the player examines this room. Each is an `OnExamineEvent` (see below). |
 | `is_start_room`      | boolean   | no       | Exactly one room should have this set to `true`. Player starts here. |
 | `reactions`          | array     | no       | Reactions that fire when the player is in this room (see Reactions below). |
@@ -72,7 +70,6 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
   "direction": "string (natural-language label, e.g. 'Climb carefully down the axe handle')",
   "target_room": "<room_id>",
   "conditions": [ { /* condition */ } ],
-  "on_traverse": { /* traversal effect */ },
   "traversal_check": { /* traversal check (optional) */ },
   "hidden": false,
   "one_way": false
@@ -85,24 +82,9 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 | `direction`       | string  | yes      | Human-readable direction label for LLM context. |
 | `target_room`     | string  | yes      | Room ID the player ends up in after traversing. |
 | `conditions`      | array   | no       | Conditions that must be satisfied for the exit to be available. |
-| `on_traverse`     | object  | no       | Effects applied when the player successfully traverses the exit: `set_flag`, `trigger_encounter`, etc. |
 | `traversal_check` | object  | no       | **Optional.** A check (roll or stat_check) that must be passed to succeed at traversing this exit. On failure, the player stays in the current room. See Traversal check below. |
 | `hidden`          | boolean | no       | If `true`, the exit is omitted from `exits_available` in GMBriefing until its reveal condition is met (e.g., `flag:handkerchief_moved == true`). The reveal condition is evaluated by the engine based on hard-state flags. |
 | `one_way`         | boolean | no       | If `true`, the exit cannot be traversed in reverse. |
-
-#### Exit `on_traverse` effects
-
-The `on_traverse` object supports these fields; all are optional:
-
-| Field               | Type             | Description |
-|---------------------|------------------|-------------|
-| `set_flag`          | object           | Sets hard-state flags: `{ "<flag_name>": true\|false, ... }`. |
-| `set_room_state`    | object           | **Optional.** Sets per-room state on traversal: `{ "<room_id>": { "<field>": <value>, ... } }`. Commonly used to record which room the player entered from, so downstream conditions can gate exits/ interactions with `room:<room_id>.<field>`. |
-| `alter_stat`        | object           | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). E.g., `{ "STR": { "value": -4 } }` for fall damage, `{ "INT": { "mode": "set", "value": 3 } }` for a curse. |
-| `narrative`         | string           | Pre-written prose for the traverse event. |
-| `trigger_encounter` | string           | Triggers a named encounter from `mechanics`. |
-| `skip_if`           | condition object | Condition under which the effect is skipped. |
-| `narrative_skip`    | string           | Short narrative for when the effect is skipped. |
 
 #### Traversal check (`traversal_check`)
 
@@ -136,7 +118,7 @@ room, able to retry next turn.
 
 ### Condition object
 
-Conditions can appear on exits, interactions, on_enter events, encounter rules,
+Conditions can appear on exits, interactions, reactions, encounter rules,
 and mechanics. They are predicate clauses evaluated against hard game state and
 the module corpus. A standalone condition is expressed as an **object**; the
 `any` and `all` forms may contain bare condition strings as array elements
@@ -368,35 +350,6 @@ Nested chaining is supported — a chained check's result may itself contain ano
 `chain_check`, up to a maximum depth of 3.
 
 ---
-
-### On-enter event object
-
-```json
-{
-  "id": "string (unique within the room)",
-  "condition": { "require": "flag:fly_alive == true" },
-  "narrative": "string",
-  "set_flag": { "<flag_name>": true | false },
-  "set_entity_state": { "<entity_id>": { "<field>": <value> } },
-  "set_room_state": { "<room_id>": { "<field>": <value> } },
-  "trigger_dialogue": "<npc_entity_id>"
-}
-```
-
-| Field              | Type            | Description |
-|--------------------|-----------------|-------------|
-| `id`                | string          | Unique event identifier within the room. |
-| `condition`         | object\|null    | Condition object. If null, fires exactly once on first entry (engine tracks internally). |
-| `narrative`         | string          | Canonical narration text. |
-| `set_flag`          | object          | Hard-state flags to set or clear. |
-| `set_entity_state`  | object          | Entity state changes to apply. Keys are entity IDs; values are `{ "field": value }` maps. The engine validates that the entity exists and the field is declared in the entity's `state_fields`. |
-| `set_room_state`    | object          | **Optional.** Room state changes to apply. Keys are room IDs; values are `{ "field": value }` maps. Useful for recording entry direction or other room-specific state. |
-| `trigger_dialogue`  | string          | If set, the engine automatically initiates dialogue mode with the named NPC entity. The NPC must be of type `npc` and present in the current room. The on_enter narrative (if any) fires first, then dialogue is activated. |
-
-The engine detects which effects to apply from the presence of the effect
-fields and applies all that are present. Fields can be combined — for example,
-an on_enter event can simultaneously set a flag, modify entity state, and
-initiate dialogue with an NPC.
 
 ### On-examine event object
 
@@ -852,11 +805,6 @@ reactions correctly.
       "set_entity_state": { "<entity_id>": { "<field>": <value> } }
     }
   },
-  "on_dialogue_exit": {
-    "set_entity_state": { "<entity_id>": { "<field>": <value> } },
-    "set_flag": { "<flag_name>": true | false },
-    "narrative": "string (canonical narration when dialogue ends)"
-  },
   "dialogue_paths": {
     "<path_id>": {
       "description": "What this dialogue path represents — surfaced to LLM Call 1 as a map of path_id → description.",
@@ -879,7 +827,6 @@ reactions correctly.
 | `knows`           | array  | Facts the NPC possesses, for LLM dialogue improvisation. |
 | `attitude_limits` | object | Integer attitude bounds (see below). |
 | `will_reveal`     | object | Gated dialogue topics. Each topic has a `description`, a `conditions` array (all must be true for the topic to be revealable), and optional `set_flag` / `set_entity_state` side effects. When LLM Call 2 tags a topic as revealed via `knowledge_tags`, the engine validates conditions and applies the side effects. |
-| `on_dialogue_exit`| object | Effects applied by the engine when dialogue mode exits for this NPC. Contains optional `set_entity_state`, `set_flag`, and `narrative` fields. This is the mechanism for NPCs that die, flee, transform, or otherwise change state when conversation ends — whether the player leaves, uses `ends_dialogue`, or a stall is detected. |
 | `dialogue_paths`  | object | **Optional.** Named special dialogue paths that trigger mechanical effects when the player uses them via a `talk` action with `dialogue_path` set. Each path has a required `description` and may have a `condition`, a probabilistic `check` (+`success`/`failure`), or a deterministic `result`. The path ID is the machine key used in the `talk` action; the `description` is surfaced to LLM Call 1 in `entities_visible` as `{path_id: description}` so it can match player intent to the right path. |
 
 #### `dialogue_paths` object
@@ -960,8 +907,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
 
 ```json
 {
-  "triggers_on": ["<exit_id>", "<interaction_id>", ...],
-    "encounter_rules": [
+  "encounter_rules": [
     {
       "condition": { /* condition object */ },
       "outcome": "death | flee | roll | stat_check",
@@ -981,10 +927,6 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
 }
 ```
 
-- `triggers_on` is an array of exit and/or interaction IDs. When the player
-  uses any trigger in the list, the behavior's encounter rules fire. An empty
-  array means the behavior only fires when the NPC is directly targeted (e.g.,
-  via an `attack` interaction).
 - Rules are evaluated top-to-bottom. The first rule whose `condition` matches
   is applied. Conditions are condition objects (see Condition object section)
   evaluated against hard state (flags, inventory, entity states) and soft state
@@ -1010,7 +952,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
 ## `mechanics` — Encounter and system rules
 
 Named mechanics are rules involving aspects of game state not tied to specific
-rooms or entities. They are referenced by exits, interactions, and on_enter events.
+rooms or entities. They are referenced by exits, interactions, and reactions.
 Game-over conditions live here too.
 
 A mechanic can be one of three things:

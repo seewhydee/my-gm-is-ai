@@ -202,16 +202,6 @@ class Interaction(BaseModel):
         return self
 
 
-class TraversalEffect(BaseModel):
-    set_flag: Optional[Dict[str, bool]] = None
-    set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
-    alter_stat: Optional[Dict[str, StatModifier]] = None
-    narrative: Optional[str] = None
-    trigger_encounter: Optional[str] = None
-    skip_if: Optional[ConditionExpression] = None
-    narrative_skip: Optional[str] = None
-
-
 class TraversalCheck(BaseModel):
     check: CheckType
     condition: Optional[ConditionExpression] = None
@@ -224,20 +214,9 @@ class Exit(BaseModel):
     direction: str
     target_room: str
     conditions: List[ConditionExpression] = Field(default_factory=list)
-    on_traverse: Optional[TraversalEffect] = None
     hidden: bool = False
     one_way: bool = False
     traversal_check: Optional[TraversalCheck] = None
-
-
-class OnEnterEvent(BaseModel):
-    id: str
-    condition: Optional[ConditionExpression] = None
-    narrative: Optional[str] = None
-    set_flag: Optional[Dict[str, bool]] = None
-    set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
-    set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
-    trigger_dialogue: Optional[str] = None
 
 
 class OnExamineEvent(BaseModel):
@@ -309,7 +288,6 @@ class Room(BaseModel):
     soft_items: List[str] = Field(default_factory=list)
     exits: List[Exit] = Field(default_factory=list)
     interactions: List[Interaction] = Field(default_factory=list)
-    on_enter: List[OnEnterEvent] = Field(default_factory=list)
     on_examine: List[OnExamineEvent] = Field(default_factory=list)
     is_start_room: bool = False
     reactions: List[Reaction] = Field(default_factory=list)
@@ -332,12 +310,6 @@ class WillRevealEntry(BaseModel):
     conditions: List[str] = Field(default_factory=list)
     set_flag: Optional[Dict[str, bool]] = None
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
-
-
-class DialogueExit(BaseModel):
-    set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
-    set_flag: Optional[Dict[str, bool]] = None
-    narrative: Optional[str] = None
 
 
 class DialoguePath(BaseModel):
@@ -368,7 +340,6 @@ class DialogueGuidelines(BaseModel):
     knows: List[str] = Field(default_factory=list)
     attitude_limits: AttitudeLimits
     will_reveal: Dict[str, WillRevealEntry] = Field(default_factory=dict)
-    on_dialogue_exit: Optional[DialogueExit] = None
     dialogue_paths: Dict[str, DialoguePath] = Field(default_factory=dict)
 
 
@@ -398,7 +369,6 @@ class FleeEffect(BaseModel):
 
 
 class Behavior(BaseModel):
-    triggers_on: List[str] = Field(default_factory=list)
     encounter_rules: List[EncounterRule] = Field(default_factory=list)
     on_flee: Optional[FleeEffect] = None
 

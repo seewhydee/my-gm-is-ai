@@ -30,7 +30,6 @@ You will receive a user message containing a JSON object with these fields:
 | `rolls` | Any dice rolls made (you can narrate these if dramatic) |
 | `encounter_outcome` | If an encounter happened, what resulted |
 | `triggered_narration` | **Canonical prose blocks** — weave these into your narration, do NOT ignore them |
-| `on_enter_events` | Events that fired upon entering a new room |
 | `game_over` | If set, the adventure has ended — narrate the ending |
 | `dialogue_exited` | If dialogue ended this turn |
 | `will_reveal_readiness` | NPC → topic_id → {conditions_met, description, conditions}. Only plot-relevant topics have a topic_id, and topics with `conditions_met: true` may be revealed during the narration. Each `conditions` entry has `condition` (the rule string), `met` (bool, current value), and `detail` (reason for current value, e.g. "flag spider_fled = False") — may use this to roleplay why gated topics can't be revealed, etc. |
