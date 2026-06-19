@@ -466,7 +466,7 @@ A reaction fires when a matching game event occurs and its condition is met.
 | `effects` | object          | yes      | The effects to apply (see Reaction effects below). |
 | `once`    | boolean         | no       | If `true`, fires at most once per adventure load. Default `false`. For persistent one-shot behavior, prefer flag-gated conditions instead. |
 | `priority` | integer        | no       | Lower values fire earlier. Default `0`. |
-| `phase`   | string          | no       | `"deferred"` (default) or `"immediate"`. Immediate reactions fire before the current action continues; only allowed for `interaction.used`, `traversal.attempted`, and `room.entered`. |
+| `phase`   | string          | no       | `"deferred"` (default) or `"immediate"`. Immediate reactions fire before the current action continues; only allowed for `interaction.used`, `traversal.attempted`, `traversal.succeeded`, and `room.entered`. |
 
 #### Scoping rules
 

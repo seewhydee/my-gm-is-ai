@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, model_validator
 IMMEDIATE_ALLOWED_EVENTS = frozenset({
     "interaction.used",
     "traversal.attempted",
+    "traversal.succeeded",
     "room.entered",
 })
 

@@ -130,7 +130,7 @@ one trigger type at a time, removing each legacy code path as it becomes unused.
 Convert adventures to use reactions and remove legacy code paths as
 they become unused.  One trigger type at a time, playtesting each:
 
-1. **`OnEnterEvent` → `Room.reactions`**
+1. **`OnEnterEvent` → `Room.reactions`** ✅
    - Convert each room's `on_enter` list to equivalent `on="room.entered"`
      reactions
    - One-shot unconditional events use `once: true`; conditional events
@@ -139,7 +139,7 @@ they become unused.  One trigger type at a time, playtesting each:
    - Once no room uses `on_enter`, delete `_fire_on_enter_events()` from
      `engine.py` and its call site
 
-2. **`TraversalEffect` → exit-scoped reactions**
+2. **`TraversalEffect` → exit-scoped reactions** ✅
    - Convert each exit's `on_traverse` to `on="traversal.succeeded"` reactions
      with `condition={require: "event:exit_id == <exit_id>"}`
    - `set_flag`/`alter_stat`/`narrative` map to `effects.result`;
@@ -206,8 +206,8 @@ enabling infinite regress.
 
 ### Known Gaps / Remaining Work
 
-1. **Legacy code paths still active**: `_fire_on_enter_events()`,
-   inline traversal effects in `resolve_move()`, inline `behavior.triggers_on`
+1. **Legacy code paths still active**: ~~`_fire_on_enter_events()`~~ (removed),
+   ~~inline traversal effects in `resolve_move()`~~ (removed), inline `behavior.triggers_on`
    in `resolve_interact()`, and inline `on_dialogue_exit` in
    `_archive_and_exit()` are all still active.  These will be removed one at
    a time as adventures are converted.
@@ -215,8 +215,8 @@ enabling infinite regress.
 2. **`context/assembler.py` not updated**: With the Option B accumulator model,
    reaction effects are applied through the normal `apply_hard_changes()` path
    and the assembler reads the final state — no structural change is needed.
-   This may become relevant when on-enter events are fully migrated
-   to reactions.
+   ~~This may become relevant when on-enter events are fully migrated
+   to reactions.~~ (on-enter fully migrated, no assembler change needed.)
 
 3. **Encounter stat check event emission**: `check.passed`/`check.failed` events
    are not yet emitted from `_resolve_encounter_stat_check` in `encounters.py`.

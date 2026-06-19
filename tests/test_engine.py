@@ -133,7 +133,7 @@ class TestEngineFullFlow:
         )
         result = resolve(action, state_manager)
         assert result.success is True
-        assert len(result.on_enter_events) > 0
+        assert any("sticky webs" in n for n in result.triggered_narration)
 
     def test_hard_state_changes_returned(self, state_manager):
         action = MoveAction(

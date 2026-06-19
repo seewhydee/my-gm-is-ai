@@ -42,18 +42,31 @@
           "direction": "Drop down into the darkness below",
           "target_room": "bag_floor",
           "conditions": [],
-          "on_traverse": {
-            "set_flag": {
-              "injured": true
-            },
-            "narrative": "You drop from the axe head into the darkness below. You land hard on the bag floor, and pain shoots through your legs — you are injured."
-          },
+          "on_traverse": {},
           "hidden": false,
           "one_way": true
         }
       ],
       "interactions": [],
       "on_enter": [],
+      "reactions": [
+        {
+          "id": "drop_from_head_injury",
+          "on": "traversal.succeeded",
+          "condition": {
+            "require": "event:exit_id == exit_drop_from_head"
+          },
+          "effects": {
+            "result": {
+              "narrative": "You drop from the axe head into the darkness below. You land hard on the bag floor, and pain shoots through your legs — you are injured.",
+              "set_flag": {
+                "injured": true
+              }
+            }
+          },
+          "phase": "immediate"
+        }
+      ],
       "is_start_room": true
     },
     "axe_handle_upper": {
@@ -92,23 +105,40 @@
           "direction": "Drop down into the darkness below",
           "target_room": "bag_floor",
           "conditions": [],
-          "on_traverse": {
-            "set_flag": {
-              "injured": true
-            },
-            "narrative": "You let go and drop into the darkness. You land painfully on the bag floor, twisting your ankle — you are injured."
-          },
+          "on_traverse": {},
           "hidden": false,
           "one_way": true
         }
       ],
       "interactions": [],
-      "on_enter": [
+      "on_enter": [],
+      "reactions": [
         {
           "id": "event_stuck_fly_warning",
-          "condition": null,
-          "narrative": "As you descend the handle, you encounter extremely sticky webs. A fly is trapped in the webbing, struggling weakly. It looks at you with compound eyes and speaks in a nasally whine: 'S-spider... huge one... in the webs below... watch yourself...' Its wings twitch feebly — it doesn't have long.",
-          "trigger_dialogue": "stuck_fly"
+          "on": "room.entered",
+          "once": true,
+          "effects": {
+            "result": {
+              "narrative": "As you descend the handle, you encounter extremely sticky webs. A fly is trapped in the webbing, struggling weakly. It looks at you with compound eyes and speaks in a nasally whine: 'S-spider... huge one... in the webs below... watch yourself...' Its wings twitch feebly — it doesn't have long."
+            },
+            "trigger_dialogue": "stuck_fly"
+          }
+        },
+        {
+          "id": "drop_from_upper_injury",
+          "on": "traversal.succeeded",
+          "condition": {
+            "require": "event:exit_id == exit_drop_from_upper"
+          },
+          "effects": {
+            "result": {
+              "narrative": "You let go and drop into the darkness. You land painfully on the bag floor, twisting your ankle — you are injured.",
+              "set_flag": {
+                "injured": true
+              }
+            }
+          },
+          "phase": "immediate"
         }
       ],
       "is_start_room": false
@@ -150,18 +180,31 @@
           "direction": "Drop safely down to the floor",
           "target_room": "bag_floor",
           "conditions": [],
-          "on_traverse": {
-            "set_flag": {
-              "stunned": true
-            },
-            "narrative": "You drop down from the lower handle, landing with a heavy thud on the bag floor. You are briefly stunned but uninjured."
-          },
+          "on_traverse": {},
           "hidden": false,
           "one_way": true
         }
       ],
       "interactions": [],
       "on_enter": [],
+      "reactions": [
+        {
+          "id": "drop_from_lower_stun",
+          "on": "traversal.succeeded",
+          "condition": {
+            "require": "event:exit_id == exit_drop_from_lower"
+          },
+          "effects": {
+            "result": {
+              "narrative": "You drop down from the lower handle, landing with a heavy thud on the bag floor. You are briefly stunned but uninjured.",
+              "set_flag": {
+                "stunned": true
+              }
+            }
+          },
+          "phase": "immediate"
+        }
+      ],
       "is_start_room": false
     },
     "bag_floor": {
@@ -683,7 +726,9 @@
         "weapon"
       ],
       "equip_block": {
-        "equip_tags": ["weapon"],
+        "equip_tags": [
+          "weapon"
+        ],
         "damage_expr": "1d6",
         "attack_bonus": 0
       },

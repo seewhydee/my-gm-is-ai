@@ -144,6 +144,7 @@ Immediate reactions are only allowed for these events:
 
 - `interaction.used`
 - `traversal.attempted`
+- `traversal.succeeded`
 - `room.entered`
 
 For all other events, `phase: "immediate"` is rejected by the model validator.

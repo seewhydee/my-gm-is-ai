@@ -182,15 +182,15 @@ class TestResolveMove:
 
     def test_drop_exit_sets_flag(self, state_manager):
         action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
-        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus, state_manager)
         assert result.success is True
         assert result.hard_changes.player_location == "bag_floor"
-        assert "injured" in result.hard_changes.flags_set
-        assert result.hard_changes.flags_set["injured"] is True
+        assert "injured" in result.immediate_changes.flags_set
+        assert result.immediate_changes.flags_set["injured"] is True
 
     def test_drop_exit_generates_narrative(self, state_manager):
         action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
-        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus, state_manager)
         assert len(result.triggered_narration) > 0
 
     def test_hidden_exit_not_accessible(self, state_manager):
@@ -230,10 +230,10 @@ class TestResolveMove:
     def test_drop_exit_applies_stat_damage_from_head(self):
         manager = StateManager(BAG_OF_HOLDING)
         action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
-        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus)
+        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus, manager)
         assert result.success is True
         assert result.hard_changes.player_location == "bag_floor"
-        assert result.hard_changes.stat_modifiers == {
+        assert result.immediate_changes.stat_modifiers == {
             "STR": StatModifier(value=-4), "DEX": StatModifier(value=-4), "CON": StatModifier(value=-4),
         }
 
@@ -241,10 +241,10 @@ class TestResolveMove:
         manager = StateManager(BAG_OF_HOLDING)
         manager.hard_state.player.location = "axe_handle_upper"
         action = MoveAction(action_type="move", target="exit_drop_from_upper", detail="Dropping down")
-        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus)
+        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus, manager)
         assert result.success is True
         assert result.hard_changes.player_location == "bag_floor"
-        assert result.hard_changes.stat_modifiers == {
+        assert result.immediate_changes.stat_modifiers == {
             "DEX": StatModifier(value=-2), "CON": StatModifier(value=-2),
         }
 

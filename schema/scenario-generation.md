@@ -1468,6 +1468,12 @@ Legacy `on_traverse` effects on exits fire when the player successfully traverse
 that exit. Convert them to `Room.reactions` (on the source room) with
 `on: "traversal.succeeded"` and a condition matching the exit ID.
 
+**Important:** `traversal.succeeded` reactions **must** use `phase: "immediate"`.
+The default `phase: "deferred"` will not work because by the time deferred
+reactions dispatch, the player's location has already changed to the target
+room, so `find_matching_reactions` will look at the new room's reactions
+instead of the source room's.
+
 **Conversion rules:**
 
 | Legacy `on_traverse` field | Reaction equivalent |
@@ -1503,6 +1509,7 @@ Reaction equivalent (on the source room):
     {
       "id": "drop_from_upper_damage",
       "on": "traversal.succeeded",
+      "phase": "immediate",
       "condition": { "require": "event:exit_id == exit_drop_from_upper" },
       "effects": {
         "result": {
@@ -1537,6 +1544,7 @@ Reaction equivalent (on the source room):
     {
       "id": "webs_up_spider_ambush",
       "on": "traversal.succeeded",
+      "phase": "immediate",
       "condition": { "require": "event:exit_id == exit_through_webs_up" },
       "effects": {
         "result": {
@@ -1602,12 +1610,14 @@ Reaction equivalent:
       {
         "id": "spider_attack_on_webs_down",
         "on": "traversal.succeeded",
+        "phase": "immediate",
         "condition": { "require": "event:exit_id == exit_through_webs_down" },
         "effects": { "trigger_encounter": "self" }
       },
       {
         "id": "spider_attack_on_webs_up",
         "on": "traversal.succeeded",
+        "phase": "immediate",
         "condition": { "require": "event:exit_id == exit_through_webs_up" },
         "effects": { "trigger_encounter": "self" }
       }

@@ -348,46 +348,6 @@ def resolve_move(
 
     changes = HardStateChanges(player_location=exit_data.target_room)
     narrative: list[str] = []
-    encounter_trigger = None
-
-    if exit_data.on_traverse:
-        trav = exit_data.on_traverse
-        skip = False
-        if trav.skip_if and evaluate(trav.skip_if, hard, soft, corpus):
-            skip = True
-            if trav.narrative_skip:
-                narrative.append(trav.narrative_skip)
-        if not skip:
-            if trav.narrative:
-                narrative.append(trav.narrative)
-            if trav.set_flag:
-                for flag, val in trav.set_flag.items():
-                    if val is True:
-                        changes.flags_set[flag] = val
-                    elif val is False:
-                        changes.flags_cleared.append(flag)
-                    else:
-                        changes.flags_set[flag] = val
-            if trav.set_room_state:
-                for target_room_id, state_changes in trav.set_room_state.items():
-                    changes.room_state_changes.setdefault(target_room_id, {}).update(state_changes)
-            if trav.alter_stat:
-                for stat_key, mod in trav.alter_stat.items():
-                    if mod.mode == "set":
-                        changes.stat_modifiers[stat_key] = mod
-                    else:
-                        existing = changes.stat_modifiers.get(stat_key)
-                        if existing is not None and existing.mode == "set":
-                            changes.stat_modifiers[stat_key] = StatModifier(
-                                mode="set", value=existing.value + mod.value
-                            )
-                        else:
-                            prev = existing.value if existing else 0
-                            changes.stat_modifiers[stat_key] = StatModifier(
-                                mode="delta", value=prev + mod.value
-                            )
-            if trav.trigger_encounter:
-                encounter_trigger = trav.trigger_encounter
 
     room_states = hard.room_states.get(exit_data.target_room, {})
     one_way_from = room_states.get("_one_way_from", {})
@@ -401,7 +361,6 @@ def resolve_move(
     base_state["visited"] = True
     if exit_data.one_way:
         base_state["_one_way_from"] = {**one_way_from, room_id: True}
-    # Merge with any room state changes already accumulated (e.g., from on_traverse.set_room_state)
     existing_changes = changes.room_state_changes.get(exit_data.target_room, {})
     changes.room_state_changes[exit_data.target_room] = {**base_state, **existing_changes}
 
@@ -410,7 +369,6 @@ def resolve_move(
 
     result.hard_changes = changes
     result.triggered_narration = narrative
-    result.encounter_trigger = encounter_trigger
     result.room_after_id = exit_data.target_room
     result.rolls = traversal_rolls
     _emit_event(

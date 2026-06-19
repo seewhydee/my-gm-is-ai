@@ -31,7 +31,7 @@ from mgmai.models.actions import (
     EngineResult,
     GameOverResult,
     HardStateChanges,
-    OnEnterEventResult,
+
     PlayerAction,
     WillRevealReadinessEntry,
 )
@@ -272,9 +272,16 @@ def resolve(
         )
 
     # 4. Merge action + immediate-reaction changes and apply them once.
+    #    If an encounter was triggered during a move action, block the room
+    #    transition so the player stays in the current room to face it.
     action_changes = HardStateChanges()
     action_changes.merge(resolution.hard_changes or HardStateChanges())
     action_changes.merge(resolution.immediate_changes)
+    if encounter_outcome is not None and action_changes.player_location is not None:
+        blocked_room = action_changes.player_location
+        action_changes.player_location = None
+        action_changes.room_state_changes.pop(blocked_room, None)
+        resolution.room_after_id = old_room
     _apply_and_merge(action_changes)
 
     # 5. Apply soft patches and persist surfaced items / revealed hints.
@@ -331,7 +338,6 @@ def resolve(
     encounter_fired_ref = [encounter_outcome is not None]
 
     # 7. Room transition and room-entered reactions.
-    on_enter_results: list[OnEnterEventResult] = []
     new_room = resolution.room_after_id or hard.player.location
 
     dialogue_exit_reason: str | None = None
@@ -349,7 +355,7 @@ def resolve(
             combat_log=reaction_combat_log,
         )
 
-        # room.entered immediate reactions fire before legacy on-enter events.
+        # room.entered immediate reactions fire before deferred reactions.
         entered_matches = find_matching_reactions(
             "room.entered", {"room_id": new_room}, hard, soft, corpus,
         )
@@ -364,7 +370,7 @@ def resolve(
                 combat_log=reaction_combat_log,
             )
 
-        # Deferred room.entered reactions also accumulate before on-enter.
+        # Deferred room.entered reactions also accumulate.
         entered_deferred = [(r, o) for r, o in entered_matches if r.phase != "immediate"]
         if entered_deferred:
             dispatch_reactions(
@@ -377,10 +383,6 @@ def resolve(
             )
 
         _apply_and_merge(room_changes)
-
-        on_enter_results = _fire_on_enter_events(
-            new_room, hard, soft, corpus, resolution.triggered_narration
-        )
 
         dialogue_exit = check_room_change_exit(soft, old_room, new_room, corpus, hard)
         if dialogue_exit:
@@ -495,7 +497,6 @@ def resolve(
         rolls=rolls,
         encounter_outcome=encounter_outcome if isinstance(encounter_outcome, EncounterOutcome) else None,
         triggered_narration=resolution.triggered_narration,
-        on_enter_events=on_enter_results,
         game_over=game_over,
         dialogue_exited=resolution.dialogue_exited,
         will_reveal_readiness=will_reveal,
@@ -809,67 +810,6 @@ def _build_npc_attitude_limits(
         )
 
     return result
-
-
-def _fire_on_enter_events(
-    room_id: str,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    triggered_narration: list[str],
-) -> list[OnEnterEventResult]:
-    results: list[OnEnterEventResult] = []
-    room = corpus.rooms.get(room_id)
-    if room is None:
-        return results
-
-    room_state = hard.room_states.setdefault(room_id, {})
-    fired_events = room_state.setdefault("_fired_on_enter", [])
-
-    for event in room.on_enter:
-        if event.condition is None:
-            if event.id in fired_events:
-                continue
-
-        if event.condition and not evaluate(event.condition, hard, soft, corpus):
-            continue
-
-        if event.set_flag:
-            for flag, val in event.set_flag.items():
-                hard.flags[flag] = val
-
-        if event.set_entity_state:
-            for ent_id, state_changes in event.set_entity_state.items():
-                if ent_id not in hard.entity_states:
-                    hard.entity_states[ent_id] = {}
-                hard.entity_states[ent_id].update(state_changes)
-
-        if event.set_room_state:
-            for target_room_id, state_changes in event.set_room_state.items():
-                if target_room_id not in hard.room_states:
-                    hard.room_states[target_room_id] = {}
-                hard.room_states[target_room_id].update(state_changes)
-
-        if event.narrative:
-            triggered_narration.append(event.narrative)
-
-        if event.trigger_dialogue:
-            npc = corpus.entities.get(event.trigger_dialogue)
-            if npc and npc.type == "npc":
-                from mgmai.engine.dialogue import enter_dialogue as _enter_dlg
-                _enter_dlg(soft, event.trigger_dialogue, hard.turn_count, None, "")
-
-        results.append(
-            OnEnterEventResult(
-                event_id=event.id,
-                narrative=event.narrative,
-            )
-        )
-
-        if event.condition is None:
-            fired_events.append(event.id)
-
-    return results
 
 
 def _check_game_over_mechanics(
