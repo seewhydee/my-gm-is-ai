@@ -267,6 +267,16 @@ def resolve(
                 outcome=enc_result["outcome"],
                 narrative_brief=enc_result.get("narrative"),
             )
+            branch_taken = enc_result.get("branch_taken")
+            if branch_taken is not None:
+                resolution.events.append((
+                    "encounter.branched",
+                    {
+                        "encounter_id": encounter_source_id,
+                        "branch": branch_taken,
+                        "outcome": enc_result["outcome"],
+                    },
+                ))
             enc_rolls = enc_result.get("rolls") or []
             rolls.extend(enc_rolls)
 

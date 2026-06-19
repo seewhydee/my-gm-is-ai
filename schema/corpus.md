@@ -454,6 +454,7 @@ reaction must be one of these event type strings.
 | `dialogue.ended` | `npc_id`, `reason` | Dialogue mode ends |
 | `combat.started` | `combatant_ids` | Combat begins |
 | `combat.ended` | `reason` | Combat ends |
+| `encounter.branched` | `encounter_id`, `branch` (`success`\|`failure`), `outcome` | A `stat_check`/`roll` encounter rule selects its `on_success`/`on_failure` branch |
 | `item.acquired` | `item_id`, `source` | Item enters inventory |
 | `item.lost` | `item_id`, `reason` | Item leaves inventory |
 
@@ -501,7 +502,7 @@ The `event:` domain is only valid during reaction dispatch. Outside dispatch
 | `dc` | The difficulty class (for stat checks) |
 | `threshold` | The probability threshold (for rolls) |
 | `source_id` | The interaction, exit, dialogue path, or reaction ID that originated the check |
-| `source_type` | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, or `"reaction"` |
+| `source_type` | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, `"take"`, or `"reaction"` |
 
 See [`events.md`](events.md) for additional detail on each event's context.
 

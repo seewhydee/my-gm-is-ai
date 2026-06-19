@@ -951,3 +951,160 @@ class TestEncounterOncePerTurnGuard:
         # Second encounter was suppressed by the once-per-turn guard.
         assert hard.flags.get("enc2_fired") is None
         assert "Encounter 2 fired." not in engine_result.triggered_narration
+
+
+class TestDialoguePathResultChainCheck:
+    """Item 4: result-only dialogue paths emit chain_check events.
+
+    A dialogue path with a ``result`` (no check) containing a
+    ``chain_check`` must emit ``check.passed``/``check.failed`` for the
+    chained check, with ``source_type='dialogue_path'``.
+    """
+
+    def test_dialogue_path_result_chain_check_emits_event(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        from mgmai.models.corpus import ChainedCheck, DialoguePath, RollCheck
+
+        # A result-only dialogue path (no check) with a chain_check.
+        korbar = corpus.entities["korbar"]
+        korbar.dialogue_guidelines.dialogue_paths["rummage"] = DialoguePath(
+            description="Rummage through Korbar's pack.",
+            result=Result(
+                narrative="You find a trinket.",
+                chain_check=ChainedCheck(
+                    check=RollCheck(threshold=1.0, repeatable=True),
+                    success=Result(narrative="You pocket it cleanly."),
+                ),
+            ),
+        )
+
+        # A reaction that only fires when the chain check emits an event
+        # with source_type dialogue_path.
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="track_dialogue_chain",
+            on="check.passed",
+            condition=ConditionExpression(require="event:source_type == dialogue_path"),
+            effects=ReactionEffects(result=Result(set_flag={"dialogue_chain_seen": True})),
+        ))
+
+        action = TalkAction(
+            action_type="talk",
+            target="korbar",
+            dialogue_path="rummage",
+            detail="rummage",
+        )
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("dialogue_chain_seen") is True
+
+
+class TestEncounterBranchedEvent:
+    """Item 3a: branched encounters emit ``encounter.branched`` events."""
+
+    def test_deferred_encounter_branch_emits_event(self, fresh_state_manager, monkeypatch):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        # An encounter mechanic with a roll outcome and branches.
+        corpus.mechanics["test_ambush"] = Mechanic(
+            id="test_ambush",
+            description="Test ambush",
+            rules=[
+                EncounterRule(
+                    condition=ConditionExpression(require="entity:player.alive == true"),
+                    outcome="roll",
+                    threshold=0.5,
+                    on_success={"outcome": "flee", "narrative": "You win!"},
+                    on_failure={"outcome": "flee", "narrative": "You scramble away."},
+                )
+            ],
+        )
+
+        # A room reaction that triggers the encounter on turn.start.
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="trigger_ambush",
+            on="turn.start",
+            effects=ReactionEffects(trigger_encounter="test_ambush"),
+        ))
+
+        # A reaction that fires on encounter.branched, regardless of branch.
+        room.reactions.append(Reaction(
+            id="track_branch",
+            on="encounter.branched",
+            effects=ReactionEffects(result=Result(set_flag={"saw_branched": True})),
+        ))
+
+        # Force the encounter roll to fail (0.9 >= 0.5 threshold).
+        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("saw_branched") is True
+
+    def test_encounter_branched_context_carries_branch(self, fresh_state_manager, monkeypatch):
+        """The encounter.branched event context identifies which branch."""
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        corpus.mechanics["test_ambush"] = Mechanic(
+            id="test_ambush",
+            description="Test ambush",
+            rules=[
+                EncounterRule(
+                    condition=ConditionExpression(require="entity:player.alive == true"),
+                    outcome="roll",
+                    threshold=0.5,
+                    on_success={"outcome": "flee", "narrative": "You win!"},
+                    on_failure={"outcome": "flee", "narrative": "You scramble away."},
+                )
+            ],
+        )
+
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="trigger_ambush",
+            on="turn.start",
+            effects=ReactionEffects(trigger_encounter="test_ambush"),
+        ))
+
+        # Only fires on the failure branch.
+        room.reactions.append(Reaction(
+            id="track_failure",
+            on="encounter.branched",
+            condition=ConditionExpression(require="event:branch == failure"),
+            effects=ReactionEffects(result=Result(set_flag={"saw_failure": True})),
+        ))
+        room.reactions.append(Reaction(
+            id="track_success",
+            on="encounter.branched",
+            condition=ConditionExpression(require="event:branch == success"),
+            effects=ReactionEffects(result=Result(set_flag={"saw_success": True})),
+        ))
+
+        # Force failure.
+        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("saw_failure") is True
+        assert hard.flags.get("saw_success") is None

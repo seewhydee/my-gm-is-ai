@@ -154,6 +154,7 @@ def _apply_encounter_rule(
             "game_over": None,
             "flee_effects": None,
             "rolls": encounter_rolls,
+            "branch_taken": "success" if success else "failure",
         }
 
         if rule.set_flags:
@@ -187,6 +188,12 @@ def _apply_encounter_rule(
                         "effect": flee_obj.effect,
                     }
             result["flee_effects"] = flee_data
+        elif sub_outcome == "combat":
+            # No extra handling needed: the "combat" outcome string
+            # propagates to the caller (engine.py / event_bus.py), which
+            # calls enter_combat().  Branch-level set_flags/alter_stat are
+            # already merged above.
+            pass
 
         return result
 
@@ -235,6 +242,7 @@ def _apply_encounter_rule(
                 "result": roll,
                 "success": success,
             }],
+            "branch_taken": "success" if success else "failure",
         }
 
         if rule.set_flags:
@@ -268,6 +276,12 @@ def _apply_encounter_rule(
                         "effect": flee.effect,
                     }
             result["flee_effects"] = flee_data
+        elif sub_outcome == "combat":
+            # No extra handling needed: the "combat" outcome string
+            # propagates to the caller (engine.py / event_bus.py), which
+            # calls enter_combat().  Branch-level set_flags/alter_stat are
+            # already merged above.
+            pass
 
         return result
 

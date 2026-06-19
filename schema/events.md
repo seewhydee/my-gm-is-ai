@@ -63,6 +63,7 @@ encounter.
 | `dialogue.ended` | `npc_id`, `reason` | Dialogue mode ends. `reason` is one of `player_left`, `ends_dialogue`, `switched_npc`, `stall`, `room_change`, `combat`, or `triggered`. |
 | `combat.started` | `combatant_ids` | Combat begins. |
 | `combat.ended` | `reason` (`victory`\|`defeat`\|`fled`) | Combat ends. |
+| `encounter.branched` | `encounter_id`, `branch` (`success`\|`failure`), `outcome` | A `stat_check` or `roll` encounter rule selects its `on_success`/`on_failure` branch. Not emitted for top-level outcomes (`death`/`flee`/`combat`) or when no branch is defined. |
 | `item.acquired` | `item_id`, `source` (`transfer`\|`interaction`\|`examine`\|`unequip`) | An item enters the player's inventory. |
 | `item.lost` | `item_id`, `reason` (`transfer`\|`interaction`\|`destroyed`\|`equip`) | An item leaves the player's inventory. |
 
@@ -75,7 +76,7 @@ encounter.
 | `dc` | int\|absent | The difficulty class for `stat_check` checks. |
 | `threshold` | float\|absent | The probability threshold for `roll` checks. |
 | `source_id` | string | The interaction, exit, dialogue path, or reaction ID that originated the check. |
-| `source_type` | string | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, or `"reaction"`. |
+| `source_type` | string | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, `"take"`, or `"reaction"`. |
 
 `source_type: "reaction"` is used when a `chain_check` inside a reaction result
 produces the event.
@@ -164,9 +165,6 @@ The following events are defined in the model but not yet fully emitted:
 - **`combat.ended`** — not yet emitted.
 - **Encounter stat checks** — `check.passed`/`check.failed` events are not yet
   emitted from `_resolve_encounter_stat_check`.
-- **Transfer take_checks** — `check.passed`/`check.failed` events and immediate
-  reactions do not fire for `transfer` take_checks because `resolve_transfer`
-  does not thread `state_manager`/`resolution` through the check path.
 
 Scenario authors should not rely on reactions to these events until the gaps are
 closed.

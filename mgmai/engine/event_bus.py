@@ -470,4 +470,15 @@ def _resolve_reaction_encounter(
             combat_log.extend(combat_entry["combat_log"])
         events.append(("combat.started", {"combatant_ids": [source_id]}))
 
+    branch_taken = enc_result.get("branch_taken")
+    if branch_taken is not None:
+        events.append((
+            "encounter.branched",
+            {
+                "encounter_id": source_id,
+                "branch": branch_taken,
+                "outcome": enc_result["outcome"],
+            },
+        ))
+
     return events

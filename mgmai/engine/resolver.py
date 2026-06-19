@@ -494,6 +494,8 @@ def resolve_talk(
                 path.result, hard, soft, corpus, room_id,
                 state_manager=state_manager,
                 resolution=result,
+                source_id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
+                source_type="dialogue_path",
             )
         else:
             path_result = ResolutionResult(
@@ -618,7 +620,10 @@ def resolve_transfer(
                 failure=item_entity.take_check.failure,
             )
             check_result = _resolve_interaction_check(
-                synthetic, hard, soft, corpus, room_id
+                synthetic, hard, soft, corpus, room_id,
+                state_manager=state_manager,
+                resolution=result,
+                source_type="take",
             )
             if not check_result.success:
                 return check_result
@@ -802,7 +807,7 @@ def resolve_interact(
     if inter.using_results and action.using:
         item_override = inter.using_results.get(action.using)
         if item_override is not None:
-            override_result = _resolve_using_override(item_override, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result)
+            override_result = _resolve_using_override(item_override, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result, source_id=inter.id, source_type="interaction")
             result.success = override_result.success
             result.error = override_result.error
             result.hard_changes = override_result.hard_changes
@@ -814,7 +819,7 @@ def resolve_interact(
             return result
 
     if inter.result:
-        result_result = _resolve_interaction_result(inter.result, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result)
+        result_result = _resolve_interaction_result(inter.result, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result, source_id=inter.id, source_type="interaction")
         result.success = result_result.success
         result.error = result_result.error
         result.hard_changes = result_result.hard_changes
@@ -1133,11 +1138,13 @@ def _resolve_interaction_check(
 
     if isinstance(check, StatCheck):
         check_result = _resolve_stat_check(
-            inter, check, hard, soft, corpus, room_id, encounter_trigger, source_type
+            inter, check, hard, soft, corpus, room_id, encounter_trigger, source_type,
+            state_manager, resolution,
         )
     else:
         check_result = _resolve_roll_check(
-            inter, check, hard, soft, corpus, room_id, encounter_trigger, source_type
+            inter, check, hard, soft, corpus, room_id, encounter_trigger, source_type,
+            state_manager, resolution,
         )
 
     if resolution is not None and check_result.rolls:
@@ -1322,20 +1329,22 @@ def _resolve_using_override(
     encounter_trigger: str | None = None,
     state_manager: Any | None = None,
     resolution: ResolutionResult | None = None,
+    source_id: str | None = None,
+    source_type: str = "interaction",
 ) -> ResolutionResult:
     """Resolve a using_results override, which may carry its own check."""
     if override.check:
         # Build a synthetic Interaction from the override for check resolution
         synthetic_inter = Interaction(
-            id="_using_override",
+            id=source_id or "_using_override",
             label="",
             check=override.check,
             success=override.success,
             failure=override.failure,
         )
-        return _resolve_interaction_check(synthetic_inter, hard, soft, corpus, room_id, encounter_trigger, state_manager, resolution)
+        return _resolve_interaction_check(synthetic_inter, hard, soft, corpus, room_id, encounter_trigger, state_manager, resolution, source_type)
     if override.result:
-        return _resolve_interaction_result(override.result, hard, soft, corpus, room_id, encounter_trigger, state_manager, resolution)
+        return _resolve_interaction_result(override.result, hard, soft, corpus, room_id, encounter_trigger, state_manager, resolution, source_id, source_type)
     return ResolutionResult(
         success=False,
         error="UsingResultOverride has neither check nor result",
@@ -1351,6 +1360,8 @@ def _resolve_interaction_result(
     encounter_trigger: str | None = None,
     state_manager: Any | None = None,
     resolution: ResolutionResult | None = None,
+    source_id: str | None = None,
+    source_type: str = "interaction",
 ) -> ResolutionResult:
     changes = HardStateChanges()
     narrative: list[str] = []
@@ -1362,6 +1373,7 @@ def _resolve_interaction_result(
         _resolve_chained_check(
             result.chain_check, hard, soft, corpus, room_id,
             changes, narrative, revealed_hints, rolls, 0,
+            state_manager, resolution, source_id, source_type,
         )
         return ResolutionResult(
             success=True,

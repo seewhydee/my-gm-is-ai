@@ -764,3 +764,54 @@ class TestResolveTransferTakeCheck:
         assert result.rolls[0]["success"] is False
         assert "The key slips from your grasp." in result.triggered_narration
 
+    def test_take_check_emits_check_event(self, state_manager, monkeypatch):
+        """Item 2: take_checks emit check.passed/check.failed with source_type 'take'."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        key = corpus.entities["rusty_key"]
+        key.take_check = TakeCheck(
+            check=RollCheck(threshold=0.5, repeatable=True),
+            success=Result(narrative="You pry the key loose."),
+            failure=Result(narrative="The key slips from your grasp."),
+        )
+        monkeypatch.setattr("random.random", lambda: 0.1)
+        action = TransferAction(
+            action_type="transfer",
+            target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus, state_manager)
+        assert result.success is True
+        check_events = [ev for ev in result.events if ev[0] == "check.passed"]
+        assert len(check_events) == 1
+        assert check_events[0][1]["source_type"] == "take"
+        assert check_events[0][1]["source_id"] == "take_rusty_key"
+
+    def test_take_check_failure_emits_check_failed(self, state_manager, monkeypatch):
+        """Item 2: a failed take_check emits check.failed with source_type 'take'."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        key = corpus.entities["rusty_key"]
+        key.take_check = TakeCheck(
+            check=RollCheck(threshold=0.5, repeatable=True),
+            success=Result(narrative="You pry the key loose."),
+            failure=Result(narrative="The key slips from your grasp."),
+        )
+        monkeypatch.setattr("random.random", lambda: 0.9)
+        action = TransferAction(
+            action_type="transfer",
+            target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus, state_manager)
+        assert result.success is True
+        failed = [ev for ev in result.events if ev[0] == "check.failed"]
+        assert len(failed) == 1
+        assert failed[0][1]["source_type"] == "take"
+
