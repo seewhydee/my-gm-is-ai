@@ -276,8 +276,12 @@ def dispatch_reactions(
         new_events.extend(chain_events)
 
     # --- recurse ---
+    # Iterate over a snapshot of new_events: events returned from the deeper
+    # level (more_events) have already been dispatched there and must not be
+    # re-dispatched at this depth, otherwise a self-chaining reaction would
+    # grow new_events without bound and defeat the depth limit.
     if new_events and depth + 1 < MAX_RECURSION_DEPTH:
-        for ev_type, ev_ctx in new_events:
+        for ev_type, ev_ctx in list(new_events):
             more = find_matching_reactions(
                 ev_type, ev_ctx, hard, soft, corpus,
             )

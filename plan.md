@@ -46,10 +46,7 @@ State-based triggers become trivial.
 
 **Update**: the details of the event model are now documented in schema/events.md, not this planning document.
 
-**Notes on not-yet-fully-implemented events:** `adventure.start` is defined in
-the event model but is not currently emitted. `combat.started` is emitted when
-a reaction-triggered encounter resolves to combat, but not yet from the main
-encounter path or direct combat entry. `combat.ended` is not yet emitted.
+**Notes on not-yet-fully-implemented events:** `combat.started` is emitted when a reaction-triggered encounter resolves to combat, but not yet from the main encounter path or direct combat entry. `combat.ended` is not yet emitted.
 
 ### 4. Migration Plan (6 Phases)
 
@@ -186,51 +183,46 @@ Once all adventures are converted and all legacy code paths removed:
 - Remove `Behavior.triggers_on` field (keep `Behavior.encounter_rules` —
   encounters are still used, just triggered via reactions now)
 
-### 5. Events Not Emitted During Reaction Dispatch
-
-A critical rule: **reaction effects that mutate state do NOT emit state-change
-events during dispatch.**  State-change events (`flag.set`, `stat.changed`,
-`entity_state.changed`, etc.) are derived once at the end of the turn from the
-merged `HardStateChanges` diff (see §14.2).  This means reaction state mutations
-DO eventually produce state-change events — but only after all reactions have
-finished dispatching, preventing cascading chains where reaction A sets a flag,
-which triggers reaction B, which sets another flag...
-
-Reaction effects *can* emit action-level events (`check.passed`/`check.failed`
-from `chain_check`, `dialogue.started`/`ended`, `combat.started`/`ended`).
-These are dispatched at the next recursion level (within the depth-5 limit).
-This enables patterns like "on dialogue ended, trigger an encounter" without
-enabling infinite regress.
-
 ---
 
 ### Known Gaps / Remaining Work
 
-1. **Legacy code paths still active**: ~~`_fire_on_enter_events()`~~ (removed),
-   ~~inline traversal effects in `resolve_move()`~~ (removed), ~~inline `behavior.triggers_on`
-   in `resolve_interact()`~~ (removed), ~~inline `on_dialogue_exit` in
-   `_archive_and_exit()`~~ (removed). All legacy trigger code paths have been removed.
+1. **Legacy code paths still active**: The only remaining legacy trigger path is
+   `_fire_on_examine_events()` in `resolver.py`, retained because `on_examine`
+   is not being migrated to reactions (see Phase 5, step 5).
 
-2. **`context/assembler.py` not updated**: With the Option B accumulator model,
-   reaction effects are applied through the normal `apply_hard_changes()` path
-   and the assembler reads the final state — no structural change is needed.
-   ~~This may become relevant when on-enter events are fully migrated
-   to reactions.~~ (on-enter fully migrated, no assembler change needed.)
-
-3. **Encounter stat check event emission**: `check.passed`/`check.failed` events
+2. **Encounter stat check event emission**: `check.passed`/`check.failed` events
    are not yet emitted from `_resolve_encounter_stat_check` in `encounters.py`.
    Encounter checks have their own outcome tracking; this can be added in a
    future phase if reaction-based encounter check triggers become important.
 
-4. **`adventure.start` not emitted**: Defined in the event model but not
-   currently emitted.
-
-5. **`combat.started` / `combat.ended` partially implemented**: `combat.started`
+3. **`combat.started` / `combat.ended` partially implemented**: `combat.started`
    is emitted only when a reaction-triggered encounter resolves to combat.
    `combat.ended` is not yet emitted.
 
-6. **Transfer take_checks don't emit events**: `resolve_transfer` calls
+4. **Transfer take_checks don't emit events**: `resolve_transfer` calls
    `_resolve_interaction_check` without `state_manager` or `resolution`, so
    `check.passed`/`check.failed` events and immediate reactions don't fire for
    transfer take_checks.  Fix by threading `state_manager`/`resolution` through
-   the transfer path at `engine/resolver.py:667-668`.
+   the transfer path at `engine/resolver.py:620-622`.
+
+5. **BranchOutcome has no dedicated event**: Branch-outcome `set_flag`/
+   `alter_stat` flow into `merged_changes` and produce *derived* state-change
+   events (`flag.set`/`stat.changed`), so reactions can fire on them indirectly,
+   but there is no `branch.*` event scoped to a specific branch outcome.
+   Additionally, `BranchOutcome.outcome="combat"` is not handled in
+   `encounters.py` (only `"death"` and `"flee"`); only top-level
+   `EncounterRule.outcome="combat"` is supported.
+
+6. **DialoguePath result-only paths emit no check events**: A dialogue path
+   with a check emits `check.passed`/`check.failed` (source_type
+   `dialogue_path`), but a result-only path goes through
+   `_resolve_interaction_result` without threading `resolution`, so any
+   `chain_check` on a result-only path runs silently (no events) and no
+   `check.*` event is emitted for the path.
+
+7. **Vestigial `EngineResult.on_enter_events` / `OnEnterEventResult`**: The
+   engine no longer populates `EngineResult.on_enter_events` (the
+   `ResolutionResult.on_enter_events` field was removed). These remnants and
+   their deserialization test (`test_with_on_enter_events`) are Phase 6
+   cleanup candidates.

@@ -124,7 +124,6 @@ class ResolutionResult:
     combat_log: list[CombatLogEntry] = field(default_factory=list)
     combat_triggered: bool = False
     game_over_trigger: str | None = None
-    on_enter_events: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     room_after_id: str | None = None
     dialogue_exited: DialogueExitedResult | dict | None = None
@@ -550,11 +549,7 @@ def resolve_transfer(
     for item in given_items:
         if item in hard.player.inventory:
             changes.inventory_removed.append(item)
-            _emit_event(
-                "item.lost",
-                {"item_id": item, "reason": "transfer"},
-                hard, soft, corpus, state_manager, result,
-            )
+            changes.inventory_removed_reasons[item] = "transfer"
         elif item in soft.soft_inventory:
             soft_patches.append(
                 SoftStatePatch(
@@ -645,11 +640,7 @@ def resolve_transfer(
                 continue
 
         changes.inventory_added.append(item)
-        _emit_event(
-            "item.acquired",
-            {"item_id": item, "source": "transfer"},
-            hard, soft, corpus, state_manager, result,
-        )
+        changes.inventory_added_sources[item] = "transfer"
         # Surface the soft item on its source
         if target_is_room:
             if room.soft_items and item in room.soft_items:
@@ -1403,13 +1394,16 @@ def _apply_result(
     state_manager: Any | None = None,
     resolution: ResolutionResult | None = None,
     source_id: str | None = None,
+    item_origin: str = "interaction",
 ) -> None:
     if result.narrative:
         narrative.append(result.narrative)
     if result.add_item:
         changes.inventory_added.append(result.add_item)
+        changes.inventory_added_sources[result.add_item] = item_origin
     if result.remove_item:
         changes.inventory_removed.append(result.remove_item)
+        changes.inventory_removed_reasons[result.remove_item] = item_origin
     if result.set_flag:
         for flag, val in result.set_flag.items():
             if val is False:
@@ -1560,7 +1554,8 @@ def _fire_on_examine_events(
             if result.rolls:
                 rolls.extend(result.rolls)
         elif event.result:
-            _apply_result(event.result, changes, narrative, revealed_hints, hard, corpus)
+            _apply_result(event.result, changes, narrative, revealed_hints, hard, corpus,
+                          item_origin="examine")
             if event.result.chain_check:
                 _resolve_chained_check(
                     event.result.chain_check, hard, soft, corpus, room_id,
@@ -1757,10 +1752,12 @@ def resolve_equip(
     # Step 7: Success — move target from inventory to equipped
     changes = HardStateChanges()
     changes.inventory_removed.append(target)
+    changes.inventory_removed_reasons[target] = "equip"
     changes.equipped_added.append(target)
     for uid in action.unequip_targets:
         changes.equipped_removed.append(uid)
         changes.inventory_added.append(uid)
+        changes.inventory_added_sources[uid] = "unequip"
     changes.equipment_changed = True
 
     result = ResolutionResult(
@@ -1797,6 +1794,7 @@ def resolve_unequip(
     changes = HardStateChanges()
     changes.equipped_removed.append(target)
     changes.inventory_added.append(target)
+    changes.inventory_added_sources[target] = "unequip"
     changes.equipment_changed = True
 
     result = ResolutionResult(

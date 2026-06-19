@@ -37,9 +37,10 @@ condition domain:
 { "require": "event:flag_name == spider_fled" }
 ```
 
-The `event:` domain is **only valid during reaction dispatch**. Outside dispatch
-(e.g., in interaction conditions, exit conditions, or game-over mechanic
-conditions), it always evaluates to `false`.
+The `event:` domain is **only valid during reaction dispatch**.
+Outside dispatch (e.g., in interaction conditions, exit conditions, or
+game-over mechanic conditions), it always evaluates to `false`.
+
 
 ---
 
@@ -62,8 +63,8 @@ encounter.
 | `dialogue.ended` | `npc_id`, `reason` | Dialogue mode ends. `reason` is one of `player_left`, `ends_dialogue`, `switched_npc`, `stall`, `room_change`, `combat`, or `triggered`. |
 | `combat.started` | `combatant_ids` | Combat begins. |
 | `combat.ended` | `reason` (`victory`\|`defeat`\|`fled`) | Combat ends. |
-| `item.acquired` | `item_id`, `source` (`transfer`\|`interaction`\|`examine`\|`equip`) | An item enters the player's inventory. |
-| `item.lost` | `item_id`, `reason` (`transfer`\|`interaction`\|`destroyed`\|`unequip`) | An item leaves the player's inventory. |
+| `item.acquired` | `item_id`, `source` (`transfer`\|`interaction`\|`examine`\|`unequip`) | An item enters the player's inventory. |
+| `item.lost` | `item_id`, `reason` (`transfer`\|`interaction`\|`destroyed`\|`equip`) | An item leaves the player's inventory. |
 
 ### `check.passed` / `check.failed` context keys
 
@@ -110,16 +111,19 @@ applied. They are dispatched in a single final pass.
 | `player.damaged` | `amount`, `new_hp` | Player HP decreases. |
 | `player.healed` | `amount`, `new_hp` | Player HP increases. |
 
-### Important rule: no cascading state-change events
+### No cascading state-change events
 
-Reaction effects that mutate state **do not emit state-change events during
-dispatch**. State-change events are derived once from the complete turn diff.
-This prevents cascading chains where reaction A sets a flag, which triggers
-reaction B, which sets another flag, and so on.
+However, reaction effects that mutate state do not emit state-change
+events *during* dispatch.  State-change events are derived once at the
+end of the turn.  Reaction state mutations do eventually produce
+state-change events, but only after all reactions have finished
+dispatching.  This prevents cascading chains where reaction A sets a
+flag, which triggers reaction B, which sets another flag...
 
-Reaction effects **can** emit action-level events (`check.passed`/`check.failed`
-from `chain_check`, `dialogue.started`/`ended`, `combat.started`/`ended`). These
-are dispatched at the next recursion level, within the depth-5 recursion limit.
+Reaction effects *can* emit events (`check.passed`/`check.failed` from
+`chain_check`, `dialogue.started`/`ended`, `combat.started`/`ended`).
+These are dispatched at the next recursion level, enabling patterns
+like "on dialogue ended, trigger an encounter".
 
 ---
 
@@ -155,7 +159,6 @@ For all other events, `phase: "immediate"` is rejected by the model validator.
 
 The following events are defined in the model but not yet fully emitted:
 
-- **`adventure.start`** — defined but not currently emitted.
 - **`combat.started`** — emitted when a reaction-triggered encounter resolves to
   combat, but not yet from the main encounter path or direct combat entry.
 - **`combat.ended`** — not yet emitted.

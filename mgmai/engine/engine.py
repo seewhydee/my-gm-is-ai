@@ -142,6 +142,34 @@ def resolve(
             state_manager.apply_hard_changes(batch)
             merged_changes.merge(batch)
 
+    # Shared once-per-turn encounter guard.  Created early so game-start
+    # reactions share it with the post-action dispatches; preserved across the
+    # action at step 6 below.
+    encounter_fired_ref: list[bool] = [False]
+
+    # 1a. Game-start events fire once on the first turn (turn_count == 0):
+    #     adventure.start is the adventure-wide hook, and room.entered fires
+    #     for the start room (events.md: "including at game start").  These
+    #     run before the first action so start-room reactions apply first.
+    game_start_narration: list[str] = []
+    game_start_reveals: list[str] = []
+    if hard.turn_count == 0:
+        start_changes = HardStateChanges()
+        _dispatch_events(
+            [("adventure.start", {})],
+            hard, soft, corpus, state_manager, changes=start_changes,
+            triggered_narration=game_start_narration,
+            revealed_hints=game_start_reveals,
+            encounter_fired_ref=encounter_fired_ref,
+            combat_log=reaction_combat_log,
+        )
+        _dispatch_room_entered(
+            hard.player.location, hard, soft, corpus, state_manager, start_changes,
+            game_start_narration, game_start_reveals,
+            encounter_fired_ref, reaction_combat_log,
+        )
+        _apply_and_merge(start_changes)
+
     # 1. Turn-start reactions fire before the action resolves.
     turn_start_changes = HardStateChanges()
     turn_start_narration: list[str] = []
@@ -159,9 +187,15 @@ def resolve(
     #    the resolvers and accumulate into resolution.immediate_changes.
     resolution = resolve_action(player_action, hard, soft, corpus, state_manager)
 
-    # Merge turn-start narration/reveals into resolution.
-    resolution.triggered_narration = turn_start_narration + list(resolution.triggered_narration or [])
-    resolution.revealed_hints = turn_start_reveals + list(resolution.revealed_hints or [])
+    # Merge game-start and turn-start narration/reveals into resolution.
+    resolution.triggered_narration = (
+        game_start_narration + turn_start_narration
+        + list(resolution.triggered_narration or [])
+    )
+    resolution.revealed_hints = (
+        game_start_reveals + turn_start_reveals
+        + list(resolution.revealed_hints or [])
+    )
 
     # Initialize result-tracking variables.
     encounter_outcome: dict[str, Any] | None = None
@@ -334,8 +368,9 @@ def resolve(
             hard.game_over = GameOverState(type=game_over.type, trigger=game_over.trigger)
 
     # Track whether an encounter has already fired this turn, so that
-    # subsequent reaction trigger_encounter effects are suppressed.
-    encounter_fired_ref = [encounter_outcome is not None]
+    # subsequent reaction trigger_encounter effects are suppressed.  Preserve
+    # any encounter already fired by game-start/turn-start reactions.
+    encounter_fired_ref[0] = encounter_fired_ref[0] or encounter_outcome is not None
 
     # 7. Room transition and room-entered reactions.
     new_room = resolution.room_after_id or hard.player.location
@@ -356,31 +391,11 @@ def resolve(
         )
 
         # room.entered immediate reactions fire before deferred reactions.
-        entered_matches = find_matching_reactions(
-            "room.entered", {"room_id": new_room}, hard, soft, corpus,
+        _dispatch_room_entered(
+            new_room, hard, soft, corpus, state_manager, room_changes,
+            resolution.triggered_narration, resolution.revealed_hints,
+            encounter_fired_ref, reaction_combat_log,
         )
-        entered_immediate = [(r, o) for r, o in entered_matches if r.phase == "immediate"]
-        if entered_immediate:
-            dispatch_reactions(
-                entered_immediate, hard, soft, corpus, state_manager,
-                changes=room_changes,
-                triggered_narration=resolution.triggered_narration,
-                revealed_hints=resolution.revealed_hints,
-                encounter_fired_ref=encounter_fired_ref,
-                combat_log=reaction_combat_log,
-            )
-
-        # Deferred room.entered reactions also accumulate.
-        entered_deferred = [(r, o) for r, o in entered_matches if r.phase != "immediate"]
-        if entered_deferred:
-            dispatch_reactions(
-                entered_deferred, hard, soft, corpus, state_manager,
-                changes=room_changes,
-                triggered_narration=resolution.triggered_narration,
-                revealed_hints=resolution.revealed_hints,
-                encounter_fired_ref=encounter_fired_ref,
-                combat_log=reaction_combat_log,
-            )
 
         _apply_and_merge(room_changes)
 
@@ -434,6 +449,14 @@ def resolve(
     _apply_and_merge(event_changes)
 
     # 9. Derive state-change events from the merged diff and dispatch them once.
+    #
+    # Reactions here run with changes=None, so their state mutations are
+    # applied immediately and are NOT re-derived into a second round of
+    # state-change events.  This is the §5 invariant: state-change events
+    # are derived exactly once per turn, so a flag.set reaction's own
+    # set_flag cannot trigger a follow-on flag.set reaction (no cascading).
+    # Action-level events (check.*, dialogue.*, combat.*) emitted by these
+    # reactions still recurse within dispatch_reactions' depth-5 limit.
     state_events = _derive_state_events(
         merged_changes, old_flags, old_stats, old_entity_states, hard,
     )
@@ -897,16 +920,20 @@ def _derive_state_events(
                 "delta": new_att_num - old_att_num,
             }))
 
-    # item.acquired / item.lost (from inventory changes)
+    # item.acquired / item.lost (from inventory changes).  Provenance
+    # (source/reason) is recorded where inventory is mutated; it defaults to
+    # "interaction" when unset.
     for item in hard_changes.inventory_added:
+        source = hard_changes.inventory_added_sources.get(item, "interaction")
         events.append(("item.acquired", {
             "item_id": item,
-            "source": "interaction",
+            "source": source,
         }))
     for item in hard_changes.inventory_removed:
+        reason = hard_changes.inventory_removed_reasons.get(item, "interaction")
         events.append(("item.lost", {
             "item_id": item,
-            "reason": "interaction",
+            "reason": reason,
         }))
 
     # equipment.changed
@@ -932,6 +959,48 @@ def _derive_state_events(
             }))
 
     return events
+
+
+def _dispatch_room_entered(
+    room_id: str,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    state_manager: Any,
+    changes: HardStateChanges,
+    triggered_narration: list[str] | None,
+    revealed_hints: list[str] | None,
+    encounter_fired_ref: list[bool] | None,
+    combat_log: list[CombatLogEntry] | None,
+) -> None:
+    """Dispatch immediate then deferred ``room.entered`` reactions for
+    *room_id*, accumulating effects into *changes*.
+
+    ``room.entered`` is in the immediate allow-list, so immediate reactions
+    fire first (synchronously), then deferred ones.  Used both for room
+    transitions and for game-start entry into the start room.
+    """
+    matches = find_matching_reactions(
+        "room.entered", {"room_id": room_id}, hard, soft, corpus,
+    )
+    immediate = [(r, o) for r, o in matches if r.phase == "immediate"]
+    if immediate:
+        dispatch_reactions(
+            immediate, hard, soft, corpus, state_manager, changes=changes,
+            triggered_narration=triggered_narration,
+            revealed_hints=revealed_hints,
+            encounter_fired_ref=encounter_fired_ref,
+            combat_log=combat_log,
+        )
+    deferred = [(r, o) for r, o in matches if r.phase != "immediate"]
+    if deferred:
+        dispatch_reactions(
+            deferred, hard, soft, corpus, state_manager, changes=changes,
+            triggered_narration=triggered_narration,
+            revealed_hints=revealed_hints,
+            encounter_fired_ref=encounter_fired_ref,
+            combat_log=combat_log,
+        )
 
 
 def _dispatch_events(

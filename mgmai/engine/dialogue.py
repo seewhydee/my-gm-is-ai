@@ -97,7 +97,7 @@ def exit_dialogue(
     corpus: ModuleCorpus,
     hard: HardGameState,
 ) -> dict | None:
-    """Archive conversation, apply on_dialogue_exit effects, clear state.
+    """Archive conversation and clear dialogue state.
 
     Returns a dict with optional exit_narrative and side effects or None.
     """

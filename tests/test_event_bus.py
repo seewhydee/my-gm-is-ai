@@ -9,6 +9,7 @@
 import pytest
 
 from mgmai.engine.event_bus import (
+    MAX_RECURSION_DEPTH,
     _disabled_once,
     _resolve_self,
     dispatch_reactions,
@@ -516,6 +517,25 @@ class TestStateChangeEventDerivation:
         events = _derive_state_events(changes, old_flags={}, old_stats={}, old_entity_states={}, hard=hard)
         assert ("item.lost", {"item_id": "rusty_key", "reason": "interaction"}) in events
 
+    def test_item_event_provenance(self):
+        """The derived source/reason comes from the provenance maps recorded
+        where inventory is mutated (transfer / examine / equip / unequip)."""
+        from mgmai.models.hard_state import PlayerState
+        hard = HardGameState(player=PlayerState(location="room1"))
+        changes = HardStateChanges(
+            inventory_added=["gift", "sheathed_sword"],
+            inventory_removed=["potion", "blade"],
+            inventory_added_sources={"gift": "transfer", "sheathed_sword": "unequip"},
+            inventory_removed_reasons={"potion": "transfer", "blade": "equip"},
+        )
+        events = _derive_state_events(
+            changes, old_flags={}, old_stats={}, old_entity_states={}, hard=hard,
+        )
+        assert ("item.acquired", {"item_id": "gift", "source": "transfer"}) in events
+        assert ("item.acquired", {"item_id": "sheathed_sword", "source": "unequip"}) in events
+        assert ("item.lost", {"item_id": "potion", "reason": "transfer"}) in events
+        assert ("item.lost", {"item_id": "blade", "reason": "equip"}) in events
+
     def test_no_events_for_empty_changes(self):
         from mgmai.models.hard_state import PlayerState
         hard = HardGameState(player=PlayerState(location="room1"))
@@ -812,3 +832,122 @@ class TestReactionCombatLogPropagation:
             entry.actor == "spider" and entry.action == "surprise"
             for entry in engine_result.combat_log
         )
+
+
+class TestReactionRecursionDepthLimit:
+    """The recursion limit caps chains of action-level events emitted by
+    reactions (here, check.passed from chain_check)."""
+
+    def setup_method(self):
+        reset_disabled_once()
+
+    def test_recursion_capped_at_max_depth(self, fresh_state_manager):
+        from mgmai.models.corpus import ChainedCheck, RollCheck
+        from mgmai.models.actions import WaitAction
+
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        room = corpus.rooms["bag_floor"]
+        room.reactions.clear()
+
+        # Seed: a turn.start reaction whose chain_check emits the first
+        # check.passed event (source_type "reaction").
+        room.reactions.append(Reaction(
+            id="seed",
+            on="turn.start",
+            effects=ReactionEffects(result=Result(
+                narrative="seed_tick",
+                chain_check=ChainedCheck(
+                    check=RollCheck(threshold=1.0, repeatable=True),
+                    success=Result(narrative="seed_ok"),
+                ),
+            )),
+        ))
+        # Looper: a check.passed reaction whose own chain_check re-emits
+        # check.passed, matching itself.  Without the depth limit this would
+        # recurse forever.
+        room.reactions.append(Reaction(
+            id="loop",
+            on="check.passed",
+            condition=ConditionExpression(require="event:source_type == reaction"),
+            effects=ReactionEffects(result=Result(
+                narrative="loop_tick",
+                chain_check=ChainedCheck(
+                    check=RollCheck(threshold=1.0, repeatable=True),
+                    success=Result(narrative="loop_ok"),
+                ),
+            )),
+        ))
+
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        narration = engine_result.triggered_narration
+        # The seed fires once at depth 0; the looper fires at depths
+        # 1..(MAX_RECURSION_DEPTH - 1), then recursion stops.
+        assert narration.count("seed_tick") == 1
+        assert narration.count("loop_tick") == MAX_RECURSION_DEPTH - 1
+
+
+class TestEncounterOncePerTurnGuard:
+    """Only one trigger_encounter fires per turn; later ones are suppressed."""
+
+    def setup_method(self):
+        reset_disabled_once()
+
+    def test_second_trigger_encounter_suppressed(self, fresh_state_manager):
+        from mgmai.models.actions import WaitAction
+
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        corpus.rooms["bag_floor"].reactions.clear()
+
+        corpus.mechanics["test_enc1"] = Mechanic(
+            id="test_enc1",
+            description="first encounter",
+            rules=[EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="flee",
+                set_flags={"enc1_fired": True},
+                narrative="Encounter 1 fired.",
+            )],
+        )
+        corpus.mechanics["test_enc2"] = Mechanic(
+            id="test_enc2",
+            description="second encounter",
+            rules=[EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="flee",
+                set_flags={"enc2_fired": True},
+                narrative="Encounter 2 fired.",
+            )],
+        )
+        # Carrier mechanic holds two turn.end reactions.  turn.end is
+        # dispatched with the shared per-turn encounter_fired_ref, so the
+        # second trigger_encounter must be suppressed by the guard.
+        corpus.mechanics["test_carrier"] = Mechanic(
+            id="test_carrier",
+            description="carrier",
+            reactions=[
+                Reaction(id="fire_enc1", on="turn.end", priority=0,
+                         effects=ReactionEffects(trigger_encounter="test_enc1")),
+                Reaction(id="fire_enc2", on="turn.end", priority=1,
+                         effects=ReactionEffects(trigger_encounter="test_enc2")),
+            ],
+        )
+
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        # First encounter fired.
+        assert hard.flags.get("enc1_fired") is True
+        assert "Encounter 1 fired." in engine_result.triggered_narration
+        # Second encounter was suppressed by the once-per-turn guard.
+        assert hard.flags.get("enc2_fired") is None
+        assert "Encounter 2 fired." not in engine_result.triggered_narration
