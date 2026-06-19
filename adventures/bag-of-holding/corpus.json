@@ -93,15 +93,27 @@
             "conditions": []
           }
         },
-        "on_dialogue_exit": {
-          "set_entity_state": {
-            "stuck_fly": {
-              "alive": false
-            }
+        "on_dialogue_exit": null
+      },
+      "reactions": [
+        {
+          "id": "stuck_fly_dialogue_exit",
+          "on": "dialogue.ended",
+          "condition": {
+            "require": "event:npc_id == stuck_fly"
           },
-          "narrative": "The fly's weak groaning ceases. Its tiny body goes still, legs curling inward. Whatever kept it alive this long has finally given out."
+          "effects": {
+            "result": {
+              "set_entity_state": {
+                "stuck_fly": {
+                  "alive": false
+                }
+              },
+              "narrative": "The fly's weak groaning ceases. Its tiny body goes still, legs curling inward. Whatever kept it alive this long has finally given out."
+            }
+          }
         }
-      }
+      ]
     },
     "spider": {
       "type": "npc",
@@ -204,12 +216,7 @@
         }
       ],
       "behavior": {
-        "triggers_on": [
-          "exit_through_webs_down",
-          "exit_through_webs_up",
-          "attack",
-          "cut_webbing"
-        ],
+        "triggers_on": [],
         "on_flee": {
           "set_flags": {},
           "set_entity_state": {
@@ -267,7 +274,49 @@
             }
           }
         ]
-      }
+      },
+      "reactions": [
+        {
+          "id": "spider_attack_on_interact",
+          "on": "interaction.used",
+          "condition": {
+            "any": [
+              {
+                "require": "event:interaction_id == attack"
+              },
+              {
+                "require": "event:interaction_id == cut_webbing"
+              }
+            ]
+          },
+          "effects": {
+            "trigger_encounter": "self"
+          },
+          "phase": "immediate"
+        },
+        {
+          "id": "spider_attack_on_webs_down",
+          "on": "traversal.succeeded",
+          "phase": "immediate",
+          "condition": {
+            "require": "event:exit_id == exit_through_webs_down"
+          },
+          "effects": {
+            "trigger_encounter": "self"
+          }
+        },
+        {
+          "id": "spider_attack_on_webs_up",
+          "on": "traversal.succeeded",
+          "phase": "immediate",
+          "condition": {
+            "require": "event:exit_id == exit_through_webs_up"
+          },
+          "effects": {
+            "trigger_encounter": "self"
+          }
+        }
+      ]
     },
     "korbar": {
       "type": "npc",
@@ -350,9 +399,7 @@
             }
           }
         },
-        "on_dialogue_exit": {
-          "narrative": "Korbar shifts in her rusty armor, the clanking echoing in the dim space. She watches you with a mixture of suspicion and something that might, against all odds, be hope."
-        },
+        "on_dialogue_exit": null,
         "dialogue_paths": {
           "convince_spider_dead": {
             "description": "Convince Korbar that the spider is dead — with evidence or through a compelling argument.",
@@ -424,9 +471,7 @@
         }
       ],
       "behavior": {
-        "triggers_on": [
-          "attack"
-        ],
+        "triggers_on": [],
         "encounter_rules": [
           {
             "condition": {
@@ -470,6 +515,31 @@
       },
       "follower_blacklist": [
         "secret_compartment"
+      ],
+      "reactions": [
+        {
+          "id": "korbar_attack_on_interact",
+          "on": "interaction.used",
+          "condition": {
+            "require": "event:interaction_id == attack"
+          },
+          "effects": {
+            "trigger_encounter": "self"
+          },
+          "phase": "immediate"
+        },
+        {
+          "id": "korbar_dialogue_exit",
+          "on": "dialogue.ended",
+          "condition": {
+            "require": "event:npc_id == korbar"
+          },
+          "effects": {
+            "result": {
+              "narrative": "Korbar shifts in her rusty armor, the clanking echoing in the dim space. She watches you with a mixture of suspicion and something that might, against all odds, be hope."
+            }
+          }
+        }
       ]
     },
     "canvas_walls": {
@@ -1145,7 +1215,10 @@
           "target_room": "axe_handle_upper",
           "conditions": [
             {
-              "require": "room:axe_handle_lower._entered_from == bag_floor"
+              "all": [
+                "room:axe_handle_lower._entered_from == bag_floor",
+                "flag:webs_cleared == false"
+              ]
             }
           ],
           "traversal_check": {
@@ -1186,7 +1259,10 @@
           "target_room": "bag_floor",
           "conditions": [
             {
-              "require": "room:axe_handle_lower._entered_from == axe_handle_upper"
+              "all": [
+                "room:axe_handle_lower._entered_from == axe_handle_upper",
+                "flag:webs_cleared == false"
+              ]
             }
           ],
           "traversal_check": {

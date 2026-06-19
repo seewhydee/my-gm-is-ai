@@ -282,32 +282,6 @@ def _apply_encounter_rule(
     }
 
 
-def should_trigger_behavior(
-    entity_id: str,
-    action_type: str,
-    action_target: str | None,
-    corpus: ModuleCorpus,
-) -> list[EncounterRule] | None:
-    """Check if an action triggers an NPC's behavior block.
-
-    Returns the encounter rules if triggered, None otherwise.
-    """
-    entity = corpus.entities.get(entity_id)
-    if entity is None or entity.behavior is None:
-        return None
-
-    behavior = entity.behavior
-    triggers = behavior.triggers_on or []
-
-    if action_type in triggers:
-        return behavior.encounter_rules
-
-    if action_target and action_target in triggers:
-        return behavior.encounter_rules
-
-    return None
-
-
 def apply_flee_effects(
     flee_data: dict | None,
     hard: HardGameState,

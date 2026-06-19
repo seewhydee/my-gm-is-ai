@@ -1,5 +1,5 @@
 from mgmai.engine.conditions import evaluate, evaluate_condition_string, parse_condition_string
-from mgmai.engine.encounters import resolve_encounter, should_trigger_behavior, apply_flee_effects
+from mgmai.engine.encounters import resolve_encounter, apply_flee_effects
 from mgmai.engine.dialogue import (
     enter_dialogue,
     append_player_turn,
@@ -22,7 +22,6 @@ __all__ = [
     "evaluate_condition_string",
     "parse_condition_string",
     "resolve_encounter",
-    "should_trigger_behavior",
     "apply_flee_effects",
     "enter_dialogue",
     "append_player_turn",

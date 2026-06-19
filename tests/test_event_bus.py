@@ -226,6 +226,7 @@ class TestFindMatchingReactions:
         hard.player.location = "bag_floor"
 
         entity = corpus.entities["korbar"]
+        saved_reactions = list(entity.reactions)
         entity.reactions.clear()
         entity.reactions.append(Reaction(
             id="dead_react",
@@ -239,6 +240,8 @@ class TestFindMatchingReactions:
         )
         ids = [r.id for r, _ in matches]
         assert "dead_react" not in ids
+        entity.reactions.clear()
+        entity.reactions.extend(saved_reactions)
 
     def test_entity_not_active_when_fled(self, state_manager):
         hard = state_manager.hard_state
@@ -247,6 +250,7 @@ class TestFindMatchingReactions:
         hard.player.location = "bag_floor"
 
         entity = corpus.entities["korbar"]
+        saved_reactions = list(entity.reactions)
         entity.reactions.clear()
         entity.reactions.append(Reaction(
             id="fled_react",
@@ -260,6 +264,8 @@ class TestFindMatchingReactions:
         )
         ids = [r.id for r, _ in matches]
         assert "fled_react" not in ids
+        entity.reactions.clear()
+        entity.reactions.extend(saved_reactions)
 
     def test_room_scoped_reaction(self, state_manager):
         hard = state_manager.hard_state

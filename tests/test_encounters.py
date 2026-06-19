@@ -24,7 +24,6 @@ import pytest
 
 from mgmai.engine.encounters import (
     resolve_encounter,
-    should_trigger_behavior,
     apply_flee_effects,
 )
 from mgmai.models.corpus import (
@@ -225,28 +224,6 @@ class TestResolveEncounter:
         result = resolve_encounter(rules, hard, soft, sample_corpus)
         assert result["outcome"] == "flee"
         assert result["alter_stat"] == {"CON": StatModifier(value=-4), "STR": StatModifier(value=-4)}
-
-
-class TestShouldTriggerBehavior:
-    def test_trigger_by_action_type(self, sample_corpus):
-        rules = should_trigger_behavior("spider", "attack", None, sample_corpus)
-        assert rules is not None
-        assert len(rules) > 0
-
-    def test_no_trigger_for_non_behavior_entity(self, sample_corpus):
-        rules = should_trigger_behavior("player", "attack", None, sample_corpus)
-        assert rules is None
-
-    def test_trigger_by_exit_id(self, sample_corpus):
-        rules = should_trigger_behavior(
-            "spider", "move", "exit_through_webs", sample_corpus
-        )
-        assert rules is not None
-        assert len(rules) > 0
-
-    def test_no_trigger_for_unknown_entity(self, sample_corpus):
-        rules = should_trigger_behavior("nonexistent", "attack", None, sample_corpus)
-        assert rules is None
 
 
 class TestApplyFleeEffects:

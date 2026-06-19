@@ -515,8 +515,7 @@ class TestResolveInteract:
             interaction_id="attack",
             detail="Attacking Korbar",
         )
-        result = resolve_interact(action, hard, soft, corpus)
-        assert result.success is True
+        result = resolve_interact(action, hard, soft, corpus, state_manager)
         assert result.encounter_trigger == "korbar"
 
     def test_attack_on_non_combatant(self, state_manager):

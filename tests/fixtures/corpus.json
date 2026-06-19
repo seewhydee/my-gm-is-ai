@@ -394,15 +394,27 @@
           "initial": 0
         },
         "will_reveal": {},
-        "on_dialogue_exit": {
-          "set_entity_state": {
-            "stuck_fly": {
-              "alive": false
-            }
+        "on_dialogue_exit": null
+      },
+      "reactions": [
+        {
+          "id": "stuck_fly_dialogue_exit",
+          "on": "dialogue.ended",
+          "condition": {
+            "require": "event:npc_id == stuck_fly"
           },
-          "narrative": "The fly's wings give one last feeble twitch and then go still. Its warning delivered, it is dead."
+          "effects": {
+            "result": {
+              "set_entity_state": {
+                "stuck_fly": {
+                  "alive": false
+                }
+              },
+              "narrative": "The fly's wings give one last feeble twitch and then go still. Its warning delivered, it is dead."
+            }
+          }
         }
-      }
+      ]
     },
     "webs_upper": {
       "type": "feature",
@@ -471,10 +483,7 @@
         }
       ],
       "behavior": {
-        "triggers_on": [
-          "exit_through_webs",
-          "attack"
-        ],
+        "triggers_on": [],
         "encounter_rules": [
           {
             "condition": {
@@ -533,7 +542,31 @@
           },
           "effect": "The spider retreats into the shadows and will never threaten the player again."
         }
-      }
+      },
+      "reactions": [
+        {
+          "id": "spider_attack_on_interact",
+          "on": "interaction.used",
+          "condition": {
+            "require": "event:interaction_id == attack"
+          },
+          "effects": {
+            "trigger_encounter": "self"
+          },
+          "phase": "immediate"
+        },
+        {
+          "id": "spider_attack_on_webs",
+          "on": "traversal.succeeded",
+          "phase": "immediate",
+          "condition": {
+            "require": "event:exit_id == exit_through_webs"
+          },
+          "effects": {
+            "trigger_encounter": "self"
+          }
+        }
+      ]
     },
     "rubbish_pile": {
       "type": "feature",
@@ -695,9 +728,7 @@
         }
       ],
       "behavior": {
-        "triggers_on": [
-          "attack"
-        ],
+        "triggers_on": [],
         "encounter_rules": [
           {
             "condition": {
@@ -716,7 +747,20 @@
             "set_flags": {}
           }
         ]
-      }
+      },
+      "reactions": [
+        {
+          "id": "korbar_attack_on_interact",
+          "on": "interaction.used",
+          "condition": {
+            "require": "event:interaction_id == attack"
+          },
+          "effects": {
+            "trigger_encounter": "self"
+          },
+          "phase": "immediate"
+        }
+      ]
     },
     "toenail_sword": {
       "type": "item",

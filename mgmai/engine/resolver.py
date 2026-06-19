@@ -722,16 +722,9 @@ def resolve_interact(
                     success=False,
                     error=f"NPC '{target_id}' is dead",
                 )
-            if interaction_id in (target_entity.behavior.triggers_on or []):
-                return ResolutionResult(
-                    success=True,
-                    hard_changes=HardStateChanges(),
-                    encounter_trigger=target_id,
-                    room_after_id=room_id,
-                )
 
-        # If NPC has a CombatBlock but no behavior trigger matched, and the
-        # interaction is an attack, start combat directly.
+        # If NPC has a CombatBlock and the interaction is an attack, start
+        # combat directly.
         if interaction_id == "attack" and target_entity.combat is not None:
             from mgmai.engine.combat import enter_combat
             entry = enter_combat([target_id], hard, corpus)
@@ -752,17 +745,9 @@ def resolve_interact(
         if inter.id == interaction_id:
             matches.append((inter, "room"))
 
-    if not matches:
-        return ResolutionResult(
-            success=False,
-            error=f"Interaction '{interaction_id}' not found for target '{target_id}'",
-        )
-
-    inter, source = matches[0]
-
-    # Base result that all return paths share.  interaction.used is emitted
-    # here so immediate reactions can fire before the condition/check/result
-    # is evaluated.
+    # Emit interaction.used before matching so entity-scoped reactions
+    # fire even when no interaction definition exists (e.g. bare-handed
+    # attack on an NPC with encounter rules but no "attack" interaction).
     result = ResolutionResult(
         success=False,
         error=f"Interaction '{interaction_id}' has no defined result",
@@ -779,20 +764,13 @@ def resolve_interact(
         hard, soft, corpus, state_manager, result,
     )
 
-    # Check if any room NPC's behavior triggers on this interaction
-    auto_encounter_npc: str | None = None
-    for entity_id in room.entities_present:
-        entity = corpus.entities.get(entity_id)
-        if entity and entity.type == "npc" and entity.behavior:
-            if interaction_id in (entity.behavior.triggers_on or []):
-                entity_state = hard.entity_states.get(entity_id, {})
-                if entity_state.get("alive") is not False and entity_state.get("fled") is not True:
-                    auto_encounter_npc = entity_id
-                    break
+    if not matches:
+        return result
+
+    inter, source = matches[0]
 
     if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
         result.error = f"Conditions not met for interaction '{interaction_id}'"
-        result.encounter_trigger = auto_encounter_npc
         return result
 
     if inter.parameter_signature:
@@ -805,7 +783,6 @@ def resolve_interact(
                 "entity" in allowed and target_type in entity_types
             ):
                 result.error = f"Target type '{target_type}' not allowed for interaction '{interaction_id}' (expected: {sig.target})"
-                result.encounter_trigger = auto_encounter_npc
                 return result
         if sig.using and action.using:
             using_entity = corpus.entities.get(action.using)
@@ -815,11 +792,10 @@ def resolve_interact(
                 "entity" in allowed_using and using_type in entity_types
             ):
                 result.error = f"Using item type '{using_type}' not allowed for interaction '{interaction_id}' (expected: {sig.using})"
-                result.encounter_trigger = auto_encounter_npc
                 return result
 
     if inter.check:
-        check_result = _resolve_interaction_check(inter, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc, state_manager=state_manager, resolution=result)
+        check_result = _resolve_interaction_check(inter, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result)
         # Merge the base interaction event and any events/check results from
         # the check resolution into a single result.
         result.success = check_result.success
@@ -827,7 +803,7 @@ def resolve_interact(
         result.hard_changes = check_result.hard_changes
         result.triggered_narration = check_result.triggered_narration
         result.revealed_hints = check_result.revealed_hints
-        result.encounter_trigger = check_result.encounter_trigger or auto_encounter_npc
+        result.encounter_trigger = check_result.encounter_trigger or result.encounter_trigger
         result.rolls = check_result.rolls
         result.events.extend(check_result.events)
         return result
@@ -835,30 +811,29 @@ def resolve_interact(
     if inter.using_results and action.using:
         item_override = inter.using_results.get(action.using)
         if item_override is not None:
-            override_result = _resolve_using_override(item_override, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc, state_manager=state_manager, resolution=result)
+            override_result = _resolve_using_override(item_override, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result)
             result.success = override_result.success
             result.error = override_result.error
             result.hard_changes = override_result.hard_changes
             result.triggered_narration = override_result.triggered_narration
             result.revealed_hints = override_result.revealed_hints
-            result.encounter_trigger = override_result.encounter_trigger or auto_encounter_npc
+            result.encounter_trigger = override_result.encounter_trigger or result.encounter_trigger
             result.rolls = override_result.rolls
             result.events.extend(override_result.events)
             return result
 
     if inter.result:
-        result_result = _resolve_interaction_result(inter.result, hard, soft, corpus, room_id, encounter_trigger=auto_encounter_npc, state_manager=state_manager, resolution=result)
+        result_result = _resolve_interaction_result(inter.result, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result)
         result.success = result_result.success
         result.error = result_result.error
         result.hard_changes = result_result.hard_changes
         result.triggered_narration = result_result.triggered_narration
         result.revealed_hints = result_result.revealed_hints
-        result.encounter_trigger = result_result.encounter_trigger or auto_encounter_npc
+        result.encounter_trigger = result_result.encounter_trigger or result.encounter_trigger
         result.rolls = result_result.rolls
         result.events.extend(result_result.events)
         return result
 
-    result.encounter_trigger = auto_encounter_npc
     return result
 
 

@@ -147,7 +147,7 @@ they become unused.  One trigger type at a time, playtesting each:
    - Once no exit uses `on_traverse`, remove the inline traversal-effect
      processing from `resolve_move()` in `resolver.py`
 
-3. **`Behavior.triggers_on` → entity-scoped reactions**
+3. **`Behavior.triggers_on` → entity-scoped reactions** ✅
    - Convert NPC behavior triggers to `on="interaction.used"` reactions on
      the entity, with `condition={require: "event:interaction_id == <id>"}`
    - `effects.trigger_encounter = "self"` (resolved to entity ID at dispatch)
@@ -155,7 +155,7 @@ they become unused.  One trigger type at a time, playtesting each:
      from `resolve_interact()` in `resolver.py` and
      `check_behavior_trigger()` in `encounters.py`
 
-4. **`on_dialogue_exit` → entity-scoped reactions**
+4. **`on_dialogue_exit` → entity-scoped reactions** ✅
    - Convert NPC `on_dialogue_exit` to `on="dialogue.ended"` reactions on
      the entity, with `condition={require: "event:npc_id == <npc_id>"}`
    - `set_entity_state`/`set_flag`/`narrative` map to `effects.result`
@@ -207,10 +207,9 @@ enabling infinite regress.
 ### Known Gaps / Remaining Work
 
 1. **Legacy code paths still active**: ~~`_fire_on_enter_events()`~~ (removed),
-   ~~inline traversal effects in `resolve_move()`~~ (removed), inline `behavior.triggers_on`
-   in `resolve_interact()`, and inline `on_dialogue_exit` in
-   `_archive_and_exit()` are all still active.  These will be removed one at
-   a time as adventures are converted.
+   ~~inline traversal effects in `resolve_move()`~~ (removed), ~~inline `behavior.triggers_on`
+   in `resolve_interact()`~~ (removed), ~~inline `on_dialogue_exit` in
+   `_archive_and_exit()`~~ (removed). All legacy trigger code paths have been removed.
 
 2. **`context/assembler.py` not updated**: With the Option B accumulator model,
    reaction effects are applied through the normal `apply_hard_changes()` path

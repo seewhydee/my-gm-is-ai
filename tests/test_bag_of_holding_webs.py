@@ -111,6 +111,8 @@ class TestAxeHandleLowerWebbing:
         assert "exit_up_handle_from_lower" in exit_ids
         assert "exit_down_handle_to_floor" in exit_ids
         assert "exit_drop_from_lower" in exit_ids
+        assert "exit_through_webs_up" not in exit_ids
+        assert "exit_through_webs_down" not in exit_ids
 
     def test_cut_webbing_with_sword_succeeds_and_clears_webs(
         self, bag_state_manager, monkeypatch
