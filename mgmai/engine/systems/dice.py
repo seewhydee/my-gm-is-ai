@@ -28,14 +28,21 @@ import re
 
 
 def parse_damage_dice(expr: str) -> tuple[int, int, int]:
-    """Parse a damage expression like ``"1d6+2"`` or ``"2d4"``.
+    """Parse a damage expression like ``"1d6+2"``, ``"2d4"``, or ``"3"``.
 
-    Returns ``(num_dice, die_size, modifier)``.
+    Returns ``(num_dice, die_size, modifier)``.  For a bare integer (flat
+    damage, e.g. GURPS or unarmed strikes), ``num_dice`` and ``die_size``
+    are both 0 and the value is stored in ``modifier``.
     """
-    m = re.fullmatch(r"(\d+)d(\d+)(?:([+-]\d+))?", expr.strip())
-    if m is None:
-        raise ValueError(f"Invalid damage expression: {expr!r}")
-    num_dice = int(m.group(1))
-    die_size = int(m.group(2))
-    modifier = int(m.group(3)) if m.group(3) else 0
-    return num_dice, die_size, modifier
+    expr = expr.strip()
+    m = re.fullmatch(r"(\d+)d(\d+)(?:([+-]\d+))?", expr)
+    if m is not None:
+        num_dice = int(m.group(1))
+        die_size = int(m.group(2))
+        modifier = int(m.group(3)) if m.group(3) else 0
+        return num_dice, die_size, modifier
+    # Bare integer: flat damage (no dice)
+    m = re.fullmatch(r"(\d+)", expr)
+    if m is not None:
+        return 0, 0, int(m.group(1))
+    raise ValueError(f"Invalid damage expression: {expr!r}")

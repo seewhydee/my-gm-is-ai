@@ -93,15 +93,13 @@ The resolution system defines **how stat checks translate to probability**, deco
 | `flat` | stat + modifier >= DC | Diceless / point-buy |
 
 Currently only `5e` is implemented, as `FiveESystem` in
-`mgmai.engine.systems`.  The engine no longer branches on a system name
-inline; instead it obtains a `ResolutionSystem` instance via
-`get_system(name)` / `get_system_for_corpus(corpus)` and delegates
-modifiers, dice, checks, saving throws, attack/crit rules, AC/HP
-formulas, and initiative to it.  Adding a system means subclassing
-`ResolutionSystem` and registering it with `register_system(name, cls)`;
-no resolver or combat-loop edits are required.  The table above sketches
-candidate systems; their formulas would live inside the corresponding
-subclass.
+`mgmai.engine.systems`.  The engine obtains a `ResolutionSystem`
+instance via `get_system(name)` / `get_system_for_corpus(corpus)` and
+delegates modifiers, dice, checks, saving throws, attack/crit rules,
+AC/HP formulas, and initiative to it.  Adding a system means
+subclassing `ResolutionSystem` and registering it with
+`register_system(name, cls)`.  The table above sketches candidate
+systems; their formulas would live inside the corresponding subclass.
 
 ### GMBriefing extension
 
@@ -139,15 +137,6 @@ The following files need modification or addition:
 | **State manager** | Add `_validate_player_stats()` on load/new-game. |
 | **Console display** | Add character sheet Rich panel. |
 | **Schema docs** | Document stats block, stat_check type, and stat condition domain. |
-
-## Open questions
-
-1. **NPC stats**: Not for this phase. The `StatCheck` schema reserves an `opposed_by` field and the condition parser reserves an `npc_stat:` domain for future use. NPC capabilities remain modelled through `behavior` encounter rules and `attitude_limits`.
-
-2. **LLM knowledge**: Include the full player_stats block in the GMBriefing (not just the relevant stat) so the LLM understands the character holistically.
-
-3. **Portability**: Eventually we want to import/export player stat blocks across adventures. The design uses `hard_state.player.stats` as a pure data dict, making this straightforward later.
-
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
 > This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

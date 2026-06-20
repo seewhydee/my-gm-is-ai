@@ -24,7 +24,8 @@ class CombatLogEntry(BaseModel):
 
     Not every field is populated for every entry.  An attack entry carries
     the roll / total / AC / hit / damage chain; a death entry only carries
-    actor + action + round.
+    actor + action + round.  On-hit effect results (saving throw, secondary
+    damage) are carried in the ``on_hit_effects`` list.
     """
     round: int
     actor: str               # "player" or npc entity id
@@ -38,6 +39,8 @@ class CombatLogEntry(BaseModel):
     damage_roll: Optional[str] = None
     damage: Optional[int] = None
     remaining_hp: Optional[int] = None
+    # On-hit saving throws and secondary damage
+    on_hit_effects: list[dict] = Field(default_factory=list)
 
 
 class CombatState(BaseModel):

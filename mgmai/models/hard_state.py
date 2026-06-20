@@ -30,6 +30,7 @@ class PlayerState(BaseModel):
     max_hp: Optional[int] = None
     ac: Optional[int] = None
     proficiency_bonus: Optional[int] = None
+    save_proficiencies: list[str] = Field(default_factory=list)
 
 class GameOverState(BaseModel):
     type: str  # "win" or "lose"

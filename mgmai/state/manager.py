@@ -108,6 +108,7 @@ class StateManager:
 
         self._validate_cross_references()
         self._validate_player_stats()
+        self._init_player_combat_defaults()
 
     def apply_char_sheet(self, path: str | Path) -> None:
         """Load and apply a custom player character sheet.
@@ -185,6 +186,7 @@ class StateManager:
 
         self._validate_cross_references()
         self._validate_player_stats()
+        self._init_player_combat_defaults()
 
     # ------------------------------------------------------------------
     # Validation
@@ -305,6 +307,39 @@ class StateManager:
         for stat_key in hard.player.stats:
             if stat_key not in corpus.stats.definitions:
                 raise ValueError(f"Player stat '{stat_key}' is not defined")
+
+    def _init_player_combat_defaults(self) -> None:
+        """Initialise player combat stats (HP, AC, prof) if not already set.
+
+        Uses the active resolution system to derive defaults from ability
+        scores when a stats block is present.  Called after every load
+        (including character sheet application) so the defaults are
+        available from game start, not only on combat entry.
+        """
+        if self.corpus is None or self.hard_state is None:
+            return
+
+        from mgmai.engine.combat import get_player_max_hp
+        from mgmai.engine.systems import get_system_for_corpus
+
+        hard = self.hard_state
+        system = get_system_for_corpus(self.corpus)
+
+        if hard.player.stats:
+            if hard.player.max_hp is None:
+                hard.player.max_hp = system.base_max_hp(
+                    hard.player.stats.get("CON", 10)
+                )
+            if hard.player.ac is None:
+                hard.player.ac = system.base_ac(
+                    hard.player.stats.get("DEX", 10)
+                )
+        if hard.player.current_hp is None:
+            hard.player.current_hp = get_player_max_hp(hard)
+        if hard.player.max_hp is None:
+            hard.player.max_hp = hard.player.current_hp
+        if hard.player.proficiency_bonus is None:
+            hard.player.proficiency_bonus = 2
 
     # ------------------------------------------------------------------
     # Accessors

@@ -168,16 +168,17 @@ Specific findings:
    wants before more 5e features accrete.  **— DONE.**
 2. **A2 + A4** (small, isolated): save proficiencies on `PlayerState`;
    flat-damage parser (`parse_damage_dice` now lives in
-   `mgmai/engine/systems/dice.py`).
+   `mgmai/engine/systems/dice.py`).  **— DONE.**
 3. **A1** (on-hit saves): built *on top of* the new system's
    `resolve_save` (already implemented on `FiveESystem`, so no further
    abstraction work is needed — just wire it into the combat loop after a
-   hit), exercising the abstraction with the spider's poison.
+   hit), exercising the abstraction with the spider's poison.  **— DONE.**
 4. **A3** (out-of-combat HP): independent of combat loop; can land in
-   parallel with A1.
+   parallel with A1.  **— DONE.**
 5. Regenerate `bag-of-holding` JSON from `scenario.md` (spider →
    `CombatBlock` + `on_hit_effects`; falling `on_traverse` →
-   `player_damage`) once the engine supports it.
+   `player_damage`) once the engine supports it.  **— READY** (engine
+   supports all necessary features now).
 
 After step 1, adding any **d20-family** system (Pathfinder, d20 Modern)
 is "implement a `ResolutionSystem` subclass + `register_system`" — no
@@ -209,3 +210,44 @@ B6 first.
   `get_system_for_corpus(corpus).compute_modifier(v)`, and eventually
   retire the `stat_checks` shims once all callers (incl. tests) move.
   Pure tidiness; no behaviour change.
+
+### Implementation notes & amendments (B1-B3 review)
+
+- **Bug fix — `_resolve_traversal_check` still had inline 5e logic.**
+  The B1-B3 sweep missed the traversal check path in `resolver.py:993`.
+  It still called `compute_5e_modifier` and `roll_d20` (the backward-
+  compat shims) and manually rolled d20s with `random.randint(1,20)`.
+  Fixed: now calls `system.roll_check()` like the other three check
+  resolution sites, producing a `CheckResult` and adding the
+  `"traversal_check": True` key afterward.
+
+### Implementation notes & amendments (A1–A4 complete)
+
+- **A1 — On-hit effects.** `OnHitSave` and `OnHitEffect` models added to
+  `corpus.py`; `on_hit_effects` list on `CombatBlock`.  The combat loop
+  resolves them after every NPC hit against the player via
+  `_resolve_on_hit_effect()`, which calls `system.resolve_save()` and
+  `system.roll_damage()`.  Only NPC-vs-player saves are implemented (NPC
+  ability scores remain unmodelled, per the Part A decision).
+  `CombatLogEntry` gains an `on_hit_effects` list; `format_combat_prefix`
+  shows save outcomes in the combat summary.
+- **A2 — Save proficiencies.** Optional `save_proficiencies: list[str]`
+  field added to `PlayerState` (`hard_state.py`).  The on-hit effect
+  resolver reads it to determine proficiency for saving throws.
+- **A3 — Out-of-combat HP.** (1) HP initialisation moved from
+  `enter_combat`-only to game-start in `StateManager._init_player_combat_defaults()`,
+  which also fills `max_hp`, `ac`, and `proficiency_bonus` defaults from
+  the active system when absent.  Called after `load_all` and
+  `apply_char_sheet`.  (2) `Result.player_damage` (a dice expression or
+  flat int) added; `_apply_result()` resolves it through the active
+  system and sets `HardStateChanges.player_hp_delta`.  This lets
+  `on_traverse` / interaction results deal falling damage, poison, etc.
+  without entering combat.  The hard-state change is applied by the
+  existing `StateManager.apply_hard_changes` path.
+- **A4 — Flat damage.** `parse_damage_dice()` in `dice.py` now accepts
+  bare integers (e.g. `"3"`), returning `(0, 0, value)`.  `roll_damage()`
+  in `five_e.py` treats `num_dice == 0` as flat damage with no dice roll
+  and no crit doubling.  Supports GURPS-style flat damage and Korbar's
+  unarmed strike (`"3"`).
+
+All 1013 tests pass (1 skip unchanged).

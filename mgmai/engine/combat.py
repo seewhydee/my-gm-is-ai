@@ -35,6 +35,7 @@ from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import CombatBlock, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.engine.systems import get_system, get_system_for_corpus
+from mgmai.engine.systems.base import SaveResult
 from mgmai.engine.systems.dice import parse_damage_dice
 
 
@@ -329,8 +330,18 @@ def _resolve_npc_attack(
         damage, dmg_str = system.roll_damage(combat_block.dmg, critical=critical)
         log_entry.damage_roll = dmg_str
         log_entry.damage = damage
-        result["player_hp_delta"] = -damage
-        new_hp = (hard.player.current_hp or 0) - damage
+        total_damage = damage
+
+        # On-hit effects (secondary damage via saving throws)
+        for effect in combat_block.on_hit_effects:
+            eh_result = _resolve_on_hit_effect(
+                effect, hard, system, round_number,
+            )
+            log_entry.on_hit_effects.append(eh_result)
+            total_damage += eh_result.get("damage", 0)
+
+        result["player_hp_delta"] = -total_damage
+        new_hp = (hard.player.current_hp or 0) - total_damage
         log_entry.remaining_hp = new_hp
         if new_hp <= 0:
             death_entry = CombatLogEntry(
@@ -342,6 +353,58 @@ def _resolve_npc_attack(
             result["game_over"] = True
 
     return result
+
+
+def _resolve_on_hit_effect(
+    effect: object,
+    hard: HardGameState,
+    system: object,
+    round_number: int,
+) -> dict[str, Any]:
+    """Resolve a single on-hit effect against the player.
+
+    Returns a dict suitable for ``CombatLogEntry.on_hit_effects`` with
+    keys: ``save_stat``, ``save_dc``, ``save_roll``, ``save_total``,
+    ``save_success``, ``damage_expr``, ``damage``, ``on_save``,
+    ``damage_type``.
+    """
+    save_stat = effect.save.stat.upper()
+    save_dc = effect.save.dc
+
+    stat_value = (hard.player.stats or {}).get(save_stat, 10)
+    proficient = save_stat in hard.player.save_proficiencies
+    prof_bonus = hard.player.proficiency_bonus or 2
+
+    save_result: SaveResult = system.resolve_save(
+        save_stat, stat_value, save_dc,
+        proficient=proficient,
+        proficiency_bonus=prof_bonus,
+    )
+
+    effect_damage = 0
+    dmg_expr = effect.damage
+    on_save = effect.on_save
+
+    if on_save == "none" and save_result.success:
+        effect_damage = 0
+    else:
+        raw_damage, _ = system.roll_damage(dmg_expr)
+        if on_save == "half" and save_result.success:
+            effect_damage = max(1, raw_damage // 2)
+        else:
+            effect_damage = raw_damage
+
+    return {
+        "save_stat": save_stat,
+        "save_dc": save_dc,
+        "save_roll": save_result.raw_roll,
+        "save_total": save_result.total,
+        "save_success": save_result.success,
+        "damage_expr": dmg_expr,
+        "damage": effect_damage,
+        "on_save": on_save,
+        "damage_type": effect.type,
+    }
 
 
 # ------------------------------------------------------------------

@@ -108,6 +108,11 @@ class FiveESystem(ResolutionSystem):
     def roll_damage(self, expr: str, critical: bool = False) -> tuple[int, str]:
         # On a critical hit the number of dice is doubled (modifier added once).
         num_dice, die_size, modifier = parse_damage_dice(expr)
+
+        if num_dice == 0:
+            # Flat damage (bare integer) — no dice to roll or double.
+            return modifier, f"{modifier} [flat]={modifier}"
+
         dice_count = num_dice * 2 if critical else num_dice
         rolls = [random.randint(1, die_size) for _ in range(dice_count)]
         total = sum(rolls) + modifier

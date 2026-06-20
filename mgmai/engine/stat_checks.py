@@ -135,6 +135,23 @@ def format_combat_prefix(
                 crit_str = " (CRIT!)" if crit else ""
                 dmg_str = f" for {damage} damage{crit_str}" if damage is not None else ""
                 summaries.append(f"**{name} {target_name}: hit{dmg_str}.**")
+
+                # On-hit effect summaries
+                for eh in entry.get("on_hit_effects") or []:
+                    save_stat = eh.get("save_stat", "?")
+                    save_success = eh.get("save_success")
+                    eh_damage = eh.get("damage", 0)
+                    eh_type = eh.get("damage_type", "")
+                    type_str = f" {eh_type}" if eh_type else ""
+                    if save_success:
+                        if eh.get("on_save") == "none":
+                            summaries.append(f"**{save_stat} save: success — no{type_str} damage.**")
+                        elif eh.get("on_save") == "half":
+                            summaries.append(f"**{save_stat} save: success — half{type_str} damage ({eh_damage}).**")
+                        else:
+                            summaries.append(f"**{save_stat} save: success — {eh_damage}{type_str} damage.**")
+                    else:
+                        summaries.append(f"**{save_stat} save: failed — {eh_damage}{type_str} damage.**")
             else:
                 summaries.append(f"**{name} {target_name}: miss.**")
         elif action == "flee":

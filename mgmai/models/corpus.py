@@ -114,6 +114,7 @@ class Result(BaseModel):
     adjust_attitude: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
     chain_check: Optional[ChainedCheck] = None
+    player_damage: Optional[str] = None
 
     def has_any_effect(self) -> bool:
         return any(
@@ -122,6 +123,7 @@ class Result(BaseModel):
                 "narrative", "add_item", "remove_item",
                 "set_flag", "alter_stat", "set_entity_state", "set_room_state",
                 "adjust_attitude", "reveals", "chain_check",
+                "player_damage",
             )
         )
 
@@ -450,6 +452,26 @@ class StatDefinition(BaseModel):
     description: str
 
 
+class OnHitSave(BaseModel):
+    """Saving throw triggered by an on-hit effect."""
+    stat: str
+    dc: int
+
+
+class OnHitEffect(BaseModel):
+    """An effect that triggers on a successful melee hit.
+
+    Currently only resolved for NPC attacks against the player (the
+    target is always the player, whose stats and save proficiencies are
+    known).  NPC-vs-player saves only; NPC ability scores are not
+    modelled yet.
+    """
+    save: OnHitSave
+    damage: str = "1d6"
+    on_save: Literal["half", "none", "full"] = "half"
+    type: Optional[str] = None
+
+
 class CombatBlock(BaseModel):
     """NPC combat stat block (5e-flavoured but corpus-agnostic).
 
@@ -462,6 +484,7 @@ class CombatBlock(BaseModel):
     dmg: str = "1d6"
     initiative_mod: int = 0
     flee_dc: int = 10
+    on_hit_effects: list[OnHitEffect] = Field(default_factory=list)
 
 
 class StatsBlock(BaseModel):
