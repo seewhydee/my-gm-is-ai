@@ -12,7 +12,23 @@ town. Now you seem to be in a giant cave made of... canvas?
 
 ## RPG Mechanics
 
-The 5e system is used to describe stat checks.
+The 5e system is used for stat checks and combat.
+
+The player's inventory is initially empty (if an initial character
+sheet was supplied, the inventory is cleared out).
+
+If no player stats are supplied, use the following defaults:
+
+Class: Rogue
+Race: Human
+Level: 4
+Attributes: STR 10, DEX 13, CON 12, INT 11, WIS 10, CHA 10
+Proficiency Bonus: +2
+HP: 27
+AC: 11 (unarmored + Dex bonus)
+Saving Throws: DEX, INT
+
+Other 5e mechanics, including skills, are unused.
 
 ## Rooms
 
@@ -26,31 +42,19 @@ downward into the murk.
 
 There's a very faint luminescence coming from the walls, which seems
 to be the main thing preventing this area from being pitch black.
-When examined, an INT check (DC 12) lets the player deduce that this
-glow is magical in nature (it's a side effect of the Bag's magic).
+When examined, an INT check (DC 12, non-repeatable) lets the player
+deduce that this glow is magical in nature (it's a side effect of the
+Bag's magic).
 
 Above, just above head height, the walls converge into a low dome,
 scrunching shut in the center.
 
-The top of the blade has made a small rip in the fabric.  If the
-player balances carefully on the tip of the blade, they can poke their
-head out.  Beyond is a gray nothing; by looking around, they can see
-the exterior of the giant Bag, which features a giant padlock barely
-within reach.  It's firmly closed around the neck of the bag.
-
-Any item dropped through the rip disappears into the nothingness.
-Dropping the key (see below) through it leaves the player trapped
-forever (game over).
-
-With an INT check (DC 15), the player recognizes what's outside as the
-Astral Plane.
+The top of the blade has made a small rip in the fabric.  The player
+can poke their head out or even try to squeeze through (see The Rip,
+Mechanics section).
 
 The player can drop down into the darkness below (see Dropping
-mechanic below), or clamber carefully down the axe handle.  On a
-successful DEX check (DC 12), the player can squeeze their whole body
-through the rip.  The GM should ask if they're sure they want to
-proceed; if they insist, this leads to a grisly end floating eternally
-in the Astral Plane (game over).
+mechanic below), or clamber carefully down the axe handle.
 
 ### Axe Handle (Upper)
 
@@ -58,16 +62,22 @@ Here, a mass of sticky webs is attached to the giant axe handle,
 greatly diminishing the glow from the canvas walls.  The player can
 barely make out their way, balancing carefully on the handle.
 
-The sloping handle continues upward and downward.  The webbing seems
-to be denser on the lower side.  It's also possible to drop down into
-the darkness below, but it's too dark to see where one would land (see
+The sloping handle continues upward and downward.  The webs seem to be
+denser on the lower side.  It's also possible to drop down into the
+darkness below, but it's too dark to see where one would land (see
 Dropping, in the Mechanics section).
 
 There are various strange masses, of different sizes, stuck in the
-webs.  If the player examines one of these, they turn up a stuck FLY
-(see NPCs section), about the size of a dog relative to the player.
-It warns of a spider, then dies shortly thereafter.  The other stuck
-objects are too tightly wrapped in webbing to identify or extricate.
+webs.  If the player examines these masses, or the web itself, they
+turn up a stuck FLY, which can talk and is about the size of a dog
+relative to the player.  It dies shortly thereafter (see NPCs
+section).  All the stuck objects, including the FLY, are too tightly
+wrapped in webbing to identify or extricate.
+
+If the player has not noticed the FLY yet, the groaning sounds and/or
+warning messages are narrated as coming from somewhere in the web; the
+narrator should not reveal the FLY until the player does an
+examination.
 
 ### Axe Handle (Lower)
 
@@ -77,21 +87,21 @@ have to force their way through first (see Webbing in the Mechanics
 section).
 
 The SPIDER is concealed in the shadows above.  If the spider has not
-been revealed, a successful WIS check (DC 12), repeatable each time
+been revealed, a successful WIS check (DC 13, repeatable) each time
 the player enters the room or examines the web, lets the player notice
-its presence.  See the NPCs section for details about the Spider's
-behavior, including its reaction to the player passing through the web.
+its presence.  For details, see SPIDER (NPCs section).
 
 Peering over the side of the axe handle, the player can make out
 numerous irregularly-shaped objects below.  It seems possible to drop
 down safely from here.
 
-If the player looks carefully at the objects below, a successful WIS
-check (DC 14) lets them make out giant versions of empty potion
-bottles, copper pieces, corks, moldy sandwiches, piled on each other.
-
-If KORBAR (see NPCs) is alive, the player can also hear a faint
-clanking and muttering from below.
+The player can also look down at what lies beneath.  If the player has
+not yet visited the bag floor, passing a WIS check (DC 11, repeatable)
+lets them discern giant versions of empty potion bottles, copper
+pieces, corks, moldy sandwiches, piled on each other.  If KORBAR (see
+NPCs) is alive, the player can also hear a faint clanking and
+muttering from below.  If the player has already visited the bag
+floor, the WIS check is not necessary.
 
 ### Bag Floor
 
@@ -108,7 +118,7 @@ possible to clamber back up the handle from here.
 Here is KORBAR, a female Dwarf, drunk and miserable, wearing
 ridiculously noisy platemail (see NPCs section).
 
-### Secret Compartment
+### Secret Pocket
 
 This room, about the size of a small closet, is accessed by squeezing
 through a concealed flap in the floor of the Bag of Holding.  Its
@@ -120,240 +130,323 @@ section).
 
 ## Mechanics
 
-### Stat checks
+### The Rip
 
-Stat checks will use the 5e system.  Until we get proper character
-sheets in place, initialize the player character with 10 on every
-stat.
+There is a small rip in the canvas wall of the Bag of Holding,
+accessible from the Axe Head (starting room).
+
+While in this room, the player can walk carefully to the tip of the
+blade and reach the rip.  Upon sticking their head through it
+(equivalent to an Examine action), they see the following:
+
+- The area outside is a gray nothing.  Upon seeing this, a sucessful
+  INT check (DC 12, non-repeatable) lets the player recognize this
+  nothingness as the Astral Plane.
+
+- Looking around, they see that the rip is actually a hole in the wall
+  of what looks like a giant sack, or bag.  Above, the neck of the Bag
+  is firmly shut by a giant padlock, which dangles down to their
+  level.  The keyhole is barely within reach.
+  
+- If the previous INT check succeeded, passing another INT check (DC
+  17, non-repeatable) lets the player realize what the bag is.  It's a
+  Bag of Holding -- a legendary magical storage item that works by
+  existing in the prime and astral planes simultaneously.
+
+The above features (the gray void, the bag exterior, and the padlock)
+should not be narrated until the player has looked out the rip via an
+explicit examination action.  From the main part of the room, they are
+not visible, though the narrator can note the dull gray light winking
+through the rip.
+
+Any item dropped through the rip disappears into the gray void.  If
+the player drops the giant key (see below) through it, they are
+trapped forever (game over).
+
+The player can try to squeeze their whole body through the rip.  This
+requires a DEX check (DC 12, non-repeatable).  If the check succeeds,
+the GM should cancel the action and ask the player if they're sure.
+If they repeat the action, then they proceed to squeeze through the
+rip (no additional DEX check is needed), and come to a grisly end
+floating eternally in the Astral Plane (game over).
 
 ### Dropping from the axe handle
 
 If the player jumps down from the Axe Head, they reach the Bag Floor
-(to the astonishment of KORBAR if she's present), but severely injure
-themselves: -4 STR, -4 DEX, -4 CON.  (Implementation note: these can
-be treated as permanent stat changes for now; eventually, when we add
-importable/exportable character sheets, we want to make these
-temporary.)
+(to the astonishment of KORBAR if she's present), but sprain an ankle
+badly: lose 1d4 DEX, 1d4 CON, and 3d6 HP.  (Implementation note: the
+stat changes can be treated as permanent, if temporary stat debuffs
+haven't been implemented.)
 
 If dropping from the Axe Head (Upper), they reach the Bag Floor but
-sprain an ankle: -2 DEX, -2 CON.
+take 2d6 damage (no stat loss).
 
 If dropping from the Axe Handle (Lower), they're momentarily winded
 but otherwise uninjured.
 
-### Webbing
+### Web
 
 On the Axe Head (Lower), any attempt by the player to proceed (i.e.,
 going down if coming from above, going up if coming from below)
 requires them to first force their way through the web.  For returning
 in the direction from which they came, there is no impedance.
 
-Bashing through the web requires a successful STR check (DC 14 without
-a weapon, DC 10 if armed with a weapon).  Repeated checks are allowed.
-Once the web is cleared, no STR check is needed for subsequent
-passage.  However, any attempt to go through the web, whether
-successful or unsuccessful, also triggers the SPIDER to attack (see
-NPCs); the player cannot leave the room until the SPIDER encounter is
-resolved.
+Clearing the web requires a successful STR check (DC 14 without a
+weapon, DC 10 if armed with a weapon, both repeatable).  Once the web
+is cleared, no STR check is needed for subsequent passage.  However,
+any attempt to go through the web while the SPIDER is present, whether
+successful or unsuccessful, triggers the SPIDER attack encounter and
+cancels traversal (see NPCs).
 
-The player may try to search the webbing.  On the Axe Handle (Upper),
-the first examine action turns up the FLY (see NPCs).  No other
-searches turn up anything of use: the various masses stuck in the web
-are too tightly wrapped.  Anyway, it's gross.  The web itself is too
-sticky to do anything useful with.
+The player may try to search the web.  On the Axe Handle (Upper), the
+first examine action turns up the FLY (see NPCs).  No other searches
+turn up anything of use: the various masses stuck in the web are too
+tightly wrapped.  Anyway, it's gross.  The web itself is too sticky to
+do anything useful with.
 
 ### Rubbish
 
 The bottom of the bag of holding is covered with a random collection
 of rubbish: copper pieces, empty potion bottles, used corks, lint,
-moldy sandwiches, etc.  The scenario generator should pre-generate a
-collection of plausible items, possibly including humorous ones, and
-be prepared to accept them into the narrative.
+moldy sandwiches, etc., all giant-sized.  [Implementation note: the
+scenario generator should pre-generate a collection of plausible
+items, possibly including humorous ones, and be prepared to accept
+them into the narrative.]
 
-Most of the rubbish items appear oversized, in the player's
-shrunken-down state.  Upon examining the pile or any item within it, a
-successful repeatable INT check (DC 10) lets the player realize these
-are an adventurer's supplies; their own (now missing) pack contained
-much the same assortment of items.
+Examining the rubbish or the room or any item within the rubbish (this
+must be an explicit action, not just the room description produced
+upon room entry) has the following effects:
 
-Upon gaining this knowledge, if the player re-examines the rubbish or
-examines any part of any room and passes another repeatable INT check
-(DC 14), they realize that they are inside a magical Bag of Holding.
-The player also notices that the proportions of the rubbish aren't all
-equal; it seems the Bag's magic shrinks items by different amounts to
-get them to fit.
+- The player notices a giant toenail clipping within the pile, which
+  can be wielded as a sword.  Removing this from the loose pile
+  requires a successful DEX check (DC 8); thereafter, the toenail
+  functions as a shortsword (1d6 piercing, finesse, light).
+  
+- If the player passes a successful repeatable INT check (DC 8,
+  non-repeatable), they realize this is not a random pile of objects:
+  it's some adventurer's supplies.  After all, their own (now missing)
+  pack contained much the same assortment of items.
 
-Examining the rubbish, the player also notices a sharp object: a giant
-toenail clipping that can be wielded as a weapon.  Removing it
-requires a successful DEX check (DC 8).
+- If the player has made the previous observation, *and* makes another
+  explicit examination action, *and* does not yet know that they are
+  in a Bag of Holding, *and* passes another INT check (DC 14,
+  non-repeatable), they realize they are inside a magical Bag of
+  Holding.  The player also notices that the proportions of the
+  rubbish aren't all equal; it seems the Bag's magic shrinks items by
+  different amounts to get them to fit.
 
-Upon subsequent examination, a hard WIS check (DC 18) lets them notice
-a disgustingly damp giant handkerchief that seems to be draped in an
-unnatural way.  (The only other way to notice this is to get the
-information, one way or another, from KORBAR.)  Hauling this aside
-reveals a flap in the canvas floor, leading down into a dark area (the
-Secret Compartment).  However, if Korbar is conscious, did not give
-the player this information, and has non-positive attitude, she gets
-alarmed and tries to shoo the player away (see NPCs section).
+- If the player searches *thoroughly*, and this is not the first
+  examination (i.e., the toenail sword has already been noticed), and
+  the giant handkerchief has not yet been revealed (see next section),
+  then upon a successful WIS check (DC 15, non-repeatable), they
+  notice the giant handkerchief and suddenly get the feeling that it's
+  somewhow important.
+  
+### Giant Handkerchief
+
+This giant handkerchief is draped over a corner of the rubbish pile in
+the bag floor.  It is filthy and disgustingly damp.
+
+The handkerchief is not initially noticed by the player.  It is
+revealed if (i) the player searches the rubbish and passes a WIS check
+(see Rubbish, above), or (ii) KORBAR points it out (see NPCs, below).
+  
+Once the handkerchief is revealed, the player can lift it or move it
+aside.  This reveals a small flap in the canvas floor underneath,
+leading down into darkness (the Secret Pocket).
 
 ### Key
 
-The giant key in the Secret Compartment is extremely heavy.  The
-player can carry it, but so long as it's in inventory they have to
-pass a STR check (DC 13) to pass between different rooms.  The
-narration should emphasize the difficulty of hauling the key from
-point to point.  Failing the STR check gives a message to the effect
-that they struggle to move the heavy key, but the player is allowed to
-retry.
+The giant key in the Secret Pocket is extremely heavy.  The player can
+carry it, but the narration should emphasize the difficulty of hauling
+the key from point to point.  While it's in inventory, the player has
+to pass a STR check (DC 12, repeatable) to pass between different
+rooms; failing the STR check gives a message to the effect that they
+struggle to move the heavy key, but can try again.
 
-If Korbar is in the room and has attitude >= 4, and the player asks
-her to help, she will grumble but give her assistance, bypassing the
-STR check.  Doing so also moves Korbar into the targeted room (bag
-floor to lower handle, lower handle to upper handle, etc.).
+If KORBAR is in the room and currently following the player (see
+below), she will assist the player in moving the key, skipping the STR
+check.
 
 If the player gets the key to the Axe Head, they can push it through
-the rip and into the padlock.  This requires a repeatable STR check
-(DC 12).  If failed, make a DEX check (DC 8); failure means the key
-slips and falls through the rip, trapping the player forever (game
-over).  If Korbar is in the room and has attitude >=0, she helps the
-player, bypassing the STR check.  After this, the player can turn the
-key, open the padlock, and open the Bag (see Win Condition).
+the rip and into the padlock.  If KORBAR is present, she will help.
+The player rolls a STR check (DC 14 if alone, DC 10 with Korbar,
+repeatable).  If they succeed, they turn the key, open the padlock,
+and open the Bag, and win.
+
+If the above STR check fails, immediately make a DEX check (DC 8).
+Success means they manage to haul the key back in before it slips.
+Failure means the key slips and falls through the rip, trapping the
+player forever (game over).
 
 ## NPCs
 
 ### Fly 
 
-The Fly is located at Axe Handle (Upper), stuck in the webbing.  If the player has not noticed it and it is still alive, it will make some groaning sounds while the player is in the room.
+The FLY is located at Axe Handle (Upper), stuck in the web.  If the
+player has not noticed it and it is still alive, it will make some
+groaning and warning sounds while the player is in the room.
 
-If the player examines the webbing, the Fly is revealed.  Speaking in
-a weak nasally whine, it warns of a giant spider that's out for blood
-(it does this whether or not the spider has perished).  The player
-won't get any other useful information out of it, but it expresses
-satisfaction if the player tells it that the spider is dead.  Whatever
-the case, it dies after exiting dialogue.
+If the player examines the web, the FLY is revealed.  Speaking in a
+weak nasally whine, it warns of a giant spider that's out for blood
+(it does this whether or not the spider has perished).  Once it has
+imparted this information, any dialogue with it, or leaving the room,
+causes it to die.
+
+The FLY does not have any other useful information, including where
+this location is, etc.  After all, it's a fly (albeit one that talks).
 
 ### Spider
 
-The Spider lurks in the webbing above the player in Axe Handle
+The SPIDER lurks in the webbing above the player in Axe Handle
 (Lower).  It is huge and hungry for blood.  Its initial attitude
 toward the player is -2.
 
+While the SPIDER is hidden, the player can notice it upon a successful
+WIS check (DC 13, repeatable) each time they enter the room *or*
+examine the web.
+
 If the player tries to force their way through the web in Axe Handle
-(Lower) -- whether proceeding down from above or upward from below --
-while the spider is alive and lurking, it attacks.  This happens
-whether or not the player has noticed the Spider, or if the Spider is
-in conversation.  This reveals the Spider, fixes its attitude at -10
-permanently, and initiates a combat encounter, which we will handle
-with some rudimentary stat checks (pending implementation of proper
-combat mechanics in the game), as follows:
+(Lower) while the SPIDER is alive and lurking, whether going upward or
+downward, it attacks.  This happens whether or not the player has
+noticed the SPIDER, or if in conversation.  Triggering combat reveals
+the SPIDER and fixes its attitude at -10 permanently.
 
-- If the player is bare-handed, it overpowers the player and kills
-  them with their venom (game over).
+If Korbar is present during this encounter, she will not fight, and is
+narrated to be cowering in fear.
 
-- If the player is armed, and passes a STR check (DC 10), they land a
-  good blow on the Spider, which hisses and flees into the shadows,
-  disappearing from the game.
-  
-- If the player fails the attacking STR check, the blow glances off
-  the spider.  Then the Spider strikes back at the player.  Do a DEX
-  check (DC 10).  Success means the player dodges, and the turn ends;
-  and failure means the spider hits and kills the player with poison
-  (game over).
+If the SPIDER is present *and* has been revealed when the player
+enters the room (which typically happens if the player flees and
+returns), it initiates combat.
 
-- If Korbar is present during this encounter, she is narrated to be
-  cowering in fear, and will not take part in the combat.
+The Spider can talk, but will not initiate conversation.  If the
+player attempts to converse with it, and its attitude is >= -2, it
+grudgingly replies.  Being in conversation does not prevent it from
+attacking, as noted above.  It is vain, stupid, suspicious, and
+malicious, but can be flattered.  It knows of Korbar only as the
+delicious two-legs that it hasn't managed to catch -- yet.
 
-- If the player survives to the next turn and the Spider remains
-  present, they can decide what to do next: retreat or attack again.
-  The Spider will not strike first.
-
-The Spider can talk.  If the player attempts to converse with it, and
-its attitude is >= -2, it grudgingly replies.  Being in conversation
-does not prevent it from attacking, as noted above.  It is stupid and
-malicious, but can be flattered; however, it is too suspicious to make
-any agreement with the player.  It knows of Korbar only as the
-delicious-looking two-legs that it hasn't managed to catch -- yet.
-
-The player can flatter the spider to improve its attitude.  Its
-attitude only change by ±1 each turn, up to a maximum of 0.  An
-attitude increment occurs only upon a successful CHA check (DC 12)
-(implementation note: this can be done at the post-validation step,
-after LLM Call 2 proposes the initial attitude increase).
+The SPIDER's attitude only change by ±1 each turn, to a maximum of 0.
+Pleasant dialogue from the player, such as flattery, can increment its
+attitude, but this requires upon a successful CHA check (DC 9)
+(implementation note: this is done at post-validation, after the
+narrator proposes the attitude increase); a failed CHA check leaves
+the attitude unchanged.  Threats and other negative behavior from the
+player decrements its attitude (no CHA check needed).
 
 At attitude 0, the player can try to convince the Spider to let them
-through.  If the player is armed and passes a non-repeatable CHA check
-(DC 12), this persuasion succeeds: the Spider sizes them up and
-grudgingly slinks away, disappearing from the game.  Otherwise, the
-Spider agrees verbally to let the player through, but lies: it remains
-where it is, and still attacks as described above.
+through.  If the player is armed and passes a CHA check (DC 12,
+non-repeatable), this persuasion succeeds: the Spider sizes them up
+and grudgingly slinks away, disappearing from the game.  If the player
+is unarmed or fails the check, the Spider agrees verbally to let the
+player through, but this is actually a lie: it remains where it is,
+and still attacks as described above.
+
+#### Stat Block: Spider
+
+STR 14, DEX 16, CON 12, INT 7, WIS 11, CHA 4
+AC 14, HP 15
+Attacks: Bite (+5 to hit, 1d4+3 piercing damage)
+
+On hit, target must make a DC 11 CON save or take 1d8 poison damage,
+or half as much damage on a successful save.
 
 ### Korbar
 
-Korbar is a female Dwarf whose adventuring party stuck her in this Bag
-of Holding during a stealth mission, then forgot about her (she's not
+KORBAR is a female Dwarf whose adventuring party stuck her in this Bag
+of Holding during a stealth mission, then forgot about her.  She's not
 sure how long ago that was---time, like space, seems to function
-strangely in here).  She is wearing heavy iron armor, which clatters
-everytime she moves, but is unarmed (the battleaxe was actually her
-weapon, when she was full sized outside the Bag).  She is initially
-found sitting amidst the rubble on the Bag Floor, drunk and miserable,
-beneath a makeshift shelter made from a giant overturned soup ladle.
-Her starting attitude is 0.
+strangely in here.
 
-Korbar knows several important pieces of information:
+She wears heavy iron armor, which clatters everytime she moves, but is
+unarmed.  (Incidentally, the battleaxe was actually her weapon, when
+she was full sized outside the Bag.)  She is initially found sitting
+amidst the rubble on the Bag Floor, drunk and miserable, beneath a
+makeshift shelter made from a giant overturned soup ladle.
+
+KORBAR's starting attitude is 0.  She is willing to converse with the
+player, but has a cynical and tired attitude.  She knows several
+important pieces of information:
 
 - She knows about the Spider, which has been stalking her for as long
   as she's been here.  She is very afraid of spiders in general, and
   will never agree to fight it.  She readily offers this information
   whenever it comes up in conversation.
 
-- She knows how the Bag of Holding works but won't share this
-  information unless her attitude rises to 1.
+- She knows what this cave is --- i.e., a Bag of Holding --- as well
+  as some basic information about what a Bag of Holding is.  However,
+  she will not give this information unless her attitude is >= 1.
 
-- She knows about handkerchief that conceals the secret compartment
-  containing the key, and that the key might be the way out (but she
-  hasn't been able to try, because of the Spider).  She will never
-  offer this secret unless her attitude reaches 3.
+- She knows about the handkerchief covering a secret packet in the bag
+  floor, but hasn't been able to see what's inside (her armor can't
+  fit through the flap, and she doesn't want to remove it because of
+  the Spider.)  She will not volunteer any information about the
+  handkerchief and flap unless her attitude reaches 3.  Once she
+  provides this information, the giant handkerchief is revealed (see
+  Handkerchief, Mechanics section).
 
-If the player engages Korbar positively, such as commiserating with
-her plight, her attitude can be increased by +1 each time at the GM's
-discretion.  This increase can be applied up to 3 times if the player
-engages with Korbar persistently.
+If the player engages KORBAR in dialogue positively, such as treating
+her respectfully and commiserating with her plight, her attitude can
+be increased by +1 each time at the GM's discretion.  The GM should
+only apply this increment if the player makes an actual effort, and
+not hand it out like candy.  These general conversation-based
+increases can be applied up to 3 times.
 
 If the player engages Korbar negatively, such as making fun of her,
-her attitude can decrease by 1 each turn (to a minimum of -10).  She
-attacks the player if she reaches -10.
+her attitude can decrease by 1 each turn (to a minimum of -10), again
+at the GM's discretion.  She attacks the player if she reaches -10.
 
-Convincing Korbar that the Spider is dead raises her attitude by 3.
-However, if the player provides no evidence, a CHA check (DC 15) is
-needed to convince her of this (whether or not it is true).
+The player can try to convince Korbar that the Spider is dead, which,
+if successful, raises her attitude by 3.  (This holds regardless of
+whether it's true or not).  This requires the GM to decide the player
+makes a convincing case (based on dialogue), and passing a CHA check
+(DC 15, repeatable).  If the player provides physical evidence, such
+as a body part cut from the spider, the CHA check can be skipped.
 
-If the player attacks Korbar, or provokes her into attacking, the
-combat is resolved by a set of stat checks:
-
-- If the player is bare-handed, or fails a hard STR check (DC 17),
-  Korbar overpowers the player and bashes their head in (game over).
-
-- If the player is armed and passes the above STR check, they
-  overpower Korbar and knock her out.
-  
-If Korbar falls unconscious, she does not wake up for the rest of the
+If KORBAR's HP reaches 0, she falls unconscious for the rest of the
 game; the player may also kill her, but this accomplishes nothing
-more.  The player can steal her heavy plate armor, but finds it too
-heavy to wear (if they insist, the effects are entirely negative:
-every room transition succeeds only with a STR check (DC 14); hauling
-the giant key or any other heavy item, including Korbar, becomes
-impossible; there is no other benefit, including during combat with
-the Spider).  Korbar herself is too heavy to haul anywhere.
+further.  The player can steal her heavy plate armor, but finds it too
+cumbersome to wear.  She has no other notable inventory, and her body
+is too heavy to haul anywhere.
 
-If Korbar has attitude >= 1 and is convinced the Spider is dead, she
-can be convinced with a CHA check (DC 8) to follow the player up the
-axe.  (She won't go into the secret compartment.)  While following,
-she can also help haul the key, as noted above.  She will not
-participate in fighting the Spider (if it's still alive).
+If Korbar has attitude >= 1 and has been convinced the Spider is dead,
+she can be convinced with a CHA check (DC 8, repeatable) to follow the
+player up (or down) the axe.  She won't go into the secret
+compartment; her armor is too inflexible to squeeze through the flap.
+While following, she can also help lug the key (see Key in the
+Mechanics section).
+
+#### Stat Block: Korbar
+
+Class: Fighter
+Race: Dwarf
+Level: 3
+Attributes: STR 15, DEX 10, CON 14, INT 10, WIS 12, CHA 9
+Proficiency Bonus: +2
+HP: 29
+AC: 18 (plate)
+Saving Throws: STR, CON
+Damage: 3 (unarmed)
+Inventory: A rusty and smelly suit of plate mail (AC 18).
 
 ### Win Condition
 
 The player wins by dragging the key up to the top, poking it out of
 the hole, inserting it into the padlock, unlocking the Bag, and
-squirming free.  It is up to the GM to narrate this entertainingly,
-leaving the player's fate after leaving the Bag open-ended.
+squirming free.  It is up to the GM to narrate this entertainingly.
+The player's fate (and Korbar's, if following), after leaving the Bag,
+is left open-ended.
+
+## Narration Notes
+
+- The default room descriptions should not reveal the player's
+  situation (i.e., that they're shrunken down and stuck in a Bag of
+  Holding).  This is information that the player is supposed to figure
+  out over the course of the adventure.  Including this information in
+  the room description raises the risk that the narrating LLM spoils
+  the surprise.
+  
+- After the player has obtained knowledge about the Bag of Holding,
+  the narration can start to make use of this information.  This can
+  be done by having proper descriptions in the hard/soft state (up to
+  the scenario generator to figure out the best approach).
