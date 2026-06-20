@@ -182,15 +182,15 @@ class TestResolveMove:
 
     def test_drop_exit_sets_flag(self, state_manager):
         action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
-        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus, state_manager)
         assert result.success is True
         assert result.hard_changes.player_location == "bag_floor"
-        assert "injured" in result.hard_changes.flags_set
-        assert result.hard_changes.flags_set["injured"] is True
+        assert "injured" in result.immediate_changes.flags_set
+        assert result.immediate_changes.flags_set["injured"] is True
 
     def test_drop_exit_generates_narrative(self, state_manager):
         action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
-        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus, state_manager)
         assert len(result.triggered_narration) > 0
 
     def test_hidden_exit_not_accessible(self, state_manager):
@@ -230,10 +230,10 @@ class TestResolveMove:
     def test_drop_exit_applies_stat_damage_from_head(self):
         manager = StateManager(BAG_OF_HOLDING)
         action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
-        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus)
+        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus, manager)
         assert result.success is True
         assert result.hard_changes.player_location == "bag_floor"
-        assert result.hard_changes.stat_modifiers == {
+        assert result.immediate_changes.stat_modifiers == {
             "STR": StatModifier(value=-4), "DEX": StatModifier(value=-4), "CON": StatModifier(value=-4),
         }
 
@@ -241,10 +241,10 @@ class TestResolveMove:
         manager = StateManager(BAG_OF_HOLDING)
         manager.hard_state.player.location = "axe_handle_upper"
         action = MoveAction(action_type="move", target="exit_drop_from_upper", detail="Dropping down")
-        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus)
+        result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus, manager)
         assert result.success is True
         assert result.hard_changes.player_location == "bag_floor"
-        assert result.hard_changes.stat_modifiers == {
+        assert result.immediate_changes.stat_modifiers == {
             "DEX": StatModifier(value=-2), "CON": StatModifier(value=-2),
         }
 
@@ -515,8 +515,7 @@ class TestResolveInteract:
             interaction_id="attack",
             detail="Attacking Korbar",
         )
-        result = resolve_interact(action, hard, soft, corpus)
-        assert result.success is True
+        result = resolve_interact(action, hard, soft, corpus, state_manager)
         assert result.encounter_trigger == "korbar"
 
     def test_attack_on_non_combatant(self, state_manager):
@@ -600,8 +599,9 @@ class TestApplyResult:
         result = Result(adjust_attitude={"korbar": 2})
         changes = HardStateChanges()
         _apply_result(result, changes, [], [], hard, corpus)
-        assert hard.entity_states["korbar"]["attitude"] == 2
+        state_manager.apply_hard_changes(changes)
         assert changes.entity_state_changes["korbar"]["attitude"] == 2
+        assert hard.entity_states["korbar"]["attitude"] == 2
 
     def test_adjust_attitude_clamps_to_limits(self, state_manager):
         hard = state_manager.hard_state
@@ -613,6 +613,8 @@ class TestApplyResult:
         result = Result(adjust_attitude={"korbar": 5})
         changes = HardStateChanges()
         _apply_result(result, changes, [], [], hard, corpus)
+        state_manager.apply_hard_changes(changes)
+        assert changes.entity_state_changes["korbar"]["attitude"] == 10
         assert hard.entity_states["korbar"]["attitude"] == 10  # clamped to max
 
     def test_adjust_attitude_respects_step_per_turn(self, state_manager):
@@ -625,6 +627,8 @@ class TestApplyResult:
         result = Result(adjust_attitude={"korbar": 10})
         changes = HardStateChanges()
         _apply_result(result, changes, [], [], hard, corpus)
+        state_manager.apply_hard_changes(changes)
+        assert changes.entity_state_changes["korbar"]["attitude"] == 3
         assert hard.entity_states["korbar"]["attitude"] == 3  # clamped to step_per_turn
 
 
@@ -759,4 +763,55 @@ class TestResolveTransferTakeCheck:
         assert "rusty_key" not in result.hard_changes.inventory_added
         assert result.rolls[0]["success"] is False
         assert "The key slips from your grasp." in result.triggered_narration
+
+    def test_take_check_emits_check_event(self, state_manager, monkeypatch):
+        """Item 2: take_checks emit check.passed/check.failed with source_type 'take'."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        key = corpus.entities["rusty_key"]
+        key.take_check = TakeCheck(
+            check=RollCheck(threshold=0.5, repeatable=True),
+            success=Result(narrative="You pry the key loose."),
+            failure=Result(narrative="The key slips from your grasp."),
+        )
+        monkeypatch.setattr("random.random", lambda: 0.1)
+        action = TransferAction(
+            action_type="transfer",
+            target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus, state_manager)
+        assert result.success is True
+        check_events = [ev for ev in result.events if ev[0] == "check.passed"]
+        assert len(check_events) == 1
+        assert check_events[0][1]["source_type"] == "take"
+        assert check_events[0][1]["source_id"] == "take_rusty_key"
+
+    def test_take_check_failure_emits_check_failed(self, state_manager, monkeypatch):
+        """Item 2: a failed take_check emits check.failed with source_type 'take'."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        key = corpus.entities["rusty_key"]
+        key.take_check = TakeCheck(
+            check=RollCheck(threshold=0.5, repeatable=True),
+            success=Result(narrative="You pry the key loose."),
+            failure=Result(narrative="The key slips from your grasp."),
+        )
+        monkeypatch.setattr("random.random", lambda: 0.9)
+        action = TransferAction(
+            action_type="transfer",
+            target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus, state_manager)
+        assert result.success is True
+        failed = [ev for ev in result.events if ev[0] == "check.failed"]
+        assert len(failed) == 1
+        assert failed[0][1]["source_type"] == "take"
 

@@ -26,7 +26,6 @@ from mgmai.models.corpus import (
     ConditionExpression,
     Credits,
     DialogueGuidelines,
-    DialogueExit,
     EncounterRule,
     Entity,
     Exit,
@@ -34,8 +33,9 @@ from mgmai.models.corpus import (
     Interaction,
     Mechanic,
     ModuleCorpus,
-    OnEnterEvent,
     ParameterSignature,
+    Reaction,
+    ReactionEffects,
     Result,
     RollCheck,
     Room,
@@ -44,7 +44,6 @@ from mgmai.models.corpus import (
     StatDefinition,
     StatModifier,
     StatsBlock,
-    TraversalEffect,
     WillRevealEntry,
 )
 
@@ -388,7 +387,6 @@ class TestEntity:
             "description": "A hungry spider.",
             "state_fields": {"alive": {"type": "boolean", "description": "Is alive."}},
             "behavior": {
-                "triggers_on": ["exit_through_webs"],
                 "encounter_rules": [
                     {
                         "condition": {"require": "flag:has_weapon == true"},
@@ -433,18 +431,6 @@ class TestEntity:
         assert reveal.description == "A hidden treasure."
         assert reveal.conditions == ["attitude:korbar >= 3"]
         assert reveal.set_flag == {"treasure_known": True}
-
-    def test_dialogue_exit(self) -> None:
-        g = DialogueGuidelines.model_validate({
-            "personality": "Dying fly.",
-            "attitude_limits": {"min": 0, "max": 1, "step_per_turn": 1, "initial": 0},
-            "on_dialogue_exit": {
-                "set_entity_state": {"stuck_fly": {"alive": False}},
-                "narrative": "The fly dies.",
-            },
-        })
-        assert g.on_dialogue_exit is not None
-        assert g.on_dialogue_exit.set_entity_state == {"stuck_fly": {"alive": False}}
 
     def test_will_reveal_with_set_entity_state(self) -> None:
         g = DialogueGuidelines.model_validate({
@@ -578,75 +564,6 @@ class TestExit:
         assert len(e.conditions) == 1
         assert e.conditions[0].require == "flag:gate_open == true"
 
-    def test_exit_with_traversal_effects(self) -> None:
-        e = Exit.model_validate({
-            "id": "fall",
-            "direction": "Jump down",
-            "target_room": "bottom",
-            "on_traverse": {
-                "set_flag": {"injured": True},
-                "narrative": "You hurt yourself.",
-            },
-        })
-        assert e.on_traverse.set_flag == {"injured": True}
-        assert e.on_traverse.narrative == "You hurt yourself."
-
-    def test_exit_with_traversal_alter_stat(self) -> None:
-        e = Exit.model_validate({
-            "id": "fall",
-            "direction": "Jump down",
-            "target_room": "bottom",
-            "on_traverse": {
-                "alter_stat": {
-                    "STR": {"value": -4},
-                    "DEX": {"value": -4},
-                    "CON": {"value": -4},
-                },
-                "narrative": "You crash to the ground.",
-            },
-        })
-        assert e.on_traverse.alter_stat == {
-            "STR": StatModifier(value=-4),
-            "DEX": StatModifier(value=-4),
-            "CON": StatModifier(value=-4),
-        }
-
-    def test_exit_with_traversal_set_room_state(self) -> None:
-        e = Exit.model_validate({
-            "id": "enter_room",
-            "direction": "Enter the room",
-            "target_room": "room_a",
-            "on_traverse": {
-                "set_room_state": {"room_a": {"_entered_from": "room_b"}},
-            },
-        })
-        assert e.on_traverse.set_room_state == {"room_a": {"_entered_from": "room_b"}}
-
-    def test_traversal_trigger_encounter(self) -> None:
-        e = Exit.model_validate({
-            "id": "exit_webs",
-            "direction": "Through the webs",
-            "target_room": "bag_floor",
-            "on_traverse": {
-                "trigger_encounter": "spider",
-            },
-        })
-        assert e.on_traverse.trigger_encounter == "spider"
-
-    def test_traversal_skip_if(self) -> None:
-        e = Exit.model_validate({
-            "id": "gated_exit",
-            "direction": "Through the gate",
-            "target_room": "beyond",
-            "on_traverse": {
-                "narrative": "The gate slams behind you.",
-                "skip_if": {"require": "flag:gate_held == true"},
-                "narrative_skip": "You slip through, holding the gate open.",
-            },
-        })
-        assert e.on_traverse.skip_if is not None
-        assert e.on_traverse.skip_if.require == "flag:gate_held == true"
-        assert e.on_traverse.narrative_skip == "You slip through, holding the gate open."
 
 
 class TestRoom:
@@ -661,23 +578,30 @@ class TestRoom:
         })
         assert r.is_start_room is True
 
-    def test_room_with_on_enter(self) -> None:
+    def test_room_with_reactions(self) -> None:
         r = Room.model_validate({
             "name": "Trap Room",
             "description": "A room with a trap.",
-            "on_enter": [
+            "reactions": [
                 {
                     "id": "event_welcome",
-                    "condition": None,
-                    "narrative": "Welcome to the trap room.",
-                    "set_flag": {"visited_trap_room": True},
+                    "on": "room.entered",
+                    "condition": {"require": "flag:trap_armed == true"},
+                    "effects": {
+                        "result": {
+                            "narrative": "Welcome to the trap room.",
+                            "set_flag": {"visited_trap_room": True},
+                        },
+                    },
                 },
             ],
         })
-        assert len(r.on_enter) == 1
-        event = r.on_enter[0]
-        assert event.condition is None
-        assert event.narrative == "Welcome to the trap room."
+        assert len(r.reactions) == 1
+        reaction = r.reactions[0]
+        assert reaction.condition is not None
+        assert reaction.condition.require == "flag:trap_armed == true"
+        assert reaction.effects.result is not None
+        assert reaction.effects.result.narrative == "Welcome to the trap room."
 
     def test_room_with_interactions(self) -> None:
         r = Room.model_validate({
@@ -781,67 +705,6 @@ class TestStateFieldDecl:
     def test_missing_description_raises(self) -> None:
         with pytest.raises(ValidationError):
             StateFieldDecl.model_validate({"type": "boolean"})
-
-
-class TestOnEnterEvent:
-    def test_isolated_basic_event(self) -> None:
-        event = OnEnterEvent.model_validate({"id": "event_1"})
-        assert event.id == "event_1"
-        assert event.condition is None
-        assert event.narrative is None
-
-    def test_with_trigger_dialogue(self) -> None:
-        event = OnEnterEvent.model_validate({
-            "id": "greet_korbar",
-            "trigger_dialogue": "korbar",
-        })
-        assert event.trigger_dialogue == "korbar"
-
-    def test_with_set_entity_state(self) -> None:
-        event = OnEnterEvent.model_validate({
-            "id": "kill_door",
-            "set_entity_state": {"secret_door": {"alive": False}},
-        })
-        assert event.set_entity_state == {"secret_door": {"alive": False}}
-
-    def test_with_set_room_state(self) -> None:
-        event = OnEnterEvent.model_validate({
-            "id": "record_entry",
-            "set_room_state": {"room_a": {"_entered_from": "room_b"}},
-        })
-        assert event.set_room_state == {"room_a": {"_entered_from": "room_b"}}
-
-    def test_missing_id_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            OnEnterEvent.model_validate({"narrative": "Hello."})
-
-    def test_with_set_flag(self) -> None:
-        event = OnEnterEvent.model_validate({
-            "id": "event_flag",
-            "set_flag": {"visited_room": True, "alarm_triggered": False},
-        })
-        assert event.set_flag == {"visited_room": True, "alarm_triggered": False}
-
-    def test_narrative_in_isolation(self) -> None:
-        event = OnEnterEvent.model_validate({
-            "id": "event_narrate",
-            "narrative": "The door creaks open slowly.",
-        })
-        assert event.narrative == "The door creaks open slowly."
-
-    def test_all_fields_combined(self) -> None:
-        event = OnEnterEvent.model_validate({
-            "id": "full_event",
-            "condition": {"require": "flag:x == true"},
-            "narrative": "Something stirs in the darkness.",
-            "set_flag": {"monster_awake": True},
-            "set_entity_state": {"monster": {"awake": True}},
-            "trigger_dialogue": "monster",
-        })
-        assert event.condition.require == "flag:x == true"
-        assert event.narrative == "Something stirs in the darkness."
-        assert event.set_flag == {"monster_awake": True}
-        assert event.trigger_dialogue == "monster"
 
 
 class TestBranchOutcome:
@@ -1062,9 +925,8 @@ class TestEncounterRule:
 
 
 class TestBehavior:
-    def test_triggers_on_empty(self) -> None:
+    def test_encounter_rules(self) -> None:
         b = Behavior.model_validate({
-            "triggers_on": [],
             "encounter_rules": [
                 {
                     "condition": {"require": "flag:x == true"},
@@ -1072,24 +934,10 @@ class TestBehavior:
                 },
             ],
         })
-        assert b.triggers_on == []
         assert len(b.encounter_rules) == 1
-
-    def test_triggers_on_non_empty(self) -> None:
-        b = Behavior.model_validate({
-            "triggers_on": ["exit_through_webs", "attack"],
-            "encounter_rules": [
-                {
-                    "condition": {"require": "flag:x == true"},
-                    "outcome": "flee",
-                },
-            ],
-        })
-        assert b.triggers_on == ["exit_through_webs", "attack"]
 
     def test_with_on_flee(self) -> None:
         b = Behavior.model_validate({
-            "triggers_on": ["exit_through_webs"],
             "encounter_rules": [
                 {
                     "condition": {"require": "flag:has_weapon == true"},

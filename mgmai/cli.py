@@ -45,7 +45,11 @@ from mgmai.config import (
 from mgmai.logging import setup_logging
 from mgmai.state.manager import StateManager
 from mgmai.llm.client import LLMClient
-from mgmai.llm.model_config import get_known_model_labels, get_model_config
+from mgmai.llm.model_config import (
+    get_known_model_labels,
+    get_model_config,
+    load_custom_models,
+)
 from mgmai.game.display import Display
 from mgmai.game.loop import GameLoop
 
@@ -126,6 +130,7 @@ def main(argv: list[str] | None = None) -> None:
     config_dir = get_config_dir(args.config_dir)
     app_config = load_app_config(config_dir)
     credentials = load_credentials(config_dir)
+    custom_models = load_custom_models(config_dir)
 
     # Resolve API key: CLI arg > env var > credentials file
     env_key = os.environ.get("MGMAI_API_KEY")
@@ -143,9 +148,10 @@ def main(argv: list[str] | None = None) -> None:
 
     api_key, model_name, base_url = _prompt_for_llm_config(
         display, config_dir, credentials, app_config,
-        api_key, model_name, base_url)
+        api_key, model_name, base_url, custom_models)
 
-    config = get_model_config(model_name, base_url=base_url)
+    config = get_model_config(model_name, base_url=base_url,
+                              custom_models=custom_models)
 
     ## Read model temperatures from config
     if app_config.ruling_temperature is not None:
@@ -207,6 +213,7 @@ def _prompt_for_llm_config(
     api_key: str,
     model_name: str,
     base_url: str | None,
+    custom_models: dict[str, object] | None = None,
 ) -> tuple[str, str, str]:
     """Prompt for any missing LLM configuration.
 
@@ -218,7 +225,8 @@ def _prompt_for_llm_config(
     resolved_base_url = base_url
     if model_name:
         try:
-            model_cfg = get_model_config(model_name, base_url=base_url)
+            model_cfg = get_model_config(model_name, base_url=base_url,
+                                         custom_models=custom_models)
             resolved_base_url = model_cfg.base_url
         except ValueError:
             pass
@@ -248,7 +256,7 @@ def _prompt_for_llm_config(
     display.print("\n[yellow]Some LLM configuration is missing.[/yellow]")
     display.print("Please select a model or enter a custom configuration.\n")
 
-    labels = get_known_model_labels()
+    labels = get_known_model_labels(custom_models=custom_models)
     names = list(labels.keys())
     for i, (name, label) in enumerate(labels.items(), 1):
         marker = " [dim](current)[/dim]" if name == model_name else ""
@@ -267,7 +275,8 @@ def _prompt_for_llm_config(
             display.print("[red]Please enter a number.[/red]")
             continue
         if 1 <= idx <= len(labels):
-            model_cfg = get_model_config(names[idx - 1])
+            model_cfg = get_model_config(names[idx - 1],
+                                         custom_models=custom_models)
             model_name = model_cfg.name
             base_url = model_cfg.base_url
             break

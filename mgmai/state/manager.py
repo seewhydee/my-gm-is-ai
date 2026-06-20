@@ -100,6 +100,12 @@ class StateManager:
         self.hard_state = self.load_hard_state(hard_path)
         self.soft_state = self.load_soft_state(soft_path)
 
+        # Reset in-memory once-reaction tracking on every reload so that
+        # once-reactions are not carried over between saves or tests.
+        from mgmai.engine.event_bus import reset_disabled_once
+
+        reset_disabled_once()
+
         self._validate_cross_references()
         self._validate_player_stats()
 

@@ -176,6 +176,11 @@ class HardStateChanges(BaseModel):
     player_location: Optional[str] = None
     inventory_added: List[str] = Field(default_factory=list)
     inventory_removed: List[str] = Field(default_factory=list)
+    # Provenance for the inventory lists above, used to derive item.acquired /
+    # item.lost events with an accurate source/reason.  Keys are item IDs;
+    # entries default to "interaction" when absent (see _derive_state_events).
+    inventory_added_sources: Dict[str, str] = Field(default_factory=dict)
+    inventory_removed_reasons: Dict[str, str] = Field(default_factory=dict)
     equipped_added: List[str] = Field(default_factory=list)
     equipped_removed: List[str] = Field(default_factory=list)
     equipment_changed: bool = False
@@ -193,6 +198,8 @@ class HardStateChanges(BaseModel):
             self.player_location = other.player_location
         self.inventory_added.extend(other.inventory_added)
         self.inventory_removed.extend(other.inventory_removed)
+        self.inventory_added_sources.update(other.inventory_added_sources)
+        self.inventory_removed_reasons.update(other.inventory_removed_reasons)
         self.equipped_added.extend(other.equipped_added)
         self.equipped_removed.extend(other.equipped_removed)
         if other.equipment_changed:
@@ -251,11 +258,6 @@ class EncounterOutcome(BaseModel):
     narrative_brief: Optional[str] = None
 
 
-class OnEnterEventResult(BaseModel):
-    event_id: Optional[str] = None
-    narrative: Optional[str] = None
-
-
 class GameOverResult(BaseModel):
     type: str
     trigger: str
@@ -312,7 +314,6 @@ class EngineResult(BaseModel):
     rolls: List[Dict[str, Any]] = Field(default_factory=list)
     encounter_outcome: Optional[EncounterOutcome] = None
     triggered_narration: List[str] = Field(default_factory=list)
-    on_enter_events: List[OnEnterEventResult] = Field(default_factory=list)
     game_over: Optional[GameOverResult] = None
     dialogue_exited: Optional[DialogueExitedResult] = None
     will_reveal_readiness: Optional[Dict[str, Dict[str, WillRevealReadinessEntry]]] = None

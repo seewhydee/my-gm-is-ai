@@ -24,7 +24,6 @@ import pytest
 
 from mgmai.engine.encounters import (
     resolve_encounter,
-    should_trigger_behavior,
     apply_flee_effects,
 )
 from mgmai.models.corpus import (
@@ -33,6 +32,8 @@ from mgmai.models.corpus import (
     ConditionExpression,
     ModuleCorpus,
     StatCheck,
+    StatDefinition,
+    StatsBlock,
     StatModifier,
 )
 from mgmai.models.hard_state import HardGameState, GameOverState
@@ -227,26 +228,160 @@ class TestResolveEncounter:
         assert result["alter_stat"] == {"CON": StatModifier(value=-4), "STR": StatModifier(value=-4)}
 
 
-class TestShouldTriggerBehavior:
-    def test_trigger_by_action_type(self, sample_corpus):
-        rules = should_trigger_behavior("spider", "attack", None, sample_corpus)
-        assert rules is not None
-        assert len(rules) > 0
+class TestEncounterBranchTaken:
+    """Item 3a: branched encounters record which branch was taken."""
 
-    def test_no_trigger_for_non_behavior_entity(self, sample_corpus):
-        rules = should_trigger_behavior("player", "attack", None, sample_corpus)
-        assert rules is None
+    def test_stat_check_branch_taken_success(self, sample_corpus, monkeypatch):
+        hard = _load_hard()
+        soft = _load_soft()
+        monkeypatch.setattr("mgmai.engine.encounters.random.randint", lambda a, b: 20)
+        rules = [
+            EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="stat_check",
+                check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
+                on_success={"outcome": "flee", "narrative": "You dodge."},
+                on_failure={"outcome": "death", "narrative": "You die."},
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["outcome"] == "flee"
+        assert result["branch_taken"] == "success"
 
-    def test_trigger_by_exit_id(self, sample_corpus):
-        rules = should_trigger_behavior(
-            "spider", "move", "exit_through_webs", sample_corpus
+    def test_stat_check_branch_taken_failure(self, sample_corpus, monkeypatch):
+        hard = _load_hard()
+        soft = _load_soft()
+        # Give the player a DEX stat and the corpus a stats block so the
+        # stat check actually rolls (otherwise it short-circuits to True).
+        hard.player.stats = {"DEX": 10}
+        sample_corpus.stats = StatsBlock(
+            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            system="5e",
         )
-        assert rules is not None
-        assert len(rules) > 0
+        monkeypatch.setattr("mgmai.engine.encounters.random.randint", lambda a, b: 1)
+        rules = [
+            EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="stat_check",
+                check=StatCheck(type="stat_check", stat="DEX", dc=30, repeatable=True),
+                on_success={"outcome": "flee", "narrative": "You dodge."},
+                on_failure={"outcome": "death", "narrative": "You die."},
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["outcome"] == "death"
+        assert result["branch_taken"] == "failure"
 
-    def test_no_trigger_for_unknown_entity(self, sample_corpus):
-        rules = should_trigger_behavior("nonexistent", "attack", None, sample_corpus)
-        assert rules is None
+    def test_roll_branch_taken_success(self, sample_corpus, monkeypatch):
+        hard = _load_hard()
+        soft = _load_soft()
+        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.1)
+        rules = [
+            EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="roll",
+                threshold=0.5,
+                on_success={"outcome": "flee", "narrative": "You win!"},
+                on_failure={"outcome": "death", "narrative": "You die."},
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["outcome"] == "flee"
+        assert result["branch_taken"] == "success"
+
+    def test_roll_branch_taken_failure(self, sample_corpus, monkeypatch):
+        hard = _load_hard()
+        soft = _load_soft()
+        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+        rules = [
+            EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="roll",
+                threshold=0.5,
+                on_success={"outcome": "flee", "narrative": "You win!"},
+                on_failure={"outcome": "death", "narrative": "You die."},
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["outcome"] == "death"
+        assert result["branch_taken"] == "failure"
+
+    def test_no_branch_taken_for_top_level_outcome(self, sample_corpus):
+        """Top-level outcomes (death/flee/combat) don't set branch_taken."""
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="death",
+                narrative="You die.",
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result.get("branch_taken") is None
+
+    def test_no_branch_taken_when_branch_is_none(self, sample_corpus, monkeypatch):
+        """A stat_check with no on_success/on_failure doesn't set branch_taken."""
+        hard = _load_hard()
+        soft = _load_soft()
+        monkeypatch.setattr("mgmai.engine.encounters.random.randint", lambda a, b: 20)
+        rules = [
+            EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="stat_check",
+                check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result.get("branch_taken") is None
+
+
+class TestEncounterBranchCombat:
+    """Item 3b: BranchOutcome outcome='combat' is handled explicitly.
+
+    The 'combat' outcome string propagates to the caller (engine.py /
+    event_bus.py), which calls enter_combat().  These tests confirm the
+    explicit arm preserves that behavior for both stat_check and roll
+    branches: outcome stays 'combat', with no game_over or flee_effects.
+    """
+
+    def test_stat_check_branch_combat_propagates(self, sample_corpus, monkeypatch):
+        hard = _load_hard()
+        soft = _load_soft()
+        monkeypatch.setattr("mgmai.engine.encounters.random.randint", lambda a, b: 20)
+        rules = [
+            EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="stat_check",
+                check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
+                on_success={"outcome": "combat", "narrative": "It attacks!"},
+                on_failure={"outcome": "flee", "narrative": "It flees."},
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["outcome"] == "combat"
+        assert result["game_over"] is None
+        assert result["flee_effects"] is None
+        assert result["branch_taken"] == "success"
+
+    def test_roll_branch_combat_propagates(self, sample_corpus, monkeypatch):
+        hard = _load_hard()
+        soft = _load_soft()
+        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.1)
+        rules = [
+            EncounterRule(
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                outcome="roll",
+                threshold=0.5,
+                on_success={"outcome": "combat", "narrative": "It attacks!"},
+                on_failure={"outcome": "flee", "narrative": "It flees."},
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["outcome"] == "combat"
+        assert result["game_over"] is None
+        assert result["flee_effects"] is None
+        assert result["branch_taken"] == "success"
 
 
 class TestApplyFleeEffects:

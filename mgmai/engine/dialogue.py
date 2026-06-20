@@ -97,7 +97,7 @@ def exit_dialogue(
     corpus: ModuleCorpus,
     hard: HardGameState,
 ) -> dict | None:
-    """Archive conversation, apply on_dialogue_exit effects, clear state.
+    """Archive conversation and clear dialogue state.
 
     Returns a dict with optional exit_narrative and side effects or None.
     """
@@ -153,18 +153,6 @@ def _archive_and_exit(
 
     npc_entity = corpus.entities.get(npc_id)
     exit_narrative = None
-    if npc_entity and npc_entity.dialogue_guidelines:
-        exit_conf = npc_entity.dialogue_guidelines.on_dialogue_exit
-        if exit_conf:
-            if exit_conf.set_entity_state:
-                for ent_id, state_changes in exit_conf.set_entity_state.items():
-                    if ent_id not in hard.entity_states:
-                        hard.entity_states[ent_id] = {}
-                    hard.entity_states[ent_id].update(state_changes)
-            if exit_conf.set_flag:
-                for flag, val in exit_conf.set_flag.items():
-                    hard.flags[flag] = val
-            exit_narrative = exit_conf.narrative
 
     soft.dialogue_state.active_npc = None
     soft.dialogue_state.conversation_log = []

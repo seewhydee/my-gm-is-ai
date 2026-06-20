@@ -130,15 +130,14 @@ class TestExitDialogue:
         result = exit_dialogue(soft, state_manager.corpus, state_manager.hard_state)
         assert result is None
 
-    def test_applies_on_dialogue_exit_effects(self, state_manager):
+    def test_exit_dialogue_returns_npc_id(self, state_manager):
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         enter_dialogue(soft, "stuck_fly", 1, None, "Approaching")
         result = exit_dialogue(soft, corpus, hard)
         assert result is not None
-        assert result["exit_narrative"] is not None
-        assert hard.entity_states["stuck_fly"]["alive"] is False
+        assert result["npc_id"] == "stuck_fly"
 
 
 class TestCheckRoomChangeExit:

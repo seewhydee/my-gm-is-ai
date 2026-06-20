@@ -75,9 +75,6 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
         }
       }
     },
-    "on_dialogue_exit": {
-      "narrative": "Korbar returns to her drinking, muttering under her breath."
-    }
   }
 }
 ```
@@ -93,7 +90,6 @@ The `dialogue_guidelines` block defines an NPC's conversational personality, att
 | `knows` | Knowledge the NPC possesses (which may or may not be revealed depending on conditions). Advisory for the LLM. |
 | `attitude_limits` | Mechanical bounds on the NPC's attitude (see below). |
 | `will_reveal` | Topics the NPC can reveal, gated by conditions, with optional side effects (see below). |
-| `on_dialogue_exit` | Optional effects applied when dialogue ends (see Dialogue Lifecycle). |
 | `dialogue_paths` | Special conversation paths with mechanical effects (see below). |
 
 ## Special Dialogue Paths (`dialogue_paths`)
@@ -334,10 +330,16 @@ On exit:
 1. The engine generates a fallback summary from topics discussed and log length
 2. **LLM Call 2** may provide a richer `conversation_note` in its prose output
 3. The note written to `soft.entity_notes.<npc_id>` is the LLM's `conversation_note` (if provided) or the engine fallback — whichever is available, not both
-4. If the NPC's `dialogue_guidelines.on_dialogue_exit` defines `set_flag` or `set_entity_state` side effects, they are applied to hard state
+4. A `dialogue.ended` event is emitted for the NPC; any entity-scoped
+   `dialogue.ended` reaction on that NPC (e.g. setting `alive: false` or a
+   flag) fires during deferred reaction dispatch
 5. Dialogue state is cleared (`active_npc = null`, log and topics reset)
 
-The `on_dialogue_exit.narrative` field, if present, is surfaced in the `DialogueExitedResult` for LLM Call 2 to potentially weave into narration.  The `conversation_note` field in the prose template instructs the LLM on the expected format: a self-contained paragraph covering what was discussed, information exchanged, promises made, and the NPC's disposition.  See `schema/soft-state.md §Archival` for details.
+The `DialogueExitedResult` is surfaced for LLM Call 2 to potentially weave
+into narration.  The `conversation_note` field in the prose template instructs
+the LLM on the expected format: a self-contained paragraph covering what was
+discussed, information exchanged, promises made, and the NPC's disposition.
+See `schema/soft-state.md §Archival` for details.
 
 ### Dialogue Context in the GMBriefing
 
@@ -362,7 +364,6 @@ NPCs with a `behavior` block can trigger **encounters** — combat or other stru
 ```json
 {
   "behavior": {
-    "triggers_on": ["attack"],
     "encounter_rules": [
       {
         "condition": { "require": "flag:has_weapon == true" },
@@ -391,7 +392,26 @@ NPCs with a `behavior` block can trigger **encounters** — combat or other stru
 }
 ```
 
-When the player uses an interaction whose ID matches an entry in the target NPC's `behavior.triggers_on` list, the engine dispatches to encounter resolution. For example, an NPC with `"triggers_on": ["attack"]` will trigger combat when the player targets it with `interaction_id: "attack"`. Encounters can result in player death, NPC death, NPC fleeing, or dice rolls with success/failure branches — all resolved by the deterministic engine, not the LLM.
+Encounters are triggered by entity-scoped reactions (e.g. an `interaction.used`
+reaction on the NPC that uses `effects.trigger_encounter: "self"`) or by a
+`trigger_encounter` result from another reaction or interaction. For example,
+an NPC with the reaction below will trigger its encounter rules when the player
+attacks it:
+
+```json
+"reactions": [
+  {
+    "id": "spider_attack_on_sight",
+    "on": "interaction.used",
+    "condition": { "require": "event:interaction_id == attack" },
+    "effects": { "trigger_encounter": "self" }
+  }
+]
+```
+
+Encounters can result in player death, NPC death, NPC fleeing, or dice rolls
+with success/failure branches — all resolved by the deterministic engine, not
+the LLM.
 
 Encounter outcomes (death, flee, etc.) update hard state, which in turn gates dialogue, attitude changes, and knowledge revelation for that NPC.
 

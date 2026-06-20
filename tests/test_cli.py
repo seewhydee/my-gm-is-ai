@@ -92,9 +92,10 @@ class TestCliPrompting:
             with patch("mgmai.cli.LLMClient") as mock_llm_cls:
                 with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
                     with patch("mgmai.cli.load_credentials", return_value=Credentials()):
-                        with patch("mgmai.cli.save_app_config"):
-                            with patch("mgmai.cli.save_credentials"):
-                                main(cli_args)
+                        with patch("mgmai.cli.load_custom_models", return_value={}):
+                            with patch("mgmai.cli.save_app_config"):
+                                with patch("mgmai.cli.save_credentials"):
+                                    main(cli_args)
         return mock_llm_cls
 
     def test_prompts_for_api_key_when_model_known(self, monkeypatch) -> None:

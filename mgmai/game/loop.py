@@ -118,6 +118,8 @@ class GameLoop:
             debug=debug,
             on_load=self._on_game_loaded,
             config_dir=config_dir,
+            model_config=getattr(llm_client, "_config", None),
+            on_model_change=self._on_model_change,
         )
 
     @property
@@ -456,6 +458,9 @@ class GameLoop:
     def _on_game_loaded(self) -> None:
         self._chat_log.clear()
         self._last_result = None
+
+    def _on_model_change(self, api_key: str, config: object) -> None:
+        self._llm = LLMClient(api_key=api_key, config=config)
 
     def _do_exit(self) -> None:
         self._running = False

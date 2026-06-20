@@ -360,19 +360,20 @@ verbatim `dialogue_context` block into the GMBriefing for LLM Call 1.
 | Trigger                                  | Engine action |
 |------------------------------------------|---------------|
 | `talk` action succeeds (no active dialogue) | Set `active_npc`, init `conversation_log` with player utterance, set `entered_turn`, reset `stall_counter`. |
-| `on_enter` with `trigger_dialogue`       | Set `active_npc` to the named NPC, init `conversation_log` with an empty first entry (the NPC "speaks first" via the on_enter `narrative`), set `entered_turn`, reset `stall_counter`. |
+| `room.entered` reaction with `trigger_dialogue` | Set `active_npc` to the named NPC, init `conversation_log` with an empty first entry (the NPC "speaks first" via the reaction's `narrative`), set `entered_turn`, reset `stall_counter`. |
 | `talk` action to the same NPC            | Append player utterance to `conversation_log`. After LLM Call 2 runs, extract and append the NPC response. Reset `stall_counter` to 0. |
-| `talk` action to a different NPC         | Archive conversation (see §Archival), apply previous NPC's `dialogue_guidelines.on_dialogue_exit` (if any), switch `active_npc`, start fresh. |
-| Any non-`talk` action while in dialogue  | Increment `stall_counter`. If `stall_counter >= 3`, archive conversation (see §Archival), apply `on_dialogue_exit`, clear dialogue state. |
-| `move` action (player leaves room)       | Archive conversation (see §Archival), apply `on_dialogue_exit`, clear dialogue state. |
+| `talk` action to a different NPC         | Archive conversation (see §Archival), emit `dialogue.ended` event for the previous NPC, switch `active_npc`, start fresh. |
+| Any non-`talk` action while in dialogue  | Increment `stall_counter`. If `stall_counter >= 3`, archive conversation (see §Archival), emit `dialogue.ended`, clear dialogue state. |
+| `move` action (player leaves room)       | Archive conversation (see §Archival), emit `dialogue.ended`, clear dialogue state. |
 | NPC dies or flees                        | Archive conversation (see §Archival), clear dialogue state. Reject future `talk` to that NPC. |
-| `talk` with `ends_dialogue: true`        | Archive conversation (see §Archival), apply `on_dialogue_exit`, clear dialogue state. |
+| `talk` with `ends_dialogue: true`        | Archive conversation (see §Archival), emit `dialogue.ended`, clear dialogue state. |
 | `ooc_discussion` while in dialogue       | Does not increment `stall_counter`; does not affect dialogue state. |
 
-When dialogue mode exits for any reason, the engine checks the NPC's
-`dialogue_guidelines.on_dialogue_exit` block (if present) and applies any
-`set_entity_state`, `set_flag`, and `narrative` specified. This allows NPCs
-to die, flee, transform, or trigger events when conversation ends.
+When dialogue mode exits for any reason, the engine emits a `dialogue.ended`
+event for the NPC. Any entity-scoped `dialogue.ended` reaction on that NPC
+(e.g. one that sets `alive: false` or applies a flag) will fire during the
+deferred reaction dispatch. This allows NPCs to die, flee, transform, or
+trigger events when conversation ends.
 
 ### NPC response extraction
 

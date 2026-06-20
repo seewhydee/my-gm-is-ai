@@ -16,8 +16,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+import json
+import logging
+from dataclasses import dataclass, fields, replace
+from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
+
+MODELS_FILENAME = "models.json"
 
 
 @dataclass(frozen=True)
@@ -35,6 +42,9 @@ class ModelConfig:
     label: str | None = None
     extra_body: dict[str, Any] | None = None
     supports_json_mode: bool = True
+    request_timeout: float = 300.0
+    ruling_max_tokens: int = 800
+    prose_max_tokens: int = 2000
 
 
 # ------------------------------------------------------------------
@@ -74,32 +84,94 @@ _MODEL_REGISTRY: dict[str, ModelConfig] = {
 }
 
 # ------------------------------------------------------------------
-# Public API
+# Custom model loading (models.json)
 # ------------------------------------------------------------------
 
+_VALID_CONFIG_FIELDS = {f.name for f in fields(ModelConfig)}
 
-def get_model_config(model_name: str, base_url: str | None = None) -> ModelConfig:
-    """Return the configuration for *model_name*.
 
-    If the model is present in the registry its stored settings are used.
-    For unknown models a generic safe default is returned only when a
-    *base_url* is provided; otherwise an error is raised so that the
-    system does not silently default to a vendor URL.
+def load_custom_models(config_dir: str | Path) -> dict[str, ModelConfig]:
+    """Load user-defined model configurations from *config_dir*/models.json.
 
-    An optional *base_url* overrides the value stored in the registry.
+    Returns an empty dict if the file does not exist.  Invalid entries
+    are logged as warnings and skipped.
     """
-    if model_name in _MODEL_REGISTRY:
+    path = Path(config_dir) / MODELS_FILENAME
+    if not path.is_file():
+        return {}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        log.warning("Failed to load %s: %s", path, exc)
+        return {}
+
+    if not isinstance(data, dict):
+        log.warning("%s must contain a JSON object, got %s", path, type(data).__name__)
+        return {}
+
+    result: dict[str, ModelConfig] = {}
+    for model_name, entry in data.items():
+        if not isinstance(entry, dict):
+            log.warning("%s: entry '%s' is not a JSON object — skipping", path, model_name)
+            continue
+
+        unknown = set(entry) - _VALID_CONFIG_FIELDS - {"name"}
+        if unknown:
+            log.warning(
+                "%s: entry '%s' has unknown fields: %s — ignoring",
+                path, model_name, ", ".join(sorted(unknown)),
+            )
+
+        if "base_url" not in entry:
+            log.warning(
+                "%s: entry '%s' missing required 'base_url' — skipping",
+                path, model_name,
+            )
+            continue
+
+        kwargs: dict[str, Any] = {"name": entry.get("name", model_name)}
+        for key in ("base_url", "ruling_temperature", "prose_temperature",
+                     "label", "extra_body", "supports_json_mode",
+                     "request_timeout", "ruling_max_tokens", "prose_max_tokens"):
+            if key in entry:
+                kwargs[key] = entry[key]
+
+        try:
+            result[model_name] = ModelConfig(**kwargs)
+        except TypeError as exc:
+            log.warning(
+                "%s: entry '%s' has invalid field types: %s — skipping",
+                path, model_name, exc,
+            )
+
+    return result
+
+
+def _resolve_model_config(
+    model_name: str,
+    base_url: str | None,
+    custom_models: dict[str, ModelConfig] | None,
+) -> ModelConfig:
+    """Resolve a ModelConfig from custom models, registry, or generic defaults.
+
+    Lookup order: custom_models > registry > generic (requires base_url).
+    """
+    if custom_models and model_name in custom_models:
+        config = custom_models[model_name]
+    elif model_name in _MODEL_REGISTRY:
         config = _MODEL_REGISTRY[model_name]
     else:
         if base_url is None:
             raise ValueError(
                 f"Unknown model '{model_name}' and no base_url provided. "
-                "Pass --base-url or register the model."
+                "Pass --base-url, set it in models.json, or register the model."
             )
         config = ModelConfig(
             name=model_name,
             base_url=base_url,
             extra_body=None,
+            supports_json_mode=False,
         )
 
     if base_url is not None:
@@ -108,14 +180,49 @@ def get_model_config(model_name: str, base_url: str | None = None) -> ModelConfi
     return config
 
 
-def list_known_models() -> list[str]:
-    """Return the names of all models in the registry."""
-    return list(_MODEL_REGISTRY.keys())
+# ------------------------------------------------------------------
+# Public API
+# ------------------------------------------------------------------
 
 
-def get_known_model_labels() -> dict[str, str]:
+def get_model_config(
+    model_name: str,
+    base_url: str | None = None,
+    custom_models: dict[str, ModelConfig] | None = None,
+) -> ModelConfig:
+    """Return the configuration for *model_name*.
+
+    Lookup order: custom_models > built-in registry > generic fallback.
+    For unknown models a generic safe default is returned only when a
+    *base_url* is provided; otherwise an error is raised.
+
+    An optional *base_url* overrides the value stored in the registry
+    or custom models.
+    """
+    return _resolve_model_config(model_name, base_url, custom_models)
+
+
+def list_known_models(
+    custom_models: dict[str, ModelConfig] | None = None,
+) -> list[str]:
+    """Return the names of all registered models (built-in + custom)."""
+    names = set(_MODEL_REGISTRY)
+    if custom_models:
+        names.update(custom_models)
+    return sorted(names)
+
+
+def get_known_model_labels(
+    custom_models: dict[str, ModelConfig] | None = None,
+) -> dict[str, str]:
     """Return a mapping of model name to human-readable label."""
-    return {name: (config.label or name) for name, config in _MODEL_REGISTRY.items()}
+    all_models = dict(_MODEL_REGISTRY)
+    if custom_models:
+        all_models.update(custom_models)
+    return {
+        name: (config.label or name)
+        for name, config in all_models.items()
+    }
 
 
 def register_model(config: ModelConfig) -> None:

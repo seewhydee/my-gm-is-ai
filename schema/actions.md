@@ -273,8 +273,8 @@ The LLM must output a single structured action, corresponding to the player's in
 **Engine validation:**
 - `target` must be a valid exit_id in the current room.
 - All `conditions` on the exit must be satisfied.
-- If the exit has `on_traverse`, the engine applies the specified effects
-  (set flags, trigger encounters, etc.).
+- `traversal.succeeded` reactions on the current room matching this exit may
+  apply effects (set flags, trigger encounters, etc.).
 - If the exit is `one_way: true`, reverse traversal is rejected.
 - On success, `player.location` is set to the exit's `target_room`.
 
@@ -670,13 +670,6 @@ everything LLM Call 2 needs to narrate the outcome.
     "You emerge onto the floor of the bag, surrounded by giant rubbish. A drunken dwarf in noisy platemail looks up at you with bleary eyes."
   ],
 
-  "on_enter_events": [
-    {
-      "event_id": null,
-      "narrative": null
-    }
-  ],
-
   "game_over": null,
 
   "dialogue_exited": null,
@@ -718,9 +711,8 @@ everything LLM Call 2 needs to narrate the outcome.
 | `rolls`                        | Any probabilistic rolls or stat checks the engine resolved. For `roll` checks: `{ outcome, roll, threshold }`. For `stat_check` checks: `{ check_type, stat, dc, raw_roll, modifier, stat_modifier, total, margin, advantage, disadvantage }`. |
 | `encounter_outcome`            | If an encounter triggered, its resolution. |
 | `triggered_narration`          | Pre-written narrative blocks for specific events (e.g., spider fleeing, room entry). LLM Call 2 should incorporate or paraphrase these — they represent canonical prose for key moments. |
-| `on_enter_events`              | Any on_enter events that fired when entering the new room. |
 | `game_over`                    | `null` or `{"type": "win"|"lose", "trigger": "string", "narrative": "string"}`. |
-| `dialogue_exited`              | `null` or `{"npc_id": "string", "exit_narrative": "string"}`. Present when dialogue mode ended this turn and the NPC's `on_dialogue_exit` fired. |
+| `dialogue_exited`              | `null` or `{"npc_id": "string", "exit_narrative": "string"}`. Present when dialogue mode ended this turn. |
 | `will_reveal_readiness`        | For each NPC with `will_reveal` entries, whether each topic's conditions are currently met and its description. LLM Call 2 uses this to know which topics can be revealed in dialogue and must not narrate a reveal for topics with `conditions_met: false`. |
 | `npc_attitude_limits`          | For each NPC present in the room after resolution, the `attitude_limits` bounds (`min`, `max`, `step_per_turn`) and `current` attitude value. LLM Call 2 must not propose attitude changes that violate these bounds. |
 | `revelations_applied`          | Topics that LLM Call 2 tagged as revealed in `knowledge_tags` and the engine post-validated (step 4.5). Each entry records the NPC ID, topic ID, and any side effects applied. |

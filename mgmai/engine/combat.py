@@ -418,12 +418,6 @@ def enter_combat(
     combat.current_index = player_idx
     combat.log.extend(combat_log)
 
-    # Apply HP changes to hard state now so subsequent checks are correct
-    if hard_changes.player_hp_delta is not None:
-        hard.player.current_hp = (
-            (hard.player.current_hp or 0) + hard_changes.player_hp_delta
-        )
-
     return {
         "combat_log": combat_log,
         "hard_changes": hard_changes,

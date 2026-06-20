@@ -10,6 +10,7 @@ the engine requires:
 
 The schemas for these files are defined in:
 - [`corpus.md`](corpus.md) for the Module Corpus
+- [`events.md`](events.md) for the canonical event model and reaction event types
 - [`hard-state.md`](hard-state.md) for Hard Game State
 - [`soft-state.md`](soft-state.md) for Soft Game State
 - [`actions.md`](actions.md) for actions (engine validation logic)
@@ -81,6 +82,7 @@ For every room described, note:
 - **Special interactions** — things the player can do in this room that aren't
   generic (e.g., search the rubbish pile, force through webbing)
 - **On-enter events** — things that happen when the player first arrives
+- **Reactions** — event-driven triggers (e.g., "when the spider is killed, set a flag")
 - **On-examine events** — stat checks or discoveries gated on examining
 - **Start room** — exactly one room where the player begins
 
@@ -100,6 +102,9 @@ For every distinct entity mentioned, note:
 - **Description** — canonical prose for examine action
 - **Dialogue** — does it talk? Note personality, knows, attitude gating
 - **Behavior** — does it fight? Note triggers, combat rules
+- **Reactions** — event-driven triggers (e.g., "attacks when player enters",
+  "changes state when dialogue ends"). See [`events.md`](events.md) for the
+  list of valid event type strings and their context keys.
 - **Tags** — e.g., `weapon`, `key_item`, `draggable`
 - **State fields** — what mutable properties does it have? (alive, fled, opened, etc.)
 - **Interactions** — anything special the player can do with it
@@ -116,6 +121,7 @@ For every mechanic described (not tied to a specific entity), note:
 
 - **Encounters** — combat or hazard events (spider attack, fall damage)
 - **Game-over conditions** — win/lose triggers and their conditions
+- **Reaction-only mechanics** — adventure-wide state-based triggers not tied to a room or entity
 - **Dropping rules** — what happens when falling from various heights
 - **Item interaction rules** — carrying heavy items, key insertion, etc.
 
@@ -151,6 +157,7 @@ If the scenario has no stat checks, no stats block is needed.
 - [ ] Stat checks identified and resolution system noted (or "no stats")
 - [ ] Exactly one start room identified
 - [ ] No rooms or entities invented that aren't in the scenario
+- [ ] State-based triggers and event-driven effects identified as reaction candidates
 
 ---
 
@@ -235,24 +242,46 @@ scenario; the conditions in the array are ANDed together.
 Each topic may also carry `set_flag` and `set_entity_state` side effects — these
 are applied by the engine when the LLM tags the topic as revealed in dialogue.
 
-#### `on_dialogue_exit`
+#### Entity-scoped reactions
 
-If the NPC undergoes a state change when dialogue ends (the player walks away,
-uses `ends_dialogue`, or a stall is detected), add an `on_dialogue_exit` block.
-Common uses: the NPC dies, flees, or changes attitude after conversation.
-All fields are optional.
+Reactions are the preferred mechanism for event-driven entity behavior. Define
+them in the entity's `reactions` array. Entity-scoped reactions are active when
+the entity is present in the current room and alive/not-fled. See
+[`events.md`](events.md) for the full list of event types and context keys.
 
+**Common patterns:**
+
+Attack-on-sight (replaces the legacy `behavior.triggers_on` field):
 ```json
-"on_dialogue_exit": {
-  "set_entity_state": { "stuck_fly": { "alive": false } },
-  "set_flag": { "fly_warning_given": true },
-  "narrative": "The fly's groaning ceases. Its tiny body goes still."
-}
+"reactions": [
+  {
+    "id": "spider_attack_on_sight",
+    "on": "interaction.used",
+    "condition": { "require": "event:interaction_id == attack" },
+    "effects": { "trigger_encounter": "self" }
+  }
+]
 ```
 
-Engine behaviour: when dialogue mode exits (regardless of cause — player leaves,
-ends_dialogue, or stall timeout), the engine applies these effects after the
-`on_dialogue_exit.narrative` is passed as `triggered_narration` to the LLM narrator.
+Post-dialogue state change:
+```json
+"reactions": [
+  {
+    "id": "fly_dies_after_talk",
+    "on": "dialogue.ended",
+    "condition": { "require": "event:npc_id == stuck_fly" },
+    "effects": {
+      "result": {
+        "set_entity_state": { "stuck_fly": { "alive": false } },
+        "narrative": "The fly's groaning ceases. Its tiny body goes still."
+      }
+    }
+  }
+]
+```
+
+Use `"self"` in `trigger_encounter` and `trigger_dialogue` to reference the
+owning entity — this makes reactions portable across entities.
 
 #### `dialogue_paths`
 
@@ -300,11 +329,11 @@ Example: a spider that can be flattered with a CHA check to improve attitude:
 
 For every NPC that fights, produce a `behavior` block:
 
-- **`triggers_on`**: What actions trigger combat. List exit IDs and/or
-  interaction IDs. An empty array means combat is only triggered when the
-  player directly attacks.
 - **`encounter_rules`**: One rule per combat branch. Rules are evaluated
-  top-to-bottom; the first matching condition fires.
+  top-to-bottom; the first matching condition fires. To trigger combat from a
+  specific action (e.g. attacking the NPC), define an entity-scoped reaction on
+  `interaction.used` with `effects.trigger_encounter: "self"` (see Entity-scoped
+  reactions above).
 
 When a combat scenario has multiple conditional branches (e.g., "if armed AND
 STR check succeeds → spider dies" vs "if armed AND STR fails → spider strikes
@@ -392,7 +421,8 @@ Exactly one entity with `type: "player"`.
 - [ ] Every NPC that fights has a `behavior` block
 - [ ] Every NPC with both dialogue AND combat has both blocks
 - [ ] `attitude_limits` on every NPC with `dialogue_guidelines`
-- [ ] `on_dialogue_exit` present for NPCs that die, flee, or change state after dialogue
+- [ ] NPCs that die, flee, or change state after dialogue have a
+  `dialogue.ended` reaction (entity-scoped) instead of `on_dialogue_exit`
 - [ ] Every `will_reveal` topic's `conditions` array uses valid condition strings
 - [ ] Every `set_flag` in `will_reveal` references a flag from Step 1E
 - [ ] Every `set_entity_state` in `will_reveal` references an entity that
@@ -407,6 +437,10 @@ Exactly one entity with `type: "player"`.
   in `entity_states`
 - [ ] Every entity with `hidden: true` in initial `entity_states` has at
   least one companion `on_examine` or interaction that can set `hidden: false`
+- [ ] Entity `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
+- [ ] Entity `reactions` using `"self"` in `trigger_encounter` or
+  `trigger_dialogue` are on entities of the correct type (encounter for any,
+  dialogue for `npc` only)
 
 ---
 
@@ -513,23 +547,15 @@ For every exit described in the scenario, produce an exit object:
 - **`hidden`**: `true` for secret exits. Must have a companion mechanic that
   sets a flag, and the exit's conditions should require that flag.
 - **`one_way`**: `true` if the exit cannot be traversed in reverse.
-- **`on_traverse`**: Effects applied on successful traversal (set_flag,
-  narrative, trigger_encounter)
 - **`traversal_check`**: **Optional.** A check that gates the *attempt*, not
   the *availability*. The exit is visible and the player can try, but may fail
   and stay in place. Use for patterns like "dragging the heavy key requires
   STR check to move between rooms".
-
-#### `on_traverse` effect fields
-
-| Field | Description |
-|-------|-------------|
-| `set_flag` | Object of flags to set on traversal: `{ "<name>": true/false }` |
-| `alter_stat` | **Optional.** Stat modifiers to apply on traversal: `{ "<stat>": { "mode": "delta"|"set", "value": <int> } }` (mode defaults to `"delta"`). Use for fall damage, traps, etc. Keys must be declared in `corpus.stats.definitions`. |
-| `narrative` | Canonical prose for the traversal event, passed as `triggered_narration` to LLM Call 2 |
-| `trigger_encounter` | Mechanic ID to trigger on traversal (e.g., `"fall_damage"`) |
-| `skip_if` | Condition object — if met, the traverse effect (narrative, flag setting, etc.) is skipped |
-| `narrative_skip` | Alternative prose when the effect is skipped via `skip_if` |
+- **`reactions`**: **Optional.** Room-scoped reactions that fire on traversal
+  or other events. Prefer a `traversal.succeeded` reaction with
+  `condition: { require: "event:exit_id == <this_exit_id>" }` for effects that
+  should apply when this exit is successfully traversed (set_flag, narrative,
+  trigger_encounter).
 
 #### `traversal_check` fields
 
@@ -555,8 +581,9 @@ When the player must overcome an obstacle to pass (e.g., force through a
 spider's web), and once cleared the obstacle is no longer an impediment:
 
 1. Add a `traversal_check` on the blocked exit with the initial check
-2. On check success, set a flag via the exit's `on_traverse.set_flag`
-3. Use `skip_check_if` on the `traversal_check` to bypass once the flag is set
+2. Use `skip_check_if` on the `traversal_check` to bypass once the flag is set
+3. Add a `traversal.succeeded` reaction (on the room or the exit's containing
+   room) that matches this exit and sets the flag / triggers the encounter
 
 ```json
 {
@@ -567,14 +594,23 @@ spider's web), and once cleared the obstacle is no longer an impediment:
       "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
       "skip_check_if": { "require": "flag:webs_cleared == true" },
       "failure_narrative": "You strain against the sticky webs but can't break through."
-    },
-    "on_traverse": {
-      "narrative": "You burst through the webs, clearing a path.",
-      "set_flag": { "webs_cleared": true },
+    }
+  }
+},
+"reactions": [
+  {
+    "id": "clear_webs_on_force",
+    "on": "traversal.succeeded",
+    "condition": { "require": "event:exit_id == exit_force_through_web" },
+    "effects": {
+      "result": {
+        "narrative": "You burst through the webs, clearing a path.",
+        "set_flag": { "webs_cleared": true }
+      },
       "trigger_encounter": "spider_attack"
     }
   }
-}
+]
 ```
 
 #### Global traversal check (item weight)
@@ -608,12 +644,26 @@ For win conditions that require an explicit player action in a specific room, on
   "direction": "Enter the treasure vault",
   "target_room": "vault_interior",
   "hidden": true,
-  "conditions": [{ "require": "flag:vault_unlocked == true" }],
-  "on_traverse": {
-    "narrative": "You turn the heavy wheel and the vault door swings open, revealing glittering treasure within.",
-    "set_flag": { "player_entered_vault": true }
-  }
+  "conditions": [{ "require": "flag:vault_unlocked == true" }]
 }
+```
+
+with a room-scoped reaction:
+
+```json
+"reactions": [
+  {
+    "id": "enter_vault_sets_flag",
+    "on": "traversal.succeeded",
+    "condition": { "require": "event:exit_id == exit_enter_vault" },
+    "effects": {
+      "result": {
+        "narrative": "You turn the heavy wheel and the vault door swings open, revealing glittering treasure within.",
+        "set_flag": { "player_entered_vault": true }
+      }
+    }
+  }
+]
 ```
 
 Then reference `flag:player_entered_vault` in the win condition's
@@ -854,6 +904,59 @@ With `condition: null`, the event fires on first entry only (the engine tracks i
 }
 ```
 
+### 3F-2. Room reactions
+
+Reactions on rooms fire when the player is in that room. Use them for
+event-driven triggers that respond to game events (flag changes, check
+outcomes, item acquisition, etc.). See [`events.md`](events.md) for the full
+list of event types and context keys.
+
+**Common patterns:**
+
+State-based trigger reacting to a flag change:
+```json
+"reactions": [
+  {
+    "id": "room_cleared_reaction",
+    "on": "flag.set",
+    "condition": { "require": "event:flag_name == spider_fled" },
+    "effects": {
+      "result": {
+        "narrative": "With the spider gone, you can finally look around properly.",
+        "set_flag": { "room_safe": true }
+      }
+    }
+  }
+]
+```
+
+Failed-check consequence:
+```json
+"reactions": [
+  {
+    "id": "web_fail_damage",
+    "on": "check.failed",
+    "condition": {
+      "all": [
+        { "require": "event:source_id == force_through_web" },
+        { "require": "event:check_type == stat_check" }
+      ]
+    },
+    "effects": {
+      "result": {
+        "narrative": "The webs constrict painfully around you.",
+        "alter_stat": { "STR": { "value": -2 } }
+      }
+    }
+  }
+]
+```
+
+**When to use room reactions:**
+- `reactions`: event-driven triggers that respond to any game event while the
+  player is in the room. Use `on: "room.entered"` for effects that should fire
+  when the player enters the room (replacing the legacy `on_enter` field).
+
 ### 3G. On-examine events
 
 For examine-gated stat checks or conditional discoveries:
@@ -893,8 +996,8 @@ section "Step 6". The correct location is Step 3G.
 - [ ] Every exit `target_room` references a valid room ID
 - [ ] Every exit ID is unique across all rooms
 - [ ] Every entity in `entities_present` exists in the `entities` block
-- [ ] Every `trigger_encounter` in an exit's `on_traverse` references a
-  mechanic that will be created in Step 4
+- [ ] Every `trigger_encounter` in a `traversal.succeeded` reaction
+  references a mechanic that will be created in Step 4
 - [ ] Every `trigger_dialogue` references a valid NPC entity ID
 - [ ] Every `set_entity_state` references an entity with that field in
   `state_fields`
@@ -914,6 +1017,9 @@ section "Step 6". The correct location is Step 3G.
   `parameter_signature` defining accepted types
 - [ ] If interactions reference `using_results`, each key is a valid entity ID
   or `"*"` wildcard
+- [ ] Room `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
+- [ ] Room `reactions` with `event:` conditions reference valid context keys
+  for their event type (see [`events.md`](events.md))
 
 ---
 
@@ -923,6 +1029,7 @@ section "Step 6". The correct location is Step 3G.
 **Output:** The full `"mechanics"` block for `corpus.json`.
 
 Two kinds of mechanics live here: encounters and game-over conditions.
+Reaction-only mechanics (adventure-wide state-based triggers) also belong here.
 
 ### 4A. Encounters
 
@@ -992,7 +1099,67 @@ For multi-step win conditions, use `"all"` to combine separate flags. Each
 flag should be set by a different interaction, exit, or encounter along the
 critical path.
 
-### 4C. Stats block (if applicable)
+### 4C. Reaction-only mechanics
+
+For adventure-wide state-based triggers that aren't tied to a specific room or
+entity, create a mechanic with only a `reactions` array (no `type`, `rules`, or
+`trigger_id`). See [`events.md`](events.md) for the full list of event types
+and context keys.
+
+```json
+"global_reactions": {
+  "id": "global_reactions",
+  "description": "Adventure-wide state-based reactions.",
+  "reactions": [
+    {
+      "id": "near_death_warning",
+      "on": "player.damaged",
+      "condition": { "require": "event:new_hp <= 3" },
+      "effects": {
+        "result": {
+          "narrative": "You are gravely wounded. One more hit could be your last.",
+          "set_flag": { "near_death": true }
+        }
+      }
+    }
+  ]
+}
+```
+
+Use reaction-only mechanics when:
+- The trigger is adventure-wide (not scoped to a room or entity)
+- The trigger responds to state changes (flags, stats, attitudes) rather than
+  specific actions
+- Multiple reactions share a logical grouping (e.g., all environmental effects)
+
+#### Chained encounters via reaction-only mechanics
+
+A reaction can trigger an encounter whose outcome sets a flag, and a second
+reaction can fire on that flag to trigger another encounter. Keep chains short
+and condition them carefully to avoid runaway loops.
+
+```json
+"global_reactions": {
+  "id": "global_reactions",
+  "description": "Chains the guardian fight into the wraith ambush.",
+  "reactions": [
+    {
+      "id": "guardian_awakens",
+      "on": "room.entered",
+      "condition": { "require": "event:room_id == cave_depths" },
+      "effects": { "trigger_encounter": "guardian_attack" }
+    },
+    {
+      "id": "wraith_appears",
+      "on": "flag.set",
+      "condition": { "require": "event:flag_name == guardian_defeated" },
+      "effects": { "trigger_encounter": "wraith_ambush" }
+    }
+  ]
+}
+```
+
+### 4D. Stats block (if applicable)
 
 If the scenario uses stat checks, add a `stats` block to the corpus:
 
@@ -1026,9 +1193,12 @@ Rules:
 - [ ] Every `trigger_id` is unique across all mechanics
 - [ ] Game-over mechanics have `condition`, `narrative`, and `trigger_id`
 - [ ] Encounter mechanics have `rules` (not `condition`/`type`/`trigger_id`)
+- [ ] Reaction-only mechanics have `reactions` only (no `type`/`rules`/`trigger_id`)
 - [ ] If stats block present: only stats actually used are defined
 - [ ] If stats block absent: no stat_check interactions or stat: conditions
   exist in rooms/entities
+- [ ] Reaction-only mechanics have `reactions` but no `type` or `rules`
+- [ ] Reaction-only mechanic `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
 
 ---
 
@@ -1079,7 +1249,7 @@ Follow this exact structure:
    - In condition strings (`flag:...`)
    - In `set_flag` results
    - In encounter `set_flags`
-   - In on_enter/on_examine events
+   - In `on_examine` events and reaction `result.set_flag` effects
    Set each to its initial value (almost always `false`). This is a flat dict;
    all flag values should be booleans.
 
@@ -1209,6 +1379,11 @@ cross-file consistency issues.
   key, etc. exists in `corpus.entities`
 - [ ] Every mechanic ID referenced in any `trigger_encounter` exists in
   `corpus.mechanics`
+- [ ] Every `trigger_encounter` in a reaction references a valid mechanic ID
+  or entity ID (or is `"self"` on an entity-scoped reaction)
+- [ ] Every `trigger_dialogue` in a reaction references a valid NPC entity ID
+  (or is `"self"` on an NPC entity)
+- [ ] Every reaction `on` field is a valid event type (see [`events.md`](events.md))
 - [ ] Every NPC with `dialogue_guidelines.will_reveal` entries has
   matching `set_flag` / `set_entity_state` values that exist
 - [ ] Every `adjust_attitude` key references a valid NPC entity that has
@@ -1220,7 +1395,7 @@ cross-file consistency issues.
   in conditions and set_flag results
 - [ ] Every flag in `flags_declared` exists in `hard_state.flags`
 - [ ] No duplicate IDs across all rooms, exits, entities, interactions,
-  mechanics, flags, and topics
+  mechanics, reactions, flags, and topics
 - [ ] Every `will_reveal.conditions` string references entities, flags,
   attitudes, topics, or tags that exist in the corpus/hard state
 - [ ] Every `on_examine` event with a condition references an existing flag
@@ -1305,6 +1480,7 @@ Elements inside `any` and `all` arrays may be:
 | `attitude`   | `attitude:korbar >= 2`           | NPC soft-state attitude |
 | `topic`      | `topic:abandonment`              | Topic ID discussed in current dialogue |
 | `stat`       | `stat:STR >= 12`                 | Player stat value vs threshold. Requires corpus.stats. |
+| `event`      | `event:exit_id == exit_climb`    | Event context value. Only valid during reaction dispatch. |
 | `any`        | *compound*                       | At least one sub-condition must be true |
 | `all`        | *compound*                       | All sub-conditions must be true |
 | `require`    | `{ "require": "..." }`           | Condition must be true |
@@ -1324,6 +1500,10 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
   `dialogue_state.topics_discussed`
 - `room:<id>.is_current` is a special value that checks if the player is
   currently in that room (available in encounter rules)
+- `event:<key>` checks a value in the current event context. Only valid inside
+  reaction conditions during dispatch. Outside dispatch, evaluates to `false`.
+  Common keys: `exit_id`, `interaction_id`, `npc_id`, `flag_name`, `source_id`,
+  `check_type`, `stat`, `amount`, `new_hp`.
 
 ---
 
@@ -1338,6 +1518,7 @@ All IDs must be **snake_case, lowercase ASCII**:
 | Exit IDs | prefixed `exit_` | `exit_climb_down_handle`, `exit_drop_into_darkness` |
 | Interaction IDs | descriptive snake_case | `force_through_web`, `rummage_rubbish` |
 | Mechanic IDs | descriptive | `fall_damage`, `win_escape_bag`, `key_lost` |
+| Reaction IDs | descriptive | `spider_attack_on_sight`, `room_cleared`, `near_death_warning` |
 | Flag names | descriptive snake_case | `spider_fled`, `injured`, `handkerchief_noticed` |
 | Topic IDs (will_reveal) | descriptive snake_case | `padlock_mechanism`, `secret_compartment` |
 | Soft item names | lowercase generic | `rock`, `cork`, `sandwich` |
@@ -1421,9 +1602,20 @@ All IDs must be **snake_case, lowercase ASCII**:
     increasing DCs as separate interaction entries with mutually exclusive
     conditions.
 
-19. **`on_dialogue_exit` for post-dialogue state changes**: If an NPC dies,
-    flees, or changes state when dialogue ends (not during dialogue), use
-    `on_dialogue_exit` rather than an interaction result.
+19. **Post-dialogue state changes**: If an NPC dies, flees, or changes state
+    when dialogue ends (not during dialogue), use a `dialogue.ended` reaction
+    on the entity. The legacy `on_dialogue_exit` field has been removed.
+
+20. **Reactions vs legacy triggers**: Use `reactions` for all event-driven
+    effects. Reactions are more flexible (any event × any effect), support
+    state-based triggers (flag changes, stat changes), and compose cleanly.
+    The legacy `on_enter`, `on_traverse`, `behavior.triggers_on`, and
+    `on_dialogue_exit` fields have been removed.
+
+21. **`event:` domain only works in reactions**: The `event:` condition domain
+    is only valid inside reaction conditions during dispatch. Using it in
+    interaction conditions, game-over mechanic conditions, or exit conditions
+    will always evaluate to `false`.
 
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>

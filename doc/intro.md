@@ -116,7 +116,7 @@ Optionally, the LLM may also propose `knowledge_tags` (which topic IDs an NPC re
 
 When the player starts talking to an NPC (`talk` action), the system enters dialogue mode.  The GMBriefing is then enriched with a `dialogue_context` block specifying the NPC's personality guidelines, current attitude, recent exchanges, discussed topics, and topics already revealed to the player.
 
-Dialogue ends when the player moves rooms (away from the NPC), the NPC dies/flees, the player terminates the conversation (a `talk` action with `ends_dialogue: true`), or 3+ turns pass without a `talk` action.  An exception is made for **follower NPCs** (NPCs with `entity_states[].following == true`), who travel with the player between rooms and remain in active dialogue regardless of room changes.  On exit, the conversation is archived as an `entity_note` on the NPC — LLM Call 2 may provide a rich `conversation_note`, otherwise the engine writes a minimal fallback.  Any `on_dialogue_exit` side effects (set_flag, set_entity_state) from the NPC's dialogue guidelines are applied.
+Dialogue ends when the player moves rooms (away from the NPC), the NPC dies/flees, the player terminates the conversation (a `talk` action with `ends_dialogue: true`), or 3+ turns pass without a `talk` action.  An exception is made for **follower NPCs** (NPCs with `entity_states[].following == true`), who travel with the player between rooms and remain in active dialogue regardless of room changes.  On exit, the conversation is archived as an `entity_note` on the NPC — LLM Call 2 may provide a rich `conversation_note`, otherwise the engine writes a minimal fallback.  Any entity-scoped `dialogue.ended` reaction on the NPC fires during deferred reaction dispatch.
 
 ### Error handling
 
