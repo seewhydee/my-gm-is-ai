@@ -18,67 +18,55 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mgmai.llm.client import LLMClient
 from mgmai.llm.model_config import ModelConfig
 
 
-def _make_client(
-    *,
-    ruling_temperature: float | None = 0.5,
-    prose_temperature: float | None = 0.6,
-) -> LLMClient:
-    config = ModelConfig(
-        name="test-model",
-        base_url="https://api.example.com",
-        ruling_temperature=ruling_temperature,
-        prose_temperature=prose_temperature,
-    )
-    return LLMClient(api_key="fake-key", config=config)
+class TestLLMClient:
+    """Tests for LLMClient — API wrapper behaviour."""
 
+    @pytest.mark.parametrize("method_name,temp,expect_key", [
+        ("call_ruling", 0.25, "temperature"),
+        ("call_prose", 0.75, "temperature"),
+        ("call_ruling", None, None),
+        ("call_prose", None, None),
+    ])
+    def test_temperature_forwarding(self, method_name, temp, expect_key):
+        """Temperature is forwarded/omitted based on config value."""
+        config = ModelConfig(
+            name="test-model",
+            base_url="https://api.example.com",
+            ruling_temperature=temp if method_name == "call_ruling" else 0.5,
+            prose_temperature=temp if method_name == "call_prose" else 0.5,
+        )
+        client = LLMClient(api_key="fake-key", config=config)
 
-class TestTemperatureHandling:
-    """Temperature is omitted from API calls when the model config leaves it null."""
-
-    def test_ruling_passes_temperature_when_set(self):
-        client = _make_client(ruling_temperature=0.25)
         with patch.object(client._client.chat.completions, "create") as mock_create:
             mock_create.return_value = MagicMock(
                 choices=[MagicMock(message=MagicMock(content='{"x": 1}'))]
             )
-            client.call_ruling("system", "user")
+            result = getattr(client, method_name)("system", "user")
 
+        assert result == '{"x": 1}'
         kwargs = mock_create.call_args.kwargs
-        assert kwargs["temperature"] == 0.25
+        if expect_key is not None:
+            assert kwargs[expect_key] == temp
+        else:
+            assert "temperature" not in kwargs
 
-    def test_prose_passes_temperature_when_set(self):
-        client = _make_client(prose_temperature=0.75)
+    def test_raises_on_empty_content(self):
+        """RuntimeError when LLM returns content=None."""
+        config = ModelConfig(
+            name="test-model",
+            base_url="https://api.example.com",
+        )
+        client = LLMClient(api_key="fake-key", config=config)
+
         with patch.object(client._client.chat.completions, "create") as mock_create:
             mock_create.return_value = MagicMock(
-                choices=[MagicMock(message=MagicMock(content='{"x": 1}'))]
+                choices=[MagicMock(message=MagicMock(content=None))]
             )
-            client.call_prose("system", "user")
-
-        kwargs = mock_create.call_args.kwargs
-        assert kwargs["temperature"] == 0.75
-
-    def test_ruling_omits_temperature_when_none(self):
-        client = _make_client(ruling_temperature=None)
-        with patch.object(client._client.chat.completions, "create") as mock_create:
-            mock_create.return_value = MagicMock(
-                choices=[MagicMock(message=MagicMock(content='{"x": 1}'))]
-            )
-            client.call_ruling("system", "user")
-
-        kwargs = mock_create.call_args.kwargs
-        assert "temperature" not in kwargs
-
-    def test_prose_omits_temperature_when_none(self):
-        client = _make_client(prose_temperature=None)
-        with patch.object(client._client.chat.completions, "create") as mock_create:
-            mock_create.return_value = MagicMock(
-                choices=[MagicMock(message=MagicMock(content='{"x": 1}'))]
-            )
-            client.call_prose("system", "user")
-
-        kwargs = mock_create.call_args.kwargs
-        assert "temperature" not in kwargs
+            with pytest.raises(RuntimeError, match="empty content"):
+                client.call_ruling("system", "user")

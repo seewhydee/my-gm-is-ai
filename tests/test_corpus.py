@@ -447,56 +447,18 @@ class TestEntity:
         reveal = g.will_reveal["trap_warning"]
         assert reveal.set_entity_state == {"spike_trap": {"disarmed": True}}
 
-    def test_feature_with_dialogue_guidelines_raises(self) -> None:
+    @pytest.mark.parametrize("entity_type,extra_field,extra_data", [
+        ("feature", "dialogue_guidelines", {"personality": "Creaky.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
+        ("item", "dialogue_guidelines", {"personality": "Chatty.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
+        ("item", "behavior", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
+        ("player", "behavior", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
+    ])
+    def test_invalid_field_for_entity_type_raises(self, entity_type, extra_field, extra_data) -> None:
         with pytest.raises(ValidationError):
             Entity.model_validate({
-                "type": "feature",
-                "description": "A talking door.",
-                "dialogue_guidelines": {
-                    "personality": "Creaky.",
-                    "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2},
-                },
-            })
-
-    def test_item_with_dialogue_guidelines_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            Entity.model_validate({
-                "type": "item",
-                "description": "A talking sword.",
-                "dialogue_guidelines": {
-                    "personality": "Chatty.",
-                    "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2},
-                },
-            })
-
-    def test_item_with_behavior_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            Entity.model_validate({
-                "type": "item",
-                "description": "An aggressive sword.",
-                "behavior": {
-                    "encounter_rules": [
-                        {
-                            "condition": {"require": "flag:x == true"},
-                            "outcome": "flee",
-                        },
-                    ],
-                },
-            })
-
-    def test_player_with_behavior_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            Entity.model_validate({
-                "type": "player",
-                "description": "The player character.",
-                "behavior": {
-                    "encounter_rules": [
-                        {
-                            "condition": {"require": "flag:x == true"},
-                            "outcome": "flee",
-                        },
-                    ],
-                },
+                "type": entity_type,
+                "description": "Test entity.",
+                extra_field: extra_data,
             })
 
     def test_player_entity_type(self) -> None:

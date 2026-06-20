@@ -224,38 +224,21 @@ class TestCliBoot:
         _, kwargs = mock_llm_cls.call_args
         assert kwargs["config"].base_url == "https://example.com"
 
-    def test_debug_flag_passed_to_loop(self, monkeypatch) -> None:
+    @pytest.mark.parametrize("cli_flags,expect_debug", [
+        (["--debug"], True),
+        (["--log-level", "DEBUG"], True),
+        (["--log-level", "INFO"], False),
+    ])
+    def test_debug_flag_passed_to_loop(self, monkeypatch, cli_flags, expect_debug) -> None:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
         mock_loop = MagicMock()
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
             with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING), "--debug"])
+                main([str(BAG_OF_HOLDING)] + cli_flags)
 
         _, kwargs = mock_loop_cls.call_args
-        assert kwargs["debug"] is True
-
-    def test_log_level_passed_to_loop(self, monkeypatch) -> None:
-        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
-        mock_loop = MagicMock()
-
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
-            with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING), "--log-level", "DEBUG"])
-
-        _, kwargs = mock_loop_cls.call_args
-        assert kwargs["debug"] is True
-
-    def test_log_info_debug_false(self, monkeypatch) -> None:
-        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
-        mock_loop = MagicMock()
-
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
-            with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING), "--log-level", "INFO"])
-
-        _, kwargs = mock_loop_cls.call_args
-        assert kwargs["debug"] is False
+        assert kwargs["debug"] is expect_debug
 
 
 class TestCharSheetCli:

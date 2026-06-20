@@ -140,26 +140,12 @@ class TestBriefingHistoryEntry:
         assert h.turn == 2
         assert h.location_after == "axe_handle_lower"
 
-    def test_missing_turn_raises(self) -> None:
+    @pytest.mark.parametrize("missing_field", ["turn", "summary", "location_after"])
+    def test_missing_required_field_raises(self, missing_field) -> None:
+        data = {"turn": 1, "summary": "x", "location_after": "room1"}
+        del data[missing_field]
         with pytest.raises(ValidationError):
-            BriefingHistoryEntry.model_validate({
-                "summary": "x",
-                "location_after": "room1",
-            })
-
-    def test_missing_summary_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            BriefingHistoryEntry.model_validate({
-                "turn": 1,
-                "location_after": "room1",
-            })
-
-    def test_missing_location_after_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            BriefingHistoryEntry.model_validate({
-                "turn": 1,
-                "summary": "x",
-            })
+            BriefingHistoryEntry.model_validate(data)
 
 
 class TestDialogueContext:
@@ -300,86 +286,23 @@ class TestGMBriefing:
         assert b.dialogue_context.active_npc.id == "korbar"
         assert b.dialogue_context.topics_discussed == ["greeting"]
 
-    def test_missing_player_input_raises(self) -> None:
+    @pytest.mark.parametrize("missing_field", [
+        "player_input", "adventure_title", "setting", "tone",
+        "turn", "current_room", "player_state",
+    ])
+    def test_missing_required_field_raises(self, missing_field) -> None:
+        data = {
+            "adventure_title": "Test",
+            "setting": "A setting.",
+            "tone": "Dark.",
+            "turn": 1,
+            "current_room": {"id": "room1", "name": "Room 1", "description": "A room."},
+            "player_state": {"location": "room1"},
+            "player_input": "Look.",
+        }
+        del data[missing_field]
         with pytest.raises(ValidationError):
-            GMBriefing.model_validate({
-                "adventure_title": "Test",
-                "setting": "A setting.",
-                "tone": "Dark.",
-                "turn": 1,
-                "current_room": {
-                    "id": "room1",
-                    "name": "Room 1",
-                    "description": "A room.",
-                },
-                "player_state": {"location": "room1"},
-            })
-
-    def test_missing_adventure_title_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            GMBriefing.model_validate({
-                "setting": "A setting.",
-                "tone": "Dark.",
-                "turn": 1,
-                "current_room": {"id": "room1", "name": "Room 1", "description": "A room."},
-                "player_state": {"location": "room1"},
-                "player_input": "Look.",
-            })
-
-    def test_missing_setting_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            GMBriefing.model_validate({
-                "adventure_title": "Test",
-                "tone": "Dark.",
-                "turn": 1,
-                "current_room": {"id": "room1", "name": "Room 1", "description": "A room."},
-                "player_state": {"location": "room1"},
-                "player_input": "Look.",
-            })
-
-    def test_missing_tone_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            GMBriefing.model_validate({
-                "adventure_title": "Test",
-                "setting": "A setting.",
-                "turn": 1,
-                "current_room": {"id": "room1", "name": "Room 1", "description": "A room."},
-                "player_state": {"location": "room1"},
-                "player_input": "Look.",
-            })
-
-    def test_missing_turn_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            GMBriefing.model_validate({
-                "adventure_title": "Test",
-                "setting": "A setting.",
-                "tone": "Dark.",
-                "current_room": {"id": "room1", "name": "Room 1", "description": "A room."},
-                "player_state": {"location": "room1"},
-                "player_input": "Look.",
-            })
-
-    def test_missing_current_room_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            GMBriefing.model_validate({
-                "adventure_title": "Test",
-                "setting": "A setting.",
-                "tone": "Dark.",
-                "turn": 1,
-                "player_state": {"location": "room1"},
-                "player_input": "Look.",
-            })
-
-    def test_missing_player_state_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            GMBriefing.model_validate({
-                "adventure_title": "Test",
-                "setting": "A setting.",
-                "tone": "Dark.",
-                "turn": 1,
-                "current_room": {"id": "room1", "name": "Room 1", "description": "A room."},
-                "player_input": "Look.",
-            })
+            GMBriefing.model_validate(data)
 
 
 class TestPlayerStatEntry:

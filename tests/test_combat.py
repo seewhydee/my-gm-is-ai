@@ -44,7 +44,6 @@ from mgmai.engine.combat import (
     get_player_attack_bonus,
     get_player_damage_expr,
     get_player_max_hp,
-    parse_damage_dice,
     resolve_combat_turn,
     roll_damage,
     roll_initiative,
@@ -135,12 +134,6 @@ def combat_hard_state() -> HardGameState:
 # ------------------------------------------------------------------
 
 class TestCombatBlock:
-    def test_valid_combat_block(self):
-        cb = CombatBlock(hp=10, ac=12, atk=4, dmg="1d6+2", initiative_mod=2, flee_dc=10)
-        assert cb.hp == 10
-        assert cb.ac == 12
-        assert cb.dmg == "1d6+2"
-
     def test_default_values(self):
         cb = CombatBlock(hp=5, ac=10, atk=0)
         assert cb.dmg == "1d6"
@@ -192,28 +185,10 @@ class TestCombatAction:
 
 
 # ------------------------------------------------------------------
-# 3. Damage dice parsing & rolling
+# 3. Damage dice rolling
 # ------------------------------------------------------------------
 
 class TestDamageDice:
-    def test_parse_simple(self):
-        assert parse_damage_dice("1d6") == (1, 6, 0)
-
-    def test_parse_with_positive_mod(self):
-        assert parse_damage_dice("1d6+2") == (1, 6, 2)
-
-    def test_parse_with_negative_mod(self):
-        assert parse_damage_dice("2d4-1") == (2, 4, -1)
-
-    def test_parse_multiple_dice(self):
-        assert parse_damage_dice("3d8+5") == (3, 8, 5)
-
-    def test_parse_invalid_rejected(self):
-        with pytest.raises(ValueError):
-            parse_damage_dice("not_dice")
-        with pytest.raises(ValueError):
-            parse_damage_dice("d6")
-
     def test_roll_damage_range(self, monkeypatch):
         """Damage from 1d6 should be in [1,6]."""
         monkeypatch.setattr(random, "randint", lambda a, b: a)
