@@ -6,6 +6,26 @@ plugged in later.  Combat is a **phase** in the game loop, analogous to
 dialogue mode: when active, the set of valid player actions narrows to
 *attack* and *flee*.
 
+## Resolution System Abstraction
+
+All system-specific maths — ability modifiers, the d20 roll,
+advantage/disadvantage, attack/crit/fumble rules, AC and HP formulas,
+initiative, and (in future) saving throws — live behind a
+`ResolutionSystem` interface in `mgmai.engine.systems`.  The combat loop,
+the action resolver, and the encounter engine are system-agnostic: they
+orchestrate turns and state, then call the active system for every die
+roll and formula.
+
+The active system is selected by `corpus.stats.system` (default `"5e"`)
+via `get_system_for_corpus(corpus)`.  `FiveESystem` implements D&D 5e and
+reproduces the rules documented in the sections below.  Adding a new
+system (Pathfinder, GURPS, d20 Modern, …) means subclassing
+`ResolutionSystem`, implementing its methods, and registering it with
+`register_system(name, cls)` — **no edits to the combat loop or resolvers
+are required.**  The system's dice are rolled through Python's shared
+`random` module, so tests that monkeypatch `random.randint` /
+`random.random` steer every system uniformly.
+
 ---
 
 ## Quickstart
@@ -99,6 +119,11 @@ engine computes defaults at combat-start time:
 ---
 
 ## Combat Flow
+
+> The rules below are those of `FiveESystem`; the engine applies them by
+> delegating to the active `ResolutionSystem` (see above).  A different
+> system would substitute its own dice, crit thresholds, and formulas
+> without the combat loop changing.
 
 ### Entering Combat
 
@@ -294,3 +319,9 @@ The minimum viable combat system deliberately excludes:
 - Enemy AI / decision-making (enemies always attack)
 
 These may be added in future phases.
+
+> Note: the *engine* is already system-agnostic through the
+> `ResolutionSystem` interface; the limitations above concern combat
+> *features* (gear, conditions, spells, …), not system portability.  The
+> saving-throw hook (`ResolutionSystem.resolve_save`) is declared but not
+> yet wired into the combat loop — it lands with on-hit effects.

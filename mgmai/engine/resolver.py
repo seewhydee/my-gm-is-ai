@@ -56,6 +56,7 @@ from mgmai.engine.dialogue import (
     exit_dialogue,
 )
 from mgmai.engine.utils import get_following_npc_ids
+from mgmai.engine.systems import get_system_for_corpus
 
 MAX_CHAIN_CHECK_DEPTH = 3
 
@@ -829,42 +830,19 @@ def _resolve_stat_check_chain(
     if player_stats is None or check.stat not in player_stats:
         return
 
-    stat_value = player_stats[check.stat]
-    res_system = stats_block.system
-    if res_system != "5e":
-        return
+    system = get_system_for_corpus(corpus)
+    cr = system.roll_check(
+        check.stat,
+        player_stats[check.stat],
+        check.dc,
+        flat_modifier=check.modifier,
+        params=check.resolution_params,
+    )
 
-    from mgmai.engine.stat_checks import compute_5e_modifier, roll_d20
-
-    computed_mod = compute_5e_modifier(stat_value)
-    total_mod = computed_mod + check.modifier
-
-    params = (check.resolution_params or {}).get("5e", {})
-    advantage = params.get("advantage", False)
-    disadvantage = params.get("disadvantage", False)
-
-    raw_roll = roll_d20(advantage=advantage, disadvantage=disadvantage)
-
-    total = raw_roll + total_mod
-    success_flag = total >= check.dc
-
-    branch = success if success_flag else failure
+    branch = success if cr.success else failure
     result = branch if branch else None
 
-    rolls.append({
-        "type": "stat_check",
-        "stat": check.stat,
-        "dc": check.dc,
-        "modifier": total_mod,
-        "computed_mod": computed_mod,
-        "flat_mod": check.modifier,
-        "raw_roll": raw_roll,
-        "total": total,
-        "margin": total - check.dc,
-        "success": success_flag,
-        "advantage": advantage,
-        "disadvantage": disadvantage,
-    })
+    rolls.append(cr.to_dict())
 
     if result:
         _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
@@ -892,48 +870,17 @@ def _resolve_traversal_check(
         player_stats = hard.player.stats
         if player_stats is None or check.stat not in player_stats:
             return True
-        stat_value = player_stats[check.stat]
-        res_system = stats_block.system
-        if res_system != "5e":
-            return True
 
-        from mgmai.engine.stat_checks import compute_5e_modifier, roll_d20
-
-        computed_mod = compute_5e_modifier(stat_value)
-        total_mod = computed_mod + check.modifier
-
-        params = (check.resolution_params or {}).get("5e", {})
-        advantage = params.get("advantage", False)
-        disadvantage = params.get("disadvantage", False)
-
-        raw_roll: int
-        if advantage and not disadvantage:
-            raw_roll = max(random.randint(1, 20), random.randint(1, 20))
-        elif disadvantage and not advantage:
-            raw_roll = min(random.randint(1, 20), random.randint(1, 20))
-        else:
-            raw_roll = random.randint(1, 20)
-
-        total = raw_roll + total_mod
-        success_flag = total >= check.dc
-
-        rolls.append({
-            "type": "stat_check",
-            "traversal_check": True,
-            "stat": check.stat,
-            "dc": check.dc,
-            "modifier": total_mod,
-            "computed_mod": computed_mod,
-            "flat_mod": check.modifier,
-            "raw_roll": raw_roll,
-            "total": total,
-            "margin": total - check.dc,
-            "success": success_flag,
-            "advantage": advantage,
-            "disadvantage": disadvantage,
-        })
-
-        return success_flag
+        system = get_system_for_corpus(corpus)
+        cr = system.roll_check(
+            check.stat,
+            player_stats[check.stat],
+            check.dc,
+            flat_modifier=check.modifier,
+            params=check.resolution_params,
+        )
+        rolls.append({"traversal_check": True, **cr.to_dict()})
+        return cr.success
     else:
         roll_val = random.random()
         success_flag = roll_val < check.threshold
@@ -1047,30 +994,17 @@ def _resolve_stat_check(
         )
 
     stat_value = player_stats[check.stat]
-    res_system = stats_block.system
 
-    if res_system != "5e":
-        return ResolutionResult(
-            success=False,
-            error=f"Unsupported resolution system: {res_system!r}",
-        )
+    system = get_system_for_corpus(corpus)
+    cr = system.roll_check(
+        check.stat,
+        stat_value,
+        check.dc,
+        flat_modifier=check.modifier,
+        params=check.resolution_params,
+    )
 
-    from mgmai.engine.stat_checks import compute_5e_modifier, roll_d20
-
-    computed_mod = compute_5e_modifier(stat_value)
-    total_mod = computed_mod + check.modifier
-
-    # advantage / disadvantage
-    params = (check.resolution_params or {}).get("5e", {})
-    advantage = params.get("advantage", False)
-    disadvantage = params.get("disadvantage", False)
-
-    raw_roll = roll_d20(advantage=advantage, disadvantage=disadvantage)
-
-    total = raw_roll + total_mod
-    success_flag = total >= check.dc
-
-    branch = inter.success if success_flag else inter.failure
+    branch = inter.success if cr.success else inter.failure
     result = branch if branch else inter.result
 
     if not check.repeatable:
@@ -1082,21 +1016,7 @@ def _resolve_stat_check(
     narrative: list[str] = []
     revealed_hints: list[str] = []
 
-    rolls: list[dict[str, Any]] = [{
-        "check_id": inter.id,
-        "type": "stat_check",
-        "stat": check.stat,
-        "dc": check.dc,
-        "modifier": total_mod,
-        "computed_mod": computed_mod,
-        "flat_mod": check.modifier,
-        "raw_roll": raw_roll,
-        "total": total,
-        "margin": total - check.dc,
-        "success": success_flag,
-        "advantage": advantage,
-        "disadvantage": disadvantage,
-    }]
+    rolls: list[dict[str, Any]] = [{"check_id": inter.id, **cr.to_dict()}]
 
     if result:
         _apply_result(result, changes, narrative, revealed_hints, hard, corpus)

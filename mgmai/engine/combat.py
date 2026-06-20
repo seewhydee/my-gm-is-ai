@@ -24,7 +24,6 @@ the engine when an encounter produces a ``"combat"`` outcome.
 from __future__ import annotations
 
 import random
-import re
 from typing import Any
 
 from mgmai.models.actions import (
@@ -35,51 +34,26 @@ from mgmai.models.actions import (
 from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import CombatBlock, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
+from mgmai.engine.systems import get_system, get_system_for_corpus
+from mgmai.engine.systems.dice import parse_damage_dice
 
 
 # ------------------------------------------------------------------
 # Damage dice parsing & rolling
 # ------------------------------------------------------------------
-
-def parse_damage_dice(expr: str) -> tuple[int, int, int]:
-    """Parse a damage expression like ``"1d6+2"`` or ``"2d4"``.
-
-    Returns ``(num_dice, die_size, modifier)``.
-    """
-    m = re.fullmatch(r"(\d+)d(\d+)(?:([+-]\d+))?", expr.strip())
-    if m is None:
-        raise ValueError(f"Invalid damage expression: {expr!r}")
-    num_dice = int(m.group(1))
-    die_size = int(m.group(2))
-    modifier = int(m.group(3)) if m.group(3) else 0
-    return num_dice, die_size, modifier
-
+# ``parse_damage_dice`` is imported from ``mgmai.engine.systems.dice`` and
+# re-exported here for backward compatibility.  ``roll_damage`` is a thin
+# wrapper around the 5e system for standalone/legacy callers; the combat
+# loop resolves damage through the corpus's active system directly.
 
 def roll_damage(expr: str, critical: bool = False) -> tuple[int, str]:
-    """Roll damage from a dice expression.
+    """Roll damage from a dice expression (5e crit rule).
 
-    On a critical hit the number of dice is doubled (modifier added once).
-    Returns ``(total, readable_string)``.
+    Returns ``(total, readable_string)``.  Delegates to the 5e resolution
+    system; the combat loop uses the corpus's active system directly via
+    ``system.roll_damage``.
     """
-    num_dice, die_size, modifier = parse_damage_dice(expr)
-    dice_count = num_dice * 2 if critical else num_dice
-    rolls = [random.randint(1, die_size) for _ in range(dice_count)]
-    total = sum(rolls) + modifier
-
-    parts = [str(r) for r in rolls]
-    roll_str = "+".join(parts)
-    if modifier > 0:
-        roll_str += f"+{modifier}"
-    elif modifier < 0:
-        roll_str += str(modifier)
-
-    mod_str = ""
-    if modifier > 0:
-        mod_str = f"+{modifier}"
-    elif modifier < 0:
-        mod_str = str(modifier)
-
-    return total, f"{dice_count}d{die_size}{mod_str} [{roll_str}]={total}"
+    return get_system("5e").roll_damage(expr, critical=critical)
 
 
 # ------------------------------------------------------------------
@@ -135,10 +109,10 @@ def get_player_attack_bonus(
     If effective_stats is provided (from compute_effective_stats), uses those
     instead of hard.player.stats so equipment-based stat changes apply.
     """
-    from mgmai.engine.stat_checks import compute_5e_modifier
+    system = get_system_for_corpus(corpus)
 
     stats = effective_stats if effective_stats is not None else hard.player.stats
-    str_mod = compute_5e_modifier(_get_stat(stats, "STR"))
+    str_mod = system.compute_modifier(_get_stat(stats, "STR"))
     prof = hard.player.proficiency_bonus or 2
 
     # Sum attack_bonus from all equipped weapons
@@ -162,13 +136,13 @@ def get_player_damage_expr(
     Priority (highest first):
     1. Equipped weapon damage_expr from equip_block.
     2. Improvised weapon (from soft.improvised_weapon).
-    3. Any item tagged ``weapon`` in inventory (legacy fallback) → ``1d8 + STR_mod``.
-    4. Unarmed → ``1d6 + STR_mod``.
+    3. Any item tagged ``weapon`` in inventory (legacy fallback) → default weapon damage.
+    4. Unarmed → system unarmed damage.
     """
-    from mgmai.engine.stat_checks import compute_5e_modifier
+    system = get_system_for_corpus(corpus)
 
     stats = effective_stats if effective_stats is not None else hard.player.stats
-    str_mod = compute_5e_modifier(_get_stat(stats, "STR"))
+    str_mod = system.compute_modifier(_get_stat(stats, "STR"))
 
     # Check equipped weapons first
     for item_id in hard.player.equipped:
@@ -198,7 +172,7 @@ def get_player_damage_expr(
             has_weapon = True
             break
 
-    base = "1d8" if has_weapon else "1d6"
+    base = system.default_weapon_damage if has_weapon else system.unarmed_damage
     if str_mod >= 0:
         return f"{base}+{str_mod}"
     else:
@@ -216,14 +190,13 @@ def compute_player_ac(
     2. Apply ac_override from equipped items (use max).
     3. Add all ac_bonus values from equipped items.
     """
-    from mgmai.engine.stat_checks import compute_5e_modifier
-
     # Step 1: Base AC
     if hard.player.ac is not None:
         base_ac = hard.player.ac
     else:
-        stats = hard.player.stats
-        base_ac = 10 + compute_5e_modifier(_get_stat(stats, "DEX"))
+        base_ac = get_system_for_corpus(corpus).base_ac(
+            _get_stat(hard.player.stats, "DEX")
+        )
 
     # Step 2: Apply ac_override (highest wins)
     ac_override = None
@@ -254,18 +227,16 @@ def get_player_ac(hard: HardGameState) -> int:
     """
     if hard.player.ac is not None:
         return hard.player.ac
-    stats = hard.player.stats
-    from mgmai.engine.stat_checks import compute_5e_modifier
-    return 10 + compute_5e_modifier(_get_stat(stats, "DEX"))
+    # No corpus available; fall back to the default (5e) system.
+    return get_system("5e").base_ac(_get_stat(hard.player.stats, "DEX"))
 
 
 def get_player_max_hp(hard: HardGameState) -> int:
     """Return player max HP.  Computed from CON if not explicitly set."""
     if hard.player.max_hp is not None:
         return hard.player.max_hp
-    stats = hard.player.stats
-    from mgmai.engine.stat_checks import compute_5e_modifier
-    return max(1, 8 + compute_5e_modifier(_get_stat(stats, "CON")))
+    # No corpus available; fall back to the default (5e) system.
+    return get_system("5e").base_max_hp(_get_stat(hard.player.stats, "CON"))
 
 
 # ------------------------------------------------------------------
@@ -281,16 +252,15 @@ def roll_initiative(
 
     Ties are broken by DEX/initiative modifier, then coin flip.
     """
-    from mgmai.engine.stat_checks import compute_5e_modifier
-    from mgmai.engine.stat_checks import roll_d20 as _d20
+    system = get_system_for_corpus(corpus)
 
     entries: list[tuple[str, int, int, float]] = []  # (id, roll, tiebreaker, coin)
 
     # Player
     dex_mod = 0
     if hard.player.stats and "DEX" in hard.player.stats:
-        dex_mod = compute_5e_modifier(hard.player.stats["DEX"])
-    player_roll = _d20() + dex_mod
+        dex_mod = system.compute_modifier(hard.player.stats["DEX"])
+    player_roll = system.roll_initiative(dex_mod)
     entries.append(("player", player_roll, dex_mod, random.random()))
 
     # Enemies
@@ -298,7 +268,7 @@ def roll_initiative(
         entity = corpus.entities.get(eid)
         if entity is None or entity.combat is None:
             continue
-        npc_roll = _d20() + entity.combat.initiative_mod
+        npc_roll = system.roll_initiative(entity.combat.initiative_mod)
         entries.append(
             (eid, npc_roll, entity.combat.initiative_mod, random.random())
         )
@@ -324,17 +294,17 @@ def _resolve_npc_attack(
     Returns a dict with ``log`` (list of CombatLogEntry), ``player_hp_delta``,
     and ``game_over``.
     """
-    from mgmai.engine.stat_checks import roll_d20 as _d20
+    system = get_system_for_corpus(corpus)
 
     # Use equipment-aware AC when the player has equipped items
     if hard.player.equipped:
         player_ac = compute_player_ac(hard, corpus)
     else:
         player_ac = get_player_ac(hard)
-    attack_roll = _d20()
+    attack_roll = system.roll_die(20)
     attack_total = attack_roll + combat_block.atk
-    critical = attack_roll == 20
-    miss = attack_roll == 1
+    critical = system.is_critical(attack_roll)
+    miss = system.is_fumble(attack_roll)
     hit = critical or (not miss and attack_total >= player_ac)
 
     log_entry = CombatLogEntry(
@@ -356,7 +326,7 @@ def _resolve_npc_attack(
     }
 
     if hit:
-        damage, dmg_str = roll_damage(combat_block.dmg, critical=critical)
+        damage, dmg_str = system.roll_damage(combat_block.dmg, critical=critical)
         log_entry.damage_roll = dmg_str
         log_entry.damage = damage
         result["player_hp_delta"] = -damage
@@ -480,7 +450,7 @@ def resolve_combat_turn(
     if combat is None or not combat.active:
         return {"success": False, "error": "Not in combat"}
 
-    from mgmai.engine.stat_checks import roll_d20 as _d20, compute_5e_modifier
+    system = get_system_for_corpus(corpus)
 
     hard_changes = HardStateChanges()
     combat_log: list[CombatLogEntry] = []
@@ -502,10 +472,10 @@ def resolve_combat_turn(
             return {"success": False, "error": f"Target '{target_id}' is already dead"}
 
         atk_bonus = get_player_attack_bonus(hard, corpus)
-        attack_roll = _d20()
+        attack_roll = system.roll_die(20)
         attack_total = attack_roll + atk_bonus
-        critical = attack_roll == 20
-        miss = attack_roll == 1
+        critical = system.is_critical(attack_roll)
+        miss = system.is_fumble(attack_roll)
         hit = critical or (not miss and attack_total >= entity.combat.ac)
 
         log_entry = CombatLogEntry(
@@ -522,7 +492,7 @@ def resolve_combat_turn(
 
         if hit:
             dmg_expr = get_player_damage_expr(hard, corpus)
-            damage, dmg_str = roll_damage(dmg_expr, critical=critical)
+            damage, dmg_str = system.roll_damage(dmg_expr, critical=critical)
             log_entry.damage_roll = dmg_str
             log_entry.damage = damage
             new_hp = (npc_state.get("current_hp") or 0) - damage
@@ -574,8 +544,8 @@ def resolve_combat_turn(
         )
         dex_mod = 0
         if hard.player.stats and "DEX" in hard.player.stats:
-            dex_mod = compute_5e_modifier(hard.player.stats["DEX"])
-        flee_roll = _d20()
+            dex_mod = system.compute_modifier(hard.player.stats["DEX"])
+        flee_roll = system.roll_die(20)
         flee_total = flee_roll + dex_mod
         flee_success = flee_total >= flee_dc
 

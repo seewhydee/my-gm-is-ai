@@ -27,6 +27,7 @@ from mgmai.models.corpus import (
 from mgmai.models.hard_state import HardGameState, GameOverState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.conditions import evaluate
+from mgmai.engine.systems import get_system_for_corpus
 
 
 def resolve_encounter(
@@ -346,39 +347,16 @@ def _resolve_encounter_stat_check(
     if player_stats is None or check.stat not in player_stats:
         return True
 
-    stat_value = player_stats[check.stat]
-    res_system = stats_block.system
-    if res_system != "5e":
-        return True
-
-    from mgmai.engine.stat_checks import compute_5e_modifier, roll_d20
-
-    computed_mod = compute_5e_modifier(stat_value)
-    total_mod = computed_mod + check.modifier
-
-    params = (check.resolution_params or {}).get("5e", {})
-    advantage = params.get("advantage", False)
-    disadvantage = params.get("disadvantage", False)
-
-    raw_roll = roll_d20(advantage=advantage, disadvantage=disadvantage)
-
-    total = raw_roll + total_mod
-    success_flag = total >= check.dc
-
+    system = get_system_for_corpus(corpus)
+    cr = system.roll_check(
+        check.stat,
+        player_stats[check.stat],
+        check.dc,
+        flat_modifier=check.modifier,
+        params=check.resolution_params,
+    )
     rolls.append({
-        "encounter_id": getattr(rule, 'id', 'encounter'),
-        "type": "stat_check",
-        "stat": check.stat,
-        "dc": check.dc,
-        "modifier": total_mod,
-        "computed_mod": computed_mod,
-        "flat_mod": check.modifier,
-        "raw_roll": raw_roll,
-        "total": total,
-        "margin": total - check.dc,
-        "success": success_flag,
-        "advantage": advantage,
-        "disadvantage": disadvantage,
+        "encounter_id": getattr(rule, "id", "encounter"),
+        **cr.to_dict(),
     })
-
-    return success_flag
+    return cr.success

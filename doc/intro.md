@@ -156,6 +156,12 @@ mgmai/
 │   ├── conditions.py            # Condition evaluator
 │   ├── resolver.py              # Action resolvers (move, examine, interact, etc.)
 │   ├── encounters.py            # Encounter resolution
+│   ├── combat.py                # Turn-based combat loop (system-agnostic)
+│   ├── stat_checks.py           # Backward-compat shims + narrative prefixes
+│   ├── systems/                 # Resolution-system abstraction
+│   │   ├── base.py              # ResolutionSystem ABC + CheckResult/SaveResult
+│   │   ├── five_e.py            # D&D 5e implementation
+│   │   └── dice.py              # Dice-expression parsing
 │   ├── dialogue.py              # Dialogue lifecycle (enter, exit, stall, archive)
 │   ├── engine.py                # Main engine pipeline
 │   └── post_validate.py         # Post-validation of knowledge_tags + attitude_changes

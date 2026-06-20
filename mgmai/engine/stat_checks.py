@@ -14,39 +14,45 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Stat check computation utilities."""
+"""Stat check computation utilities.
 
-import random
+The system-specific maths (modifier formula, dice, advantage/disadvantage)
+now live in :mod:`mgmai.engine.systems`.  This module retains thin
+backward-compatible shims — ``roll_d20``, ``compute_5e_modifier``,
+``compute_modifier`` — so existing call sites and tests keep working, plus
+the narrative-prefix formatters which are system-agnostic.
+
+``random`` is imported (though no longer called directly here) because test
+code monkeypatches ``mgmai.engine.stat_checks.random.randint``; since
+``random`` is a shared module object, that patch steers the system's dice
+too.
+"""
+
+import random  # noqa: F401  — kept as a monkeypatch anchor for tests
 from typing import Any
 
 from mgmai.models.corpus import StatModifier
+from mgmai.engine.systems import get_system
 
 
 def roll_d20(advantage: bool = False, disadvantage: bool = False) -> int:
     """Roll 1d20 with optional advantage or disadvantage.
 
-    D&D 5e rules: roll two d20s, take the higher with advantage
-    or the lower with disadvantage. If both or neither are set,
-    roll a single d20.
+    Delegates to the active 5e resolution system.  Kept for backward
+    compatibility with call sites and tests that address this module
+    directly.
     """
-    if advantage and not disadvantage:
-        return max(random.randint(1, 20), random.randint(1, 20))
-    elif disadvantage and not advantage:
-        return min(random.randint(1, 20), random.randint(1, 20))
-    else:
-        return random.randint(1, 20)
+    return get_system("5e").roll_die(20, advantage=advantage, disadvantage=disadvantage)
 
 
 def compute_5e_modifier(stat_value: int) -> int:
-    """D&D 5e-style ability modifier: (stat - 10) // 2, floored."""
-    return (stat_value - 10) // 2
+    """D&D 5e-style ability modifier, via the 5e resolution system."""
+    return get_system("5e").compute_modifier(stat_value)
 
 
 def compute_modifier(stat_value: int, system: str) -> int:
     """Compute a stat modifier given a resolution system identifier."""
-    if system == "5e":
-        return compute_5e_modifier(stat_value)
-    raise ValueError(f"Unknown system: {system!r}")
+    return get_system(system).compute_modifier(stat_value)
 
 
 def format_stat_check_prefix(rolls: list[dict[str, Any]]) -> str:

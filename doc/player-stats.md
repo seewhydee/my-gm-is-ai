@@ -92,7 +92,16 @@ The resolution system defines **how stat checks translate to probability**, deco
 | `3d6` | 3d6 <= stat + modifier | GURPS-style |
 | `flat` | stat + modifier >= DC | Diceless / point-buy |
 
-Currently only `5e` is implemented. The schema reserves the space for additional systems; the engine dispatches via a named lookup.
+Currently only `5e` is implemented, as `FiveESystem` in
+`mgmai.engine.systems`.  The engine no longer branches on a system name
+inline; instead it obtains a `ResolutionSystem` instance via
+`get_system(name)` / `get_system_for_corpus(corpus)` and delegates
+modifiers, dice, checks, saving throws, attack/crit rules, AC/HP
+formulas, and initiative to it.  Adding a system means subclassing
+`ResolutionSystem` and registering it with `register_system(name, cls)`;
+no resolver or combat-loop edits are required.  The table above sketches
+candidate systems; their formulas would live inside the corresponding
+subclass.
 
 ### GMBriefing extension
 
@@ -125,7 +134,7 @@ The following files need modification or addition:
 | **Briefing schema** | Add `PlayerStatEntry` model; include `player_stats` in GMBriefing. |
 | **Conditions evaluator** | Add `stat` domain to condition parser regex and evaluation branch. |
 | **Engine resolver** | Add `_resolve_stat_check()`; dispatch on check type. |
-| **Stat checks module** (new) | Standalone `compute_5e_modifier()`, `roll_d20()`, and `compute_modifier()` functions. |
+| **Stat checks module** (new) | Standalone `compute_5e_modifier()`, `roll_d20()`, and `compute_modifier()` functions (now thin backward-compat shims over `mgmai.engine.systems.FiveESystem`). |
 | **Context Assembler** | Pass corpus to player-state builder; compute and include `player_stats`. |
 | **State manager** | Add `_validate_player_stats()` on load/new-game. |
 | **Console display** | Add character sheet Rich panel. |
