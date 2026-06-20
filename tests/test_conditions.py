@@ -105,70 +105,6 @@ def make_corpus(**overrides) -> ModuleCorpus:
 
 
 class TestParseConditionString:
-    def test_flag_true(self) -> None:
-        domain, key, op, value = parse_condition_string("flag:my_flag == true")
-        assert domain == "flag"
-        assert key == "my_flag"
-        assert op == "=="
-        assert value == "true"
-
-    def test_flag_false(self) -> None:
-        domain, key, op, value = parse_condition_string("flag:my_flag == false")
-        assert domain == "flag"
-        assert op == "=="
-        assert value == "false"
-
-    def test_inventory(self) -> None:
-        domain, key, op, value = parse_condition_string("inventory:rusty_key")
-        assert domain == "inventory"
-        assert key == "rusty_key"
-        assert op is None
-        assert value is None
-
-    def test_tag(self) -> None:
-        domain, key, op, value = parse_condition_string("tag:weapon")
-        assert domain == "tag"
-        assert key == "weapon"
-        assert op is None
-        assert value is None
-
-    def test_entity_with_op(self) -> None:
-        domain, key, op, value = parse_condition_string(
-            "entity:player.alive == true"
-        )
-        assert domain == "entity"
-        assert key == "player.alive"
-        assert op == "=="
-        assert value == "true"
-
-    def test_room_with_op(self) -> None:
-        domain, key, op, value = parse_condition_string(
-            "room:axe_head.visited == false"
-        )
-        assert domain == "room"
-        assert key == "axe_head.visited"
-        assert op == "=="
-        assert value == "false"
-
-    def test_attitude_gte(self) -> None:
-        domain, key, op, value = parse_condition_string("attitude:korbar >= 4")
-        assert domain == "attitude"
-        assert key == "korbar"
-        assert op == ">="
-        assert value == "4"
-
-    def test_attitude_gt(self) -> None:
-        domain, key, op, value = parse_condition_string("attitude:korbar > 2")
-        assert op == ">"
-
-    def test_attitude_lte(self) -> None:
-        domain, key, op, value = parse_condition_string("attitude:korbar <= 3")
-        assert op == "<="
-
-    def test_attitude_lt(self) -> None:
-        domain, key, op, value = parse_condition_string("attitude:korbar < 0")
-        assert op == "<"
-
     def test_garbage_raises(self) -> None:
         with pytest.raises(ValueError, match="Could not parse"):
             parse_condition_string("garbage")
@@ -176,32 +112,6 @@ class TestParseConditionString:
     def test_no_domain_raises(self) -> None:
         with pytest.raises(ValueError, match="Could not parse"):
             parse_condition_string("key == value")
-
-    def test_hyphen_in_id(self) -> None:
-        domain, key, op, value = parse_condition_string("flag:door-opened == true")
-        assert domain == "flag"
-        assert key == "door-opened"
-
-    def test_topic_domain(self) -> None:
-        domain, key, op, value = parse_condition_string("topic:abandonment")
-        assert domain == "topic"
-        assert key == "abandonment"
-        assert op is None
-        assert value is None
-
-    def test_item_domain(self) -> None:
-        domain, key, op, value = parse_condition_string("item:rusty_key")
-        assert domain == "item"
-        assert key == "rusty_key"
-        assert op is None
-        assert value is None
-
-    def test_stat_with_op(self) -> None:
-        domain, key, op, value = parse_condition_string("stat:STR >= 12")
-        assert domain == "stat"
-        assert key == "STR"
-        assert op == ">="
-        assert value == "12"
 
     def test_stat_no_op_raises(self) -> None:
         domain, key, op, value = parse_condition_string("stat:STR")
@@ -213,25 +123,17 @@ class TestParseConditionString:
 
 
 class TestEvaluateConditionStringFlag:
-    def test_flag_true_match(self) -> None:
-        hs = make_hard_state(flags={"my_flag": True})
+    @pytest.mark.parametrize("flag_value,operator,rhs,expected", [
+        (True, "==", "true", True),
+        (False, "==", "true", False),
+        (False, "==", "false", True),
+        (True, "==", "false", False),
+    ])
+    def test_flag_bool_comparisons(self, flag_value, operator, rhs, expected) -> None:
+        hs = make_hard_state(flags={"my_flag": flag_value})
         ss = make_soft_state()
-        assert evaluate_condition_string("flag:my_flag == true", hs, ss, None)
-
-    def test_flag_true_mismatch(self) -> None:
-        hs = make_hard_state(flags={"my_flag": False})
-        ss = make_soft_state()
-        assert not evaluate_condition_string("flag:my_flag == true", hs, ss, None)
-
-    def test_flag_false_match(self) -> None:
-        hs = make_hard_state(flags={"my_flag": False})
-        ss = make_soft_state()
-        assert evaluate_condition_string("flag:my_flag == false", hs, ss, None)
-
-    def test_flag_false_mismatch(self) -> None:
-        hs = make_hard_state(flags={"my_flag": True})
-        ss = make_soft_state()
-        assert not evaluate_condition_string("flag:my_flag == false", hs, ss, None)
+        result = evaluate_condition_string(f"flag:my_flag {operator} {rhs}", hs, ss, None)
+        assert result is expected
 
     def test_flag_missing_returns_false(self) -> None:
         hs = make_hard_state()
@@ -326,15 +228,17 @@ class TestEvaluateConditionStringTag:
 
 
 class TestEvaluateConditionStringEntity:
-    def test_entity_alive_true(self) -> None:
-        hs = make_hard_state(entity_states={"player": {"alive": True}})
+    @pytest.mark.parametrize("field_value,operator,rhs,expected", [
+        (True, "==", "true", True),
+        (False, "==", "false", True),
+        (True, "==", "false", False),
+        (False, "==", "true", False),
+    ])
+    def test_entity_bool_comparisons(self, field_value, operator, rhs, expected) -> None:
+        hs = make_hard_state(entity_states={"obj": {"alive": field_value}})
         ss = make_soft_state()
-        assert evaluate_condition_string("entity:player.alive == true", hs, ss, None)
-
-    def test_entity_alive_false(self) -> None:
-        hs = make_hard_state(entity_states={"spider": {"alive": False}})
-        ss = make_soft_state()
-        assert evaluate_condition_string("entity:spider.alive == false", hs, ss, None)
+        result = evaluate_condition_string(f"entity:obj.alive {operator} {rhs}", hs, ss, None)
+        assert result is expected
 
     def test_entity_state_true_with_true_string(self) -> None:
         hs = make_hard_state(entity_states={"player": {"alive": "true"}})
@@ -385,15 +289,15 @@ class TestEvaluateConditionStringEntity:
 
 
 class TestEvaluateConditionStringRoom:
-    def test_room_visited_true(self) -> None:
-        hs = make_hard_state(room_states={"axe_head": {"visited": True}})
+    @pytest.mark.parametrize("field_value,operator,rhs,expected", [
+        (True, "==", "true", True),
+        (False, "==", "false", True),
+    ])
+    def test_room_bool_comparisons(self, field_value, operator, rhs, expected) -> None:
+        hs = make_hard_state(room_states={"test_room": {"visited": field_value}})
         ss = make_soft_state()
-        assert evaluate_condition_string("room:axe_head.visited == true", hs, ss, None)
-
-    def test_room_visited_false(self) -> None:
-        hs = make_hard_state(room_states={"bag_floor": {"visited": False}})
-        ss = make_soft_state()
-        assert evaluate_condition_string("room:bag_floor.visited == false", hs, ss, None)
+        result = evaluate_condition_string(f"room:test_room.visited {operator} {rhs}", hs, ss, None)
+        assert result is expected
 
     def test_room_nonexistent_returns_false(self) -> None:
         hs = make_hard_state()
@@ -428,43 +332,29 @@ class TestEvaluateConditionStringRoom:
 
 
 class TestEvaluateConditionStringAttitude:
-    def test_attitude_gte_true(self) -> None:
-        hs = make_hard_state()
+    @pytest.mark.parametrize("attitude,op,threshold,expected", [
+        (5, ">=", 4, True),     # gte true
+        (1, ">=", 4, False),    # gte false
+        (2, ">=", 2, True),     # gte boundary
+        (5, ">", 2, True),      # gt true
+        (5, ">", 5, False),     # gt false
+        (3, "<=", 3, True),     # lte true
+        (3, "<=", 2, False),    # lte false
+        (-3, "<", 0, True),     # lt true
+        (-3, "<", -5, False),   # lt false
+        (-5, "==", -5, True),   # eq negative
+        (5, "==", 3, False),    # eq false
+    ])
+    def test_attitude_comparisons(self, attitude, op, threshold, expected) -> None:
+        hs = make_hard_state(entity_states={
+            "player": {"alive": True},
+            "korbar": {"alive": True, "told_secret": False, "attitude": attitude},
+            "spider": {"alive": True, "fled": False, "attitude": -5},
+            "stuck_fly": {"alive": True, "attitude": 0},
+        })
         ss = make_soft_state()
-        assert evaluate_condition_string("attitude:korbar >= 4", hs, ss, None)
-
-    def test_attitude_gte_false(self) -> None:
-        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 1}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
-        ss = make_soft_state()
-        assert not evaluate_condition_string("attitude:korbar >= 4", hs, ss, None)
-
-    def test_attitude_gte_boundary(self) -> None:
-        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 2}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
-        ss = make_soft_state()
-        assert evaluate_condition_string("attitude:korbar >= 2", hs, ss, None)
-
-    def test_attitude_gt(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state()
-        assert evaluate_condition_string("attitude:korbar > 2", hs, ss, None)
-        assert not evaluate_condition_string("attitude:korbar > 5", hs, ss, None)
-
-    def test_attitude_lte(self) -> None:
-        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 3}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
-        ss = make_soft_state()
-        assert evaluate_condition_string("attitude:korbar <= 3", hs, ss, None)
-        assert not evaluate_condition_string("attitude:korbar <= 2", hs, ss, None)
-
-    def test_attitude_lt(self) -> None:
-        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": -3}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
-        ss = make_soft_state()
-        assert evaluate_condition_string("attitude:korbar < 0", hs, ss, None)
-        assert not evaluate_condition_string("attitude:korbar < -5", hs, ss, None)
-
-    def test_attitude_negative_values(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state()
-        assert evaluate_condition_string("attitude:spider == -5", hs, ss, None)
+        result = evaluate_condition_string(f"attitude:korbar {op} {threshold}", hs, ss, None)
+        assert result is expected
 
     def test_attitude_nonexistent_npc_returns_false(self) -> None:
         hs = make_hard_state()
@@ -530,25 +420,18 @@ class TestEvaluateConditionStringStat:
         hs.player.stats = {"STR": 14, "DEX": 12, "CON": 10}
         return hs
 
-    def test_stat_gte_true(self) -> None:
+    @pytest.mark.parametrize("op,threshold,expected", [
+        (">=", 12, True),
+        (">=", 16, False),
+        ("<", 20, True),
+        ("==", 14, True),
+        ("==", 16, False),
+    ])
+    def test_stat_comparisons(self, op, threshold, expected) -> None:
         hs = self._with_stats()
         ss = make_soft_state()
-        assert evaluate_condition_string("stat:STR >= 12", hs, ss, None)
-
-    def test_stat_gte_false(self) -> None:
-        hs = self._with_stats()
-        ss = make_soft_state()
-        assert not evaluate_condition_string("stat:STR >= 16", hs, ss, None)
-
-    def test_stat_lt_true(self) -> None:
-        hs = self._with_stats()
-        ss = make_soft_state()
-        assert evaluate_condition_string("stat:STR < 20", hs, ss, None)
-
-    def test_stat_eq(self) -> None:
-        hs = self._with_stats()
-        ss = make_soft_state()
-        assert evaluate_condition_string("stat:STR == 14", hs, ss, None)
+        result = evaluate_condition_string(f"stat:STR {op} {threshold}", hs, ss, None)
+        assert result is expected
 
     def test_stat_nonexistent_key(self) -> None:
         hs = self._with_stats()

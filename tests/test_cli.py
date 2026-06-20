@@ -240,6 +240,32 @@ class TestCliBoot:
         _, kwargs = mock_loop_cls.call_args
         assert kwargs["debug"] is expect_debug
 
+    def test_state_manager_loaded_from_real_adventure(self, monkeypatch) -> None:
+        """Integration test: real StateManager loads the adventure directory."""
+        monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
+        monkeypatch.setenv("MGMAI_MODEL", "deepseek-v4-flash")
+
+        captured_state = {}
+
+        class SpyGameLoop:
+            def __init__(self, state_manager, llm_client, **kwargs):
+                captured_state["manager"] = state_manager
+
+            def start(self):
+                pass
+
+        with patch("mgmai.cli.GameLoop", SpyGameLoop):
+            with patch("mgmai.cli.LLMClient"):
+                with patch("mgmai.cli.save_app_config"):
+                    with patch("mgmai.cli.save_credentials"):
+                        main([str(BAG_OF_HOLDING)])
+
+        sm = captured_state["manager"]
+        assert sm.corpus is not None
+        assert sm.corpus.adventure.title == "You're Trapped in a Bag!"
+        assert sm.hard_state.player.location == "axe_head"
+        assert len(sm.corpus.rooms) == 5
+
 
 class TestCharSheetCli:
     """Tests for the --char-sheet CLI argument."""
