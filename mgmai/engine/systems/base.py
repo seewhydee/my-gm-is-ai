@@ -150,6 +150,22 @@ class NPCAttackResult:
     damage_roll: str | None = None
 
 
+@dataclass
+class FleeResult:
+    """Outcome of a player flee attempt resolved by the RPG system.
+
+    The engine computes the flee DC (max across enemies); the system
+    resolves the check (which stat/die/model to use) and returns the
+    outcome plus log entries.  The engine handles movement on success.
+    """
+
+    success: bool
+    roll: int
+    total: int
+    dc: int
+    log_entries: list[CombatLogEntry]
+
+
 class ResolutionSystem(ABC):
     """Interface for an RPG resolution system.
 
@@ -250,6 +266,22 @@ class ResolutionSystem(ABC):
         mutate ``hard``.
         """
 
+    @abstractmethod
+    def resolve_flee(
+        self,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+        flee_dc: int,
+        round_number: int,
+    ) -> FleeResult:
+        """Resolve a player flee attempt against ``flee_dc``.
+
+        The engine has already aggregated the flee DC (max across enemies).
+        The system decides which stat/die/model the check uses, rolls it,
+        and returns the outcome plus log entries.  The engine handles
+        movement on success.
+        """
+
     # ------------------------------------------------------------------
     # Derived combat stats
     # ------------------------------------------------------------------
@@ -260,6 +292,37 @@ class ResolutionSystem(ABC):
     @abstractmethod
     def base_max_hp(self, con_value: int) -> int:
         """Maximum HP derived from Constitution (before explicit overrides)."""
+
+    @abstractmethod
+    def compute_player_ac(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> int:
+        """Full player AC from stats and equipped gear.
+
+        The system owns the AC formula and how equipment modifies it
+        (overrides, bonuses).  The combat loop calls this instead of
+        reading player stats directly.
+        """
+
+    @abstractmethod
+    def compute_player_max_hp(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> int:
+        """Full player max HP from stats and explicit overrides.
+
+        The system owns the HP formula.  The combat loop and state
+        initialisation call this instead of reading CON directly.
+        """
+
+    @abstractmethod
+    def compute_player_initiative_modifier(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> int:
+        """Player's initiative modifier for the active system.
+
+        5e uses DEX mod; other systems may differ.  The combat loop
+        calls this instead of reading DEX directly.
+        """
 
     # ------------------------------------------------------------------
     # Saving throws (hook for the on-hit-effects phase)

@@ -24,6 +24,7 @@ import pytest
 
 from mgmai.engine.systems import (
     CheckResult,
+    FleeResult,
     FiveESystem,
     NPCAttackResult,
     PlayerAttackResult,
@@ -35,6 +36,8 @@ from mgmai.engine.systems import (
 )
 from mgmai.engine.systems.dice import parse_damage_dice
 from mgmai.models.combat import CombatLogEntry
+from mgmai.models.corpus import ModuleCorpus
+from mgmai.models.hard_state import HardGameState
 
 
 # ------------------------------------------------------------------
@@ -108,6 +111,17 @@ class TestRegistry:
                     player_hp_delta=0,
                     log_entries=[CombatLogEntry(round=round_number, actor=npc_id, action="attack", target="player")],
                 )
+            def resolve_flee(self, hard, corpus, flee_dc, round_number):
+                return FleeResult(
+                    success=True, roll=20, total=20, dc=flee_dc,
+                    log_entries=[CombatLogEntry(round=round_number, actor="player", action="flee")],
+                )
+            def compute_player_ac(self, hard, corpus):
+                return 10
+            def compute_player_max_hp(self, hard, corpus):
+                return 1
+            def compute_player_initiative_modifier(self, hard, corpus):
+                return 0
 
         register_system("dummy", DummySystem)
         try:
@@ -289,3 +303,125 @@ class TestParseDamageDice:
     def test_invalid(self) -> None:
         with pytest.raises(ValueError):
             parse_damage_dice("not_dice")
+
+
+# ------------------------------------------------------------------
+# FiveESystem: player-derived combat stats (AC, HP, initiative, flee)
+# ------------------------------------------------------------------
+
+def _hard_player(stats=None, ac=None, max_hp=None, equipped=None, current_hp=None):
+    """Minimal HardGameState for system-derived-stat tests."""
+    return HardGameState.model_validate({
+        "player": {
+            "location": "room1",
+            "stats": stats,
+            "ac": ac,
+            "max_hp": max_hp,
+            "current_hp": current_hp,
+            "equipped": equipped or [],
+        },
+    })
+
+
+def _corpus_with_item(item_id, ac_override=None, ac_bonus=0):
+    """Minimal corpus with one equippable item entity."""
+    return ModuleCorpus.model_validate({
+        "adventure": {"title": "T", "introduction": "T"},
+        "rooms": {"room1": {"name": "R", "description": "D"}},
+        "entities": {
+            item_id: {
+                "type": "item",
+                "description": "D",
+                "equip_block": {
+                    "equip_tags": ["armor"],
+                    "ac_override": ac_override,
+                    "ac_bonus": ac_bonus,
+                },
+            },
+        },
+    })
+
+
+class TestFiveEPlayerDerivedStats:
+    def test_compute_player_ac_explicit(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(stats={"DEX": 16}, ac=14)
+        assert s.compute_player_ac(hard, _corpus_with_item("none")) == 14
+
+    def test_compute_player_ac_from_dex(self) -> None:
+        s = FiveESystem()
+        # DEX 16 -> mod +3 -> 10 + 3 = 13
+        hard = _hard_player(stats={"DEX": 16})
+        assert s.compute_player_ac(hard, _corpus_with_item("none")) == 13
+
+    def test_compute_player_ac_default_dex(self) -> None:
+        s = FiveESystem()
+        # No stats -> DEX defaults 10 -> AC 10
+        hard = _hard_player(stats=None)
+        assert s.compute_player_ac(hard, _corpus_with_item("none")) == 10
+
+    def test_compute_player_ac_with_override(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(stats={"DEX": 16}, equipped=["armor"])
+        corpus = _corpus_with_item("armor", ac_override=18)
+        # override (18) wins over base (13)
+        assert s.compute_player_ac(hard, corpus) == 18
+
+    def test_compute_player_ac_with_bonus(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(stats={"DEX": 10}, equipped=["shield"])
+        corpus = _corpus_with_item("shield", ac_bonus=2)
+        # base 10 + bonus 2 = 12
+        assert s.compute_player_ac(hard, corpus) == 12
+
+    def test_compute_player_max_hp_explicit(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(max_hp=27)
+        assert s.compute_player_max_hp(hard, _corpus_with_item("none")) == 27
+
+    def test_compute_player_max_hp_from_con(self) -> None:
+        s = FiveESystem()
+        # CON 14 -> mod +2 -> 8 + 2 = 10
+        hard = _hard_player(stats={"CON": 14})
+        assert s.compute_player_max_hp(hard, _corpus_with_item("none")) == 10
+
+    def test_compute_player_initiative_modifier(self) -> None:
+        s = FiveESystem()
+        # DEX 16 -> mod +3
+        hard = _hard_player(stats={"DEX": 16})
+        assert s.compute_player_initiative_modifier(hard, _corpus_with_item("none")) == 3
+
+    def test_compute_player_initiative_modifier_default(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(stats=None)
+        assert s.compute_player_initiative_modifier(hard, _corpus_with_item("none")) == 0
+
+    def test_resolve_flee_success(self, monkeypatch) -> None:
+        s = FiveESystem()
+        monkeypatch.setattr(random, "randint", lambda a, b: 15)
+        hard = _hard_player(stats={"DEX": 14})  # DEX mod +2
+        # roll 15 + 2 = 17 >= 10
+        result = s.resolve_flee(hard, _corpus_with_item("none"), flee_dc=10, round_number=1)
+        assert result.success is True
+        assert result.roll == 15
+        assert result.total == 17
+        assert result.dc == 10
+        assert len(result.log_entries) == 1
+        entry = result.log_entries[0]
+        assert entry.actor == "player"
+        assert entry.action == "flee"
+        assert entry.hit is True
+        assert entry.attack_roll == 15
+        assert entry.attack_total == 17
+        assert entry.ac == 10
+
+    def test_resolve_flee_failure(self, monkeypatch) -> None:
+        s = FiveESystem()
+        monkeypatch.setattr(random, "randint", lambda a, b: 1)
+        hard = _hard_player(stats={"DEX": 14})  # DEX mod +2
+        # roll 1 + 2 = 3 < 10
+        result = s.resolve_flee(hard, _corpus_with_item("none"), flee_dc=10, round_number=2)
+        assert result.success is False
+        assert result.total == 3
+        assert result.log_entries[0].round == 2
+        assert result.log_entries[0].hit is False

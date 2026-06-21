@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from mgmai.engine.systems.base import (
     CheckResult,
+    FleeResult,
     NPCAttackResult,
     PlayerAttackResult,
     ResolutionSystem,
@@ -414,6 +415,38 @@ class FiveESystem(ResolutionSystem):
             damage_roll=damage_roll,
         )
 
+    def resolve_flee(
+        self,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+        flee_dc: int,
+        round_number: int,
+    ) -> FleeResult:
+        """5e flee: a DEX ability check (d20 + DEX mod) against flee_dc."""
+        dex_mod = self.compute_modifier(
+            self._player_stat(hard.player.stats, "DEX")
+        )
+        roll = self.roll_die(20)
+        total = roll + dex_mod
+        success = total >= flee_dc
+
+        log_entry = CombatLogEntry(
+            round=round_number,
+            actor="player",
+            action="flee",
+            attack_roll=roll,
+            attack_total=total,
+            ac=flee_dc,
+            hit=success,
+        )
+        return FleeResult(
+            success=success,
+            roll=roll,
+            total=total,
+            dc=flee_dc,
+            log_entries=[log_entry],
+        )
+
     # ------------------------------------------------------------------
     # Derived combat stats
     # ------------------------------------------------------------------
@@ -422,6 +455,56 @@ class FiveESystem(ResolutionSystem):
 
     def base_max_hp(self, con_value: int) -> int:
         return max(1, 8 + self.compute_modifier(con_value))
+
+    def compute_player_ac(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> int:
+        """5e player AC: explicit value or 10+DEX, then gear overrides/bonuses.
+
+        Per plan.md §4c:
+        1. Base AC = 10 + DEX mod (or hard.player.ac if explicitly set).
+        2. Apply ac_override from equipped items (highest wins).
+        3. Add all ac_bonus values from equipped items.
+        """
+        # Step 1: Base AC
+        if hard.player.ac is not None:
+            base_ac = hard.player.ac
+        else:
+            base_ac = self.base_ac(self._player_stat(hard.player.stats, "DEX"))
+
+        # Step 2: Apply ac_override (highest wins)
+        ac_override = None
+        for item_id in hard.player.equipped:
+            entity = corpus.entities.get(item_id)
+            if entity and entity.equip_block and entity.equip_block.ac_override is not None:
+                if ac_override is None or entity.equip_block.ac_override > ac_override:
+                    ac_override = entity.equip_block.ac_override
+
+        effective_ac = ac_override if ac_override is not None else base_ac
+
+        # Step 3: Add all ac_bonus values
+        for item_id in hard.player.equipped:
+            entity = corpus.entities.get(item_id)
+            if entity and entity.equip_block:
+                effective_ac += entity.equip_block.ac_bonus
+
+        return effective_ac
+
+    def compute_player_max_hp(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> int:
+        """5e player max HP: explicit value, else 8 + CON mod."""
+        if hard.player.max_hp is not None:
+            return hard.player.max_hp
+        return self.base_max_hp(self._player_stat(hard.player.stats, "CON"))
+
+    def compute_player_initiative_modifier(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> int:
+        """5e initiative modifier: DEX mod."""
+        return self.compute_modifier(
+            self._player_stat(hard.player.stats, "DEX")
+        )
 
     # ------------------------------------------------------------------
     # Saving throws (hook; invoked by the combat loop on NPC hits)

@@ -319,7 +319,6 @@ class StateManager:
         if self.corpus is None or self.hard_state is None:
             return
 
-        from mgmai.engine.combat import get_player_max_hp
         from mgmai.engine.systems import get_system_for_corpus
 
         hard = self.hard_state
@@ -327,15 +326,20 @@ class StateManager:
 
         if hard.player.stats:
             if hard.player.max_hp is None:
-                hard.player.max_hp = system.base_max_hp(
-                    hard.player.stats.get("CON", 10)
+                hard.player.max_hp = system.compute_player_max_hp(
+                    hard, self.corpus
                 )
+            # AC: cache the intrinsic (pre-gear) base.  The full gear-aware
+            # AC is computed by system.compute_player_ac at use time; here we
+            # only seed the base from DEX via the system's base_ac primitive.
             if hard.player.ac is None:
                 hard.player.ac = system.base_ac(
                     hard.player.stats.get("DEX", 10)
                 )
         if hard.player.current_hp is None:
-            hard.player.current_hp = get_player_max_hp(hard)
+            hard.player.current_hp = system.compute_player_max_hp(
+                hard, self.corpus
+            )
         if hard.player.max_hp is None:
             hard.player.max_hp = hard.player.current_hp
         if hard.player.proficiency_bonus is None:

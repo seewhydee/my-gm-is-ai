@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from mgmai.engine.systems.base import (
     CheckResult,
+    FleeResult,
     NPCAttackResult,
     PlayerAttackResult,
     ResolutionSystem,
@@ -85,6 +86,7 @@ __all__ = [
     "SaveResult",
     "PlayerAttackResult",
     "NPCAttackResult",
+    "FleeResult",
     "FiveESystem",
     "get_system",
     "get_system_for_corpus",

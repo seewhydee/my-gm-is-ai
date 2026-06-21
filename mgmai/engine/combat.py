@@ -105,45 +105,21 @@ def compute_player_ac(
 ) -> int:
     """Compute player AC with equipment modifiers.
 
-    Per plan.md §4c:
-    1. Base AC = 10 + DEX mod (or hard.player.ac if explicitly set).
-    2. Apply ac_override from equipped items (use max).
-    3. Add all ac_bonus values from equipped items.
+    Delegates the AC formula (and how gear modifies it) to the active
+    resolution system.  Kept as a free function for backward compatibility
+    with callers (assembler, tests).
     """
-    # Step 1: Base AC
-    if hard.player.ac is not None:
-        base_ac = hard.player.ac
-    else:
-        base_ac = get_system_for_corpus(corpus).base_ac(
-            _get_stat(hard.player.stats, "DEX")
-        )
-
-    # Step 2: Apply ac_override (highest wins)
-    ac_override = None
-    for item_id in hard.player.equipped:
-        entity = corpus.entities.get(item_id)
-        if entity and entity.equip_block and entity.equip_block.ac_override is not None:
-            if ac_override is None or entity.equip_block.ac_override > ac_override:
-                ac_override = entity.equip_block.ac_override
-
-    effective_ac = ac_override if ac_override is not None else base_ac
-
-    # Step 3: Add all ac_bonus values
-    for item_id in hard.player.equipped:
-        entity = corpus.entities.get(item_id)
-        if entity and entity.equip_block:
-            effective_ac += entity.equip_block.ac_bonus
-
-    return effective_ac
+    return get_system_for_corpus(corpus).compute_player_ac(hard, corpus)
 
 
 def get_player_ac(hard: HardGameState) -> int:
-    """Return player AC (backward-compatible, equipment-unaware).
+    """Return player AC (corpus-less, equipment-unaware backward-compat shim).
 
-    Used by the combat engine to compute NPC hit chance against the player.
-    Note: the combat engine currently calls this directly.  After the gear
-    implementation is complete, call sites should use compute_player_ac()
-    with corpus access for full equipment-aware AC.
+    The combat engine and assembler use ``compute_player_ac(hard, corpus)``
+    (which delegates to the active system and applies gear).  This shim is
+    retained for corpus-less callers and tests; without a corpus it cannot
+    know the active system, so it falls back to the default (5e) system's
+    base AC from Dexterity.
     """
     if hard.player.ac is not None:
         return hard.player.ac
@@ -152,7 +128,13 @@ def get_player_ac(hard: HardGameState) -> int:
 
 
 def get_player_max_hp(hard: HardGameState) -> int:
-    """Return player max HP.  Computed from CON if not explicitly set."""
+    """Return player max HP (corpus-less backward-compat shim).
+
+    Callers with a corpus should use
+    ``get_system_for_corpus(corpus).compute_player_max_hp(hard, corpus)``
+    instead.  Without a corpus this falls back to the default (5e) system's
+    base max HP from Constitution.
+    """
     if hard.player.max_hp is not None:
         return hard.player.max_hp
     # No corpus available; fall back to the default (5e) system.
@@ -170,18 +152,16 @@ def roll_initiative(
 ) -> list[str]:
     """Roll initiative for the player and all enemies.  Return sorted order.
 
-    Ties are broken by DEX/initiative modifier, then coin flip.
+    Ties are broken by initiative modifier, then coin flip.
     """
     system = get_system_for_corpus(corpus)
 
     entries: list[tuple[str, int, int, float]] = []  # (id, roll, tiebreaker, coin)
 
     # Player
-    dex_mod = 0
-    if hard.player.stats and "DEX" in hard.player.stats:
-        dex_mod = system.compute_modifier(hard.player.stats["DEX"])
-    player_roll = system.roll_initiative(dex_mod)
-    entries.append(("player", player_roll, dex_mod, random.random()))
+    player_mod = system.compute_player_initiative_modifier(hard, corpus)
+    player_roll = system.roll_initiative(player_mod)
+    entries.append(("player", player_roll, player_mod, random.random()))
 
     # Enemies
     for eid in enemy_ids:
@@ -212,9 +192,11 @@ def enter_combat(
     Returns a dict with ``combat_log``, ``hard_changes``, ``combat_triggered``,
     and ``game_over``.
     """
+    system = get_system_for_corpus(corpus)
+
     # Initialize player HP if absent
     if hard.player.current_hp is None:
-        hard.player.current_hp = get_player_max_hp(hard)
+        hard.player.current_hp = system.compute_player_max_hp(hard, corpus)
         hard.player.max_hp = hard.player.max_hp or hard.player.current_hp
 
     # Initialize NPC current_hp from combat block
@@ -244,7 +226,6 @@ def enter_combat(
     hard_changes = HardStateChanges()
     combat_log: list[CombatLogEntry] = []
     game_over = False
-    system = get_system_for_corpus(corpus)
 
     player_idx = initiative_order.index("player")
     player_ac = compute_player_ac(hard, corpus)
@@ -362,26 +343,15 @@ def resolve_combat_turn(
             ),
             default=10,
         )
-        dex_mod = 0
-        if hard.player.stats and "DEX" in hard.player.stats:
-            dex_mod = system.compute_modifier(hard.player.stats["DEX"])
-        flee_roll = system.roll_die(20)
-        flee_total = flee_roll + dex_mod
-        flee_success = flee_total >= flee_dc
-
-        flee_log = CombatLogEntry(
-            round=combat.round_number,
-            actor="player",
-            action="flee",
-            target=action.target,
-            attack_roll=flee_roll,
-            attack_total=flee_total,
-            ac=flee_dc,
-            hit=flee_success,
+        flee_result = system.resolve_flee(
+            hard, corpus, flee_dc, combat.round_number
         )
-        combat_log.append(flee_log)
+        # Tag the log entry with the exit being fled through (engine concept).
+        for entry in flee_result.log_entries:
+            entry.target = action.target
+        combat_log.extend(flee_result.log_entries)
 
-        if flee_success:
+        if flee_result.success:
             combat_ended = True
             # Move the player to the target room
             room = corpus.rooms.get(hard.player.location)

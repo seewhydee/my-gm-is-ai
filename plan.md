@@ -251,3 +251,77 @@ B6 first.
   unarmed strike (`"3"`).
 
 All 1013 tests pass (1 skip unchanged).
+
+### Implementation notes & amendments (combat.py de-leaking)
+
+A holistic review of `mgmai/engine/combat.py` found that, although the
+attack path already delegated to `system.resolve_player_attack` /
+`resolve_npc_attack`, four system-specific questions were still being
+answered inside the combat loop by reading `hard.player.stats` directly.
+Per the rule of thumb "if combat.py is asking for player stats, it's
+likely a leak", these were pushed behind the `ResolutionSystem`
+interface.  Behaviour is unchanged (pure relocation of formulas); the
+combat loop now does only high-level orchestration.
+
+**New system interface surface** (`mgmai/engine/systems/base.py`):
+
+- `compute_player_ac(hard, corpus) -> int` — full gear-aware AC.
+- `compute_player_max_hp(hard, corpus) -> int` — max HP from stats/overrides.
+- `compute_player_initiative_modifier(hard, corpus) -> int` — player's
+  initiative modifier (5e: DEX mod).
+- `resolve_flee(hard, corpus, flee_dc, round_number) -> FleeResult` —
+  resolves the flee check (5e: DEX d20-vs-DC).  New `FleeResult`
+  dataclass carries `success`, `roll`, `total`, `dc`, `log_entries`.
+  The engine retains flee-DC aggregation (max across enemies) and
+  movement-on-success, which are orchestration, not system rules.
+
+All four are implemented on `FiveESystem` by relocating the existing
+5e logic verbatim out of `combat.py`.  `FleeResult` is exported from
+`mgmai.engine.systems`.
+
+**`combat.py` changes:**
+
+- `compute_player_ac` is now a one-line delegate to
+  `system.compute_player_ac(hard, corpus)`; the 3-step gear formula
+  moved into `FiveESystem`.
+- `roll_initiative` calls `system.compute_player_initiative_modifier`
+  instead of reading `hard.player.stats["DEX"]`.  The ordering /
+  tie-break logic stays (orchestration).
+- `enter_combat` calls `system.compute_player_max_hp(hard, corpus)`
+  instead of the corpus-less `get_player_max_hp` shim.
+- The `MoveAction`/flee branch calls `system.resolve_flee(...)` instead
+  of an inline `d20 + DEX_mod vs flee_dc` check.
+- `get_player_ac` / `get_player_max_hp` are retained as **corpus-less
+  backward-compat shims** (they hardcode the default `"5e"` system,
+  documented as such).  They are now used only by tests and the
+  assembler's defensive fallback; all corpus-aware call sites use the
+  system directly.
+
+After this pass, the combat loop (`enter_combat`,
+`resolve_combat_turn`, `roll_initiative`) no longer reads
+`hard.player.stats` at all.  The only remaining `hard.player.stats`
+reads in `combat.py` are in `compute_effective_stats` (a generic
+set/delta gear utility — not a system formula) and the two corpus-less
+shims.  The DEX/CON reads now live in `FiveESystem`, where they belong.
+
+**`state/manager.py` change:** `_init_player_combat_defaults` now calls
+`system.compute_player_max_hp(hard, corpus)` instead of the
+`get_player_max_hp` shim (which hardcoded 5e) and instead of reading
+`CON` directly.  The AC initialisation still calls
+`system.base_ac(hard.player.stats.get("DEX", 10))`: `compute_player_ac`
+cannot be used there because it applies gear, which would double-count
+when the cached `hard.player.ac` is later re-read as the base by
+`compute_player_ac` at use time.  This remaining `base_ac(DEX)` call
+uses the system's own primitive (the formula is system-owned); fully
+removing the DEX read would require either a
+`compute_player_base_ac` method or dropping the caching fallback, and
+is deferred.
+
+Adding a **d20-family** system (Pathfinder, d20 Modern) now requires no
+edits to `combat.py` — only implementing the four new methods (plus the
+existing attack/save/check surface) on the new `ResolutionSystem`
+subclass.  Non-d20 systems (GURPS) still need B6 (the attack-roll-vs-AC
+model itself).
+
+All 1052 tests pass (1 skip unchanged); 11 new tests in
+`tests/test_systems.py` cover the four new `FiveESystem` methods.
