@@ -34,6 +34,7 @@ class MoveAction(_BaseAction):
     action_type: Literal["move"]
     target: str
     style: Optional[str] = None
+    using: Optional[str] = None
 
 
 class ExamineAction(_BaseAction):

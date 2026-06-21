@@ -1,0 +1,63 @@
+{
+  "adventure": {
+    "title": "Mini Test Adventure",
+    "introduction": "You awaken in a stone chamber. A single torch flickers on the wall.",
+    "atmosphere": {
+      "setting": "A dim dungeon cell",
+      "tone": "Mysterious"
+    }
+  },
+  "rooms": {
+    "start_room": {
+      "id": "start_room",
+      "name": "Stone Chamber",
+      "description": "A small stone chamber lit by a flickering torch. An iron door leads north.",
+      "exits": [
+        {
+          "id": "exit_north",
+          "direction": "North",
+          "target_room": "hallway"
+        }
+      ],
+      "entities_present": [],
+      "interactions": [],
+      "on_examine": [],
+      "is_start_room": true
+    },
+    "hallway": {
+      "id": "hallway",
+      "name": "Torchlit Hallway",
+      "description": "A long hallway stretches before you, lined with flickering torches.",
+      "exits": [
+        {
+          "id": "exit_south",
+          "direction": "South",
+          "target_room": "start_room"
+        }
+      ],
+      "entities_present": [],
+      "interactions": [],
+      "on_examine": []
+    }
+  },
+  "entities": {
+    "rusty_key": {
+      "type": "item",
+      "id": "rusty_key",
+      "description": "A rusty iron key.",
+      "tags": ["key_item"]
+    }
+  },
+  "mechanics": {},
+  "stats": {
+    "definitions": {
+      "STR": { "name": "Strength", "description": "Physical power" },
+      "DEX": { "name": "Dexterity", "description": "Agility" },
+      "CON": { "name": "Constitution", "description": "Endurance" },
+      "INT": { "name": "Intelligence", "description": "Reasoning" },
+      "WIS": { "name": "Wisdom", "description": "Perception" },
+      "CHA": { "name": "Charisma", "description": "Personality" }
+    },
+    "system": "5e"
+  }
+}

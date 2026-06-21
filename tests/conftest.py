@@ -24,10 +24,9 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.state.manager import StateManager
+from mgmai.engine.event_bus import reset_disabled_once
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
-BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
 
 
 @pytest.fixture(scope="session")
@@ -60,5 +59,6 @@ def state_manager(sample_corpus, sample_hard_state, sample_soft_state):
     manager.corpus = sample_corpus
     manager.hard_state = copy.deepcopy(sample_hard_state)
     manager.soft_state = copy.deepcopy(sample_soft_state)
-    manager._adventure_dir = BAG_OF_HOLDING
+    manager._adventure_dir = FIXTURES_DIR
+    reset_disabled_once()
     return manager

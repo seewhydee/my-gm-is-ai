@@ -451,6 +451,20 @@ def _resolve_reaction_encounter(
                 HardStateChanges(stat_modifiers=dict(alter_stat))
             )
 
+    player_damage = enc_result.get("player_damage")
+    if player_damage and corpus is not None:
+        from mgmai.engine.systems import get_system_for_corpus as _eb_get_system
+        _eb_system = _eb_get_system(corpus)
+        eb_dmg_total, _ = _eb_system.roll_damage(player_damage)
+        if changes is not None:
+            changes.player_hp_delta = (
+                (changes.player_hp_delta or 0) - eb_dmg_total
+            )
+        else:
+            state_manager.apply_hard_changes(
+                HardStateChanges(player_hp_delta=-eb_dmg_total)
+            )
+
     if enc_result["game_over"]:
         go = enc_result["game_over"]
         hard.game_over = GameOverState(type=go["type"], trigger=go["trigger"])

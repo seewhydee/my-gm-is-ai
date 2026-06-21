@@ -113,20 +113,11 @@
       "behavior": {
         "encounter_rules": [
           {
-            "condition": { "require": "tag:weapon" },
+            "condition": { "require": "entity:spider.alive == true" },
             "outcome": "combat",
-            "narrative": "You brandish your weapon. The spider, sensing a real threat, skitters forward with predatory focus!"
-          },
-          {
-            "condition": { "unless": "tag:weapon" },
-            "outcome": "death",
-            "narrative": "Unarmed, you cannot hope to fend off the spider. It lunges with terrifying speed, mandibles sinking deep. Venom burns through your veins as the world fades to black."
+            "narrative": "The spider drops from the shadows above, mandibles bared and venom glistening!"
           }
-        ],
-        "on_flee": {
-          "set_flags": { "spider_fled": true },
-          "effect": "The spider slinks away into the shadows, never to return."
-        }
+        ]
       },
       "combat": {
         "hp": 15,
@@ -134,7 +125,15 @@
         "atk": 5,
         "dmg": "1d4+3",
         "initiative_mod": 3,
-        "flee_dc": 10
+        "flee_dc": 10,
+        "on_hit_effects": [
+          {
+            "save": { "stat": "CON", "dc": 11 },
+            "damage": "1d8",
+            "on_save": "half",
+            "type": "poison"
+          }
+        ]
       },
       "reactions": [
         {
@@ -278,9 +277,9 @@
         "hp": 29,
         "ac": 18,
         "atk": 4,
-        "dmg": "1d4+1",
-        "initiative_mod": 0,
-        "flee_dc": 12
+        "dmg": "3",
+        "initiative_mod": -1,
+        "flee_dc": 14
       },
       "reactions": [
         {
@@ -686,7 +685,13 @@
             "condition": { "unless": "flag:webs_cleared == true" },
             "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
             "skip_check_if": { "require": "flag:webs_cleared == true" },
-            "failure_narrative": "You strain against the sticky webs but can't break through. The strands cling to every limb."
+            "failure_narrative": "You strain against the sticky webs but can't break through. The strands cling to every limb.",
+            "using_results": {
+              "*": {
+                "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
+                "success": {}
+              }
+            }
           }
         },
         {
@@ -960,15 +965,18 @@
       "description": "Player drops from the Axe Head to the Bag Floor, suffering severe injury.",
       "rules": [
         {
+          "condition": { "require": "room:axe_head.is_current == true" },
           "outcome": "roll",
           "threshold": 0.50,
           "on_success": {
             "narrative": "You plummet through the darkness and crash onto the floor below. Your ankle twists badly on impact. The pain is searing.",
-            "alter_stat": { "DEX": { "value": -2 }, "CON": { "value": -2 } }
+            "alter_stat": { "DEX": { "value": -2 }, "CON": { "value": -2 } },
+            "player_damage": "3d6"
           },
           "on_failure": {
             "narrative": "You plummet through the darkness and land with a bone-jarring crash. Your ankle gives way and the breath is knocked out of you. Pain radiates through your entire body.",
-            "alter_stat": { "DEX": { "value": -4 }, "CON": { "value": -4 } }
+            "alter_stat": { "DEX": { "value": -4 }, "CON": { "value": -4 } },
+            "player_damage": "3d6"
           }
         }
       ]
@@ -978,14 +986,17 @@
       "description": "Player drops from Upper Axe Handle, taking damage.",
       "rules": [
         {
+          "condition": { "require": "room:axe_handle_upper.is_current == true" },
           "outcome": "roll",
           "threshold": 0.50,
           "on_success": {
-            "narrative": "You drop down through the darkness. The landing is rough and painful, but you're still in one piece."
+            "narrative": "You drop down through the darkness. The landing is rough and painful, but you're still in one piece.",
+            "player_damage": "2d6"
           },
           "on_failure": {
             "narrative": "You fall through the darkness and land heavily on the bag floor. The impact knocks the wind out of you.",
-            "alter_stat": { "STR": { "value": -2 }, "DEX": { "value": -2 }, "CON": { "value": -2 } }
+            "alter_stat": { "STR": { "value": -2 }, "DEX": { "value": -2 }, "CON": { "value": -2 } },
+            "player_damage": "2d6"
           }
         }
       ]
@@ -995,6 +1006,7 @@
       "description": "Player drops from Lower Axe Handle — momentarily winded but uninjured.",
       "rules": [
         {
+          "condition": { "require": "room:axe_handle_lower.is_current == true" },
           "outcome": "roll",
           "threshold": 1.0,
           "on_success": {

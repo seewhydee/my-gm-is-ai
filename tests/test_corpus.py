@@ -686,11 +686,12 @@ class TestBranchOutcome:
         assert b.set_flags is None
         assert b.narrative is None
 
-    def test_missing_outcome_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            BranchOutcome.model_validate({
-                "set_flags": {"x": True},
-            })
+    def test_missing_outcome_defaults_to_none(self) -> None:
+        b = BranchOutcome.model_validate({
+            "set_flags": {"x": True},
+        })
+        assert b.outcome == "none"
+        assert b.set_flags == {"x": True}
 
     def test_with_alter_stat(self) -> None:
         b = BranchOutcome.model_validate({

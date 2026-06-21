@@ -55,6 +55,7 @@ def resolve_encounter(
         "narrative": None,
         "set_flags": {},
         "alter_stat": {},
+        "player_damage": None,
         "game_over": None,
         "flee_effects": None,
         "rolls": [],
@@ -76,6 +77,7 @@ def _apply_encounter_rule(
             "narrative": rule.narrative,
             "set_flags": rule.set_flags or {},
             "alter_stat": rule.alter_stat or {},
+            "player_damage": rule.player_damage,
             "game_over": {
                 "type": "lose",
                 "trigger": npc_id or "encounter",
@@ -90,6 +92,7 @@ def _apply_encounter_rule(
             "narrative": rule.narrative,
             "set_flags": rule.set_flags or {},
             "alter_stat": rule.alter_stat or {},
+            "player_damage": rule.player_damage,
             "game_over": None,
             "flee_effects": None,
             "rolls": [],
@@ -114,6 +117,7 @@ def _apply_encounter_rule(
             "narrative": rule.narrative,
             "set_flags": set_flags,
             "alter_stat": rule.alter_stat or {},
+            "player_damage": rule.player_damage,
             "game_over": None,
             "flee_effects": flee_data,
             "rolls": [],
@@ -126,6 +130,7 @@ def _apply_encounter_rule(
                 "narrative": None,
                 "set_flags": {},
                 "alter_stat": {},
+                "player_damage": None,
                 "game_over": None,
                 "flee_effects": None,
                 "rolls": [],
@@ -141,6 +146,7 @@ def _apply_encounter_rule(
                 "narrative": rule.narrative,
                 "set_flags": rule.set_flags or {},
                 "alter_stat": rule.alter_stat or {},
+                "player_damage": rule.player_damage,
                 "game_over": None,
                 "flee_effects": None,
                 "rolls": encounter_rolls,
@@ -152,6 +158,7 @@ def _apply_encounter_rule(
             "narrative": branch.narrative if branch else rule.narrative,
             "set_flags": {},
             "alter_stat": {},
+            "player_damage": None,
             "game_over": None,
             "flee_effects": None,
             "rolls": encounter_rolls,
@@ -169,6 +176,11 @@ def _apply_encounter_rule(
             result["alter_stat"].update(rule.alter_stat)
         if branch.alter_stat:
             result["alter_stat"].update(branch.alter_stat)
+
+        if branch.player_damage is not None:
+            result["player_damage"] = branch.player_damage
+        elif rule.player_damage is not None:
+            result["player_damage"] = rule.player_damage
 
         if sub_outcome == "death":
             result["game_over"] = {
@@ -205,6 +217,7 @@ def _apply_encounter_rule(
                 "narrative": None,
                 "set_flags": {},
                 "alter_stat": {},
+                "player_damage": None,
                 "game_over": None,
                 "flee_effects": None,
                 "rolls": [],
@@ -219,6 +232,7 @@ def _apply_encounter_rule(
                 "narrative": rule.narrative,
                 "set_flags": rule.set_flags or {},
                 "alter_stat": rule.alter_stat or {},
+                "player_damage": rule.player_damage,
                 "game_over": None,
                 "flee_effects": None,
                 "rolls": [{
@@ -235,6 +249,7 @@ def _apply_encounter_rule(
             "narrative": branch.narrative if branch else rule.narrative,
             "set_flags": {},
             "alter_stat": {},
+            "player_damage": None,
             "game_over": None,
             "flee_effects": None,
             "rolls": [{
@@ -257,6 +272,11 @@ def _apply_encounter_rule(
             result["alter_stat"].update(rule.alter_stat)
         if branch.alter_stat:
             result["alter_stat"].update(branch.alter_stat)
+
+        if branch.player_damage is not None:
+            result["player_damage"] = branch.player_damage
+        elif rule.player_damage is not None:
+            result["player_damage"] = rule.player_damage
 
         if sub_outcome == "death":
             result["game_over"] = {
@@ -291,6 +311,7 @@ def _apply_encounter_rule(
         "narrative": None,
         "set_flags": {},
         "alter_stat": {},
+        "player_damage": None,
         "game_over": None,
         "flee_effects": None,
         "rolls": [],

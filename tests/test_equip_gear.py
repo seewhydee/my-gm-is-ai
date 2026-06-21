@@ -46,8 +46,6 @@ from mgmai.models.soft_state import (
 from mgmai.state.manager import StateManager
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
-BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
 
 
 # ------------------------------------------------------------------
@@ -71,7 +69,7 @@ def state_manager():
     manager.soft_state = SoftGameState.model_validate(
         json.loads(soft_path.read_text())
     )
-    manager._adventure_dir = BAG_OF_HOLDING
+    manager._adventure_dir = FIXTURES_DIR
     return manager
 
 

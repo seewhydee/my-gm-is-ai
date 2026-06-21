@@ -210,6 +210,9 @@ def resolve(
         npc = corpus.entities.get(trigger_id)
         encounter_rules = None
         encounter_source_id = trigger_id
+        npc = corpus.entities.get(trigger_id)
+        encounter_rules = None
+        encounter_source_id = trigger_id
 
         if npc and npc.behavior:
             encounter_rules = npc.behavior.encounter_rules
@@ -252,6 +255,15 @@ def resolve(
             alter_stat = enc_result.get("alter_stat") or {}
             if alter_stat:
                 encounter_changes.stat_modifiers.update(dict(alter_stat))
+
+            player_damage = enc_result.get("player_damage")
+            if player_damage and corpus is not None:
+                from mgmai.engine.systems import get_system_for_corpus as _enc_get_system
+                _enc_system = _enc_get_system(corpus)
+                enc_dmg_total, _ = _enc_system.roll_damage(player_damage)
+                encounter_changes.player_hp_delta = (
+                    (encounter_changes.player_hp_delta or 0) - enc_dmg_total
+                )
 
             if enc_result["game_over"]:
                 go = enc_result["game_over"]

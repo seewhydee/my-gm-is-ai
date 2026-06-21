@@ -79,12 +79,45 @@ That's it.  When the player uses an `interact` action with
 | `hp` | int (≥ 1) | *required* | Maximum hit points |
 | `ac` | int | *required* | Armour Class |
 | `atk` | int | *required* | Attack bonus (ability mod + proficiency) |
-| `dmg` | str | `"1d6"` | Damage expression, e.g. `"1d6+2"`, `"2d4"`, `"1d8+1"` |
+| `dmg` | str | `"1d6"` | Damage expression, e.g. `"1d6+2"`, `"2d4"`, `"1d8+1"`, or a flat integer like `"3"` |
 | `initiative_mod` | int | `0` | DEX-like modifier for initiative rolls |
 | `flee_dc` | int | `10` | Difficulty class for the player to flee |
+| `on_hit_effects` | list[OnHitEffect] | `[]` | Secondary effects that trigger on a successful hit (saving throws + damage) |
 
 All values are **pre-computed** by the adventure author — the engine does
 not derive them from ability scores for NPCs.
+
+### `OnHitEffect` (on-hit effects)
+
+When an NPC's attack hits, each `on_hit_effect` triggers a saving throw
+against the player:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `save.stat` | str | *required* | Ability score for the saving throw (e.g. `"CON"`) |
+| `save.dc` | int | *required* | Difficulty class for the save |
+| `damage` | str | `"1d6"` | Damage expression (dice or flat) |
+| `on_save` | `"half"` \| `"none"` \| `"full"` | `"half"` | How a successful save modifies damage |
+| `type` | str? | `null` | Optional damage type label (e.g. `"poison"`) |
+
+Example — a spider bite that deals poison damage on a failed CON save:
+
+```json
+"combat": {
+  "hp": 15,
+  "ac": 14,
+  "atk": 5,
+  "dmg": "1d4+3",
+  "on_hit_effects": [
+    {
+      "save": { "stat": "CON", "dc": 11 },
+      "damage": "1d8",
+      "on_save": "half",
+      "type": "poison"
+    }
+  ]
+}
+```
 
 ### `PlayerState` extensions
 
@@ -332,5 +365,5 @@ These may be added in future phases.
 > Note: the *engine* is already system-agnostic through the
 > `ResolutionSystem` interface; the limitations above concern combat
 > *features* (gear, conditions, spells, …), not system portability.  The
-> saving-throw hook (`ResolutionSystem.resolve_save`) is declared but not
-> yet wired into the combat loop — it lands with on-hit effects.
+> saving-throw hook (`ResolutionSystem.resolve_save`) is wired into the
+> on-hit effects phase of NPC attacks — see `OnHitEffect` above.

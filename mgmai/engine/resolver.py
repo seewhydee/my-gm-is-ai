@@ -321,10 +321,22 @@ def resolve_move(
         elif trav_check.condition:
             should_check = evaluate(trav_check.condition, hard, soft, corpus)
         if should_check:
+            # Resolve using_results overrides (weapon-based DC reduction, etc.)
+            effective_check = trav_check.check
+            using_override: UsingResultOverride | None = None
+            using_item = getattr(action, "using", None)
+            if trav_check.using_results and using_item:
+                for item_id, override in trav_check.using_results.items():
+                    if item_id == using_item or item_id == "*":
+                        using_override = override
+                        break
+                if using_override is not None and using_override.check is not None:
+                    effective_check = using_override.check
+
             traversal_narrative: list[str] = []
             traversal_changes = HardStateChanges()
             passed = _resolve_traversal_check(
-                trav_check.check, hard, soft, corpus,
+                effective_check, hard, soft, corpus,
                 traversal_changes, traversal_narrative, traversal_rolls,
                 state_manager, result, target_exit_id,
             )

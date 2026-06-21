@@ -50,10 +50,12 @@ from mgmai.models.corpus import (
     TakeCheck,
 )
 from mgmai.state.manager import StateManager
+from tests.helpers import (
+    build_state_manager,
+    make_encounter_trigger_corpus,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
-BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
 
 
 def _load_hard():
@@ -227,26 +229,34 @@ class TestResolveMove:
         result = resolve_move(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.hard_changes.room_state_changes.get("axe_handle_upper", {}).get("visited") is True
 
-    def test_drop_exit_applies_stat_damage_from_head(self):
-        manager = StateManager(BAG_OF_HOLDING)
-        action = MoveAction(action_type="move", target="exit_drop_from_head", detail="Dropping down")
+    def test_drop_exit_triggers_fall_damage_encounter_from_head(self):
+        corpus = make_encounter_trigger_corpus(
+            mechanic_id="fall_damage_test",
+            exit_id="exit_drop",
+            target_room_id="target",
+            reaction_event="traversal.attempted",
+            encounter_outcome="flee",
+        )
+        manager = build_state_manager(corpus)
+        action = MoveAction(action_type="move", target="exit_drop", detail="Dropping")
         result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus, manager)
         assert result.success is True
-        assert result.hard_changes.player_location == "bag_floor"
-        assert result.immediate_changes.stat_modifiers == {
-            "STR": StatModifier(value=-4), "DEX": StatModifier(value=-4), "CON": StatModifier(value=-4),
-        }
+        assert result.encounter_trigger == "fall_damage_test"
+        assert result.hard_changes.player_location == "target"
 
-    def test_drop_exit_applies_stat_damage_from_upper(self):
-        manager = StateManager(BAG_OF_HOLDING)
-        manager.hard_state.player.location = "axe_handle_upper"
-        action = MoveAction(action_type="move", target="exit_drop_from_upper", detail="Dropping down")
+    def test_drop_exit_triggers_encounter_without_leaving_room(self):
+        corpus = make_encounter_trigger_corpus(
+            mechanic_id="ambush",
+            exit_id="exit_forward",
+            target_room_id="target",
+            reaction_event="traversal.attempted",
+            encounter_outcome="combat",
+        )
+        manager = build_state_manager(corpus)
+        action = MoveAction(action_type="move", target="exit_forward", detail="Moving")
         result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus, manager)
         assert result.success is True
-        assert result.hard_changes.player_location == "bag_floor"
-        assert result.immediate_changes.stat_modifiers == {
-            "DEX": StatModifier(value=-2), "CON": StatModifier(value=-2),
-        }
+        assert result.encounter_trigger == "ambush"
 
 
 class TestResolveTalk:

@@ -1,0 +1,22 @@
+{
+  "player": {
+    "location": "start_room",
+    "inventory": [],
+    "stats": {
+      "STR": 10,
+      "DEX": 10,
+      "CON": 10,
+      "INT": 10,
+      "WIS": 10,
+      "CHA": 10
+    }
+  },
+  "flags": {},
+  "room_states": {
+    "start_room": { "visited": false },
+    "hallway": { "visited": false }
+  },
+  "entity_states": {},
+  "turn_count": 0,
+  "game_over": null
+}

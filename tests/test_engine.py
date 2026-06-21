@@ -31,11 +31,14 @@ from mgmai.models.actions import (
     TransferAction,
     WaitAction,
 )
-from mgmai.models.corpus import StatModifier
+from mgmai.models.corpus import BranchOutcome, StatModifier
 from mgmai.state.manager import StateManager
-
-ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
-BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
+from tests.helpers import (
+    build_state_manager,
+    make_encounter_trigger_corpus,
+    _mk_cond,
+    _mk_encounter_rule,
+)
 
 
 class TestEngineFullFlow:
@@ -53,23 +56,53 @@ class TestEngineFullFlow:
         assert result.room_after is not None
         assert result.room_after.id == "axe_handle_upper"
 
-    def test_fall_damage_reduces_player_stats(self):
-        manager = StateManager(BAG_OF_HOLDING)
+    def test_fall_damage_reduces_player_stats(self, monkeypatch):
+        corpus = make_encounter_trigger_corpus(
+            mechanic_id="fall_test",
+            exit_id="exit_drop",
+            target_room_id="target",
+            reaction_event="traversal.attempted",
+            encounter_outcome="roll",
+            alter_stat={"DEX": StatModifier(value=-4), "CON": StatModifier(value=-4)},
+            player_damage="3d6",
+        )
+        # Override the default encounter rule: roll outcome with threshold,
+        # on_failure applies alter_stat + player_damage.  The helper builds a
+        # simple flee rule, so we replace it.
+        corpus.mechanics["fall_test"].rules = [
+            _mk_encounter_rule(
+                outcome="roll",
+                threshold=0.50,
+                condition=_mk_cond(require="entity:test_npc.alive == true"),
+                on_failure=BranchOutcome(
+                    outcome="flee",
+                    alter_stat={"DEX": StatModifier(value=-4), "CON": StatModifier(value=-4)},
+                    player_damage="3d6",
+                    narrative="You fall hard!",
+                ),
+            )
+        ]
+        manager = build_state_manager(corpus)
+        # Ensure roll failure (>= 0.50).
+        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.80)
         action = MoveAction(
             action_type="move",
-            target="exit_drop_from_head",
-            detail="Dropping from the axe head",
+            target="exit_drop",
+            detail="Dropping",
         )
         result = resolve(action, manager)
         assert result.success is True
-        assert manager.hard_state.player.location == "bag_floor"
+        # Encounter blocks the room transition.
+        assert manager.hard_state.player.location == "start"
+        # Encounter on_failure applies -4 to DEX and CON.
         assert manager.hard_state.player.stats == {
-            "STR": 6, "DEX": 6, "CON": 6,
+            "STR": 10, "DEX": 6, "CON": 6,
             "INT": 10, "WIS": 10, "CHA": 10,
         }
         assert result.hard_state_changes is not None
         assert result.hard_state_changes.stat_modifiers == {
-            "STR": StatModifier(value=-4), "DEX": StatModifier(value=-4), "CON": StatModifier(value=-4),
+            "DEX": StatModifier(mode="delta", value=-4),
+            "CON": StatModifier(mode="delta", value=-4),
         }
 
     def test_resolve_move_fail(self, state_manager):

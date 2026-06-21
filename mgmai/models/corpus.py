@@ -209,6 +209,7 @@ class TraversalCheck(BaseModel):
     condition: Optional[ConditionExpression] = None
     skip_check_if: Optional[ConditionExpression] = None
     failure_narrative: Optional[str] = None
+    using_results: Optional[Dict[str, UsingResultOverride]] = None
 
 
 class Exit(BaseModel):
@@ -346,9 +347,10 @@ class DialogueGuidelines(BaseModel):
 
 
 class BranchOutcome(BaseModel):
-    outcome: str
+    outcome: str = "none"
     set_flags: Optional[Dict[str, bool]] = None
     alter_stat: Optional[Dict[str, StatModifier]] = None
+    player_damage: Optional[str] = None
     narrative: Optional[str] = None
 
 
@@ -360,6 +362,7 @@ class EncounterRule(BaseModel):
     narrative: Optional[str] = None
     set_flags: Optional[Dict[str, bool]] = None
     alter_stat: Optional[Dict[str, StatModifier]] = None
+    player_damage: Optional[str] = None
     on_success: Optional[BranchOutcome] = None
     on_failure: Optional[BranchOutcome] = None
 

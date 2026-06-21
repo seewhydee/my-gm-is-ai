@@ -104,7 +104,12 @@ room, able to retry next turn.
     },
     "condition": { "require": "inventory:rusty_key" },
     "skip_check_if": { "require": "flag:korbar_helps_key == true" },
-    "failure_narrative": "You strain to haul the key but can't make progress."
+    "failure_narrative": "You strain to haul the key but can't make progress.",
+    "using_results": {
+      "toenail_sword": {
+        "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true }
+      }
+    }
   }
 }
 ```
@@ -115,6 +120,7 @@ room, able to retry next turn.
 | `condition`         | condition object    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
 | `skip_check_if`     | condition object    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition` — use this for "don't check when NPC helps" patterns. |
 | `failure_narrative` | string              | **Optional.** Narration text shown when the traversal check fails. |
+| `using_results`     | dict                | **Optional.** Maps item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `move` action carries a `using` parameter matching a key, the override's `check` replaces the traversal check (allowing different DCs per item). |
 
 ### Condition object
 
@@ -973,14 +979,15 @@ At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be
     "rules": [
       {
         "condition": { /* condition object */ },
-        "outcome": "death | flee | roll | stat_check",
+        "outcome": "death | flee | roll | stat_check | combat",
         "threshold": 0.50,
         "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
-        "on_success": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "narrative": "..." },
-        "on_failure": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "narrative": "..." },
+        "on_success": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
+        "on_failure": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
         "narrative": "string",
         "set_flags": {},
-        "alter_stat": {}
+        "alter_stat": {},
+        "player_damage": "3d6"
       }
     ],
     "reactions": [ { /* reaction (optional) */ } ]
@@ -988,7 +995,15 @@ At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be
 }
 ```
 
-Rules are evaluated top-to-bottom. The first rule whose `condition` matches is applied. Conditions are condition objects (see Condition object section). Rule and branch `alter_stat` objects follow the same modifier semantics as interaction `Result.alter_stat`.
+Rules are evaluated top-to-bottom. The first rule whose `condition` matches is
+applied. Conditions are condition objects (see Condition object section).
+
+Rule and branch `alter_stat` objects follow the same modifier semantics as
+interaction `Result.alter_stat`. `player_damage` accepts a dice expression
+(e.g. `"3d6"`, `"2d4+1"`) that the engine rolls as HP damage against the
+player. Set at the rule level to apply unconditionally when the rule fires;
+set at the branch level (`on_success`/`on_failure`) to override the
+rule-level value. `outcome: "combat"` starts the multi-round combat system.
 
 ### Game-over conditions
 

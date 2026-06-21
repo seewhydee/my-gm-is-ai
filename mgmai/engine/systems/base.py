@@ -78,8 +78,9 @@ class CheckResult:
 class SaveResult:
     """Outcome of a saving throw.
 
-    Not yet wired into the combat loop (reserved for the on-hit-effects
-    phase); declared here so :class:`ResolutionSystem` exposes the hook now.
+    Used by the combat loop for on-hit effects (poison, elemental damage,
+    etc.).  The hook is wired in via
+    :func:`mgmai.engine.combat._resolve_on_hit_effect`.
     """
 
     stat: str

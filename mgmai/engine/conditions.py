@@ -118,6 +118,8 @@ def evaluate_condition_string(
                 f"room condition requires operator and value: {raw!r}"
             )
         room_id, field = key.split(".", 1)
+        if field == "is_current":
+            return _compare(hard_state.player.location == room_id, op, value)
         room_state = hard_state.room_states.get(room_id)
         if room_state is None:
             return False

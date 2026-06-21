@@ -23,10 +23,14 @@ from pydantic import ValidationError
 from mgmai.state.manager import StateManager, StateNotLoadedError
 from mgmai.models.actions import HardStateChanges
 from mgmai.models.soft_state import SoftStatePatch, TurnHistoryEntry
+from tests.helpers import (
+    build_state_manager,
+    make_char_sheet_corpus,
+    make_char_sheet_state,
+)
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
 
 
 @pytest.fixture
@@ -578,8 +582,16 @@ class TestSaveState:
 
 
 class TestApplyCharSheet:
+    @staticmethod
+    def _make_sm() -> StateManager:
+        """Build a StateManager with a minimal corpus for char sheet testing."""
+        return build_state_manager(
+            make_char_sheet_corpus(),
+            hard_state=make_char_sheet_state(),
+        )
+
     def test_applies_custom_stats(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         sm._apply_char_sheet_data({
             "system": "5e",
             "player": {
@@ -598,14 +610,14 @@ class TestApplyCharSheet:
         assert sm.hard_state.player.stats["CHA"] == 16
 
     def test_missing_system_raises(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         with pytest.raises(ValueError, match="must specify 'system'"):
             sm._apply_char_sheet_data({
                 "player": {"stats": {"STR": 18}}
             })
 
     def test_system_mismatch_raises(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         with pytest.raises(ValueError, match="does not match"):
             sm._apply_char_sheet_data({
                 "system": "gurps",
@@ -613,7 +625,7 @@ class TestApplyCharSheet:
             })
 
     def test_unknown_stat_raises(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         with pytest.raises(ValueError, match="not defined"):
             sm._apply_char_sheet_data({
                 "system": "5e",
@@ -621,7 +633,7 @@ class TestApplyCharSheet:
             })
 
     def test_generic_merge_location_and_inventory(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         sm._apply_char_sheet_data({
             "system": "5e",
             "player": {
@@ -642,7 +654,7 @@ class TestApplyCharSheet:
         assert sm.hard_state.player.stats["STR"] == 15
 
     def test_invalid_location_raises(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         with pytest.raises(ValueError, match="No matching room"):
             sm._apply_char_sheet_data({
                 "system": "5e",
@@ -660,7 +672,7 @@ class TestApplyCharSheet:
             })
 
     def test_invalid_inventory_raises(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         with pytest.raises(ValueError, match="No matching entity: "):
             sm._apply_char_sheet_data({
                 "system": "5e",
@@ -678,7 +690,7 @@ class TestApplyCharSheet:
             })
 
     def test_unknown_player_fields_ignored(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         sm._apply_char_sheet_data({
             "system": "5e",
             "player": {
@@ -709,7 +721,7 @@ class TestApplyCharSheet:
             sm.apply_char_sheet("char_sheet.json")
 
     def test_file_not_found(self) -> None:
-        sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
+        sm = self._make_sm()
         with pytest.raises(FileNotFoundError, match="Character sheet file not found"):
             sm.apply_char_sheet("nonexistent.json")
 

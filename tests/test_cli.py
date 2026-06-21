@@ -28,8 +28,8 @@ import pytest
 from mgmai.cli import main
 from mgmai.config import AppConfig, Credentials
 
-ADVENTURES_DIR = Path(__file__).resolve().parent.parent / "adventures"
-BAG_OF_HOLDING = ADVENTURES_DIR / "bag-of-holding"
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+MINI_ADVENTURE = FIXTURES_DIR / "mini_adventure"
 
 
 class TestCliArguments:
@@ -49,7 +49,7 @@ class TestCliArguments:
         with patch("mgmai.cli.load_credentials", return_value=Credentials()):
             with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
                 with pytest.raises(SystemExit) as exc_info:
-                    main([str(BAG_OF_HOLDING)])
+                    main([str(MINI_ADVENTURE)])
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "MGMAI_API_KEY" in captured.out
@@ -57,7 +57,7 @@ class TestCliArguments:
     def test_load_nonexistent_file(self, monkeypatch, capsys) -> None:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
         with pytest.raises(SystemExit) as exc_info:
-            main([str(BAG_OF_HOLDING), "--load", "nonexistent.json"])
+            main([str(MINI_ADVENTURE), "--load", "nonexistent.json"])
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "not found" in captured.out
@@ -107,7 +107,7 @@ class TestCliPrompting:
             monkeypatch,
             inputs=["1"],  # select deepseek-v4-flash
             passwords=["prompted-key"],
-            cli_args=[str(BAG_OF_HOLDING)],
+            cli_args=[str(MINI_ADVENTURE)],
         )
 
         _, kwargs = mock_llm_cls.call_args
@@ -128,7 +128,7 @@ class TestCliPrompting:
                 "",                        # keep API key
             ],
             passwords=[""],
-            cli_args=[str(BAG_OF_HOLDING), "--model", "gpt-4o"],
+            cli_args=[str(MINI_ADVENTURE), "--model", "gpt-4o"],
         )
 
         _, kwargs = mock_llm_cls.call_args
@@ -144,7 +144,7 @@ class TestCliPrompting:
         with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
             with patch("mgmai.cli.load_credentials", return_value=Credentials()):
                 with pytest.raises(SystemExit) as exc_info:
-                    main([str(BAG_OF_HOLDING), "--model", "unknown-model"])
+                    main([str(MINI_ADVENTURE), "--model", "unknown-model"])
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
@@ -160,7 +160,7 @@ class TestCliBoot:
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop):
             with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING)])
+                main([str(MINI_ADVENTURE)])
 
         mock_loop.start.assert_called_once()
 
@@ -168,7 +168,7 @@ class TestCliBoot:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
         save_file = tmp_path / "save.json"
         save_file.write_text(
-            f'{{"adventure_path": "{BAG_OF_HOLDING}", '
+            f'{{"adventure_path": "{MINI_ADVENTURE}", '
             f'"hard": {{"player": {{"location": "axe_head", "inventory": []}}, '
             f'"flags": {{}}, "room_states": {{}}, "entity_states": {{}}, "turn_count": 0}}, '
             f'"soft": {{"soft_inventory": [], "room_notes": {{}}, "entity_notes": {{}}, '
@@ -180,7 +180,7 @@ class TestCliBoot:
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop):
             with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING), "--load", str(save_file)])
+                main([str(MINI_ADVENTURE), "--load", str(save_file)])
 
         mock_loop.start.assert_called_once()
 
@@ -190,7 +190,7 @@ class TestCliBoot:
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop):
             with patch("mgmai.cli.LLMClient") as mock_llm_cls:
-                main([str(BAG_OF_HOLDING), "--api-key", "arg-key"])
+                main([str(MINI_ADVENTURE), "--api-key", "arg-key"])
 
         mock_llm_cls.assert_called_once()
         _, kwargs = mock_llm_cls.call_args
@@ -204,7 +204,7 @@ class TestCliBoot:
         with patch("mgmai.cli.GameLoop", return_value=mock_loop):
             with patch("mgmai.cli.LLMClient") as mock_llm_cls:
                 main([
-                    str(BAG_OF_HOLDING),
+                    str(MINI_ADVENTURE),
                     "--model", "gpt-4o",
                     "--base-url", "https://example.com",
                 ])
@@ -219,7 +219,7 @@ class TestCliBoot:
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop):
             with patch("mgmai.cli.LLMClient") as mock_llm_cls:
-                main([str(BAG_OF_HOLDING), "--base-url", "https://example.com"])
+                main([str(MINI_ADVENTURE), "--base-url", "https://example.com"])
 
         _, kwargs = mock_llm_cls.call_args
         assert kwargs["config"].base_url == "https://example.com"
@@ -235,7 +235,7 @@ class TestCliBoot:
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
             with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING)] + cli_flags)
+                main([str(MINI_ADVENTURE)] + cli_flags)
 
         _, kwargs = mock_loop_cls.call_args
         assert kwargs["debug"] is expect_debug
@@ -258,13 +258,13 @@ class TestCliBoot:
             with patch("mgmai.cli.LLMClient"):
                 with patch("mgmai.cli.save_app_config"):
                     with patch("mgmai.cli.save_credentials"):
-                        main([str(BAG_OF_HOLDING)])
+                        main([str(MINI_ADVENTURE)])
 
         sm = captured_state["manager"]
         assert sm.corpus is not None
-        assert sm.corpus.adventure.title == "You're Trapped in a Bag!"
-        assert sm.hard_state.player.location == "axe_head"
-        assert len(sm.corpus.rooms) == 5
+        assert "Mini" in sm.corpus.adventure.title
+        assert sm.hard_state.player.location == "start_room"
+        assert len(sm.corpus.rooms) > 0
 
 
 class TestCharSheetCli:
@@ -294,7 +294,7 @@ class TestCharSheetCli:
 
         with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
             with patch("mgmai.cli.LLMClient"):
-                main([str(BAG_OF_HOLDING), "--char-sheet", str(sheet)])
+                main([str(MINI_ADVENTURE), "--char-sheet", str(sheet)])
 
         mock_loop.start.assert_called_once()
         args, _ = mock_loop_cls.call_args
@@ -309,7 +309,7 @@ class TestCharSheetCli:
         sheet = self._write_sheet(tmp_path, {"system": "5e", "player": {"stats": {}}})
 
         with pytest.raises(SystemExit) as exc_info:
-            main([str(BAG_OF_HOLDING), "--load", str(sheet), "--char-sheet", str(sheet)])
+            main([str(MINI_ADVENTURE), "--load", str(sheet), "--char-sheet", str(sheet)])
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
@@ -319,7 +319,7 @@ class TestCharSheetCli:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
 
         with pytest.raises(SystemExit) as exc_info:
-            main([str(BAG_OF_HOLDING), "--char-sheet", "nonexistent.json"])
+            main([str(MINI_ADVENTURE), "--char-sheet", "nonexistent.json"])
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
@@ -331,7 +331,7 @@ class TestCharSheetCli:
         sheet.write_text("not json", encoding="utf-8")
 
         with pytest.raises(SystemExit) as exc_info:
-            main([str(BAG_OF_HOLDING), "--char-sheet", str(sheet)])
+            main([str(MINI_ADVENTURE), "--char-sheet", str(sheet)])
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
@@ -345,7 +345,7 @@ class TestCharSheetCli:
         })
 
         with pytest.raises(SystemExit) as exc_info:
-            main([str(BAG_OF_HOLDING), "--char-sheet", str(sheet)])
+            main([str(MINI_ADVENTURE), "--char-sheet", str(sheet)])
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()

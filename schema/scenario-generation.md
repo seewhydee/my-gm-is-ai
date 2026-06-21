@@ -119,7 +119,7 @@ Also note:
 
 For every mechanic described (not tied to a specific entity), note:
 
-- **Encounters** — combat or hazard events (spider attack, fall damage)
+- **Encounters** — combat or hazard events
 - **Game-over conditions** — win/lose triggers and their conditions
 - **Reaction-only mechanics** — adventure-wide state-based triggers not tied to a room or entity
 - **Dropping rules** — what happens when falling from various heights
@@ -306,20 +306,20 @@ Each dialogue path has:
   results support the same fields as interaction results (`narrative`,
   `set_flag`, `alter_stat`, `adjust_attitude`, etc.).
 
-Example: a spider that can be flattered with a CHA check to improve attitude:
+Example: a fairy that can be flattered with a CHA check to improve attitude:
 
 ```json
 "dialogue_paths": {
   "flatter": {
-    "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
-    "condition": { "require": "attitude:spider < 0" },
+    "description": "Praise the fairy's beauty.",
+    "condition": { "require": "attitude:fairy < 0" },
     "check": { "type": "stat_check", "stat": "CHA", "dc": 12, "repeatable": true },
     "success": {
-      "narrative": "The spider preens at your praise.",
-      "adjust_attitude": { "spider": 1 }
+      "narrative": "The fairy preens at your praise.",
+      "adjust_attitude": { "fairy": 1 }
     },
     "failure": {
-      "narrative": "The spider hisses indifferently."
+      "narrative": "The fairy rolls her eyes."
     }
   }
 }
@@ -336,7 +336,7 @@ For every NPC that fights, produce a `behavior` block:
   reactions above).
 
 When a combat scenario has multiple conditional branches (e.g., "if armed AND
-STR check succeeds → spider dies" vs "if armed AND STR fails → spider strikes
+STR check succeeds → goblin dies" vs "if armed AND STR fails → goblin strikes
 back"), model each as a separate rule with its own `condition`:
 
 ```json
@@ -347,18 +347,18 @@ back"), model each as a separate rule with its own `condition`:
     "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
     "on_success": {
       "outcome": "flee",
-      "narrative": "You land a solid blow. The spider hisses and flees.",
-      "set_flags": { "spider_fled": true }
+      "narrative": "You land a solid blow. The goblin hisses and flees.",
+      "set_flags": { "goblin_fled": true }
     },
     "on_failure": {
       "outcome": "death",
-      "narrative": "The spider strikes back! Its venom fills your veins."
+      "narrative": "The goblin strikes back! Its cleaver goes through your neck."
     }
   },
   {
     "condition": { "unless": "tag:weapon" },
     "outcome": "death",
-    "narrative": "Bare-handed, you cannot fend off the spider's attack. Its venom overcomes you."
+    "narrative": "Bare-handed, you cannot fend off the goblin's attack. It quickly overcomes you."
   }
 ]
 ```
@@ -527,6 +527,13 @@ If a hidden entity seems to have no revelation mechanism, it could be a
 scenario bug; you should implement the JSON faithfully as written in the
 scenario, but do surface the issue during your post-generation report.
 
+**When does the entity become visible?** If the revealing result includes
+`set_entity_state: { "<entity>": { "hidden": false } }` directly, the entity
+is visible to the narrator in the same turn. If you use a separate reaction
+on `flag.set` (see Step 3F-2), the reveal is deferred to the next turn's
+briefing — prefer the direct approach for immediate dramatic effect unless
+the scenario calls for delayed discovery.
+
 ### 3C. Soft items
 
 Plausible generic items the player might pick up. These should be
@@ -551,11 +558,24 @@ For every exit described in the scenario, produce an exit object:
   the *availability*. The exit is visible and the player can try, but may fail
   and stay in place. Use for patterns like "dragging the heavy key requires
   STR check to move between rooms".
-- **`reactions`**: **Optional.** Room-scoped reactions that fire on traversal
-  or other events. Prefer a `traversal.succeeded` reaction with
-  `condition: { require: "event:exit_id == <this_exit_id>" }` for effects that
-  should apply when this exit is successfully traversed (set_flag, narrative,
-  trigger_encounter).
+
+Exits do **not** have a `reactions` field. To react to traversal events
+(`traversal.succeeded`, `traversal.attempted`, etc.), place reactions on the
+**containing room's** `reactions` array. Filter by exit ID using an `event:`
+condition:
+
+```json
+"reactions": [
+  {
+    "id": "on_exit_used",
+    "on": "traversal.succeeded",
+    "condition": { "require": "event:exit_id == exit_climb_down" },
+    "effects": {
+      "result": { "narrative": "You descend carefully." }
+    }
+  }
+]
+```
 
 #### `traversal_check` fields
 
@@ -565,6 +585,29 @@ For every exit described in the scenario, produce an exit object:
 | `condition` | Optional condition — the check only fires if this is met. When absent (or condition not met), traversal proceeds without a check |
 | `skip_check_if` | Optional condition — if met, the check is skipped entirely (bypasses `condition`) |
 | `failure_narrative` | Prose shown when the check fails |
+| `using_results` | Optional dict mapping item entity IDs (or `"*"` wildcard) to override check/success/failure. When the `move` action carries a `using` parameter matching a key, the override replaces the check (allowing different DCs per item). See below. |
+
+#### `using_results` for traversal checks
+
+When the scenario requires different DCs depending on what the player is
+carrying (e.g., clearing webs without a weapon is harder), add a
+`using_results` map to the `traversal_check`. Each entry can override the
+`check`. The player's `move` action sets `using` to an item entity ID:
+
+```json
+"traversal_check": {
+  "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
+  "failure_narrative": "You strain against the sticky webs.",
+  "using_results": {
+    "toenail_sword": {
+      "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true }
+    }
+  }
+}
+```
+
+Use `"*"` as a wildcard key to match any using item (applies a blanket weapon
+bonus regardless of which specific weapon is carried).
 
 #### When to use `traversal_check` vs `conditions`
 
@@ -957,6 +1000,13 @@ Failed-check consequence:
   player is in the room. Use `on: "room.entered"` for effects that should fire
   when the player enters the room (replacing the legacy `on_enter` field).
 
+**Timing note:** Reactions on state-change events (`flag.set`,
+`entity_state.changed`, `stat.changed`) fire during **deferred dispatch** at
+end-of-turn, not immediately after the triggering action. To chain an
+immediate follow-up check within a single action (e.g., a second stat check
+right after the first), use `chain_check` on the success/failure result
+(see Step 3E).
+
 ### 3G. On-examine events
 
 For examine-gated stat checks or conditional discoveries:
@@ -1051,7 +1101,8 @@ They follow the same rule structure as NPC behavior encounter_rules:
       "on_failure": {
         "outcome": "flee",
         "narrative": "You fall hard and injure yourself badly.",
-        "alter_stat": { "STR": { "value": -4 }, "DEX": { "value": -4 }, "CON": { "value": -4 } }
+        "alter_stat": { "STR": { "value": -4 }, "DEX": { "value": -4 }, "CON": { "value": -4 } },
+        "player_damage": "3d6"
       }
     }
   ]
@@ -1062,6 +1113,25 @@ They follow the same rule structure as NPC behavior encounter_rules:
 The `room:<id>.is_current` condition is available — it checks whether the
 player is currently in that room. This enables encounter rules that branch
 based on which room triggered them (e.g., different fall damage by room).
+
+**Encounter rule and branch fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome` | str | `"death"`, `"flee"`, `"roll"`, `"stat_check"`, or `"combat"` |
+| `condition` | condition object | Gate for the rule |
+| `check` | StatCheck | The stat check to resolve (for `stat_check` outcome) |
+| `threshold` | float 0-1 | Roll-under threshold (for `roll` outcome) |
+| `narrative` | str | Prose shown when the rule fires |
+| `set_flags` | dict[str, bool] | Flags to set |
+| `alter_stat` | dict[str, StatModifier] | Fixed stat modifications (delta or set) |
+| `player_damage` | str | Dice expression rolled as HP damage (e.g. `"3d6"`, `"2d4+1"`) |
+| `on_success` | BranchOutcome | Branch when check/roll succeeds |
+| `on_failure` | BranchOutcome | Branch when check/roll fails |
+
+`player_damage` is available at both the rule level (applies unconditionally
+when the rule fires) and the branch level (overrides the rule-level value).
+The engine rolls the dice expression using the active resolution system.
 
 ### 4B. Game-over conditions
 
@@ -1616,6 +1686,12 @@ All IDs must be **snake_case, lowercase ASCII**:
     is only valid inside reaction conditions during dispatch. Using it in
     interaction conditions, game-over mechanic conditions, or exit conditions
     will always evaluate to `false`.
+
+22. **`combat.ended` is not yet emitted**: The `combat.ended` event has not
+    been wired into the engine.  Do not use it in reaction `on` fields.  To
+    react to a combatant's death, use `on: "entity_state.changed"` with a
+    condition watching `event:entity_id == <npc_id>` and `event:field == alive`
+    and `event:new_value == false`.  See [`events.md`](events.md) § Known gaps.
 
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
