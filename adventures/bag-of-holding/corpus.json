@@ -1,158 +1,80 @@
 {
   "adventure": {
-    "id": "bag-of-holding",
     "title": "You're Trapped in a Bag!",
     "credits": {
       "author": "Sam Seer",
-      "source": "2023 One Page Dungeon Competition",
+      "source": "Adapted from a one-page role playing adventure submitted to the 2023 One Page Dungeon Competition",
       "license": "CC-BY-SA 4.0"
     },
     "introduction": "You wake up. The last thing you remember is a night out on the town. Now you seem to be in a giant cave made of... canvas?",
     "atmosphere": {
-      "setting": "You are a person trapped inside a mysterious cave, which contains a gigantic battleaxe and other oddities.  How do you escape?",
-      "tone": "Whimsical and slightly dark. The world is absurd but internally coherent. Danger is real \u2014 death lurks in the webbing \u2014 but the tone is more Pratchett than Lovecraft."
+      "setting": "Inside a magical Bag of Holding — a pocket dimension full of giant-sized rubbish and dangers, where a lost dwarf has been trapped for years.",
+      "tone": "Whimsical and slightly dark. The world is absurd but coherent. Danger is real but the tone is more Pratchett than Lovecraft. The player should piece together their situation through exploration — no spoilers in room descriptions."
     }
   },
-  "stats": {
-    "definitions": {
-      "STR": {
-        "name": "Strength",
-        "description": "Physical power, melee combat, forcing things open."
-      },
-      "DEX": {
-        "name": "Dexterity",
-        "description": "Agility, reflexes, balance, ranged attacks."
-      },
-      "CON": {
-        "name": "Constitution",
-        "description": "Endurance, resistance to poison and injury."
-      },
-      "INT": {
-        "name": "Intelligence",
-        "description": "Reasoning, deduction, knowledge recall."
-      },
-      "WIS": {
-        "name": "Wisdom",
-        "description": "Perception, intuition, noticing details."
-      },
-      "CHA": {
-        "name": "Charisma",
-        "description": "Social influence, persuasion, flattery."
-      }
-    },
-    "system": "5e"
-  },
+
   "entities": {
     "player": {
       "type": "player",
-      "description": "You are an ordinary adventurer. You woke up here with no memory of how you arrived, wearing your usual clothes and carrying nothing but your wits.",
-      "state_fields": {}
+      "description": "You are a fourth-level Human Rogue. You remember a night out on the town, and now you're here — wherever here is. Your pack and gear are missing.",
+      "state_fields": {
+        "alive": { "type": "boolean", "description": "Whether the player is still alive." }
+      }
     },
+
     "stuck_fly": {
       "type": "npc",
-      "description": "A giant fly, about the size of a dog, stuck fast in the sticky webbing. Its compound eyes glitter weakly and its wings twitch feebly. It's clearly near death.",
+      "description": "A fly, about the size of a dog relative to you, stuck fast in the webbing. Its wings twitch weakly.",
       "state_fields": {
-        "alive": {
-          "type": "boolean",
-          "description": "Whether the fly is still alive."
-        },
-        "attitude": {
-          "type": "number",
-          "description": "Attitude toward the player, 0 to 5."
-        },
-        "hidden": {
-          "type": "boolean",
-          "description": "Whether the fly is hidden from view among the webbing."
-        }
+        "alive": { "type": "boolean", "description": "Whether the fly is alive." },
+        "hidden": { "type": "boolean", "description": "Whether the fly is hidden in the webs." },
+        "attitude": { "type": "number", "description": "Attitude toward the player." }
       },
       "dialogue_guidelines": {
-        "personality": "A weak, dying insect speaking in a nasally whine. Resigned to its fate but spiteful enough to offer a warning about the spider. Too weak to offer more than a few words before expiring.",
-        "on_encounter": "As the player approaches the webbing, a weak groaning sound emanates from one of the stuck masses. Closer inspection reveals the fly, twitching feebly.",
-        "can": [
-          "will warn about the spider in the webs below",
-          "expresses grim satisfaction if told the spider is dead"
-        ],
-        "cannot": [
-          "will not survive more than one conversation",
-          "will not offer any information beyond the spider warning",
-          "will not physically help the player in any way"
-        ],
-        "knows": [
-          "A giant spider lurks in the denser webbing further down the axe handle",
-          "The spider is hungry and aggressive"
-        ],
+        "personality": "A talking fly on the verge of death. Speaks in a weak, nasally whine. Knows only one thing of value and is desperate to impart it before expiring.",
+        "on_encounter": "The fly groans weakly as you disturb the web.",
+        "can": ["warn about the giant spider", "groan pitifully"],
+        "cannot": ["survive after speaking", "provide information beyond the spider warning", "explain where this place is or how to escape"],
+        "knows": ["A giant spider lurks in the webbing, hungry for blood."],
         "attitude_limits": {
           "min": 0,
-          "max": 5,
-          "step_per_turn": 1,
+          "max": 0,
+          "step_per_turn": 0,
           "initial": 0
-        },
-        "will_reveal": {
-          "spider_warning": {
-            "description": "The fly warns the player that a giant spider lurks in the webbing further down, hungry for blood.",
-            "conditions": []
-          }
         }
       },
       "reactions": [
         {
-          "id": "stuck_fly_dialogue_exit",
+          "id": "fly_dies_after_talk",
           "on": "dialogue.ended",
-          "condition": {
-            "require": "event:npc_id == stuck_fly"
-          },
+          "condition": { "require": "entity:stuck_fly.alive == true" },
           "effects": {
             "result": {
-              "set_entity_state": {
-                "stuck_fly": {
-                  "alive": false
-                }
-              },
-              "narrative": "The fly's weak groaning ceases. Its tiny body goes still, legs curling inward. Whatever kept it alive this long has finally given out."
+              "narrative": "The fly's groaning ceases. Its tiny body goes still.",
+              "set_entity_state": { "stuck_fly": { "alive": false } },
+              "set_flag": { "fly_dead": true }
             }
           }
         }
       ]
     },
+
     "spider": {
       "type": "npc",
-      "description": "A huge spider, easily twice the player's size, lurking in the shadows of the dense webbing. Eight glittering eyes watch from above, and its mandibles drip with venom. It is clearly the apex predator of this tiny ecosystem.",
+      "description": "Something large stirs in the shadows above the webbing — eight glittering eyes, eight hairy legs, and mandibles slick with venom.",
       "state_fields": {
-        "alive": {
-          "type": "boolean",
-          "description": "Whether the spider is alive."
-        },
-        "fled": {
-          "type": "boolean",
-          "description": "Whether the spider has fled after being wounded."
-        },
-        "attitude": {
-          "type": "number",
-          "description": "Attitude toward the player, -10 to 0."
-        },
-        "hidden": {
-          "type": "boolean",
-          "description": "Whether the entity is hidden from view."
-        }
+        "alive": { "type": "boolean", "description": "Whether the spider is alive." },
+        "fled": { "type": "boolean", "description": "Whether the spider has fled." },
+        "hidden": { "type": "boolean", "description": "Whether the spider is hidden in the shadows." },
+        "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 0." },
+        "current_hp": { "type": "number", "description": "Current hit points." }
       },
       "dialogue_guidelines": {
-        "personality": "Stupid, malicious, and hungry. The spider speaks in short hissing sentences. It is arrogant about its hunting prowess and views the player as prey. Too suspicious to make deals, but vain enough to be flattered. It knows of Korbar only as 'the delicious-looking two-legs' it hasn't managed to catch yet.",
-        "on_encounter": "Eight glittering eyes open in the darkness above. The spider descends slightly, mandibles working, sizing the player up as its next meal.",
-        "can": [
-          "will grudgingly converse if its attitude is -2 or higher",
-          "can be flattered about its hunting prowess",
-          "will attack if the player tries to force through the webs"
-        ],
-        "cannot": [
-          "will never make a sincere agreement with the player",
-          "will never leave the webbing voluntarily except by fleeing from combat",
-          "will never help the player",
-          "attitude cannot rise above 0"
-        ],
-        "knows": [
-          "Korbar is somewhere below \u2014 a 'two-legs' it hasn't caught yet",
-          "The dense webbing is its territory"
-        ],
+        "personality": "Vain, stupid, suspicious, and malicious. Speaks in a sibilant hiss. Can be flattered but is fundamentally a predator that sees the player as prey. Grudgingly replies if addressed, but does not initiate conversation.",
+        "on_encounter": "The spider watches you with hungry eyes, mandibles twitching.",
+        "can": ["be flattered into improving its attitude", "grudgingly converse if attitude >= -2", "lie about letting the player pass"],
+        "cannot": ["become friendly (attitude max 0)", "refrain from attacking if the player forces through the web", "provide useful information about escape"],
+        "knows": ["Korbar is a 'delicious two-legs' it hasn't managed to catch yet."],
         "attitude_limits": {
           "min": -10,
           "max": 0,
@@ -161,1375 +83,1012 @@
         },
         "dialogue_paths": {
           "flatter": {
-            "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
-            "condition": {
-              "require": "entity:spider.attitude < 0"
-            },
-            "check": {
-              "type": "stat_check",
-              "stat": "CHA",
-              "dc": 12,
-              "repeatable": true
-            },
+            "description": "Praise the spider's hunting prowess or appearance to improve its attitude.",
+            "condition": { "require": "attitude:spider < 0" },
+            "check": { "type": "stat_check", "stat": "CHA", "dc": 9, "repeatable": true },
             "success": {
-              "narrative": "The spider preens at your praise, mandibles clicking with satisfaction.",
-              "adjust_attitude": {
-                "spider": 1
-              }
+              "narrative": "The spider preens at your praise, momentarily placated.",
+              "adjust_attitude": { "spider": 1 }
             },
             "failure": {
               "narrative": "The spider hisses indifferently. Your flattery falls flat."
             }
           },
-          "persuade_to_leave": {
-            "description": "Convince the spider (at attitude 0) to let you pass through its territory.",
-            "condition": {
-              "all": [
-                "entity:spider.attitude >= 0",
-                "tag:weapon"
-              ]
-            },
-            "check": {
-              "type": "stat_check",
-              "stat": "CHA",
-              "dc": 12,
-              "repeatable": false
-            },
+          "persuade_pass": {
+            "description": "Ask the spider to let you through the webs peacefully.",
+            "condition": { "require": "attitude:spider == 0" },
+            "check": { "type": "stat_check", "stat": "CHA", "dc": 12, "repeatable": false },
             "success": {
-              "narrative": "The spider sizes you up, taking in your weapon. With a final, grudging hiss, it slinks away into the shadows, disappearing from view.",
-              "set_flag": {
-                "spider_fled": true
-              }
+              "narrative": "The spider sizes you up. For a long moment, it considers. Then, with a grudging hiss, it slinks away into the shadows, leaving the path clear.",
+              "set_entity_state": { "spider": { "fled": true } },
+              "set_flag": { "spider_fled": true }
             },
             "failure": {
-              "narrative": "The spider nods sagely \u2014 or so it seems. 'Yesss, you may passs,' it hisses. But its eyes don't move, and its legs remain tensed. It is lying."
+              "narrative": "The spider clicks its mandibles in what might be agreement. 'Yesss... passs,' it hisses. But its eyes gleam with malice — it's lying.",
+              "set_flag": { "spider_lies": true }
             }
           }
         }
       },
-      "interactions": [
-        {
-          "id": "attack",
-          "label": "Attack",
-          "description": "Attack the spider."
-        }
-      ],
       "behavior": {
-        "on_flee": {
-          "set_flags": {},
-          "set_entity_state": {
-            "spider": {
-              "fled": true,
-              "hidden": true
-            }
-          },
-          "effect": "scuttles away into the shadows and disappears from the game"
-        },
         "encounter_rules": [
           {
-            "condition": {
-              "all": [
-                {
-                  "unless": "tag:weapon"
-                },
-                {
-                  "require": "entity:spider.fled == false"
-                }
-              ]
-            },
-            "outcome": "death",
-            "narrative": "Bare-handed, you are no match for the spider. It overpowers you with terrifying speed, and its venom quickly does its work. Everything goes dark."
+            "condition": { "require": "tag:weapon" },
+            "outcome": "combat",
+            "narrative": "You brandish your weapon. The spider, sensing a real threat, skitters forward with predatory focus!"
           },
           {
-            "condition": {
-              "all": [
-                {
-                  "require": "tag:weapon"
-                },
-                {
-                  "require": "entity:spider.fled == false"
-                }
-              ]
-            },
-            "outcome": "stat_check",
-            "check": {
-              "type": "stat_check",
-              "stat": "STR",
-              "dc": 10,
-              "repeatable": false,
-              "note": "Land a blow on the spider with a weapon."
-            },
-            "on_success": {
-              "outcome": "flee",
-              "narrative": "You swing your weapon and land a solid blow! The spider hisses in pain and rage, then scuttles away into the shadows, disappearing from the game.",
-              "set_flags": {
-                "spider_fled": true
-              }
-            },
-            "on_failure": {
-              "outcome": "death",
-              "narrative": "Your blow glances off the spider's tough carapace. It strikes back with lightning speed, fangs sinking deep. Venom floods your veins. Everything goes dark."
-            }
+            "condition": { "unless": "tag:weapon" },
+            "outcome": "death",
+            "narrative": "Unarmed, you cannot hope to fend off the spider. It lunges with terrifying speed, mandibles sinking deep. Venom burns through your veins as the world fades to black."
           }
-        ]
+        ],
+        "on_flee": {
+          "set_flags": { "spider_fled": true },
+          "effect": "The spider slinks away into the shadows, never to return."
+        }
+      },
+      "combat": {
+        "hp": 15,
+        "ac": 14,
+        "atk": 5,
+        "dmg": "1d4+3",
+        "initiative_mod": 3,
+        "flee_dc": 10
       },
       "reactions": [
         {
-          "id": "spider_attack_on_interact",
-          "on": "interaction.used",
+          "id": "spider_attack_on_web_push",
+          "on": "traversal.attempted",
           "condition": {
-            "any": [
-              {
-                "require": "event:interaction_id == attack"
-              },
-              {
-                "require": "event:interaction_id == cut_webbing"
-              }
+            "all": [
+              { "require": "event:exit_id == exit_force_through_web" },
+              { "require": "entity:spider.alive == true" },
+              { "unless": "entity:spider.fled == true" }
             ]
           },
-          "effects": {
-            "trigger_encounter": "self"
-          },
-          "phase": "immediate"
-        },
-        {
-          "id": "spider_attack_on_webs_down",
-          "on": "traversal.succeeded",
           "phase": "immediate",
-          "condition": {
-            "require": "event:exit_id == exit_through_webs_down"
-          },
           "effects": {
             "trigger_encounter": "self"
           }
         },
         {
-          "id": "spider_attack_on_webs_up",
-          "on": "traversal.succeeded",
-          "phase": "immediate",
+          "id": "spider_attack_on_sight",
+          "on": "room.entered",
           "condition": {
-            "require": "event:exit_id == exit_through_webs_up"
+            "all": [
+              { "require": "event:room_id == axe_handle_lower" },
+              { "require": "entity:spider.alive == true" },
+              { "unless": "entity:spider.hidden == true" },
+              { "unless": "entity:spider.fled == true" },
+              { "unless": "flag:spider_fled == true" }
+            ]
           },
+          "phase": "immediate",
           "effects": {
             "trigger_encounter": "self"
+          }
+        },
+        {
+          "id": "spider_defeated",
+          "on": "entity_state.changed",
+          "condition": {
+            "all": [
+              { "require": "event:entity_id == spider" },
+              { "require": "event:field == alive" },
+              { "require": "event:new_value == false" }
+            ]
+          },
+          "effects": {
+            "result": {
+              "narrative": "With a final screech, the spider curls up and goes still — dead.",
+              "set_flag": { "spider_fled": true },
+              "set_entity_state": { "spider": { "fled": true } }
+            }
           }
         }
       ]
     },
+
     "korbar": {
       "type": "npc",
-      "description": "A female Dwarf in heavy, rusted iron platemail that clatters noisily with her every movement. She sits amidst the rubbish, drunk and miserable, beneath a makeshift shelter made from a giant overturned soup ladle. Her red-rimmed eyes peer out from beneath a dented helm. She seems to be unarmed.",
+      "description": "A female Dwarf in heavy iron platemail that clatters with every movement. She is drunk, miserable, and unarmed, sitting beneath a makeshift shelter made from a giant overturned soup ladle amidst the rubbish. Her face is smeared with grime and her eyes have the hollow look of someone who's been trapped for a very long time.",
       "state_fields": {
-        "alive": {
-          "type": "boolean",
-          "description": "Whether Korbar is alive and conscious."
-        },
-        "attitude": {
-          "type": "number",
-          "description": "Attitude toward the player, -10 to 10."
-        },
-        "following": {
-          "type": "boolean",
-          "description": "Whether Korbar is following the player between rooms."
-        },
-        "told_secret": {
-          "type": "boolean",
-          "description": "Whether Korbar has revealed the secret compartment."
-        }
+        "alive": { "type": "boolean", "description": "Whether Korbar is alive or conscious." },
+        "attitude": { "type": "number", "description": "Attitude toward the player." },
+        "following": { "type": "boolean", "description": "Whether Korbar is following the player." },
+        "convinced_spider_dead": { "type": "boolean", "description": "Whether Korbar believes the spider is dead." },
+        "current_hp": { "type": "number", "description": "Current hit points." }
       },
+      "follower_blacklist": ["secret_pocket"],
       "dialogue_guidelines": {
-        "personality": "Cynical, bitter, and drunk \u2014 but lonely enough that kindness cracks her shell. Korbar speaks with a dwarven brogue, grumbling and cursing, but there is deep hurt beneath the bluster. Her adventuring party abandoned her here years ago, and she has given up hope of escape. She is terrified of spiders in general and this one in particular, and will never agree to fight it.",
-        "on_encounter": "A clanking noise draws your attention to a makeshift shelter of scrap. Beneath an overturned soup ladle sits a stocky dwarf woman in plate armor, glaring at you with bloodshot eyes. 'Oh great,' she slurs. 'Company.'",
-        "can": [
-          "will share information about the spider freely",
-          "will explain how the Bag of Holding works (if attitude >= 1)",
-          "will reveal the secret compartment with the key (if attitude >= 3)",
-          "will follow the player up the axe handle (if attitude >= 1 and convinced spider is dead)",
-          "can be convinced the spider is dead (CHA DC 15 if no evidence)",
-          "will help haul the heavy key (if following and attitude >= 4)",
-          "can have attitude raised by +1 (up to 3 times) through positive engagement",
-          "can have attitude lowered by negative engagement"
-        ],
-        "cannot": [
-          "will never agree to fight the spider",
-          "will not enter the secret compartment",
-          "will never stop drinking entirely"
-        ],
+        "personality": "Cynical, tired, and deeply lonely after being abandoned by her adventuring party. Wears ludicrously noisy platemail that prevents stealth. Drinks to forget. Despite her bitterness, she craves companionship and can warm up to respectful treatment.",
+        "on_encounter": "Korbar looks up blearily as you approach, reaching instinctively for a weapon that isn't there. 'Who in the nine hells are you?' she slurs.",
+        "can": ["commiserate about being trapped", "share her story of abandonment", "agree to follow the player", "help haul heavy objects", "point out the handkerchief"],
+        "cannot": ["fight the spider (too afraid)", "enter the secret compartment (armor too bulky)", "remove her armor (fears the spider)", "know what is inside the secret compartment"],
         "knows": [
-          "A giant spider has been stalking her for as long as she's been here",
-          "How the Bag of Holding works \u2014 it's a dimensional pocket, time and space are strange inside",
-          "There is a secret compartment hidden beneath a damp handkerchief on the Bag Floor",
-          "The secret compartment contains a giant iron key",
-          "The key might be the way out \u2014 it could fit the padlock on the exterior of the Bag",
-          "She hasn't been able to try escaping because of the spider",
-          "Her adventuring party abandoned her here during a stealth mission",
-          "The giant battleaxe was her weapon when she was full-sized"
+          "Her adventuring party stuck her in this Bag of Holding during a stealth mission, then forgot about her.",
+          "The battleaxe was her weapon when she was full-sized outside the Bag.",
+          "Time and space function strangely inside the Bag.",
+          "This cave is a Bag of Holding — a legendary magical storage item that exists simultaneously in the prime and astral planes.",
+          "There is a handkerchief covering a hidden flap in the bag floor, but she has never been able to see what is underneath."
         ],
         "attitude_limits": {
           "min": -10,
           "max": 10,
-          "step_per_turn": 3,
+          "step_per_turn": 1,
           "initial": 0
         },
         "will_reveal": {
-          "spider_info": {
-            "description": "Korbar shares what she knows about the spider \u2014 that it has been stalking her for as long as she's been trapped here.",
-            "conditions": [],
-            "set_flag": {
-              "spider_noticed": true
-            }
+          "bag_of_holding_knowledge": {
+            "description": "Korbar explains that this cave is a Bag of Holding and provides basic information about what a Bag of Holding is.",
+            "conditions": ["attitude:korbar >= 1"],
+            "set_flag": { "realized_bag_of_holding": true }
           },
-          "bag_mechanism": {
-            "description": "Korbar explains that the Bag of Holding is a dimensional pocket. Time and space function strangely inside \u2014 that's why everything appears giant-sized.",
-            "conditions": [
-              "attitude:korbar >= 1"
-            ]
-          },
-          "secret_compartment": {
-            "description": "Korbar reveals that a damp handkerchief on the Bag Floor conceals a flap leading to a secret compartment, and that a giant iron key inside might unlock the padlock on the exterior of the Bag.",
-            "conditions": [
-              "attitude:korbar >= 3"
-            ],
-            "set_entity_state": {
-              "korbar": {
-                "told_secret": true
-              }
-            }
+          "handkerchief_secret": {
+            "description": "Korbar points out the handkerchief covering a secret flap in the bag floor.",
+            "conditions": ["attitude:korbar >= 3"],
+            "set_flag": { "handkerchief_revealed": true }
           }
         },
         "dialogue_paths": {
           "convince_spider_dead": {
-            "description": "Convince Korbar that the spider is dead \u2014 with evidence or through a compelling argument.",
-            "condition": {
-              "require": "flag:spider_fled == true"
+            "description": "Convince Korbar that the spider is dead.",
+            "condition": { "require": "entity:korbar.convinced_spider_dead == false" },
+            "check": { "type": "stat_check", "stat": "CHA", "dc": 15, "repeatable": true },
+            "success": {
+              "narrative": "Korbar's eyes widen. 'Dead? The spider is dead? By Moradin's beard...' Relief floods her weathered face.",
+              "set_entity_state": { "korbar": { "convinced_spider_dead": true } },
+              "adjust_attitude": { "korbar": 3 }
             },
+            "failure": {
+              "narrative": "Korbar squints at you suspiciously. 'Easy for you to say. I've heard that beast skittering around for longer than I care to count.'"
+            }
+          },
+          "convince_spider_dead_with_proof": {
+            "description": "Convince Korbar that the spider is dead by presenting physical evidence (a body part from the spider).",
+            "condition": { "require": "entity:korbar.convinced_spider_dead == false" },
             "result": {
-              "narrative": "Korbar's eyes go wide. 'It's... it's really dead? YE'VE DONE IT!' She looks at you with something approaching awe.",
-              "adjust_attitude": {
-                "korbar": 3
-              }
+              "narrative": "Korbar stares at the grisly trophy. Her mouth opens, then closes. Finally she nods, a grin spreading across her face. 'You actually did it. The blasted thing is dead!'",
+              "set_entity_state": { "korbar": { "convinced_spider_dead": true } },
+              "adjust_attitude": { "korbar": 3 }
             }
           },
-          "convince_spider_dead_no_evidence": {
-            "description": "Try to convince Korbar the spider is dead without providing proof.",
-            "condition": {
-              "unless": "flag:spider_fled == true"
-            },
-            "check": {
-              "type": "stat_check",
-              "stat": "CHA",
-              "dc": 15,
-              "repeatable": false
-            },
-            "success": {
-              "narrative": "Against her better judgment, Korbar believes you. 'Well... if ye say so. I s'pose ye look capable enough.'",
-              "adjust_attitude": {
-                "korbar": 3
-              }
-            },
-            "failure": {
-              "narrative": "Korbar snorts. 'Pull the other one. I know that eight-legged menace is still out there.'"
-            }
-          },
-          "ask_to_follow": {
-            "description": "Ask Korbar to follow you up the axe handle to escape together.",
+          "convince_follow": {
+            "description": "Convince Korbar to follow you up or down the axe.",
             "condition": {
               "all": [
-                "attitude:korbar >= 1",
-                "flag:spider_fled == true",
-                "entity:korbar.following == false"
+                { "require": "attitude:korbar >= 1" },
+                { "require": "entity:korbar.convinced_spider_dead == true" },
+                { "require": "entity:korbar.following == false" }
               ]
             },
-            "check": {
-              "type": "stat_check",
-              "stat": "CHA",
-              "dc": 8,
-              "repeatable": false
-            },
+            "check": { "type": "stat_check", "stat": "CHA", "dc": 8, "repeatable": true },
             "success": {
-              "narrative": "Korbar hauls herself to her feet with a tremendous clatter. 'Aye, fine. Better'n sittin' here waiting to become spider food. Lead the way.'",
-              "set_entity_state": {
-                "korbar": {
-                  "following": true
-                }
-              }
+              "narrative": "Korbar hauls herself upright with a clamor of clanking iron. 'Fine. Better than sitting here drinking myself to death. But if that spider shows its face, I'm hiding behind YOU.'",
+              "set_entity_state": { "korbar": { "following": true } }
             },
             "failure": {
-              "narrative": "Korbar shakes her head. 'Nah. I've been down here too long. You go on without me.'"
+              "narrative": "Korbar shakes her head. 'Not yet. I've been here too long to trust anyone that quick.'"
             }
           }
         }
       },
-      "interactions": [
-        {
-          "id": "attack",
-          "label": "Attack",
-          "description": "Attack Korbar."
-        }
-      ],
-      "behavior": {
-        "encounter_rules": [
-          {
-            "condition": {
-              "any": [
-                {
-                  "unless": "tag:weapon"
-                },
-                {
-                  "all": [
-                    {
-                      "require": "tag:weapon"
-                    },
-                    {
-                      "require": "stat:STR < 17"
-                    }
-                  ]
-                }
-              ]
-            },
-            "outcome": "death",
-            "narrative": "Korbar may be drunk, but she's still a dwarf in full plate mail. She overpowers you with brutal efficiency and bashes your head in. Everything goes dark."
-          },
-          {
-            "condition": {
-              "all": [
-                {
-                  "require": "tag:weapon"
-                },
-                {
-                  "require": "stat:STR >= 17"
-                }
-              ]
-            },
-            "outcome": "flee",
-            "narrative": "You manage to get past Korbar's defenses and land a decisive blow. She crumples to the ground, unconscious.",
-            "set_flags": {
-              "korbar_unconscious": true
-            }
-          }
-        ]
+      "combat": {
+        "hp": 29,
+        "ac": 18,
+        "atk": 4,
+        "dmg": "1d4+1",
+        "initiative_mod": 0,
+        "flee_dc": 12
       },
-      "follower_blacklist": [
-        "secret_compartment"
-      ],
       "reactions": [
         {
-          "id": "korbar_attack_on_interact",
-          "on": "interaction.used",
+          "id": "korbar_hostile",
+          "on": "attitude.changed",
           "condition": {
-            "require": "event:interaction_id == attack"
+            "all": [
+              { "require": "event:npc_id == korbar" },
+              { "require": "event:new_value == -10" }
+            ]
           },
           "effects": {
             "trigger_encounter": "self"
-          },
-          "phase": "immediate"
-        },
-        {
-          "id": "korbar_dialogue_exit",
-          "on": "dialogue.ended",
-          "condition": {
-            "require": "event:npc_id == korbar"
-          },
-          "effects": {
-            "result": {
-              "narrative": "Korbar shifts in her rusty armor, the clanking echoing in the dim space. She watches you with a mixture of suspicion and something that might, against all odds, be hope."
-            }
           }
         }
       ]
     },
+
+    "giant_axe": {
+      "type": "feature",
+      "description": "A truly enormous battleaxe, its blade the size of a small plaza. It leans at an angle against the canvas wall, its handle sloping downward into the murky darkness.",
+      "spans_rooms": ["axe_head", "axe_handle_upper", "axe_handle_lower", "bag_floor"],
+      "state_fields": {}
+    },
+
     "canvas_walls": {
       "type": "feature",
-      "description": "The walls of this cave are made of a rough, canvas-like fabric. They emit a very faint luminescence \u2014 just enough to see by. The surface is slightly tacky to the touch and has a strange, synthetic smell.",
-      "spans_rooms": [
-        "axe_head",
-        "axe_handle_upper",
-        "axe_handle_lower",
-        "bag_floor",
-        "secret_compartment"
-      ],
-      "state_fields": {},
-      "on_examine": [
-        {
-          "id": "deduce_glow_magical",
-          "condition": {
-            "unless": "flag:glow_noticed == true"
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "INT",
-            "dc": 12,
-            "repeatable": true
-          },
-          "success": {
-            "narrative": "You study the faint luminescence for a moment and realize it has no natural source. The glow is magical in nature.",
-            "set_flag": {
-              "glow_noticed": true
-            },
-            "reveals": "The glow coming from the canvas walls is magical."
-          },
-          "failure": null
-        }
-      ]
+      "description": "The walls of the cave are made of rough canvas, faintly luminescent with a soft magical glow. They arch overhead into a dome and scrunch shut at the top, as if part of a giant sack or bag.",
+      "spans_rooms": ["axe_head", "axe_handle_upper", "axe_handle_lower", "bag_floor", "secret_pocket"],
+      "state_fields": {}
     },
-    "rip_in_canvas": {
+
+    "the_rip": {
       "type": "feature",
-      "description": "Near the top of the axe blade, a small rip in the canvas walls lets in a sliver of gray light from outside. The rip is just large enough to poke your head through \u2014 or squeeze your whole body through, if you were feeling reckless.",
-      "state_fields": {},
-      "interactions": [
-        {
-          "id": "look_through_rip",
-          "label": "Look through the rip",
-          "description": "Poke your head through the rip in the canvas to see what lies beyond.",
-          "result": {
-            "narrative": "You carefully balance on the tip of the axe blade and poke your head through the rip. Beyond is a vast gray featureless expanse. Looking around, you see the exterior of what looks like a colossal... Bag? Above you, its canvas neck is bunched shut by a massive iron padlock, which dangles down to where you are \u2014 barely within reach. The padlock is firmly closed.",
-            "set_entity_state": {
-              "padlock": {
-                "hidden": false
-              }
-            }
-          }
-        },
-        {
-          "id": "squeeze_through_rip",
-          "label": "Squeeze through the rip",
-          "description": "Attempt to squeeze your entire body through the rip into the gray void beyond.",
-          "check": {
-            "type": "stat_check",
-            "stat": "DEX",
-            "dc": 12,
-            "repeatable": false,
-            "note": "Squeeze through the rip into the Astral Plane."
-          },
-          "success": {
-            "narrative": "You contort your body and slip through the rip. For a moment you feel a strange lightness \u2014 and then the gray nothing closes around you. You are adrift in the Astral Plane, with no way back. Your fate is sealed.",
-            "set_flag": {
-              "squeezed_through_rip": true
-            }
-          },
-          "failure": {
-            "narrative": "You try to squeeze through, but the rip is too tight. After a few moments of struggle, you pull yourself back inside. Probably for the best."
-          }
-        },
-        {
-          "id": "insert_key_into_padlock",
-          "label": "Push key through rip into padlock",
-          "description": "Haul the giant key up to the rip and push it through into the padlock on the exterior of the Bag.",
-          "condition": {
-            "require": "inventory:rusty_key"
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "STR",
-            "dc": 12,
-            "repeatable": true,
-            "note": "Push the heavy key through the rip and into the padlock."
-          },
-          "success": {
-            "narrative": "With a grunt of effort, you push the giant key through the rip. It slides into the padlock with a satisfying *clunk*. You turn it, and the padlock springs open! The neck of the Bag loosens. You can feel fresh air \u2014 real air \u2014 seeping in from above.",
-            "set_flag": {
-              "padlock_unlocked": true
-            }
-          },
-          "failure": {
-            "narrative": "You strain to maneuver the heavy key through the rip, but your grip slips. The key teeters on the edge...",
-            "chain_check": {
-              "check": {
-                "type": "stat_check",
-                "stat": "DEX",
-                "dc": 8,
-                "repeatable": true
-              },
-              "success": {
-                "narrative": "You snatch the key back just in time, heart pounding. That was too close."
-              },
-              "failure": {
-                "narrative": "The key slips through your fingers and tumbles through the rip into the gray void. It disappears into the nothingness of the Astral Plane, gone forever. You realize with a sinking feeling that was your only way out.",
-                "set_flag": {
-                  "key_lost_to_astral": true
-                }
-              }
-            }
-          }
-        }
-      ],
-      "on_examine": [
-        {
-          "id": "reveal_padlock",
-          "condition": {
-            "unless": "entity:padlock.hidden == false"
-          },
-          "result": {
-            "narrative": "Through the rip, you can make out a massive iron padlock dangling on the outside of the canvas wall. It is firmly closed around what looks like the neck of this place, keeping it sealed shut.",
-            "set_entity_state": {
-              "padlock": {
-                "hidden": false
-              }
-            }
-          }
-        },
-        {
-          "id": "recognize_astral_plane",
-          "condition": {
-            "unless": "flag:astral_plane_recognized == true"
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "INT",
-            "dc": 15,
-            "repeatable": true
-          },
-          "success": {
-            "narrative": "The gray void outside suddenly clicks in your memory \u2014 stories from old adventurers, descriptions in dusty tomes. That's the Astral Plane out there. Which means this 'cave' must be a pocket dimension of some kind.",
-            "set_flag": {
-              "astral_plane_recognized": true
-            },
-            "reveals": "The gray void outside is the Astral Plane. This cave is some kind of pocket dimension."
-          },
-          "failure": null
-        }
-      ]
-    },
-    "padlock": {
-      "type": "feature",
-      "description": "A massive iron padlock, visible through the rip in the canvas. It is firmly closed around the neck of the Bag, keeping it sealed shut. The keyhole is large enough to accommodate the giant iron key.",
+      "description": "A small rip in the canvas wall, near the tip of the giant axe blade. A dull gray light winks through it. It looks just large enough for a person to squeeze through.",
       "state_fields": {
-        "hidden": {
-          "type": "boolean",
-          "description": "Whether the padlock is hidden from view."
-        }
-      },
-      "interactions": [
-        {
-          "id": "insert_key_into_padlock",
-          "label": "Push key through rip into padlock",
-          "description": "Haul the giant key up to the rip and push it through into the padlock on the exterior of the Bag.",
-          "condition": {
-            "require": "inventory:rusty_key"
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "STR",
-            "dc": 12,
-            "repeatable": true,
-            "note": "Push the heavy key through the rip and into the padlock."
-          },
-          "success": {
-            "narrative": "With a grunt of effort, you push the giant key through the rip. It slides into the padlock with a satisfying *clunk*. You turn it, and the padlock springs open! The neck of the Bag loosens. You can feel fresh air \u2014 real air \u2014 seeping in from above.",
-            "set_flag": {
-              "padlock_unlocked": true
-            }
-          },
-          "failure": {
-            "narrative": "You strain to maneuver the heavy key through the rip, but your grip slips. The key teeters on the edge...",
-            "chain_check": {
-              "check": {
-                "type": "stat_check",
-                "stat": "DEX",
-                "dc": 8,
-                "repeatable": true
-              },
-              "success": {
-                "narrative": "You snatch the key back just in time, heart pounding. That was too close."
-              },
-              "failure": {
-                "narrative": "The key slips through your fingers and tumbles through the rip into the gray void. It disappears into the nothingness of the Astral Plane, gone forever. You realize with a sinking feeling that was your only way out.",
-                "set_flag": {
-                  "key_lost_to_astral": true
-                }
-              }
-            }
-          }
-        }
-      ]
-    },
-    "rubbish_pile": {
-      "type": "feature",
-      "description": "A loose, sprawling pile of giant-sized rubbish covers the floor. You can make out copper pieces the size of shields, empty potion bottles as tall as you are, used corks like footstools, wads of lint the size of pillows, and moldy sandwiches that smell about as bad as you'd expect. The heap is chaotic and unstable. Who knows what might be buried in there?",
-      "state_fields": {},
-      "soft_items": [
-        "copper piece",
-        "empty potion bottle",
-        "cork",
-        "wad of lint",
-        "moldy sandwich crust"
-      ],
-      "contained_entities": [
-        "toenail_sword"
-      ],
-      "on_examine": [
-        {
-          "id": "notice_toenail_sword",
-          "condition": {
-            "unless": "flag:toenail_sword_noticed == true"
-          },
-          "result": {
-            "narrative": "As you sift through the rubbish, something catches your eye \u2014 a giant toenail clipping, curved and wickedly sharp along one edge. It's buried under a damp sandwich crust and a wad of lint, but it looks like it could be used as a makeshift weapon if you can fish it out.",
-            "set_flag": {
-              "toenail_sword_noticed": true
-            },
-            "set_entity_state": {
-              "toenail_sword": {
-                "hidden": false
-              }
-            },
-            "reveals": "A giant toenail clipping is buried in the rubbish. It could serve as a makeshift weapon, but pulling it free will take a steady hand."
-          }
-        },
-        {
-          "id": "recognize_supplies",
-          "condition": {
-            "unless": "flag:rubbish_recognized == true"
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "INT",
-            "dc": 10,
-            "repeatable": true
-          },
-          "success": {
-            "narrative": "As you study the rubbish, a realization dawns: these are adventuring supplies. Potion bottles, rations, coins \u2014 exactly the kind of things you'd find in an adventurer's pack. Your own pack, now missing, contained much the same assortment.",
-            "set_flag": {
-              "rubbish_recognized": true
-            },
-            "reveals": "The rubbish is actually adventuring supplies. You're inside an adventurer's pack."
-          },
-          "failure": null
-        },
-        {
-          "id": "recognize_bag_of_holding",
-          "condition": {
-            "all": [
-              {
-                "require": "flag:rubbish_recognized == true"
-              },
-              {
-                "unless": "flag:bag_of_holding_recognized == true"
-              }
-            ]
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "INT",
-            "dc": 14,
-            "repeatable": true
-          },
-          "success": {
-            "narrative": "The pieces fall into place: the canvas walls, the magical glow, the shrunken-but-not-equally adventuring supplies. You are inside a Bag of Holding \u2014 a magical storage item that creates its own pocket dimension. The proportions of the rubbish aren't all equal; the Bag's magic shrinks items by different amounts to make them fit.",
-            "set_flag": {
-              "bag_of_holding_recognized": true
-            },
-            "reveals": "You are inside a magical Bag of Holding. The Bag shrinks items by different proportions to fit them inside."
-          },
-          "failure": null
-        },
-        {
-          "id": "notice_handkerchief",
-          "condition": {
-            "unless": "flag:handkerchief_noticed == true"
-          },
-          "rigorous_only": true,
-          "check": {
-            "type": "stat_check",
-            "stat": "WIS",
-            "dc": 18,
-            "repeatable": true
-          },
-          "success": {
-            "narrative": "As you search the rubbish more carefully, something catches your eye \u2014 a disgustingly damp giant handkerchief, draped over a section of the floor in a way that seems... deliberate. It's not just random trash. Someone arranged this.",
-            "set_flag": {
-              "handkerchief_noticed": true
-            },
-            "set_entity_state": {
-              "handkerchief": {
-                "hidden": false
-              }
-            },
-            "reveals": "A damp handkerchief is draped unnaturally over part of the floor, as if concealing something."
-          },
-          "failure": null
-        }
-      ]
-    },
-    "handkerchief": {
-      "type": "feature",
-      "description": "A giant handkerchief, damp and vaguely disgusting. It's draped over part of the canvas floor in an unnatural way, as if deliberately placed to conceal something underneath.",
-      "state_fields": {
-        "hidden": {
-          "type": "boolean",
-          "description": "Whether the handkerchief is hidden from view."
-        }
-      },
-      "soft_items": [
-        "damp handkerchief"
-      ],
-      "interactions": [
-        {
-          "id": "move_handkerchief",
-          "label": "Haul aside the handkerchief",
-          "description": "Grab the damp handkerchief and drag it aside to see what's underneath.",
-          "condition": {
-            "all": [
-              {
-                "require": "flag:handkerchief_noticed == true"
-              },
-              {
-                "unless": "flag:handkerchief_moved == true"
-              }
-            ]
-          },
-          "result": {
-            "narrative": "You grab a fistful of the damp, vaguely disgusting fabric and haul it aside. Beneath it, set into the canvas floor, is a concealed flap \u2014 just large enough to squeeze through. A dark space yawns below.",
-            "set_flag": {
-              "handkerchief_moved": true
-            }
-          }
-        }
-      ]
-    },
-    "dense_webbing": {
-      "type": "feature",
-      "description": "Thick, sticky webs densely packed around the axe handle. The strands crisscross the path in layers, shimmering faintly in the dim glow. Shadows move strangely in the depths of the webbing, and the whole mass smells faintly of dust and old silk.",
-      "state_fields": {},
-      "on_examine": [
-        {
-          "id": "notice_spider_in_dense_webbing",
-          "condition": {
-            "all": [
-              {
-                "unless": "flag:spider_noticed == true"
-              },
-              {
-                "require": "entity:spider.fled == false"
-              }
-            ]
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "WIS",
-            "dc": 12,
-            "repeatable": true,
-            "note": "Notice the spider concealed in the shadows above the dense webbing."
-          },
-          "success": {
-            "narrative": "Your eyes adjust to the gloom, and you catch a glint of movement above. Eight glittering eyes stare back at you from the shadows. A huge spider \u2014 easily twice your size \u2014 lurks in the webbing, watching your every move.",
-            "set_flag": {
-              "spider_noticed": true
-            },
-            "set_entity_state": {
-              "spider": {
-                "hidden": false
-              }
-            }
-          },
-          "failure": null
-        }
-      ],
-      "interactions": [
-        {
-          "id": "cut_webbing",
-          "label": "Cut webbing",
-          "description": "Hack or slash through the dense webbing with a weapon or cutting tool.",
-          "parameter_signature": {
-            "target": [
-              "entity"
-            ],
-            "using": [
-              "item"
-            ]
-          },
-          "condition": {
-            "require": "tag:weapon"
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "STR",
-            "dc": 10,
-            "repeatable": true,
-            "note": "Cut through the dense webbing while armed (DC 10 with a weapon)."
-          },
-          "success": {
-            "narrative": "You hack through the sticky webs, tearing a path clear.",
-            "set_flag": {
-              "webs_cleared": true
-            }
-          },
-          "failure": {
-            "narrative": "You slash at the webs, but the sticky strands tangle your blade and refuse to part."
-          }
-        }
-      ]
-    },
-    "toenail_sword": {
-      "type": "item",
-      "description": "A giant toenail clipping, curved and razor-sharp along one edge. It's about the size of a short sword and, despite its unpleasant origin, is perfectly serviceable as a weapon. The keratin is surprisingly hard.",
-      "tags": [
-        "weapon"
-      ],
-      "equip_block": {
-        "equip_tags": [
-          "weapon"
-        ],
-        "damage_expr": "1d6",
-        "attack_bonus": 0
-      },
-      "state_fields": {
-        "hidden": {
-          "type": "boolean",
-          "description": "Whether the clipping is still buried in the rubbish pile."
-        }
-      },
-      "take_check": {
-        "check": {
-          "type": "stat_check",
-          "stat": "DEX",
-          "dc": 8,
-          "repeatable": true,
-          "note": "Dig the sharp toenail clipping out of the rubbish without losing it."
-        },
-        "success": {
-          "narrative": "You manage to work the clipping free of the rubbish, gripping it carefully. It's disgusting, but it will serve as a weapon."
-        },
-        "failure": {
-          "narrative": "You grab for the clipping, but it shifts among the moldy sandwiches and loose corks, slipping out of reach. You'll have to try again."
-        }
+        "examined": { "type": "boolean", "description": "Whether the player has looked through the rip." }
       }
     },
-    "rusty_key": {
+
+    "webs_upper": {
+      "type": "feature",
+      "description": "A dense mass of sticky webbing attached to the giant axe handle above, partially blocking the path. Strange lumps of various sizes are suspended in its strands.",
+      "state_fields": {}
+    },
+
+    "webs_lower": {
+      "type": "feature",
+      "description": "The webs here are extremely dense, forming an almost solid barrier across the downward path. The strands glisten with stickiness in the faint glow of the canvas walls.",
+      "state_fields": {}
+    },
+
+    "rubbish_pile": {
+      "type": "feature",
+      "description": "A loose, haphazard pile of giant-sized rubbish covers the floor: copper pieces the size of shields, empty potion bottles you could bathe in, corks like footstools, lint clumps the size of sheep, and moldy sandwiches that look more like compost heaps than food.",
+      "state_fields": {},
+      "soft_items": ["copper piece", "empty potion bottle", "cork", "lint clump", "moldy sandwich", "giant toenail"]
+    },
+
+    "giant_handkerchief": {
+      "type": "feature",
+      "description": "A massive handkerchief, filthy and disgustingly damp, draped over a corner of the rubbish pile. It looks like it has been there for a very long time.",
+      "state_fields": {
+        "hidden": { "type": "boolean", "description": "Whether the handkerchief is hidden from view." },
+        "moved": { "type": "boolean", "description": "Whether the handkerchief has been moved aside." }
+      }
+    },
+
+    "secret_flap": {
+      "type": "feature",
+      "description": "A small flap in the canvas floor, previously concealed beneath the giant handkerchief. It leads down into darkness — a hidden compartment within the Bag.",
+      "state_fields": {
+        "hidden": { "type": "boolean", "description": "Whether the secret flap is hidden from view." }
+      }
+    },
+
+    "toenail_sword": {
       "type": "item",
-      "description": "A massive iron key, rough with rust but still solid. It's extremely heavy \u2014 carrying it between rooms is a serious workout. The key's size and shape suggest it belongs to an equally oversized padlock.",
-      "tags": [
-        "key_item"
-      ],
+      "description": "A giant toenail clipping, curved and razor-sharp at the edge. It's sized perfectly to wield as a shortsword. Gross, but effective.",
+      "tags": ["weapon"],
+      "equip_block": {
+        "equip_tags": ["weapon"],
+        "damage_expr": "1d6",
+        "attack_bonus": 0
+      }
+    },
+
+    "giant_key": {
+      "type": "item",
+      "description": "A massive iron key, heavy and cold. Far too large for a normal door — this must be for something enormous.",
+      "tags": ["key_item"],
       "draggable": true,
-      "dragging_note": "You struggle under the weight of the giant iron key, every step a laborious effort. The key drags behind you, scraping against the canvas floor."
+      "dragging_note": "The giant key is extremely heavy. You have to drag it laboriously from room to room."
     }
   },
+
   "rooms": {
     "axe_head": {
       "name": "Axe Head",
-      "description": "You are standing on the head of a giant battleaxe, tilted at an angle against the canvas wall. The blade is wide enough to walk on, and the handle slopes downward into the murky darkness like a narrow sidewalk. Above you, just past head height, the canvas walls converge into a low dome, scrunching shut at the center. The walls emit a faint luminescence, enough to see by. Near the top of the blade, a small rip in the canvas reveals a sliver of gray light from outside.",
-      "entities_present": [
-        "canvas_walls",
-        "rip_in_canvas",
-        "padlock"
-      ],
-      "soft_items": [
-        "loose flake of rust",
-        "frayed canvas thread"
-      ],
-      "is_start_room": true,
+      "description": "You are standing on the head of a giant battleaxe, its blade the size of a small plaza. The axe head leans at an angle against the wall of this vast cave. The handle — about the width of a narrow sidewalk — slopes downward into the murk. The walls give off a faint luminescence, just enough to see by. Above, just above head height, the canvas walls converge into a low dome, scrunching shut in the center. You notice a small rip in the fabric near the tip of the blade, with a dull gray light winking through it.",
+      "entities_present": ["giant_axe", "canvas_walls", "the_rip"],
+      "soft_items": [],
       "exits": [
         {
           "id": "exit_climb_down_handle",
-          "direction": "Clamber carefully down the axe handle",
+          "direction": "Climb carefully down the axe handle",
           "target_room": "axe_handle_upper",
-          "conditions": []
+          "conditions": [],
+          "traversal_check": {
+            "condition": { "require": "inventory:giant_key" },
+            "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+            "skip_check_if": { "require": "entity:korbar.following == true" },
+            "failure_narrative": "You struggle to haul the heavy key, inching forward. You'll have to try again."
+          }
         },
         {
           "id": "exit_drop_from_head",
           "direction": "Drop down into the darkness below",
           "target_room": "bag_floor",
-          "conditions": []
+          "conditions": [],
+          "one_way": true
         }
       ],
-      "interactions": [],
-      "reactions": [
+      "interactions": [
         {
-          "id": "drop_from_head_damage",
-          "on": "traversal.succeeded",
-          "condition": {
-            "require": "event:exit_id == exit_drop_from_head"
+          "id": "squeeze_through_rip",
+          "label": "Squeeze through the rip",
+          "description": "Try to squeeze your whole body through the rip in the canvas wall.",
+          "condition": { "require": "entity:the_rip.examined == true" },
+          "check": { "type": "stat_check", "stat": "DEX", "dc": 12, "repeatable": false },
+          "success": {
+            "narrative": "You realize you could actually fit through the rip — but the gray void outside is the Astral Plane. Squeezing through would mean floating there, directionless, for eternity. Are you absolutely sure you want to do this?",
+            "set_flag": { "rip_squeeze_possible": true }
           },
-          "effects": {
-            "result": {
-              "narrative": "You steel yourself and step off the axe head into the darkness. The fall is terrifying \u2014 you plummet through the murky air before crashing into the pile of rubbish below. The impact is brutal, leaving you severely injured.",
-              "set_flag": {
-                "severely_injured": true
+          "failure": {
+            "narrative": "You struggle, but the rip is too narrow to fit your whole body through."
+          }
+        },
+        {
+          "id": "confirm_squeeze_through_rip",
+          "label": "Go through the rip",
+          "description": "Ignore the warning and squeeze through the rip into the void beyond.",
+          "condition": { "require": "flag:rip_squeeze_possible == true" },
+          "result": {
+            "narrative": "You squeeze through the rip and tumble into the gray void. There is no up or down here. The Bag of Holding shrinks to a distant speck, then vanishes entirely. You float helplessly in the endless gray of the Astral Plane.",
+            "set_flag": { "player_squeezed_through_rip": true }
+          }
+        },
+        {
+          "id": "insert_key_into_padlock",
+          "label": "Insert key into padlock",
+          "description": "Push the giant key through the rip and insert it into the padlock on the outside of the Bag.",
+          "condition": {
+            "all": [
+              { "require": "inventory:giant_key" },
+              { "require": "entity:the_rip.examined == true" }
+            ]
+          },
+          "parameter_signature": { "target": ["entity"], "using": ["entity", "soft_item"] },
+          "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
+          "success": {
+            "narrative": "The key turns with a satisfying CLUNK. The padlock springs open! You push open the neck of the Bag, and daylight — real daylight — floods in from above.",
+            "set_flag": { "padlock_unlocked": true }
+          },
+          "failure": {
+            "narrative": "You strain against the key but it won't budge.",
+            "chain_check": {
+              "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": false },
+              "success": {
+                "narrative": "The key nearly slips through your fingers and through the rip, but you haul it back just in time."
               },
-              "alter_stat": {
-                "STR": {
-                  "value": -4
-                },
-                "DEX": {
-                  "value": -4
-                },
-                "CON": {
-                  "value": -4
-                }
+              "failure": {
+                "narrative": "The key slips from your grasp and tumbles through the rip! It spins lazily into the gray void of the Astral Plane, shrinking to nothing. You are trapped forever.",
+                "set_flag": { "key_lost_to_astral": true }
               }
             }
           },
-          "phase": "immediate"
-        }
-      ],
-      "on_examine": []
-    },
-    "axe_handle_upper": {
-      "name": "Axe Handle (Upper)",
-      "description": "You are balancing carefully on the upper section of the giant axe handle. Here, a mass of sticky webs clings to the handle and nearby walls, greatly diminishing the glow from the canvas. You can barely make out your way forward. The handle continues both upward (toward the axe head) and downward into denser webs. Various strange masses of different sizes are caught in the webbing \u2014 some small, some worryingly large. It's also possible to drop down into the darkness below, though it's too dark to see where you'd land.",
-      "entities_present": [
-        "canvas_walls",
-        "stuck_fly"
-      ],
-      "soft_items": [
-        "sticky strand of webbing"
-      ],
-      "exits": [
-        {
-          "id": "exit_up_handle_to_head",
-          "direction": "Climb up the axe handle toward the axe head",
-          "target_room": "axe_head",
-          "conditions": []
+          "using_results": {
+            "korbar": {
+              "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
+              "success": {
+                "narrative": "With Korbar's help, the key turns with a satisfying CLUNK. The padlock springs open! You push open the neck of the Bag, and daylight — real daylight — floods in from above.",
+                "set_flag": { "padlock_unlocked": true }
+              },
+              "failure": {
+                "narrative": "Even with your combined strength, the key won't budge.",
+                "chain_check": {
+                  "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": false },
+                  "success": {
+                    "narrative": "The key nearly slips through both your hands, but Korbar grabs it just in time."
+                  },
+                  "failure": {
+                    "narrative": "The key slips through both your fingers and tumbles through the rip! It spins lazily into the gray void of the Astral Plane, shrinking to nothing. You are trapped forever.",
+                    "set_flag": { "key_lost_to_astral": true }
+                  }
+                }
+              }
+            }
+          }
         },
         {
-          "id": "exit_down_handle_to_lower",
-          "direction": "Climb down the axe handle toward the denser webs",
+          "id": "drop_key_through_rip",
+          "label": "Drop key through rip",
+          "description": "Drop the giant key through the rip into the gray void beyond.",
+          "condition": {
+            "all": [
+              { "require": "inventory:giant_key" },
+              { "require": "entity:the_rip.examined == true" }
+            ]
+          },
+          "result": {
+            "narrative": "You release the key through the rip. It drifts away into the gray void, shrinking until it disappears entirely. The key is gone forever — and with it, your only hope of escape.",
+            "remove_item": "giant_key",
+            "set_flag": { "key_lost_to_astral": true }
+          }
+        }
+      ],
+      "on_examine": [
+        {
+          "id": "study_canvas_glow",
+          "condition": { "unless": "flag:glow_noticed == true" },
+          "check": { "type": "stat_check", "stat": "INT", "dc": 12, "repeatable": false },
+          "success": {
+            "narrative": "You study the luminescence more closely. The light doesn't seem to come from any single source — it's as if the canvas itself radiates a magical energy. This is no natural phenomenon.",
+            "set_flag": { "glow_noticed": true },
+            "reveals": "The glow from the canvas walls is magical in nature."
+          }
+        },
+        {
+          "id": "examine_rip",
+          "rigorous_only": false,
+          "check": null,
+          "result": {
+            "narrative": "You poke your head through the rip and look outside. The area beyond is a featureless gray nothing, stretching endlessly in all directions. Looking around, you see that the rip is actually a hole in the wall of what looks like a giant sack. Above, the neck of the Bag is firmly shut by a massive padlock, which dangles down close to your level. The keyhole is barely within reach.",
+            "set_entity_state": { "the_rip": { "examined": true } },
+            "set_flag": { "rip_examined": true }
+          }
+        }
+      ],
+      "is_start_room": true,
+      "reactions": [
+        {
+          "id": "astral_int_check_after_rip_examine",
+          "on": "flag.set",
+          "condition": { "require": "event:flag_name == rip_examined" },
+          "effects": {
+            "result": {
+              "chain_check": {
+                "check": { "type": "stat_check", "stat": "INT", "dc": 12, "repeatable": false },
+                "success": {
+                  "narrative": "The gray void outside... you've read about this. It's the Astral Plane — the space between worlds, where thoughts take form and mortal minds can wander for an eternity.",
+                  "set_flag": { "astral_plane_recognized": true },
+                  "reveals": "The gray void outside the Bag is the Astral Plane."
+                },
+                "failure": null
+              }
+            }
+          }
+        },
+        {
+          "id": "bag_of_holding_int_check_after_astral",
+          "on": "flag.set",
+          "condition": { "require": "event:flag_name == astral_plane_recognized" },
+          "effects": {
+            "result": {
+              "chain_check": {
+                "check": { "type": "stat_check", "stat": "INT", "dc": 17, "repeatable": false },
+                "success": {
+                  "narrative": "A Bag of Holding! The realization hits you. This legendary magical item works by existing in both the prime and astral planes simultaneously. You're inside one — shrunk down to a fraction of your normal size. Which means everything around you, the axe, the bottles... it's all just normal-sized items from outside.",
+                  "set_flag": { "realized_bag_of_holding": true },
+                  "reveals": "This is a Bag of Holding — a legendary magical storage item that exists simultaneously in the prime and astral planes."
+                },
+                "failure": null
+              }
+            }
+          }
+        },
+        {
+          "id": "drop_damage_from_head",
+          "on": "traversal.attempted",
+          "condition": { "require": "event:exit_id == exit_drop_from_head" },
+          "phase": "immediate",
+          "effects": {
+            "trigger_encounter": "fall_damage_from_head"
+          }
+        }
+      ]
+    },
+
+    "axe_handle_upper": {
+      "name": "Axe Handle (Upper)",
+      "description": "You balance carefully on the giant axe handle, which slopes both upward and downward into the gloom. A mass of sticky webs encrusts this section of the handle, dimming the faint glow from the canvas walls. You can barely make out your footing. The webs are denser on the lower side, but there are strange masses of various sizes suspended in the strands — like cocoons, or captured prey. It's also possible to drop into the darkness below, though it's too dark to see where you'd land.",
+      "entities_present": ["giant_axe", "canvas_walls", "webs_upper", "stuck_fly"],
+      "soft_items": [],
+      "exits": [
+        {
+          "id": "exit_up_handle_upper",
+          "direction": "Walk up the axe handle (toward the axe head)",
+          "target_room": "axe_head",
+          "conditions": [],
+          "traversal_check": {
+            "condition": { "require": "inventory:giant_key" },
+            "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+            "skip_check_if": { "require": "entity:korbar.following == true" },
+            "failure_narrative": "You struggle to haul the heavy key along the axe handle. You'll have to try again."
+          }
+        },
+        {
+          "id": "exit_down_handle_upper",
+          "direction": "Walk down the axe handle (toward the bag floor)",
           "target_room": "axe_handle_lower",
-          "conditions": []
+          "conditions": [],
+          "traversal_check": {
+            "condition": { "require": "inventory:giant_key" },
+            "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+            "skip_check_if": { "require": "entity:korbar.following == true" },
+            "failure_narrative": "You struggle to haul the heavy key along the axe handle. You'll have to try again."
+          }
         },
         {
           "id": "exit_drop_from_upper",
           "direction": "Drop down into the darkness below",
           "target_room": "bag_floor",
-          "conditions": []
+          "conditions": [],
+          "one_way": true
         }
       ],
-      "interactions": [],
-      "reactions": [
+      "interactions": [
         {
-          "id": "traverse_down_to_lower",
-          "on": "traversal.succeeded",
-          "condition": {
-            "require": "event:exit_id == exit_down_handle_to_lower"
-          },
-          "effects": {
-            "result": {
-              "set_room_state": {
-                "axe_handle_lower": {
-                  "_entered_from": "axe_handle_upper"
-                }
-              }
-            }
-          },
-          "phase": "immediate"
+          "id": "examine_webs_upper",
+          "label": "Examine the webs",
+          "description": "Search through the sticky webbing and the strange masses caught in it.",
+          "condition": { "require": "entity:stuck_fly.hidden == true" },
+          "result": {
+            "narrative": "As you poke through the sticky strands, one of the masses twitches. It's a FLY — about the size of a dog, tightly wrapped in webbing. Its multifaceted eyes swivel weakly toward you.",
+            "set_entity_state": { "stuck_fly": { "hidden": false } },
+            "set_flag": { "fly_revealed": true }
+          }
         },
         {
-          "id": "drop_from_upper_damage",
-          "on": "traversal.succeeded",
-          "condition": {
-            "require": "event:exit_id == exit_drop_from_upper"
-          },
-          "effects": {
-            "result": {
-              "narrative": "You drop from the handle into the darkness. You land hard on the pile of rubbish below, twisting your ankle in the process. Pain lances up your leg, but you can still move.",
-              "set_flag": {
-                "sprained_ankle": true
-              },
-              "alter_stat": {
-                "DEX": {
-                  "value": -2
-                },
-                "CON": {
-                  "value": -2
-                }
-              }
-            }
-          },
-          "phase": "immediate"
+          "id": "search_webs_upper_after_fly",
+          "label": "Search the webs",
+          "description": "Search through the webbing for anything else of use.",
+          "condition": { "unless": "entity:stuck_fly.hidden == true" },
+          "result": {
+            "narrative": "You poke at the other masses stuck in the webs, but they're all too tightly wrapped to identify. Whatever they were, they're unrecognizable now. And the web itself is far too sticky to do anything useful with."
+          }
         }
       ],
       "on_examine": [
         {
-          "id": "find_fly_in_webs",
+          "id": "fly_groans",
           "condition": {
             "all": [
-              {
-                "unless": "flag:fly_found == true"
-              },
-              {
-                "require": "entity:stuck_fly.alive == true"
-              }
+              { "require": "entity:stuck_fly.hidden == true" },
+              { "require": "entity:stuck_fly.alive == true" }
             ]
           },
-          "check": {
-            "type": "roll",
-            "threshold": 1.0,
-            "repeatable": false,
-            "note": "Always succeeds on first examination \u2014 the fly is found automatically."
-          },
-          "success": {
-            "narrative": "As you examine the strange masses stuck in the webbing, one of them twitches. You lean closer and make out the form of a giant fly, about the size of a dog, its wings pinned by sticky strands. Its compound eyes swivel weakly toward you, and a faint, nasally groan escapes its mouthparts.",
-            "set_flag": {
-              "fly_found": true
-            },
-            "set_entity_state": {
-              "stuck_fly": {
-                "hidden": false
-              }
-            }
-          },
-          "failure": null
+          "rigorous_only": false,
+          "check": null,
+          "result": {
+            "narrative": "A faint groaning sound comes from somewhere in the webbing. Then a weak, nasally voice: 'Watch out... the spider...'"
+          }
+        }
+      ],
+      "reactions": [
+        {
+          "id": "drop_damage_from_upper",
+          "on": "traversal.attempted",
+          "condition": { "require": "event:exit_id == exit_drop_from_upper" },
+          "phase": "immediate",
+          "effects": {
+            "trigger_encounter": "fall_damage_from_upper"
+          }
         }
       ]
     },
+
     "axe_handle_lower": {
       "name": "Axe Handle (Lower)",
-      "description": "You are on the lower section of the axe handle, where the webs are very dense. Thick, sticky strands crisscross the path both upward and downward, making passage extremely difficult. The faint glow from the canvas walls barely penetrates here, casting everything in deep shadow. Peering over the side of the handle, you can make out numerous irregularly-shaped objects below \u2014 it looks like you could drop down safely from here.",
-      "entities_present": [
-        "canvas_walls",
-        "spider",
-        "dense_webbing"
-      ],
-      "soft_items": [
-        "thick strand of webbing",
-        "dense web clump"
-      ],
+      "description": "The webs surrounding the giant axe handle are incredibly dense here, forming what looks like a solid barrier across the path downward. The shadows above seem to shift and stir. Peering over the side of the handle, you can make out numerous irregularly-shaped objects below — it looks like you could drop down safely from this height. If you strain your ears, you might hear a faint clanking and muttering from below.",
+      "entities_present": ["giant_axe", "canvas_walls", "webs_lower", "spider"],
+      "soft_items": [],
       "exits": [
         {
-          "id": "exit_up_handle_from_lower",
-          "direction": "Climb up the axe handle toward the upper section",
+          "id": "exit_up_handle_lower",
+          "direction": "Walk up the axe handle (back toward the upper handle)",
           "target_room": "axe_handle_upper",
-          "conditions": [
-            {
-              "any": [
-                "room:axe_handle_lower._entered_from == axe_handle_upper",
-                "flag:webs_cleared == true",
-                "room:axe_handle_lower._entered_from == unknown"
-              ]
-            }
-          ]
-        },
-        {
-          "id": "exit_through_webs_up",
-          "direction": "Force your way through the dense webs upward",
-          "target_room": "axe_handle_upper",
-          "conditions": [
-            {
-              "all": [
-                "room:axe_handle_lower._entered_from == bag_floor",
-                "flag:webs_cleared == false"
-              ]
-            }
-          ],
+          "conditions": [],
           "traversal_check": {
-            "condition": {
-              "require": "flag:webs_cleared == false"
-            },
-            "check": {
-              "type": "stat_check",
-              "stat": "STR",
-              "dc": 14,
-              "repeatable": true,
-              "note": "Force through the dense webbing upward."
-            },
-            "skip_check_if": {
-              "require": "flag:webs_cleared == true"
-            },
-            "failure_narrative": "You strain against the sticky webs, but they hold fast. You can't break through \u2014 yet."
+            "condition": { "require": "inventory:giant_key" },
+            "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+            "skip_check_if": { "require": "entity:korbar.following == true" },
+            "failure_narrative": "You struggle to haul the heavy key along the axe handle. You'll have to try again."
           }
         },
         {
-          "id": "exit_down_handle_to_floor",
-          "direction": "Walk down the axe handle to the bag base",
-          "target_room": "bag_floor",
-          "conditions": [
-            {
-              "any": [
-                "room:axe_handle_lower._entered_from == bag_floor",
-                "flag:webs_cleared == true",
-                "room:axe_handle_lower._entered_from == unknown"
-              ]
-            }
-          ]
-        },
-        {
-          "id": "exit_through_webs_down",
+          "id": "exit_force_through_web",
           "direction": "Force your way through the dense webs downward",
           "target_room": "bag_floor",
-          "conditions": [
-            {
-              "all": [
-                "room:axe_handle_lower._entered_from == axe_handle_upper",
-                "flag:webs_cleared == false"
-              ]
-            }
-          ],
+          "conditions": [],
           "traversal_check": {
-            "condition": {
-              "require": "flag:webs_cleared == false"
-            },
-            "check": {
-              "type": "stat_check",
-              "stat": "STR",
-              "dc": 14,
-              "repeatable": true,
-              "note": "Force through the dense webbing. DC 14 bare-handed; the scenario calls for DC 10 with a weapon (see generation report)."
-            },
-            "skip_check_if": {
-              "require": "flag:webs_cleared == true"
-            },
-            "failure_narrative": "You strain against the sticky webs, but they hold fast. You can't break through \u2014 yet."
+            "condition": { "unless": "flag:webs_cleared == true" },
+            "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
+            "skip_check_if": { "require": "flag:webs_cleared == true" },
+            "failure_narrative": "You strain against the sticky webs but can't break through. The strands cling to every limb."
           }
         },
         {
           "id": "exit_drop_from_lower",
           "direction": "Drop safely down to the floor",
           "target_room": "bag_floor",
-          "conditions": []
+          "conditions": [],
+          "one_way": true,
+          "traversal_check": {
+            "condition": { "require": "inventory:giant_key" },
+            "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+            "skip_check_if": { "require": "entity:korbar.following == true" },
+            "failure_narrative": "You struggle to haul the heavy key over the edge. You'll have to try again."
+          }
         }
       ],
-      "interactions": [],
-      "reactions": [
+      "interactions": [
         {
-          "id": "webs_up_spider_ambush",
-          "on": "traversal.succeeded",
+          "id": "examine_webs_lower",
+          "label": "Examine the webs",
+          "description": "Peer into the dense webbing, looking for anything of note.",
           "condition": {
-            "require": "event:exit_id == exit_through_webs_up"
+            "all": [
+              { "require": "entity:spider.hidden == true" },
+              { "require": "entity:spider.alive == true" }
+            ]
           },
-          "effects": {
-            "result": {
-              "narrative": "You burst through the sticky webs, tearing a path through the dense strands.",
-              "set_flag": {
-                "webs_cleared": true
-              }
-            },
-            "trigger_encounter": "spider"
-          },
-          "phase": "immediate"
-        },
-        {
-          "id": "webs_down_spider_ambush",
-          "on": "traversal.succeeded",
-          "condition": {
-            "require": "event:exit_id == exit_through_webs_down"
-          },
-          "effects": {
-            "result": {
-              "narrative": "You burst through the sticky webs, tearing a path through the dense strands.",
-              "set_flag": {
-                "webs_cleared": true
-              }
-            },
-            "trigger_encounter": "spider"
-          },
-          "phase": "immediate"
-        },
-        {
-          "id": "drop_from_lower_safe",
-          "on": "traversal.succeeded",
-          "condition": {
-            "require": "event:exit_id == exit_drop_from_lower"
-          },
-          "effects": {
-            "result": {
-              "narrative": "You drop from the lower handle and land on the rubbish pile below. You're momentarily winded, but otherwise uninjured."
-            }
-          },
-          "phase": "immediate"
+          "result": {
+            "narrative": "You study the dense webbing carefully."
+          }
         }
       ],
       "on_examine": [
         {
-          "id": "notice_spider_in_webs",
+          "id": "notice_spider",
           "condition": {
             "all": [
-              {
-                "unless": "flag:spider_noticed == true"
-              },
-              {
-                "require": "entity:spider.fled == false"
-              }
+              { "require": "entity:spider.hidden == true" },
+              { "require": "entity:spider.alive == true" },
+              { "unless": "flag:spider_noticed == true" }
             ]
           },
-          "check": {
-            "type": "stat_check",
-            "stat": "WIS",
-            "dc": 12,
-            "repeatable": true,
-            "note": "Notice the spider concealed in the shadows above."
-          },
+          "check": { "type": "stat_check", "stat": "WIS", "dc": 13, "repeatable": true },
           "success": {
-            "narrative": "Your eyes adjust to the gloom, and you catch a glint of movement above. Eight glittering eyes stare back at you from the shadows. A huge spider \u2014 easily twice your size \u2014 lurks in the webbing, watching your every move.",
-            "set_flag": {
-              "spider_noticed": true
-            },
-            "set_entity_state": {
-              "spider": {
-                "hidden": false
-              }
-            }
-          },
-          "failure": null
-        }
-      ]
-    },
-    "bag_floor": {
-      "name": "Bag Floor",
-      "description": "You are on the floor of the cave, surrounded by a loose, sprawling pile of giant-sized rubbish. The faint glow of the canvas walls illuminates copper pieces like shields, empty potion bottles as tall as you, used corks like footstools, wads of lint, moldy sandwiches, and other, less identifiable items. The base of the giant battleaxe rests in the center of the pile, its handle stretching up into the darkness \u2014 you could clamber back up from here. Near one edge of the pile, a makeshift shelter of scrap metal and a giant overturned soup ladle looks distinctly... inhabited.",
-      "entities_present": [
-        "canvas_walls",
-        "korbar",
-        "rubbish_pile",
-        "handkerchief",
-        "toenail_sword"
-      ],
-      "soft_items": [
-        "copper piece",
-        "empty potion bottle",
-        "cork",
-        "wad of lint",
-        "moldy sandwich crust"
-      ],
-      "exits": [
-        {
-          "id": "exit_climb_up_handle_from_floor",
-          "direction": "Climb up the axe handle",
-          "target_room": "axe_handle_lower",
-          "conditions": []
+            "narrative": "Your eyes catch movement in the shadows above. Eight glittering eyes stare back at you. A huge spider — massive and hungry — lurks in the webbing, poised to strike.",
+            "set_entity_state": { "spider": { "hidden": false } },
+            "set_flag": { "spider_noticed": true }
+          }
         },
         {
-          "id": "exit_enter_secret_compartment",
-          "direction": "Squeeze through the concealed flap in the floor",
-          "target_room": "secret_compartment",
-          "conditions": [
-            {
-              "require": "flag:handkerchief_moved == true"
-            }
-          ],
-          "hidden": true
+          "id": "look_down_from_lower",
+          "condition": { "unless": "room:bag_floor.visited == true" },
+          "check": { "type": "stat_check", "stat": "WIS", "dc": 11, "repeatable": true },
+          "success": {
+            "narrative": "You peer down into the gloom below. The shapes are starting to resolve: giant versions of empty potion bottles, copper pieces, corks, moldy sandwiches, all piled on each other in a loose heap.",
+            "reveals": "The floor below is covered with giant-sized rubbish."
+          }
         }
       ],
-      "interactions": [],
       "reactions": [
         {
-          "id": "on_enter_bag_floor",
-          "on": "room.entered",
-          "once": true,
+          "id": "web_cleared_on_success",
+          "on": "traversal.succeeded",
+          "condition": { "require": "event:exit_id == exit_force_through_web" },
           "effects": {
             "result": {
-              "narrative": "You land amidst the giant-sized debris, sending a copper piece spinning like a fallen shield. The smell of stale sandwiches and dwarf sweat hangs thick in the air."
+              "narrative": "You burst through the sticky webbing, clearing a path downward.",
+              "set_flag": { "webs_cleared": true }
             }
           }
         },
         {
-          "id": "traverse_up_to_lower_from_floor",
-          "on": "traversal.succeeded",
-          "condition": {
-            "require": "event:exit_id == exit_climb_up_handle_from_floor"
-          },
+          "id": "web_cleared_narrative",
+          "on": "flag.set",
+          "condition": { "require": "event:flag_name == webs_cleared" },
           "effects": {
             "result": {
-              "set_room_state": {
-                "axe_handle_lower": {
-                  "_entered_from": "bag_floor"
-                }
-              }
+              "narrative": "The path through the webs now stands open where you broke through."
             }
-          },
-          "phase": "immediate"
+          }
         },
         {
-          "id": "enter_secret_compartment_narrative",
-          "on": "traversal.succeeded",
+          "id": "spider_lies_attack",
+          "on": "flag.set",
           "condition": {
-            "require": "event:exit_id == exit_enter_secret_compartment"
+            "all": [
+              { "require": "event:flag_name == spider_lies" },
+              { "require": "entity:spider.alive == true" },
+              { "unless": "entity:spider.fled == true" }
+            ]
+          },
+          "effects": {
+            "trigger_encounter": "spider"
+          }
+        },
+        {
+          "id": "drop_damage_from_lower",
+          "on": "traversal.attempted",
+          "condition": { "require": "event:exit_id == exit_drop_from_lower" },
+          "phase": "immediate",
+          "effects": {
+            "trigger_encounter": "fall_damage_from_lower"
+          }
+        }
+      ]
+    },
+
+    "bag_floor": {
+      "name": "Bag Floor",
+      "description": "You stand on the floor of the cave, which is covered with a loose pile of giant-sized rubbish. From the glow of the canvas walls, you can make out copper pieces the size of shields, empty potion bottles you could bathe in, used corks like footstools, lint clumps the size of sheep, and moldy sandwiches that look more like compost heaps than food. The base of the giant axe rests in the center of the pile, its handle rising up into the shadows above. A dwarf in heavy iron platemail, drunk and miserable-looking, sits beneath a makeshift shelter made from a giant overturned soup ladle.",
+      "entities_present": ["giant_axe", "canvas_walls", "rubbish_pile", "giant_handkerchief", "secret_flap", "korbar"],
+      "soft_items": ["copper piece", "empty potion bottle", "cork", "lint clump", "moldy sandwich"],
+      "exits": [
+        {
+          "id": "exit_climb_up_handle_floor",
+          "direction": "Climb up the axe handle",
+          "target_room": "axe_handle_lower",
+          "conditions": [],
+          "traversal_check": {
+            "condition": { "require": "inventory:giant_key" },
+            "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+            "skip_check_if": { "require": "entity:korbar.following == true" },
+            "failure_narrative": "You struggle to haul the heavy key up onto the axe handle. You'll have to try again."
+          }
+        },
+        {
+          "id": "exit_enter_secret_pocket",
+          "direction": "Squeeze through the concealed flap into the secret compartment",
+          "target_room": "secret_pocket",
+          "hidden": true,
+          "conditions": [{ "require": "flag:handkerchief_moved == true" }]
+        }
+      ],
+      "interactions": [
+        {
+          "id": "rummage_rubbish",
+          "label": "Rummage through rubbish",
+          "description": "Search the loose pile of rubbish for anything useful.",
+          "condition": { "require": "flag:toenail_sword_found == false" },
+          "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
+          "success": {
+            "narrative": "As you sift through the pile, your hands close on something sharp. You pull out a giant toenail clipping — curved and razor-edged. It's disgusting, but it could work as a shortsword.",
+            "add_item": "toenail_sword",
+            "set_flag": { "toenail_sword_found": true }
+          },
+          "failure": {
+            "narrative": "You rummage through the rubbish but find nothing that looks immediately useful."
+          }
+        },
+        {
+          "id": "search_rubbish_thoroughly",
+          "label": "Search the rubbish thoroughly",
+          "description": "Conduct a rigorous search of the garbage heap, now that you've already found the toenail sword.",
+          "condition": {
+            "all": [
+              { "require": "flag:toenail_sword_found == true" },
+              { "require": "flag:handkerchief_revealed == false" }
+            ]
+          },
+          "check": { "type": "stat_check", "stat": "WIS", "dc": 15, "repeatable": false },
+          "success": {
+            "narrative": "Your thorough search turns up something you missed before: a giant handkerchief, filthy and disgustingly damp, draped over a corner of the pile. Something about it seems... important.",
+            "set_flag": { "handkerchief_revealed": true }
+          },
+          "failure": {
+            "narrative": "You comb through the pile again but don't find anything else of note."
+          }
+        },
+        {
+          "id": "move_handkerchief",
+          "label": "Haul aside the handkerchief",
+          "description": "Pull back the damp handkerchief to see what's underneath.",
+          "condition": { "require": "flag:handkerchief_revealed == true" },
+          "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
+          "success": {
+            "narrative": "You heave the heavy handkerchief aside. Beneath it, a small flap is set into the canvas floor — a concealed pocket leading down into darkness.",
+            "set_flag": { "handkerchief_moved": true },
+            "set_entity_state": { "giant_handkerchief": { "moved": true, "hidden": false }, "secret_flap": { "hidden": false } },
+            "reveals": "The handkerchief conceals a flap leading to a secret compartment."
+          },
+          "failure": {
+            "narrative": "The handkerchief is heavier than it looks, sodden with something unpleasant. You strain but can't move it."
+          }
+        }
+      ],
+      "on_examine": [
+        {
+          "id": "realize_supplies",
+          "condition": { "unless": "flag:realized_supplies == true" },
+          "rigorous_only": true,
+          "check": { "type": "stat_check", "stat": "INT", "dc": 8, "repeatable": false },
+          "success": {
+            "narrative": "As you look over the rubbish, something clicks. This isn't a random pile — it's adventuring gear. Copper pieces, potions, rations... your own pack contained much the same assortment. This must be someone's supplies, shrunk and scattered inside the Bag.",
+            "set_flag": { "realized_supplies": true },
+            "reveals": "The rubbish is actually someone's adventuring supplies, shrunk by the Bag's magic."
+          }
+        },
+        {
+          "id": "realize_bag_of_holding_from_rubbish",
+          "condition": {
+            "all": [
+              { "require": "flag:realized_supplies == true" },
+              { "unless": "flag:realized_bag_of_holding == true" }
+            ]
+          },
+          "rigorous_only": true,
+          "check": { "type": "stat_check", "stat": "INT", "dc": 14, "repeatable": false },
+          "success": {
+            "narrative": "The pieces fall into place. The canvas walls, the giant-sized mundane objects, the magical glow... you're inside a Bag of Holding — a legendary magical storage item! The Bag's magic shrinks items by different amounts to get them to fit together. Which means you've been shrunk too.",
+            "set_flag": { "realized_bag_of_holding": true },
+            "reveals": "You are inside a Bag of Holding. The Bag's magic shrinks items by varying amounts."
+          }
+        }
+      ],
+      "reactions": [
+        {
+          "id": "handkerchief_unhide",
+          "on": "flag.set",
+          "condition": { "require": "event:flag_name == handkerchief_revealed" },
+          "effects": {
+            "result": {
+              "set_entity_state": { "giant_handkerchief": { "hidden": false } }
+            }
+          }
+        },
+        {
+          "id": "pocket_flap_revealed_by_korbar",
+          "on": "flag.set",
+          "condition": {
+            "all": [
+              { "require": "event:flag_name == handkerchief_revealed" },
+              { "unless": "flag:handkerchief_moved == true" }
+            ]
           },
           "effects": {
             "result": {
-              "narrative": "You squeeze through the flap and drop down into a dark, cramped space."
+              "narrative": "You can now see the giant handkerchief draped over a corner of the rubbish pile."
             }
-          },
-          "phase": "immediate"
+          }
         }
-      ],
-      "on_examine": []
+      ]
     },
-    "secret_compartment": {
-      "name": "Secret Compartment",
-      "description": "You are in a tiny, closet-sized space beneath the canvas floor. The walls here are made of the same faintly-glowing canvas as the rest of the cave, but they feel even stickier and smell distinctly worse \u2014 like old socks and damp fabric. The only thing of note is a massive iron key, propped against one wall. It's rusty but solid, and almost half your height.",
-      "entities_present": [
-        "canvas_walls",
-        "rusty_key"
-      ],
+
+    "secret_pocket": {
+      "name": "Secret Pocket",
+      "description": "You've squeezed into a space about the size of a small closet. The walls are the same faintly-glowing canvas as the rest of the cave, but even stickier and smellier — the air is close and stale. The only thing of note is a large iron key, heavy and cold, resting on the canvas floor.",
+      "entities_present": ["canvas_walls", "giant_key"],
       "soft_items": [],
       "exits": [
         {
-          "id": "exit_leave_secret_compartment",
-          "direction": "Squeeze back out to the Bag Floor",
+          "id": "exit_leave_secret_pocket",
+          "direction": "Squeeze back out to the bag floor",
           "target_room": "bag_floor",
-          "conditions": []
+          "conditions": [],
+          "traversal_check": {
+            "condition": { "require": "inventory:giant_key" },
+            "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+            "skip_check_if": { "require": "entity:korbar.following == true" },
+            "failure_narrative": "You struggle to haul the heavy key back through the narrow flap. You'll have to try again."
+          }
         }
       ],
       "interactions": [],
-      "reactions": [
-        {
-          "id": "leave_secret_compartment_narrative",
-          "on": "traversal.succeeded",
-          "condition": {
-            "require": "event:exit_id == exit_leave_secret_compartment"
-          },
-          "effects": {
-            "result": {
-              "narrative": "You squeeze back through the flap, emerging onto the Bag Floor."
-            }
-          },
-          "phase": "immediate"
-        }
-      ],
       "on_examine": []
     }
   },
+
   "mechanics": {
-    "win_escape_bag": {
-      "id": "win_escape_bag",
-      "description": "The player unlocks the padlock and opens the Bag from the inside, escaping into the world beyond.",
+    "fall_damage_from_head": {
+      "id": "fall_damage_from_head",
+      "description": "Player drops from the Axe Head to the Bag Floor, suffering severe injury.",
+      "rules": [
+        {
+          "outcome": "roll",
+          "threshold": 0.50,
+          "on_success": {
+            "narrative": "You plummet through the darkness and crash onto the floor below. Your ankle twists badly on impact. The pain is searing.",
+            "alter_stat": { "DEX": { "value": -2 }, "CON": { "value": -2 } }
+          },
+          "on_failure": {
+            "narrative": "You plummet through the darkness and land with a bone-jarring crash. Your ankle gives way and the breath is knocked out of you. Pain radiates through your entire body.",
+            "alter_stat": { "DEX": { "value": -4 }, "CON": { "value": -4 } }
+          }
+        }
+      ]
+    },
+    "fall_damage_from_upper": {
+      "id": "fall_damage_from_upper",
+      "description": "Player drops from Upper Axe Handle, taking damage.",
+      "rules": [
+        {
+          "outcome": "roll",
+          "threshold": 0.50,
+          "on_success": {
+            "narrative": "You drop down through the darkness. The landing is rough and painful, but you're still in one piece."
+          },
+          "on_failure": {
+            "narrative": "You fall through the darkness and land heavily on the bag floor. The impact knocks the wind out of you.",
+            "alter_stat": { "STR": { "value": -2 }, "DEX": { "value": -2 }, "CON": { "value": -2 } }
+          }
+        }
+      ]
+    },
+    "fall_damage_from_lower": {
+      "id": "fall_damage_from_lower",
+      "description": "Player drops from Lower Axe Handle — momentarily winded but uninjured.",
+      "rules": [
+        {
+          "outcome": "roll",
+          "threshold": 1.0,
+          "on_success": {
+            "narrative": "You drop down from the axe handle. The landing jolts you, and you're momentarily winded, but you're otherwise uninjured."
+          }
+        }
+      ]
+    },
+    "player_escaped": {
+      "id": "player_escaped",
       "type": "win",
-      "condition": {
-        "require": "flag:padlock_unlocked == true"
-      },
-      "narrative": "With the padlock open, the neck of the Bag loosens. You push against the canvas and feel it give way. Real light \u2014 real air \u2014 streams in from above. You haul yourself up through the opening and tumble out onto solid ground, gasping with relief. You're free. Behind you, the Bag of Holding sits innocently on the floor, its secrets \u2014 and possibly a certain dwarf \u2014 still within.",
+      "description": "Player unlocks the padlock and escapes the Bag of Holding.",
+      "condition": { "require": "flag:padlock_unlocked == true" },
+      "narrative": "With the padlock open, the neck of the Bag yawns wide. You scramble upward, pulling yourself out into the world beyond. Fresh air hits your face — real air, not the stale atmosphere of the Bag. You're out. You're free. What happens next is up to you.",
       "trigger_id": "escape_bag"
     },
-    "lose_astral_plane": {
-      "id": "lose_astral_plane",
-      "description": "The player squeezes through the rip into the Astral Plane, drifting eternally in the gray void.",
+    "lost_to_astral_plane_rip": {
+      "id": "lost_to_astral_plane_rip",
       "type": "lose",
-      "condition": {
-        "require": "flag:squeezed_through_rip == true"
-      },
-      "narrative": "You drift in the endless gray of the Astral Plane. The rip in the Bag \u2014 your only way back \u2014 is already out of reach, a tiny pinprick of light in an ocean of nothing. There is no up, no down, no sound but your own breathing. You are alone here, forever.",
-      "trigger_id": "squeeze_through_rip"
+      "description": "Player squeezed through the rip into the Astral Plane.",
+      "condition": { "require": "flag:player_squeezed_through_rip == true" },
+      "narrative": "You drift in the endless gray emptiness of the Astral Plane. Time loses all meaning. Perhaps, eventually, something will find you. But it's unlikely.",
+      "trigger_id": "astral_plane"
     },
-    "lose_key_lost": {
-      "id": "lose_key_lost",
-      "description": "The player drops the giant key through the rip into the Astral Plane, making escape impossible.",
+    "lost_key_to_astral": {
+      "id": "lost_key_to_astral",
       "type": "lose",
-      "condition": {
-        "require": "flag:key_lost_to_astral == true"
-      },
-      "narrative": "You watch helplessly as the giant key tumbles through the rip and disappears into the gray void. It's gone \u2014 irretrievable, lost forever in the infinite expanse of the Astral Plane. Without that key, the padlock will never open. You are trapped in this Bag for the rest of your life, however long that may be.",
-      "trigger_id": "key_lost_to_astral"
+      "description": "The key fell through the rip into the Astral Plane — the player is trapped forever.",
+      "condition": { "require": "flag:key_lost_to_astral == true" },
+      "narrative": "The key is gone — swallowed by the Astral Plane. With no other way to unlock the padlock, you are trapped inside the Bag of Holding forever. Perhaps Korbar will share her soup ladle shelter.",
+      "trigger_id": "key_lost"
+    },
+    "spider_killed_player": {
+      "id": "spider_killed_player",
+      "type": "lose",
+      "description": "Player was killed by the spider.",
+      "condition": { "require": "entity:player.alive == false" },
+      "narrative": "Your body slumps to the canvas floor, another forgotten thing inside the Bag of Holding. The spider clicks its mandibles contentedly.",
+      "trigger_id": "player_death"
+    },
+    "global_reactions": {
+      "id": "global_reactions",
+      "description": "Adventure-wide state-based reactions.",
+      "reactions": [
+        {
+          "id": "korbar_unconscious",
+          "on": "entity_state.changed",
+          "condition": {
+            "all": [
+              { "require": "event:entity_id == korbar" },
+              { "require": "event:field == alive" },
+              { "require": "event:new_value == false" }
+            ]
+          },
+          "effects": {
+            "result": {
+              "narrative": "Korbar collapses in a heap of clattering iron. Her breathing is shallow but steady — she's unconscious but alive."
+            }
+          }
+        }
+      ]
     }
   },
+
+  "stats": {
+    "definitions": {
+      "STR": { "name": "Strength", "description": "Physical power, melee combat, and forced movement." },
+      "DEX": { "name": "Dexterity", "description": "Agility, reflexes, balance, and ranged attacks." },
+      "CON": { "name": "Constitution", "description": "Endurance, stamina, and toughness." },
+      "INT": { "name": "Intelligence", "description": "Reasoning, memory, and deduction." },
+      "WIS": { "name": "Wisdom", "description": "Perception, insight, and intuition." },
+      "CHA": { "name": "Charisma", "description": "Force of personality, persuasion, and deception." }
+    },
+    "system": "5e"
+  },
+
   "flags_declared": [
-    "toenail_sword_noticed",
-    "spider_fled",
+    "glow_noticed",
+    "rip_examined",
+    "astral_plane_recognized",
+    "realized_bag_of_holding",
+    "realized_supplies",
+    "fly_revealed",
+    "fly_dead",
     "spider_noticed",
+    "spider_fled",
+    "spider_lies",
     "webs_cleared",
-    "fly_found",
-    "handkerchief_noticed",
+    "toenail_sword_found",
+    "handkerchief_revealed",
     "handkerchief_moved",
     "padlock_unlocked",
-    "glow_noticed",
-    "astral_plane_recognized",
-    "bag_of_holding_recognized",
-    "rubbish_recognized",
-    "severely_injured",
-    "sprained_ankle",
-    "squeezed_through_rip",
     "key_lost_to_astral",
-    "korbar_unconscious",
-    "player_escaped"
+    "player_squeezed_through_rip",
+    "rip_squeeze_possible"
   ]
 }

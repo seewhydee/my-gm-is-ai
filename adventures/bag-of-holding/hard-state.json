@@ -2,49 +2,81 @@
   "player": {
     "location": "axe_head",
     "inventory": [],
+    "equipped": [],
     "stats": {
       "STR": 10,
-      "DEX": 10,
-      "CON": 10,
-      "INT": 10,
+      "DEX": 13,
+      "CON": 12,
+      "INT": 11,
       "WIS": 10,
       "CHA": 10
-    }
+    },
+    "level": 4,
+    "current_hp": 27,
+    "max_hp": 27,
+    "ac": 11,
+    "proficiency_bonus": 2
   },
   "flags": {
-    "spider_fled": false,
-    "spider_noticed": false,
-    "webs_cleared": false,
-    "fly_found": false,
-    "handkerchief_noticed": false,
-    "handkerchief_moved": false,
-    "toenail_sword_noticed": false,
-    "padlock_unlocked": false,
     "glow_noticed": false,
+    "rip_examined": false,
     "astral_plane_recognized": false,
-    "bag_of_holding_recognized": false,
-    "rubbish_recognized": false,
-    "severely_injured": false,
-    "sprained_ankle": false,
-    "squeezed_through_rip": false,
+    "realized_bag_of_holding": false,
+    "realized_supplies": false,
+    "fly_revealed": false,
+    "fly_dead": false,
+    "spider_noticed": false,
+    "spider_fled": false,
+    "spider_lies": false,
+    "webs_cleared": false,
+    "toenail_sword_found": false,
+    "handkerchief_revealed": false,
+    "handkerchief_moved": false,
+    "padlock_unlocked": false,
     "key_lost_to_astral": false,
-    "korbar_unconscious": false,
-    "player_escaped": false
+    "player_squeezed_through_rip": false,
+    "rip_squeeze_possible": false
   },
   "room_states": {
     "axe_head": { "visited": false },
     "axe_handle_upper": { "visited": false },
-    "axe_handle_lower": { "visited": false, "_entered_from": "unknown" },
+    "axe_handle_lower": { "visited": false },
     "bag_floor": { "visited": false },
-    "secret_compartment": { "visited": false }
+    "secret_pocket": { "visited": false }
   },
   "entity_states": {
-    "padlock": { "hidden": true },
-    "stuck_fly": { "alive": true, "attitude": 0, "hidden": true },
-    "spider": { "alive": true, "fled": false, "attitude": -2, "hidden": true },
-    "korbar": { "alive": true, "attitude": 0, "following": false, "told_secret": false },
-    "handkerchief": { "hidden": true },
-    "toenail_sword": { "hidden": true }
+    "player": {
+      "alive": true
+    },
+    "stuck_fly": {
+      "alive": true,
+      "hidden": true,
+      "attitude": 0
+    },
+    "spider": {
+      "alive": true,
+      "fled": false,
+      "hidden": true,
+      "attitude": -2,
+      "current_hp": 15
+    },
+    "korbar": {
+      "alive": true,
+      "attitude": 0,
+      "following": false,
+      "convinced_spider_dead": false,
+      "current_hp": 29
+    },
+    "the_rip": {
+      "examined": false
+    },
+    "giant_handkerchief": {
+      "hidden": true,
+      "moved": false
+    },
+    "secret_flap": {
+      "hidden": true
+    }
   },
   "turn_count": 0,
   "game_over": null

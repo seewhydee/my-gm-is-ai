@@ -2,7 +2,9 @@
   "soft_inventory": [],
   "room_notes": {},
   "entity_notes": {},
-  "player_knowledge": [],
+  "surfaced_soft_items": {},
+  "checks_attempted": {},
+  "revealed_hints": [],
   "turn_history": [],
   "dialogue_state": {
     "active_npc": null,
@@ -11,7 +13,5 @@
     "entered_turn": 0,
     "stall_counter": 0
   },
-  "surfaced_soft_items": {},
-  "checks_attempted": {},
-  "revealed_hints": []
+  "player_knowledge": []
 }
