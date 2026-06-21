@@ -142,19 +142,18 @@ class FiveESystem(ResolutionSystem):
         return max(1, 8 + self.compute_modifier(con_value))
 
     # ------------------------------------------------------------------
-    # Saving throws (hook; not yet invoked by the combat loop)
+    # Saving throws (hook; invoked by the combat loop on NPC hits)
     # ------------------------------------------------------------------
     def resolve_save(
         self,
         stat: str,
         stat_value: int,
         dc: int,
-        proficient: bool = False,
-        proficiency_bonus: int = 0,
+        flat_modifier: int = 0,
         params: dict | None = None,
     ) -> SaveResult:
         computed_mod = self.compute_modifier(stat_value)
-        total_mod = computed_mod + (proficiency_bonus if proficient else 0)
+        total_mod = computed_mod + flat_modifier
 
         sys_params = (params or {}).get(self.name, {})
         advantage = sys_params.get("advantage", False)
@@ -175,3 +174,10 @@ class FiveESystem(ResolutionSystem):
             advantage=advantage,
             disadvantage=disadvantage,
         )
+
+    def compute_save_modifier(self, stat: str, player_state: Any) -> int:
+        """5e: proficient saves add the player's proficiency bonus."""
+        profs = getattr(player_state, "save_proficiencies", [])
+        if stat in profs:
+            return getattr(player_state, "proficiency_bonus", None) or 2
+        return 0

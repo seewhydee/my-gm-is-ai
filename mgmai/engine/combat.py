@@ -372,13 +372,11 @@ def _resolve_on_hit_effect(
     save_dc = effect.save.dc
 
     stat_value = (hard.player.stats or {}).get(save_stat, 10)
-    proficient = save_stat in hard.player.save_proficiencies
-    prof_bonus = hard.player.proficiency_bonus or 2
+    flat_mod = system.compute_save_modifier(save_stat, hard.player)
 
     save_result: SaveResult = system.resolve_save(
         save_stat, stat_value, save_dc,
-        proficient=proficient,
-        proficiency_bonus=prof_bonus,
+        flat_modifier=flat_mod,
     )
 
     effect_damage = 0

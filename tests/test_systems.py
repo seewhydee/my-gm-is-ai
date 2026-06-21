@@ -89,7 +89,7 @@ class TestRegistry:
                 return 10
             def base_max_hp(self, con_value: int) -> int:
                 return 1
-            def resolve_save(self, stat, stat_value, dc, proficient=False, proficiency_bonus=0, params=None):
+            def resolve_save(self, stat, stat_value, dc, flat_modifier=0, params=None):
                 return SaveResult(stat, dc, 0, 1, 1, 1 - dc, False, False, False)
 
         register_system("dummy", DummySystem)
@@ -207,18 +207,18 @@ class TestFiveECombat:
         # CON 1 -> mod -5 -> 8-5 = 3 (still >= 1)
         assert FiveESystem().base_max_hp(1) == 3
 
-    def test_resolve_save_success(self, monkeypatch) -> None:
+    def test_resolve_save_with_flat_modifier(self, monkeypatch) -> None:
         monkeypatch.setattr(random, "randint", lambda a, b: 18)
-        sr = FiveESystem().resolve_save("CON", 14, dc=15, proficient=True, proficiency_bonus=2)
+        sr = FiveESystem().resolve_save("CON", 14, dc=15, flat_modifier=2)
         assert isinstance(sr, SaveResult)
-        # 18 + 2 (CON) + 2 (prof) = 22 >= 15
+        # 18 + 2 (CON) + 2 (flat) = 22 >= 15
         assert sr.success is True
         assert sr.modifier == 4
 
-    def test_resolve_save_nonproficient(self, monkeypatch) -> None:
+    def test_resolve_save_without_flat_modifier(self, monkeypatch) -> None:
         monkeypatch.setattr(random, "randint", lambda a, b: 10)
-        sr = FiveESystem().resolve_save("CON", 14, dc=15, proficient=False, proficiency_bonus=2)
-        # 10 + 2 (CON, no prof) = 12 < 15
+        sr = FiveESystem().resolve_save("CON", 14, dc=15, flat_modifier=0)
+        # 10 + 2 (CON) = 12 < 15
         assert sr.success is False
         assert sr.modifier == 2
 
@@ -226,6 +226,30 @@ class TestFiveECombat:
         d = SaveResult("CON", 11, 2, 14, 16, 5, True, False, False).to_dict()
         assert d["type"] == "saving_throw"
         assert d["stat"] == "CON"
+
+    def test_compute_save_modifier_proficient(self) -> None:
+        class FakePlayer:
+            save_proficiencies = ["CON", "DEX"]
+            proficiency_bonus = 3
+
+        s = FiveESystem()
+        assert s.compute_save_modifier("CON", FakePlayer()) == 3
+        assert s.compute_save_modifier("DEX", FakePlayer()) == 3
+        assert s.compute_save_modifier("STR", FakePlayer()) == 0
+
+    def test_compute_save_modifier_default_prof_bonus(self) -> None:
+        class FakePlayer:
+            save_proficiencies = ["CON"]
+            proficiency_bonus = None
+
+        assert FiveESystem().compute_save_modifier("CON", FakePlayer()) == 2
+
+    def test_compute_save_modifier_no_proficiencies(self) -> None:
+        class FakePlayer:
+            save_proficiencies = []
+            proficiency_bonus = 2
+
+        assert FiveESystem().compute_save_modifier("CON", FakePlayer()) == 0
 
     def test_default_damage_exprs(self) -> None:
         s = FiveESystem()

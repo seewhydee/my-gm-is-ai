@@ -194,8 +194,15 @@ class ResolutionSystem(ABC):
         stat: str,
         stat_value: int,
         dc: int,
-        proficient: bool = False,
-        proficiency_bonus: int = 0,
+        flat_modifier: int = 0,
         params: dict | None = None,
     ) -> SaveResult:
         """Resolve a saving throw against a DC."""
+
+    def compute_save_modifier(self, stat: str, player_state: Any) -> int:
+        """Return any extra modifier the system applies to a save for this player.
+
+        Default is 0. Override in subclasses for system-specific rules
+        (e.g. 5e proficiency bonus on proficient saves).
+        """
+        return 0

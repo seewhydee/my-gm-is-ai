@@ -130,6 +130,7 @@ The player gains optional combat fields on `HardGameState.player`:
 | `max_hp` | int? | `None` | Maximum hit points (computed from CON if absent) |
 | `ac` | int? | `None` | Armour Class (computed from DEX if absent) |
 | `proficiency_bonus` | int? | `None` | Proficiency bonus (defaults to `2`) |
+| `save_proficiencies` | list[str]? | `[]` | Ability scores the player is proficient in for saving throws (e.g. `["DEX","INT"]`) |
 
 When the adventure has a `corpus.stats` block and a field is absent, the
 engine computes defaults at combat-start time:
