@@ -106,7 +106,7 @@ class StateManager:
 
         reset_disabled_once()
 
-        self._validate_cross_references()
+        self.validate_cross_references()
         self._validate_player_stats()
         self._init_player_combat_defaults()
 
@@ -184,7 +184,7 @@ class StateManager:
             except ValidationError as e:
                 raise ValueError(f"Invalid value for '{field}': {e}") from e
 
-        self._validate_cross_references()
+        self.validate_cross_references()
         self._validate_player_stats()
         self._init_player_combat_defaults()
 
@@ -192,7 +192,7 @@ class StateManager:
     # Validation
     # ------------------------------------------------------------------
 
-    def _validate_cross_references(self) -> None:
+    def validate_cross_references(self) -> None:
         """Run cross-reference checks between corpus and state files."""
         if self.corpus is None or self.hard_state is None or self.soft_state is None:
             raise StateNotLoadedError("Corpus and state must be loaded before validation")

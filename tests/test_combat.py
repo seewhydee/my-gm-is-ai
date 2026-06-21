@@ -755,3 +755,56 @@ class TestCombatPersistence:
         assert cs2.round_number == 3
         assert cs2.log[0].hit is True
         assert cs2.log[0].damage == 4
+
+
+class TestCombatEndStates:
+    """Combat state transitions: victory, death, flee."""
+
+    def test_all_enemies_dead_ends_combat(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+        # Roll 20 → crit, max damage dice → kill
+        rand_vals = iter([20, 6, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        action = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="Finishing blow!",
+        )
+        result = resolve_combat_turn(action, hard, combat_npc_corpus)
+        assert result["success"]
+        assert result["game_over"] is False
+        assert hard.combat is None
+
+    def test_player_death_game_over(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.current_hp = 1
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["goblin", "player"],
+            current_index=0,
+            round_number=1,
+        )
+        # Player misses (1), goblin hits hard (20 → crit, max damage: 2d6+2)
+        rand_vals = iter([1, 20, 6, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        action = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="Last stand!",
+        )
+        result = resolve_combat_turn(action, hard, combat_npc_corpus)
+        assert result["success"]
+        assert result["game_over"] is True
+        assert hard.combat is None

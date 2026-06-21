@@ -68,3 +68,66 @@ class TestDisplayNoRich:
         d.render_error("oops")
         captured = capsys.readouterr()
         assert "oops" in captured.out
+
+    def test_render_goodbye_no_rich(self, monkeypatch, capsys) -> None:
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        d = Display()
+        d.render_goodbye()
+        captured = capsys.readouterr()
+        assert "Thanks for playing" in captured.out
+
+    def test_render_intro_includes_room_info(self, state_manager, monkeypatch, capsys) -> None:
+        """render_intro calls _render_room — verify room name and exits appear."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        d = Display()
+        d.render_intro(state_manager)
+        captured = capsys.readouterr()
+        assert "Axe Head" in captured.out
+        assert "Exits:" in captured.out
+
+    def test_render_status_combat(self, state_manager, monkeypatch, capsys) -> None:
+        """When combat is active, render_status shows combat panel."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.models.combat import CombatState
+        state_manager.hard_state.combat = CombatState(
+            round_number=1,
+            initiative_order=["player", "spider"],
+            combatants=["player", "spider"],
+            active=True,
+        )
+        state_manager.hard_state.player.current_hp = 8
+        state_manager.hard_state.player.max_hp = 10
+        d = Display()
+        d.render_status(state_manager)
+        captured = capsys.readouterr()
+        assert "Combat" in captured.out
+        assert "Round 1" in captured.out
+
+    def test_format_exits_visible(self, monkeypatch) -> None:
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        room = type("Room", (), {
+            "exits": [
+                type("E", (), {"direction": "north", "hidden": False, "one_way": False})(),
+                type("E", (), {"direction": "south", "hidden": False, "one_way": True})(),
+            ]
+        })()
+        result = Display.format_exits(room)
+        assert "north" in result
+        assert "south" in result
+        assert "one-way" in result
+
+    def test_format_exits_hidden_filtered(self, monkeypatch) -> None:
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        room = type("Room", (), {
+            "exits": [
+                type("E", (), {"direction": "north", "hidden": True, "one_way": False})(),
+            ]
+        })()
+        result = Display.format_exits(room)
+        assert result == ""
+
+    def test_format_exits_no_exits(self, monkeypatch) -> None:
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        room = type("Room", (), {"exits": []})()
+        result = Display.format_exits(room)
+        assert result == ""

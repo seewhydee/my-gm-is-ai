@@ -49,7 +49,7 @@ class TestLoadAndValidation:
         sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
         sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
-        sm._validate_cross_references()
+        sm.validate_cross_references()
         assert sm.corpus.rooms["axe_head"].name == "Axe Head"
 
     def test_invalid_player_location(self) -> None:
@@ -59,7 +59,7 @@ class TestLoadAndValidation:
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.player.location = "nonexistent_room"
         with pytest.raises(ValueError, match="No matching room"):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_invalid_inventory_item(self) -> None:
         sm = StateManager()
@@ -68,7 +68,7 @@ class TestLoadAndValidation:
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.player.inventory.append("magic_wand")
         with pytest.raises(ValueError, match="No matching entity: "):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_invalid_room_state_room(self) -> None:
         sm = StateManager()
@@ -77,7 +77,7 @@ class TestLoadAndValidation:
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.room_states["void"] = {"visited": False}
         with pytest.raises(ValueError, match="No matching room: "):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_invalid_entity_state_entity(self) -> None:
         sm = StateManager()
@@ -86,7 +86,7 @@ class TestLoadAndValidation:
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.entity_states["ghost"] = {"alive": True}
         with pytest.raises(ValueError, match="No matching entity"):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_undeclared_entity_state_field(self) -> None:
         sm = StateManager()
@@ -95,7 +95,7 @@ class TestLoadAndValidation:
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.entity_states["spider"]["magic_level"] = 9000
         with pytest.raises(ValueError, match="undeclared state field"):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_invalid_room_note_room(self) -> None:
         sm = StateManager()
@@ -104,7 +104,7 @@ class TestLoadAndValidation:
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.soft_state.room_notes["void"] = ["spooky"]
         with pytest.raises(ValueError, match="No matching room"):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_invalid_entity_note_entity(self) -> None:
         sm = StateManager()
@@ -113,7 +113,7 @@ class TestLoadAndValidation:
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.soft_state.entity_notes["ghost"] = ["spooky"]
         with pytest.raises(ValueError, match="No matching entity: "):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_invalid_npc_attitudes_entity(self) -> None:
         sm = StateManager()
@@ -122,7 +122,7 @@ class TestLoadAndValidation:
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
         sm.hard_state.entity_states["battleaxe"] = {"attitude": 5}
         with pytest.raises(ValueError, match="not 'npc'"):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_npc_attitude_below_min(self) -> None:
         sm = StateManager()
@@ -132,7 +132,7 @@ class TestLoadAndValidation:
         # korbar's attitude_limits.min is -5 in the sample corpus
         sm.hard_state.entity_states["korbar"]["attitude"] = -10
         with pytest.raises(ValueError, match="below minimum"):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_npc_attitude_above_max(self) -> None:
         sm = StateManager()
@@ -142,7 +142,7 @@ class TestLoadAndValidation:
         # korbar's attitude_limits.max is 10 in the sample corpus
         sm.hard_state.entity_states["korbar"]["attitude"] = 15
         with pytest.raises(ValueError, match="above maximum"):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_invalid_player_knowledge_non_npc(self) -> None:
         sm = StateManager()
@@ -160,7 +160,7 @@ class TestLoadAndValidation:
             ),
         ]
         with pytest.raises(ValueError, match="No matching entity: "):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_invalid_player_knowledge_topic(self) -> None:
         sm = StateManager()
@@ -178,7 +178,7 @@ class TestLoadAndValidation:
             ),
         ]
         with pytest.raises(ValueError, match="not in will_reveal"):
-            sm._validate_cross_references()
+            sm.validate_cross_references()
 
     def test_multiple_errors_collected(self) -> None:
         sm = StateManager()
@@ -188,7 +188,7 @@ class TestLoadAndValidation:
         sm.hard_state.player.location = "bad_room"
         sm.hard_state.room_states["bad_room2"] = {}
         with pytest.raises(ValueError) as exc_info:
-            sm._validate_cross_references()
+            sm.validate_cross_references()
         msg = str(exc_info.value)
         assert "bad_room" in msg
         assert "bad_room2" in msg
@@ -712,3 +712,40 @@ class TestApplyCharSheet:
         sm = StateManager(ADVENTURES_DIR / "bag-of-holding")
         with pytest.raises(FileNotFoundError, match="Character sheet file not found"):
             sm.apply_char_sheet("nonexistent.json")
+
+
+class TestSaveLoadRoundtrip:
+    """Verify state integrity across save → load cycle."""
+
+    def test_roundtrip_preserves_core_state(self, manager, tmp_path) -> None:
+        manager.hard_state.player.location = "bag_floor"
+        manager.hard_state.player.inventory = ["rusty_key", "toenail_sword"]
+        manager.hard_state.flags["my_flag"] = True
+        manager.hard_state.turn_count = 7
+        manager.hard_state.entity_states["spider"]["alive"] = False
+
+        save_path = tmp_path / "save.json"
+        manager.save(str(save_path))
+
+        sm2 = StateManager()
+        sm2.load_save(save_path)
+
+        assert sm2.hard_state.player.location == "bag_floor"
+        assert "rusty_key" in sm2.hard_state.player.inventory
+        assert "toenail_sword" in sm2.hard_state.player.inventory
+        assert sm2.hard_state.flags.get("my_flag") is True
+        assert sm2.hard_state.turn_count == 7
+        assert sm2.hard_state.entity_states["spider"]["alive"] is False
+
+    def test_roundtrip_preserves_soft_state(self, manager, tmp_path) -> None:
+        manager.soft_state.soft_inventory = ["rock"]
+        manager.soft_state.room_notes["axe_head"] = ["A note"]
+
+        save_path = tmp_path / "save.json"
+        manager.save(str(save_path))
+
+        sm2 = StateManager()
+        sm2.load_save(save_path)
+
+        assert "rock" in sm2.soft_state.soft_inventory
+        assert "A note" in sm2.soft_state.room_notes["axe_head"]

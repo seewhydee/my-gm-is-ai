@@ -329,7 +329,7 @@ class TestStateManagerEquipment:
         hard = state_manager.hard_state
         hard.player.equipped.append("nonexistent_item")
         with pytest.raises(ValueError, match="No matching entity"):
-            state_manager._validate_cross_references()
+            state_manager.validate_cross_references()
 
 
 # ------------------------------------------------------------------
