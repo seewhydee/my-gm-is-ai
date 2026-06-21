@@ -178,7 +178,12 @@ The combat engine uses this AC for NPC hit calculations.
 
 ### Damage and attack bonus
 
-`get_player_damage_expr(hard, corpus, soft)` follows this priority:
+Attack resolution is delegated to the active `ResolutionSystem`
+(`resolve_player_attack` / `resolve_npc_attack`).  The engine no longer
+computes `atk_bonus` itself.
+
+`FiveESystem.compute_player_damage_expr(hard, corpus, soft)` follows this
+priority:
 
 1. **Equipped weapon** — the first equipped item with `"weapon"` in its
    `equip_tags` provides its `damage_expr`.
@@ -188,7 +193,7 @@ The combat engine uses this AC for NPC hit calculations.
    compatible fallback) → `"1d8"`.
 4. **Unarmed** — `"1d6"`.
 
-`get_player_attack_bonus(hard, corpus, effective_stats)` sums:
+`FiveESystem.compute_player_attack_bonus(hard, corpus)` sums:
 - STR modifier (or DEX, depending on weapon properties in a future version).
 - Proficiency bonus.
 - `attack_bonus` from all equipped weapons.

@@ -24,7 +24,13 @@ resolvers.
 
 from __future__ import annotations
 
-from mgmai.engine.systems.base import CheckResult, ResolutionSystem, SaveResult
+from mgmai.engine.systems.base import (
+    CheckResult,
+    NPCAttackResult,
+    PlayerAttackResult,
+    ResolutionSystem,
+    SaveResult,
+)
 from mgmai.engine.systems.five_e import FiveESystem
 
 _REGISTRY: dict[str, type[ResolutionSystem]] = {
@@ -77,6 +83,8 @@ __all__ = [
     "ResolutionSystem",
     "CheckResult",
     "SaveResult",
+    "PlayerAttackResult",
+    "NPCAttackResult",
     "FiveESystem",
     "get_system",
     "get_system_for_corpus",

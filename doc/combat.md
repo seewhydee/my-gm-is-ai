@@ -365,6 +365,8 @@ These may be added in future phases.
 
 > Note: the *engine* is already system-agnostic through the
 > `ResolutionSystem` interface; the limitations above concern combat
-> *features* (gear, conditions, spells, …), not system portability.  The
-> saving-throw hook (`ResolutionSystem.resolve_save`) is wired into the
-> on-hit effects phase of NPC attacks — see `OnHitEffect` above.
+> *features* (gear, conditions, spells, …), not system portability.  Player
+> and NPC attacks are resolved by `ResolutionSystem.resolve_player_attack` and
+> `ResolutionSystem.resolve_npc_attack`, and the saving-throw hook
+> (`ResolutionSystem.resolve_save`) is wired into the on-hit effects phase of
+> NPC attacks — see `OnHitEffect` above.

@@ -159,7 +159,7 @@ mgmai/
 │   ├── combat.py                # Turn-based combat loop (system-agnostic)
 │   ├── stat_checks.py           # Backward-compat shims + narrative prefixes
 │   ├── systems/                 # Resolution-system abstraction
-│   │   ├── base.py              # ResolutionSystem ABC + CheckResult/SaveResult
+│   │   ├── base.py              # ResolutionSystem ABC + CheckResult/SaveResult/PlayerAttackResult/NPCAttackResult
 │   │   ├── five_e.py            # D&D 5e implementation
 │   │   └── dice.py              # Dice-expression parsing
 │   ├── dialogue.py              # Dialogue lifecycle (enter, exit, stall, archive)

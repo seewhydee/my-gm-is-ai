@@ -34,6 +34,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mgmai.models.corpus import ModuleCorpus
+    from mgmai.models.hard_state import HardGameState
+
+from mgmai.models.combat import CombatLogEntry
 
 
 @dataclass
@@ -108,6 +115,41 @@ class SaveResult:
         }
 
 
+@dataclass
+class PlayerAttackResult:
+    """Outcome of a player attack resolved by the RPG system.
+
+    The engine performs target validation; the system decides whether the
+    attack hits, how much damage it deals, and what log entries to record.
+    """
+
+    hit: bool
+    damage: int
+    target_hp_delta: int          # negative for damage dealt to the target
+    log_entries: list[CombatLogEntry]
+    attack_roll: int | None = None
+    attack_total: int | None = None
+    target_ac: int | None = None
+    critical: bool | None = None
+    damage_roll: str | None = None
+
+
+@dataclass
+class NPCAttackResult:
+    """Outcome of an NPC attack resolved by the RPG system."""
+
+    hit: bool
+    damage: int
+    player_hp_delta: int          # negative for damage dealt to the player
+    log_entries: list[CombatLogEntry]
+    game_over: bool = False
+    attack_roll: int | None = None
+    attack_total: int | None = None
+    player_ac: int | None = None
+    critical: bool | None = None
+    damage_roll: str | None = None
+
+
 class ResolutionSystem(ABC):
     """Interface for an RPG resolution system.
 
@@ -173,6 +215,40 @@ class ResolutionSystem(ABC):
     def roll_damage(self, expr: str, critical: bool = False) -> tuple[int, str]:
         """Roll a dice expression, applying the system's crit rule.
         Returns ``(total, readable_string)``."""
+
+    @abstractmethod
+    def resolve_player_attack(
+        self,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+        target_id: str,
+        target_ac: int,
+        round_number: int,
+    ) -> PlayerAttackResult:
+        """Resolve a player attack against target_id.
+
+        The engine has already validated the target and computed its AC. The
+        system computes the attack modifier, rolls to hit, determines
+        hit/miss/critical, rolls damage, and returns log entries. It must not
+        mutate ``hard``.
+        """
+
+    @abstractmethod
+    def resolve_npc_attack(
+        self,
+        npc_id: str,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+        player_ac: int,
+        round_number: int,
+    ) -> NPCAttackResult:
+        """Resolve an NPC attack against the player.
+
+        The engine has already computed the player's AC. The system reads the
+        NPC's combat data from ``corpus.entities[npc_id]``, computes the
+        attack, and returns log entries plus the player HP delta. It must not
+        mutate ``hard``.
+        """
 
     # ------------------------------------------------------------------
     # Derived combat stats

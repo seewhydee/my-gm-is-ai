@@ -25,6 +25,8 @@ import pytest
 from mgmai.engine.systems import (
     CheckResult,
     FiveESystem,
+    NPCAttackResult,
+    PlayerAttackResult,
     ResolutionSystem,
     SaveResult,
     get_system,
@@ -32,6 +34,7 @@ from mgmai.engine.systems import (
     register_system,
 )
 from mgmai.engine.systems.dice import parse_damage_dice
+from mgmai.models.combat import CombatLogEntry
 
 
 # ------------------------------------------------------------------
@@ -91,6 +94,20 @@ class TestRegistry:
                 return 1
             def resolve_save(self, stat, stat_value, dc, flat_modifier=0, params=None):
                 return SaveResult(stat, dc, 0, 1, 1, 1 - dc, False, False, False)
+            def resolve_player_attack(self, hard, corpus, target_id, target_ac, round_number):
+                return PlayerAttackResult(
+                    hit=True,
+                    damage=0,
+                    target_hp_delta=0,
+                    log_entries=[CombatLogEntry(round=round_number, actor="player", action="attack", target=target_id)],
+                )
+            def resolve_npc_attack(self, npc_id, hard, corpus, player_ac, round_number):
+                return NPCAttackResult(
+                    hit=True,
+                    damage=0,
+                    player_hp_delta=0,
+                    log_entries=[CombatLogEntry(round=round_number, actor=npc_id, action="attack", target="player")],
+                )
 
         register_system("dummy", DummySystem)
         try:

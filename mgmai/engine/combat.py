@@ -32,10 +32,9 @@ from mgmai.models.actions import (
     MoveAction,
 )
 from mgmai.models.combat import CombatLogEntry, CombatState
-from mgmai.models.corpus import CombatBlock, ModuleCorpus
+from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.engine.systems import get_system, get_system_for_corpus
-from mgmai.engine.systems.base import SaveResult
 from mgmai.engine.systems.dice import parse_damage_dice
 
 
@@ -98,86 +97,6 @@ def compute_effective_stats(
                 effective[mod.stat] += mod.value
 
     return effective
-
-
-def get_player_attack_bonus(
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-    effective_stats: dict[str, int] | None = None,
-) -> int:
-    """Compute player melee attack bonus: STR modifier + proficiency + weapon bonuses.
-
-    If effective_stats is provided (from compute_effective_stats), uses those
-    instead of hard.player.stats so equipment-based stat changes apply.
-    """
-    system = get_system_for_corpus(corpus)
-
-    stats = effective_stats if effective_stats is not None else hard.player.stats
-    str_mod = system.compute_modifier(_get_stat(stats, "STR"))
-    prof = hard.player.proficiency_bonus or 2
-
-    # Sum attack_bonus from all equipped weapons
-    weapon_bonus = 0
-    for item_id in hard.player.equipped:
-        entity = corpus.entities.get(item_id)
-        if entity and entity.equip_block and "weapon" in entity.equip_block.equip_tags:
-            weapon_bonus += entity.equip_block.attack_bonus
-
-    return str_mod + prof + weapon_bonus
-
-
-def get_player_damage_expr(
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-    soft: object = None,
-    effective_stats: dict[str, int] | None = None,
-) -> str:
-    """Determine player damage expression.
-
-    Priority (highest first):
-    1. Equipped weapon damage_expr from equip_block.
-    2. Improvised weapon (from soft.improvised_weapon).
-    3. Any item tagged ``weapon`` in inventory (legacy fallback) → default weapon damage.
-    4. Unarmed → system unarmed damage.
-    """
-    system = get_system_for_corpus(corpus)
-
-    stats = effective_stats if effective_stats is not None else hard.player.stats
-    str_mod = system.compute_modifier(_get_stat(stats, "STR"))
-
-    # Check equipped weapons first
-    for item_id in hard.player.equipped:
-        entity = corpus.entities.get(item_id)
-        if entity and entity.equip_block and "weapon" in entity.equip_block.equip_tags:
-            base = entity.equip_block.damage_expr
-            if str_mod >= 0:
-                return f"{base}+{str_mod}"
-            else:
-                return f"{base}{str_mod}"
-
-    # Check improvised weapon
-    if soft is not None:
-        from mgmai.models.soft_state import SoftGameState
-        if isinstance(soft, SoftGameState) and soft.improvised_weapon is not None:
-            base = soft.improvised_weapon.damage_expr
-            if str_mod >= 0:
-                return f"{base}+{str_mod}"
-            else:
-                return f"{base}{str_mod}"
-
-    # Legacy: check inventory for weapon tag
-    has_weapon = False
-    for item_id in hard.player.inventory:
-        entity = corpus.entities.get(item_id)
-        if entity and "weapon" in entity.tags:
-            has_weapon = True
-            break
-
-    base = system.default_weapon_damage if has_weapon else system.unarmed_damage
-    if str_mod >= 0:
-        return f"{base}+{str_mod}"
-    else:
-        return f"{base}{str_mod}"
 
 
 def compute_player_ac(
@@ -280,132 +199,6 @@ def roll_initiative(
 
 
 # ------------------------------------------------------------------
-# NPC attack resolution (internal helper)
-# ------------------------------------------------------------------
-
-def _resolve_npc_attack(
-    npc_id: str,
-    combat_block: CombatBlock,
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-    round_number: int,
-) -> dict[str, Any]:
-    """Resolve a single NPC's attack against the player.
-
-    Returns a dict with ``log`` (list of CombatLogEntry), ``player_hp_delta``,
-    and ``game_over``.
-    """
-    system = get_system_for_corpus(corpus)
-
-    # Use equipment-aware AC when the player has equipped items
-    if hard.player.equipped:
-        player_ac = compute_player_ac(hard, corpus)
-    else:
-        player_ac = get_player_ac(hard)
-    attack_roll = system.roll_die(20)
-    attack_total = attack_roll + combat_block.atk
-    critical = system.is_critical(attack_roll)
-    miss = system.is_fumble(attack_roll)
-    hit = critical or (not miss and attack_total >= player_ac)
-
-    log_entry = CombatLogEntry(
-        round=round_number,
-        actor=npc_id,
-        action="attack",
-        target="player",
-        attack_roll=attack_roll,
-        attack_total=attack_total,
-        ac=player_ac,
-        hit=hit,
-        critical=critical if hit else None,
-    )
-
-    result: dict[str, Any] = {
-        "log": [log_entry],
-        "player_hp_delta": 0,
-        "game_over": False,
-    }
-
-    if hit:
-        damage, dmg_str = system.roll_damage(combat_block.dmg, critical=critical)
-        log_entry.damage_roll = dmg_str
-        log_entry.damage = damage
-        total_damage = damage
-
-        # On-hit effects (secondary damage via saving throws)
-        for effect in combat_block.on_hit_effects:
-            eh_result = _resolve_on_hit_effect(
-                effect, hard, system, round_number,
-            )
-            log_entry.on_hit_effects.append(eh_result)
-            total_damage += eh_result.get("damage", 0)
-
-        result["player_hp_delta"] = -total_damage
-        new_hp = (hard.player.current_hp or 0) - total_damage
-        log_entry.remaining_hp = new_hp
-        if new_hp <= 0:
-            death_entry = CombatLogEntry(
-                round=round_number,
-                actor="player",
-                action="death",
-            )
-            result["log"].append(death_entry)
-            result["game_over"] = True
-
-    return result
-
-
-def _resolve_on_hit_effect(
-    effect: object,
-    hard: HardGameState,
-    system: object,
-    round_number: int,
-) -> dict[str, Any]:
-    """Resolve a single on-hit effect against the player.
-
-    Returns a dict suitable for ``CombatLogEntry.on_hit_effects`` with
-    keys: ``save_stat``, ``save_dc``, ``save_roll``, ``save_total``,
-    ``save_success``, ``damage_expr``, ``damage``, ``on_save``,
-    ``damage_type``.
-    """
-    save_stat = effect.save.stat.upper()
-    save_dc = effect.save.dc
-
-    stat_value = (hard.player.stats or {}).get(save_stat, 10)
-    flat_mod = system.compute_save_modifier(save_stat, hard.player)
-
-    save_result: SaveResult = system.resolve_save(
-        save_stat, stat_value, save_dc,
-        flat_modifier=flat_mod,
-    )
-
-    effect_damage = 0
-    dmg_expr = effect.damage
-    on_save = effect.on_save
-
-    if on_save == "none" and save_result.success:
-        effect_damage = 0
-    else:
-        raw_damage, _ = system.roll_damage(dmg_expr)
-        if on_save == "half" and save_result.success:
-            effect_damage = max(1, raw_damage // 2)
-        else:
-            effect_damage = raw_damage
-
-    return {
-        "save_stat": save_stat,
-        "save_dc": save_dc,
-        "save_roll": save_result.raw_roll,
-        "save_total": save_result.total,
-        "save_success": save_result.success,
-        "damage_expr": dmg_expr,
-        "damage": effect_damage,
-        "on_save": on_save,
-        "damage_type": effect.type,
-    }
-
-
-# ------------------------------------------------------------------
 # Combat entry
 # ------------------------------------------------------------------
 
@@ -451,8 +244,10 @@ def enter_combat(
     hard_changes = HardStateChanges()
     combat_log: list[CombatLogEntry] = []
     game_over = False
+    system = get_system_for_corpus(corpus)
 
     player_idx = initiative_order.index("player")
+    player_ac = compute_player_ac(hard, corpus)
     for i in range(player_idx):
         actor_id = initiative_order[i]
         if actor_id == "player":
@@ -464,15 +259,15 @@ def enter_combat(
         if (npc_state.get("current_hp") or 0) <= 0:
             continue
 
-        npc_result = _resolve_npc_attack(
-            actor_id, entity.combat, hard, corpus, 1,
+        npc_result = system.resolve_npc_attack(
+            actor_id, hard, corpus, player_ac, 1,
         )
-        combat_log.extend(npc_result["log"])
-        if npc_result.get("player_hp_delta"):
+        combat_log.extend(npc_result.log_entries)
+        if npc_result.player_hp_delta:
             hard_changes.player_hp_delta = (
-                (hard_changes.player_hp_delta or 0) + npc_result["player_hp_delta"]
+                (hard_changes.player_hp_delta or 0) + npc_result.player_hp_delta
             )
-        if npc_result.get("game_over"):
+        if npc_result.game_over:
             game_over = True
             break
 
@@ -526,43 +321,17 @@ def resolve_combat_turn(
         if (npc_state.get("current_hp") or 0) <= 0:
             return {"success": False, "error": f"Target '{target_id}' is already dead"}
 
-        atk_bonus = get_player_attack_bonus(hard, corpus)
-        attack_roll = system.roll_die(20)
-        attack_total = attack_roll + atk_bonus
-        critical = system.is_critical(attack_roll)
-        miss = system.is_fumble(attack_roll)
-        hit = critical or (not miss and attack_total >= entity.combat.ac)
+        target_ac = entity.combat.ac
+        pa_result = system.resolve_player_attack(hard, corpus, target_id, target_ac, combat.round_number)
+        combat_log.extend(pa_result.log_entries)
 
-        log_entry = CombatLogEntry(
-            round=combat.round_number,
-            actor="player",
-            action="attack",
-            target=target_id,
-            attack_roll=attack_roll,
-            attack_total=attack_total,
-            ac=entity.combat.ac,
-            hit=hit,
-            critical=critical if hit else None,
-        )
-
-        if hit:
-            dmg_expr = get_player_damage_expr(hard, corpus)
-            damage, dmg_str = system.roll_damage(dmg_expr, critical=critical)
-            log_entry.damage_roll = dmg_str
-            log_entry.damage = damage
-            new_hp = (npc_state.get("current_hp") or 0) - damage
+        if pa_result.hit:
+            new_hp = (npc_state.get("current_hp") or 0) + pa_result.target_hp_delta
             hard_changes.entity_state_changes.setdefault(target_id, {})[
                 "current_hp"
             ] = new_hp
-            log_entry.remaining_hp = new_hp
 
             if new_hp <= 0:
-                death_log = CombatLogEntry(
-                    round=combat.round_number,
-                    actor=target_id,
-                    action="death",
-                )
-                combat_log.append(death_log)
                 hard_changes.entity_state_changes.setdefault(target_id, {})[
                     "alive"
                 ] = False
@@ -570,10 +339,6 @@ def resolve_combat_turn(
                 # via entity_state_changes, but we track it locally too
                 if target_id in combat.combatants:
                     combat.combatants.remove(target_id)
-        else:
-            log_entry.remaining_hp = npc_state.get("current_hp")
-
-        combat_log.append(log_entry)
 
         # Check if all enemies are dead
         alive_enemies = [
@@ -634,6 +399,7 @@ def resolve_combat_turn(
         initiative = combat.initiative_order
         n = len(initiative)
         player_idx = initiative.index("player")
+        player_ac = compute_player_ac(hard, corpus)
         # advance past the player
         idx = (player_idx + 1) % n
         while idx != player_idx:
@@ -643,16 +409,20 @@ def resolve_combat_turn(
                 if ent and ent.combat:
                     npc_state = hard.entity_states.get(actor_id, {})
                     if (npc_state.get("current_hp") or 0) > 0:
-                        npc_result = _resolve_npc_attack(
-                            actor_id, ent.combat, hard, corpus, combat.round_number,
+                        npc_result = system.resolve_npc_attack(
+                            actor_id,
+                            hard,
+                            corpus,
+                            player_ac,
+                            combat.round_number,
                         )
-                        combat_log.extend(npc_result["log"])
-                        if npc_result.get("player_hp_delta"):
+                        combat_log.extend(npc_result.log_entries)
+                        if npc_result.player_hp_delta:
                             hard_changes.player_hp_delta = (
                                 (hard_changes.player_hp_delta or 0)
-                                + npc_result["player_hp_delta"]
+                                + npc_result.player_hp_delta
                             )
-                        if npc_result.get("game_over"):
+                        if npc_result.game_over:
                             game_over = True
                             break
             idx = (idx + 1) % n

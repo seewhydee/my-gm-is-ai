@@ -41,13 +41,12 @@ from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.engine.combat import (
     enter_combat,
     get_player_ac,
-    get_player_attack_bonus,
-    get_player_damage_expr,
     get_player_max_hp,
     resolve_combat_turn,
     roll_damage,
     roll_initiative,
 )
+from mgmai.engine.systems.five_e import FiveESystem
 from mgmai.engine.resolver import ResolutionResult, resolve_action
 from mgmai.engine.stat_checks import format_combat_prefix
 
@@ -210,18 +209,25 @@ class TestDamageDice:
 class TestPlayerStats:
     def test_attack_bonus(self, combat_hard_state, combat_npc_corpus):
         # STR 16 → mod +3, proficient +2 → +5
-        bonus = get_player_attack_bonus(combat_hard_state, combat_npc_corpus)
+        system = FiveESystem()
+        bonus = system.compute_player_attack_bonus(
+            combat_hard_state, combat_npc_corpus
+        )
         assert bonus == 5
 
     def test_attack_bonus_no_stats(self, combat_hard_state, combat_npc_corpus):
         hard = combat_hard_state.model_copy(deep=True)
         hard.player.stats = None
-        bonus = get_player_attack_bonus(hard, combat_npc_corpus)
+        system = FiveESystem()
+        bonus = system.compute_player_attack_bonus(hard, combat_npc_corpus)
         assert bonus == 2  # prof only, STR defaults to +0
 
     def test_damage_unarmed(self, combat_hard_state, combat_npc_corpus):
         # STR 16 → mod +3, no weapon → 1d6+3
-        expr = get_player_damage_expr(combat_hard_state, combat_npc_corpus)
+        system = FiveESystem()
+        expr = system.compute_player_damage_expr(
+            combat_hard_state, combat_npc_corpus
+        )
         assert expr == "1d6+3"
 
     def test_damage_with_weapon(self, combat_hard_state, combat_npc_corpus):
@@ -235,7 +241,8 @@ class TestPlayerStats:
         }
         corpus2 = ModuleCorpus.model_validate(corpus_dict)
         hard.player.inventory.append("longsword")
-        expr = get_player_damage_expr(hard, corpus2)
+        system = FiveESystem()
+        expr = system.compute_player_damage_expr(hard, corpus2)
         assert expr == "1d8+3"  # weapon → 1d8 base
 
     def test_ac_explicit(self, combat_hard_state):

@@ -562,60 +562,68 @@ class TestCombatEquipmentStats:
 
     def test_get_player_attack_bonus_with_equipped_weapon(self, state_manager):
         """Attack bonus should include weapon attack_bonus from equipped items."""
-        from mgmai.engine.combat import get_player_attack_bonus
+        from mgmai.engine.systems.five_e import FiveESystem
 
         hard = state_manager.hard_state
         corpus = state_manager.corpus
+        system = FiveESystem()
 
         # No stats, STR = 10, mod = 0, prof = 2
-        base_bonus = get_player_attack_bonus(hard, corpus)
+        base_bonus = system.compute_player_attack_bonus(hard, corpus)
         assert base_bonus == 2  # prof only
 
         # Equip the sword (attack_bonus=0), should be the same
         hard.player.equipped.append("toenail_sword")
-        bonus_with_sword = get_player_attack_bonus(hard, corpus)
+        bonus_with_sword = system.compute_player_attack_bonus(hard, corpus)
         assert bonus_with_sword == 2  # toenail_sword has attack_bonus=0
 
     def test_get_player_damage_expr_with_equipped_weapon(self, state_manager):
         """Damage expression should use equipped weapon's damage_expr."""
-        from mgmai.engine.combat import get_player_damage_expr
+        from mgmai.engine.systems.five_e import FiveESystem
 
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
+        system = FiveESystem()
 
         # No equipped weapon and no weapon in inventory → unarmed 1d6
-        expr = get_player_damage_expr(hard, corpus, soft)
+        expr = system.compute_player_damage_expr(hard, corpus, soft)
         assert "1d6" in expr
 
         # Equip the sword → 1d6 (toenail_sword has damage_expr "1d6")
         hard.player.equipped.append("toenail_sword")
-        expr = get_player_damage_expr(hard, corpus, soft)
+        expr = system.compute_player_damage_expr(hard, corpus, soft)
         assert "1d6" in expr
 
     def test_get_player_damage_with_improvised_weapon(self, state_manager):
         """Improvised weapon should be used when no equipped weapon."""
-        from mgmai.engine.combat import get_player_damage_expr
+        from mgmai.engine.systems.five_e import FiveESystem
 
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
+        system = FiveESystem()
 
-        soft.improvised_weapon = ImprovisedWeapon(damage_expr="1d4", description="broken bottle")
-        expr = get_player_damage_expr(hard, corpus, soft)
+        soft.improvised_weapon = ImprovisedWeapon(
+            damage_expr="1d4", description="broken bottle"
+        )
+        expr = system.compute_player_damage_expr(hard, corpus, soft)
         assert "1d4" in expr
 
     def test_equipped_weapon_takes_priority_over_improvised(self, state_manager):
         """Equipped weapons should take priority over improvised weapons."""
-        from mgmai.engine.combat import get_player_damage_expr
+        from mgmai.engine.systems.five_e import FiveESystem
 
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
+        system = FiveESystem()
 
-        soft.improvised_weapon = ImprovisedWeapon(damage_expr="1d4", description="broken bottle")
+        soft.improvised_weapon = ImprovisedWeapon(
+            damage_expr="1d4", description="broken bottle"
+        )
         hard.player.equipped.append("toenail_sword")
-        expr = get_player_damage_expr(hard, corpus, soft)
+        expr = system.compute_player_damage_expr(hard, corpus, soft)
         assert "1d4" not in expr
         assert "1d6" in expr
 
