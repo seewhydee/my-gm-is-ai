@@ -74,6 +74,7 @@ from mgmai.engine.stat_checks import (
     format_stat_check_prefix,
     format_stat_change_prefix,
     format_combat_prefix,
+    format_hp_change_prefix,
 )
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
@@ -270,6 +271,14 @@ class GameLoop:
             if check_prefix:
                 narration = check_prefix + narration
             hc = result.hard_state_changes
+            if hc and hc.player_hp_delta:
+                hp_prefix = format_hp_change_prefix(
+                    hc.player_hp_delta,
+                    hard.player.current_hp or 0,
+                    hard.player.max_hp or 0,
+                )
+                if hp_prefix:
+                    narration = hp_prefix + narration
             if hc and hc.stat_modifiers:
                 stat_prefix = format_stat_change_prefix(hc.stat_modifiers, hc.old_stat_values)
                 if stat_prefix:
@@ -329,6 +338,14 @@ class GameLoop:
         if check_prefix:
             narration = check_prefix + narration
         hc = result.hard_state_changes
+        if hc and hc.player_hp_delta:
+            hp_prefix = format_hp_change_prefix(
+                hc.player_hp_delta,
+                hard.player.current_hp or 0,
+                hard.player.max_hp or 0,
+            )
+            if hp_prefix:
+                narration = hp_prefix + narration
         if hc and hc.stat_modifiers:
             stat_prefix = format_stat_change_prefix(hc.stat_modifiers, hc.old_stat_values)
             if stat_prefix:

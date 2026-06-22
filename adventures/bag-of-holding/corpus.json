@@ -349,7 +349,25 @@
     "webs_lower": {
       "type": "feature",
       "description": "The webs here are extremely dense, forming an almost solid barrier across the downward path. The strands glisten with stickiness in the faint glow of the canvas walls.",
-      "state_fields": {}
+      "state_fields": {},
+      "on_examine": [
+        {
+          "id": "notice_spider",
+          "condition": {
+            "all": [
+              { "require": "entity:spider.hidden == true" },
+              { "require": "entity:spider.alive == true" },
+              { "unless": "flag:spider_noticed == true" }
+            ]
+          },
+          "check": { "type": "stat_check", "stat": "WIS", "dc": 13, "repeatable": true },
+          "success": {
+            "narrative": "Your eyes catch movement in the shadows above. Eight glittering eyes stare back at you. A huge spider — massive and hungry — lurks in the webbing, poised to strike.",
+            "set_entity_state": { "spider": { "hidden": false } },
+            "set_flag": { "spider_noticed": true }
+          }
+        }
+      ]
     },
 
     "rubbish_pile": {
@@ -737,22 +755,6 @@
       ],
       "on_examine": [
         {
-          "id": "notice_spider",
-          "condition": {
-            "all": [
-              { "require": "entity:spider.hidden == true" },
-              { "require": "entity:spider.alive == true" },
-              { "unless": "flag:spider_noticed == true" }
-            ]
-          },
-          "check": { "type": "stat_check", "stat": "WIS", "dc": 13, "repeatable": true },
-          "success": {
-            "narrative": "Your eyes catch movement in the shadows above. Eight glittering eyes stare back at you. A huge spider — massive and hungry — lurks in the webbing, poised to strike.",
-            "set_entity_state": { "spider": { "hidden": false } },
-            "set_flag": { "spider_noticed": true }
-          }
-        },
-        {
           "id": "look_down_from_lower",
           "condition": { "unless": "room:bag_floor.visited == true" },
           "check": { "type": "stat_check", "stat": "WIS", "dc": 11, "repeatable": true },
@@ -763,6 +765,30 @@
         }
       ],
       "reactions": [
+        {
+          "id": "notice_spider_on_entry",
+          "on": "room.entered",
+          "condition": {
+            "all": [
+              { "require": "event:room_id == axe_handle_lower" },
+              { "require": "entity:spider.hidden == true" },
+              { "require": "entity:spider.alive == true" },
+              { "unless": "flag:spider_noticed == true" }
+            ]
+          },
+          "effects": {
+            "result": {
+              "chain_check": {
+                "check": { "type": "stat_check", "stat": "WIS", "dc": 13, "repeatable": true },
+                "success": {
+                  "narrative": "As you arrive, your eyes catch movement in the shadows above. Eight glittering eyes stare back at you. A huge spider — massive and hungry — lurks in the webbing, poised to strike.",
+                  "set_entity_state": { "spider": { "hidden": false } },
+                  "set_flag": { "spider_noticed": true }
+                }
+              }
+            }
+          }
+        },
         {
           "id": "web_cleared_on_success",
           "on": "traversal.succeeded",
@@ -812,7 +838,7 @@
 
     "bag_floor": {
       "name": "Bag Floor",
-      "description": "You stand on the floor of the cave, which is covered with a loose pile of giant-sized rubbish. From the glow of the canvas walls, you can make out copper pieces the size of shields, empty potion bottles you could bathe in, used corks like footstools, lint clumps the size of sheep, and moldy sandwiches that look more like compost heaps than food. The base of the giant axe rests in the center of the pile, its handle rising up into the shadows above. A dwarf in heavy iron platemail, drunk and miserable-looking, sits beneath a makeshift shelter made from a giant overturned soup ladle.",
+      "description": "You stand on the floor of the cave, which is covered with a loose pile of giant-sized rubbish. From the glow of the canvas walls, you can make out copper pieces the size of shields, empty potion bottles you could bathe in, used corks like footstools, lint clumps the size of sheep, and moldy sandwiches that look more like compost heaps than food. The base of the giant axe rests in the center of the pile, its handle rising up into the shadows above. A female dwarf in heavy iron platemail, drunk and miserable-looking, sits beneath a makeshift shelter made from a giant overturned soup ladle.",
       "entities_present": ["giant_axe", "canvas_walls", "rubbish_pile", "giant_handkerchief", "secret_flap", "korbar"],
       "soft_items": ["copper piece", "empty potion bottle", "cork", "lint clump", "moldy sandwich"],
       "exits": [

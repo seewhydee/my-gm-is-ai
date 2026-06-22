@@ -333,7 +333,11 @@ def resolve(
     action_changes = HardStateChanges()
     action_changes.merge(resolution.hard_changes or HardStateChanges())
     action_changes.merge(resolution.immediate_changes)
-    if encounter_outcome is not None and action_changes.player_location is not None:
+    if (
+        encounter_outcome is not None
+        and encounter_outcome.outcome == "combat"
+        and action_changes.player_location is not None
+    ):
         blocked_room = action_changes.player_location
         action_changes.player_location = None
         action_changes.room_state_changes.pop(blocked_room, None)

@@ -92,8 +92,8 @@ class TestEngineFullFlow:
         )
         result = resolve(action, manager)
         assert result.success is True
-        # Encounter blocks the room transition.
-        assert manager.hard_state.player.location == "start"
+        # Encounter outcome is not "combat", so the room transition proceeds.
+        assert manager.hard_state.player.location == "target"
         # Encounter on_failure applies -4 to DEX and CON.
         assert manager.hard_state.player.stats == {
             "STR": 10, "DEX": 6, "CON": 6,

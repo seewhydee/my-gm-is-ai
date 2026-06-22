@@ -207,3 +207,25 @@ def format_stat_change_prefix(
         return ""
 
     return "\n\n".join(summaries) + "\n\n"
+
+
+def format_hp_change_prefix(
+    player_hp_delta: int | None,
+    current_hp: int,
+    max_hp: int,
+) -> str:
+    """Return a markdown-formatted prefix for HP changes (damage or healing).
+
+    Example output::
+
+        **[Took 9 damage (HP 18/27)]**
+
+        **[Healed 5 HP (HP 27/27)]**
+
+    Returns an empty string if there is no HP delta.
+    """
+    if player_hp_delta is None or player_hp_delta == 0:
+        return ""
+    if player_hp_delta < 0:
+        return f"**[Took {abs(player_hp_delta)} damage (HP {current_hp}/{max_hp})]**\n\n"
+    return f"**[Healed {player_hp_delta} HP (HP {current_hp}/{max_hp})]**\n\n"
