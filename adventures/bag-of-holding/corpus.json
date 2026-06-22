@@ -312,6 +312,14 @@
       "state_fields": {}
     },
 
+    "padlock": {
+      "type": "feature",
+      "description": "A massive iron padlock, visible through the rip in the canvas. It is firmly closed around the neck of the Bag, keeping it sealed shut. The keyhole is large enough to accommodate the giant iron key. The lock hangs outside the Bag — you'd need to reach through the rip to interact with it.",
+      "state_fields": {
+        "hidden": { "type": "boolean", "description": "Whether the padlock is visible from inside the bag." }
+      }
+    },
+
     "the_rip": {
       "type": "feature",
       "description": "A small rip in the canvas wall, near the tip of the giant axe blade. A dull gray light winks through it. It looks barely large enough for a person to squeeze through.",
@@ -325,7 +333,7 @@
           "check": null,
           "result": {
             "narrative": "You poke your head through the rip and look outside. The area beyond is a featureless gray nothing, stretching endlessly in all directions. Looking around, you see that the rip is actually a hole in the wall of what looks like a giant sack. Above, the neck of the Bag is firmly shut by a massive padlock, which dangles down close to your level. The keyhole is barely within reach.",
-            "set_entity_state": { "the_rip": { "examined": true } },
+            "set_entity_state": { "the_rip": { "examined": true }, "padlock": { "hidden": false } },
             "set_flag": { "rip_examined": true }
           }
         }
@@ -392,7 +400,7 @@
     "axe_head": {
       "name": "Axe Head",
       "description": "You are standing on the head of a giant battleaxe, its blade the size of a small plaza. The axe head leans at an angle against the wall of this vast cave. The handle — about the width of a narrow sidewalk — slopes downward into the murk. The walls give off a faint luminescence, just enough to see by. Above, just above head height, the canvas walls converge into a low dome, scrunching shut in the center. You notice a small rip in the fabric near the tip of the blade, with a dull gray light winking through it.",
-      "entities_present": ["giant_axe", "canvas_walls", "the_rip"],
+      "entities_present": ["giant_axe", "canvas_walls", "padlock", "the_rip"],
       "soft_items": [],
       "exits": [
         {
@@ -447,7 +455,8 @@
           "condition": {
             "all": [
               { "require": "inventory:giant_key" },
-              { "require": "entity:the_rip.examined == true" }
+              { "require": "entity:the_rip.examined == true" },
+              { "require": "entity:padlock.hidden == false" }
             ]
           },
           "parameter_signature": { "target": ["entity"], "using": ["entity", "soft_item"] },

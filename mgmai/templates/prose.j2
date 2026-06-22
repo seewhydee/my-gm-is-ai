@@ -121,6 +121,8 @@ You MUST output a single JSON object:
 
 17. **Flee narration.** When the player attempts to flee (`action_type: "move"` during combat), narrate success or failure based on `combat_log`. On success: the player escapes. On failure: describe how the enemies prevent escape.
 
+18. **Narrative-only objects (wait → examine mismatch).** When `player_action.action_type` is `wait` and the `detail` says the player tried to examine or interact with something that isn't a distinct game entity the engine tracks, check `chat_log` for previous narration mentioning this object. If the target is present as scenery (e.g. the branches of a tree), narrate the examination or interaction naturally but noncommittally, and avoid injecting any additional distinctive features (e.g. "The branches sway almost imperceptibly in the breeze.  They appear to have been undisturbed for a long time.") Only narrate something like "there's nothing here" (per rule 14) if you find NO mention of the target in prior narration.
+
 ---
 
 ## NPC Response

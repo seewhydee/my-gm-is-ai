@@ -70,6 +70,9 @@
     "the_rip": {
       "examined": false
     },
+    "padlock": {
+      "hidden": true
+    },
     "giant_handkerchief": {
       "hidden": true,
       "moved": false
