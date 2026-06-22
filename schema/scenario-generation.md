@@ -402,7 +402,27 @@ the engine automatically clears the NPC's `following` state and adds a
 narrative note. Apply this to any NPC that has location constraints as
 a companion.
 
-### 2F. Player entity
+### 2F. Entity on_examine events
+
+When the scenario says "upon examining the statue, the player notices..."
+that on_examine event belongs on the **entity** (the statue), not on
+the room that contains it. The engine fires `on_examine` events only
+for the target being examined:
+
+- **Examining the room** → the **room's** `on_examine` events fire
+- **Examining an entity** → that **entity's** `on_examine` events fire
+
+If a discovery is tied to a specific entity (a lever, a hidden door, a
+strange carving), define `on_examine` on that entity. Only use room
+`on_examine` for discoveries tied to the room as a whole (e.g.,
+noticing the architecture, deducing the room's purpose).
+
+A common mistake is placing entity-specific on_examine events on the
+containing room. When the player says "I look at the statue", the
+engine examines the statue entity, not the room — so room-level events
+won't fire, and the discovery won't happen.
+
+### 2G. Player entity
 
 Exactly one entity with `type: "player"`.
 
@@ -1692,6 +1712,14 @@ All IDs must be **snake_case, lowercase ASCII**:
     react to a combatant's death, use `on: "entity_state.changed"` with a
     condition watching `event:entity_id == <npc_id>` and `event:field == alive`
     and `event:new_value == false`.  See [`events.md`](events.md) § Known gaps.
+
+23. **Entity on_examine vs room on_examine**: When the player examines a
+    specific entity (a carving, a lever, a hidden switch), only that
+    entity's `on_examine` events fire. Room `on_examine` events fire
+    only when the player examines the room itself. If the scenario
+    says "examining the lever reveals a secret catch", the on_examine
+    event must go on the lever entity, not on the room.  See § Step 2F
+    for guidance.
 
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>

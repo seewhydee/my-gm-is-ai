@@ -981,7 +981,7 @@ def _resolve_stat_check_chain(
 
     if resolution is not None:
         _emit_event(
-            "check.passed" if success_flag else "check.failed",
+            "check.passed" if cr.success else "check.failed",
             {
                 "check_type": "stat_check",
                 "stat": check.stat,
@@ -1062,7 +1062,7 @@ def _resolve_traversal_check(
 
         if resolution is not None:
             _emit_event(
-                "check.passed" if success_flag else "check.failed",
+            "check.passed" if cr.success else "check.failed",
                 {
                     "check_type": "roll",
                     "threshold": check.threshold,
@@ -1417,13 +1417,6 @@ def _apply_result(
         changes.player_hp_delta = existing - dmg_total
     if result.reveals:
         revealed_hints.append(result.reveals)
-    if result.chain_check and hard is not None and corpus is not None and soft is not None:
-        rolls: list[dict[str, Any]] = []
-        _resolve_chained_check(
-            result.chain_check, hard, soft, corpus,
-            hard.player.location or "", changes, narrative, revealed_hints, rolls, 0,
-            state_manager, resolution, source_id,
-        )
 
 
 def _find_entity_in_room(

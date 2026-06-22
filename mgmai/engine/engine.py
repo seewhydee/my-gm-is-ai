@@ -461,10 +461,12 @@ def resolve(
             }))
 
     event_changes = HardStateChanges()
+    reaction_rolls: list[dict[str, Any]] = []
     _dispatch_events(
         action_events, hard, soft, corpus, state_manager, changes=event_changes,
         triggered_narration=resolution.triggered_narration,
         revealed_hints=resolution.revealed_hints,
+        rolls=reaction_rolls,
         encounter_fired_ref=encounter_fired_ref,
         combat_log=reaction_combat_log,
     )
@@ -485,6 +487,7 @@ def resolve(
     _dispatch_events(state_events, hard, soft, corpus, state_manager, changes=None,
                      triggered_narration=resolution.triggered_narration,
                      revealed_hints=resolution.revealed_hints,
+                     rolls=reaction_rolls,
                      encounter_fired_ref=encounter_fired_ref,
                      combat_log=reaction_combat_log)
 
@@ -494,6 +497,7 @@ def resolve(
         hard, soft, corpus, state_manager, changes=None,
         triggered_narration=resolution.triggered_narration,
         revealed_hints=resolution.revealed_hints,
+        rolls=reaction_rolls,
         encounter_fired_ref=encounter_fired_ref,
         combat_log=reaction_combat_log,
     )
@@ -501,6 +505,8 @@ def resolve(
     # If a reaction started combat, ensure the result reflects it.
     if not combat_triggered and hard.combat is not None and hard.combat.active:
         combat_triggered = True
+
+    rolls.extend(reaction_rolls)
 
     hard.turn_count += 1
 
@@ -1034,6 +1040,7 @@ def _dispatch_events(
     changes: HardStateChanges | None,
     triggered_narration: list[str] | None = None,
     revealed_hints: list[str] | None = None,
+    rolls: list[dict[str, Any]] | None = None,
     encounter_fired_ref: list[bool] | None = None,
     combat_log: list[CombatLogEntry] | None = None,
 ) -> None:
@@ -1067,6 +1074,7 @@ def _dispatch_events(
             changes=changes,
             triggered_narration=triggered_narration,
             revealed_hints=revealed_hints,
+            rolls=rolls,
             encounter_fired_ref=encounter_fired_ref,
             combat_log=combat_log,
         )

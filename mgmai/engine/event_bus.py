@@ -149,6 +149,7 @@ def dispatch_reactions(
     encounter_trigger_ref: list[str | None] | None = None,
     triggered_narration: list[str] | None = None,
     revealed_hints: list[str] | None = None,
+    rolls: list[dict[str, Any]] | None = None,
     encounter_fired_ref: list[bool] | None = None,
     combat_log: list[CombatLogEntry] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
@@ -207,8 +208,9 @@ def dispatch_reactions(
             hc = HardStateChanges()
             narrative: list[str] = []
             revealed: list[str] = []
-            from mgmai.engine.resolver import _apply_result, ResolutionResult
+            from mgmai.engine.resolver import _apply_result, _resolve_chained_check, ResolutionResult
             resolution_for_chain = None
+            chain_rolls: list[dict[str, Any]] = []
             if resolved.result.chain_check is not None:
                 resolution_for_chain = ResolutionResult(success=True)
             _apply_result(
@@ -217,8 +219,18 @@ def dispatch_reactions(
                 resolution=resolution_for_chain,
                 source_id=reaction.id,
             )
-            if resolution_for_chain is not None:
+            if resolved.result.chain_check is not None and resolution_for_chain is not None:
+                _resolve_chained_check(
+                    resolved.result.chain_check, hard, soft, corpus,
+                    hard.player.location or "",
+                    hc, narrative, revealed, chain_rolls, 0,
+                    state_manager=None,
+                    resolution=resolution_for_chain,
+                    source_id=reaction.id,
+                )
                 chain_events.extend(resolution_for_chain.events)
+            if rolls is not None:
+                rolls.extend(chain_rolls)
             if triggered_narration is not None:
                 triggered_narration.extend(narrative)
             if revealed_hints is not None:
@@ -288,7 +300,7 @@ def dispatch_reactions(
             more_events = dispatch_reactions(
                 more, hard, soft, corpus, state_manager,
                 changes, depth + 1, encounter_trigger_ref,
-                triggered_narration, revealed_hints,
+                triggered_narration, revealed_hints, rolls,
                 encounter_fired_ref, combat_log,
             )
             new_events.extend(more_events)

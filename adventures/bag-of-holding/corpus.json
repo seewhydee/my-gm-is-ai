@@ -314,10 +314,22 @@
 
     "the_rip": {
       "type": "feature",
-      "description": "A small rip in the canvas wall, near the tip of the giant axe blade. A dull gray light winks through it. It looks just large enough for a person to squeeze through.",
+      "description": "A small rip in the canvas wall, near the tip of the giant axe blade. A dull gray light winks through it. It looks barely large enough for a person to squeeze through.",
       "state_fields": {
         "examined": { "type": "boolean", "description": "Whether the player has looked through the rip." }
-      }
+      },
+      "on_examine": [
+        {
+          "id": "examine_rip",
+          "rigorous_only": false,
+          "check": null,
+          "result": {
+            "narrative": "You poke your head through the rip and look outside. The area beyond is a featureless gray nothing, stretching endlessly in all directions. Looking around, you see that the rip is actually a hole in the wall of what looks like a giant sack. Above, the neck of the Bag is firmly shut by a massive padlock, which dangles down close to your level. The keyhole is barely within reach.",
+            "set_entity_state": { "the_rip": { "examined": true } },
+            "set_flag": { "rip_examined": true }
+          }
+        }
+      ]
     },
 
     "webs_upper": {
@@ -506,16 +518,6 @@
             "narrative": "You study the luminescence more closely. The light doesn't seem to come from any single source — it's as if the canvas itself radiates a magical energy. This is no natural phenomenon.",
             "set_flag": { "glow_noticed": true },
             "reveals": "The glow from the canvas walls is magical in nature."
-          }
-        },
-        {
-          "id": "examine_rip",
-          "rigorous_only": false,
-          "check": null,
-          "result": {
-            "narrative": "You poke your head through the rip and look outside. The area beyond is a featureless gray nothing, stretching endlessly in all directions. Looking around, you see that the rip is actually a hole in the wall of what looks like a giant sack. Above, the neck of the Bag is firmly shut by a massive padlock, which dangles down close to your level. The keyhole is barely within reach.",
-            "set_entity_state": { "the_rip": { "examined": true } },
-            "set_flag": { "rip_examined": true }
           }
         }
       ],
