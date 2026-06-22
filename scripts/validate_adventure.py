@@ -37,6 +37,13 @@ sys.path.insert(0, str(parent))
 from mgmai.state.manager import StateManager
 
 
+def _collect_addable_from_result(result, addable_entities: set[str]) -> None:
+    if result is None:
+        return
+    if result.add_item:
+        addable_entities.add(result.add_item)
+
+
 def validate_adventure(adventure_dir: Path) -> list[str]:
     """Load and validate an adventure directory.
 
@@ -113,6 +120,9 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
     referenced_entities = set(hard.player.inventory)
     for room in corpus.rooms.values():
         referenced_entities.update(room.entities_present)
+    # Also consider contained_entities (items nested inside other entities)
+    for entity in corpus.entities.values():
+        referenced_entities.update(entity.contained_entities)
 
     # Collect entity IDs that can be dynamically added by interactions
     addable_entities: set[str] = set()
@@ -132,6 +142,15 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
                 addable_entities.add(inter.success.add_item)
             if inter.failure and inter.failure.add_item:
                 addable_entities.add(inter.failure.add_item)
+    # Also check on_examine events' add_item and set_entity_state (unhide)
+    for entity in corpus.entities.values():
+        for event in entity.on_examine:
+            _collect_addable_from_result(event.result, addable_entities)
+            _collect_addable_from_result(event.success, addable_entities)
+    for room in corpus.rooms.values():
+        for event in room.on_examine:
+            _collect_addable_from_result(event.result, addable_entities)
+            _collect_addable_from_result(event.success, addable_entities)
 
     for entity_id, entity in corpus.entities.items():
         if entity_id in referenced_entities:

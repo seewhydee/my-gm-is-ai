@@ -677,7 +677,14 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
     "description": "string",
     "spans_rooms": ["<room_id>", ...],
     "soft_items": ["string", ...],
+    "contained_entities": ["<entity_id>", ...],
     "tags": ["<tag>", ...],
+    "take_check": { /* take_check */
+      "check": { "type": "stat_check", ... },
+      "success": { "narrative": "..." },
+      "failure": { "narrative": "..." }
+    },
+    "equip_block": { /* equip_block */ },
     "draggable": false,
     "dragging_note": "string",
     "interactions": [ { /* interaction */ } ],
@@ -700,6 +707,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `tags`                 | array  | item          | Semantic tags for mechanical matching (e.g., `"weapon"`, `"key_item"`, `"draggable"`). |
 | `draggable`            | bool   | item          | If true, the item can be dragged but occupies the player (no other manual actions while dragging). |
 | `dragging_note`        | string | item          | Narrative note describing the encumbrance. |
+| `contained_entities`   | array  | all           | List of entity IDs nested inside this entity. Items listed here are available for `transfer` from this entity, even if not listed in the room's `entities_present`. |
 | `take_check`           | object | item          | **Optional.** A check (with `success` / `failure` results) that must be passed when the player attempts to pick up this item via a `transfer` action. |
 | `interactions`         | array  | all           | Interactions available on this entity specifically. Follows the same Interaction object schema. |
 | `on_examine`           | array  | all           | Events that fire when the player examines this entity. Each is an `OnExamineEvent` (see above). |

@@ -343,7 +343,24 @@
     "webs_upper": {
       "type": "feature",
       "description": "A dense mass of sticky webbing attached to the giant axe handle above, partially blocking the path. Strange lumps of various sizes are suspended in its strands.",
-      "state_fields": {}
+      "state_fields": {},
+      "on_examine": [
+        {
+          "id": "reveal_fly",
+          "condition": {
+            "all": [
+              { "require": "entity:stuck_fly.hidden == true" },
+              { "require": "entity:stuck_fly.alive == true" }
+            ]
+          },
+          "rigorous_only": false,
+          "result": {
+            "narrative": "As you examine the sticky strands, one of the masses twitches. It's a FLY — about the size of a dog, tightly wrapped in webbing. Its multifaceted eyes swivel weakly toward you.",
+            "set_entity_state": { "stuck_fly": { "hidden": false } },
+            "set_flag": { "fly_revealed": true }
+          }
+        }
+      ]
     },
 
     "webs_lower": {
@@ -374,7 +391,19 @@
       "type": "feature",
       "description": "A loose, haphazard pile of giant-sized rubbish covers the floor: copper pieces the size of shields, empty potion bottles you could bathe in, corks like footstools, lint clumps the size of sheep, and moldy sandwiches that look more like compost heaps than food.",
       "state_fields": {},
-      "soft_items": ["copper piece", "empty potion bottle", "cork", "lint clump", "moldy sandwich", "giant toenail"]
+      "soft_items": ["copper piece", "empty potion bottle", "cork", "lint clump", "moldy sandwich", "giant toenail"],
+      "contained_entities": ["toenail_sword"],
+      "on_examine": [
+        {
+          "id": "notice_toenail",
+          "condition": { "require": "flag:toenail_noticed == false" },
+          "rigorous_only": false,
+          "result": {
+            "narrative": "Among the rubbish, you spot a giant toenail clipping — curved and razor-edged. It's disgusting, but it looks like it could work as a shortsword if you could pull it free from the pile.",
+            "set_flag": { "toenail_noticed": true }
+          }
+        }
+      ]
     },
 
     "giant_handkerchief": {
@@ -398,6 +427,16 @@
       "type": "item",
       "description": "A giant toenail clipping, curved and razor-sharp at the edge. It's sized perfectly to wield as a shortsword. Gross, but effective.",
       "tags": ["weapon"],
+      "take_check": {
+        "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
+        "success": {
+          "narrative": "You work the toenail clipping free from the pile of rubbish. It's curved and razor-sharp — a perfect makeshift shortsword.",
+          "set_flag": { "toenail_sword_found": true }
+        },
+        "failure": {
+          "narrative": "You grasp at the toenail clipping but it's stuck fast in the loose pile. You'll need to try again."
+        }
+      },
       "equip_block": {
         "equip_tags": ["weapon"],
         "damage_expr": "1d6",
@@ -638,17 +677,6 @@
       ],
       "interactions": [
         {
-          "id": "examine_webs_upper",
-          "label": "Examine the webs",
-          "description": "Search through the sticky webbing and the strange masses caught in it.",
-          "condition": { "require": "entity:stuck_fly.hidden == true" },
-          "result": {
-            "narrative": "As you poke through the sticky strands, one of the masses twitches. It's a FLY — about the size of a dog, tightly wrapped in webbing. Its multifaceted eyes swivel weakly toward you.",
-            "set_entity_state": { "stuck_fly": { "hidden": false } },
-            "set_flag": { "fly_revealed": true }
-          }
-        },
-        {
           "id": "search_webs_upper_after_fly",
           "label": "Search the webs",
           "description": "Search through the webbing for anything else of use.",
@@ -737,22 +765,7 @@
           }
         }
       ],
-      "interactions": [
-        {
-          "id": "examine_webs_lower",
-          "label": "Examine the webs",
-          "description": "Peer into the dense webbing, looking for anything of note.",
-          "condition": {
-            "all": [
-              { "require": "entity:spider.hidden == true" },
-              { "require": "entity:spider.alive == true" }
-            ]
-          },
-          "result": {
-            "narrative": "You study the dense webbing carefully."
-          }
-        }
-      ],
+      "interactions": [],
       "on_examine": [
         {
           "id": "look_down_from_lower",
@@ -864,27 +877,12 @@
       ],
       "interactions": [
         {
-          "id": "rummage_rubbish",
-          "label": "Rummage through rubbish",
-          "description": "Search the loose pile of rubbish for anything useful.",
-          "condition": { "require": "flag:toenail_sword_found == false" },
-          "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
-          "success": {
-            "narrative": "As you sift through the pile, your hands close on something sharp. You pull out a giant toenail clipping — curved and razor-edged. It's disgusting, but it could work as a shortsword.",
-            "add_item": "toenail_sword",
-            "set_flag": { "toenail_sword_found": true }
-          },
-          "failure": {
-            "narrative": "You rummage through the rubbish but find nothing that looks immediately useful."
-          }
-        },
-        {
           "id": "search_rubbish_thoroughly",
           "label": "Search the rubbish thoroughly",
-          "description": "Conduct a rigorous search of the garbage heap, now that you've already found the toenail sword.",
+          "description": "Conduct a rigorous search of the garbage heap, now that you've already noticed the toenail sword.",
           "condition": {
             "all": [
-              { "require": "flag:toenail_sword_found == true" },
+              { "require": "flag:toenail_noticed == true" },
               { "require": "flag:handkerchief_revealed == false" }
             ]
           },
@@ -915,6 +913,15 @@
         }
       ],
       "on_examine": [
+        {
+          "id": "notice_toenail_from_room",
+          "condition": { "require": "flag:toenail_noticed == false" },
+          "rigorous_only": false,
+          "result": {
+            "narrative": "As you survey the room, your eye catches a giant toenail clipping nestled amid the rubbish pile — curved and razor-edged. It's disgusting, but it looks like it could work as a shortsword if you could pull it free.",
+            "set_flag": { "toenail_noticed": true }
+          }
+        },
         {
           "id": "realize_supplies",
           "condition": { "unless": "flag:realized_supplies == true" },
@@ -1132,6 +1139,7 @@
     "spider_fled",
     "spider_lies",
     "webs_cleared",
+    "toenail_noticed",
     "toenail_sword_found",
     "handkerchief_revealed",
     "handkerchief_moved",

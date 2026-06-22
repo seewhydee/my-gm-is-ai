@@ -422,6 +422,10 @@ containing room. When the player says "I look at the statue", the
 engine examines the statue entity, not the room — so room-level events
 won't fire, and the discovery won't happen.
 
+For the full decision table on when to use `on_examine` vs
+`interaction`, and patterns for deterministic discovery, stat checks,
+hidden entity reveals, and rigorous-only lore deductions, see § 3G.
+
 ### 2G. Player entity
 
 Exactly one entity with `type: "player"`.
@@ -738,6 +742,77 @@ action, which is distinct from the engine passively detecting a condition.
 Define interactions only for room-specific actions that aren't covered by
 generic actions (attack, examine, move, talk, transfer).
 
+#### When to use `interaction` vs `on_examine`
+
+A **frequent anti-pattern** is placing examine-gated discoveries in
+`interactions` instead of `on_examine` events. Use this decision table:
+
+| Scenario phrase | Right mechanism |
+|-----------------|-----------------|
+| "Upon examining the pile, the player notices a toenail" | `on_examine` on the pile entity (or room), with a `result` containing `narrative` |
+| "The player rummages through the pile and pulls out a sword" | `interaction` on the room, with a `check` and `success.add_item` |
+| "Looking closely at the webs reveals a hidden spider (WIS check)" | `on_examine` on the webs entity, with a `check` |
+| "The player hauls aside the heavy handkerchief (STR check)" | `interaction` on the room, with a `check` |
+| "The player picks the lock (DEX check)" | `interaction` on the room or feature, with a `check` |
+| "When the player studies the carving, they recognize the symbol" | `on_examine` on the carving entity, with a `result` |
+
+**Key rule:** If the scenario describes something the player **notices,
+sees, or recognizes** by looking closely, it belongs in `on_examine`.
+If the scenario describes something the player **does, manipulates, or
+actively performs** (searching, pulling, forcing, hauling), it belongs
+in `interaction`.
+
+In the common two-step pattern "examine reveals an item; taking it
+requires a check":
+
+1. **Step 1 — reveal:** Add an `on_examine` event on the containing entity
+   or room. It produces a `narrative` describing what the player sees,
+   and sets a `flag` (e.g. `toenail_noticed`).
+2. **Step 2 — take:** Add the item entity to the container's
+   `contained_entities` and give it a `take_check`. The player then uses a
+   `transfer` action to take the item, and the engine resolves the
+   `take_check` automatically. (No separate interaction needed.)
+
+Example — a loose pile containing a sword that takes effort to pull free:
+
+```json
+// Entity: the rubbish pile
+"rubbish_pile": {
+  "type": "feature",
+  "contained_entities": ["toenail_sword"],
+  "on_examine": [
+    {
+      "id": "notice_toenail",
+      "condition": { "require": "flag:toenail_noticed == false" },
+      "rigorous_only": false,
+      "result": {
+        "narrative": "Among the rubbish, you spot a giant toenail clipping — curved and razor-edged.",
+        "set_flag": { "toenail_noticed": true }
+      }
+    }
+  ]
+},
+
+// Entity: the item
+"toenail_sword": {
+  "type": "item",
+  "take_check": {
+    "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
+    "success": {
+      "narrative": "You work the toenail free from the pile. It's a perfect makeshift shortsword.",
+      "set_flag": { "toenail_sword_found": true }
+    },
+    "failure": {
+      "narrative": "You grasp at the toenail but it's stuck fast. You'll need to try again."
+    }
+  }
+}
+```
+
+With this setup: examining the pile → reveals the toenail (Step 1).
+A `transfer` action to take `toenail_sword` from `rubbish_pile` →
+engine runs the `take_check` (Step 2). No `interaction` is needed.
+
 Each interaction must have:
 - **`id`**: snake_case, unique within the room
 - **`label`**: short UI label
@@ -1034,12 +1109,44 @@ For examine-gated stat checks or conditional discoveries:
 **Note:** Earlier versions of this document mistakenly labelled this
 section "Step 6". The correct location is Step 3G.
 
-- `check`: The stat_check or roll that determines outcome
-- `condition`: Controls when the event is available (e.g., only if spider is
-  still alive)
-- `rigorous_only`: `true` if the player must use `examine (rigorous)` to trigger
+On-examine events fire when the player uses the `examine` (or `examine
+(rigorous)`) action. They can be placed on rooms or on individual
+entities.  See § 3E for the decision table on when to use `on_examine`
+vs `interaction`.
 
-**Pattern for examine-gated stat checks:**
+Fields:
+- `id`: unique identifier for this event
+- `condition`: controls when the event is available (optional)
+- `rigorous_only`: `true` if the player must use a rigorous examine to trigger
+- `check` + `success` + `failure`: a stat_check or roll with outcome branches
+- `result`: a deterministic outcome (no check needed)
+
+#### Pattern A: Deterministic discovery (no check)
+
+When examining something always reveals something — no stat check needed.
+Use `result` (not `check`/`success`):
+
+```json
+{
+  "id": "notice_toenail",
+  "condition": { "require": "flag:toenail_noticed == false" },
+  "rigorous_only": false,
+  "result": {
+    "narrative": "Among the rubbish, you spot a giant toenail clipping — curved and razor-edged. It's disgusting, but it could work as a shortsword.",
+    "set_flag": { "toenail_noticed": true }
+  }
+}
+```
+
+This pattern is appropriate when the scenario says "examining the pile
+reveals..." or "upon closer inspection, the player notices..." without
+mentioning a check. The `condition` prevents the event firing again
+once the flag is set.
+
+#### Pattern B: Examine-gated stat check
+
+When noticing something requires a check (perception, knowledge, etc.):
+
 ```json
 {
   "id": "study_canvas_glow",
@@ -1056,6 +1163,73 @@ section "Step 6". The correct location is Step 3G.
   }
 }
 ```
+
+#### Pattern C: Rigorous-only lore deductions
+
+Some discoveries require a thorough, dedicated examination. Use
+`rigorous_only: true` for these — they only fire when the player uses
+`examine (rigorous)`, not a casual look:
+
+```json
+{
+  "id": "realize_supplies",
+  "condition": { "unless": "flag:realized_supplies == true" },
+  "rigorous_only": true,
+  "check": {
+    "type": "stat_check",
+    "stat": "INT",
+    "dc": 8,
+    "repeatable": false
+  },
+  "success": {
+    "narrative": "As you look over the rubbish, something clicks. This isn't a random pile — it's adventuring gear.",
+    "set_flag": { "realized_supplies": true },
+    "reveals": "The rubbish is actually someone's adventuring supplies, shrunk by the Bag's magic."
+  }
+}
+```
+
+#### Pattern D: Revealing a hidden entity
+
+When the examination uncovers a previously hidden creature or object,
+use `set_entity_state` to un-hide it. The entity must have `hidden`
+declared in its `state_fields` and set to `true` in `hard-state.json`:
+
+```json
+{
+  "id": "reveal_fly",
+  "condition": {
+    "all": [
+      { "require": "entity:stuck_fly.hidden == true" },
+      { "require": "entity:stuck_fly.alive == true" }
+    ]
+  },
+  "rigorous_only": false,
+  "result": {
+    "narrative": "As you examine the sticky strands, one of the masses twitches. It's a FLY — about the size of a dog, tightly wrapped in webbing. Its multifaceted eyes swivel weakly toward you.",
+    "set_entity_state": { "stuck_fly": { "hidden": false } },
+    "set_flag": { "fly_revealed": true }
+  }
+}
+```
+
+The `condition` uses event-type conditions (`entity:<id>.<field>`).
+
+#### Entity vs room placement
+
+When the scenario says "examining the statue, the player notices...",
+place the `on_examine` on the **statue entity**, not the room.  When
+the scenario says "examining the chamber, the player notices...", place
+it on the **room**.  See § 2F for the full distinction.
+
+#### Multiple on_examine events on one target
+
+An entity or room can have multiple `on_examine` events. Each is
+evaluated independently in definition order, and each matching event's
+narrative is appended.  Use this when a successful INT check chains
+into a second lore check (see the bag_of_holding_from_rubbish event in
+the Bag of Holding corpus for an example of gated sequential
+deductions).
 
 ---
 
@@ -1720,6 +1894,17 @@ All IDs must be **snake_case, lowercase ASCII**:
     says "examining the lever reveals a secret catch", the on_examine
     event must go on the lever entity, not on the room.  See § Step 2F
     for guidance.
+
+24. **Examine-gated discoveries written as interactions**: Do not model
+    discoveries the player makes by *looking* ("examine the pile",
+    "examine the webs") as room interactions requiring the player to
+    explicitly choose an action from a list.  These should be
+    `on_examine` events instead.  An `interaction` with a name like
+    `examine_the_webs` is a red flag — the generic `examine` action
+    already covers looking at entities; use entity `on_examine` for any
+    mechanical consequences.  Only use `interaction` for active
+    physical manipulation: searching a pile, forcing a door, hauling
+    an object.  See § 3E for the full decision table and examples.
 
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>

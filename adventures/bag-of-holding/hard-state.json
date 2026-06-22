@@ -29,6 +29,7 @@
     "spider_fled": false,
     "spider_lies": false,
     "webs_cleared": false,
+    "toenail_noticed": false,
     "toenail_sword_found": false,
     "handkerchief_revealed": false,
     "handkerchief_moved": false,
