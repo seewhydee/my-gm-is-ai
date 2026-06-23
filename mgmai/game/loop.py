@@ -437,7 +437,17 @@ class GameLoop:
     def _call_prose(self, briefing, action, result):
         from mgmai.templates.renderer import render_prose
 
-        system_prompt = render_prose()
+        system_prompt = render_prose(
+            include_combat=(
+                briefing.combat_state is not None
+                or result.combat_triggered
+                or bool(result.combat_log)
+            ),
+            include_dialogue=(
+                briefing.dialogue_context is not None
+                or result.dialogue_exited is not None
+            ),
+        )
 
         user_data = {
             "setting": briefing.setting,

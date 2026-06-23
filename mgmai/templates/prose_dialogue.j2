@@ -1,0 +1,138 @@
+{# My GM is AI — an AI-driven Game Master for tabletop RPG adventures -#}
+{# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com> -#}
+{# Licensed under the GNU GPL v3. -#}
+
+### Dialogue-related EngineResult fields
+
+EngineResult supports the following additional fields related to dialogue:
+
+| Field | Meaning |
+|-------|---------|
+| `dialogue_exited` | If dialogue ended this turn |
+| `will_reveal_readiness` | NPC → topic_id → {conditions_met, description, conditions}. Only plot-relevant topics have a topic_id, and topics with `conditions_met: true` may be revealed during the narration. Each `conditions` entry has `condition` (the rule string), `met` (bool, current value), and `detail` (reason for current value, e.g. "flag spider_fled = False") — may use this to roleplay why gated topics can't be revealed, etc. |
+| `npc_attitude_limits` | NPC → {min, max, step_per_turn, current}. Attitude changes MUST respect these bounds. |
+
+## Dialogue with NPCs
+
+### Detecting Dialogue State
+
+The player is in dialogue whenever `dialogue_context` is present in
+the briefing.  Do **not** rely on `action_type` alone – the game
+allows interweaving of dialogue and actions, and dialogue persists
+until the engine sets `dialogue_exited`.
+
+The briefing's `dialogue_context` contains:
+
+- `active_npc`: id, name, attitude, and `dialogue_guidelines`
+  (personality, speech patterns, knowledge constraints)
+- `recent_exchanges`: verbatim back-and-forth for narrative continuity
+- `topics_discussed` / `revealed_topics`: what's already been covered
+
+### Core Dialogue Behavior
+
+When in dialogue and the NPC would speak this turn, weave their spoken
+words into your `narration`.  For example:
+
+> `The guard peers at you suspiciously. "Oi, what brings you here?"`
+
+Also fill `npc_response` with the same verbatim words — this is used by
+the logging system for conversation state tracking.
+
+The NPC should:
+- Stay in character per their `dialogue_guidelines`
+- Respond naturally to the player's utterance
+- Have their own goals and personality — don't just be a quest-giver
+- Not reveal secrets unless `conditions_met` is true (check `will_reveal_readiness`)
+- Avoid duplicate revelations (check `dialogue_context.revealed_topics`)
+  unless the repetition is appropriate in context
+
+The narrator must never inadvertently reveal information from an NPC's
+`will_reveal_readiness` that lacks `conditions_met: true`.  Take care
+not to describe topics the NPC hasn't actually disclosed yet.
+
+### Topic Revelation (`knowledge_tags`)
+
+If an NPC reveals a `will_reveal_readiness` topic this turn, record it
+in `knowledge_tags`:
+
+```json
+"knowledge_tags": {"npc_id": ["topic_id_1", "topic_id_2"]}
+```
+
+Only tag topics whose `conditions_met` is `true` **and** not already
+listed in `dialogue_context.revealed_topics` or the briefing's
+`player_knowledge_topics`.  If no topics were newly revealed, omit
+this field or set it to null.  Do not invent your own topic IDs.
+
+### Attitude Changes
+
+Propose attitude shifts for NPCs with dialogue guidelines affected by
+this turn's events.  This may apply even outside active dialogue (e.g.,
+giving a gift, making a threat, helping or attacking an NPC).  Format:
+
+```json
+"attitude_changes": {
+  "npc_id": {
+    "old_value": 0,
+    "new_value": 1,
+    "reason": "Player gave the NPC a gift"
+  }
+}
+```
+
+Rules:
+- `old_value` MUST equal the NPC's `current` value in `npc_attitude_limits`
+- `new_value` MUST be within `[min, max]`
+- The change (`|new_value - old_value|`) MUST NOT exceed `step_per_turn`
+- `reason` must be non-empty and specific
+- Do not propose changes for dead NPCs or NPCs without dialogue guidelines
+- Typical triggers: kind words, gifts, threats, helping, attacking
+
+**Magnitude conventions** (default, unless the NPC's dialogue guidelines override):
+
+| Change | When to use |
+|--------|-------------|
+| ±1 | Minor unrepeated interactions: a polite greeting, a small compliment, a mild insult |
+| ±2 | Significant interactions: a genuine gift, meaningful help, a serious threat, refusing an important request |
+| ±3 | Exceptional moments: saving the NPC's life, a deep betrayal, a profound shared experience |
+
+Do not propose ±3 for every turn — reserve it for story-defining
+moments.  If in doubt, prefer 0 (no attitude change).
+
+### Conversation Note (Dialogue Exit)
+
+When `engine_result.dialogue_exited` is non-null, the conversation is
+ended.  Use the contents of `dialogue_context` to write a
+`conversation_note` — the game's narrative long-term summary of this
+interaction.  This should be a self-contained paragraph describing:
+
+- What topics were discussed
+
+- What information was exchanged or learned
+
+- Any promises, deals, or conflicts that occurred
+
+- The NPC's disposition toward the player by the end
+
+Example:
+```json
+"conversation_note": "Player spoke with Korbar about her origin and her party's abandonment. Korbar revealed the padlock mechanism secret. She is cautiously friendly toward the player."
+```
+
+The note must be a non-empty string.  Good notes make the NPC feel
+remembered on re-encounter.
+
+If dialogue is still ongoing (`dialogue_exited` is null) or no NPC
+conversation occurred, omit this field or set it to null.
+
+### Full output example (dialogue exit)
+
+```json
+{
+  "narration": "Korbar grunts and shifts his weight on the stool. 'That's all I know, friend. Find the crypt, wait for dawn.' She turns back to her drink, signalling the conversation is over.",
+  "npc_response": "That's all I know, friend. Find the crypt, wait for dawn.",
+  "conversation_note": "Player ended a long conversation with Korbar. Topics discussed: origin, abandonment, lich weakness. Korbar revealed the lich's sunlight weakness and shared her backstory. She is now cautiously friendly. Player asked no follow-ups.",
+  "knowledge_tags": {"korbar": ["lich_weakness"]},
+  "attitude_changes": {"korbar": {"old_value": 0, "new_value": 1, "reason": "Player listened respectfully to Korbar's story"}}
+}
+```

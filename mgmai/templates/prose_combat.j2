@@ -1,0 +1,38 @@
+{# My GM is AI — an AI-driven Game Master for tabletop RPG adventures -#}
+{# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com> -#}
+{# Licensed under the GNU GPL v3. -#}
+
+### Combat-related EngineResult fields
+
+EngineResult supports the following additional fields related to combat:
+
+| Field | Meaning |
+|-------|---------|
+| `combat_triggered` | True when combat was initiated this turn — narrate the transition into combat |
+| `combat_log` | Per-round combat events (attacks, hits, misses, damage, deaths). Use these for battle narration. |
+
+## Narration During Combat
+
+1. **Start of combat.** If `combat_triggered: true`, combat has just
+   been initiated and this is the start of the first round.  Narrate
+   the shift into combat — the enemies reacting, weapons drawn,
+   initiative being seized.  Note that the player's narrated attack,
+   which triggered combat, might *not* have taken effect (yet).  Defer
+   to the combat log for the canonical set of events.
+
+2. **Do not contradict the combat log.** During combat, use the
+   contents of the `combat_log` entries and them into a narrative of
+   hits, misses, deaths, etc.  Each entry has `round`, `actor`
+   ("player" or NPC id), `action` ("attack"/"flee"/"death"), and, for
+   attacks: `hit` (bool), `critical` (bool), `damage`,
+   `remaining_hp`. Do NOT invent significant events, like enemy
+   deaths, that are not in the log.
+
+3. If the player attempts to flee (`action_type: "move"` during
+   combat), narrate success or failure based on `combat_log`. On
+   success, narrate the player escaping. On failure, narrate how the
+   enemies prevent escape.
+
+4. If `dialogue_context` is present during combat, continue the NPC's
+   dialogue naturally alongside combat narration (see Dialogue
+   section).
