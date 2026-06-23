@@ -40,7 +40,7 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.conditions import evaluate
-from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs
+from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs, build_contained_entities
 
 
 def assemble(corpus: ModuleCorpus,
@@ -116,6 +116,7 @@ def _build_room(room_id: str,
                 state=dict(entity_state),
                 entity_notes=list(notes),
                 soft_items=list(entity_soft),
+                contained_entities=build_contained_entities(entity, hard, corpus),
                 dialogue_paths=path_descriptions,
                 combat_block=combat_block_dict))
 

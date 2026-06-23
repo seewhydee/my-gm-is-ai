@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from mgmai.models.briefing import BriefingEntity
+from mgmai.models.briefing import BriefingContainedEntity, BriefingEntity
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
@@ -73,6 +73,35 @@ def inject_following_npcs(
                 state=entity_state,
                 entity_notes=notes,
                 soft_items=list(entity_soft),
+                contained_entities=build_contained_entities(entity, hard, corpus),
                 dialogue_paths=path_descriptions,
             )
         )
+
+
+def build_contained_entities(
+    entity: object,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> list[BriefingContainedEntity]:
+    """Build BriefingContainedEntity list from an entity's contained_entities,
+    filtering out hidden entities and items already in player inventory."""
+    from mgmai.models.corpus import Entity as CorpusEntity
+    assert isinstance(entity, CorpusEntity)
+    contained: list[BriefingContainedEntity] = []
+    for cid in entity.contained_entities:
+        contained_entity = corpus.entities.get(cid)
+        if contained_entity is None:
+            continue
+        cstate = hard.entity_states.get(cid, {})
+        if cstate.get("hidden", False):
+            continue
+        if contained_entity.type == "item" and cid in hard.player.inventory:
+            continue
+        contained.append(BriefingContainedEntity(
+            id=cid,
+            name=getattr(contained_entity, "name", cid),
+            type=contained_entity.type,
+            description=contained_entity.description,
+        ))
+    return contained

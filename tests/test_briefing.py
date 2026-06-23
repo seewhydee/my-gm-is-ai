@@ -18,6 +18,7 @@ import pytest
 from pydantic import ValidationError
 
 from mgmai.models.briefing import (
+    BriefingContainedEntity,
     BriefingEntity,
     BriefingExit,
     BriefingHistoryEntry,
@@ -26,6 +27,35 @@ from mgmai.models.briefing import (
     GMBriefing,
     PlayerStateBriefing,
 )
+
+
+class TestBriefingContainedEntity:
+    def test_basic(self) -> None:
+        c = BriefingContainedEntity.model_validate({
+            "id": "toenail_sword",
+            "name": "toenail_sword",
+            "type": "item",
+            "description": "A giant toenail clipping.",
+        })
+        assert c.id == "toenail_sword"
+        assert c.type == "item"
+        assert c.description == "A giant toenail clipping."
+
+    def test_default_type_is_item(self) -> None:
+        c = BriefingContainedEntity.model_validate({
+            "id": "rusty_key",
+            "name": "rusty_key",
+            "description": "A rusty key.",
+        })
+        assert c.type == "item"
+
+    def test_missing_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            BriefingContainedEntity.model_validate({
+                "name": "sword",
+                "type": "item",
+                "description": "A sword.",
+            })
 
 
 class TestBriefingEntity:
@@ -41,6 +71,20 @@ class TestBriefingEntity:
         })
         assert e.id == "spider"
         assert e.state["alive"] is True
+        assert e.contained_entities == []
+
+    def test_with_contained_entities(self) -> None:
+        e = BriefingEntity.model_validate({
+            "id": "rubbish_pile",
+            "name": "rubbish_pile",
+            "type": "feature",
+            "description": "A pile of rubbish.",
+            "contained_entities": [
+                {"id": "toenail_sword", "name": "toenail_sword", "type": "item", "description": "A toenail."},
+            ],
+        })
+        assert len(e.contained_entities) == 1
+        assert e.contained_entities[0].id == "toenail_sword"
 
     def test_missing_id_raises(self) -> None:
         with pytest.raises(ValidationError):

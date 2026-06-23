@@ -400,7 +400,8 @@
           "rigorous_only": false,
           "result": {
             "narrative": "Among the rubbish, you spot a giant toenail clipping — curved and razor-edged. It's disgusting, but it looks like it could work as a shortsword if you could pull it free from the pile.",
-            "set_flag": { "toenail_noticed": true }
+            "set_flag": { "toenail_noticed": true },
+            "set_entity_state": { "toenail_sword": { "hidden": false } }
           }
         }
       ]
@@ -427,6 +428,9 @@
       "type": "item",
       "description": "A giant toenail clipping, curved and razor-sharp at the edge. It's sized perfectly to wield as a shortsword. Gross, but effective.",
       "tags": ["weapon"],
+      "state_fields": {
+        "hidden": { "type": "boolean", "description": "Whether the toenail sword is visible in the room." }
+      },
       "take_check": {
         "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
         "success": {
@@ -879,7 +883,7 @@
         {
           "id": "search_rubbish_thoroughly",
           "label": "Search the rubbish thoroughly",
-          "description": "Conduct a rigorous search of the garbage heap, now that you've already noticed the toenail sword.",
+          "description": "Conduct a thorough search of the garbage heap for anything you might have missed beyond the toenail sword.",
           "condition": {
             "all": [
               { "require": "flag:toenail_noticed == true" },
@@ -919,7 +923,8 @@
           "rigorous_only": false,
           "result": {
             "narrative": "As you survey the room, your eye catches a giant toenail clipping nestled amid the rubbish pile — curved and razor-edged. It's disgusting, but it looks like it could work as a shortsword if you could pull it free.",
-            "set_flag": { "toenail_noticed": true }
+            "set_flag": { "toenail_noticed": true },
+            "set_entity_state": { "toenail_sword": { "hidden": false } }
           }
         },
         {

@@ -767,11 +767,19 @@ requires a check":
 
 1. **Step 1 — reveal:** Add an `on_examine` event on the containing entity
    or room. It produces a `narrative` describing what the player sees,
-   and sets a `flag` (e.g. `toenail_noticed`).
+   sets a `flag` (e.g. `toenail_noticed`), and **unhides** the contained
+   item via `set_entity_state`.
 2. **Step 2 — take:** Add the item entity to the container's
    `contained_entities` and give it a `take_check`. The player then uses a
    `transfer` action to take the item, and the engine resolves the
    `take_check` automatically. (No separate interaction needed.)
+
+The contained item does **not** need to appear in the room's
+`entities_present`. The context assembler surfaces all non-hidden
+contained entities through the parent entity's `contained_entities`
+field in the LLM briefing. Once the item is unhidden, the LLM sees it
+in the container's briefing entry and can propose a `transfer` targeting
+the container.
 
 Example — a loose pile containing a sword that takes effort to pull free:
 
@@ -787,15 +795,19 @@ Example — a loose pile containing a sword that takes effort to pull free:
       "rigorous_only": false,
       "result": {
         "narrative": "Among the rubbish, you spot a giant toenail clipping — curved and razor-edged.",
-        "set_flag": { "toenail_noticed": true }
+        "set_flag": { "toenail_noticed": true },
+        "set_entity_state": { "toenail_sword": { "hidden": false } }
       }
     }
   ]
 },
 
-// Entity: the item
+// Entity: the item — must declare 'hidden' in state_fields
 "toenail_sword": {
   "type": "item",
+  "state_fields": {
+    "hidden": { "type": "boolean", "description": "Whether the sword is visible." }
+  },
   "take_check": {
     "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
     "success": {
@@ -807,11 +819,22 @@ Example — a loose pile containing a sword that takes effort to pull free:
     }
   }
 }
+
+// In hard-state.json: initialize the contained entity as hidden
+// "entity_states": {
+//   "toenail_sword": { "hidden": true }
+// }
 ```
 
-With this setup: examining the pile → reveals the toenail (Step 1).
-A `transfer` action to take `toenail_sword` from `rubbish_pile` →
-engine runs the `take_check` (Step 2). No `interaction` is needed.
+Note: the item does NOT need to be listed in the room's `entities_present`
+array. The assembler discovers it through `rubbish_pile.contained_entities`
+and surfaces it (if not hidden) in the parent entity's briefing.
+
+With this setup: examining the pile → reveals/unhides the toenail
+(Step 1). The next turn's briefing shows `toenail_sword` in
+`rubbish_pile.contained_entities`. A `transfer` action to take
+`toenail_sword` from `rubbish_pile` → engine runs the `take_check`
+(Step 2). No `interaction` is needed, no `entities_present` duplication.
 
 Each interaction must have:
 - **`id`**: snake_case, unique within the room

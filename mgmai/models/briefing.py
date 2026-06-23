@@ -26,6 +26,14 @@ class BriefingInteraction(BaseModel):
     description: Optional[str] = None
 
 
+class BriefingContainedEntity(BaseModel):
+    """Minimal entity info for an item nested inside another entity."""
+    id: str
+    name: str
+    type: str = "item"
+    description: str
+
+
 class BriefingEntity(BaseModel):
     id: str
     name: str
@@ -34,6 +42,7 @@ class BriefingEntity(BaseModel):
     state: Dict[str, Any] = Field(default_factory=dict)
     entity_notes: List[str] = Field(default_factory=list)
     soft_items: List[str] = Field(default_factory=list)
+    contained_entities: List[BriefingContainedEntity] = Field(default_factory=list)
     dialogue_paths: Dict[str, str] = Field(default_factory=dict)
     combat_block: Optional[dict[str, Any]] = None
 
