@@ -135,6 +135,7 @@ def resolve(
     # to derive the final state-change events under Option B.
     merged_changes = HardStateChanges()
     reaction_combat_log: list[CombatLogEntry] = []
+    reaction_rolls: list[dict[str, Any]] = []
 
     def _apply_and_merge(batch: HardStateChanges) -> None:
         """Apply *batch* and merge it into *merged_changes* for diff tracking."""
@@ -162,11 +163,13 @@ def resolve(
             revealed_hints=game_start_reveals,
             encounter_fired_ref=encounter_fired_ref,
             combat_log=reaction_combat_log,
+            rolls=reaction_rolls,
         )
         _dispatch_room_entered(
             hard.player.location, hard, soft, corpus, state_manager, start_changes,
             game_start_narration, game_start_reveals,
             encounter_fired_ref, reaction_combat_log,
+            rolls=reaction_rolls,
         )
         _apply_and_merge(start_changes)
 
@@ -180,6 +183,7 @@ def resolve(
         triggered_narration=turn_start_narration,
         revealed_hints=turn_start_reveals,
         combat_log=reaction_combat_log,
+        rolls=reaction_rolls,
     )
     _apply_and_merge(turn_start_changes)
 
@@ -414,6 +418,7 @@ def resolve(
             revealed_hints=resolution.revealed_hints,
             encounter_fired_ref=encounter_fired_ref,
             combat_log=reaction_combat_log,
+            rolls=reaction_rolls,
         )
 
         # room.entered immediate reactions fire before deferred reactions.
@@ -421,6 +426,7 @@ def resolve(
             new_room, hard, soft, corpus, state_manager, room_changes,
             resolution.triggered_narration, resolution.revealed_hints,
             encounter_fired_ref, reaction_combat_log,
+            rolls=reaction_rolls,
         )
 
         _apply_and_merge(room_changes)
@@ -465,7 +471,6 @@ def resolve(
             }))
 
     event_changes = HardStateChanges()
-    reaction_rolls: list[dict[str, Any]] = []
     _dispatch_events(
         action_events, hard, soft, corpus, state_manager, changes=event_changes,
         triggered_narration=resolution.triggered_narration,
@@ -1004,6 +1009,7 @@ def _dispatch_room_entered(
     revealed_hints: list[str] | None,
     encounter_fired_ref: list[bool] | None,
     combat_log: list[CombatLogEntry] | None,
+    rolls: list[dict[str, Any]] | None = None,
 ) -> None:
     """Dispatch immediate then deferred ``room.entered`` reactions for
     *room_id*, accumulating effects into *changes*.
@@ -1023,6 +1029,7 @@ def _dispatch_room_entered(
             revealed_hints=revealed_hints,
             encounter_fired_ref=encounter_fired_ref,
             combat_log=combat_log,
+            rolls=rolls,
         )
     deferred = [(r, o) for r, o in matches if r.phase != "immediate"]
     if deferred:
@@ -1032,6 +1039,7 @@ def _dispatch_room_entered(
             revealed_hints=revealed_hints,
             encounter_fired_ref=encounter_fired_ref,
             combat_log=combat_log,
+            rolls=rolls,
         )
 
 

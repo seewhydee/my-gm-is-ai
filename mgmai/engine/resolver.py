@@ -99,6 +99,8 @@ def _emit_event(
         encounter_trigger_ref=encounter_triggers,
         triggered_narration=resolution.triggered_narration,
         revealed_hints=resolution.revealed_hints,
+        rolls=resolution.rolls,
+        combat_log=resolution.combat_log,
     )
 
     triggered = [t for t in encounter_triggers if t is not None]
