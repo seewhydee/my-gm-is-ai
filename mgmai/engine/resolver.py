@@ -586,6 +586,11 @@ def resolve_transfer(
             ent = corpus.entities.get(eid)
             if ent and ent.type == "item":
                 available_pool.add(eid)
+            if ent and ent.contained_entities:
+                for cid in ent.contained_entities:
+                    cstate = hard.entity_states.get(cid, {})
+                    if not cstate.get("hidden", False):
+                        available_pool.add(cid)
         room_soft = room.soft_items or []
         available_pool.update(room_soft)
     elif target_is_entity:
