@@ -72,14 +72,6 @@ class TestTalkShortcut:
         assert normalize_player_input("t") == "t"
 
 
-class TestInventoryShortcut:
-    def test_i(self) -> None:
-        assert normalize_player_input("i") == "check my inventory"
-
-    def test_inv(self) -> None:
-        assert normalize_player_input("inv") == "check my inventory"
-
-
 class TestLookShortcut:
     def test_l(self) -> None:
         assert normalize_player_input("l") == "look around"

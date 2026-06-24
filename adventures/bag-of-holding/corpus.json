@@ -702,6 +702,7 @@
     },
     "toenail_sword": {
       "type": "item",
+      "name": "Toenail Sword",
       "description": "A giant toenail clipping, curved and razor-sharp at the edge. It's sized perfectly to wield as a shortsword. Gross, but effective.",
       "tags": [
         "weapon"
@@ -739,6 +740,7 @@
     },
     "giant_key": {
       "type": "item",
+      "name": "Giant Key",
       "description": "A massive iron key, heavy and cold. Far too large for a normal door \u2014 this must be for something enormous.",
       "tags": [
         "key_item"

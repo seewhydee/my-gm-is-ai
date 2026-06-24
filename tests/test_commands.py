@@ -211,3 +211,122 @@ class TestNonCommandPassthrough:
 
     def test_whitespace_only(self, commands) -> None:
         assert commands.handle("   ") is False
+
+
+class TestInventoryCommand:
+    """Inventory command: /inv, /inventory, and bare i/inv/inventory."""
+
+    def test_slash_inv_dispatches(self, commands, render) -> None:
+        assert commands.handle("/inv") is True
+        render.assert_called_once()
+
+    def test_slash_inventory_alias(self, commands, render) -> None:
+        assert commands.handle("/inventory") is True
+        render.assert_called_once()
+
+    def test_slash_i_alias(self, commands, render) -> None:
+        assert commands.handle("/i") is True
+        render.assert_called_once()
+
+    def test_bare_i(self, commands, render) -> None:
+        assert commands.handle("i") is True
+        render.assert_called_once()
+
+    def test_bare_inv(self, commands, render) -> None:
+        assert commands.handle("inv") is True
+        render.assert_called_once()
+
+    def test_bare_inventory(self, commands, render) -> None:
+        assert commands.handle("inventory") is True
+        render.assert_called_once()
+
+    def test_bare_i_case_insensitive(self, commands, render) -> None:
+        assert commands.handle("I") is True
+        render.assert_called_once()
+
+    def test_inv_with_loaded_state(self, state_manager, monkeypatch) -> None:
+        """Render inventory with actual state items, using corpus names."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        hard = state_manager.hard_state
+        hard.player.inventory = ["rusty_key"]
+        hard.player.equipped = ["toenail_sword"]
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/inv")
+
+        output = "\n".join(rendered)
+        assert "Equipped" in output
+        assert "Toenail Sword" in output
+        assert "Carried" in output
+        assert "Rusty Key" in output
+        assert "1d6 damage" in output
+        assert "toenail_sword" not in output
+        assert "rusty_key" not in output
+
+    def test_inv_empty(self, state_manager, monkeypatch) -> None:
+        """Render inventory when carrying nothing."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        hard = state_manager.hard_state
+        hard.player.inventory = []
+        hard.player.equipped = []
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/inv")
+
+        output = "\n".join(rendered)
+        assert "carrying nothing" in output
+
+    def test_inv_no_game_loaded(self, render, exit_fn) -> None:
+        """Inventory command when no game is loaded shows error."""
+        state = MagicMock()
+        state.hard_state = None
+        state.soft_state = None
+        state.corpus = None
+        from mgmai.game.commands import Commands
+        cmds = Commands(state, render, exit_fn)
+        cmds.handle("/inv")
+        render.assert_called_once()
+        assert "No game loaded" in render.call_args[0][0]
+
+    def test_inv_escapes_markup_in_soft_items(self, state_manager, monkeypatch) -> None:
+        """Soft inventory strings (LLM-sourced) must not leak as Rich markup."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", True)
+        state_manager.soft_state.soft_inventory = ["evil [red]rock[/red]"]
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/inv")
+
+        output = "\n".join(rendered)
+        assert "\\[red]" in output
+        assert "\\[/red]" in output
+
+    def test_inv_negative_bonus_formatting(self, state_manager, monkeypatch) -> None:
+        """Negative AC/attack bonuses render with a minus, not '+-'."""
+        from mgmai.models.corpus import EquipBlock
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        hard = state_manager.hard_state
+        hard.player.inventory = []
+        sword = state_manager.corpus.entities["toenail_sword"]
+        hard.player.equipped = ["toenail_sword"]
+        monkeypatch.setattr(
+            sword.equip_block,
+            "attack_bonus",
+            -1,
+        )
+        monkeypatch.setattr(sword.equip_block, "ac_bonus", -2)
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/inv")
+
+        output = "\n".join(rendered)
+        assert "AC -2" in output
+        assert "-1 to hit" in output
+        assert "+-" not in output

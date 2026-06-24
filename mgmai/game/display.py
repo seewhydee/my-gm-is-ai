@@ -135,7 +135,6 @@ class Display:
 
     def render_status(self, state_loader: Any) -> None:
         hard = state_loader.hard_state
-        soft = state_loader.soft_state
         if hard is None:
             return
 
@@ -145,27 +144,17 @@ class Display:
             return
 
         loc = hard.player.location
-        inv = hard.player.inventory
         turn = hard.turn_count
         active_flags = [k for k, v in hard.flags.items() if v]
-        soft_inv = soft.soft_inventory if soft else []
 
         if RICH_AVAILABLE:
             parts = [f"[dim]Turn {turn}[/dim]"]
             parts.append(f"[dim]Location:[/dim] [cyan]{loc}[/cyan]")
-            if inv:
-                parts.append(f"[dim]Inventory:[/dim] {', '.join(inv)}")
-            if soft_inv:
-                parts.append(f"[dim]Misc:[/dim] {', '.join(soft_inv)}")
             if active_flags:
                 parts.append(f"[dim]Flags:[/dim] {', '.join(active_flags)}")
             self._console.print(f"  {' | '.join(parts)}")
         else:
             parts = [f"Turn {turn}", f"Location: {loc}"]
-            if inv:
-                parts.append(f"Inventory: {', '.join(inv)}")
-            if soft_inv:
-                parts.append(f"Misc: {', '.join(soft_inv)}")
             if active_flags:
                 parts.append(f"Flags: {', '.join(active_flags)}")
             print(f"  {' | '.join(parts)}")
@@ -207,7 +196,7 @@ class Display:
                     max_hp = hard.player.max_hp or 0
                 else:
                     entity = corpus.entities.get(cid) if corpus else None
-                    display_name = getattr(entity, "name", cid) if entity else cid
+                    display_name = (entity.name or cid) if entity else cid
                     name = f"{display_name:<15}"
                     state = hard.entity_states.get(cid, {})
                     current = state.get("current_hp") or 0
@@ -239,7 +228,7 @@ class Display:
                     max_hp = hard.player.max_hp or 0
                 else:
                     entity = corpus.entities.get(cid) if corpus else None
-                    name = getattr(entity, "name", cid) if entity else cid
+                    name = (entity.name or cid) if entity else cid
                     state = hard.entity_states.get(cid, {})
                     current = state.get("current_hp") or 0
                     max_hp = (entity.combat.hp if entity and entity.combat else 0)

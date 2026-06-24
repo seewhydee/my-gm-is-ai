@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import getpass
+import logging
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,9 +28,20 @@ from mgmai.llm.model_config import (
 )
 from mgmai.logging import get_level, set_level
 
-import logging
-
 _DEBUG_LEVEL = logging.DEBUG
+
+try:
+    from rich.markup import escape as _rich_escape
+
+    import mgmai.game.display as _display
+
+    def _escape(text: str) -> str:
+        return _rich_escape(text) if _display.RICH_AVAILABLE else text
+except ImportError:
+    def _escape(text: str) -> str:
+        return text
+
+_BARE_INV_WORDS = frozenset({"i", "inv", "inventory"})
 
 class Commands:
     def __init__(
@@ -58,30 +70,40 @@ class Commands:
 
     def handle(self, raw: str) -> bool:
         stripped = raw.strip()
-        if not stripped.startswith("/"):
+        if not stripped:
             return False
 
-        parts = stripped[1:].split(maxsplit=1)
-        cmd = parts[0].lower()
-        arg = parts[1] if len(parts) > 1 else ""
+        if stripped.startswith("/"):
+            parts = stripped[1:].split(maxsplit=1)
+            cmd = parts[0].lower()
+            arg = parts[1] if len(parts) > 1 else ""
 
-        handler = {
-            "help": self._cmd_help,
-            "h": self._cmd_help,
-            "exit": self._cmd_exit,
-            "quit": self._cmd_exit,
-            "q": self._cmd_exit,
-            "save": self._cmd_save,
-            "load": self._cmd_load,
-            "debug": self._cmd_debug,
-            "model": self._cmd_model,
-        }.get(cmd)
+            handler = {
+                "help": self._cmd_help,
+                "h": self._cmd_help,
+                "exit": self._cmd_exit,
+                "quit": self._cmd_exit,
+                "q": self._cmd_exit,
+                "save": self._cmd_save,
+                "load": self._cmd_load,
+                "debug": self._cmd_debug,
+                "model": self._cmd_model,
+                "i": self._cmd_inv,
+                "inv": self._cmd_inv,
+                "inventory": self._cmd_inv,
+            }.get(cmd)
 
-        if handler is None:
-            return False
+            if handler is None:
+                return False
 
-        handler(arg)
-        return True
+            handler(arg)
+            return True
+
+        if stripped.lower() in _BARE_INV_WORDS:
+            self._cmd_inv("")
+            return True
+
+        return False
 
     # --- command implementations ---
 
@@ -101,14 +123,16 @@ class Commands:
     n, s, e, w, u, d     Go in that direction
     x <target>           Examine <target> (x alone = look around)
     l                    Look around
-    i, inv               Check inventory
+    i, inv               Show inventory (engine-level, no turn used)
     z                    Wait
     t <npc>              Talk to <npc>
 
 [bold]Tips[/bold]
   Type natural language to describe what your character does.
   The GM will interpret your intent and narrate the outcome.
-  e.g. "look around", "check my inventory", "what happened?"
+  e.g. "look around", "what happened?"
+  Use /i, /inv, i, or inv for a free (no-turn) inventory display.
+  Use "check my inventory" if you want narrated commentary from the GM.
 """
         self._render(text)
 
@@ -320,3 +344,61 @@ class Commands:
                                        custom_models=custom_models)
             self._on_model_change(credentials.api_key, new_cfg)
             self._model_config = new_cfg
+
+    def _cmd_inv(self, _: str) -> None:
+        hard = self._state.hard_state
+        soft = self._state.soft_state
+        corpus = self._state.corpus
+
+        if hard is None or soft is None or corpus is None:
+            self._render("[red]No game loaded.[/red]")
+            return
+
+        def _item_label(item_id: str) -> str:
+            entity = corpus.entities.get(item_id)
+            if entity is None:
+                return _escape(item_id)
+            return _escape(entity.name or item_id)
+
+        lines: list[str] = []
+        carried = list(hard.player.inventory)
+
+        if hard.player.equipped:
+            lines.append("[bold]Equipped[/bold]")
+            for item_id in hard.player.equipped:
+                entity = corpus.entities.get(item_id)
+                eb = entity.equip_block if entity else None
+
+                tags_str = ""
+                if eb and eb.equip_tags:
+                    tags_str = f" [dim]({', '.join(eb.equip_tags)})[/dim]"
+                lines.append(f"  [cyan]{_item_label(item_id)}[/cyan]{tags_str}")
+
+                if eb:
+                    summary = eb.effects_summary()
+                    if summary:
+                        lines.append(f"    [dim]{_escape(summary)}[/dim]")
+                if entity and entity.description:
+                    lines.append(f"    [dim italic]{_escape(entity.description)}[/dim italic]")
+            lines.append("")
+
+        if carried:
+            lines.append("[bold]Carried[/bold]")
+            for item_id in carried:
+                entity = corpus.entities.get(item_id)
+                lines.append(f"  {_item_label(item_id)}")
+                if entity and entity.description:
+                    lines.append(f"    [dim italic]{_escape(entity.description)}[/dim italic]")
+            lines.append("")
+
+        if soft.soft_inventory:
+            lines.append("[bold]Pockets / Misc[/bold]")
+            for s in soft.soft_inventory:
+                lines.append(f"  [dim]{_escape(s)}[/dim]")
+            lines.append("")
+
+        if not hard.player.equipped and not carried and not soft.soft_inventory:
+            self._render("[dim]You are carrying nothing.[/dim]")
+            return
+
+        self._render("\n".join(lines))

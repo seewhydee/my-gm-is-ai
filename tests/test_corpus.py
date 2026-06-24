@@ -372,14 +372,30 @@ class TestEntity:
     def test_item_with_tags(self) -> None:
         e = Entity.model_validate({
             "type": "item",
+            "name": "Rusty Sword",
             "description": "A rusty sword.",
             "tags": ["weapon", "mundane"],
             "draggable": True,
             "dragging_note": "It's heavy.",
         })
         assert e.type == "item"
+        assert e.name == "Rusty Sword"
         assert e.tags == ["weapon", "mundane"]
         assert e.draggable is True
+
+    def test_item_without_name_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            Entity.model_validate({
+                "type": "item",
+                "description": "A nameless item.",
+            })
+
+    def test_non_item_without_name_ok(self) -> None:
+        e = Entity.model_validate({
+            "type": "feature",
+            "description": "A feature needs no name.",
+        })
+        assert e.name is None
 
     def test_npc_with_behavior(self) -> None:
         e = Entity.model_validate({

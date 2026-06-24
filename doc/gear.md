@@ -19,6 +19,7 @@ To make an item equippable, add an `equip_block` to its entity definition:
 {
   "toenail_sword": {
     "type": "item",
+    "name": "Toenail Sword",
     "description": "A giant toenail clipping, curved and razor-sharp...",
     "tags": ["weapon"],
     "equip_block": {
@@ -29,6 +30,11 @@ To make an item equippable, add an `equip_block` to its entity definition:
   }
 }
 ```
+
+Every `item` entity must carry a `name` — this is the display string shown in
+the `/inv` panel and in the LLM-facing `equipped_items` briefing, rather than
+the raw snake_case entity ID. (Other entity types may omit `name`, in which
+case the engine falls back to the entity ID.)
 
 The player can then equip it via the LLM ("I draw the sword") and unequip it ("I sheathe it").  The engine handles moving IDs between the `inventory` and `equipped` lists, computing effective stats, and validating conflicts.
 

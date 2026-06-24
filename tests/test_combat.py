@@ -236,6 +236,7 @@ class TestPlayerStats:
         corpus_dict = combat_npc_corpus.model_dump()
         corpus_dict["entities"]["longsword"] = {
             "type": "item",
+            "name": "Longsword",
             "description": "A longsword.",
             "tags": ["weapon"],
         }

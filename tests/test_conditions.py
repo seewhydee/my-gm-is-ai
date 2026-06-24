@@ -77,16 +77,19 @@ def make_corpus(**overrides) -> ModuleCorpus:
         "entities": {
             "sword": {
                 "type": "item",
+                "name": "Sword",
                 "description": "A sword.",
                 "tags": ["weapon"],
             },
             "shield": {
                 "type": "item",
+                "name": "Shield",
                 "description": "A shield.",
                 "tags": ["armor"],
             },
             "magic_sword": {
                 "type": "item",
+                "name": "Magic Sword",
                 "description": "A magic sword.",
                 "tags": ["weapon", "magic"],
             },

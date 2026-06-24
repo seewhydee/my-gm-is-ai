@@ -674,6 +674,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 {
   "<entity_id>": {
     "type": "player | feature | npc | item",
+    "name": "string (required for item, optional otherwise)",
     "description": "string",
     "spans_rooms": ["<room_id>", ...],
     "soft_items": ["string", ...],
@@ -701,6 +702,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | Field                  | Type   | Applies to    | Description |
 |------------------------|--------|---------------|-------------|
 | `type`                 | enum   | all           | `player`, `feature`, `npc`, `item`. The `player` type is reserved for the player character entity. |
+| `name`                 | string | item          | Display name for the entity (e.g., `"Toenail Sword"`, `"Rusty Key"`). **Required for `item` entities** — it is what the player sees in the `/inv` panel and what both LLM calls receive in briefings, rather than the raw snake_case entity ID. Optional for other types (falls back to the entity ID when absent). |
 | `description`          | string | all           | Canonical description returned for `examine` action. |
 | `spans_rooms`          | array  | feature       | List of room IDs this entity is visible in (e.g., a battleaxe spanning multiple rooms). |
 | `soft_items`           | array  | all           | Plausible generic items found on/in this entity (e.g., a corpse might have `["loose change", "torn parchment"]`). Same semantics as room soft_items. |

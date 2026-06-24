@@ -44,6 +44,7 @@
     "rusty_key": {
       "type": "item",
       "id": "rusty_key",
+      "name": "Rusty Key",
       "description": "A rusty iron key.",
       "tags": ["key_item"]
     }

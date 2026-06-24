@@ -331,6 +331,7 @@ def _corpus_with_item(item_id, ac_override=None, ac_bonus=0):
         "entities": {
             item_id: {
                 "type": "item",
+                "name": item_id,
                 "description": "D",
                 "equip_block": {
                     "equip_tags": ["armor"],

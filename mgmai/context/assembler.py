@@ -91,7 +91,7 @@ def _build_room(room_id: str,
         entity_state = hard.entity_states.get(eid, {})
         if entity_state.get("hidden", False):
             continue
-        if entity.type == "item" and eid in hard.player.inventory:
+        if entity.type == "item" and (eid in hard.player.inventory or eid in hard.player.equipped):
             continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
@@ -111,7 +111,7 @@ def _build_room(room_id: str,
         entities_visible.append(
             BriefingEntity(
                 id=eid,
-                name=getattr(entity, "name", eid),
+                name=entity.name or eid,
                 type=entity.type,
                 description=entity.description,
                 state=dict(entity_state),
@@ -213,25 +213,10 @@ def _build_player_state(
         effects_summary = ""
         if entity.equip_block:
             equip_tags = list(entity.equip_block.equip_tags)
-            parts = []
-            for stat_key, mod in entity.equip_block.equip_effects.items():
-                if mod.mode == "set":
-                    parts.append(f"{stat_key} = {mod.value}")
-                else:
-                    sign = "+" if mod.value >= 0 else ""
-                    parts.append(f"{stat_key} {sign}{mod.value}")
-            if entity.equip_block.ac_override is not None:
-                parts.append(f"AC {entity.equip_block.ac_override}")
-            if entity.equip_block.ac_bonus != 0:
-                parts.append(f"AC +{entity.equip_block.ac_bonus}")
-            if "weapon" in entity.equip_block.equip_tags:
-                parts.append(f"{entity.equip_block.damage_expr} damage")
-                if entity.equip_block.attack_bonus != 0:
-                    parts.append(f"+{entity.equip_block.attack_bonus} to hit")
-            effects_summary = ", ".join(parts)
+            effects_summary = entity.equip_block.effects_summary()
         equipped_items.append(EquippedItemBriefing(
             id=item_id,
-            name=getattr(entity, "name", item_id),
+            name=entity.name or item_id,
             description=entity.description,
             equip_tags=equip_tags,
             effects_summary=effects_summary,
@@ -370,7 +355,7 @@ def _build_dialogue_context(soft: SoftGameState,
     return DialogueContext(
         active_npc=DialogueActiveNpc(
             id=npc_id,
-            name=getattr(npc, "name", npc_id),
+            name=npc.name or npc_id,
             attitude=attitude,
             dialogue_guidelines=guidelines),
         recent_exchanges=recent_exchanges,
@@ -405,7 +390,7 @@ def _build_combat_state(
             })
         else:
             entity = corpus.entities.get(cid)
-            name = getattr(entity, "name", cid) if entity else cid
+            name = (entity.name or cid) if entity else cid
             state = hard.entity_states.get(cid, {})
             combatants.append({
                 "id": cid,

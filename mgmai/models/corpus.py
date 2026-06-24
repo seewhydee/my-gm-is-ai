@@ -96,6 +96,27 @@ class EquipBlock(BaseModel):
     damage_expr: str = "1d8"
     attack_bonus: int = 0
 
+    def effects_summary(self) -> str:
+        """Compact mechanical-effects summary, shared by briefing and /inv."""
+        parts: list[str] = []
+        for stat_key, mod in self.equip_effects.items():
+            if mod.mode == "set":
+                parts.append(f"{stat_key} = {mod.value}")
+            else:
+                sign = "+" if mod.value >= 0 else ""
+                parts.append(f"{stat_key} {sign}{mod.value}")
+        if self.ac_override is not None:
+            parts.append(f"AC {self.ac_override}")
+        if self.ac_bonus != 0:
+            parts.append(f"AC {'+' if self.ac_bonus >= 0 else ''}{self.ac_bonus}")
+        if "weapon" in self.equip_tags:
+            parts.append(f"{self.damage_expr} damage")
+            if self.attack_bonus != 0:
+                parts.append(
+                    f"{'+' if self.attack_bonus >= 0 else ''}{self.attack_bonus} to hit"
+                )
+        return ", ".join(parts)
+
 
 class ChainedCheck(BaseModel):
     check: CheckType
@@ -380,6 +401,7 @@ class Behavior(BaseModel):
 
 class Entity(BaseModel):
     type: Literal["player", "feature", "npc", "item"]
+    name: Optional[str] = None
     description: str
     spans_rooms: Optional[List[str]] = None
     soft_items: List[str] = Field(default_factory=list)
@@ -416,6 +438,10 @@ class Entity(BaseModel):
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'equip_block'. "
                 f"Only 'item' entities may carry equip_block.")
+        if self.type == "item" and not self.name:
+            raise ValueError(
+                "Item entities must have a non-empty 'name' "
+                "(used for inventory display and LLM briefings).")
         return self
 
 

@@ -146,10 +146,12 @@ def _mk_item_entity(
     eid: str,
     description: str = "An item.",
     tags: list[str] | None = None,
+    name: str | None = None,
 ) -> Entity:
     return Entity(
         type="item",
         id=eid,
+        name=name or eid,
         description=description,
         tags=tags or [],
     )
@@ -342,7 +344,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
         ],
     )
 
-    toenail = _mk_item_entity("toenail_sword", description="A sharp toenail.", tags=["weapon"])
+    toenail = _mk_item_entity("toenail_sword", description="A sharp toenail.", tags=["weapon"], name="Toenail Sword")
     korbar = _mk_npc_entity(
         "korbar",
         description="A dwarf.",
@@ -504,7 +506,7 @@ def make_char_sheet_corpus(
         }
     if entities is None:
         entities = {
-            "toenail_sword": _mk_item_entity("toenail_sword", "A sharp toenail."),
+            "toenail_sword": _mk_item_entity("toenail_sword", "A sharp toenail.", name="Toenail Sword"),
         }
     return ModuleCorpus(
         adventure=Adventure(

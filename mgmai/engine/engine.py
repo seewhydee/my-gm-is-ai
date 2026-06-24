@@ -706,7 +706,7 @@ def _build_room_after(
         entities_visible.append(
             BriefingEntity(
                 id=eid,
-                name=getattr(entity, "name", eid),
+                name=entity.name or eid,
                 type=entity.type,
                 description=entity.description,
                 state=entity_state,

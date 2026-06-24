@@ -33,8 +33,6 @@ _SINGLE_TOKEN_SHORTCUTS: dict[str, str] = {
     "u": "go up",
     "d": "go down",
     "l": "look around",
-    "i": "check my inventory",
-    "inv": "check my inventory",
     "z": "wait",
     "x": "look around",
 }

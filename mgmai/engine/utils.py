@@ -67,7 +67,7 @@ def inject_following_npcs(
         entities_visible.append(
             BriefingEntity(
                 id=eid,
-                name=getattr(entity, "name", eid),
+                name=entity.name or eid,
                 type=entity.type,
                 description=entity.description,
                 state=entity_state,
@@ -103,7 +103,7 @@ def build_contained_entities(
             continue
         contained.append(BriefingContainedEntity(
             id=cid,
-            name=getattr(contained_entity, "name", cid),
+            name=contained_entity.name or cid,
             type=contained_entity.type,
             description=contained_entity.description,
         ))

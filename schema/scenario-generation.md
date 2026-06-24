@@ -380,6 +380,10 @@ since `flee` removes the NPC from play without killing the player.
 
 For every item entity:
 
+- **`name`** (required): a human-readable display name (e.g., `"Toenail Sword"`,
+  `"Rusty Key"`). This is what the player sees in the `/inv` panel and what both
+  LLM calls receive in briefings — not the raw snake_case entity ID. The engine
+  rejects item entities without a `name` at load time.
 - Add relevant `tags`: `"weapon"` (if usable in combat), `"key_item"` (plot-significant)
 - Set `draggable: true` if the item encumbers the player while carried
 - Set `dragging_note` to a narrative description of the encumbrance
@@ -460,6 +464,7 @@ Exactly one entity with `type: "player"`.
 - [ ] Every `set_entity_state` in `will_reveal` references an entity that
   has that field in `state_fields`
 - [ ] Item entities carry appropriate `tags` where the scenario implies them
+- [ ] Every item entity has a non-empty `name` (display name; required by the engine)
 - [ ] State fields for `alive` are `true` for creatures that start alive
 - [ ] No entity has `dialogue_guidelines` or `behavior` unless `type: "npc"`
 - [ ] Entities that span multiple rooms have `spans_rooms` and appear in each
@@ -819,6 +824,7 @@ Example — a loose pile containing a sword that takes effort to pull free:
 // Entity: the item — must declare 'hidden' in state_fields
 "toenail_sword": {
   "type": "item",
+  "name": "Toenail Sword",
   "state_fields": {
     "hidden": { "type": "boolean", "description": "Whether the sword is visible." }
   },

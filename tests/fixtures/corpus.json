@@ -745,6 +745,7 @@
     },
     "toenail_sword": {
       "type": "item",
+      "name": "Toenail Sword",
       "description": "A giant toenail clipping, curved and wickedly sharp. It is disgusting to think about, but it is roughly the size and shape of a short sword and could serve as a makeshift weapon.",
       "soft_items": [],
       "tags": [
@@ -761,6 +762,7 @@
     },
     "rusty_key": {
       "type": "item",
+      "name": "Rusty Key",
       "description": "A large iron key, rusted with age but still sturdy. It is far too big for any normal door, but it looks like it would fit the giant padlock on the outside of the bag.",
       "soft_items": [],
       "tags": [
