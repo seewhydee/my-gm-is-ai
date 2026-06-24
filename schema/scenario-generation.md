@@ -99,7 +99,15 @@ For every distinct entity mentioned, note:
   - `npc` — characters that can talk or fight
   - `feature` — environmental objects (walls, piles, handkerchiefs)
   - `item` — objects that can be picked up
-- **Description** — canonical prose for examine action
+- **Description** — static, timeless prose describing what the entity
+   objectively is.  Avoid situational framing that assumes a particular
+   discovery state (e.g., "Something large stirs in the shadows" is wrong;
+   "A massive spider with eight glittering eyes and venom-slick mandibles"
+   is right).  The engine handles concealment and discovery separately via
+   `hidden` state and `on_examine` events.  This description appears in
+   every LLM briefing while the entity is present, so it must remain
+   accurate regardless of the entity's current state (alive/dead/hidden).
+   See the "Hidden entity reveal pattern" in § 3B for details.
 - **Dialogue** — does it talk? Note personality, knows, attitude gating
 - **Behavior** — does it fight? Note triggers, combat rules
 - **Reactions** — event-driven triggers (e.g., "attacks when player enters",
@@ -511,10 +519,16 @@ in the webs. Use this pattern for engine-enforced hiding:
    surface-level impressions. The dramatic reveal comes from the
    `on_examine` success narrative.
 
-4. **The entity's `description` should be vague** — hint at the unknown
-   rather than describing the fully visible creature. Example for a hidden
-   spider: "Something large stirs in the shadows above, just beyond your
-   field of view."
+4. **The entity's `description` must be a static, timeless description of
+   what the entity is — not a situational "first glimpse" narrative.**
+   The engine enforces concealment through the `hidden` state field and
+   `on_examine` revelation; the description itself should always describe
+   the entity objectively, regardless of whether it is currently visible.
+   Example for a spider: "A massive spider — eight glittering eyes, eight
+   hairy legs, mandibles slick with venom. It lurks in the shadows above
+   the webbing."  The description may include the entity's usual location
+   or posture ("lurks in the shadows"), but should avoid framing that
+   assumes a particular discovery state ("Something large stirs...").
 
 5. **Add an `on_examine` event** (on the room or a covering entity) that
    reveals the entity when the player discovers it:

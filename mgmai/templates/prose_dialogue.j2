@@ -30,19 +30,25 @@ The briefing's `dialogue_context` contains:
 
 ### Core Dialogue Behavior
 
-When in dialogue and the NPC would speak this turn, weave their spoken
-words into your `narration`.  For example:
+When in dialogue and the NPC would speak this turn, you should
+populate both the `narration` field and the `npc_response` field of
+the JSON object you return.  First, weave their spoken words into the
+`narration` field: e.g.,
 
-> `The guard peers at you suspiciously. "Oi, what brings you here?"`
+```json
+"narration": "'Oi!" The guard peers at you suspiciously. 'What brings you here?'"
+```
 
-Also fill `npc_response` with the same verbatim words — this is used by
-the logging system for conversation state tracking.
+Second, fill `npc_response` (used for conversation logging) with the
+same verbatim words, stripping out the extra narration: e.g.,
 
-**CRITICAL: `narration` MUST NEVER be an empty string.**  Always
-include the NPC's spoken words and any surrounding narrative in
-`narration`.  The player sees *only* `narration` — if you leave it
-blank, the player sees nothing.  `npc_response` is a logging aid, not
-a substitute for `narration`.
+```json
+"npc_response": "Oi! What brings you here?"
+```
+
+**CRITICAL**: `narration` should not be empty string, and it should
+not omit any words said by the NPC.  The player sees *only*
+`narration`; `npc_response` is a logging aid, not a substitute.
 
 The NPC should:
 - Stay in character per their `dialogue_guidelines`

@@ -201,19 +201,21 @@ class Display:
 
             for cid in combat.combatants:
                 if cid == "player":
-                    name = "[bold bright_white]Player[/bold bright_white]"
+                    display_name = "Player"
+                    name = f"[bold bright_white]{display_name:<15}[/bold bright_white]"
                     current = hard.player.current_hp or 0
                     max_hp = hard.player.max_hp or 0
                 else:
                     entity = corpus.entities.get(cid) if corpus else None
-                    name = getattr(entity, "name", cid) if entity else cid
+                    display_name = getattr(entity, "name", cid) if entity else cid
+                    name = f"{display_name:<15}"
                     state = hard.entity_states.get(cid, {})
                     current = state.get("current_hp") or 0
                     max_hp = (entity.combat.hp if entity and entity.combat else 0)
 
                 bar = _hp_bar(current, max_hp)
                 lines.append(
-                    f"{name:<15} HP {bar} {current}/{max_hp}"
+                    f"{name} HP {bar} {current}/{max_hp}"
                 )
 
             lines.append("")
