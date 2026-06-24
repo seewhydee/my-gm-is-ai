@@ -36,14 +36,25 @@
     "padlock_unlocked": false,
     "key_lost_to_astral": false,
     "player_squeezed_through_rip": false,
-    "rip_squeeze_possible": false
+    "rip_squeeze_possible": false,
+    "player_above_webs": false
   },
   "room_states": {
-    "axe_head": { "visited": false },
-    "axe_handle_upper": { "visited": false },
-    "axe_handle_lower": { "visited": false },
-    "bag_floor": { "visited": false },
-    "secret_pocket": { "visited": false }
+    "axe_head": {
+      "visited": false
+    },
+    "axe_handle_upper": {
+      "visited": false
+    },
+    "axe_handle_lower": {
+      "visited": false
+    },
+    "bag_floor": {
+      "visited": false
+    },
+    "secret_pocket": {
+      "visited": false
+    }
   },
   "entity_states": {
     "player": {

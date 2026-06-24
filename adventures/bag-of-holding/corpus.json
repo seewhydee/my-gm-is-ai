@@ -222,13 +222,37 @@
           "condition": {
             "all": [
               {
-                "require": "event:exit_id == exit_force_through_web"
-              },
-              {
                 "require": "entity:spider.alive == true"
               },
               {
                 "unless": "entity:spider.fled == true"
+              },
+              {
+                "unless": "flag:webs_cleared == true"
+              },
+              {
+                "any": [
+                  {
+                    "all": [
+                      {
+                        "require": "event:exit_id == exit_walk_down_handle_lower"
+                      },
+                      {
+                        "require": "flag:player_above_webs == true"
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "require": "event:exit_id == exit_up_handle_lower"
+                      },
+                      {
+                        "require": "flag:player_above_webs == false"
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           },
@@ -1115,6 +1139,20 @@
           "effects": {
             "trigger_encounter": "fall_damage_from_upper"
           }
+        },
+        {
+          "id": "set_player_above_webs",
+          "on": "traversal.succeeded",
+          "condition": {
+            "require": "event:exit_id == exit_down_handle_upper"
+          },
+          "effects": {
+            "result": {
+              "set_flag": {
+                "player_above_webs": true
+              }
+            }
+          }
         }
       ]
     },
@@ -1130,34 +1168,20 @@
       "soft_items": [],
       "exits": [
         {
-          "id": "exit_up_handle_lower",
-          "direction": "Walk up the axe handle (back toward the upper handle)",
-          "target_room": "axe_handle_upper",
-          "conditions": [],
-          "traversal_check": {
-            "condition": {
-              "require": "inventory:giant_key"
-            },
-            "check": {
-              "type": "stat_check",
-              "stat": "STR",
-              "dc": 12,
-              "repeatable": true
-            },
-            "skip_check_if": {
-              "require": "entity:korbar.following == true"
-            },
-            "failure_narrative": "You struggle to haul the heavy key along the axe handle. You'll have to try again."
-          }
-        },
-        {
-          "id": "exit_force_through_web",
-          "direction": "Force your way through the dense webs downward",
+          "id": "exit_walk_down_handle_lower",
+          "direction": "Walk down the axe handle (toward the bag floor)",
           "target_room": "bag_floor",
           "conditions": [],
           "traversal_check": {
             "condition": {
-              "unless": "flag:webs_cleared == true"
+              "all": [
+                {
+                  "require": "flag:webs_cleared == false"
+                },
+                {
+                  "require": "flag:player_above_webs == true"
+                }
+              ]
             },
             "check": {
               "type": "stat_check",
@@ -1167,6 +1191,52 @@
             },
             "skip_check_if": {
               "require": "flag:webs_cleared == true"
+            },
+            "failure_narrative": "You strain against the sticky webs but can't break through. The strands cling to every limb.",
+            "using_results": {
+              "*": {
+                "check": {
+                  "type": "stat_check",
+                  "stat": "STR",
+                  "dc": 10,
+                  "repeatable": true
+                },
+                "success": {}
+              }
+            }
+          }
+        },
+        {
+          "id": "exit_up_handle_lower",
+          "direction": "Walk up the axe handle (back toward the upper handle)",
+          "target_room": "axe_handle_upper",
+          "conditions": [],
+          "traversal_check": {
+            "condition": {
+              "any": [
+                {
+                  "require": "inventory:giant_key"
+                },
+                {
+                  "all": [
+                    {
+                      "require": "flag:webs_cleared == false"
+                    },
+                    {
+                      "require": "flag:player_above_webs == false"
+                    }
+                  ]
+                }
+              ]
+            },
+            "check": {
+              "type": "stat_check",
+              "stat": "STR",
+              "dc": 14,
+              "repeatable": true
+            },
+            "skip_check_if": {
+              "require": "entity:korbar.following == true"
             },
             "failure_narrative": "You strain against the sticky webs but can't break through. The strands cling to every limb.",
             "using_results": {
@@ -1272,7 +1342,35 @@
           "id": "web_cleared_on_success",
           "on": "traversal.succeeded",
           "condition": {
-            "require": "event:exit_id == exit_force_through_web"
+            "all": [
+              {
+                "unless": "flag:webs_cleared == true"
+              },
+              {
+                "any": [
+                  {
+                    "all": [
+                      {
+                        "require": "event:exit_id == exit_walk_down_handle_lower"
+                      },
+                      {
+                        "require": "flag:player_above_webs == true"
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "require": "event:exit_id == exit_up_handle_lower"
+                      },
+                      {
+                        "require": "flag:player_above_webs == false"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
           },
           "effects": {
             "result": {
@@ -1547,6 +1645,20 @@
               "narrative": "You can now see the giant handkerchief draped over a corner of the rubbish pile."
             }
           }
+        },
+        {
+          "id": "set_player_below_webs",
+          "on": "traversal.succeeded",
+          "condition": {
+            "require": "event:exit_id == exit_climb_up_handle_floor"
+          },
+          "effects": {
+            "result": {
+              "set_flag": {
+                "player_above_webs": false
+              }
+            }
+          }
         }
       ]
     },
@@ -1788,6 +1900,7 @@
     "padlock_unlocked",
     "key_lost_to_astral",
     "player_squeezed_through_rip",
-    "rip_squeeze_possible"
+    "rip_squeeze_possible",
+    "player_above_webs"
   ]
 }
