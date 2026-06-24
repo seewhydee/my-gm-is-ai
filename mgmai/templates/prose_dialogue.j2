@@ -38,6 +38,12 @@ words into your `narration`.  For example:
 Also fill `npc_response` with the same verbatim words — this is used by
 the logging system for conversation state tracking.
 
+**CRITICAL: `narration` MUST NEVER be an empty string.**  Always
+include the NPC's spoken words and any surrounding narrative in
+`narration`.  The player sees *only* `narration` — if you leave it
+blank, the player sees nothing.  `npc_response` is a logging aid, not
+a substitute for `narration`.
+
 The NPC should:
 - Stay in character per their `dialogue_guidelines`
 - Respond naturally to the player's utterance

@@ -68,7 +68,7 @@ You MUST output a single JSON object:
 
 ```json
 {
-  "narration": "The natural-language prose to show the player. REQUIRED.",
+  "narration": "The natural-language prose to show the player. REQUIRED. MUST NEVER be an empty string.",
   "npc_response": "Verbatim NPC speech if in dialogue (see Dialogue section). null or omit if not.",
   "conversation_note": "Narrative summary if dialogue just ended (see Dialogue section). null or omit if not.",
   "knowledge_tags": {"npc_id": ["topic_id", ...]} or null,
