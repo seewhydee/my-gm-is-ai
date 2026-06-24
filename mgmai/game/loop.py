@@ -330,10 +330,11 @@ class GameLoop:
                 self._last_result = result
 
         narration = prose.narration
-        # If the narrator forgot to include the NPC dialogue in the
-        # narration, append it as a fallback so the player sees it.
-        if prose.npc_response and prose.npc_response not in narration:
-            narration = (narration + "\n\n" + prose.npc_response).strip()
+        # The LLM is instructed to include NPC speech inline in
+        # narration; npc_response is a logging aid.  Only fall back if
+        # the narrator somehow produced an empty narration.
+        if not narration.strip() and prose.npc_response:
+            narration = prose.npc_response.strip()
         check_prefix = format_stat_check_prefix(result.rolls)
         if check_prefix:
             narration = check_prefix + narration
