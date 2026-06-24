@@ -120,10 +120,10 @@
         ]
       },
       "combat": {
-        "hp": 15,
-        "ac": 14,
-        "atk": 5,
-        "dmg": "1d4+3",
+        "hp": 14,
+        "ac": 8,
+        "atk": 1,
+        "dmg": "1d4+2",
         "initiative_mod": 3,
         "flee_dc": 10,
         "on_hit_effects": [

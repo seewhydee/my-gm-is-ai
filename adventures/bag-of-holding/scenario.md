@@ -345,8 +345,8 @@ and still attacks as described above.
 #### Stat Block: Spider
 
 STR 14, DEX 16, CON 12, INT 7, WIS 11, CHA 4
-AC 14, HP 15
-Attacks: Bite (+5 to hit, 1d4+3 piercing damage)
+AC 8, HP 14
+Attacks: Bite (+1 to hit, 1d4+2 piercing damage)
 
 On hit, target must make a DC 11 CON save or take 1d8 poison damage,
 or half as much damage on a successful save.
