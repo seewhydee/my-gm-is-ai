@@ -96,7 +96,10 @@ def build_contained_entities(
         cstate = hard.entity_states.get(cid, {})
         if cstate.get("hidden", False):
             continue
-        if contained_entity.type == "item" and cid in hard.player.inventory:
+        if contained_entity.type == "item" and (
+            cid in hard.player.inventory
+            or cid in hard.player.equipped
+        ):
             continue
         contained.append(BriefingContainedEntity(
             id=cid,

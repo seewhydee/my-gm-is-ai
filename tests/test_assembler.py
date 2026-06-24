@@ -689,7 +689,11 @@ class TestPlayerKnowledge:
             state_manager.soft_state,
             "look",
         )
-        assert "padlock_mechanism" in result.player_knowledge_topics
+        assert len(result.player_knowledge_topics) == 1
+        assert result.player_knowledge_topics[0].topic_id == "padlock_mechanism"
+        assert result.player_knowledge_topics[0].description.startswith(
+            "Korbar explains"
+        )
 
 
 class TestDialogueContext:
@@ -919,6 +923,21 @@ class TestBuildContainedEntities:
         corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": False}
         hard.player.inventory = ["toenail_sword"]
+        result = build_contained_entities(
+            corpus.entities["rubbish_pile"], hard, corpus,
+        )
+        assert len(result) == 0
+
+    def test_equipped_contained_entity_excluded(self, state_manager):
+        corpus = state_manager.corpus
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        hard.entity_states["toenail_sword"] = {"hidden": False}
+        # Equipped items are no longer in inventory but must still be
+        # filtered out so they don't reappear inside their container.
+        hard.player.inventory = []
+        hard.player.equipped = ["toenail_sword"]
         result = build_contained_entities(
             corpus.entities["rubbish_pile"], hard, corpus,
         )

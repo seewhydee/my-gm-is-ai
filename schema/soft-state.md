@@ -217,9 +217,10 @@ Call 2's `knowledge_tags`.
 
 ### Usage in GMBriefing
 
-- The Context Assembler produces `player_knowledge_topics: List[str]` — a flat
-  list of topic IDs the player has learned — and includes it in the GMBriefing
-  so LLM Call 1 knows what the player has learned.
+- The Context Assembler produces `player_knowledge_topics` — a list of
+  `{ "topic_id": "...", "description": "..." }` objects for each topic the
+  player has learned — and includes it in the GMBriefing so LLM Call 1 knows
+  what the player has learned and what each topic means.
 - When `dialogue_state.active_npc` is set, the `dialogue_context` block
   includes `revealed_topics` (just the topic IDs for the current NPC) for quick
   reference.

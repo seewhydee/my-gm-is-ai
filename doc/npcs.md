@@ -281,7 +281,7 @@ class KnowledgeEntry(BaseModel):
     turn_learned: int
 ```
 
-For the GMBriefing, the Context Assembler produces `player_knowledge_topics` — a flat list of topic IDs the player has learned.  Full descriptions are available from the corpus `will_reveal` entries when needed by LLM Call 2.  This avoids duplicating description text in every briefing.
+For the GMBriefing, the Context Assembler produces `player_knowledge_topics` — a list of `{ "topic_id": "...", "description": "..." }` objects for each topic the player has learned.  Including the description (recorded when the topic was first revealed) lets LLM Call 1 understand what the player already knows without cross-referencing the corpus.
 
 The system deduplicates by `topic_id` across **all** sources.  If the player already knows topic X (from an interaction, a previous NPC, or any source), a later NPC who meets the conditions for the same topic will not re-reveal it.  The post-validation silently skips duplicate entries.
 

@@ -33,6 +33,7 @@ from mgmai.models.briefing import (
     EquippedItemBriefing,
     GMBriefing,
     PlayerCombatStats,
+    PlayerKnowledgeTopic,
     PlayerStateBriefing,
     PlayerStatEntry)
 
@@ -312,8 +313,14 @@ def _pair_conversation_log(log: list[object]) -> list[dict[str, object]]:
     return list(reversed(exchanges))
 
 
-def _build_player_knowledge(soft: SoftGameState) -> list[str]:
-    return [entry.topic_id for entry in soft.player_knowledge]
+def _build_player_knowledge(soft: SoftGameState) -> list[PlayerKnowledgeTopic]:
+    return [
+        PlayerKnowledgeTopic(
+            topic_id=entry.topic_id,
+            description=entry.description,
+        )
+        for entry in soft.player_knowledge
+    ]
 
 
 def _build_recent_history(soft: SoftGameState) -> list[BriefingHistoryEntry]:

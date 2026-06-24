@@ -72,9 +72,10 @@ in `knowledge_tags`:
 ```
 
 Only tag topics whose `conditions_met` is `true` **and** not already
-listed in `dialogue_context.revealed_topics` or the briefing's
-`player_knowledge_topics`.  If no topics were newly revealed, omit
-this field or set it to null.  Do not invent your own topic IDs.
+listed in `dialogue_context.revealed_topics` or already present in the
+briefing's `player_knowledge_topics` (each entry's `topic_id`).  If no
+topics were newly revealed, omit this field or set it to null.  Do not
+invent your own topic IDs.
 
 ### Attitude Changes
 

@@ -26,6 +26,12 @@ class BriefingInteraction(BaseModel):
     description: Optional[str] = None
 
 
+class PlayerKnowledgeTopic(BaseModel):
+    """A topic the player has learned, with its description."""
+    topic_id: str
+    description: str
+
+
 class BriefingContainedEntity(BaseModel):
     """Minimal entity info for an item nested inside another entity."""
     id: str
@@ -132,7 +138,7 @@ class GMBriefing(BaseModel):
     turn: int
     current_room: BriefingRoom
     player_state: PlayerStateBriefing
-    player_knowledge_topics: List[str] = Field(default_factory=list)
+    player_knowledge_topics: List[PlayerKnowledgeTopic] = Field(default_factory=list)
     recent_history: List[BriefingHistoryEntry] = Field(default_factory=list)
     dialogue_context: Optional[DialogueContext] = None
     revealed_hints: List[str] = Field(default_factory=list)
