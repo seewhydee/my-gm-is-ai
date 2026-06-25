@@ -24,6 +24,8 @@ continuity (NPC moods, environmental details, conversation memory).
   "player_knowledge":  [ { "topic_id": "...", "description": "...", "source_type": "...", "source_id": "...", "turn_learned": 0 } ],
   "turn_history":      [ { /* turn log entry */ } ],
   "surfaced_soft_items": { "<room_or_entity_id>": ["string", ...] },
+  "checks_attempted":  { "<check_id>": ["<room_id>", ...] },
+  "revealed_hints":    ["string", ...],
   "dialogue_state":    { /* active NPC conversation state */ },
   "appearance_notes":  ["string", ...],
   "improvised_weapon": { /* ImprovisedWeapon or null */ }
@@ -257,6 +259,63 @@ The Context Assembler populates `BriefingRoom.soft_items` and
 are omitted, keeping the briefing focused on items the player has observed.
 Carried soft items are surfaced separately via `soft_inventory` in the player
 state block.
+
+---
+
+## `checks_attempted` — Non-repeatable check tracking
+
+```json
+{
+  "rummage_rubbish": ["bag_floor"],
+  "study_canvas_glow": ["axe_head"]
+}
+```
+
+A dict mapping interaction or on-examine event IDs to lists of room IDs
+where the check has been attempted. The engine uses this to enforce
+non-repeatable checks (`repeatable: false`): if the current room
+appears in the list for a given check ID, the engine rejects the
+attempt.
+
+### Population rules
+
+| Trigger | Action |
+|---------|--------|
+| A non-repeatable check is resolved (pass or fail) | The engine records the interaction/event ID and the current room ID. |
+| A repeatable check is resolved | No entry is created. |
+| Check already recorded for this room | No duplicate entry. |
+
+### Usage
+
+The engine consults `checks_attempted` during interaction and on-examine
+resolution. If an interaction has `repeatable: false` in its check and
+the interaction ID + current room appears in this dict, the engine
+returns a "already attempted" response. This field is not surfaced in
+the GMBriefing.
+
+---
+
+## `revealed_hints` — Accumulated reveal strings
+
+```json
+[
+  "The handkerchief conceals a flap leading to a secret compartment.",
+  "The rubbish is actually someone's adventuring supplies, shrunk by the Bag's magic."
+]
+```
+
+An array of `reveals` strings from successful interactions, on-examine
+events, and dialogue path results. When a result object carries a
+`reveals` field, the engine appends the string here (deduplicating).
+The Context Assembler includes these in the GMBriefing as the
+player's accumulated knowledge from discoveries.
+
+### Population rules
+
+| Trigger | Action |
+|---------|--------|
+| A result with `reveals` is applied | The engine appends the string if not already present. |
+| Duplicate string | Skipped (no duplicate entries). |
 
 ---
 
@@ -589,6 +648,8 @@ post-validates them against the NPC's `attitude_limits` using the same rules:
   "entity_notes": {},
   "player_knowledge": [],
   "surfaced_soft_items": {},
+  "checks_attempted": {},
+  "revealed_hints": [],
   "turn_history": [],
   "dialogue_state": {
     "active_npc": null,
@@ -596,7 +657,9 @@ post-validates them against the NPC's `attitude_limits` using the same rules:
     "topics_discussed": [],
     "entered_turn": 0,
     "stall_counter": 0
-  }
+  },
+  "appearance_notes": [],
+  "improvised_weapon": null
 }
 ```
 

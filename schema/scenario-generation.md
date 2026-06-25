@@ -28,7 +28,7 @@ scenario.md
      │
      ▼
 Step 1: Parse & Extract
-     │  Output: entity_lists, room_lists, mechanics_list, flag_list
+     │  Output: scenario-map.md
      ▼
 Step 2: Build Entities
      │  Output: draft corpus.entities block
@@ -48,112 +48,297 @@ Step 6: Build soft-state.json
 Cross-file validation
 ```
 
-At the end of every step, run the step's validation checklist. If any check
-fails, **stop and fix before proceeding**.
+Each step produces intermediate output in the adventure directory.
+Step 1 writes a structured plan to `scenario-map.md` — the working
+document all subsequent steps read from.  Steps 2–4 produce draft
+corpus blocks; Steps 5–6 produce the final `hard-state.json` and
+`soft-state.json`.  After cross-file validation, assemble the complete
+`corpus.json` from the draft blocks.
+
+At the end of every step, run the step's validation checklist.  If any
+check fails, **stop and fix before proceeding**.
 
 ---
 
 ## Step 1: Parse & Extract
 
-**Objective:** Read the scenario Markdown and produce a structured inventory of
-everything that needs to be modelled.
+**Objective:** produce a structured list of everything that needs to
+be modelled, including consistent IDs for all the rooms, entities,
+interactions, flags, state fields, entity tags, etc.  All IDs are in
+snake_case.
 
-Read the entire scenario and extract the following into a clean list:
+Read the scenario writeup (usually a Markdown file).  Then extract the
+following into a clean document (text, not JSON) and write it to
+`scenario-map.md` in the adventure directory.  This file is the
+working plan for all subsequent steps.
 
 ### 1A. Adventure metadata
 
-| Item | Source |
-|------|--------|
-| ID | Short snake_case identifier (e.g., `bag-of-holding`) — optional but recommended |
-| Title | First heading or preamble |
-| Author / credits | Preamble footer or credits note |
-| Introduction | Opening paragraph (verbatim) |
-| Atmosphere | Synthesise from overall feel (1-2 sentences, no spoilers) |
+- *Title* — The title of the adventure scenario.
 
-### 1B. Room list
+- *Credits* — The author and other credits, including copyright info.
 
-For every room described, note:
+- *Introduction* — The opening paragraph (used verbatim).
+  Write it up in second-person narrator voice.  No spoilers.
 
-- **Room name** (as written in the heading)
-- **Prose description** — the full text describing what the player sees
-- **Entities present** — every entity mentioned as being in this room at start
-- **Soft items** — generic plausible items in the room (rocks, corks, coins)
-- **Exits** — every way out, with target room and any conditions/gating described
-- **Special interactions** — things the player can do in this room that aren't
-  generic (e.g., search the rubbish pile, force through webbing)
-- **On-enter events** — things that happen when the player first arrives
-- **Reactions** — event-driven triggers (e.g., "when the spider is killed, set a flag")
-- **On-examine events** — stat checks or discoveries gated on examining
-- **Start room** — exactly one room where the player begins
+- *Adventure ID* — A short snake_case identifier (e.g., `bag-of-holding`).
+  Optional but recommended for save/load safety.
 
-Avoid creating extra rooms not in the scenario. Every room in the output must
-correspond to a distinct location described in the scenario.
+- *Atmosphere* — One or two sentences to set the tone, synthesised
+  from your reading of the scenario.  No spoilers.  This will be
+  encoded as `corpus.adventure.atmosphere`, which has two sub-fields:
+  `setting` (world description) and `tone` (narrative style).
 
-### 1C. Entity list
+If the scenario uses player stats, note:
 
-For every distinct entity mentioned, note:
-
-- **Name** — as used in the scenario
-- **Type** — classify as:
-  - `player` — the player character (exactly one)
-  - `npc` — characters that can talk or fight
-  - `feature` — environmental objects (walls, piles, handkerchiefs)
-  - `item` — objects that can be picked up
-- **Description** — static, timeless prose describing what the entity
-   objectively is.  Avoid situational framing that assumes a particular
-   discovery state (e.g., "Something large stirs in the shadows" is wrong;
-   "A massive spider with eight glittering eyes and venom-slick mandibles"
-   is right).  The engine handles concealment and discovery separately via
-   `hidden` state and `on_examine` events.  This description appears in
-   every LLM briefing while the entity is present, so it must remain
-   accurate regardless of the entity's current state (alive/dead/hidden).
-   See the "Hidden entity reveal pattern" in § 3B for details.
-- **Dialogue** — does it talk? Note personality, knows, attitude gating
-- **Behavior** — does it fight? Note triggers, combat rules
-- **Reactions** — event-driven triggers (e.g., "attacks when player enters",
-  "changes state when dialogue ends"). See [`events.md`](events.md) for the
-  list of valid event type strings and their context keys.
-- **Tags** — e.g., `weapon`, `key_item`, `draggable`
-- **State fields** — what mutable properties does it have? (alive, fled, opened, etc.)
-- **Interactions** — anything special the player can do with it
-- **On-examine events** — stat checks or discoveries gated on examining it
-
-Also note:
-- Which entities are in which rooms at game start
-- Which entities span multiple rooms (visible from several rooms)
-- Which entities the player starts with in inventory (usually none)
-
-### 1D. Mechanic list
-
-For every mechanic described (not tied to a specific entity), note:
-
-- **Encounters** — combat or hazard events
-- **Game-over conditions** — win/lose triggers and their conditions
-- **Reaction-only mechanics** — adventure-wide state-based triggers not tied to a room or entity
-- **Dropping rules** — what happens when falling from various heights
-- **Item interaction rules** — carrying heavy items, key insertion, etc.
-
-### 1E. Flag list
-
-Enumerate every flag mentioned or implied. A flag is any boolean state condition
-that changes during play. Examples: `spider_fled`, `injured`, `handkerchief_moved`, `padlock_unlocked`, `player_escaped`.
-
-Note what initial value each should have.
-
-Add a `flags_declared` field as a top-level corpus array (alongside
-`adventure`, `rooms`, `entities`, `mechanics`) listing all flag names
-used in conditions, set_flag results, and encounters. This is a
-convenience field for validation and debugging. Generate it during
-cross-validation (after all corpus sections are complete).
-
-### 1F. Stat system (if applicable)
-
-If the scenario uses stat checks, note:
 - Which stats are used
 - The resolution system (typically 5e)
 - Whether the scenario specifies player stat values, or defaults (e.g., all 10s)
 
-If the scenario has no stat checks, no stats block is needed.
+### 1B. Rooms (Pass 1)
+
+Construct a list of rooms based on the scenario writeup.  Every
+visitable location in the scenario should be a distinct in-game room.
+Avoid creating extra rooms not in the scenario, *unless* necessary for
+special game mechanics (in which case note this in your final report).
+
+For each room, write out the following info:
+
+- **Room ID** — assign a scenario-wide unique ID.
+
+- **Room name** — a short identifying phrase (e.g., for traversal).
+  Avoid giving consecutive rooms the same name, except under special
+  circumstances (e.g., rooms in a featureless maze).
+
+- **Description** — a note saying what the room is, its key
+  characteristics, and how it is connected to other rooms.  Keep it
+  factual and succinct; this is for scenario mapping, not narration.
+
+- **Start room?** — whether this is the room where the player begins.
+  (There must be exactly one.)
+
+### 1C. Entities (Pass 1)
+
+For every distinct entity mentioned in the scenario, list out:
+
+- **Entity ID** — assign a scenario-wide unique ID.
+
+- **Name** — a short identifying phrase (e.g., for player commands).
+  Capitalize both proper names ("Aragon") and generic names ("Goblin").
+
+  If a room has multiple similar creatures without proper names,
+  disambiguate.  If these creatures lack distinguishing
+  characteristics, use numbering (e.g., "Goblin 1", "Goblin 2").
+
+- **Type** — one of:
+  - `player` — the player character (exactly one)
+  - `npc` — characters that can talk or fight
+  - `feature` — environmental objects (walls, piles, handkerchiefs)
+  - `item` — objects that can be picked up
+
+- **Description** — a note about what this entity is, its location at
+  game start (room, container entity, or player inventory), its broad
+  relevance to the scenario, and any details that are narratively
+  important.  We will fill in mechanical details later (§1G).  If the
+  entity is a feature visible from multiple rooms, note which rooms it
+  spans.
+
+### 1D. Global Mechanics
+
+List out every mechanic in the scenario that is not tied to a specific
+room or entity.  Mechanics in the corpus come in three kinds (see
+corpus.md):
+
+- **encounters** — combat or hazard events with rules
+- **game-over conditions** — win/lose triggers
+- **reaction-only mechanics** —  effects triggered by global adventure state
+
+Note: entity-scoped encounters (e.g., attacking an NPC) are specified
+at entity level, not here.
+
+For each mechanic, note:
+
+- **Mechanic ID** — assign a scenario-wide unique ID.
+
+- **Kind** — which of the three kinds: encounter, game-over condition,
+  or reaction-only mechanic.
+
+- **Description** — a note about how the mechanic works, its trigger,
+  and its effects (e.g., damage dealt to the player).
+
+  This description, like the other mechanical descriptions in Step 1,
+  should be textual but logically complete.  We will use it to build
+  the actual JSON structure later.  It can reference flag IDs (e.g.,
+  `password_discovered`), entity tags (e.g., `valuable`, `draggable`),
+  and room/entity state IDs and their values (e.g., `locked`),
+  including IDs that have yet to be defined.
+
+### 1E. Global Flags
+
+Draw up a list of global flags: boolean conditions that track
+plot-relevant world state, such as secrets discovered or key NPCs met.
+For each flag, specify:
+
+- **Flag Name** — a scenario-wide unique ID.
+
+- **Description** — an explanation of the flag condition.
+
+- **Initial Value** — the value at game start.
+
+Be sure to include any flag already referenced in your list of global
+mechanics.
+
+### 1F. Rooms (Pass 2)
+
+Revisit the room list, and add the following information to each room:
+
+- **Exits** — every way out.  For each exit, assign a room-unique ID,
+  and give a brief description of the exit (e.g., "through the north
+  doorway"), and specify the destination room ID (from §1B).
+  Traversal conditions are handled in "Events and Reactions" below.
+
+- **Entities present** — list the ID of each entity in the room at
+  start (from §1C), including hidden ones (e.g., a lurking thief).
+
+- **Special interactions** — assign a room-unique ID to any special
+  interaction the player can have with the *room* (not an entity inside
+  the room): e.g., shouting out a magic command word.
+  
+  Do not define interactions mapping to these generic player actions:
+  `move` (traversing rooms), `examine` (cursory or in-depth study), or
+  `transfer` (moving items to/from).
+
+- **Event Reactions** — describe any consequential event-driven
+  reaction tied to the *room* (not an entity in the room), that can
+  occur only if the player is in the room.  Examples: a combat is
+  triggered when the player enters, or a force-field blocks any
+  attempt to use an exit.
+
+  You must assign each reaction a scenario-unique reaction ID.  Then,
+  describe (i) the trigger: a special interaction, a standard player
+  action, etc.; (ii) any stat checks or other gating, and (iii) the
+  consequences.  These descriptions should be textual, and logically
+  sufficient to form a JSON object later – but don't write the JSON yet.
+
+- **State fields** — assign a room-unique ID for each mutable property
+  the room has, and note the initial value.  Don't list properties
+  nilly-willy; focus on those needed for mechanics or narration, e.g.,
+  `filled_with_poison_gas`, `time_of_day` (if the scenario progresses
+  time).  Values can be boolean, numbers, or strings.
+
+- **On-examine events** — note any effects triggered by the player
+  examining the room itself (rather than a specific entity in the
+  room): e.g., viewing a dilapidated courtyard, and realizing that
+  nobody has visited in years (if that's a relevant plot point).  Can
+  be gated, e.g. by a stack check.
+
+While describing events/reactions, special interactions, or state
+fields, you can reference flags defined in §1D.  If you overlooked a
+flag that you now need, update that list.  You can also reference IDs
+for entity tags or room/entity state fields that are already defined,
+or will be defined later.
+
+### 1G. Entities (Pass 2)
+
+Revisit the entity list, and add the following information to each
+entity:
+
+- **Tags** — any semantic features relevant to a mechanic in the
+  scenario (e.g., a pressure plate triggered by items with the `heavy`
+  tag).  Do not define tags that lack relevance to mechanics.
+
+- **Equippable?** — if the entity is an item that can be equipped
+  (weapon, armor, shield, etc.), note the equipment category and any
+  special properties (damage expression, stat bonuses, etc.).
+
+- **Contained Entities** — If the entity contains other entities
+  (e.g., a drawer holding a key), note which entity IDs are inside it.
+  This should be consistent with the descriptions in §1C.
+
+- **Special interactions** — assign an entity-unique ID to any special
+  interactions the player can have with it: e.g., pulling a lever.
+
+  Do not define interactions mapping to these generic player actions:
+  `examine` (cursory or in-depth study), `talk` (conversing with NPC),
+  or `transfer` (moving items to/from).
+
+- **State fields** — list each relevant mutable property the entity
+  has, and their initial values.  Think about what states are needed
+  for game mechanics, and focus on those.
+  
+  For NPCs, state fields must include `alive` and `fled` (booleans),
+  but can also include `attitude` (number), `hidden` (boolean),
+  `following` (boolean, for NPC companions), and custom fields.  For
+  non-NPC entities, state fields can be `hidden` (boolean), or custom
+  (e.g., `opened`, `locked`, `lit`).
+
+  The boolean state field `hidden`, for either NPCs or non-NPCs,
+  should be set if the entity might be concealed from the player,
+  either at game start or subsequently.
+
+  For each custom field, note down its meaning.
+
+- **Event Reactions** — describe any consequential event-driven
+  reaction tied to the entity, that can occur only if the entity is in
+  the current room (and, for NPCs, alive and active).  Examples:
+  combat triggered by an NPC's attitude dropping below some level, or
+  a magic effect firing when an item is picked up.
+  
+  You must assign each reaction a scenario-unique reaction ID.  Then,
+  textually describe (i) the trigger: a special interaction, a
+  standard player action, etc.; (ii) a description of any checks tied
+  to the event, and (iii) a description of the consequences.
+
+- **On-examine events** — note any effects triggered by the player
+  examining the entity.  Important: this field belongs on the thing
+  being examined, *not* the room containing it.  Thus, when the
+  scenario says "upon examining the statue, the player notices...",
+  that on_examine event belongs on the statue entity.
+
+For NPCs, also add descriptions for the following:
+
+- **Combat Stats** — if the NPC is combat-capable and the scenario
+  provides stat block details (HP, AC, damage dice, initiative
+  modifier, etc.), write them down verbatim.  If the scenario doesn't
+  give exact numbers, note that the NPC fights and any narrative
+  description of its combat style (e.g., "constricts with webs",
+  "breathes fire").
+
+- **Behavior** — summarize the personality, whether it fights, etc.
+
+- **Dialogue Paths** — for dialogue, if the NPC talks.
+  Assign an NPC-unique ID for each special line of conversation the
+  NPC can engage with.  Unlike ordinary conversational topics,
+  dialogue paths have connections to the game's plot or mechanics,
+  e.g. bribing a guard to get through a gate, or convincing a prince
+  that his vizier is evil.  Describe when this dialogue path is
+  available, and what transpires during it (including stat check
+  gating, consequences, etc.).
+
+- **Topics** — for dialogue, if the NPC talks.
+  Assign an NPC-unique ID for each significant conversational topic.
+  This is a topic that is not relevant enough to mechanics/plot to
+  warrant a dialogue path, but ought to be specified ahead of time
+  rather than letting the GM ad-lib.  Describe (i) the conditions
+  under which the NPC will engage in the topic, and (ii) what the NPC
+  should convey (non-verbatim).
+
+  For example: a guard NPC might have a dialogue path `bribe` (the
+  player pays to get through the gate — mechanical consequence) and a
+  topic `personal_life` (the guard mentions they have a family — no
+  mechanical consequence, but might be useful for consistency).
+
+### 1H. Cleanup
+
+Go through the lists you have constructed, and check for consistency:
+IDs are consistent, every ID required by a mechanic is defined, etc.
+
+Double-check that the mechanics, as planned, will accurately capture
+the spirit of what's written in the scenario document.  Minor
+deviations are OK, but these should be noted and surfaced in the final
+task report.
+
+Revise as necessary.
 
 ---
 
@@ -171,27 +356,41 @@ If the scenario has no stat checks, no stats block is needed.
 
 ## Step 2: Build Entities
 
-**Input:** Entity list from Step 1.
+**Input:** `scenario-map.md` document from Step 1.
 **Output:** The full `"entities"` block for `corpus.json`.
 
-For each entity in the list from Step 1, produce an entity definition
-following the schema in [`corpus.md`](corpus.md) (§2 Entities).
+For each entity listed in the scenario map, produce an entity
+definition following the schema in [`corpus.md`](corpus.md) (§2
+Entities).
 
-### 2A. State fields
+### 2A. General Entity Fields
 
-Every mutable property of an entity must be declared in `state_fields`. For
-every entity, think about what changes during play:
+#### Description
 
-- NPCs: `alive` (boolean), `fled` (boolean), `attitude` (number, always
-  required for NPCs), `hidden` (boolean), `following` (boolean)
-- Features: `opened` (boolean), `revealed` (boolean), `activated` (boolean)
-- Items: none usually (items just exist in inventory)
+When generating the entity's `description` field, do not just rely on
+the description field from the scenario map.  Instead, you now need to
+write a timeless description of the entity, which will be provided to
+the GM any turn the entity is present.  It must be factual, include
+relevant sensory details, and remain accurate regardless of the
+entity's current state (e.g., dead or alive).
 
-The engine recognises `hidden` as a special state field. When an entity has
-`hidden: true` in `entity_states`, the engine **excludes it from all LLM
-briefings** (`entities_visible`). Set `hidden: false` (e.g. via an interaction
-result's `set_entity_state`) to make the entity visible again. This provides
-engine-enforced entity hiding.
+Example: "A massive black spider, about the size of a large dog, with
+eight glittering red eyes, sharp mandibles, and eight hairy legs".
+
+Do not use poetic language; the narrator will turn the description
+into something atmospheric.
+
+Avoid situational framing that can be invalidated during the game
+(e.g., "It lurks in the shadows...").
+
+#### State fields
+
+When generating the entity's `state_fields`, refer to the state fields
+devised in the scenario map.  Do include the initial value, as well as
+a terse description (which explains to the GM what the state field
+means).
+
+Example:
 
 ```json
 "state_fields": {
@@ -202,9 +401,97 @@ engine-enforced entity hiding.
 }
 ```
 
-### 2B. NPC dialogue guidelines
+If an entity is initially concealed from the player (an key in a
+drawer, a thief hiding in the shadows, etc.), you MUST declare a
+`hidden` state field.  This is handled specially by the engine: when
+true, the entity is concealed even from the GM, to avoid leakage.
+Later, when writing hard-state.json, you will need to initialize
+`hidden: true` in the entity's `entity_states`.
 
-For every conversational NPC, produce a `dialogue_guidelines` block:
+Note that every entity initialized with `hidden: true` ought to have
+some way to set `hidden: false` (examination, interaction, etc.) in
+the scenario; otherwise, it is permanently hidden.
+
+#### Entity reactions
+
+The `reactions` field is used for event-driven entity behavior.  When
+translating reactions from the scenario map into JSON, you may refer
+to [`events.md`](events.md) for a list of triggering events.  Note
+that entity-scoped reactions are active only if the entity is present
+in the current room, alive, and not-fled.
+
+Example of an attack on sight reaction:
+```json
+"reactions": [
+  {
+    "id": "goblin_ambush",
+    "on": "room.entered",
+    "effects": { "trigger_encounter": "goblin_attack" }
+  }
+]
+```
+
+Example of a post-dialogue state change:
+```json
+"reactions": [
+  {
+    "id": "fly_dies_after_talk",
+    "on": "dialogue.ended",
+    "condition": { "require": "event:npc_id == stuck_fly" },
+    "effects": {
+      "result": {
+        "set_entity_state": { "stuck_fly": { "alive": false } },
+        "narrative": "The fly's groaning ceases. Its tiny body goes still."
+      }
+    }
+  }
+]
+```
+
+#### Examination
+
+The `on_examine` field is used to trigger effects when a player
+examines an entity (or room).
+
+The scenario might be ambiguous about whether the `on_examine` effect
+triggers on an ordinary or rigorous examination.  In that case, use
+your judgment.  Here is a rule of thumb: an ordinary examination
+suffices if the discovery can be made by a cursory look at the object,
+whereas a rigorous examination is necessary if the discovery requires
+a physical search.  Remember how you resolved this ambiguity, and note
+it in your task report.
+
+Often, `on_examine` is used to reveal a hidden entity:
+
+```json
+{
+  "id": "notice_spider",
+  "condition": { "require": "entity:spider.hidden == true" },
+  "check": {
+    "type": "stat_check",
+    "stat": "WIS",
+    "dc": 12,
+    "repeatable": true
+  },
+  "success": {
+    "narrative": "You notice eight glittering eyes watching you from above.",
+    "set_entity_state": { "spider": { "hidden": false } },
+    "set_flag": { "spider_noticed": true }
+  }
+}
+```
+
+**When does a hidden entity become visible?** If the revealing result
+includes `set_entity_state: { "<entity>": { "hidden": false } }`
+directly, the entity is visible to the narrator in the same turn. If
+you use a separate reaction on `flag.set`, the reveal is deferred to
+the next turn's briefing.  The direct approach is usually preferred
+for immediate dramatic effect, unless otherwise indicated by the
+scenario.
+
+### 2C. NPC dialogue guidelines
+
+For every conversational NPC, write a `dialogue_guidelines` block:
 
 - **`personality`**: 2-4 sentences. Manner of speaking, emotional state, core
   motivation, fears. Extract from the scenario's NPC section.
@@ -250,47 +537,6 @@ scenario; the conditions in the array are ANDed together.
 Each topic may also carry `set_flag` and `set_entity_state` side effects — these
 are applied by the engine when the LLM tags the topic as revealed in dialogue.
 
-#### Entity-scoped reactions
-
-Reactions are the preferred mechanism for event-driven entity behavior. Define
-them in the entity's `reactions` array. Entity-scoped reactions are active when
-the entity is present in the current room and alive/not-fled. See
-[`events.md`](events.md) for the full list of event types and context keys.
-
-**Common patterns:**
-
-Attack-on-sight (replaces the legacy `behavior.triggers_on` field):
-```json
-"reactions": [
-  {
-    "id": "spider_attack_on_sight",
-    "on": "interaction.used",
-    "condition": { "require": "event:interaction_id == attack" },
-    "effects": { "trigger_encounter": "self" }
-  }
-]
-```
-
-Post-dialogue state change:
-```json
-"reactions": [
-  {
-    "id": "fly_dies_after_talk",
-    "on": "dialogue.ended",
-    "condition": { "require": "event:npc_id == stuck_fly" },
-    "effects": {
-      "result": {
-        "set_entity_state": { "stuck_fly": { "alive": false } },
-        "narrative": "The fly's groaning ceases. Its tiny body goes still."
-      }
-    }
-  }
-]
-```
-
-Use `"self"` in `trigger_encounter` and `trigger_dialogue` to reference the
-owning entity — this makes reactions portable across entities.
-
 #### `dialogue_paths`
 
 Define special conversation paths that trigger mechanical effects when the
@@ -333,7 +579,7 @@ Example: a fairy that can be flattered with a CHA check to improve attitude:
 }
 ```
 
-### 2C. NPC behavior (combat rules)
+### 2D. NPC behavior (combat rules)
 
 For every NPC that fights, produce a `behavior` block:
 
@@ -376,7 +622,7 @@ removes the NPC. For non-lethal combat outcomes (e.g., NPC is knocked out but
 doesn't die), use `outcome: "flee"` with appropriate `set_flags` and narrative,
 since `flee` removes the NPC from play without killing the player.
 
-### 2D. Item entities
+### 2E. Item entities
 
 For every item entity:
 
@@ -387,10 +633,10 @@ For every item entity:
 - Add relevant `tags`: `"weapon"` (if usable in combat), `"key_item"` (plot-significant)
 - Set `draggable: true` if the item encumbers the player while carried
 - Set `dragging_note` to a narrative description of the encumbrance
-- Normally no `interactions` or `on_examine` unless the scenario specifies
-  special interactions with the item
+- Normally no `interactions` or `on_examine` unless the scenario explicitly
+  specifies special interactions with the item
 
-### 2E. Feature entities
+### 2F. Feature entities
 
 For features that span multiple rooms:
 - Use `spans_rooms` to list all rooms where the feature is visible
@@ -414,30 +660,6 @@ the engine automatically clears the NPC's `following` state and adds a
 narrative note. Apply this to any NPC that has location constraints as
 a companion.
 
-### 2F. Entity on_examine events
-
-When the scenario says "upon examining the statue, the player notices..."
-that on_examine event belongs on the **entity** (the statue), not on
-the room that contains it. The engine fires `on_examine` events only
-for the target being examined:
-
-- **Examining the room** → the **room's** `on_examine` events fire
-- **Examining an entity** → that **entity's** `on_examine` events fire
-
-If a discovery is tied to a specific entity (a lever, a hidden door, a
-strange carving), define `on_examine` on that entity. Only use room
-`on_examine` for discoveries tied to the room as a whole (e.g.,
-noticing the architecture, deducing the room's purpose).
-
-A common mistake is placing entity-specific on_examine events on the
-containing room. When the player says "I look at the statue", the
-engine examines the statue entity, not the room — so room-level events
-won't fire, and the discovery won't happen.
-
-For the full decision table on when to use `on_examine` vs
-`interaction`, and patterns for deterministic discovery, stat checks,
-hidden entity reveals, and rigorous-only lore deductions, see § 3G.
-
 ### 2G. Player entity
 
 Exactly one entity with `type: "player"`.
@@ -452,7 +674,7 @@ Exactly one entity with `type: "player"`.
 ### Step 2 validation checklist
 
 - [ ] Exactly one entity has `type: "player"`
-- [ ] Every NPC entity has `attitude` declared in `state_fields`
+- [ ] Every NPC with `dialogue_guidelines` has `attitude` declared in `state_fields`
 - [ ] Every NPC with dialogue has a `dialogue_guidelines` block
 - [ ] Every NPC that fights has a `behavior` block
 - [ ] Every NPC with both dialogue AND combat has both blocks
@@ -491,91 +713,32 @@ the schema in [`corpus.md`](corpus.md) (§1 Rooms).
 
 ### 3A. Room description
 
-Write full second-person present-tense prose for `description`. It should be
-sufficient for both room entry and re-examination. Include what the player
-sees, hears, smells, and any notable features.  DO NOT include clues gated behind a rigorous search or NPC reveal.
+Write a full present-tense `description` for the room, replacing the
+placeholder description from §1B.
 
-Surface-level impressions only. "You see a pile of rubbish" is fine. "You see
-a giant iron key hidden beneath a handkerchief" is not — that should be an
-on-examine event or revealed by dialogue.
+This description is used for both room entry and examination.  Focus
+on facts and notable features, as well as key sensory details (what
+the player sees, hears, smells, etc.).
+
+Example: "A large square courtyard ringed with laurel trees.  It has a
+dilapidated air, with thick weeds sprouting through the cracks between
+the flagstones on the ground."
+
+The description can set the tone, but excessively poetic language is
+not necessary; the narrator will adapt it into something suitably
+atmospheric.
+
+The description should remain accurate regardless of the game state.
+DO NOT include entities that might leave the room (e.g., NPCs that
+might move elsewhere), or invalidate the description in some way; the
+narrator has data about the entities present and can weave in that
+information.  DO NOT include hidden information, or clues gated behind
+a rigorous search or NPC reveal.
 
 ### 3B. Entities present
 
-List the entity IDs (from Step 2) that are physically in this room at game
-start.
-
-- Hidden entities (e.g., a key in a secret compartment) are still listed in
-  the room that contains them — the room access gating prevents the player
-  from reaching them until revealed
-- Features spanning multiple rooms should appear in every room they span
-
-#### Hidden entity reveal pattern
-
-Some entities are not initially visible to the player — e.g., a spider hidden
-in the webs. Use this pattern for engine-enforced hiding:
-
-1. **Declare `hidden` in the entity's `state_fields`** (see Step 2A)
-
-2. **Set `hidden: true` in the entity's `entity_states`** in hard-state.json.
-   The engine will exclude this entity from `entities_visible` in all LLM
-   briefings until `hidden` is set to `false`.
-
-3. **The room description must not spoil the hidden entity.** Write only
-   surface-level impressions. The dramatic reveal comes from the
-   `on_examine` success narrative.
-
-4. **The entity's `description` must be a static, timeless description of
-   what the entity is — not a situational "first glimpse" narrative.**
-   The engine enforces concealment through the `hidden` state field and
-   `on_examine` revelation; the description itself should always describe
-   the entity objectively, regardless of whether it is currently visible.
-   Example for a spider: "A massive spider — eight glittering eyes, eight
-   hairy legs, mandibles slick with venom. It lurks in the shadows above
-   the webbing."  The description may include the entity's usual location
-   or posture ("lurks in the shadows"), but should avoid framing that
-   assumes a particular discovery state ("Something large stirs...").
-
-5. **Add an `on_examine` event** (on the room or a covering entity) that
-   reveals the entity when the player discovers it:
-
-   ```json
-   {
-     "id": "notice_spider",
-     "condition": { "require": "entity:spider.hidden == true" },
-     "check": {
-       "type": "stat_check",
-       "stat": "WIS",
-       "dc": 12,
-       "repeatable": true
-     },
-     "success": {
-       "narrative": "You notice eight glittering eyes watching you from above.",
-       "set_entity_state": { "spider": { "hidden": false } },
-       "set_flag": { "spider_noticed": true }
-     }
-   }
-   ```
-
-When the check succeeds, the engine sets `spider.hidden = false`. The next
-turn's briefing includes the spider in `entities_visible`. The narrator LLM
-(Call 2) also sees the revealed entity in `room_after` immediately after
-the discovery action is resolved.
-
-6. **Validation:** Every entity with `hidden: true` in its initial
-   `entity_states` must have at least one companion `on_examine` or
-   interaction that can set `hidden: false`. Without one, the entity is
-   permanently invisible.
-
-If a hidden entity seems to have no revelation mechanism, it could be a
-scenario bug; you should implement the JSON faithfully as written in the
-scenario, but do surface the issue during your post-generation report.
-
-**When does the entity become visible?** If the revealing result includes
-`set_entity_state: { "<entity>": { "hidden": false } }` directly, the entity
-is visible to the narrator in the same turn. If you use a separate reaction
-on `flag.set` (see Step 3F-2), the reveal is deferred to the next turn's
-briefing — prefer the direct approach for immediate dramatic effect unless
-the scenario calls for delayed discovery.
+List the entity IDs (from Step 2) physically in the room at game
+start, including hidden entities.
 
 ### 3C. Soft items
 
@@ -1590,10 +1753,9 @@ Follow this exact structure:
 - [ ] If corpus has `stats`: `player.stats` is present, and every key matches
   a key in `stats.definitions`
 - [ ] If corpus has no `stats`: `player.stats` is absent
-- [ ] Every NPC has `"attitude"` set to the value from the NPC's
+- [ ] Every NPC with `dialogue_guidelines` has `"attitude"` set to the value from the NPC's
   `attitude_limits.initial` (default 0) in `entity_states`
-- [ ] Every NPC's `entity_states` includes an `attitude` field that is also
-  declared in the NPC's `state_fields`
+- [ ] Every NPC with `dialogue_guidelines` has `attitude` in both `state_fields` and `entity_states`
 - [ ] `turn_count` is `0`
 - [ ] `game_over` is `null`
 
@@ -1722,15 +1884,24 @@ cross-file consistency issues.
   listed in the room's `entities_present` (the engine handles filtering
   based on the state field)
 - [ ] `entity_states` contains all fields declared in the entity's `state_fields`
-- [ ] Every NPC has `attitude` in both `state_fields` and `entity_states`
+- [ ] Every NPC with `dialogue_guidelines` has `attitude` in both `state_fields` and `entity_states`
 - [ ] NPC attitude values are within the `[min, max]` range from their
   `attitude_limits`
 
 ### Soft-state checks
 
-- [ ] Every NPC in corpus has `attitude` initialised in `entity_states`
+- [ ] Every NPC with `dialogue_guidelines` has `attitude` initialised in `entity_states`
 - [ ] `dialogue_state` has the standard null structure
 - [ ] `player_knowledge` is `[]`
+
+After completing all three JSON files and this checklist, run the
+engine's validator to catch mechanical errors you might have missed:
+
+```
+python scripts/validate_adventure.py <adventure_dir>
+```
+
+Fix any reported issues before declaring the generation complete.
 
 ---
 

@@ -15,7 +15,8 @@ from it to validate actions, resolve encounters, and apply mechanics.
   "rooms":        { "<room_id>": { /* room */ } },
   "entities":     { "<entity_id>": { /* entity */ } },
   "mechanics":    { "<mechanic_id>": { /* mechanic */ } },
-  "stats":        { /* stat definitions (optional) */ }
+  "stats":        { /* stat definitions (optional) */ },
+  "flags_declared": [ "<flag_name>", ... ]
 }
 ```
 
@@ -23,6 +24,7 @@ from it to validate actions, resolve encounters, and apply mechanics.
 
 | Field          | Type   | Required | Description |
 |----------------|--------|----------|-------------|
+| `id`           | string | no       | Short snake_case identifier (optional). Used for save/load safety. |
 | `title`        | string | yes      | Display title of the adventure. |
 | `credits`      | object | no       | `{ author, source, license }`. |
 | `introduction` | string | yes      | Opening narration read to the player at game start. |
@@ -787,15 +789,20 @@ follower.
 
 #### Reserved state fields
 
-The engine recognises two reserved boolean state fields for reaction scoping:
+The engine recognises several reserved state fields:
 
 - `alive` — entity reactions are active only when `alive` is not `false`. This
   is conventionally declared for any creature or destructible feature.
 - `fled` — entity reactions are active only when `fled` is not `true`. Declare
   this for creatures that can flee or be driven off. Adventures that do not use
   fleeing simply omit the field; it defaults to unset, so the check passes.
+- `attitude` (NPC only) — tracks NPC disposition as an integer. Required for
+  all NPCs that have `dialogue_guidelines`, since `attitude_limits` constrains
+  how attitude can change. The engine initializes attitude from
+  `attitude_limits.initial` (default 0). Conditions can check attitude via
+  `attitude:<npc_id> <op> <value>`.
 
-Both fields are optional at the schema level, but if an entity has reactions
+`alive` and `fled` are optional at the schema level, but if an entity has reactions
 and can die or flee, declare the corresponding field so the engine scopes the
 reactions correctly.
 
@@ -1110,6 +1117,29 @@ in the GMBriefing so the LLM knows the player's capabilities without doing math.
 Stats can be used in condition strings via the `stat` domain (see Condition
 object section). Example: `stat:INT >= 14` gates an interaction on the player's
 Intelligence score.
+
+---
+
+## `flags_declared` — Flag name registry (optional)
+
+```json
+"flags_declared": ["spider_fled", "injured", "handkerchief_moved"]
+```
+
+An optional top-level array of all flag names used in the adventure's
+conditions, `set_flag` results, and encounter `set_flags`. This is a
+convenience field for validation and debugging — the engine uses it to
+verify that every flag referenced in the corpus has a corresponding
+entry in `hard_state.flags`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `flags_declared` | string[] | no | List of all flag names used in the adventure. Each name must appear as a key in `hard_state.flags`. |
+
+This field is typically generated during cross-validation, after all
+corpus sections are complete. It is optional at the schema level — the
+engine treats it as `Optional[List[str]]` and skips validation when
+absent.
 
 ---
 
