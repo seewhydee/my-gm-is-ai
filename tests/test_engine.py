@@ -116,7 +116,7 @@ class TestEngineFullFlow:
         assert result.error is not None
         assert state_manager.hard_state.turn_count == 0
 
-    def test_resolve_examine(self, state_manager):
+    def test_resolve_examine_non_rigorous(self, state_manager):
         action = ExamineAction(
             action_type="examine",
             target="padlock",
@@ -124,6 +124,19 @@ class TestEngineFullFlow:
         )
         result = resolve(action, state_manager)
         assert result.success is True
+        assert result.costs_turn is False
+        assert state_manager.hard_state.turn_count == 0
+
+    def test_resolve_examine_rigorous_advances_turn(self, state_manager):
+        action = ExamineAction(
+            action_type="examine",
+            target="padlock",
+            rigorous=True,
+            detail="Searching the padlock thoroughly",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert result.costs_turn is True
         assert state_manager.hard_state.turn_count == 1
 
     def test_resolve_wait(self, state_manager):

@@ -300,8 +300,8 @@ The LLM must output a single structured action, corresponding to the player's in
 | Field      | Type          | Required | Description |
 |------------|---------------|----------|-------------|
 | `target`   | string        | yes      | A valid entity ID present in the current room, the current room ID itself (for examining the room), or a soft item name present in the current room or on a visible entity. |
-| `rigorous` | boolean       | no       | If `true`, signifies an in-depth search. A schema may specify that only a rigorous search reveals hidden details. |
-| `using`    | string\|null  | no       | A valid entity ID or soft item used to assist the examination (e.g., using a torch to look at a dark corner). |
+| `rigorous` | boolean       | no       | If `true`, signifies an in-depth search costing one turn. A non-rigorous examine is a free cursory glance that costs no turns. |
+| `using`    | string\|null  | no       | A valid entity ID or soft item used to assist the examination (e.g., using a torch to look at a dark corner). Tool-assisted examines should usually be `rigorous: true`. |
 
 **Engine validation:**
 - `target` must be a valid entity in the current room's `entities_present`, the
@@ -313,6 +313,9 @@ The LLM must output a single structured action, corresponding to the player's in
   that were previously scoped only to rigorous search (i.e., checks that
   require the `rigorous` flag). Hidden exits, items, or state changes may
   be revealed.
+- If `rigorous: false` (the default), the examine costs no turns. It returns
+  the entity's `description` and surfaces soft items, but it does not trigger
+  `rigorous_only` events or skill checks.
 - The engine returns the entity's `description` and any applicable
   examine-only narrative.
 

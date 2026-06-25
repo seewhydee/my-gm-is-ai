@@ -167,6 +167,29 @@ class TestResolveExamine:
         assert result.success is True
         assert result.surfaced_soft_items == {}
 
+    def test_non_rigorous_examine_costs_no_turn(self, state_manager):
+        """A default (non-rigorous) examine does not cost a turn."""
+        action = ExamineAction(action_type="examine", target="padlock", detail="Looking at padlock")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.costs_turn is False
+
+    def test_rigorous_examine_costs_turn(self, state_manager):
+        """A rigorous examine costs a turn."""
+        action = ExamineAction(
+            action_type="examine", target="padlock", rigorous=True, detail="Searching padlock"
+        )
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.costs_turn is True
+
+    def test_failed_examine_costs_no_turn(self, state_manager):
+        """A failed examine attempt does not cost a turn."""
+        action = ExamineAction(action_type="examine", target="nonexistent", detail="Looking")
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is False
+        assert result.costs_turn is False
+
 
 class TestResolveMove:
     def test_valid_exit(self, state_manager):

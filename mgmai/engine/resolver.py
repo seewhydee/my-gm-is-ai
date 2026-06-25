@@ -135,6 +135,7 @@ class ResolutionResult:
     surfaced_soft_items: dict[str, list[str]] = field(default_factory=dict)
     events: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     immediate_changes: HardStateChanges = field(default_factory=HardStateChanges)
+    costs_turn: bool = True
 
 
 def resolve_wait(
@@ -174,7 +175,11 @@ def resolve_examine(
     room_id = hard.player.location
     room = corpus.rooms.get(room_id)
     if room is None:
-        return ResolutionResult(success=False, error=f"Current room '{room_id}' not found in corpus")
+        return ResolutionResult(
+            success=False,
+            error=f"Current room '{room_id}' not found in corpus",
+            costs_turn=False,
+        )
 
     if action.using is not None:
         if (
@@ -185,6 +190,7 @@ def resolve_examine(
             return ResolutionResult(
                 success=False,
                 error=f"Item '{action.using}' is not in your inventory",
+                costs_turn=False,
             )
 
     if target == room_id:
@@ -195,6 +201,7 @@ def resolve_examine(
             hard_changes=changes,
             triggered_narration=base_narrative,
             room_after_id=room_id,
+            costs_turn=action.rigorous,
         )
         surface_result = _fire_on_examine_events(
             room.on_examine, hard, soft, corpus, room_id, action, changes, base_narrative,
@@ -222,6 +229,7 @@ def resolve_examine(
             hard_changes=changes,
             triggered_narration=base_narrative,
             room_after_id=room_id,
+            costs_turn=action.rigorous,
         )
         surface_result = _fire_on_examine_events(
             entity.on_examine, hard, soft, corpus, room_id, action, changes, base_narrative,
@@ -254,11 +262,13 @@ def resolve_examine(
             triggered_narration=[f"You examine the {target}."],
             room_after_id=room_id,
             surfaced_soft_items=surfaced,
+            costs_turn=action.rigorous,
         )
 
     return ResolutionResult(
         success=False,
         error=f"Target '{target}' not found in room '{room_id}' or your inventory",
+        costs_turn=False,
     )
 
 

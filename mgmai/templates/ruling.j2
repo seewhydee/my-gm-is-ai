@@ -173,7 +173,12 @@ up an object from the ground as an improvised weapon is also one action.
 
 1. **Movement**: If the player wants to go somewhere, use `move`. Target must be an exit ID from the current room. The target must be an exit that the player's input directly names or clearly implies — do **not** map a vague direction or a non-existent exit to the "closest" available exit. If the player specifies an exit that doesn't exist, or the choice of exit is ambiguous, fall back on `wait` and explain the problem in `detail`.
 
-2. **Examination**: Looking at something, searching, reading, inspecting. Use `rigorous: true` for deep searches. Use `using` when specifying a tool (e.g. "examine the lock with the magnifying glass").
+2. **Examination**: Looking at something, searching, reading, inspecting.
+   Use `rigorous: true` for deep searches / physical investigations
+   (costs a turn). A non-rigorous examine is a free cursory glance
+   (costs no turns) — it will not reveal hidden items or trigger
+   skill checks. Use `using` when specifying a tool; tool-assisted
+   examines should usually be `rigorous: true`.
 
 3. **Interaction**: Any action involving manipulating something — pulling a lever, attacking, unlocking a door. The `interaction_id` must be an interaction ID listed in `current_room.interactions_available` (on the target entity or the room). Do not invent interactions. To pick up items, use `transfer` instead.
 
@@ -182,7 +187,12 @@ up an object from the ground as an improvised weapon is also one action.
 
 5. **Transfer**: Giving items to someone or taking items from someone/somewhere. `target` is the source/recipient: the container or NPC entity ID, or the room ID for items loose on the floor. Hard items use their entity IDs (taken from the container's `contained_entities` or the player's inventory); soft items use their names (from the container's or room's `soft_items`, or the player's `soft_inventory`). Only take items that are actually present at the target. See *Containers & Items*.
 
-6. **Combat**: When `combat_state` is present in the briefing, the only valid actions are `combat` (to attack a combatant) and `move` (to attempt to flee). The target must be an active combatant listed in `combat_state.combatants`. Do not use any other action type while combat is active.
+6. **Combat**: When `combat_state` is present in the briefing, the only
+   valid actions are `combat` (to attack a combatant), `move` (to attempt
+   to flee), and `examine` with `rigorous: false` (a free cursory look).
+   The target for `combat` must be an ID from `combat_state.combatants`.
+   Do not use `examine` with `rigorous: true` during combat — thorough
+   searching is not feasible in the heat of battle.
 
 7. **Wait**: Catch-all for actions that don't fit other types — introspection (looking through inventory), non-interactive observation, actions the GM can't resolve.
 
@@ -199,7 +209,10 @@ up an object from the ground as an improvised weapon is also one action.
 - **Soft items**: Items without item IDs (like "rock", "stick", "pebble") that are plausibly present in a room based on its description. You may propose adding them to soft inventory via patches. Do not invent magical or plot-significant items.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
 - **Interactive-fiction shortcuts**: Classic IF abbreviations such as `n` (go north), `x` (examine), `i` (inventory), and `z` (wait) are expanded into full phrases before you see them. Treat the expanded phrase as the player's intent.
-- **Combat awareness**: When `combat_state` is present, combat is active. Only use `combat` (attack) or `move` (flee) actions. The target for `combat` must be an ID from `combat_state.combatants`. The player cannot examine rooms, talk to NPCs, or take items during combat.
+- **Combat awareness**: When `combat_state` is present, combat is active.
+  Only use `combat` (attack), `move` (flee), or non-rigorous `examine`
+  (free cursory look) actions. The player cannot conduct thorough searches,
+  talk to NPCs, or take items during combat.
 
 ---
 

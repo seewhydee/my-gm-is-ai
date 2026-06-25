@@ -49,7 +49,9 @@ Important `action_type` values:
 | `action_type` | Meaning |
 |---------------|---------|
 | `move` | Traverse an exit; `target` is the exit ID, `style` is an optional qualifier. |
-| `examine` | Look at or search `target` (entity ID, room ID, or soft item); `rigorous: true` means a thorough search. |
+| `examine` | The player examines something. `rigorous: true` means a
+  thorough search costing a turn. Default (non-rigorous) is a free
+  cursory glance — keep narration brief. |
 | `combat` | Attack a target during combat; `target` is the combatant entity ID, `combat_action` is always `"attack"`. |
 | `talk` | Speak to NPC `target`; `utterance` is verbatim in-character speech, `detail` is non-verbal context, `ends_dialogue: true` means the player is ending the conversation. |
 | `transfer` | Give or take items; `given_items` / `taken_items` list item IDs or soft item names, `target` is the recipient/source. |

@@ -327,3 +327,4 @@ class EngineResult(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     combat_triggered: bool = False
     combat_log: list[CombatLogEntry] = Field(default_factory=list)
+    costs_turn: bool = True

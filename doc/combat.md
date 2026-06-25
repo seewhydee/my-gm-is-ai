@@ -188,15 +188,16 @@ only when `initiative_order[current_index] == "player"`.
 
 ### Player Actions in Combat
 
-When combat is active, only two action types are valid:
+When combat is active, the following action types are valid:
 
 | Action | Description |
 |--------|-------------|
 | `combat` (`combat_action: "attack"`) | Attack a combatant.  `target` must be an entity ID in `combatants`. |
 | `move` | Attempt to flee (see below). |
+| `examine` | Free cursory look (non-rigorous only). Rigorous examine is not allowed during combat. |
 
-All other actions (`examine`, `talk`, `transfer`, `interact`) are rejected
-by the engine while combat is active.
+All other actions (`talk`, `transfer`, `interact`) are rejected by the
+engine while combat is active.
 
 ### Attack Resolution
 

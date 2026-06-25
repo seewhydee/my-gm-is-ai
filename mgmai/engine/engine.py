@@ -107,6 +107,7 @@ def resolve(
             action_type="ooc_discussion",
             player_input_echo=player_input_echo,
             message="Out-of-character discussion — no state changes.",
+            costs_turn=False,
         )
 
     if player_action.follow_up and chain_depth >= MAX_CHAIN_LENGTH:
@@ -119,6 +120,7 @@ def resolve(
                 follow_up=player_action.follow_up,
                 termination_reason=f"max depth ({MAX_CHAIN_LENGTH})",
             ),
+            costs_turn=False,
         )
 
     # Auto-clear expired improvised weapons before resolving the action
@@ -329,6 +331,7 @@ def resolve(
             game_over=game_over,
             encounter_outcome=encounter_outcome,
             rolls=rolls,
+            costs_turn=False,
         )
 
     # 4. Merge action + immediate-reaction changes and apply them once.
@@ -501,23 +504,23 @@ def resolve(
                      combat_log=reaction_combat_log)
 
     # 10. turn.end reactions (state changes apply directly, no second derivation).
-    _dispatch_events(
-        [("turn.end", {"turn_number": hard.turn_count})],
-        hard, soft, corpus, state_manager, changes=None,
-        triggered_narration=resolution.triggered_narration,
-        revealed_hints=resolution.revealed_hints,
-        rolls=reaction_rolls,
-        encounter_fired_ref=encounter_fired_ref,
-        combat_log=reaction_combat_log,
-    )
+    if resolution.costs_turn:
+        _dispatch_events(
+            [("turn.end", {"turn_number": hard.turn_count})],
+            hard, soft, corpus, state_manager, changes=None,
+            triggered_narration=resolution.triggered_narration,
+            revealed_hints=resolution.revealed_hints,
+            rolls=reaction_rolls,
+            encounter_fired_ref=encounter_fired_ref,
+            combat_log=reaction_combat_log,
+        )
+        hard.turn_count += 1
 
     # If a reaction started combat, ensure the result reflects it.
     if not combat_triggered and hard.combat is not None and hard.combat.active:
         combat_triggered = True
 
     rolls.extend(reaction_rolls)
-
-    hard.turn_count += 1
 
     turn_entry = TurnHistoryEntry(
         turn=hard.turn_count,
@@ -566,6 +569,7 @@ def resolve(
         warnings=warnings,
         combat_triggered=combat_triggered,
         combat_log=combat_log + reaction_combat_log,
+        costs_turn=resolution.costs_turn,
     )
 
 
