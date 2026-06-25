@@ -181,7 +181,7 @@ Condition strings use the format `<domain>:<key> <op> <value>`:
 | `tag`        | `tag:weapon`                     | Checks if the player's inventory **or equipped items** contain any item with this tag. Scans both lists for backward compatibility. |
 | `entity`     | `entity:spider.alive == true`    | Checks an entity's hard state field. |
 | `room`       | `room:axe_head.visited == true`  | Checks a room state field. |
-| `attitude`   | `attitude:korbar >= 2`           | Checks an NPC's soft-state attitude value. Defaults to the corpus `attitude_limits.initial` if absent from soft state. |
+| `attitude`   | `attitude:korbar >= 2`           | Checks an NPC's soft-state attitude value. Defaults to the corpus `attitude_limits.initial` if absent from soft state, or 0 if that's undefined. |
 | `topic`      | `topic:abandonment`              | Checks if a topic ID has been discussed in the current dialogue (present in `soft_state.dialogue_state.topics_discussed`). |
 | `stat`       | `stat:STR >= 12`                 | Checks the player's stat value against a threshold. Stat must be declared in `corpus.stats.definitions`; the player's value comes from `hard_state.player.stats`. |
 | `equipped`   | `equipped:toenail_sword`         | Checks if an item entity ID is in the player's `equipped` list. Also accepts tag names — `equipped:weapon` is true if any equipped item has the tag `"weapon"`. |
