@@ -42,6 +42,7 @@ except ImportError:
         return text
 
 _BARE_INV_WORDS = frozenset({"i", "inv", "inventory"})
+_BARE_CHAR_WORDS = frozenset({"c", "char", "character", "stats", "sheet"})
 
 class Commands:
     def __init__(
@@ -91,6 +92,11 @@ class Commands:
                 "i": self._cmd_inv,
                 "inv": self._cmd_inv,
                 "inventory": self._cmd_inv,
+                "c": self._cmd_char,
+                "char": self._cmd_char,
+                "character": self._cmd_char,
+                "stats": self._cmd_char,
+                "sheet": self._cmd_char,
             }.get(cmd)
 
             if handler is None:
@@ -101,6 +107,10 @@ class Commands:
 
         if stripped.lower() in _BARE_INV_WORDS:
             self._cmd_inv("")
+            return True
+
+        if stripped.lower() in _BARE_CHAR_WORDS:
+            self._cmd_char("")
             return True
 
         return False
@@ -124,6 +134,7 @@ class Commands:
     x <target>           Examine <target> (x alone = look around)
     l                    Look around
     i, inv               Show inventory (engine-level, no turn used)
+    c, char              Show character stats (engine-level, no turn used)
     z                    Wait
     t <npc>              Talk to <npc>
 
@@ -131,7 +142,7 @@ class Commands:
   Type natural language to describe what your character does.
   The GM will interpret your intent and narrate the outcome.
   e.g. "look around", "what happened?"
-  Use /i, /inv, i, or inv for a free (no-turn) inventory display.
+  Use /i, /c, i, or c for free (no-turn) inventory or stats display.
   Use "check my inventory" if you want narrated commentary from the GM.
 """
         self._render(text)
@@ -400,5 +411,87 @@ class Commands:
         if not hard.player.equipped and not carried and not soft.soft_inventory:
             self._render("[dim]You are carrying nothing.[/dim]")
             return
+
+        self._render("\n".join(lines))
+
+    def _cmd_char(self, _: str) -> None:
+        hard = self._state.hard_state
+        corpus = self._state.corpus
+
+        if hard is None or corpus is None:
+            self._render("[red]No game loaded.[/red]")
+            return
+
+        if corpus.stats is None:
+            self._render("[dim]This adventure does not use a stats system.[/dim]")
+            return
+
+        if hard.player.stats is None:
+            self._render("[dim]No character stats defined.[/dim]")
+            return
+
+        from mgmai.engine.stat_checks import compute_modifier
+        from mgmai.engine.combat import compute_player_ac, get_player_max_hp
+
+        stats = hard.player.stats
+        system = corpus.stats.system
+        stat_defs = corpus.stats.definitions
+
+        lines: list[str] = []
+
+        # --- Stats grid ---
+        stat_entries = sorted(stats.items(), key=lambda kv: kv[0])
+        lines.append("[bold]Stats[/bold]")
+        for i in range(0, len(stat_entries), 3):
+            row_stats = stat_entries[i : i + 3]
+            pair_parts = []
+            for key, val in row_stats:
+                mod = compute_modifier(val, system)
+                sign = "+" if mod >= 0 else ""
+                stat_name = stat_defs.get(key)
+                label = stat_name.name if stat_name else key
+                pair_parts.append(f"{label}: {val:>2} ({sign}{mod})")
+            lines.append("  " + "   ".join(pair_parts))
+        lines.append("")
+
+        # --- Combat ---
+        lines.append("[bold]Combat[/bold]")
+        if hard.player.current_hp is not None:
+            max_hp = hard.player.max_hp or get_player_max_hp(hard)
+            lines.append(f"  HP:     {hard.player.current_hp} / {max_hp}")
+        ac = compute_player_ac(hard, corpus)
+        base_ac = hard.player.ac or 10
+        if ac != base_ac:
+            lines.append(f"  AC:     {ac} (base {base_ac}, gear +{ac - base_ac})")
+        else:
+            lines.append(f"  AC:     {ac}")
+        prof = hard.player.proficiency_bonus or 2
+        lines.append(f"  Prof:   +{prof}")
+        lines.append(f"  Level:  {hard.player.level}")
+        if hard.player.save_proficiencies:
+            saves = ", ".join(hard.player.save_proficiencies)
+            lines.append(f"  Saves:  {saves}")
+
+        # --- Effective stats (only if gear changes them) ---
+        from mgmai.engine.combat import compute_effective_stats
+        effective = compute_effective_stats(hard, corpus)
+        if effective and effective != hard.player.stats:
+            lines.append("")
+            lines.append("[bold]Effective (with gear)[/bold]")
+            effective_entries = sorted(effective.items(), key=lambda kv: kv[0])
+            for i in range(0, len(effective_entries), 3):
+                row_stats = effective_entries[i : i + 3]
+                pair_parts = []
+                for key, val in row_stats:
+                    mod = compute_modifier(val, system)
+                    sign = "+" if mod >= 0 else ""
+                    base_val = hard.player.stats.get(key, val)
+                    if val != base_val:
+                        delta = val - base_val
+                        delta_sign = "+" if delta >= 0 else ""
+                        pair_parts.append(f"{key}: {val} ({sign}{mod}) [dim]({delta_sign}{delta})[/dim]")
+                    else:
+                        pair_parts.append(f"{key}: {val} ({sign}{mod})")
+                lines.append("  " + "   ".join(pair_parts))
 
         self._render("\n".join(lines))

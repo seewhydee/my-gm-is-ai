@@ -330,3 +330,129 @@ class TestInventoryCommand:
         assert "AC -2" in output
         assert "-1 to hit" in output
         assert "+-" not in output
+
+
+class TestCharCommand:
+    """Character stats command: /c, /char, and bare c/char/stats/sheet."""
+
+    @pytest.fixture
+    def char_cmds(self, state_manager, monkeypatch):
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        return Commands(state_manager, rendered.append, lambda: None), rendered
+
+    def test_slash_c_dispatches(self, char_cmds) -> None:
+        cmds, rendered = char_cmds
+        assert cmds.handle("/c") is True
+        assert "does not use a stats system" in rendered[0]
+
+    def test_slash_char_dispatches(self, char_cmds) -> None:
+        cmds, rendered = char_cmds
+        assert cmds.handle("/char") is True
+        assert "does not use a stats system" in rendered[0]
+
+    def test_slash_sheet_dispatches(self, char_cmds) -> None:
+        cmds, rendered = char_cmds
+        assert cmds.handle("/sheet") is True
+        assert "does not use a stats system" in rendered[0]
+
+    def test_bare_c(self, char_cmds) -> None:
+        cmds, rendered = char_cmds
+        assert cmds.handle("c") is True
+        assert "does not use a stats system" in rendered[0]
+
+    def test_bare_char(self, char_cmds) -> None:
+        cmds, rendered = char_cmds
+        assert cmds.handle("char") is True
+        assert "does not use a stats system" in rendered[0]
+
+    def test_bare_sheet(self, char_cmds) -> None:
+        cmds, rendered = char_cmds
+        assert cmds.handle("sheet") is True
+        assert "does not use a stats system" in rendered[0]
+
+    def test_bare_c_case_insensitive(self, char_cmds) -> None:
+        cmds, rendered = char_cmds
+        assert cmds.handle("C") is True
+        assert "does not use a stats system" in rendered[0]
+
+    def test_no_stats_system(self, state_manager, monkeypatch) -> None:
+        """When corpus.stats is None, show a graceful message."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/c")
+        output = "\n".join(rendered)
+        assert "does not use a stats system" in output
+
+    def test_no_player_stats(self, state_manager, monkeypatch) -> None:
+        """When corpus.stats exists but player.stats is None, show graceful message."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.models.corpus import StatsBlock, StatDefinition
+        state_manager.hard_state.player.stats = None
+        state_manager.corpus.stats = StatsBlock(
+            definitions={"STR": StatDefinition(name="Strength", description="")},
+            system="5e",
+        )
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/c")
+        output = "\n".join(rendered)
+        assert "No character stats" in output
+
+    def test_with_stats(self, state_manager, monkeypatch) -> None:
+        """Full character stats display."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.models.corpus import StatsBlock, StatDefinition
+        state_manager.corpus.stats = StatsBlock(
+            definitions={
+                "STR": StatDefinition(name="Strength", description=""),
+                "DEX": StatDefinition(name="Dexterity", description=""),
+                "CON": StatDefinition(name="Constitution", description=""),
+            },
+            system="5e",
+        )
+        state_manager.hard_state.player.stats = {"STR": 14, "DEX": 12, "CON": 10}
+        state_manager.hard_state.player.current_hp = 8
+        state_manager.hard_state.player.max_hp = 10
+        state_manager.hard_state.player.ac = 12
+        state_manager.hard_state.player.proficiency_bonus = 2
+        state_manager.hard_state.player.level = 3
+        state_manager.hard_state.player.save_proficiencies = ["DEX", "CON"]
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/c")
+
+        output = "\n".join(rendered)
+        assert "Stats" in output
+        assert "Strength" in output
+        assert "14" in output
+        assert "+2" in output
+        assert "Dexterity" in output
+        assert "Constitution" in output
+        assert "Combat" in output
+        assert "8 / 10" in output
+        assert "AC" in output
+        assert "Prof" in output
+        assert "+2" in output
+        assert "Level:  3" in output
+        assert "Saves" in output
+        assert "DEX" in output
+        assert "CON" in output
+
+    def test_no_game_loaded(self, render, exit_fn) -> None:
+        """Char command when no game is loaded shows error."""
+        state = MagicMock()
+        state.hard_state = None
+        state.soft_state = None
+        state.corpus = None
+        from mgmai.game.commands import Commands
+        cmds = Commands(state, render, exit_fn)
+        cmds.handle("/c")
+        render.assert_called_once()
+        assert "No game loaded" in render.call_args[0][0]
