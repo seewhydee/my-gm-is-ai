@@ -389,7 +389,7 @@ the canvas walls triggers an INT check to deduce the glow is magical."
 | Field            | Type            | Description |
 |------------------|-----------------|-------------|
 | `id`             | string          | Unique event identifier within the parent entity or room. |
-| `condition`      | object\|null    | Condition object. If null, fires every time the entity/room is examined. |
+| `condition`      | object\|null    | Gating condition. If present and `false`, the event does nothing. If `null`, fires every time the entity/room is examined. |
 | `rigorous_only`  | boolean         | If `true`, the event only fires when the examine action has `rigorous: true`. Default `false`. |
 | `check`          | CheckType       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
 | `success`        | Result          | Result applied when the check passes. Required if `check` is present. |
@@ -423,7 +423,7 @@ A reaction fires when a matching game event occurs and its condition is met.
 |-----------|-----------------|----------|-------------|
 | `id`      | string          | yes      | Unique identifier within the defining context (room, entity, or mechanic). Used for debugging and `once` tracking. Because `once` tracking is global, reaction IDs should be unique across the whole adventure when any reaction uses `once: true`. |
 | `on`      | string          | yes      | Event type to match (see Event types below). |
-| `condition` | object\|null  | no       | Condition evaluated against game state + event context. If null, fires unconditionally when the event occurs. |
+| `condition` | object\|null | no | Gating condition evaluated against game state + event context. If the condition evaluates to `true`, the reaction fires. If `false` (or unsatisfied), the reaction does nothing. If `null`, fires unconditionally when the event occurs. |
 | `effects` | object          | yes      | The effects to apply (see Reaction effects below). |
 | `once`    | boolean         | no       | If `true`, fires at most once per adventure load. Default `false`. For persistent one-shot behavior, prefer flag-gated conditions instead. |
 | `priority` | integer        | no       | Lower values fire earlier. Default `0`. |
