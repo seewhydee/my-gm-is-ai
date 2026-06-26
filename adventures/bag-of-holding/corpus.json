@@ -1,5 +1,6 @@
 {
   "adventure": {
+    "id": "bag_of_holding",
     "title": "You're Trapped in a Bag!",
     "credits": {
       "author": "Sam Seer",

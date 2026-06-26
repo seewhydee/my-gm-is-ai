@@ -262,16 +262,18 @@ The LLM must output a single structured action, corresponding to the player's in
   "action_type": "move",
   "target": "<exit_id>",
   "style": "crawling",
+  "using": "toenail_sword",
   "detail": "The player gets down on hands and knees and crawls through the narrow tunnel.",
   "follow_up": null,
   "proposed_soft_state_patches": []
 }
 ```
 
-| Field    | Type   | Required | Description |
-|----------|--------|----------|-------------|
-| `target` | string | yes      | The exit ID to traverse. Must be a valid, accessible, non-hidden exit from the current room. |
-| `style`  | string | no       | Optional qualifier for special movement methods (e.g., "crawling", "running", "carefully"). |
+| Field    | Type          | Required | Description |
+|----------|---------------|----------|-------------|
+| `target` | string        | yes      | The exit ID to traverse. Must be a valid, accessible, non-hidden exit from the current room. |
+| `style`  | string        | no       | Optional qualifier for special movement methods (e.g., "crawling", "running", "carefully"). |
+| `using`  | string\|null  | no       | Optional item entity ID or soft item name the player is using to assist traversal. If the exit's `traversal_check` has a matching `using_results` entry, that override is resolved instead. |
 
 **Engine validation:**
 - `target` must be a valid exit_id in the current room.

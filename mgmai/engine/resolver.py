@@ -1105,7 +1105,7 @@ def _resolve_traversal_check(
 
         if resolution is not None:
             _emit_event(
-            "check.passed" if cr.success else "check.failed",
+                "check.passed" if success_flag else "check.failed",
                 {
                     "check_type": "roll",
                     "threshold": check.threshold,

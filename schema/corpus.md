@@ -301,10 +301,13 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
   "add_item": "<item_id> (optional, adds to player inventory)",
   "remove_item": "<item_id> (optional)",
   "set_flag": { "<flag_name>": true | false },
+  "set_entity_state": { "<entity_id>": { "<field>": <value>, ... } },
+  "set_room_state": { "<room_id>": { "<field>": <value>, ... } },
   "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
   "adjust_attitude": { "<npc_id>": <delta> },
   "reveals": "string (hint text for the player's future reference)",
-  "chain_check": { /* chained check (optional) */ }
+  "chain_check": { /* chained check (optional) */ },
+  "player_damage": "1d6"
 }
 ```
 
@@ -314,11 +317,13 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 | `add_item`    | string | Item entity ID to add to hard inventory. |
 | `remove_item` | string | Item entity ID to remove from hard inventory. |
 | `set_flag`        | object | Hard-state flags to set or clear. |
+| `set_entity_state` | object | **Optional.** Per-entity state changes: `{ "<entity_id>": { "<field>": <value>, ... } }`. |
 | `set_room_state`  | object | **Optional.** Per-room state changes: `{ "<room_id>": { "<field>": <value>, ... } }`. Useful for recording entry direction or other room-specific state that conditions can read via `room:<room_id>.<field>`. |
 | `alter_stat`        | object | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). Use `"delta"` for damage/buffs (e.g., fall damage: `{ "STR": { "value": -4 } }`); use `"set"` for absolute assignment (e.g., a curse: `{ "INT": { "mode": "set", "value": 3 } }`). |
 | `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
 | `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
 | `chain_check`     | object | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See Chained check below. |
+| `player_damage`   | string | **Optional.** Dice expression rolled as HP damage against the player (e.g., `"2d6"`, `"1d4+1"`). Resolved by the active RPG system. |
 
 #### Chained check (`chain_check`)
 
@@ -708,11 +713,11 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `description`          | string | all           | Canonical description returned for `examine` action. |
 | `spans_rooms`          | array  | feature       | List of room IDs this entity is visible in (e.g., a battleaxe spanning multiple rooms). |
 | `soft_items`           | array  | all           | Plausible generic items found on/in this entity (e.g., a corpse might have `["loose change", "torn parchment"]`). Same semantics as room soft_items. |
-| `tags`                 | array  | item          | Semantic tags for mechanical matching (e.g., `"weapon"`, `"key_item"`, `"draggable"`). |
+| `tags`                 | array  | item          | Semantic tags for mechanical matching (e.g., `"weapon"`, `"key_item"`, `"draggable"`). These are distinct from `equip_block.equip_tags`; `tag:<value>` conditions scan this list, not `equip_tags`. |
 | `draggable`            | bool   | item          | If true, the item can be dragged but occupies the player (no other manual actions while dragging). |
 | `dragging_note`        | string | item          | Narrative note describing the encumbrance. |
 | `contained_entities`   | array  | all           | List of entity IDs nested inside this entity. Items listed here are available for `transfer` from this entity, even if not listed in the room's `entities_present`. |
-| `take_check`           | object | item          | **Optional.** A check (with `success` / `failure` results) that must be passed when the player attempts to pick up this item via a `transfer` action. |
+| `take_check`           | object | item          | **Optional.** A check (with `success` / `failure` results) that must be passed when the player attempts to pick up this item via a `transfer` action. It is **not** automatically disabled after a successful take; use `check.repeatable: false` for a one-time gate, or remove/hide the item after success. |
 | `interactions`         | array  | all           | Interactions available on this entity specifically. Follows the same Interaction object schema. |
 | `on_examine`           | array  | all           | Events that fire when the player examines this entity. Each is an `OnExamineEvent` (see above). |
 | `reactions`            | array  | all           | Reactions scoped to when this entity is present and alive/not-fled (see Reactions below). |
