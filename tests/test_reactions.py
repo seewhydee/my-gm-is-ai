@@ -140,7 +140,7 @@ class TestMechanicReactionOnly:
         assert len(m.reactions) == 1
 
     def test_empty_mechanic_rejected(self):
-        with pytest.raises(ValidationError, match="must have either"):
+        with pytest.raises(ValidationError, match="must have at least one"):
             Mechanic(id="m1", description="test")
 
     def test_game_over_mechanic_still_works(self):

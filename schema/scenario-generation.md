@@ -50,9 +50,9 @@ Cross-file validation
 ```
 
 Each step produces intermediate output in the adventure module folder.
-Step 1 writes a structured plan to `scenario-map.md` — the working
-document all subsequent steps read from.  Steps 2–4 produce draft
-corpus blocks; Steps 5–6 produce the final `hard-state.json` and
+Step 1 writes the Scenario Map — a document named `scenario-map.md`
+that all subsequent steps read from.  Steps 2–4 produce draft corpus
+blocks; Steps 5–6 produce the final `hard-state.json` and
 `soft-state.json`.  After cross-file validation, assemble the complete
 `corpus.json` from the draft blocks.
 
@@ -70,14 +70,14 @@ interactions, state fields, entity tags, etc.  All IDs in snake_case.
 Read README.md and doc/intro.md, followed by the supplied scenario
 (usually a Markdown file in adventures/MODULE-NAME/).
 
-Then, follow the specs below to write a clean document (text, not
-JSON) named `scenario-map.md` in the adventure module folder.  This
-file will be the working plan for all subsequent steps.  Follow steps
-1A to 1H carefully, and in order.
+Next, follow the specs below to write a Scenario Map (a text document,
+not JSON), and save it to `scenario-map.md` in the adventure module
+folder.  This will be the working plan for all subsequent steps.
+Follow steps 1A to 1H carefully, and in order.
 
 ### 1A. Adventure metadata
 
-Write down, at the top of `scenario-map.md`:
+Write down, at the top of the Scenario Map:
 
 - *Title* — The title of the adventure.
 
@@ -328,8 +328,23 @@ For NPCs, also add descriptions for the following:
   description of its combat style (e.g., "constricts with webs",
   "breathes fire").
 
-- **Behavior** — summarize the personality, whether it fights, etc.
-  If the entity fights, describe any custom rules for the encounter.
+- **Behavior** — if the NPC fights, enumerate its encounter rules.
+  Encounter rules specify the different ways a combat encounter might
+  unfold, either when the player attacks the NPC, or the NPC attacks
+  the player (e.g., via a reaction).  Each rule specifies a set of
+  conditions (e.g., "player has a weapon and NPC is initially
+  hostile"), and the outcome (e.g., "launch multi-turn combat").  The
+  first encounter rule with matching conditions is dispatched.
+
+  Common encounter rule outcomes are:
+  - begin multi-round combat (NPC needs combat stats)
+  - player auto-death
+  - NPC flee or auto-death
+  - stat check with probabilitic branches (flee, auto-death)
+
+  You may omit the behavior specification to accept the default rule:
+  if the NPC has combat stats, begin turn-based multi-round combat;
+  otherwise, the NPC dies.
 
 - **Dialogue Paths** — for dialogue, if the NPC talks.
   Assign an NPC-unique ID for each special line of conversation the
@@ -382,9 +397,9 @@ Revise as necessary.
 
 ### Step 1 validation checklist
 
-Run this before proceeding to Step 2.  The `scenario-map.md` produced in
-Step 1 is the blueprint for all later steps; catching gaps here avoids
-rework downstream.
+Check the following before proceeding to Step 2.  The Scenario Map
+(`scenario-map.md`) will be the blueprint for all later steps;
+catching gaps here avoids rework downstream.
 
 #### Coverage and Consistency
 
@@ -411,7 +426,8 @@ rework downstream.
       (usually) a global flag to track the player's knowledge (§1D)
 - [ ] Every NPC whose attitude to the player can shift should have an
       `attitude` state field (§1G).
-- [ ] Every NPC that fights should have `behavior` planned (§1G)
+- [ ] Every NPC with `behavior` encounter rules specifying multi-turn
+      combat should have combat stats (§1G)
 
 #### Flags, state, and tags
 
@@ -446,13 +462,14 @@ rework downstream.
 
 ## Step 2: Build Entities
 
-**Input:** `scenario-map.md` document from Step 1.
+**Input:** Scenario Map from Step 1 + Corpus Schema
 **Output:** The full `"entities"` block for `corpus.json`.
 
-Read `corpus.md`.  For each entity listed in the scenario map, you now
-have to produce an entity definition following the corpus schema, §2
-Entities.  Use `scenario-map.md` as your primary source; only refer to
-the original scenario to look up missing information.
+For each entity listed in the Scenario Map (`scenario-map.md`), you
+must produce an entity definition following the corpus schema
+(`schema/corpus.md`, §2 Entities).  Use the Scenario Map as your
+primary source; only refer to the original scenario to look up missing
+information.
 
 NPCs are the most complicated entities; you may want to do them last.
 
@@ -463,7 +480,7 @@ Tips for writing the JSON objects follow.
 #### Description
 
 When generating the entity's `description` field, do not just
-translate the description field from `scenario-map.md`.  Take a
+translate the description field from the Scenario Map.  Take a
 holistic view, and write a timeless, spoiler-free description of the
 entity.  This description is provided to the GM whenever the entity is
 present; it should be factual, and independent of the entity's state
@@ -483,8 +500,8 @@ fought and killed.
 #### State fields
 
 When generating the entity's `state_fields`, refer to the state fields
-planned out in `scenario-map.md`.  Specify the initial value, and add
-a terse description – the GM uses this to infer what the field means.
+planned out in the Scenario Map.  Specify the initial value, and add a
+terse description – the GM uses this to infer what the field means.
 
 Example:
 
@@ -505,8 +522,8 @@ handled specially by the engine: when true, the entity is concealed
 #### Entity reactions
 
 The `reactions` field is used for event-driven entity behavior.  To
-translate the the scenario map's reaction description into JSON, refer
-to the spec in [`events.md`](events.md).  Note: entity reactions only
+translate the Scenario Map's reaction description into JSON, refer to
+the spec in [`events.md`](events.md).  Note: entity reactions only
 trigger if the entity is in the current room, alive, and not-fled.
 
 Example of an attack on sight reaction:
@@ -539,7 +556,7 @@ Example of a post-dialogue state change:
 
 #### Examination
 
-The On-Examine Effects for rooms and entities in the scenario map
+The On-Examine Effects for rooms and entities in the Scenario Map
 should be translated into `on_examine` effects, as documented in
 `corpus.md`.
 
@@ -631,19 +648,10 @@ following, the engine automatically clears the NPC's `following` state
 and adds a narrative note.  If the NPC should resume following when
 the player returns to the current room, use an on-entry reaction.
 
-#### Combat and Encounters
+#### Combat Stats and Combat Encounters
 
-If an NPC can engage in a combat encounter with the player, such
-encounters can be modelled using either (i) single-turn mechanical
-resolution (for one-shot kills, adventure modules with stat systems,
-etc.) or (ii) a `combat` block governing full multi-round combat.
-Encounters are dispatched by `behavior.encounter_rules`, which is
-evaluated top-to-bottom, with the first matching rule taking effect.
-If this rule has `outcome: "combat"`, or the player attacks directly,
-the engine initiates multi-round combat.
-
-For multi-round combat, the NPC must have a `combat` block with combat
-stats: e.g.,
+If the Scenario Map supplies a set of NPC Combat Stats, format them
+into a `combat` block: e.g.,
 
 ```json
 "goblin_scout": {
@@ -662,19 +670,49 @@ stats: e.g.,
 }
 ```
 
-Also, declare `current_hp` in `state_fields` and initialise it in
-`hard-state.json`.  See [`doc/combat.md`](../doc/combat.md) for the
-combat system reference.
+You'll also need to initialize `current_hp` in hard state later (§5).
 
-### 2C. NPC dialogue guidelines
+If an NPC can engage in a combat encounter with the player (by either
+side attacking), such encounters are typically resolved by either
+single-turn resolution (e.g., one-shot kills), or multi-round combat.
+Dispatch occurs via `behavior.encounter_rules`; the first matching
+rule takes effect.  Construct these encounter rules from the NPC's
+Behavior description in the Scenario Map, or accept the default rule
+(start combat if NPC has a `combat` block, NPC dies otherwise).
 
-For every conversational NPC, write a `dialogue_guidelines` block
-following the spec in `corpus.md`.
+Here is an example of a mechanical (one-turn) encounter:
 
-The info in this block – `personality`, the `can` and `cannot` arrays,
-etc. – guides the GM on how the NPC talks, behaves, and responds to
-the player.  Each string should be concise, informative, and factual.
-No embellishment: the GM takes care of injecting color.
+```json
+"encounter_rules": [
+  {
+    "condition": { "require": "tag:weapon" },
+    "outcome": "stat_check",
+    "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
+    "on_success": {
+      "outcome": "flee",
+      "narrative": "You land a solid blow. The goblin hisses and flees.",
+      "set_flags": { "goblin_fled": true }
+    },
+    "on_failure": {
+      "outcome": "death",
+      "narrative": "The goblin strikes back! Its cleaver goes through your neck."
+    }
+  },
+  {
+    "condition": { "unless": "tag:weapon" },
+    "outcome": "death",
+    "narrative": "Bare-handed, you cannot fend off the goblin's attack. It quickly overcomes you."
+  }
+]
+```
+
+#### NPC dialogue
+
+For every conversational NPC, write a `dialogue_guidelines` block.
+Its contents – `personality`, `can`/`cannot` arrays, etc. – guide the
+GM on how the NPC talks, behaves, and responds to the player.  Each
+string should be concise, informative, and factual.  No embellishment:
+the GM handles injecting color.
 
 Example of a `cannot` array:
 
@@ -682,12 +720,12 @@ Example of a `cannot` array:
 ["will never agree to fight the spider; secretly scared of spiders, but reluctant to admit it", "will not follow into the secret compartment (can't fit through flap)"]
 ```
 
-The `dialogue_paths`, `will_reveal`, and `knows` fields map to the
-Dialogue Paths, Topics, and Knowledge descriptors in
-`scenario-map.md`.  The GM uses the info you supply to narrate how
-these conversations go.  Each Dialogue Path and Topic revelation
-should have at least one side-effect (for a Topic, it can be just
-setting a global flag to track the player's knowledge).
+Translate the `dialogue_paths`, `will_reveal`, and `knows` fields from
+the Dialogue Paths, Topics, and Knowledge descriptors in the Scenario
+Map.  The GM uses this info to narrate how the NPC conversations go,
+so don't be vague.  Each Dialogue Path and Topic revelation should
+have at least one side-effect (for a Topic, it can be just setting a
+global flag to track the player's knowledge).
 
 Example of a fairy with a dialogue path allowing it to be flattered
 with a CHA check:
@@ -725,59 +763,6 @@ Example of a will_reveal structure:
   }
 }
 ```
-
-### 2D. NPC behavior (encounter rules)
-
-Two conflict-resolution systems exist in MGMAI: **encounter rules**
-(one-shot resolution) and **multi-round combat** (turn-based with HP
-tracking).  This section covers encounter rules.  When an encounter
-rule uses `outcome: "combat"`, the engine starts the multi-round combat
-system instead.  For that, the NPC needs a separate `combat` block —
-see §2B and [`doc/combat.md`](../doc/combat.md) for the structure and
-fields.
-
-Each NPC with encounter rules should have a `behavior` block:
-
-- **`encounter_rules`**: One rule per branch. Rules are evaluated
-  top-to-bottom; the first matching condition fires. To trigger
-  encounter rules from a specific action (e.g. attacking the NPC),
-  define an entity-scoped reaction on `interaction.used` with
-  `effects.trigger_encounter: "self"`.
-
-If a combat scenario has multiple conditional branches (e.g., "if
-armed AND STR check succeeds → goblin dies" vs "if armed AND STR fails
-→ goblin strikes back"), model each as a separate rule with its own
-`condition`:
-
-```json
-"encounter_rules": [
-  {
-    "condition": { "require": "tag:weapon" },
-    "outcome": "stat_check",
-    "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
-    "on_success": {
-      "outcome": "flee",
-      "narrative": "You land a solid blow. The goblin hisses and flees.",
-      "set_flags": { "goblin_fled": true }
-    },
-    "on_failure": {
-      "outcome": "death",
-      "narrative": "The goblin strikes back! Its cleaver goes through your neck."
-    }
-  },
-  {
-    "condition": { "unless": "tag:weapon" },
-    "outcome": "death",
-    "narrative": "Bare-handed, you cannot fend off the goblin's attack. It quickly overcomes you."
-  }
-]
-```
-
-Note: `outcome: "death"` always kills the player (game over). `outcome: "flee"`
-removes the NPC. For non-lethal combat outcomes (e.g., NPC is knocked out but
-doesn't die), use `outcome: "flee"` with appropriate `set_flags` and narrative,
-since `flee` removes the NPC from play without killing the player.
-
 
 ---
 
@@ -1779,6 +1764,8 @@ Rules:
 **Input:** Everything from Steps 2-4 + flag list from Step 1.
 **Output:** Complete `hard-state.json` file.
 
+
+
 Follow this exact structure:
 
 ```json
@@ -1836,6 +1823,8 @@ Follow this exact structure:
    - String fields: `""`
    **Do not skip any entity that has state_fields.** Every field declared in
    the entity's `state_fields` must have a value here.
+
+FIXME: need to declare `current_hp` in hard state
 
 7. **`turn_count`** — always `0`.
 

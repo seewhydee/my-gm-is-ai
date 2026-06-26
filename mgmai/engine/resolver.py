@@ -763,6 +763,32 @@ def resolve_interact(
                 room_after_id=room_id,
             )
 
+        # Attacking an NPC always triggers an encounter.  If the NPC has an
+        # explicit "attack" interaction defined, that interaction takes
+        # precedence and is resolved below.  Otherwise, set an encounter
+        # trigger so the engine dispatches it (using behavior.encounter_rules
+        # if present, or a default "NPC dies" outcome).
+        if (
+            interaction_id == "attack"
+            and target_entity.type == "npc"
+            and not any(inter.id == "attack" for inter in target_entity.interactions)
+        ):
+            result = ResolutionResult(
+                success=True,
+                encounter_trigger=target_id,
+                room_after_id=room_id,
+            )
+            _emit_event(
+                "interaction.used",
+                {
+                    "interaction_id": interaction_id,
+                    "target_id": target_id,
+                    "using_item": action.using,
+                },
+                hard, soft, corpus, state_manager, result,
+            )
+            return result
+
         for inter in target_entity.interactions:
             if inter.id == interaction_id:
                 matches.append((inter, "entity"))
@@ -772,8 +798,8 @@ def resolve_interact(
             matches.append((inter, "room"))
 
     # Emit interaction.used before matching so entity-scoped reactions
-    # fire even when no interaction definition exists (e.g. bare-handed
-    # attack on an NPC with encounter rules but no "attack" interaction).
+    # fire for effects (set_flag, narrative, etc.) even when no
+    # interaction definition exists.
     result = ResolutionResult(
         success=False,
         error=f"Interaction '{interaction_id}' has no defined result",

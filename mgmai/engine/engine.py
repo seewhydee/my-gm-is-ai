@@ -312,6 +312,21 @@ def resolve(
                     resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
             _apply_and_merge(encounter_changes)
+        else:
+            # No encounter rules defined — apply default outcome.
+            # Attacking an NPC with no combat stats or encounter rules
+            # kills it outright.
+            if npc is not None:
+                encounter_changes = HardStateChanges()
+                encounter_changes.entity_state_changes.setdefault(
+                    trigger_id, {}
+                )["alive"] = False
+                _apply_and_merge(encounter_changes)
+                encounter_outcome = EncounterOutcome(
+                    encounter_id=encounter_source_id,
+                    outcome="death",
+                    narrative_brief=f"You strike down {trigger_id}.",
+                )
 
     # On a failed resolution, return early; deferred reactions do not run.
     if not resolution.success:
