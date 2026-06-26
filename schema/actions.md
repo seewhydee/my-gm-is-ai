@@ -105,9 +105,9 @@ Soft State, for the ruling LLM (call 1).
       }
     ],
     "exits_available": [
-      { "id": "exit_up_handle_lower", "direction": "Walk up the axe handle", "target_room": "axe_handle_upper", "hidden": false },
-      { "id": "exit_through_webs", "direction": "Push through the dense webs downward", "target_room": "bag_floor", "hidden": false },
-      { "id": "exit_drop_lower", "direction": "Drop safely down to the floor", "target_room": "bag_floor", "hidden": false }
+      { "id": "exit_up_handle_lower", "direction": "Walk up the axe handle", "target_room": "axe_handle_upper" },
+      { "id": "exit_through_webs", "direction": "Push through the dense webs downward", "target_room": "bag_floor" },
+      { "id": "exit_drop_lower", "direction": "Drop safely down to the floor", "target_room": "bag_floor" }
     ],
     "interactions_available": [],
     "room_notes": ["The webs here are partially cleared from the spider's flight."]
@@ -271,7 +271,7 @@ The LLM must output a single structured action, corresponding to the player's in
 
 | Field    | Type          | Required | Description |
 |----------|---------------|----------|-------------|
-| `target` | string        | yes      | The exit ID to traverse. Must be a valid, accessible, non-hidden exit from the current room. |
+| `target` | string        | yes      | The exit ID to traverse. Must be a valid, accessible exit from the current room. |
 | `style`  | string        | no       | Optional qualifier for special movement methods (e.g., "crawling", "running", "carefully"). |
 | `using`  | string\|null  | no       | Optional item entity ID or soft item name the player is using to assist traversal. If the exit's `traversal_check` has a matching `using_results` entry, that override is resolved instead. |
 

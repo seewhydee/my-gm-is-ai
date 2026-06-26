@@ -101,20 +101,16 @@ class TestBriefingExit:
             "id": "exit_through_webs",
             "direction": "Push through the dense webs downward",
             "target_room": "bag_floor",
-            "hidden": False,
         })
         assert e.id == "exit_through_webs"
         assert e.target_room == "bag_floor"
 
-    def test_hidden_exit(self) -> None:
-        e = BriefingExit.model_validate({
-            "id": "secret_passage",
-            "direction": "Slip through the crack",
-            "target_room": "hidden_vault",
-            "hidden": True,
-        })
-        assert e.hidden is True
-        assert e.id == "secret_passage"
+    def test_missing_target_room_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            BriefingExit.model_validate({
+                "id": "exit_through_webs",
+                "direction": "Go north",
+            })
 
 
 class TestBriefingRoom:

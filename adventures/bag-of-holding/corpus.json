@@ -766,7 +766,6 @@
           "id": "exit_climb_down_handle",
           "direction": "Climb carefully down the axe handle",
           "target_room": "axe_handle_upper",
-          "conditions": [],
           "traversal_check": {
             "check": {
               "type": "stat_check",
@@ -789,7 +788,6 @@
           "id": "exit_drop_from_head",
           "direction": "Drop down into the darkness below",
           "target_room": "bag_floor",
-          "conditions": [],
           "one_way": true
         }
       ],
@@ -1054,7 +1052,6 @@
           "id": "exit_up_handle_upper",
           "direction": "Walk up the axe handle (toward the axe head)",
           "target_room": "axe_head",
-          "conditions": [],
           "traversal_check": {
             "check": {
               "type": "stat_check",
@@ -1077,7 +1074,6 @@
           "id": "exit_down_handle_upper",
           "direction": "Walk down the axe handle (toward the bag floor)",
           "target_room": "axe_handle_lower",
-          "conditions": [],
           "traversal_check": {
             "check": {
               "type": "stat_check",
@@ -1100,7 +1096,6 @@
           "id": "exit_drop_from_upper",
           "direction": "Drop down into the darkness below",
           "target_room": "bag_floor",
-          "conditions": [],
           "one_way": true
         }
       ],
@@ -1180,7 +1175,6 @@
           "id": "exit_walk_down_handle_lower",
           "direction": "Walk down the axe handle (toward the bag floor)",
           "target_room": "bag_floor",
-          "conditions": [],
           "traversal_check": {
             "check": {
               "type": "stat_check",
@@ -1221,7 +1215,6 @@
           "id": "exit_up_handle_lower",
           "direction": "Walk up the axe handle (back toward the upper handle)",
           "target_room": "axe_handle_upper",
-          "conditions": [],
           "traversal_check": {
             "check": {
               "type": "stat_check",
@@ -1269,7 +1262,6 @@
           "id": "exit_drop_from_lower",
           "direction": "Drop safely down to the floor",
           "target_room": "bag_floor",
-          "conditions": [],
           "one_way": true,
           "traversal_check": {
             "check": {
@@ -1464,7 +1456,6 @@
           "id": "exit_climb_up_handle_floor",
           "direction": "Climb up the axe handle",
           "target_room": "axe_handle_lower",
-          "conditions": [],
           "traversal_check": {
             "check": {
               "type": "stat_check",
@@ -1485,14 +1476,13 @@
         },
         {
           "id": "exit_enter_secret_pocket",
-          "direction": "Squeeze through the concealed flap into the secret compartment",
-          "target_room": "secret_pocket",
-          "hidden": true,
-          "conditions": [
+          "hide_conditions": [
             {
               "require": "flag:handkerchief_moved == true"
             }
-          ]
+          ],
+          "direction": "Squeeze through the concealed flap into the secret compartment",
+          "target_room": "secret_pocket"
         }
       ],
       "interactions": [
@@ -1692,7 +1682,6 @@
           "id": "exit_leave_secret_pocket",
           "direction": "Squeeze back out to the bag floor",
           "target_room": "bag_floor",
-          "conditions": [],
           "traversal_check": {
             "check": {
               "type": "stat_check",

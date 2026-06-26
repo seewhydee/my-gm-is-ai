@@ -242,8 +242,7 @@ class Exit(BaseModel):
     id: str
     direction: str
     target_room: str
-    conditions: List[ConditionExpression] = Field(default_factory=list)
-    hidden: bool = False
+    hide_conditions: Optional[List[ConditionExpression]] = None
     one_way: bool = False
     traversal_check: Optional[TraversalCheck] = None
 

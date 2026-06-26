@@ -24,6 +24,33 @@ from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 
 
+def is_exit_visible(
+    exit_obj: object,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> bool:
+    """Return True if the exit should be visible given current state.
+
+    hide_conditions is None          -> always visible
+    hide_conditions is []            -> permanently hidden
+    hide_conditions is [cond, ...]   -> visible only if all conditions are met
+    Once an exit becomes visible it stays visible — its conditions are
+    re-evaluated every turn.
+    """
+    from mgmai.engine.conditions import evaluate
+
+    hc = getattr(exit_obj, "hide_conditions", None)
+    if hc is None:
+        return True
+    if not hc:
+        return False
+    for cond in hc:
+        if not evaluate(cond, hard, soft, corpus):
+            return False
+    return True
+
+
 def get_following_npc_ids(
     hard: HardGameState,
     corpus: ModuleCorpus,

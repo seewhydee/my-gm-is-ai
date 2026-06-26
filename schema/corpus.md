@@ -71,9 +71,8 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
   "id": "string (unique across all exits)",
   "direction": "string (natural-language label, e.g. 'Climb carefully down the axe handle')",
   "target_room": "<room_id>",
-  "conditions": [ { /* condition */ } ],
+  "hide_conditions": [ { /* condition */ } ],
   "traversal_check": { /* traversal check (optional) */ },
-  "hidden": false,
   "one_way": false
 }
 ```
@@ -83,14 +82,13 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 | `id`              | string  | yes      | Unique exit identifier, referenced by `move` action `target`. |
 | `direction`       | string  | yes      | Human-readable direction label for LLM context. |
 | `target_room`     | string  | yes      | Room ID the player ends up in after traversing. |
-| `conditions`      | array   | no       | Conditions that must be satisfied for the exit to be available. |
+| `hide_conditions` | array   | no       | Conditions that must ALL be met for the exit to appear in `exits_available` and be traversable. When `null`/absent, the exit is always visible. When `[]` (empty), the exit is permanently hidden. When non-empty, the exit is hidden until all conditions evaluate to true; once visible, it stays visible. |
 | `traversal_check` | object  | no       | **Optional.** A check (roll or stat_check) that must be passed to succeed at traversing this exit. On failure, the player stays in the current room. See Traversal check below. |
-| `hidden`          | boolean | no       | If `true`, the exit is omitted from `exits_available` in GMBriefing until its reveal condition is met (e.g., `flag:handkerchief_moved == true`). The reveal condition is evaluated by the engine based on hard-state flags. |
 | `one_way`         | boolean | no       | If `true`, the exit cannot be traversed in reverse. |
 
 #### Traversal check (`traversal_check`)
 
-An optional check that gates successful room traversal. Unlike `conditions` (which
+An optional check that gates successful room traversal. Unlike `hide_conditions` (which
 determine whether the exit is shown/available at all), a `traversal_check` makes the
 exit available but risky — the player may fail the check and remain in the current
 room, able to retry next turn.

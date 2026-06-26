@@ -336,7 +336,6 @@ class TestExitFiltering:
         )
         assert exit.direction == "Climb carefully down the axe handle"
         assert exit.target_room == "axe_handle_upper"
-        assert exit.hidden is False
 
 
 class TestInteractions:

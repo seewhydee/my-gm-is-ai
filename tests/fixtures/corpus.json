@@ -32,16 +32,12 @@
           "id": "exit_climb_down_handle",
           "direction": "Climb carefully down the axe handle",
           "target_room": "axe_handle_upper",
-          "conditions": [],
-          "hidden": false,
           "one_way": false
         },
         {
           "id": "exit_drop_from_head",
           "direction": "Drop down into the darkness below",
           "target_room": "bag_floor",
-          "conditions": [],
-          "hidden": false,
           "one_way": true
         }
       ],
@@ -83,24 +79,18 @@
           "id": "exit_walk_up_handle_upper",
           "direction": "Walk up the axe handle",
           "target_room": "axe_head",
-          "conditions": [],
-          "hidden": false,
           "one_way": false
         },
         {
           "id": "exit_walk_down_handle_upper",
           "direction": "Walk down the axe handle",
           "target_room": "axe_handle_lower",
-          "conditions": [],
-          "hidden": false,
           "one_way": false
         },
         {
           "id": "exit_drop_from_upper",
           "direction": "Drop down into the darkness below",
           "target_room": "bag_floor",
-          "conditions": [],
-          "hidden": false,
           "one_way": true
         }
       ],
@@ -154,24 +144,18 @@
           "id": "exit_walk_up_handle_lower",
           "direction": "Walk up the axe handle",
           "target_room": "axe_handle_upper",
-          "conditions": [],
-          "hidden": false,
           "one_way": false
         },
         {
           "id": "exit_through_webs",
           "direction": "Push through the dense webs downward",
           "target_room": "bag_floor",
-          "conditions": [],
-          "hidden": false,
           "one_way": false
         },
         {
           "id": "exit_drop_from_lower",
           "direction": "Drop safely down to the floor",
           "target_room": "bag_floor",
-          "conditions": [],
-          "hidden": false,
           "one_way": true
         }
       ],
@@ -216,20 +200,17 @@
           "id": "exit_climb_up_handle_floor",
           "direction": "Climb up the axe handle",
           "target_room": "axe_handle_lower",
-          "conditions": [],
-          "hidden": false,
           "one_way": false
         },
         {
           "id": "exit_enter_secret_flap",
-          "direction": "Enter the hidden flap in the canvas wall",
-          "target_room": "secret_compartment",
-          "conditions": [
+          "hide_conditions": [
             {
               "require": "flag:handkerchief_moved == true"
             }
           ],
-          "hidden": true,
+          "direction": "Enter the hidden flap in the canvas wall",
+          "target_room": "secret_compartment",
           "one_way": false
         }
       ],
@@ -252,8 +233,6 @@
           "id": "exit_leave_secret_compartment",
           "direction": "Climb back out through the flap",
           "target_room": "bag_floor",
-          "conditions": [],
-          "hidden": false,
           "one_way": false
         }
       ],

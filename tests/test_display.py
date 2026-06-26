@@ -107,24 +107,14 @@ class TestDisplayNoRich:
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
         room = type("Room", (), {
             "exits": [
-                type("E", (), {"direction": "north", "hidden": False, "one_way": False})(),
-                type("E", (), {"direction": "south", "hidden": False, "one_way": True})(),
+                type("E", (), {"direction": "north", "one_way": False})(),
+                type("E", (), {"direction": "south", "one_way": True})(),
             ]
         })()
         result = Display.format_exits(room)
         assert "north" in result
         assert "south" in result
         assert "one-way" in result
-
-    def test_format_exits_hidden_filtered(self, monkeypatch) -> None:
-        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
-        room = type("Room", (), {
-            "exits": [
-                type("E", (), {"direction": "north", "hidden": True, "one_way": False})(),
-            ]
-        })()
-        result = Display.format_exits(room)
-        assert result == ""
 
     def test_format_exits_no_exits(self, monkeypatch) -> None:
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)

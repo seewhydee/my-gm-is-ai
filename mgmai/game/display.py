@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from mgmai.engine.conditions import evaluate
+from mgmai.engine.utils import is_exit_visible
 
 try:
     from rich.console import Console
@@ -366,25 +367,8 @@ class Display:
 
         visible_exits = []
         for e in room.exits:
-            if e.hidden:
-                if e.conditions:
-                    all_met = True
-                    for cond in e.conditions:
-                        if not evaluate(cond, hs, state_loader.soft_state, corpus):
-                            all_met = False
-                            break
-                    if not all_met:
-                        continue
-                else:
-                    continue
-            elif e.conditions:
-                all_met = True
-                for cond in e.conditions:
-                    if not evaluate(cond, hs, state_loader.soft_state, corpus):
-                        all_met = False
-                        break
-                if not all_met:
-                    continue
+            if not is_exit_visible(e, hs, state_loader.soft_state, corpus):
+                continue
             visible_exits.append(e)
 
         if RICH_AVAILABLE:

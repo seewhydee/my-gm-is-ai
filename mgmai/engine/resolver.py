@@ -297,10 +297,15 @@ def resolve_move(
             error=f"Exit '{target_exit_id}' not found in room '{room_id}'",
         )
 
-    if exit_data.conditions:
+    if exit_data.hide_conditions is not None:
+        if not exit_data.hide_conditions:
+            return ResolutionResult(
+                success=False,
+                error=f"Exit '{target_exit_id}' is permanently hidden.",
+            )
         all_met = True
         unmet: list[str] = []
-        for cond in exit_data.conditions:
+        for cond in exit_data.hide_conditions:
             if not evaluate(cond, hard, soft, corpus):
                 all_met = False
                 unmet.append(str(cond))

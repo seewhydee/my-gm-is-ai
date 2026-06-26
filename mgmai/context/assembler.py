@@ -41,7 +41,7 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.conditions import evaluate
-from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs, build_contained_entities
+from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs, build_contained_entities, is_exit_visible
 
 
 def assemble(corpus: ModuleCorpus,
@@ -125,31 +125,12 @@ def _build_room(room_id: str,
 
     exits_available: list[BriefingExit] = []
     for ex in room.exits:
-        if ex.hidden:
-            # Hidden exits are revealed only when their conditions are met
-            if ex.conditions:
-                all_met = True
-                for cond in ex.conditions:
-                    if not evaluate(cond, hard, soft, corpus):
-                        all_met = False
-                        break
-                if not all_met:
-                    continue
-            else:
-                continue
-        elif ex.conditions:
-            all_met = True
-            for cond in ex.conditions:
-                if not evaluate(cond, hard, soft, corpus):
-                    all_met = False
-                    break
-            if not all_met:
-                continue
+        if not is_exit_visible(ex, hard, soft, corpus):
+            continue
         exits_available.append(
             BriefingExit(id=ex.id,
                          direction=ex.direction,
-                         target_room=ex.target_room,
-                         hidden=ex.hidden))
+                         target_room=ex.target_room))
 
     interactions_available: list[BriefingInteraction] = []
     for inter in room.interactions:

@@ -214,9 +214,13 @@ For each mechanic, specify:
 Revisit the room list, and add the following info to each room:
 
 - **Exits** — every way out.  For each, assign a room-unique exit ID,
-  give a brief description (e.g., "through the north doorway"),
-  specify the destination room ID (§1B), and describe any traversal
-  conditions (stat check or other condition to traverse the exit).
+  give a brief description (e.g., "through the north doorway"), and
+  specify the destination room ID (§1B).
+  
+  Optionally, describe (i) a set of traversal conditions (stat check
+  or other condition to traverse the exit), and/or (ii) conditions
+  under which the exit is hidden (e.g., a secret door revealed only
+  when a lever is pulled).
 
 - **Entities present** — list the ID of each entity in the room at
   start (from §1C), including hidden ones (e.g., a lurking thief).
@@ -225,7 +229,7 @@ Revisit the room list, and add the following info to each room:
   interaction the player can have with the *room* (not an entity inside
   the room): e.g., shouting out a magic command word.
   
-  Do not define interactions similar to these generic player actions:
+  DO NOT define interactions similar to these generic player actions:
   `move` (traversing rooms), `examine` (cursory or in-depth study), or
   `transfer` (moving items to/from a container or location).
 
@@ -287,7 +291,7 @@ Revisit the entity list, and add the following to each entity:
   entity-unique interaction ID.  Include the `attack` interaction if
   the entity can be attacked.
   
-  Do not define interactions similar to the following generic player
+  DO NOT define interactions similar to the following generic player
   actions: `examine` (cursory or in-depth study), `talk` (conversing
   with NPC), or `transfer` (moving items to/from).
 
@@ -471,7 +475,7 @@ catching gaps here avoids rework downstream.
 #### Exits
 
 - [ ] Hidden exits have a planned flag-based reveal mechanism (companion
-      interaction sets a flag, exit conditions require that flag)
+      interaction sets a flag, exit hide_conditions require that flag)
 - [ ] One-way exits have a planned return path (or a narrative reason
       they are permanently one-way)
 
@@ -497,6 +501,10 @@ introduction, and atmosphere (setting, tone).
 
 Next, construct `flags_declared` from the list of Global Flags in the
 Scenario Map.  This is just used for validation/debugging.
+
+If, during subsequent JSON implementation of various game mechanics,
+you find it necessary to add extra global flags, be sure to update
+`flags_declared`.
 
 ### 2B. Entity Data
 
@@ -840,6 +848,12 @@ Example of a will_reveal structure:
 }
 ```
 
+### 2G. Soft Items
+
+> TBD: instructions to generate a list of soft items for
+> container-type features, and NPCs...
+
+
 ---
 
 ### Step 2 validation checklist
@@ -867,70 +881,80 @@ Example of a will_reveal structure:
 
 ## Step 3: Build Rooms
 
-**Input:** Room list from Step 1 + entity definitions from Step 2.
-**Output:** The full `"rooms"` block for `corpus.json`.
+**Input:** Scenario Map + corpus schema + corpus draft from Step 2.
+**Output:** The `rooms` block for `corpus.json`.
 
-For each room from the room list, produce a complete room definition following
-the schema in [`corpus.md`](corpus.md) (§1 Rooms).
+For each room listed in the Scenario Map, produce a complete room
+definition following the corpus schema (§1 Rooms).  Several tips are
+provided below:
 
 ### 3A. Room description
 
-Write a full present-tense `description` for the room, replacing the
-placeholder description from §1B.
+Write a full present-tense `description` for the room, which will be
+used for both room entry and examination.  Do not rely solely on the
+room description from the Scenario Map, but craft a description based
+on your holistic understanding of the scenario.
 
-This description is used for both room entry and examination.  Focus
-on facts and notable features, as well as key sensory details (what
-the player sees, hears, smells, etc.).
+Focus on facts, notable features, as well as key sensory details: what
+the player sees, hears, smells, etc.  You may inject details to add
+flavor, without contradicting the scenario.  Excessively poetic
+language is not necessary; the GM can make it more atmospheric.
 
-Example: "A large square courtyard ringed with laurel trees.  It has a
-dilapidated air, with thick weeds sprouting through the cracks between
-the flagstones on the ground."
-
-The description can set the tone, but excessively poetic language is
-not necessary; the narrator will adapt it into something suitably
-atmospheric.
+Example: "A large square courtyard ringed with overgrown laurel trees.
+It has a dilapidated air, with thick weeds sprouting through the
+cracks between the flagstones on the ground."
 
 The description should remain accurate regardless of the game state.
 DO NOT include entities that might leave the room (e.g., NPCs that
 might move elsewhere), or invalidate the description in some way; the
-narrator has data about the entities present and can weave in that
-information.  DO NOT include hidden information, or clues gated behind
-a rigorous search or NPC reveal.
+GM can weave in info about entities present.
+
+DO NOT include hidden information, clues gated behind a rigorous
+search or NPC reveal, or spoilers.
 
 ### 3B. Entities present
 
-List the entity IDs (from Step 2) physically in the room at game
-start, including hidden entities.
+In `entities_present`, list the IDs for all entities **directly**
+present in the room at game start.  **This includes hidden entities**.
 
-### 3C. Soft items
+Exclude entities contained in other entities: e.g., if a key is inside
+a box in the room, the key should NOT be in `entities_present`.
 
-Plausible generic items the player might pick up. These should be
-environmentally appropriate items with no plot significance.
+### 3C. Exits
 
-**Test:** Will a condition, mechanic, or specific interaction reference this
-thing by name? If yes, it should be a proper entity, not a soft item.
+The `exits` field should list ALL possible exits a room can have over
+the course of gameplay.
 
-### 3D. Exits
+To make an exit hidden until certain conditions are met, use the
+`hide_conditions` field.  List one or more condition expressions; the
+exit is hidden from the player until ALL conditions evaluate to true.
+Omit the field (or set to `null`) for an exit that is always visible.
 
-For every exit described in the scenario, produce an exit object:
+Typically, `hide_conditions` checks a global flag, and there is a
+companion effect (a mechanic, reaction, etc.) that sets this flag to
+reveal the exit.  Example:
 
-- **`id`**: `exit_<short_description>` in snake_case
-- **`direction`**: Natural language label (e.g., "Climb carefully down the axe handle")
-- **`target_room`**: Room ID of the destination
-- **`conditions`**: Array of condition objects gating availability. Empty array
-  means always available.
-- **`hidden`**: `true` for secret exits. Must have a companion mechanic that
-  sets a flag, and the exit's conditions should require that flag.
-- **`one_way`**: `true` if the exit cannot be traversed in reverse.
-- **`traversal_check`**: **Optional.** A check that gates the *attempt*, not
-  the *availability*. The exit is visible and the player can try, but may fail
-  and stay in place. Use for patterns like "dragging the heavy key requires
-  STR check to move between rooms".
+```json
+"hide_conditions": [{ "require": "flag:curtain_opened == true" }]
+```
 
-Exits do **not** have a `reactions` field. To react to traversal events
-(`traversal.succeeded`, `traversal.attempted`, etc.), place reactions on the
-**containing room's** `reactions` array. Filter by exit ID using an `event:`
-condition:
+If an exit is visible but not necessarily traversible, use the
+optional `traversal_check` field.  This gates the traversal *attempt*:
+the exit is visible but the player can fail to use it.  Examples:
+climbing up a wall, or dragging a heavy body into the next room.  If
+the gating is due to a temporary obstacle, specify a `skip_check_if`
+condition that checks a flag; when the obstacle is removed, set/clear
+that flag (via a mechanic, reaction, etc.).
+
+Set the `one_way` field based on your understanding of the exit's
+description (e.g., dropping through a trapdoor).  This field has no
+gameplay effect: it only adds an indicator telling the player that the
+exit *seems* to be one-way.
+
+Exits do not have a `reactions` field. To react to traversal events
+(`traversal.succeeded`, `traversal.attempted`, etc.), place reactions
+on the **containing room's** `reactions` array. Filter by exit ID
+using an `event:` condition:
 
 ```json
 "reactions": [
@@ -945,144 +969,7 @@ condition:
 ]
 ```
 
-#### `traversal_check` fields
-
-| Field | Description |
-|-------|-------------|
-| `check` | The roll or stat_check to resolve |
-| `gating` | Optional condition — the check only fires if this is met. When absent (or condition not met), traversal proceeds without a check |
-| `skip_check_if` | Optional condition — if met, the check is skipped entirely (bypasses `gating`) |
-| `failure` | Result object applied when the check fails (contains at minimum `narrative` prose) |
-| `success` | Optional result object applied when the check succeeds |
-| `using_results` | Optional dict mapping item entity IDs (or `"*"` wildcard) to override check/success/failure. When the `move` action carries a `using` parameter matching a key, the override replaces the check (allowing different DCs per item). See below. |
-
-#### `using_results` for traversal checks
-
-When the scenario requires different DCs depending on what the player is
-carrying (e.g., clearing webs without a weapon is harder), add a
-`using_results` map to the `traversal_check`. Each entry can override the
-`check`. The player's `move` action sets `using` to an item entity ID:
-
-```json
-  "traversal_check": {
-    "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
-    "failure": { "narrative": "You strain against the sticky webs." },
-    "using_results": {
-    "toenail_sword": {
-      "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true }
-    }
-  }
-}
-```
-
-Use `"*"` as a wildcard key to match any using item (applies a blanket weapon
-bonus regardless of which specific weapon is carried).
-
-#### When to use `traversal_check` vs `conditions`
-
-| Pattern | Use |
-|---------|-----|
-| "Can't leave until spider is resolved" | `conditions: { "require": "flag:spider_fled == true" }` |
-| "The key is heavy — STR check to move between rooms" | `traversal_check: { check: { type: "stat_check", ... } }` |
-| "Secret compartment is hidden until noticed" | `hidden: true` + companion interaction that sets flag + `conditions: [ { "require": "flag:... == true" } ]` |
-| "Dropping down is one-way" | `one_way: true` (and a separate exit to go back up) |
-
-#### Clearable obstacle pattern (one-time obstacle)
-
-When the player must overcome an obstacle to pass (e.g., force through a
-spider's web), and once cleared the obstacle is no longer an impediment:
-
-1. Add a `traversal_check` on the blocked exit with the initial check
-2. Use `skip_check_if` on the `traversal_check` to bypass once the flag is set
-3. Add a `traversal.succeeded` reaction (on the room or the exit's containing
-   room) that matches this exit and sets the flag / triggers the encounter
-
-```json
-{
-  "exit_force_through_web": {
-    "target_room": "axe_handle_lower",
-    "traversal_check": {
-      "gating": { "unless": "flag:webs_cleared == true" },
-      "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
-      "skip_check_if": { "require": "flag:webs_cleared == true" },
-      "failure": { "narrative": "You strain against the sticky webs but can't break through." }
-    }
-  }
-},
-"reactions": [
-  {
-    "id": "clear_webs_on_force",
-    "on": "traversal.succeeded",
-    "condition": { "require": "event:exit_id == exit_force_through_web" },
-    "effects": {
-      "result": {
-        "narrative": "You burst through the webs, clearing a path.",
-        "set_flag": { "webs_cleared": true }
-      },
-      "trigger_encounter": "spider_attack"
-    }
-  }
-]
-```
-
-#### Global traversal check (item weight)
-
-If carrying a certain item makes every exit harder (e.g., a heavy body),
-the same `traversal_check` must be duplicated on **every exit** the player
-can use while carrying it. There is currently no mechanism to apply a
-traversal check globally — per-exit duplication is the required pattern.
-
-```json
-"exit_up_stairs": {
-  "target_room": "foyer",
-  "traversal_check": {
-    "gating": { "require": "inventory:dead_body" },
-    "check": { "type": "stat_check", "stat": "STR", "dc": 13, "repeatable": true },
-    "skip_check_if": { "require": "entity:butler.following == true" },
-    "failure": { "narrative": "The body is too heavy to haul up the stairs." }
-  }
-}
-```
-
-Apply this same block to every relevant exit. Use `skip_check_if` there is a way to skip the requirement.
-
-#### Explicit win traversal action
-
-For win conditions that require an explicit player action in a specific room, one implementation trick is to create an exit representing that final action.  Target it to a virtual exit room (not a real room) or use an interaction that sets the final flag:
-
-```json
-{
-  "id": "exit_enter_vault",
-  "direction": "Enter the treasure vault",
-  "target_room": "vault_interior",
-  "hidden": true,
-  "conditions": [{ "require": "flag:vault_unlocked == true" }]
-}
-```
-
-with a room-scoped reaction:
-
-```json
-"reactions": [
-  {
-    "id": "enter_vault_sets_flag",
-    "on": "traversal.succeeded",
-    "condition": { "require": "event:exit_id == exit_enter_vault" },
-    "effects": {
-      "result": {
-        "narrative": "You turn the heavy wheel and the vault door swings open, revealing glittering treasure within.",
-        "set_flag": { "player_entered_vault": true }
-      }
-    }
-  }
-]
-```
-
-Then reference `flag:player_entered_vault` in the win condition's
-`condition`. This ensures the player must explicitly choose the final
-action, which is distinct from the engine passively detecting a condition.
-
-### 3E. Interactions (room-level)
+### 3D. Interactions (room-level)
 
 Define interactions only for room-specific actions that aren't covered by
 generic actions (attack, examine, move, talk, transfer).
@@ -1390,7 +1277,7 @@ actions presented to the LLM, effectively blocking the action. Use `any` to
 model alternative unblocking conditions (NPC dead, high enough attitude, or
 flag already set).
 
-### 3F. On-enter events
+### 3E. On-enter events
 
 For each room, identify any events that should fire when the player enters:
 
@@ -1418,7 +1305,7 @@ With `condition: null`, the event fires on first entry only (the engine tracks i
 }
 ```
 
-### 3G. Room reactions
+### 3F. Room reactions
 
 Reactions on rooms fire when the player is in that room. Use them for
 event-driven triggers that respond to game events (flag changes, check
@@ -1478,7 +1365,7 @@ immediate follow-up check within a single action (e.g., a second stat check
 right after the first), use `chain_check` on the success/failure result
 (see Step 3E).
 
-### 3H. On-examine events
+### 3G. On-examine events
 
 For examine-gated stat checks or conditional discoveries:
 
@@ -1606,6 +1493,15 @@ narrative is appended.  Use this when a successful INT check chains
 into a second lore check (see the bag_of_holding_from_rubbish event in
 the Bag of Holding corpus for an example of gated sequential
 deductions).
+
+### 3H. Soft items
+
+Plausible generic items the player might pick up. These should be
+environmentally appropriate items with no plot significance.
+
+**Test:** Will a condition, mechanic, or specific interaction reference this
+thing by name? If yes, it should be a proper entity, not a soft item.
+
 
 ---
 
@@ -2218,9 +2114,10 @@ All IDs must be **snake_case, lowercase ASCII**:
    that changes during play must be declared in `state_fields`. The engine
    validates that `entity_states` and `state_fields` match at startup.
 
-4. **Hidden exits without reveal conditions**: A `hidden: true` exit needs a
-   companion interaction that sets a flag; the exit's `conditions` should
-   require that flag. Otherwise the exit is permanently invisible.
+4. **Hidden exits without reveal conditions**: An exit with non-empty
+   `hide_conditions` needs a companion interaction that sets a flag;
+   the conditions should require that flag. Otherwise the exit is permanently
+   invisible.
 
 5. **One-way exits without return path**: A `one_way: true` exit should have a
    separate exit for the return direction (or the scenario narrative justifies
@@ -2293,7 +2190,7 @@ All IDs must be **snake_case, lowercase ASCII**:
 
 21. **`event:` domain only works in reactions**: The `event:` condition domain
     is only valid inside reaction conditions during dispatch. Using it in
-    interaction conditions, game-over mechanic conditions, or exit conditions
+    interaction conditions, game-over mechanic conditions, or exit hide_conditions
     will always evaluate to `false`.
 
 22. **`combat.ended` is not yet emitted**: The `combat.ended` event has not

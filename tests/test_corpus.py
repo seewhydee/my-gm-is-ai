@@ -518,29 +518,29 @@ class TestExit:
             "target_room": "room_north",
         })
         assert e.id == "exit_north"
-        assert e.hidden is False
+        assert e.hide_conditions is None
         assert e.one_way is False
 
-    def test_one_way_hidden_exit(self) -> None:
+    def test_permanently_hidden_exit(self) -> None:
         e = Exit.model_validate({
             "id": "secret_passage",
             "direction": "Slip through the crack",
             "target_room": "hidden_room",
-            "hidden": True,
+            "hide_conditions": [],
             "one_way": True,
         })
-        assert e.hidden is True
+        assert e.hide_conditions == []
         assert e.one_way is True
 
-    def test_exit_with_conditions(self) -> None:
+    def test_exit_with_hide_conditions(self) -> None:
         e = Exit.model_validate({
             "id": "gated_exit",
             "direction": "Through the gate",
             "target_room": "beyond",
-            "conditions": [{"require": "flag:gate_open == true"}],
+            "hide_conditions": [{"require": "flag:gate_open == true"}],
         })
-        assert len(e.conditions) == 1
-        assert e.conditions[0].require == "flag:gate_open == true"
+        assert len(e.hide_conditions) == 1
+        assert e.hide_conditions[0].require == "flag:gate_open == true"
 
 
 

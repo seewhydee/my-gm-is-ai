@@ -47,7 +47,7 @@ from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEn
 from mgmai.state.manager import StateManager
 from mgmai.engine.conditions import evaluate, get_condition_detail
 from mgmai.engine.resolver import resolve_action, ResolutionResult
-from mgmai.engine.utils import inject_following_npcs, get_following_npc_ids
+from mgmai.engine.utils import inject_following_npcs, get_following_npc_ids, is_exit_visible
 from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
 from mgmai.engine.encounters import (
     apply_flee_effects,
@@ -709,7 +709,7 @@ def _build_room_after(
         entity_state = hard.entity_states.get(eid, {})
         if entity_state.get("hidden", False):
             continue
-        if entity.type == "item" and eid in hard.player.inventory:
+        if entity.type == "item" and (eid in hard.player.inventory or eid in hard.player.equipped):
             continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
@@ -737,32 +737,13 @@ def _build_room_after(
 
     exits_available: list[BriefingExit] = []
     for ex in room.exits:
-        if ex.hidden:
-            # Hidden exits are revealed only when their conditions are met
-            if ex.conditions:
-                all_met = True
-                for cond in ex.conditions:
-                    if not evaluate(cond, hard, soft, corpus):
-                        all_met = False
-                        break
-                if not all_met:
-                    continue
-            else:
-                continue
-        elif ex.conditions:
-            all_met = True
-            for cond in ex.conditions:
-                if not evaluate(cond, hard, soft, corpus):
-                    all_met = False
-                    break
-            if not all_met:
-                continue
+        if not is_exit_visible(ex, hard, soft, corpus):
+            continue
         exits_available.append(
             BriefingExit(
                 id=ex.id,
                 direction=ex.direction,
                 target_room=ex.target_room,
-                hidden=ex.hidden,
             )
         )
 

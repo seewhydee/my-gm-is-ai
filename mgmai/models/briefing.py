@@ -57,7 +57,6 @@ class BriefingExit(BaseModel):
     id: str
     direction: str
     target_room: str
-    hidden: bool = False
 
 
 class BriefingRoom(BaseModel):
