@@ -80,7 +80,7 @@ class TestResolveEncounter:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="flee",
                 narrative="The spider flees!",
-                set_flags={"spider_fled": True},
+                set_flag={"spider_fled": True},
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
@@ -98,12 +98,12 @@ class TestResolveEncounter:
                 outcome="roll",
                 threshold=0.5,
                 narrative="Lunging...",
-                on_success={
+                success={
                     "outcome": "flee",
                     "narrative": "You win!",
-                    "set_flags": {"spider_fled": True},
+                    "set_flag": {"spider_fled": True},
                 },
-                on_failure={
+                failure={
                     "outcome": "death",
                     "narrative": "You die.",
                 },
@@ -124,11 +124,11 @@ class TestResolveEncounter:
                 outcome="roll",
                 threshold=0.5,
                 narrative="Lunging...",
-                on_success={
+                success={
                     "outcome": "flee",
                     "narrative": "You win!",
                 },
-                on_failure={
+                failure={
                     "outcome": "death",
                     "narrative": "You die.",
                 },
@@ -195,7 +195,7 @@ class TestResolveEncounter:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
                 check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
-                on_success={
+                success={
                     "outcome": "flee",
                     "alter_stat": {"DEX": StatModifier(value=-2)},
                     "narrative": "You dodge, but twist an ankle.",
@@ -216,7 +216,7 @@ class TestResolveEncounter:
                 outcome="stat_check",
                 check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
                 alter_stat={"CON": StatModifier(value=-2)},
-                on_success={
+                success={
                     "outcome": "flee",
                     "alter_stat": {"STR": StatModifier(value=-4), "CON": StatModifier(value=-4)},
                     "narrative": "You land badly despite rolling well.",
@@ -240,8 +240,8 @@ class TestEncounterBranchTaken:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
                 check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
-                on_success={"outcome": "flee", "narrative": "You dodge."},
-                on_failure={"outcome": "death", "narrative": "You die."},
+                success={"outcome": "flee", "narrative": "You dodge."},
+                failure={"outcome": "death", "narrative": "You die."},
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
@@ -264,8 +264,8 @@ class TestEncounterBranchTaken:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
                 check=StatCheck(type="stat_check", stat="DEX", dc=30, repeatable=True),
-                on_success={"outcome": "flee", "narrative": "You dodge."},
-                on_failure={"outcome": "death", "narrative": "You die."},
+                success={"outcome": "flee", "narrative": "You dodge."},
+                failure={"outcome": "death", "narrative": "You die."},
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
@@ -281,8 +281,8 @@ class TestEncounterBranchTaken:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="roll",
                 threshold=0.5,
-                on_success={"outcome": "flee", "narrative": "You win!"},
-                on_failure={"outcome": "death", "narrative": "You die."},
+                success={"outcome": "flee", "narrative": "You win!"},
+                failure={"outcome": "death", "narrative": "You die."},
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
@@ -298,8 +298,8 @@ class TestEncounterBranchTaken:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="roll",
                 threshold=0.5,
-                on_success={"outcome": "flee", "narrative": "You win!"},
-                on_failure={"outcome": "death", "narrative": "You die."},
+                success={"outcome": "flee", "narrative": "You win!"},
+                failure={"outcome": "death", "narrative": "You die."},
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
@@ -321,7 +321,7 @@ class TestEncounterBranchTaken:
         assert result.get("branch_taken") is None
 
     def test_no_branch_taken_when_branch_is_none(self, sample_corpus, monkeypatch):
-        """A stat_check with no on_success/on_failure doesn't set branch_taken."""
+        """A stat_check with no success/failure doesn't set branch_taken."""
         hard = _load_hard()
         soft = _load_soft()
         monkeypatch.setattr("mgmai.engine.encounters.random.randint", lambda a, b: 20)
@@ -354,8 +354,8 @@ class TestEncounterBranchCombat:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
                 check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
-                on_success={"outcome": "combat", "narrative": "It attacks!"},
-                on_failure={"outcome": "flee", "narrative": "It flees."},
+                success={"outcome": "combat", "narrative": "It attacks!"},
+                failure={"outcome": "flee", "narrative": "It flees."},
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
@@ -373,8 +373,8 @@ class TestEncounterBranchCombat:
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="roll",
                 threshold=0.5,
-                on_success={"outcome": "combat", "narrative": "It attacks!"},
-                on_failure={"outcome": "flee", "narrative": "It flees."},
+                success={"outcome": "combat", "narrative": "It attacks!"},
+                failure={"outcome": "flee", "narrative": "It flees."},
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")

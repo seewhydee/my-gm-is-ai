@@ -75,7 +75,7 @@ def _apply_encounter_rule(
         return {
             "outcome": "death",
             "narrative": rule.narrative,
-            "set_flags": rule.set_flags or {},
+            "set_flags": rule.set_flag or {},
             "alter_stat": rule.alter_stat or {},
             "player_damage": rule.player_damage,
             "game_over": {
@@ -90,7 +90,7 @@ def _apply_encounter_rule(
         return {
             "outcome": "combat",
             "narrative": rule.narrative,
-            "set_flags": rule.set_flags or {},
+            "set_flags": rule.set_flag or {},
             "alter_stat": rule.alter_stat or {},
             "player_damage": rule.player_damage,
             "game_over": None,
@@ -100,15 +100,15 @@ def _apply_encounter_rule(
 
     if outcome == "flee":
         flee_data = None
-        set_flags = dict(rule.set_flags or {})
+        set_flags = dict(rule.set_flag or {})
         if npc_id:
             npc = corpus.entities.get(npc_id)
             if npc and npc.behavior and npc.behavior.on_flee:
                 flee = npc.behavior.on_flee
-                for flag, val in flee.set_flags.items():
+                for flag, val in flee.set_flag.items():
                     set_flags[flag] = val
                 flee_data = {
-                    "set_flags": flee.set_flags,
+                    "set_flags": flee.set_flag,
                     "set_entity_state": flee.set_entity_state,
                     "effect": flee.effect,
                 }
@@ -138,13 +138,13 @@ def _apply_encounter_rule(
 
         encounter_rolls: list = []
         success = _resolve_encounter_stat_check(rule, hard, corpus, encounter_rolls)
-        branch = rule.on_success if success else rule.on_failure
+        branch = rule.success if success else rule.failure
 
         if branch is None:
             return {
                 "outcome": f"stat_check_{'success' if success else 'failure'}",
                 "narrative": rule.narrative,
-                "set_flags": rule.set_flags or {},
+                "set_flags": rule.set_flag or {},
                 "alter_stat": rule.alter_stat or {},
                 "player_damage": rule.player_damage,
                 "game_over": None,
@@ -165,11 +165,11 @@ def _apply_encounter_rule(
             "branch_taken": "success" if success else "failure",
         }
 
-        if rule.set_flags:
-            for flag, val in rule.set_flags.items():
+        if rule.set_flag:
+            for flag, val in rule.set_flag.items():
                 result["set_flags"][flag] = val
-        if branch.set_flags:
-            for flag, val in branch.set_flags.items():
+        if branch.set_flag:
+            for flag, val in branch.set_flag.items():
                 result["set_flags"][flag] = val
 
         if rule.alter_stat:
@@ -193,10 +193,10 @@ def _apply_encounter_rule(
                 npc = corpus.entities.get(npc_id)
                 if npc and npc.behavior and npc.behavior.on_flee:
                     flee_obj = npc.behavior.on_flee
-                    for flag, val in flee_obj.set_flags.items():
+                    for flag, val in flee_obj.set_flag.items():
                         result["set_flags"][flag] = val
                     flee_data = {
-                        "set_flags": flee_obj.set_flags,
+                        "set_flags": flee_obj.set_flag,
                         "set_entity_state": flee_obj.set_entity_state,
                         "effect": flee_obj.effect,
                     }
@@ -224,13 +224,13 @@ def _apply_encounter_rule(
             }
         roll = random.random()
         success = roll < rule.threshold
-        branch = rule.on_success if success else rule.on_failure
+        branch = rule.success if success else rule.failure
 
         if branch is None:
             return {
                 "outcome": f"roll_{'success' if success else 'failure'}",
                 "narrative": rule.narrative,
-                "set_flags": rule.set_flags or {},
+                "set_flags": rule.set_flag or {},
                 "alter_stat": rule.alter_stat or {},
                 "player_damage": rule.player_damage,
                 "game_over": None,
@@ -261,11 +261,11 @@ def _apply_encounter_rule(
             "branch_taken": "success" if success else "failure",
         }
 
-        if rule.set_flags:
-            for flag, val in rule.set_flags.items():
+        if rule.set_flag:
+            for flag, val in rule.set_flag.items():
                 result["set_flags"][flag] = val
-        if branch.set_flags:
-            for flag, val in branch.set_flags.items():
+        if branch.set_flag:
+            for flag, val in branch.set_flag.items():
                 result["set_flags"][flag] = val
 
         if rule.alter_stat:
@@ -289,10 +289,10 @@ def _apply_encounter_rule(
                 npc = corpus.entities.get(npc_id)
                 if npc and npc.behavior and npc.behavior.on_flee:
                     flee = npc.behavior.on_flee
-                    for flag, val in flee.set_flags.items():
+                    for flag, val in flee.set_flag.items():
                         result["set_flags"][flag] = val
                     flee_data = {
-                        "set_flags": flee.set_flags,
+                        "set_flags": flee.set_flag,
                         "set_entity_state": flee.set_entity_state,
                         "effect": flee.effect,
                     }

@@ -104,9 +104,14 @@ room, able to retry next turn.
       "dc": 13,
       "repeatable": true
     },
-    "condition": { "require": "inventory:rusty_key" },
+    "gating": { "require": "inventory:rusty_key" },
     "skip_check_if": { "require": "flag:korbar_helps_key == true" },
-    "failure_narrative": "You strain to haul the key but can't make progress.",
+    "failure": {
+      "narrative": "You strain to haul the key but can't make progress."
+    },
+    "success": {
+      "narrative": "You manage to haul the key across the threshold."
+    },
     "using_results": {
       "toenail_sword": {
         "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true }
@@ -119,9 +124,10 @@ room, able to retry next turn.
 | Field               | Type                | Description |
 |---------------------|---------------------|-------------|
 | `check`             | CheckType           | The check to roll: a `roll` or `stat_check`. |
-| `condition`         | condition object    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
-| `skip_check_if`     | condition object    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition` — use this for "don't check when NPC helps" patterns. |
-| `failure_narrative` | string              | **Optional.** Narration text shown when the traversal check fails. |
+| `gating`            | condition object    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
+| `skip_check_if`     | condition object    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `gating`). Inverse of `gating` — use this for "don't check when NPC helps" patterns. |
+| `failure`           | Result              | **Optional.** Result applied when the traversal check fails. Contains at minimum a `narrative` field. May include `set_flag`, `alter_stat`, and other Result fields. |
+| `success`           | Result              | **Optional.** Result applied when the traversal check succeeds. Contains at minimum a `narrative` field. May include `set_flag`, `add_item`, and other Result fields. |
 | `using_results`     | dict                | **Optional.** Maps item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `move` action carries a `using` parameter matching a key, the override's `check` replaces the traversal check (allowing different DCs per item). |
 
 ### Condition object
@@ -208,6 +214,7 @@ They can be defined at the room level or on individual entities.
   "description": "string (what the player is attempting)",
   "parameter_signature": { "target": ["entity", "soft_item"], "using": ["entity", "soft_item"] },
   "condition": { /* condition object or null */ },
+  "skip_check_if": { /* condition object (optional) */ },
   "check": { /* roll check or null */ },
   "success": { /* result */ },
   "failure": { /* result or null */ },
@@ -223,6 +230,7 @@ They can be defined at the room level or on individual entities.
 | `description`          | string       | no       | Extended description of the action. |
 | `parameter_signature`  | object       | no       | Constrains what the `target` and `using` fields of the `interact` action can reference. `target` lists accepted types (`entity`, `soft_item`, `room`); `using` lists accepted types. If absent, no parameter restrictions beyond target existence. |
 | `condition`            | object\|null | no       | Condition that must be met for the interaction to be available. |
+| `skip_check_if`        | object       | no       | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition`. |
 | `check`                | object       | no       | A probabilistic check (roll). If absent, `result` is used directly. |
 | `success`              | object       | no       | Result when the check succeeds. |
 | `failure`              | object       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
@@ -353,11 +361,12 @@ triggers a DEX check to catch the slipping key.
 }
 ```
 
-| Field     | Type                | Description |
-|-----------|---------------------|-------------|
-| `check`   | CheckType           | The chained check to resolve (roll or stat_check). |
-| `success` | Result              | Result to apply if the chained check succeeds. |
-| `failure` | Result (optional)   | Result to apply if the chained check fails. |
+| Field          | Type                | Description |
+|----------------|---------------------|-------------|
+| `check`        | CheckType           | The chained check to resolve (roll or stat_check). |
+| `skip_check_if` | condition object   | **Optional.** When present and evaluated to true, the check is skipped entirely. |
+| `success`      | Result              | Result to apply if the chained check succeeds. |
+| `failure`      | Result (optional)   | Result to apply if the chained check fails. |
 
 Nested chaining is supported — a chained check's result may itself contain another
 `chain_check`, up to a maximum depth of 3.
@@ -395,6 +404,7 @@ the canvas walls triggers an INT check to deduce the glow is magical."
 |------------------|-----------------|-------------|
 | `id`             | string          | Unique event identifier within the parent entity or room. |
 | `condition`      | object\|null    | Gating condition. If present and `false`, the event does nothing. If `null`, fires every time the entity/room is examined. |
+| `skip_check_if`  | object          | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
 | `rigorous_only`  | boolean         | If `true`, the event only fires when the examine action has `rigorous: true`. Default `false`. |
 | `check`          | CheckType       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
 | `success`        | Result          | Result applied when the check passes. Required if `check` is present. |
@@ -467,7 +477,7 @@ reaction must be one of these event type strings.
 | `dialogue.ended` | `npc_id`, `reason` | Dialogue mode ends |
 | `combat.started` | `combatant_ids` | Combat begins |
 | `combat.ended` | `reason` | Combat ends |
-| `encounter.branched` | `encounter_id`, `branch` (`success`\|`failure`), `outcome` | A `stat_check`/`roll` encounter rule selects its `on_success`/`on_failure` branch |
+| `encounter.branched` | `encounter_id`, `branch` (`success`\|`failure`), `outcome` | A `stat_check`/`roll` encounter rule selects its `success`/`failure` branch |
 | `item.acquired` | `item_id`, `source` | Item enters inventory |
 | `item.lost` | `item_id`, `reason` | Item leaves inventory |
 
@@ -717,7 +727,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `draggable`            | bool   | item          | If true, the item can be dragged but occupies the player (no other manual actions while dragging). |
 | `dragging_note`        | string | item          | Narrative note describing the encumbrance. |
 | `contained_entities`   | array  | all           | List of entity IDs nested inside this entity. Items listed here are available for `transfer` from this entity, even if not listed in the room's `entities_present`. |
-| `take_check`           | object | item          | **Optional.** A check (with `success` / `failure` results) that must be passed when the player attempts to pick up this item via a `transfer` action. It is **not** automatically disabled after a successful take; use `check.repeatable: false` for a one-time gate, or remove/hide the item after success. |
+| `take_check`           | object | item          | **Optional.** A check (with `success` / `failure` results) that must be passed when the player attempts to pick up this item via a `transfer` action. It is **not** automatically disabled after a successful take; use `check.repeatable: false` for a one-time gate, or remove/hide the item after success. Supports optional `gating` (check only fires if met, otherwise item taken freely), `skip_check_if` (skip check if met, apply `success` Result), and `success`/`failure` Result objects. |
 | `interactions`         | array  | all           | Interactions available on this entity specifically. Follows the same Interaction object schema. |
 | `on_examine`           | array  | all           | Events that fire when the player examines this entity. Each is an `OnExamineEvent` (see above). |
 | `reactions`            | array  | all           | Reactions scoped to when this entity is present and alive/not-fled (see Reactions below). |
@@ -888,6 +898,7 @@ reactions correctly.
 |-------------|--------|-------------|
 | `description` | string | **Required.** Human-readable description of what this path represents. This text is surfaced to LLM Call 1 as the value in `entities_visible[*].dialogue_paths[path_id]`, so the LLM can match player input to the right path. Phrase it as a player intent (e.g., "Compliment the spider's hunting prowess" or "Tell Korbar the spider is dead"). |
 | `condition` | object | Optional. If present, all conditions must be met for the path to be usable. |
+| `skip_check_if` | object | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
 | `check`     | object | Optional. A `roll` or `stat_check`. If present, `success` is required. |
 | `success`   | object | Result applied when the check succeeds. |
 | `failure`   | object | Result applied when the check fails. |
@@ -943,14 +954,14 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
       "threshold": 0.50,
       "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
       "narrative": "string",
-      "set_flags": { "<flag>": true },
+      "set_flag": { "<flag>": true },
       "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
-      "on_success": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "narrative": "..." },
-      "on_failure": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "narrative": "..." }
+      "success": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "narrative": "..." },
+      "failure": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "narrative": "..." }
     }
   ],
   "on_flee": {
-    "set_flags": { "<flag>": true },
+    "set_flag": { "<flag>": true },
     "effect": "string describing subsequent behavior change"
   }
 }
@@ -960,19 +971,19 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
   is applied. Conditions are condition objects (see Condition object section)
   evaluated against hard state (flags, inventory, entity states) and soft state
   (attitudes).
-- `alter_stat` (optional) applies stat modifiers to the player when the rule fires. Each value is `{ "mode": "delta"|"set", "value": <int> }` (mode defaults to `"delta"`). When a branch (`on_success`/`on_failure`) also carries `alter_stat`, the branch values override rule-level values for the same stat key.
+- `alter_stat` (optional) applies stat modifiers to the player when the rule fires. Each value is `{ "mode": "delta"|"set", "value": <int> }` (mode defaults to `"delta"`). When a branch (`success`/`failure`) also carries `alter_stat`, the branch values override rule-level values for the same stat key.
 - For phase 1 (kill-or-be-killed resolution), outcomes are:
   - `death` — player dies, game over.
   - `flee` — creature flees, applying `on_flee` effects.
-  - `roll` — flat probability check using `threshold`; branches on `on_success`/`on_failure`.
-  - `stat_check` — ability-score-based check using a `StatCheck` definition; branches on `on_success`/`on_failure`. The `check` field (a `StatCheck` object) is required when outcome is `stat_check`. Example:
+  - `roll` — flat probability check using `threshold`; branches on `success`/`failure`.
+  - `stat_check` — ability-score-based check using a `StatCheck` definition; branches on `success`/`failure`. The `check` field (a `StatCheck` object) is required when outcome is `stat_check`. Example:
     ```json
     {
       "condition": { "require": "tag:weapon" },
       "outcome": "stat_check",
       "check": { "type": "stat_check", "stat": "STR", "dc": 17, "repeatable": true },
-      "on_success": { "outcome": "flee", "narrative": "You overpower Korbar." },
-      "on_failure": { "outcome": "death", "narrative": "Korbar overpowers you." }
+      "success": { "outcome": "flee", "narrative": "You overpower Korbar." },
+      "failure": { "outcome": "death", "narrative": "Korbar overpowers you." }
     }
     ```
 
@@ -1006,10 +1017,10 @@ At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be
         "outcome": "death | flee | roll | stat_check | combat",
         "threshold": 0.50,
         "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
-        "on_success": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
-        "on_failure": { "outcome": "...", "set_flags": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
+        "success": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
+        "failure": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
         "narrative": "string",
-        "set_flags": {},
+        "set_flag": {},
         "alter_stat": {},
         "player_damage": "3d6"
       }
@@ -1026,7 +1037,7 @@ Rule and branch `alter_stat` objects follow the same modifier semantics as
 interaction `Result.alter_stat`. `player_damage` accepts a dice expression
 (e.g. `"3d6"`, `"2d4+1"`) that the engine rolls as HP damage against the
 player. Set at the rule level to apply unconditionally when the rule fires;
-set at the branch level (`on_success`/`on_failure`) to override the
+set at the branch level (`success`/`failure`) to override the
 rule-level value. `outcome: "combat"` starts the multi-round combat system.
 
 ### Game-over conditions
@@ -1136,7 +1147,7 @@ Intelligence score.
 ```
 
 An optional top-level array of all flag names used in the adventure's
-conditions, `set_flag` results, and encounter `set_flags`. This is a
+conditions, `set_flag` results, and encounter `set_flag`. This is a
 convenience field for validation and debugging — the engine uses it to
 verify that every flag referenced in the corpus has a corresponding
 entry in `hard_state.flags`.

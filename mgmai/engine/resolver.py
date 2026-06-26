@@ -330,8 +330,20 @@ def resolve_move(
         should_check = True
         if trav_check.skip_check_if and evaluate(trav_check.skip_check_if, hard, soft, corpus):
             should_check = False
-        elif trav_check.condition:
-            should_check = evaluate(trav_check.condition, hard, soft, corpus)
+            # Apply success Result if present when skip_check_if is met
+            if trav_check.success:
+                skip_changes = HardStateChanges()
+                skip_narrative: list[str] = []
+                skip_hints: list[str] = []
+                _apply_result(trav_check.success, skip_changes, skip_narrative, skip_hints, hard, corpus, soft, state_manager, result, source_id=target_exit_id, item_origin="traversal")
+                if skip_changes.has_changes():
+                    result.hard_changes = skip_changes
+                if skip_narrative:
+                    result.triggered_narration = list(skip_narrative)
+                if skip_hints:
+                    result.revealed_hints = list(skip_hints)
+        elif trav_check.gating:
+            should_check = evaluate(trav_check.gating, hard, soft, corpus)
         if should_check:
             # Resolve using_results overrides (weapon-based DC reduction, etc.)
             effective_check = trav_check.check
@@ -354,10 +366,13 @@ def resolve_move(
             )
             if not passed:
                 narrative_result = list(traversal_narrative)
-                if trav_check.failure_narrative:
-                    narrative_result.append(trav_check.failure_narrative)
-                result.hard_changes = HardStateChanges()
+                failure_result = HardStateChanges()
+                failure_hints: list[str] = []
+                if trav_check.failure:
+                    _apply_result(trav_check.failure, failure_result, narrative_result, failure_hints, hard, corpus, soft, state_manager, result, source_id=target_exit_id, item_origin="traversal")
+                result.hard_changes = failure_result
                 result.triggered_narration = narrative_result
+                result.revealed_hints = failure_hints
                 result.rolls = traversal_rolls
                 _emit_event(
                     "traversal.failed",
@@ -501,19 +516,36 @@ def resolve_talk(
     # emitted and immediate reactions can fire.
     if path is not None:
         if path.check:
-            synthetic_inter = Interaction(
-                id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
-                label="",
-                check=path.check,
-                success=path.success,
-                failure=path.failure,
-            )
-            path_result = _resolve_interaction_check(
-                synthetic_inter, hard, soft, corpus, room_id,
-                state_manager=state_manager,
-                resolution=result,
-                source_type="dialogue_path",
-            )
+            # Handle skip_check_if: bypass check and apply success Result
+            if path.skip_check_if and evaluate(path.skip_check_if, hard, soft, corpus):
+                if path.success:
+                    path_result = _resolve_interaction_result(
+                        path.success, hard, soft, corpus, room_id,
+                        state_manager=state_manager,
+                        resolution=result,
+                        source_id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
+                        source_type="dialogue_path",
+                    )
+                else:
+                    path_result = ResolutionResult(
+                        success=True,
+                        hard_changes=HardStateChanges(),
+                        room_after_id=room_id,
+                    )
+            else:
+                synthetic_inter = Interaction(
+                    id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
+                    label="",
+                    check=path.check,
+                    success=path.success,
+                    failure=path.failure,
+                )
+                path_result = _resolve_interaction_check(
+                    synthetic_inter, hard, soft, corpus, room_id,
+                    state_manager=state_manager,
+                    resolution=result,
+                    source_type="dialogue_path",
+                )
         elif path.result:
             path_result = _resolve_interaction_result(
                 path.result, hard, soft, corpus, room_id,
@@ -642,37 +674,46 @@ def resolve_transfer(
 
         item_entity = corpus.entities.get(item)
         if item_entity and item_entity.take_check:
-            synthetic = Interaction(
-                id=f"take_{item}",
-                label="",
-                check=item_entity.take_check.check,
-                success=item_entity.take_check.success,
-                failure=item_entity.take_check.failure,
-            )
-            check_result = _resolve_interaction_check(
-                synthetic, hard, soft, corpus, room_id,
-                state_manager=state_manager,
-                resolution=result,
-                source_type="take",
-            )
-            if not check_result.success:
-                return check_result
-            if check_result.hard_changes:
-                changes.merge(check_result.hard_changes)
-            if check_result.triggered_narration:
-                triggered_narration.extend(check_result.triggered_narration)
-            if check_result.revealed_hints:
-                revealed_hints.extend(check_result.revealed_hints)
-            if check_result.rolls:
-                rolls.extend(check_result.rolls)
+            tc = item_entity.take_check
+            # If gating is present and not met, item is taken freely (no check)
+            if tc.gating and not evaluate(tc.gating, hard, soft, corpus):
+                pass  # Fall through to add item below
+            elif tc.skip_check_if and evaluate(tc.skip_check_if, hard, soft, corpus):
+                # Bypass check, apply success Result
+                if tc.success:
+                    _apply_result(tc.success, changes, triggered_narration, revealed_hints, hard, corpus, soft, state_manager, result, source_id=f"take_{item}", item_origin="take")
+            else:
+                synthetic = Interaction(
+                    id=f"take_{item}",
+                    label="",
+                    check=tc.check,
+                    success=tc.success,
+                    failure=tc.failure,
+                )
+                check_result = _resolve_interaction_check(
+                    synthetic, hard, soft, corpus, room_id,
+                    state_manager=state_manager,
+                    resolution=result,
+                    source_type="take",
+                )
+                if not check_result.success:
+                    return check_result
+                if check_result.hard_changes:
+                    changes.merge(check_result.hard_changes)
+                if check_result.triggered_narration:
+                    triggered_narration.extend(check_result.triggered_narration)
+                if check_result.revealed_hints:
+                    revealed_hints.extend(check_result.revealed_hints)
+                if check_result.rolls:
+                    rolls.extend(check_result.rolls)
 
-            check_succeeded = False
-            for roll in check_result.rolls:
-                if "success" in roll:
-                    check_succeeded = roll["success"]
-                    break
-            if not check_succeeded:
-                continue
+                check_succeeded = False
+                for roll in check_result.rolls:
+                    if "success" in roll:
+                        check_succeeded = roll["success"]
+                        break
+                if not check_succeeded:
+                    continue
 
         changes.inventory_added.append(item)
         changes.inventory_added_sources[item] = "transfer"
@@ -847,6 +888,23 @@ def resolve_interact(
                 return result
 
     if inter.check:
+        # Handle skip_check_if: bypass check and apply success Result
+        if inter.skip_check_if and evaluate(inter.skip_check_if, hard, soft, corpus):
+            if inter.success:
+                skip_result = _resolve_interaction_result(
+                    inter.success, hard, soft, corpus, room_id,
+                    encounter_trigger=None, state_manager=state_manager,
+                    resolution=result, source_id=inter.id, source_type="interaction",
+                )
+                result.success = skip_result.success
+                result.error = skip_result.error
+                result.hard_changes = skip_result.hard_changes
+                result.triggered_narration = skip_result.triggered_narration
+                result.revealed_hints = skip_result.revealed_hints
+                result.encounter_trigger = skip_result.encounter_trigger or result.encounter_trigger
+                result.rolls = skip_result.rolls
+                result.events.extend(skip_result.events)
+            return result
         check_result = _resolve_interaction_check(inter, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result)
         # Merge the base interaction event and any events/check results from
         # the check resolution into a single result.
@@ -909,6 +967,16 @@ def _resolve_chained_check(
         return
     if source_type is None:
         source_type = "reaction" if source_id else "unknown"
+    # Handle skip_check_if: bypass check and apply success Result
+    if chained.skip_check_if and evaluate(chained.skip_check_if, hard, soft, corpus):
+        _apply_result(chained.success, changes, narrative, revealed_hints, hard, corpus, soft, state_manager, resolution, source_id)
+        if chained.success.chain_check:
+            _resolve_chained_check(
+                chained.success.chain_check, hard, soft, corpus, room_id,
+                changes, narrative, revealed_hints, rolls, depth + 1,
+                state_manager, resolution, source_id, source_type,
+            )
+        return
     check = chained.check
     if isinstance(check, StatCheck):
         _resolve_stat_check_chain(
@@ -1522,6 +1590,18 @@ def _fire_on_examine_events(
             continue
 
         if event.check:
+            # Handle skip_check_if: bypass check and apply success Result
+            if event.skip_check_if and evaluate(event.skip_check_if, hard, soft, corpus):
+                if event.success:
+                    _apply_result(event.success, changes, narrative, revealed_hints, hard, corpus,
+                                  item_origin="examine")
+                    if event.success.chain_check:
+                        _resolve_chained_check(
+                            event.success.chain_check, hard, soft, corpus, room_id,
+                            changes, narrative, revealed_hints, rolls, 0,
+                            state_manager, resolution, source_id=f"_on_examine_{event.id}",
+                        )
+                continue
             # Build a synthetic Interaction for check resolution
             synthetic = Interaction(
                 id=f"_on_examine_{event.id}",

@@ -8,7 +8,7 @@
     },
     "introduction": "You wake up. The last thing you remember is a night out on the town. Now you seem to be in a giant cave made of... canvas?",
     "atmosphere": {
-      "setting": "You are a person trapped inside a magical Bag of Holding \u2014 a pocket dimension full of discarded treasures and hidden dangers.",
+      "setting": "You are a person trapped inside a magical Bag of Holding — a pocket dimension full of discarded treasures and hidden dangers.",
       "tone": "Whimsical and slightly dark. The world is absurd but coherent. Danger is real but the tone is more Pratchett than Lovecraft."
     },
     "id": "bag-of-holding"
@@ -16,7 +16,7 @@
   "rooms": {
     "axe_head": {
       "name": "Axe Head",
-      "description": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls \u2014 some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.",
+      "description": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls — some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.",
       "entities_present": [
         "battleaxe",
         "canvas_walls",
@@ -55,7 +55,7 @@
           },
           "effects": {
             "result": {
-              "narrative": "You drop from the axe head into the darkness below. You land hard on the bag floor, and pain shoots through your legs \u2014 you are injured.",
+              "narrative": "You drop from the axe head into the darkness below. You land hard on the bag floor, and pain shoots through your legs — you are injured.",
               "set_flag": {
                 "injured": true
               }
@@ -112,7 +112,7 @@
           "once": true,
           "effects": {
             "result": {
-              "narrative": "As you descend the handle, you encounter extremely sticky webs. A fly is trapped in the webbing, struggling weakly. It looks at you with compound eyes and speaks in a nasally whine: 'S-spider... huge one... in the webs below... watch yourself...' Its wings twitch feebly \u2014 it doesn't have long."
+              "narrative": "As you descend the handle, you encounter extremely sticky webs. A fly is trapped in the webbing, struggling weakly. It looks at you with compound eyes and speaks in a nasally whine: 'S-spider... huge one... in the webs below... watch yourself...' Its wings twitch feebly — it doesn't have long."
             },
             "trigger_dialogue": "stuck_fly"
           }
@@ -125,7 +125,7 @@
           },
           "effects": {
             "result": {
-              "narrative": "You let go and drop into the darkness. You land painfully on the bag floor, twisting your ankle \u2014 you are injured.",
+              "narrative": "You let go and drop into the darkness. You land painfully on the bag floor, twisting your ankle — you are injured.",
               "set_flag": {
                 "injured": true
               }
@@ -138,7 +138,7 @@
     },
     "axe_handle_lower": {
       "name": "Axe Handle (Lower)",
-      "description": "You are on the lower section of the axe handle. The webs here are much denser, blocking the path downward unless you push through. If you look carefully, you see the spider \u2014 huge and hungry for blood \u2014 lurking in the webs. Below, many irregularly shaped objects are coming into view. It looks like you could drop down safely. There is some muffled clanking from the shadows below.",
+      "description": "You are on the lower section of the axe handle. The webs here are much denser, blocking the path downward unless you push through. If you look carefully, you see the spider — huge and hungry for blood — lurking in the webs. Below, many irregularly shaped objects are coming into view. It looks like you could drop down safely. There is some muffled clanking from the shadows below.",
       "entities_present": [
         "battleaxe",
         "canvas_walls",
@@ -198,7 +198,7 @@
     },
     "bag_floor": {
       "name": "Bag Floor",
-      "description": "You are on the floor of the bag. The canvas walls tower over everything, the axe handle rising upward into the gloom. Loose piles of giant rubbish surround you \u2014 empty potion bottles, corks, stale sandwiches, copper pieces, and lint. A disgustingly damp giant handkerchief lies crumpled in one corner. Here is Korbar the Dwarf, drunk and miserable, wearing ridiculously noisy platemail. She eyes you over her tankard.",
+      "description": "You are on the floor of the bag. The canvas walls tower over everything, the axe handle rising upward into the gloom. Loose piles of giant rubbish surround you — empty potion bottles, corks, stale sandwiches, copper pieces, and lint. A disgustingly damp giant handkerchief lies crumpled in one corner. Here is Korbar the Dwarf, drunk and miserable, wearing ridiculously noisy platemail. She eyes you over her tankard.",
       "entities_present": [
         "battleaxe",
         "canvas_walls",
@@ -238,7 +238,7 @@
     },
     "secret_compartment": {
       "name": "Secret Compartment",
-      "description": "You are in a small, dark compartment hidden behind the canvas wall. It is cramped and dusty. A large rusty key sits in the centre of the space \u2014 far too big for any normal lock, but just the right size for the giant padlock outside the bag.",
+      "description": "You are in a small, dark compartment hidden behind the canvas wall. It is cramped and dusty. A large rusty key sits in the centre of the space — far too big for any normal lock, but just the right size for the giant padlock outside the bag.",
       "entities_present": [
         "canvas_walls",
         "rusty_key"
@@ -287,7 +287,7 @@
     },
     "canvas_walls": {
       "type": "feature",
-      "description": "The interior walls of the Bag of Holding \u2014 vast planes of rough canvas that stretch upward and curve inward to form a ceiling. They emit a faint, magical luminescence that keeps the interior from being pitch black.",
+      "description": "The interior walls of the Bag of Holding — vast planes of rough canvas that stretch upward and curve inward to form a ceiling. They emit a faint, magical luminescence that keeps the interior from being pitch black.",
       "spans_rooms": [
         "axe_head",
         "axe_handle_upper",
@@ -300,7 +300,7 @@
     },
     "rip_in_canvas": {
       "type": "feature",
-      "description": "A small rip in the fabric of the bag near the ceiling, made by the tip of the battleaxe. By balancing carefully on the blade tip, you can poke your head through. Beyond is a grey nothing \u2014 the Astral Plane. Looking around from this vantage, you can see the exterior of the Bag, including a giant padlock barely within reach, firmly locked shut and attached to the neck of the bag.",
+      "description": "A small rip in the fabric of the bag near the ceiling, made by the tip of the battleaxe. By balancing carefully on the blade tip, you can poke your head through. Beyond is a grey nothing — the Astral Plane. Looking around from this vantage, you can see the exterior of the Bag, including a giant padlock barely within reach, firmly locked shut and attached to the neck of the bag.",
       "soft_items": [],
       "state_fields": {}
     },
@@ -328,7 +328,7 @@
             ]
           },
           "result": {
-            "narrative": "You poke the large rusty key through the rip in the canvas. Straining, you manage to fit it into the padlock and turn it. With a satisfying CLUNK, the padlock springs open. The neck of the bag loosens \u2014 you can feel fresh air seeping in from above.",
+            "narrative": "You poke the large rusty key through the rip in the canvas. Straining, you manage to fit it into the padlock and turn it. With a satisfying CLUNK, the padlock springs open. The neck of the bag loosens — you can feel fresh air seeping in from above.",
             "set_flag": {
               "padlock_unlocked": true
             },
@@ -354,7 +354,7 @@
         }
       },
       "dialogue_guidelines": {
-        "personality": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine. Every word is a struggle \u2014 it is clearly at death's door.",
+        "personality": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine. Every word is a struggle — it is clearly at death's door.",
         "on_encounter": "The fly, with its dying breath, warns the player about the huge spider lurking in the webs below.",
         "can": [
           "Warn about the spider in the webs below",
@@ -409,7 +409,7 @@
     },
     "webs_dense": {
       "type": "feature",
-      "description": "Thick, dense webs blocking the path downward along the axe handle. They are strong and sticky \u2014 pushing through them will take effort and will certainly alert whatever lurks within.",
+      "description": "Thick, dense webs blocking the path downward along the axe handle. They are strong and sticky — pushing through them will take effort and will certainly alert whatever lurks within.",
       "soft_items": [
         "dense webbing"
       ],
@@ -438,7 +438,7 @@
         }
       },
       "dialogue_guidelines": {
-        "personality": "A mindless predator driven by hunger. It does not speak, bargain, or reason \u2014 it only hunts.",
+        "personality": "A mindless predator driven by hunger. It does not speak, bargain, or reason — it only hunts.",
         "on_encounter": "",
         "can": [
           "Attack anything that disturbs its webs"
@@ -447,7 +447,7 @@
           "Speak",
           "Reason",
           "Bargain",
-          "Feel fear \u2014 until wounded"
+          "Feel fear — until wounded"
         ],
         "knows": [],
         "attitude_limits": {
@@ -477,8 +477,8 @@
               ]
             },
             "outcome": "flee",
-            "narrative": "The spider lunges at you, mandibles clicking hungrily. You swing your weapon with desperate strength, slashing across its legs. It screeches \u2014 a horrible, wet sound \u2014 and scuttles away into the shadows, ichor trailing behind it.",
-            "set_flags": {
+            "narrative": "The spider lunges at you, mandibles clicking hungrily. You swing your weapon with desperate strength, slashing across its legs. It screeches — a horrible, wet sound — and scuttles away into the shadows, ichor trailing behind it.",
+            "set_flag": {
               "spider_fled": true
             }
           },
@@ -491,18 +491,18 @@
             },
             "outcome": "roll",
             "threshold": 0.5,
-            "narrative": "The spider lunges at you. You swing your weapon, but your injuries slow you \u2014 the blade wavers. The outcome hangs in the balance.",
-            "on_success": {
+            "narrative": "The spider lunges at you. You swing your weapon, but your injuries slow you — the blade wavers. The outcome hangs in the balance.",
+            "success": {
               "outcome": "flee",
-              "set_flags": {
+              "narrative": "Despite your injuries, you land a desperate blow. The spider screeches and scuttles away into the shadows, ichor trailing behind it.",
+              "set_flag": {
                 "spider_fled": true
-              },
-              "narrative": "Despite your injuries, you land a desperate blow. The spider screeches and scuttles away into the shadows, ichor trailing behind it."
+              }
             },
-            "on_failure": {
+            "failure": {
               "outcome": "death",
-              "narrative": "Your injured body betrays you \u2014 the spider dodges your clumsy swing and sinks its fangs deep. The world goes dark as venom courses through your veins.",
-              "set_flags": {}
+              "narrative": "Your injured body betrays you — the spider dodges your clumsy swing and sinks its fangs deep. The world goes dark as venom courses through your veins.",
+              "set_flag": {}
             }
           },
           {
@@ -514,15 +514,15 @@
           }
         ],
         "on_flee": {
-          "set_flags": {
-            "spider_fled": true
-          },
           "set_entity_state": {
             "spider": {
               "alive": false
             }
           },
-          "effect": "The spider retreats into the shadows and will never threaten the player again."
+          "effect": "The spider retreats into the shadows and will never threaten the player again.",
+          "set_flag": {
+            "spider_fled": true
+          }
         }
       },
       "reactions": [
@@ -552,7 +552,7 @@
     },
     "rubbish_pile": {
       "type": "feature",
-      "description": "Loose piles of giant rubbish litter the bag floor \u2014 empty potion bottles the size of barrels, corks as big as your head, stale sandwiches, copper pieces, and lint. Amidst all this junk, there might be something useful.",
+      "description": "Loose piles of giant rubbish litter the bag floor — empty potion bottles the size of barrels, corks as big as your head, stale sandwiches, copper pieces, and lint. Amidst all this junk, there might be something useful.",
       "soft_items": [
         "cork",
         "loose copper",
@@ -575,12 +575,12 @@
             "note": "50% chance of finding a giant toenail clipping that can be wielded as a sword."
           },
           "success": {
-            "narrative": "After rummaging through the discarded junk, your hand closes around something promising \u2014 a giant toenail clipping, curved and sharp. It is disgusting, but it looks like it could be wielded as a sword.",
+            "narrative": "After rummaging through the discarded junk, your hand closes around something promising — a giant toenail clipping, curved and sharp. It is disgusting, but it looks like it could be wielded as a sword.",
             "add_item": "toenail_sword",
             "reveals": "You found a makeshift weapon: a giant toenail clipping that can be wielded as a sword."
           },
           "failure": {
-            "narrative": "You dig through the rubbish for a while, but find nothing usable as a weapon. Just corks, stale sandwiches, and embarrassingly large toenail clippings \u2014 none of which are the right size for a sword."
+            "narrative": "You dig through the rubbish for a while, but find nothing usable as a weapon. Just corks, stale sandwiches, and embarrassingly large toenail clippings — none of which are the right size for a sword."
           }
         }
       ],
@@ -602,7 +602,7 @@
             "note": "2% chance of noticing the handkerchief hides a secret compartment entrance."
           },
           "success": {
-            "narrative": "As you examine the handkerchief more carefully, you notice the canvas beneath it looks slightly different \u2014 there is a subtle outline of a flap, as if something is hidden underneath.",
+            "narrative": "As you examine the handkerchief more carefully, you notice the canvas beneath it looks slightly different — there is a subtle outline of a flap, as if something is hidden underneath.",
             "set_flag": {
               "handkerchief_noticed": true
             },
@@ -615,12 +615,12 @@
         {
           "id": "move_handkerchief",
           "label": "Move the handkerchief",
-          "description": "Push the damp handkerchief aside to see what \u2014 if anything \u2014 is underneath.",
+          "description": "Push the damp handkerchief aside to see what — if anything — is underneath.",
           "condition": {
             "require": "flag:handkerchief_noticed == true"
           },
           "result": {
-            "narrative": "You push the disgustingly damp handkerchief aside with some effort. Beneath it, there is a flap in the canvas wall \u2014 a hidden entrance leading down into darkness.",
+            "narrative": "You push the disgustingly damp handkerchief aside with some effort. Beneath it, there is a flap in the canvas wall — a hidden entrance leading down into darkness.",
             "set_flag": {
               "handkerchief_moved": true
             },
@@ -632,7 +632,7 @@
     },
     "korbar": {
       "type": "npc",
-      "description": "Korbar the Dwarf is drunk and miserable, slouched against a pile of rubbish. She wears ridiculously noisy iron platemail that clanks with every movement, but carries no weapon \u2014 the giant battleaxe actually belongs to her. Her eyes are bleary from drink but sharp with the cynicism of someone abandoned for three years.",
+      "description": "Korbar the Dwarf is drunk and miserable, slouched against a pile of rubbish. She wears ridiculously noisy iron platemail that clanks with every movement, but carries no weapon — the giant battleaxe actually belongs to her. Her eyes are bleary from drink but sharp with the cynicism of someone abandoned for three years.",
       "soft_items": [],
       "state_fields": {
         "alive": {
@@ -650,7 +650,7 @@
       },
       "dialogue_guidelines": {
         "personality": "A cynical dwarven rogue and heavy drinker who was abandoned by her adventuring party three years ago during a stealth mission. She is lonely and bitter but secretly craves company. She speaks with a gruff, working-class accent and punctuates her sentences with swigs from her tankard. Despite her misery, she has a sharp wit and a grudging sense of honour.",
-        "on_encounter": "Korbar eyes the new arrival warily from behind her tankard, then lets out a bitter laugh. 'Another one, eh? The Bag's got a new guest. Do not bother trying to escape \u2014 I have been here three years and never found a way out.'",
+        "on_encounter": "Korbar eyes the new arrival warily from behind her tankard, then lets out a bitter laugh. 'Another one, eh? The Bag's got a new guest. Do not bother trying to escape — I have been here three years and never found a way out.'",
         "can": [
           "Share knowledge about the bag's escape mechanism",
           "Reveal the secret compartment location if she trusts the player",
@@ -663,7 +663,7 @@
           "Leave the Bag of Holding",
           "Stop drinking",
           "Remember which way is north",
-          "Climb the axe handle \u2014 her platemail is too noisy and heavy"
+          "Climb the axe handle — her platemail is too noisy and heavy"
         ],
         "knows": [
           "The padlock on the outside of the bag can be unlocked from inside using the rusty key",
@@ -717,7 +717,7 @@
             },
             "outcome": "death",
             "narrative": "You lunge at Korbar, but your injuries slow you down. Even through the haze of drink, the dwarf's practised reflexes are more than enough. She sidesteps your clumsy attack and delivers a single, efficient blow to your temple. Everything goes dark.",
-            "set_flags": {}
+            "set_flag": {}
           },
           {
             "condition": {
@@ -725,7 +725,7 @@
             },
             "outcome": "death",
             "narrative": "You attack Korbar, but the dwarf's iron platemail deflects your blows with contemptuous ease. She sighs, almost sadly, and disarms you with a practised motion before delivering a decisive strike. 'Sorry, friend,' she mutters. 'Ye leave me no choice.'",
-            "set_flags": {}
+            "set_flag": {}
           }
         ]
       },

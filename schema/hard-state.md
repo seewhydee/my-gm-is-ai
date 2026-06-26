@@ -97,7 +97,7 @@ exits, interactions, encounters, and game-over mechanics.
 2. **Set/cleared** by the engine during:
    - Interaction resolution (`result.set_flag`, `success.set_flag`)
    - Reaction `result.set_flag` effects
-   - Encounter outcomes (`set_flags`)
+   - Encounter outcomes (`set_flag`)
 3. **Read** by the engine to evaluate:
    - Exit conditions
    - Interaction conditions

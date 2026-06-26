@@ -67,14 +67,14 @@ class TestEngineFullFlow:
             player_damage="3d6",
         )
         # Override the default encounter rule: roll outcome with threshold,
-        # on_failure applies alter_stat + player_damage.  The helper builds a
+        # failure applies alter_stat + player_damage.  The helper builds a
         # simple flee rule, so we replace it.
         corpus.mechanics["fall_test"].rules = [
             _mk_encounter_rule(
                 outcome="roll",
                 threshold=0.50,
                 condition=_mk_cond(require="entity:test_npc.alive == true"),
-                on_failure=BranchOutcome(
+                failure=BranchOutcome(
                     outcome="flee",
                     alter_stat={"DEX": StatModifier(value=-4), "CON": StatModifier(value=-4)},
                     player_damage="3d6",
@@ -94,7 +94,7 @@ class TestEngineFullFlow:
         assert result.success is True
         # Encounter outcome is not "combat", so the room transition proceeds.
         assert manager.hard_state.player.location == "target"
-        # Encounter on_failure applies -4 to DEX and CON.
+        # Encounter failure applies -4 to DEX and CON.
         assert manager.hard_state.player.stats == {
             "STR": 10, "DEX": 6, "CON": 6,
             "INT": 10, "WIS": 10, "CHA": 10,

@@ -409,7 +409,7 @@ class TestEntity:
                         "outcome": "flee",
                     },
                 ],
-                "on_flee": {"set_flags": {"spider_fled": True}, "effect": "It scurries away."},
+                "on_flee": {"set_flag": {"spider_fled": True}, "effect": "It scurries away."},
             },
         })
         assert e.behavior is not None
@@ -689,30 +689,30 @@ class TestBranchOutcome:
     def test_basic(self) -> None:
         b = BranchOutcome.model_validate({
             "outcome": "success",
-            "set_flags": {"door_open": True},
+            "set_flag": {"door_open": True},
             "narrative": "The door swings open.",
         })
         assert b.outcome == "success"
-        assert b.set_flags == {"door_open": True}
+        assert b.set_flag == {"door_open": True}
         assert b.narrative == "The door swings open."
 
     def test_minimal_outcome_only(self) -> None:
         b = BranchOutcome.model_validate({"outcome": "death"})
         assert b.outcome == "death"
-        assert b.set_flags is None
+        assert b.set_flag is None
         assert b.narrative is None
 
     def test_missing_outcome_defaults_to_none(self) -> None:
         b = BranchOutcome.model_validate({
-            "set_flags": {"x": True},
+            "set_flag": {"x": True},
         })
         assert b.outcome == "none"
-        assert b.set_flags == {"x": True}
+        assert b.set_flag == {"x": True}
 
     def test_with_alter_stat(self) -> None:
         b = BranchOutcome.model_validate({
             "outcome": "flee",
-            "set_flags": {"spider_fled": True},
+            "set_flag": {"spider_fled": True},
             "alter_stat": {
                 "STR": {"value": -4},
                 "DEX": {"value": -4},
@@ -813,19 +813,19 @@ class TestParameterSignature:
 class TestFleeEffect:
     def test_basic(self) -> None:
         f = FleeEffect.model_validate({
-            "set_flags": {"spider_fled": True},
+            "set_flag": {"spider_fled": True},
             "effect": "The spider scurries away into the shadows.",
         })
-        assert f.set_flags == {"spider_fled": True}
+        assert f.set_flag == {"spider_fled": True}
         assert f.effect == "The spider scurries away into the shadows."
 
-    def test_missing_set_flags_raises(self) -> None:
+    def test_missing_set_flag_raises(self) -> None:
         with pytest.raises(ValidationError):
             FleeEffect.model_validate({"effect": "x"})
 
     def test_missing_effect_raises(self) -> None:
         with pytest.raises(ValidationError):
-            FleeEffect.model_validate({"set_flags": {"x": True}})
+            FleeEffect.model_validate({"set_flag": {"x": True}})
 
 
 class TestEncounterRule:
@@ -850,41 +850,41 @@ class TestEncounterRule:
             "outcome": "roll",
             "threshold": 0.5,
             "narrative": "The spider lunges!",
-            "set_flags": {"spider_attacked": True},
+            "set_flag": {"spider_attacked": True},
         })
         assert r.outcome == "roll"
         assert r.threshold == 0.5
         assert r.narrative == "The spider lunges!"
-        assert r.set_flags == {"spider_attacked": True}
+        assert r.set_flag == {"spider_attacked": True}
 
-    def test_with_on_success(self) -> None:
+    def test_with_success(self) -> None:
         r = EncounterRule.model_validate({
             "condition": {"require": "flag:injured == true"},
             "outcome": "roll",
             "threshold": 0.5,
-            "on_success": {
+            "success": {
                 "outcome": "success",
-                "set_flags": {"spider_fled": True},
+                "set_flag": {"spider_fled": True},
                 "narrative": "You drive the spider away.",
             },
         })
-        assert r.on_success is not None
-        assert r.on_success.outcome == "success"
-        assert r.on_success.set_flags == {"spider_fled": True}
+        assert r.success is not None
+        assert r.success.outcome == "success"
+        assert r.success.set_flag == {"spider_fled": True}
 
-    def test_with_on_failure(self) -> None:
+    def test_with_failure(self) -> None:
         r = EncounterRule.model_validate({
             "condition": {"require": "flag:injured == true"},
             "outcome": "roll",
             "threshold": 0.7,
-            "on_failure": {
+            "failure": {
                 "outcome": "death",
                 "narrative": "The spider overpowers you.",
             },
         })
-        assert r.on_failure is not None
-        assert r.on_failure.outcome == "death"
-        assert r.on_failure.narrative == "The spider overpowers you."
+        assert r.failure is not None
+        assert r.failure.outcome == "death"
+        assert r.failure.narrative == "The spider overpowers you."
 
     def test_with_alter_stat(self) -> None:
         r = EncounterRule.model_validate({
@@ -892,15 +892,15 @@ class TestEncounterRule:
             "outcome": "stat_check",
             "check": {"type": "stat_check", "stat": "DEX", "dc": 10, "repeatable": True},
             "alter_stat": {"CON": {"value": -2}},
-            "on_failure": {
+            "failure": {
                 "outcome": "flee",
                 "alter_stat": {"STR": {"value": -4}, "CON": {"value": -4}},
                 "narrative": "You land badly.",
             },
         })
         assert r.alter_stat == {"CON": StatModifier(value=-2)}
-        assert r.on_failure is not None
-        assert r.on_failure.alter_stat == {"STR": StatModifier(value=-4), "CON": StatModifier(value=-4)}
+        assert r.failure is not None
+        assert r.failure.alter_stat == {"STR": StatModifier(value=-4), "CON": StatModifier(value=-4)}
 
 
 class TestBehavior:
@@ -924,12 +924,12 @@ class TestBehavior:
                 },
             ],
             "on_flee": {
-                "set_flags": {"spider_fled": True},
+                "set_flag": {"spider_fled": True},
                 "effect": "It scurries away.",
             },
         })
         assert b.on_flee is not None
-        assert b.on_flee.set_flags == {"spider_fled": True}
+        assert b.on_flee.set_flag == {"spider_fled": True}
 
 
 class TestStatsBlock:

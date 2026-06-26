@@ -748,12 +748,12 @@ Here is an example of a mechanical (one-turn) encounter:
     "condition": { "require": "tag:weapon" },
     "outcome": "stat_check",
     "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
-    "on_success": {
+    "success": {
       "outcome": "flee",
       "narrative": "You land a solid blow. The goblin hisses and flees.",
-      "set_flags": { "goblin_fled": true }
+      "set_flag": { "goblin_fled": true }
     },
-    "on_failure": {
+    "failure": {
       "outcome": "death",
       "narrative": "The goblin strikes back! Its cleaver goes through your neck."
     }
@@ -935,9 +935,10 @@ condition:
 | Field | Description |
 |-------|-------------|
 | `check` | The roll or stat_check to resolve |
-| `condition` | Optional condition — the check only fires if this is met. When absent (or condition not met), traversal proceeds without a check |
-| `skip_check_if` | Optional condition — if met, the check is skipped entirely (bypasses `condition`) |
-| `failure_narrative` | Prose shown when the check fails |
+| `gating` | Optional condition — the check only fires if this is met. When absent (or condition not met), traversal proceeds without a check |
+| `skip_check_if` | Optional condition — if met, the check is skipped entirely (bypasses `gating`) |
+| `failure` | Result object applied when the check fails (contains at minimum `narrative` prose) |
+| `success` | Optional result object applied when the check succeeds |
 | `using_results` | Optional dict mapping item entity IDs (or `"*"` wildcard) to override check/success/failure. When the `move` action carries a `using` parameter matching a key, the override replaces the check (allowing different DCs per item). See below. |
 
 #### `using_results` for traversal checks
@@ -948,10 +949,10 @@ carrying (e.g., clearing webs without a weapon is harder), add a
 `check`. The player's `move` action sets `using` to an item entity ID:
 
 ```json
-"traversal_check": {
-  "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
-  "failure_narrative": "You strain against the sticky webs.",
-  "using_results": {
+  "traversal_check": {
+    "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
+    "failure": { "narrative": "You strain against the sticky webs." },
+    "using_results": {
     "toenail_sword": {
       "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true }
     }
@@ -986,10 +987,10 @@ spider's web), and once cleared the obstacle is no longer an impediment:
   "exit_force_through_web": {
     "target_room": "axe_handle_lower",
     "traversal_check": {
-      "condition": { "unless": "flag:webs_cleared == true" },
+      "gating": { "unless": "flag:webs_cleared == true" },
       "check": { "type": "stat_check", "stat": "STR", "dc": 14, "repeatable": true },
       "skip_check_if": { "require": "flag:webs_cleared == true" },
-      "failure_narrative": "You strain against the sticky webs but can't break through."
+      "failure": { "narrative": "You strain against the sticky webs but can't break through." }
     }
   }
 },
@@ -1020,10 +1021,10 @@ traversal check globally — per-exit duplication is the required pattern.
 "exit_up_stairs": {
   "target_room": "foyer",
   "traversal_check": {
-    "condition": { "require": "inventory:dead_body" },
+    "gating": { "require": "inventory:dead_body" },
     "check": { "type": "stat_check", "stat": "STR", "dc": 13, "repeatable": true },
     "skip_check_if": { "require": "entity:butler.following == true" },
-    "failure_narrative": "The body is too heavy to haul up the stairs."
+    "failure": { "narrative": "The body is too heavy to haul up the stairs." }
   }
 }
 ```
@@ -1647,10 +1648,10 @@ They follow the same rule structure as NPC behavior encounter_rules:
       "condition": { "require": "room:axe_head.is_current == true" },
       "outcome": "stat_check",
       "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
-      "on_success": {
+      "success": {
         "narrative": "You drop down and land heavily, but survive."
       },
-      "on_failure": {
+      "failure": {
         "outcome": "flee",
         "narrative": "You fall hard and injure yourself badly.",
         "alter_stat": { "STR": { "value": -4 }, "DEX": { "value": -4 }, "CON": { "value": -4 } },
@@ -1675,11 +1676,11 @@ based on which room triggered them (e.g., different fall damage by room).
 | `check` | StatCheck | The stat check to resolve (for `stat_check` outcome) |
 | `threshold` | float 0-1 | Roll-under threshold (for `roll` outcome) |
 | `narrative` | str | Prose shown when the rule fires |
-| `set_flags` | dict[str, bool] | Flags to set |
+| `set_flag` | dict[str, bool] | Flags to set |
 | `alter_stat` | dict[str, StatModifier] | Fixed stat modifications (delta or set) |
 | `player_damage` | str | Dice expression rolled as HP damage (e.g. `"3d6"`, `"2d4+1"`) |
-| `on_success` | BranchOutcome | Branch when check/roll succeeds |
-| `on_failure` | BranchOutcome | Branch when check/roll fails |
+| `success` | BranchOutcome | Branch when check/roll succeeds |
+| `failure` | BranchOutcome | Branch when check/roll fails |
 
 > **When `outcome` is `"combat"`:** The engine starts multi-round combat.
 > The NPC must have a `combat` block with HP, AC, attack bonus, initiative,
@@ -1890,7 +1891,7 @@ Follow this exact structure:
 6. **`flags`** — enumerate every flag name used anywhere:
    - In condition strings (`flag:...`)
    - In `set_flag` results
-   - In encounter `set_flags`
+    - In encounter `set_flag`
    - In `on_examine` events and reaction `result.set_flag` effects
    Set each to its initial value (almost always `false`). This is a flat dict;
    all flag values should be booleans.

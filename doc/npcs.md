@@ -370,21 +370,21 @@ NPCs with a `behavior` block can trigger **encounters** — combat or other stru
         "outcome": "roll",
         "threshold": 0.5,
         "narrative": "You swing at the spider...",
-        "set_flags": {},
-        "on_success": {
+        "set_flag": {},
+        "success": {
           "outcome": "death",
           "narrative": "The spider crumples.",
-          "set_flags": { "spider_fled": true }
+          "set_flag": { "spider_fled": true }
         },
-        "on_failure": {
+        "failure": {
           "outcome": "flee",
           "narrative": "The spider knocks you back.",
-          "set_flags": {}
+          "set_flag": {}
         }
       }
     ],
     "on_flee": {
-      "set_flags": { "spider_fled": true },
+      "set_flag": { "spider_fled": true },
       "set_entity_state": { "spider": { "alive": false } },
       "effect": "remove_entity"
     }

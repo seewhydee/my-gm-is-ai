@@ -179,8 +179,8 @@ def _mk_encounter_rule(
     threshold: float | None = None,
     alter_stat: dict[str, StatModifier] | None = None,
     player_damage: str | None = None,
-    on_success: BranchOutcome | None = None,
-    on_failure: BranchOutcome | None = None,
+    success: BranchOutcome | None = None,
+    failure: BranchOutcome | None = None,
 ) -> EncounterRule:
     rule_data: dict[str, Any] = {
         "condition": condition or _mk_cond(require="entity:test_npc.alive == true"),
@@ -194,10 +194,10 @@ def _mk_encounter_rule(
         rule_data["alter_stat"] = alter_stat
     if player_damage is not None:
         rule_data["player_damage"] = player_damage
-    if on_success is not None:
-        rule_data["on_success"] = on_success
-    if on_failure is not None:
-        rule_data["on_failure"] = on_failure
+    if success is not None:
+        rule_data["success"] = success
+    if failure is not None:
+        rule_data["failure"] = failure
     return EncounterRule.model_validate(rule_data)
 
 
@@ -368,9 +368,9 @@ def make_webs_test_corpus() -> ModuleCorpus:
                 "bag_floor",
                 traversal_check=TraversalCheck.model_validate({
                     "check": {"type": "stat_check", "stat": "STR", "dc": 14, "repeatable": True},
-                    "condition": {"unless": "flag:webs_cleared == true"},
+                    "gating": {"unless": "flag:webs_cleared == true"},
                     "skip_check_if": {"require": "flag:webs_cleared == true"},
-                    "failure_narrative": "The webs hold fast.",
+                    "failure": {"narrative": "The webs hold fast."},
                     "using_results": {
                         "toenail_sword": {
                             "check": {"type": "stat_check", "stat": "STR", "dc": 10, "repeatable": True},
@@ -408,10 +408,10 @@ def make_webs_test_corpus() -> ModuleCorpus:
                 "exit_climb_up_handle_floor",
                 "axe_handle_lower",
                 traversal_check=TraversalCheck.model_validate({
-                    "condition": {"require": "inventory:giant_key"},
+                    "gating": {"require": "inventory:giant_key"},
                     "check": {"type": "stat_check", "stat": "STR", "dc": 12, "repeatable": True},
                     "skip_check_if": {"require": "entity:korbar.following == true"},
-                    "failure_narrative": "Too heavy!",
+                    "failure": {"narrative": "Too heavy!"},
                 }),
             ),
         ],

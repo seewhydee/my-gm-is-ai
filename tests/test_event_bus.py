@@ -562,7 +562,7 @@ class TestReactionTriggerEncounter:
                 EncounterRule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="flee",
-                    set_flags={"ambush_fled": True},
+                    set_flag={"ambush_fled": True},
                     narrative="The ambush flees.",
                 )
             ],
@@ -913,7 +913,7 @@ class TestEncounterOncePerTurnGuard:
             rules=[EncounterRule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="flee",
-                set_flags={"enc1_fired": True},
+                set_flag={"enc1_fired": True},
                 narrative="Encounter 1 fired.",
             )],
         )
@@ -923,7 +923,7 @@ class TestEncounterOncePerTurnGuard:
             rules=[EncounterRule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="flee",
-                set_flags={"enc2_fired": True},
+                set_flag={"enc2_fired": True},
                 narrative="Encounter 2 fired.",
             )],
         )
@@ -1024,8 +1024,8 @@ class TestEncounterBranchedEvent:
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="roll",
                     threshold=0.5,
-                    on_success={"outcome": "flee", "narrative": "You win!"},
-                    on_failure={"outcome": "flee", "narrative": "You scramble away."},
+                    success={"outcome": "flee", "narrative": "You win!"},
+                    failure={"outcome": "flee", "narrative": "You scramble away."},
                 )
             ],
         )
@@ -1071,8 +1071,8 @@ class TestEncounterBranchedEvent:
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="roll",
                     threshold=0.5,
-                    on_success={"outcome": "flee", "narrative": "You win!"},
-                    on_failure={"outcome": "flee", "narrative": "You scramble away."},
+                    success={"outcome": "flee", "narrative": "You win!"},
+                    failure={"outcome": "flee", "narrative": "You scramble away."},
                 )
             ],
         )

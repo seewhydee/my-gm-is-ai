@@ -119,6 +119,7 @@ class EquipBlock(BaseModel):
 
 
 class ChainedCheck(BaseModel):
+    skip_check_if: Optional[ConditionExpression] = None
     check: CheckType
     success: Result
     failure: Optional[Result] = None
@@ -191,6 +192,8 @@ class UsingResultOverride(BaseModel):
 class TakeCheck(BaseModel):
     """A check required to take an item via a transfer action."""
 
+    gating: Optional[ConditionExpression] = None
+    skip_check_if: Optional[ConditionExpression] = None
     check: CheckType
     success: Optional[Result] = None
     failure: Optional[Result] = None
@@ -208,6 +211,7 @@ class Interaction(BaseModel):
     description: Optional[str] = None
     parameter_signature: Optional[ParameterSignature] = None
     condition: Optional[ConditionExpression] = None
+    skip_check_if: Optional[ConditionExpression] = None
     check: Optional[CheckType] = None
     success: Optional[Result] = None
     failure: Optional[Result] = None
@@ -227,9 +231,10 @@ class Interaction(BaseModel):
 
 class TraversalCheck(BaseModel):
     check: CheckType
-    condition: Optional[ConditionExpression] = None
+    gating: Optional[ConditionExpression] = None
     skip_check_if: Optional[ConditionExpression] = None
-    failure_narrative: Optional[str] = None
+    failure: Optional[Result] = None
+    success: Optional[Result] = None
     using_results: Optional[Dict[str, UsingResultOverride]] = None
 
 
@@ -246,6 +251,7 @@ class Exit(BaseModel):
 class OnExamineEvent(BaseModel):
     id: str
     condition: Optional[ConditionExpression] = None
+    skip_check_if: Optional[ConditionExpression] = None
     rigorous_only: bool = False
     check: Optional[CheckType] = None
     success: Optional[Result] = None
@@ -339,6 +345,7 @@ class WillRevealEntry(BaseModel):
 class DialoguePath(BaseModel):
     description: str
     condition: Optional[ConditionExpression] = None
+    skip_check_if: Optional[ConditionExpression] = None
     check: Optional[CheckType] = None
     success: Optional[Result] = None
     failure: Optional[Result] = None
@@ -369,7 +376,7 @@ class DialogueGuidelines(BaseModel):
 
 class BranchOutcome(BaseModel):
     outcome: str = "none"
-    set_flags: Optional[Dict[str, bool]] = None
+    set_flag: Optional[Dict[str, bool]] = None
     alter_stat: Optional[Dict[str, StatModifier]] = None
     player_damage: Optional[str] = None
     narrative: Optional[str] = None
@@ -381,15 +388,15 @@ class EncounterRule(BaseModel):
     threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     check: Optional[StatCheck] = None
     narrative: Optional[str] = None
-    set_flags: Optional[Dict[str, bool]] = None
+    set_flag: Optional[Dict[str, bool]] = None
     alter_stat: Optional[Dict[str, StatModifier]] = None
     player_damage: Optional[str] = None
-    on_success: Optional[BranchOutcome] = None
-    on_failure: Optional[BranchOutcome] = None
+    success: Optional[BranchOutcome] = None
+    failure: Optional[BranchOutcome] = None
 
 
 class FleeEffect(BaseModel):
-    set_flags: Dict[str, bool]
+    set_flag: Dict[str, bool]
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
     effect: str
 
