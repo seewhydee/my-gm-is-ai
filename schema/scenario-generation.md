@@ -214,9 +214,9 @@ For each mechanic, specify:
 Revisit the room list, and add the following info to each room:
 
 - **Exits** — every way out.  For each, assign a room-unique exit ID,
-  give a brief description (e.g., "through the north doorway"), and
-  specify the destination room ID (§1B).  Traversal conditions are
-  handled in "Reactions" below.
+  give a brief description (e.g., "through the north doorway"),
+  specify the destination room ID (§1B), and describe any traversal
+  conditions (stat check or other condition to traverse the exit).
 
 - **Entities present** — list the ID of each entity in the room at
   start (from §1C), including hidden ones (e.g., a lurking thief).
@@ -251,10 +251,10 @@ Revisit the room list, and add the following info to each room:
   `time_of_day` (if the scenario progresses time).
 
 - **On-Examine Effects** — describe any effects triggered by the
-  player examining the room (the room itself, not an entity in it).
-  Example: viewing a dusty storeroom, and deducing that nobody has
-  come through in years (a plot point).  Can be gated by a stack check
-  or other condition.
+  player examining the room (the room itself, not an entity in it),
+  possibly gated by a condition or stat check.  Example: viewing a
+  dusty storeroom, and deducing that nobody has come through in years
+  (a plot point).  Can be gated by a stack check or other condition.
 
 When describing events/reactions, special interactions, or state
 fields, you can reference flags defined in §1D.  If you overlooked a
@@ -322,10 +322,16 @@ Revisit the entity list, and add the following to each entity:
   and (iii) the consequences.
 
 - **On-Examine Effects** — describe any effects triggered by the
-  player examining the entity.  Important: this field belongs on the
-  thing being examined, *not* the room containing it.  E.g., when the
-  scenario says "upon examining the statue, the player notices...",
-  the on_examine event belongs on the statue entity.
+  player examining the entity, possibly gated by a condition or stat
+  check.  Important: this field belongs on the thing being examined,
+  *not* the room containing it.  E.g., when the scenario says "upon
+  examining the statue, the player notices...", the on_examine event
+  belongs on the statue entity.
+
+For items, also note:
+
+- **Take Check** (optional) — conditions or checks that must be passed
+  for the player to take the item.
 
 For NPCs, also add descriptions for the following:
 
@@ -348,7 +354,7 @@ For NPCs, also add descriptions for the following:
   - begin multi-round combat (NPC needs combat stats)
   - player auto-death
   - NPC flee or auto-death
-  - stat check with probabilistic branches (flee, auto-death)
+  - stat check with success/failure branches (flee, auto-death)
 
   Also note any effects of NPC fleeing (e.g., setting a flag, or
   moving the NPC to another room).
@@ -359,8 +365,7 @@ For NPCs, also add descriptions for the following:
 
 - **Dialogue Paths** — for dialogue, if the NPC talks.
   Assign an NPC-unique ID for each special line of conversation the
-  player can engage the NPC with, possibly with conditionals and
-  success/failure gating.  Must have plot or gameplay relevance.
+  player can engage the NPC with.  Must have plot/gameplay relevance.
   
   Examples: bribing a guard to pass a gate, or convincing a prince
   that his vizier is evil.
@@ -646,16 +651,26 @@ expressions, AC, etc.).
 If a mechanic or reaction is used to gate the player picking up the
 item (e.g., STR check to pull a sword from a stone), use `take_check`
 on the item entity.  The engine resolves that check when the player
-tries a `transfer` action to take the item.  Note that `take_check` is
-*not* automatically disabled after a successful take.  To make a
-one-time gate (i.e., failure is permanent), set `check.repeatable` to
-`false`; for retry until success, make the item unavailable after
-success yourself (for example, by handling the take through a
-conditional interaction instead of `take_check`).
+tries a `transfer` action to take the item.  For a one-time success gate
+(pass the check once, then the item is picked up freely thereafter),
+use `take_check.gating` with a flag that `success` sets:
 
+```json
+"take_check": {
+  "gating": { "require": "flag:sword_claimed == false" },
+  "check": { "type": "stat_check", "stat": "STR", "dc": 17, "repeatable": true },
+  "success": {
+    "narrative": "You wrench the sword from the stone.",
+    "set_flag": { "sword_claimed": true }
+  },
+  "failure": {
+    "narrative": "The sword won't budge."
+  }
+}
+```
 
-
-
+For a permanent one-attempt gate (failure locks you out), set
+`check.repeatable` to `false` instead of using `gating`.
 
 ### 2D. Feature entities
 
@@ -1140,7 +1155,8 @@ Example — a loose pile containing a sword that takes effort to pull free:
     "hidden": { "type": "boolean", "description": "Whether the sword is visible." }
   },
   "take_check": {
-    "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": false },
+    "gating": { "require": "flag:toenail_sword_found == false" },
+    "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
     "success": {
       "narrative": "You work the toenail free from the pile. It's a perfect makeshift shortsword.",
       "set_flag": { "toenail_sword_found": true }
@@ -1157,12 +1173,11 @@ Example — a loose pile containing a sword that takes effort to pull free:
 // }
 ```
 
-`repeatable: false` makes this a one-time gate: after one attempt, the
-engine will not run `take_check` for this item again in the same room.
-If you want the player to be able to retry until they succeed, use
-`repeatable: true`, but then you must make the item unavailable after a
-successful take (for example, by handling the take through a
-conditional interaction rather than `take_check`).
+With `gating`, the check only fires while `toenail_sword_found` is false.
+`success` sets that flag, so on the next attempt the check is skipped and the
+item is taken freely.  `repeatable: true` lets the player retry after failure.
+For a permanent one-attempt gate (failure locks you out), drop `gating` and use
+`repeatable: false` instead.
 
 Note: the item does NOT need to be listed in the room's `entities_present`
 array. The assembler discovers it through `rubbish_pile.contained_entities`
