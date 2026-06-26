@@ -471,8 +471,8 @@ class Mechanic(BaseModel):
                 raise ValueError("Game-over mechanic requires 'trigger_id'")
         if not is_game_over and not is_encounter and not is_reaction_only:
             raise ValueError(
-                "Mechanic must have either 'type' (game-over), 'rules' (encounter), "
-                "or 'reactions'")
+                "Mechanic must have at least one of: 'type' (game-over), "
+                "'rules', or 'reactions'")
         return self
 
 

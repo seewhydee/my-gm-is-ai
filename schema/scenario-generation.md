@@ -63,19 +63,17 @@ check fails, **stop and fix before proceeding**.
 
 ## Step 1: Parse & Extract
 
-**Objective:** produce a structured list of everything that needs to
-be modelled, including consistent IDs for all the rooms, entities,
-interactions, flags, state fields, entity tags, etc.  All IDs are in
-snake_case.
+**Objective:** make a structured list of everything that needs to be
+modelled, including consistent IDs for all rooms, entities, flags,
+interactions, state fields, entity tags, etc.  All IDs in snake_case.
 
-Read the README.md and doc/intro.md to orient yourself.  Next, read
-the scenario supplied to you (usually a Markdown file in
-adventures/MODULE-NAME/).
+Read README.md and doc/intro.md, followed by the supplied scenario
+(usually a Markdown file in adventures/MODULE-NAME/).
 
-Then, write the following into a clean document (text, not JSON) named
-`scenario-map.md` in the adventure module folder.  This file will be
-the working plan for all subsequent steps.  Follow the steps below (1A
-to 1H) carefully, and in order.
+Then, follow the specs below to write a clean document (text, not
+JSON) named `scenario-map.md` in the adventure module folder.  This
+file will be the working plan for all subsequent steps.  Follow steps
+1A to 1H carefully, and in order.
 
 ### 1A. Adventure metadata
 
@@ -139,25 +137,27 @@ List out every distinct entity mentioned in the scenario, specifying:
 
 - **Type** — one of:
   - `player` — the player character (exactly one)
-  - `npc` — characters that can talk or fight
-  - `feature` — environmental objects (walls, piles, handkerchiefs)
-  - `item` — objects that can be picked up
+  - `npc` — character that can talk or fight
+  - `feature` — environmental object (walls, piles, handkerchiefs)
+  - `item` — object that can be picked up
 
 - **Description** — a note about what this entity is, its location at
   game start (room, container entity, or player inventory), and any
-  narratively important details.  Again, keep it factual and succinct.
-  We will fill in mechanical details later (§1G).  If the entity is a
+  narratively important details.  Keep it factual and succinct.  We
+  will fill in mechanical details later (§1G).  If the entity is a
   feature visible from multiple rooms, note which rooms it spans.
 
 ### 1D. Global Flags
 
 Make a list of global flags: boolean conditions tracking elements of
-world state not tied to any specific room or entity.
+world state not tied to any specific room or entity.  In particular,
+global flags should be assigned for:
 
-Such flags are typically used to track secrets learned by the player
-("the vizier is actually a lich", "the password is foo"), or events
-affecting many entities simultaneously ("the revolt has started",
-"night has fallen").
+- each major secret or piece of information the player can learn
+  during the adventure ("the vizier is a lich", "password is foo").
+
+- any plot-relevant or narrative event affecting many entities
+  simultaneously ("the revolt has started", "night has fallen").
 
 For each flag, specify:
 
@@ -167,35 +167,47 @@ For each flag, specify:
 
 ### 1E. Global Mechanics
 
-List out every mechanic in the scenario not tied to a specific room or
-entity.  Mechanics come in three kinds:
+Now list the adventure-level mechanics — rules that live at top level,
+not tied to a specific room or entity.  (Room- and entity-scoped
+effects are covered later.)  There are two types:
 
-- **game-over condition** — trigger for winning/losing the game
-- **encounter** — combat or hazard event
-- **reaction-only mechanic** — global effect triggered by changes to
-  adventure state
+1. **Game-over condition** — a `win` or `lose` trigger for the game.
+   Every adventure should have at least one win condition; many also
+   have loss conditions (death by trap, time runs out, etc.).
 
-Note: entity-scoped encounters (e.g., attacking an NPC) are specified
-at entity level, not here.
+   Example: player wins on reaching exit with artifact in inventory.
+
+2. **Mechanic** — a named bundle of global rules.  A mechanic can
+   contain reactions, encounter rules, or both.  Reactions fire on
+   game events regardless of which room the player is in; encounter
+   rules set conditional outcomes (death, flee, stat check, combat).
+
+   Example: dropping from one room to another, and taking fall damage.
+
+   Example: a life ward that fires if HP drops to ≤ 3.
+
+   Example: a chained-encounter orchestrator that watches a flag set
+   by a first encounter and triggers a second.
 
 For each mechanic, note down:
 
 - **Mechanic ID** — assign a scenario-wide unique ID.
-- **Kind** — one of the three kinds described above: game-over
-  condition, encounter, or reaction-only mechanic.
+- **Kind** — game-over condition or mechanic.
 - **Description** — how the mechanic works, its trigger, and its
-  effects (e.g., damage dealt to the player).
+  effects (e.g., damage dealt, flags set).  Be logically complete
+  enough to translate to JSON later (but don't write JSON yet).  Can
+  reference global flag IDs (§1D), entity tags (§1G), and room/entity
+  state IDs.
 
-The description, like the other mechanical descriptions in Step 1,
-should be textual but logically complete enough to form a JSON
-structure later (but don't write the JSON yet).  It can reference
-global flag IDs (§1D), entity tags (e.g., `valuable`, `draggable`),
-and room/entity state IDs and their values (e.g., `locked`), including
-IDs that have yet to be defined.
+#### When to use a mechanic vs. a room/entity reaction
 
-
-
-
+| Situation | Use |
+|---|---|
+| Trigger should fire regardless of player location | Mechanic with reactions (adventure-wide event watcher) |
+| An encounter can be triggered from >1 room or entity | Mechanic with rules (referenced by `trigger_encounter`) |
+| A condition means the player wins or loses | Game-over condition mechanic |
+| A trigger fires only when the player is in a specific room | Room reaction (§1F) |
+| A trigger fires only near a specific entity | Entity reaction (§1G) |
 
 ### 1F. Rooms (Pass 2)
 
@@ -230,17 +242,17 @@ Revisit the room list, and add the following information to each room:
   gating, and (iii) the consequences.  These descriptions should be
   textual, giving enough info to form a JSON object later.
 
-- **State fields** — assign a room-unique ID for each mutable property
+- **State Fields** — assign a room-unique ID for each mutable property
   of the room, and specify the initial value (boolean, number, or
   string).  Don't invent these nilly-willy; focus on properties needed
-  for mechanics or narration, e.g., `filled_with_poison_gas`,
+  for mechanics or narration: e.g., `filled_with_poison_gas`,
   `time_of_day` (if the scenario progresses time).
 
-- **On-examine events** — note down any effects triggered by the
-  player examining the room (the room itself, not an entity in the
-  room).  Example: viewing a dilapidated courtyard, and deducing that
-  nobody has come through in years (a plot point).  Can be gated by a
-  stack check or other condition.
+- **On-Examine Effects** — describe any effects triggered by the
+  player examining the room (the room itself, not an entity in it).
+  Example: viewing a dusty storeroom, and deducing that nobody has
+  come through in years (a plot point).  Can be gated by a stack check
+  or other condition.
 
 When describing events/reactions, special interactions, or state
 fields, you can reference flags defined in §1D.  If you overlooked a
@@ -289,17 +301,20 @@ entity:
 - **Event Reactions** — describe any consequential event-driven
   reaction tied to the entity.  The reaction can occur only if the
   entity is in the current room (and, for an NPC, alive and active).
-  Examples: combat triggered by an NPC's attitude dropping below some
-  level, or a magic effect firing when an item is picked up.
+
+  Examples:
+  - picking up an item fires a magic effect
+  - NPC attitude going too low trigers combat
+  - exiting dialogue alters an NPC's state (e.g., it dies)
   
   Assign each reaction a scenario-unique reaction ID.  Then, textually
   describe (i) the trigger event: a special interaction, a standard
   player action, a global flag set/cleared, a dialogue event, etc.;
   (ii) any stat checks or gating, and (iii) the consequences.
 
-- **On-examine events** — note any effects triggered by the player
-  examining the entity.  Important: this field belongs on the thing
-  being examined, *not* the room containing it.  E.g., when the
+- **On-Examine Effects** — describe any effects triggered by the
+  player examining the entity.  Important: this field belongs on the
+  thing being examined, *not* the room containing it.  E.g., when the
   scenario says "upon examining the statue, the player notices...",
   the on_examine event belongs on the statue entity.
 
@@ -313,47 +328,50 @@ For NPCs, also add descriptions for the following:
   "breathes fire").
 
 - **Behavior** — summarize the personality, whether it fights, etc.
+  If the entity fights, describe any custom rules for the encounter.
 
 - **Dialogue Paths** — for dialogue, if the NPC talks.
   Assign an NPC-unique ID for each special line of conversation the
-  NPC can engage with.  A dialogue path must have a connection to the
-  game's plot or mechanics: e.g., bribing a guard to get through a
-  gate, or convincing a prince that his vizier is evil.
+  player can engage the NPC with, with success/failure gating.  A
+  dialogue path must have a connection to the game's plot or
+  mechanics: e.g., bribing a guard to get through a gate, or
+  convincing a prince that his vizier is evil.
   
-  Describe when the dialogue path is available, and what transpires
-  during it (including stat check gating, consequences, etc.).
-  Dialogue paths commonly serve as triggering events for reactions
-  (see Event Reactions, above).
+  Describe (i) when the dialogue path is available, (ii) how the NPC
+  reacts (non-verbatim) if the gating is successful/unsuccessful, and
+  (iii) the effects on success/failure.  Dialogue paths are often
+  triggering events for reactions (see Event Reactions, above).
 
 - **Topics** — for dialogue, if the NPC talks.
   Assign an NPC-unique ID for each significant conversational topic
-  the NPC can divulge information about.  Unlike a dialogue path, a
-  topic should have no immediate mechanical relevance or impact.
+  the NPC can conditionally divulge information on.  Unlike a dialogue
+  path, a topic has no immediate mechanical relevance or impact.
 
-  Example: a guard NPC might have a dialogue path `bribe_to_enter`
-  (player pays to get through the gate — a mechanic), and a topic
-  `visitors` (the guard reveals which visitors have come through —
-  plot relevant, but no immediate consequence).
+  Example: a guard may have a dialogue path `bribe_to_enter` (player
+  pays to get past — a mechanic), and a topic `recent_visitors`
+  (reveals which visitors have come through — just useful info).
   
-  Describe (i) the conditions under which the NPC will reveal info on
-  the topic, (ii) what the NPC conveys (non-verbatim), and (iii) the
-  consequences if any.  To aid information-tracking, the revelation of
-  a topic can set global flags (§1D) or entity state fields (see
-  above), but it cannot trigger reactions.
+  Describe (i) the gating conditions for the NPC to reveal info on the
+  topic, (ii) what the NPC conveys (non-verbatim), and (iii) the
+  consequences if any.  Regarding consequences: it is often good to
+  set a global flag (§1D) to track the player's knowledge (different
+  NPCs giving similar info can set the same flag).  Topics can also
+  alter entity state fields, but they cannot trigger reactions.
 
 - **Knowledge** — for dialogue, if the NPC talks.
   A list of incidental, non-plot-relevant bits of knowledge possessed
-  by the NPC, which can be used by the GM to craft dialogue.  This
-  serves to pin down details that you don't want the GM to ad-lib.
+  by the NPC, used by the GM to craft dialogue.  This serves to pin
+  down details that you don't want the GM to ad-lib.
 
 ### 1H. Cleanup
 
 Go through the lists you have constructed, and check that IDs are
 consistent, every ID required by a mechanic is defined, etc.
 
-Double-check that the mechanics, as planned, accurately capture the
+For each game mechanic, check that you have assigned it to the right
+host (global, room, or entity), and that it accurately captures the
 spirit of what's written in the scenario.  Minor deviations are OK,
-but these should be noted and surfaced in the final task report.
+but should be noted and surfaced in the final task report.
 
 Revise as necessary.
 
@@ -361,16 +379,65 @@ Revise as necessary.
 
 ### Step 1 validation checklist
 
-- [ ] Every room in the scenario is captured in the room list
-- [ ] Every entity is classified with a type
-- [ ] Every conditional gate is reflected as a flag
+Run this before proceeding to Step 2.  The `scenario-map.md` produced in
+Step 1 is the blueprint for all later steps; catching gaps here avoids
+rework downstream.
+
+#### Coverage and Consistency
+
+- [ ] Every room in the scenario is captured in the room list (§1B)
+- [ ] Every entity in the scenario is captured and classified with a
+      valid type (`player`, `npc`, `feature`, `item`) (§1C)
+- [ ] Every encounter, win/loss condition, and special effect from the
+      scenario is captured in the mechanic list (§1E)
+- [ ] No rooms, entities, or mechanics invented that aren't in the
+      scenario (if a mechanic requires one, note in the final report)
+- [ ] All IDs (rooms, entities, flags, mechanics, reactions, topics)
+      have the appropriate level of uniqueness, and are in snake_case
+
+#### Structural correctness
+
+- [ ] Exactly one room is the start room (§1B)
+- [ ] Exactly one entity has `type: "player"` (§1C)
+- [ ] No non-NPC entity has dialogue or behavior plans (§1G)
+- [ ] Every mechanic that can be triggered by NPC dialogue has a
+      Dialogue Path trigger (§1G), with consequences planned via
+      reaction, global flag, etc.
+- [ ] Every important piece of info that can be divulged by an NPC, if
+      not assigned a Dialogue Path, should have a Topic ID (§1G), and
+      (usually) a global flag to track the player's knowledge (§1D)
+- [ ] Every NPC whose attitude to the player can shift should have an
+      `attitude` state field (§1G).
+- [ ] Every NPC that fights should have `behavior` planned (§1G)
+
+#### Flags, state, and tags
+
+- [ ] Every global flag referenced (by global mechanic, Event
+      Reaction, On-Examine Effect, Dialogue Path, or Topic, etc.)
+      should have an entry in the list of global flags (§1D).
+- [ ] If a mechanic (Event Reaction, dialogue, etc.) refers to a
+      custom (non-standard) state field for a room or entity, that
+      room or entity must have the state field prepped, with an
+      initial value and description (§1F, §1G).
+- [ ] If any mechanic refers to a semantic tag, there should be one
+      or more entities with that tag defined.
+- [ ] Every entity with `hidden: true` at start has a planned
+      mechanism to unhide it (otherwise it is permanently invisible)
+
+#### Mechanics
+
 - [ ] Stat checks identified and resolution system noted (or "no stats")
-- [ ] Exactly one start room identified
-- [ ] No rooms or entities invented that aren't in the scenario
-- [ ] State-based triggers and event-driven effects identified as reaction candidates
-- [ ] Every entity with a `hidden` state field that is initially true should
-      be accompanied by some way, possibly conditional, to unhide it.
-	  (Otherwise it remains hidden the whole game, which makes no sense.)
+- [ ] Every global mechanic is correctly classified: game-over
+      condition or mechanic with rules/reactions
+- [ ] Event-driven reactions scoped correctly (room, entity, or global
+      mechanic)
+
+#### Exits
+
+- [ ] Hidden exits have a planned flag-based reveal mechanism (companion
+      interaction sets a flag, exit conditions require that flag)
+- [ ] One-way exits have a planned return path (or a narrative reason
+      they are permanently one-way)
 
 ---
 
@@ -390,14 +457,13 @@ Tips for writing the JSON objects follow.
 
 #### Description
 
-When generating the entity's `description` field, do not just rely on
-the description field from `scenario-map.md`.
-
-You need to write a timeless, spoiler-free description of the entity,
-to be provided to the GM whenever the entity is present.  It should be
-factual, and independent of the entity's state (e.g., dead or alive).
-You may inject small details to add flavor without contradicting the
-scenario.
+When generating the entity's `description` field, do not just
+translate the description field from `scenario-map.md`.  Take a
+holistic view, and write a timeless, spoiler-free description of the
+entity.  This description is provided to the GM whenever the entity is
+present; it should be factual, and independent of the entity's state
+(e.g., dead or alive).  You may inject small details to add flavor,
+without contradicting the scenario.
 
 Example: "A massive black spider, about the size of a large dog, with
 eight glittering red eyes, sharp mandibles, and eight hairy legs".
@@ -413,8 +479,7 @@ fought and killed.
 
 When generating the entity's `state_fields`, refer to the state fields
 planned out in `scenario-map.md`.  Specify the initial value, and add
-a terse description – the GM will use this to infer what the state
-field means.
+a terse description – the GM uses this to infer what the field means.
 
 Example:
 
@@ -427,18 +492,17 @@ Example:
 }
 ```
 
-If an entity is initially concealed from the player (a key in a
-drawer, a hiding thief, etc.), it MUST have a `hidden` state field.
-This field is handled specially by the engine: when true, the entity
-is concealed (even from the GM) to avoid leakage.
+If an entity is initially concealed (a key in a drawer, a hiding
+thief, etc.), it MUST have a `hidden` state field.  This field is
+handled specially by the engine: when true, the entity is concealed
+(even from the GM) to avoid leakage.
 
 #### Entity reactions
 
 The `reactions` field is used for event-driven entity behavior.  To
-translate the the scenario map's reaction specifications into JSON,
-refer to [`events.md`](events.md) for a list of triggering events.
-Note that entity-scoped reactions are active only if the entity is
-present in the current room, alive, and not-fled.
+translate the the scenario map's reaction description into JSON, refer
+to the spec in [`events.md`](events.md).  Note: entity reactions only
+trigger if the entity is in the current room, alive, and not-fled.
 
 Example of an attack on sight reaction:
 ```json
@@ -470,8 +534,9 @@ Example of a post-dialogue state change:
 
 #### Examination
 
-The `on_examine` field is used to trigger effects when a player
-examines an entity (or room).
+The On-Examine Effects for rooms and entities described in
+`scenario-map.md` should be translated into `on_examine` effects, as
+documented in `corpus.md`.
 
 If the scenario is ambiguous about whether the `on_examine` effect
 triggers on an ordinary or rigorous examination, use your judgment: an
@@ -507,29 +572,82 @@ you use a separate reaction on `flag.set`, the reveal is deferred to
 the next turn's briefing.  The direct approach is usually preferred
 for dramatic effect, unless otherwise indicated by the scenario.
 
-### 2C. NPC dialogue guidelines
+### 2B. NPC entity-level fields
 
-For every conversational NPC, write a `dialogue_guidelines` block,
-following the spec in corpus.md.
+The following top-level entity fields apply only to NPCs (`type: "npc"`).
+Dialogue and encounter-rule behaviour are covered in §2C and §2D.
 
-The contents of this block – `personality`, contents of the `can` and
-`cannot` arrays, etc. – will be used by the GM to determine how the
-NPC talks, behaves, and shifts their attitude in response to player
-actions.  Each string should be concise, informative, and use plain
-factual language; 1 to 4 sentences typically suffices.  No
-embellishment: the GM will prettify and paraphrase.
+#### `follower_blacklist`
 
-Be clear and specific.  For example, the `cannot` array can contain
-this:
+If an NPC can become a follower (via `state_fields.following`), and the
+scenario says they refuse to enter certain rooms, add `follower_blacklist`
+to the NPC's entity definition listing room IDs they won't enter:
 
 ```json
-["will never agree to fight the spider, because secretly scared of spiders", "will not follow into the secret compartment (can't fit through flap)"]
+"korbar": {
+  "type": "npc",
+  "follower_blacklist": ["secret_compartment"]
+}
 ```
 
-The `dialogue_paths`, `will_reveal`, and `knows` fields correspond to
-the Dialogue Paths, Topics, and Knowledge descriptors prepared in §1G.
-You must provide a good description in the JSON object – this is the
-GM's main source of info on how to direct the conversation.
+When the player moves into a blacklisted room while the NPC is following,
+the engine automatically clears the NPC's `following` state and adds a
+narrative note. Apply this to any NPC that has location constraints as
+a companion.
+
+#### `combat` (multi-round combat stats)
+
+If the NPC participates in multi-round combat (entered when an encounter
+rule has `outcome: "combat"` or the player attacks it directly), add a
+`combat` block with the NPC's combat stats:
+
+```json
+"goblin_scout": {
+  "type": "npc",
+  "combat": {
+    "hp": 7,
+    "ac": 12,
+    "atk": 4,
+    "dmg": "1d6+2",
+    "initiative_mod": 2,
+    "flee_dc": 10
+  },
+  "state_fields": {
+    "current_hp": { "type": "number", "description": "Current hit points." }
+  }
+}
+```
+
+Also declare `current_hp` in `state_fields` and initialise it in
+`hard-state.json`.  See [`doc/combat.md`](../doc/combat.md) for the full
+combat system reference.
+
+An NPC can have a `combat` block, encounter rules in `behavior`, both,
+or neither.  The `combat` block governs the multi-round combat phase;
+`behavior.encounter_rules` provides one-shot encounter resolution.
+
+### 2C. NPC dialogue guidelines
+
+For every conversational NPC, write a `dialogue_guidelines` block
+following the spec in `corpus.md`.
+
+The info in this block – `personality`, the `can` and `cannot` arrays,
+etc. – guides the GM on how the NPC talks, behaves, and responds to
+the player.  Each string should be concise, informative, and factual.
+No embellishment: the GM takes care of injecting color.
+
+Example of a `cannot` array:
+
+```json
+["will never agree to fight the spider; secretly scared of spiders, but reluctant to admit it", "will not follow into the secret compartment (can't fit through flap)"]
+```
+
+The `dialogue_paths`, `will_reveal`, and `knows` fields map to the
+Dialogue Paths, Topics, and Knowledge descriptors in
+`scenario-map.md`.  The GM uses the info you supply to narrate how
+these conversations go.  Each Dialogue Path and Topic revelation
+should have at least one side-effect (for a Topic, it can be just
+setting a global flag to track the player's knowledge).
 
 Example of a fairy with a dialogue path allowing it to be flattered
 with a CHA check:
@@ -568,19 +686,28 @@ Example of a will_reveal structure:
 }
 ```
 
-### 2D. NPC behavior (combat rules)
+### 2D. NPC behavior (encounter rules)
 
-For every NPC that fights, produce a `behavior` block:
+Two conflict-resolution systems exist in MGMAI: **encounter rules**
+(one-shot resolution) and **multi-round combat** (turn-based with HP
+tracking).  This section covers encounter rules.  When an encounter
+rule uses `outcome: "combat"`, the engine starts the multi-round combat
+system instead.  For that, the NPC needs a separate `combat` block —
+see §2B and [`doc/combat.md`](../doc/combat.md) for the structure and
+fields.
 
-- **`encounter_rules`**: One rule per combat branch. Rules are evaluated
-  top-to-bottom; the first matching condition fires. To trigger combat from a
-  specific action (e.g. attacking the NPC), define an entity-scoped reaction on
-  `interaction.used` with `effects.trigger_encounter: "self"` (see Entity-scoped
-  reactions above).
+Each NPC with encounter rules should have a `behavior` block:
 
-When a combat scenario has multiple conditional branches (e.g., "if armed AND
-STR check succeeds → goblin dies" vs "if armed AND STR fails → goblin strikes
-back"), model each as a separate rule with its own `condition`:
+- **`encounter_rules`**: One rule per branch. Rules are evaluated
+  top-to-bottom; the first matching condition fires. To trigger
+  encounter rules from a specific action (e.g. attacking the NPC),
+  define an entity-scoped reaction on `interaction.used` with
+  `effects.trigger_encounter: "self"`.
+
+If a combat scenario has multiple conditional branches (e.g., "if
+armed AND STR check succeeds → goblin dies" vs "if armed AND STR fails
+→ goblin strikes back"), model each as a separate rule with its own
+`condition`:
 
 ```json
 "encounter_rules": [
@@ -631,24 +758,6 @@ For features that span multiple rooms:
 - Use `spans_rooms` to list all rooms where the feature is visible
 - List the entity in each room's `entities_present`
 
-**`follower_blacklist` (for NPCs that follow the player):**
-
-If an NPC can become a follower (via `state_fields.following`), and the
-scenario says they refuse to enter certain rooms, add `follower_blacklist`
-to the NPC's entity definition listing room IDs they won't enter:
-
-```json
-"korbar": {
-  "type": "npc",
-  "follower_blacklist": ["secret_compartment"]
-}
-```
-
-When the player moves into a blacklisted room while the NPC is following,
-the engine automatically clears the NPC's `following` state and adds a
-narrative note. Apply this to any NPC that has location constraints as
-a companion.
-
 ### 2G. Player entity
 
 Exactly one entity with `type: "player"`.
@@ -662,31 +771,23 @@ Exactly one entity with `type: "player"`.
 
 ### Step 2 validation checklist
 
-- [ ] Exactly one entity has `type: "player"`
-- [ ] Every NPC with `dialogue_guidelines` has `attitude` declared in `state_fields`
-- [ ] Every NPC with dialogue has a `dialogue_guidelines` block
-- [ ] Every NPC that fights has a `behavior` block
-- [ ] Every NPC with both dialogue AND combat has both blocks
-- [ ] `attitude_limits` on every NPC with `dialogue_guidelines`
-- [ ] NPCs that die, flee, or change state after dialogue have a
-  `dialogue.ended` reaction (entity-scoped) instead of `on_dialogue_exit`
-- [ ] Every `will_reveal` topic's `conditions` array uses valid condition strings
-- [ ] Every `set_flag` in `will_reveal` references a flag from Step 1D
-- [ ] Every `set_entity_state` in `will_reveal` references an entity that
-  has that field in `state_fields`
-- [ ] Item entities carry appropriate `tags` where the scenario implies them
 - [ ] Every item entity has a non-empty `name` (display name; required by the engine)
 - [ ] State fields for `alive` are `true` for creatures that start alive
-- [ ] No entity has `dialogue_guidelines` or `behavior` unless `type: "npc"`
-- [ ] Entities that span multiple rooms have `spans_rooms` and appear in each
-  room's `entities_present`
-- [ ] NPCs that refuse to enter certain rooms have `follower_blacklist`
-- [ ] Every entity with `hidden` in `state_fields` has `hidden` initialised
-  in `entity_states`
-- [ ] Entity `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
+- [ ] Every NPC with `dialogue_guidelines` has `attitude` in `state_fields`
+- [ ] Every NPC with `dialogue_guidelines` has `attitude_limits` declared
+- [ ] Every `will_reveal` entry uses valid condition syntax
+- [ ] Every `set_flag` in `will_reveal` sets a value matching the flag's
+      type (always boolean)
+- [ ] Every `set_entity_state` in `will_reveal` sets a field declared in the
+      target entity's `state_fields`
+- [ ] Entities that span multiple rooms have `spans_rooms` and appear in
+      each room's `entities_present` (cross-check with Step 3 once rooms exist)
+- [ ] Entity `reactions` use valid event types (see [`events.md`](events.md))
 - [ ] Entity `reactions` using `"self"` in `trigger_encounter` or
-  `trigger_dialogue` are on entities of the correct type (encounter for any,
-  dialogue for `npc` only)
+      `trigger_dialogue` are on entities of the correct type (encounter for
+      any, dialogue for `npc` only)
+- [ ] NPCs that die, flee, or change state when dialogue ends have a
+      `dialogue.ended` reaction (not the removed `on_dialogue_exit` field)
 
 ---
 
@@ -1235,7 +1336,7 @@ With `condition: null`, the event fires on first entry only (the engine tracks i
 }
 ```
 
-### 3F-2. Room reactions
+### 3G. Room reactions
 
 Reactions on rooms fire when the player is in that room. Use them for
 event-driven triggers that respond to game events (flag changes, check
@@ -1295,12 +1396,12 @@ immediate follow-up check within a single action (e.g., a second stat check
 right after the first), use `chain_check` on the success/failure result
 (see Step 3E).
 
-### 3G. On-examine events
+### 3H. On-examine events
 
 For examine-gated stat checks or conditional discoveries:
 
 **Note:** Earlier versions of this document mistakenly labelled this
-section "Step 6". The correct location is Step 3G.
+section "Step 6". The correct location is Step 3H.
 
 On-examine events fire when the player uses the `examine` (or `examine
 (rigorous)`) action. They can be placed on rooms or on individual
@@ -1413,7 +1514,7 @@ The `condition` uses event-type conditions (`entity:<id>.<field>`).
 When the scenario says "examining the statue, the player notices...",
 place the `on_examine` on the **statue entity**, not the room.  When
 the scenario says "examining the chamber, the player notices...", place
-it on the **room**.  See § 2F for the full distinction.
+it on the **room** (see Common Pitfall #23 for details).
 
 #### Multiple on_examine events on one target
 
@@ -1439,10 +1540,6 @@ deductions).
 - [ ] Every `set_entity_state` references an entity with that field in
   `state_fields`
 - [ ] Every `set_flag` references a flag name from Step 1D
-- [ ] Hidden exits have a flag-based reveal pattern (companion interaction
-  sets flag, exit conditions require flag)
-- [ ] One-way exits have a separate exit to go back (or a narrative reason
-  they're permanently one-way)
 - [ ] Every condition object follows the condition object format — no bare
   condition strings outside `any`/`all` arrays
 - [ ] Every interaction with a check also has `success` and optionally
@@ -1452,9 +1549,9 @@ deductions).
 - [ ] Every `on_examine` event without a `check` has `result`
 - [ ] Interactions that should accept a `using` item have a
   `parameter_signature` defining accepted types
-- [ ] If interactions reference `using_results`, each key is a valid entity ID
-  or `"*"` wildcard
-- [ ] Room `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
+- [ ] If interactions reference `using_results`, each key is a valid entity
+  ID or `"*"` wildcard
+- [ ] Room `reactions` use valid event types (see [`events.md`](events.md))
 - [ ] Room `reactions` with `event:` conditions reference valid context keys
   for their event type (see [`events.md`](events.md))
 
@@ -1465,8 +1562,10 @@ deductions).
 **Input:** Mechanic list from Step 1 + entities/rooms from Steps 2-3.
 **Output:** The full `"mechanics"` block for `corpus.json`.
 
-Two kinds of mechanics live here: encounters and game-over conditions.
-Reaction-only mechanics (adventure-wide state-based triggers) also belong here.
+Two structural kinds of mechanics live here: game-over conditions (win/lose),
+and mechanics containing encounter rules and/or reactions (adventure-wide
+state-based triggers).  A mechanic with only reactions is simply a mechanic
+without encounter rules, not a distinct type.
 
 ### 4A. Encounters
 
@@ -1516,6 +1615,11 @@ based on which room triggered them (e.g., different fall damage by room).
 | `on_success` | BranchOutcome | Branch when check/roll succeeds |
 | `on_failure` | BranchOutcome | Branch when check/roll fails |
 
+> **When `outcome` is `"combat"`:** The engine starts multi-round combat.
+> The NPC must have a `combat` block with HP, AC, attack bonus, initiative,
+> etc. — see §2B and [`doc/combat.md`](../doc/combat.md).  Without it, the
+> engine will error.
+
 `player_damage` is available at both the rule level (applies unconditionally
 when the rule fires) and the branch level (overrides the rule-level value).
 The engine rolls the dice expression using the active resolution system.
@@ -1556,11 +1660,12 @@ For multi-step win conditions, use `"all"` to combine separate flags. Each
 flag should be set by a different interaction, exit, or encounter along the
 critical path.
 
-### 4C. Reaction-only mechanics
+### 4C. Mechanics with reactions only
 
 For adventure-wide state-based triggers that aren't tied to a specific room or
-entity, create a mechanic with only a `reactions` array (no `type`, `rules`, or
-`trigger_id`). See [`events.md`](events.md) for the full list of event types
+entity, create a mechanic that carries a `reactions` array without `rules` or a
+`type`.  This is not a distinct structural type — it is simply a mechanic where
+`rules` is absent. See [`events.md`](events.md) for the full list of event types
 and context keys.
 
 ```json
@@ -1583,13 +1688,13 @@ and context keys.
 }
 ```
 
-Use reaction-only mechanics when:
+Use mechanics with reactions only when:
 - The trigger is adventure-wide (not scoped to a room or entity)
 - The trigger responds to state changes (flags, stats, attitudes) rather than
   specific actions
 - Multiple reactions share a logical grouping (e.g., all environmental effects)
 
-#### Chained encounters via reaction-only mechanics
+#### Chained encounters via a mechanic with reactions
 
 A reaction can trigger an encounter whose outcome sets a flag, and a second
 reaction can fire on that flag to trigger another encounter. Keep chains short
@@ -1643,19 +1748,17 @@ Rules:
 
 ### Step 4 validation checklist
 
-- [ ] Every encounter from the scenario is represented
-- [ ] Every win condition is a mechanic with `type: "win"`
-- [ ] Every loss condition is a mechanic with `type: "lose"` or `"death"`
 - [ ] Every mechanic referenced by a `trigger_encounter` exists in the block
 - [ ] Every `trigger_id` is unique across all mechanics
 - [ ] Game-over mechanics have `condition`, `narrative`, and `trigger_id`
 - [ ] Encounter mechanics have `rules` (not `condition`/`type`/`trigger_id`)
-- [ ] Reaction-only mechanics have `reactions` only (no `type`/`rules`/`trigger_id`)
+- [ ] Mechanics with `reactions` but no `type` or `rules` are valid
+      (adventure-wide event watchers)
 - [ ] If stats block present: only stats actually used are defined
 - [ ] If stats block absent: no stat_check interactions or stat: conditions
-  exist in rooms/entities
-- [ ] Reaction-only mechanics have `reactions` but no `type` or `rules`
-- [ ] Reaction-only mechanic `reactions` use valid event types (see [`events.md`](events.md)) and effect fields
+      exist in rooms/entities
+- [ ] Mechanic `reactions` use valid event types (see
+      [`events.md`](events.md)) and effect fields
 
 ---
 
@@ -1731,18 +1834,21 @@ Follow this exact structure:
 ### Step 5 validation checklist
 
 - [ ] Every room in corpus has a `room_states` entry with `visited: false`
-- [ ] Every entity with `state_fields` in corpus has an `entity_states` entry
-  with every field initialised
+- [ ] Every entity with `state_fields` in corpus has an `entity_states`
+      entry with every field initialised
+- [ ] Every entity with `hidden` in `state_fields` has `hidden` initialised
+      in `entity_states`
 - [ ] Every flag name used anywhere in the corpus appears in `flags`
 - [ ] `player.location` references the room with `is_start_room: true`
 - [ ] No entity in `player.inventory` also appears in a room's
-  `entities_present` at start
+      `entities_present` at start
 - [ ] If corpus has `stats`: `player.stats` is present, and every key matches
-  a key in `stats.definitions`
+      a key in `stats.definitions`
 - [ ] If corpus has no `stats`: `player.stats` is absent
-- [ ] Every NPC with `dialogue_guidelines` has `"attitude"` set to the value from the NPC's
-  `attitude_limits.initial` (default 0) in `entity_states`
-- [ ] Every NPC with `dialogue_guidelines` has `attitude` in both `state_fields` and `entity_states`
+- [ ] Every NPC with `dialogue_guidelines` has `attitude` set to the value
+      from the NPC's `attitude_limits.initial` (default 0) in `entity_states`
+- [ ] Every NPC with `dialogue_guidelines` has `attitude` in both
+      `state_fields` and `entity_states`
 - [ ] `turn_count` is `0`
 - [ ] `game_over` is `null`
 
@@ -2093,8 +2199,8 @@ All IDs must be **snake_case, lowercase ASCII**:
     entity's `on_examine` events fire. Room `on_examine` events fire
     only when the player examines the room itself. If the scenario
     says "examining the lever reveals a secret catch", the on_examine
-    event must go on the lever entity, not on the room.  See § Step 2F
-    for guidance.
+    event must go on the lever entity, not on the room.  See § 3H for entity vs. room placement
+    rules.
 
 24. **Examine-gated discoveries written as interactions**: Do not model
     discoveries the player makes by *looking* ("examine the pile",

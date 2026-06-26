@@ -645,7 +645,7 @@ The `guardian_attack` encounter has a rule whose success branch sets `guardian_d
 }
 ```
 
-**Reaction-only mechanic (adventure-wide trigger):**
+**Mechanic with reactions (adventure-wide trigger):**
 ```json
 "global_reactions": {
   "id": "global_reactions",
@@ -979,10 +979,12 @@ Named mechanics are rules involving aspects of game state not tied to specific
 rooms or entities. They are referenced by exits, interactions, and reactions.
 Game-over conditions live here too.
 
-A mechanic can be one of three things:
-- An **encounter** (has `rules`)
+A mechanic can be:
 - A **game-over condition** (has `type`, `condition`, `trigger_id`)
-- A **reaction-only mechanic** (has `reactions` only — for adventure-wide state-based triggers)
+- A **mechanic containing rules and/or reactions** — a named bundle
+  of global rules that can contain encounter rules (`rules`),
+  reactions (`reactions`), or both.  A mechanic with only reactions is
+  simply a mechanic without encounter rules, not a distinct type.
 
 At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be present.
 
@@ -1046,11 +1048,12 @@ rule-level value. `outcome: "combat"` starts the multi-round combat system.
 | `narrative`   | string | Canonical ending prose passed to LLM Call 2 via `triggered_narration`. |
 | `trigger_id`  | string | Set as `game_over.trigger` in hard state; for debugging and save analysis. |
 
-### Reaction-only mechanic
+### Mechanic with reactions only
 
-A mechanic with only `reactions` (no `type`, `rules`, or `trigger_id`) is valid.
-Use this for adventure-wide state-based reactions that don't need encounter rules
-and aren't tied to a specific room or entity.
+A mechanic that carries only `reactions` (no `type`, `rules`, or `trigger_id`)
+is valid.  This is not a distinct structural type — it is simply a mechanic
+without encounter rules.  Use this for adventure-wide state-based reactions
+that don't need encounter rules and aren't tied to a specific room or entity.
 
 ```json
 {
@@ -1063,7 +1066,8 @@ and aren't tied to a specific room or entity.
 ```
 
 The mechanic's `condition` field is only used for game-over and encounter
-mechanics. Reaction-only mechanics use per-reaction `condition` fields instead.
+mechanics.  Mechanics with only reactions use per-reaction `condition` fields
+instead.
 
 ---
 
