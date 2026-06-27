@@ -195,9 +195,14 @@ For each mechanic, specify:
 - **Mechanic ID** — assign a globally-unique ID.
 - **Kind** — either game-over condition or mechanic.
 - **Description** — how the mechanic works, its trigger, and its
-  effects (e.g., damage dealt, flags set).  Must give enough info to
-  write the JSON later.  Can reference flag IDs (§1D), entity tags
-  (§1G), and room/entity state IDs.
+  effects (e.g., damage dealt, flags set).
+  
+Although the description you provide here is *textual* (not rigorous
+JSON), you should be as clear as possible about the rooms, entities,
+or other game components involved.  Try to reference specific flag IDs
+(§1D), entity tags (§1G), room/entity state IDs, etc.  This serves to
+map out the relations between the different parts of the adventure.
+The same goes for all other descriptions in the Scenario Map.
 
 #### When to use a mechanic vs. a room/entity effect
 
@@ -246,7 +251,9 @@ Revisit the room list, and add the following info to each room:
   action, a global flag set/cleared, a dialogue event, etc.; (ii) any
   additional stat checks or other gating for the reaction to trigger;
   and (iii) the consequences.  These descriptions should be in plain
-  text, but give enough info to form a JSON object later.
+  text, but be as specific as possible.  For example, if any other
+  entity or room is involved, state their IDs; if the reaction depends
+  on an entity's state, name the specific state field.
 
 - **State Fields** — assign a room-unique ID for each mutable property
   of the room, and specify the initial value (boolean, number, or
@@ -363,12 +370,11 @@ For NPCs, also add descriptions for the following:
   record whatever info is provided.
 
 - **Behavior** — if the NPC can fight, enumerate its encounter rules.
-  Encounter rules specify the different ways a combat encounter might
-  unfold, either when the player attacks the NPC, or vice versa (e.g.,
-  via a reaction).  Each rule specifies a set of conditions (e.g.,
-  "player has a weapon and NPC is hostile"), and the outcome (e.g.,
-  "launch multi-turn combat").  The first encounter rule with matching
-  conditions is dispatched.
+  Encounter rules specify the ways a combat encounter might unfold,
+  either when the player attacks the NPC, or vice versa.  Each rule
+  specifies a set of conditions (e.g., "player has a weapon and NPC is
+  hostile"), and the outcome (e.g., "launch multi-turn combat").  The
+  first encounter rule with matching conditions is dispatched.
 
   Common encounter rule outcomes are:
   - begin multi-round combat (NPC needs combat stats)
@@ -402,16 +408,15 @@ For NPCs, also add descriptions for the following:
   path, such a topic usually has no immediate mechanical effect.
 
   Example: a guard may have a dialogue path `bribe_to_enter` (player
-  pays to get past — a mechanic), and a will-reveal topic
-  `recent_visitors` (reveals which visitors have come through — just
-  useful info).
+  pays to get past — a mechanic), and a topic `recent_visitors`
+  (reveals which visitors have come through — just useful info).
 
-  Describe (i) the gating conditions for the NPC to reveal info on the
-  topic, (ii) what the NPC conveys (non-verbatim), and (iii) the
-  consequences if any.  Regarding consequences: best practice is to
-  set a global flag (§1D) to track the player's knowledge (different
-  NPCs giving similar info can set the same flag).  Will-reveal topics
-  can also alter entity state fields, but cannot trigger reactions.
+  Describe (i) the gating conditions for the NPC to discuss the topic,
+  (ii) what the NPC conveys (non-verbatim), and (iii) consequences.
+  Regarding consequences: best practice is to set a global flag (§1D)
+  to track the player's knowledge (different NPCs giving similar info
+  can set the same flag).  Will-reveal topics can also alter entity
+  state fields, but cannot trigger reactions.
 
 - **Knowledge** — for dialogue, if the NPC talks.
   A list of incidental, non-plot-relevant bits of knowledge possessed
@@ -518,11 +523,9 @@ the Scenario Map: id, title, credits (author, source, license),
 introduction, and atmosphere (setting, tone).
 
 Next, construct `flags_declared` from the list of Global Flags in the
-Scenario Map.  This is just used for validation/debugging.
-
-If, during subsequent JSON implementation of various game mechanics,
-you find it necessary to add extra global flags, be sure to update
-`flags_declared`.
+Scenario Map.  This is just used for validation/debugging.  If, during
+subsequent JSON implementation, you find it necessary to add extra
+global flags, keep `flags_declared` updated.
 
 ### 2B. Entity Data
 
@@ -532,6 +535,12 @@ Scenario Map, following the corpus schema (§2 Entities).
 Here are general tips for writing the JSON objects, followed by
 specific tips for items (§2C), features (§2D), the player (§2E), and
 NPCs (§2F).  NPCs are the most complicated, so write them carefully.
+
+While constructing the JSON object, you may find it necessary to
+deviate from the Scenario Map.  Most commonly, this involves adding
+additional elements (flags, entity/room state fields, reactions, etc.)
+that are necessary but not forseen.  Remember these deviations; we
+will revise the Scenario Map (§2H) before progressing to Step 3.
 
 #### Description
 
@@ -546,19 +555,17 @@ contradicting the scenario.
 Example: "A massive black spider, about the size of a large dog, with
 eight glittering red eyes, sharp mandibles, and eight hairy legs".
 
-Do not use excessively poetic language; the GM is responsible for
-making the narration atmospheric.
+Do not be overly poetic; the GM handles atmospheric narration.
 
 Avoid situational framing that can be invalidated during the game:
 e.g., "It lurks in the shadows..." is no good if the creature can be
-fought and killed.
+killed.
 
 #### Interactions
 
-The Scenario Map may describe a set of special interactions – discrete
-non-generic actions the player can perform on the entity.  For each
-interaction, construct an interaction object and put it in the
-`interactions` array.
+The Scenario Map may have planned out special interactions – discrete
+non-generic actions the player can perform on the entity.  For each,
+construct an interaction object to put into `interactions`.
 
 Example: forcing a stuck door.  Bare-handed is hard; a crowbar helps;
 any improvised tool is somewhere in between:
@@ -598,35 +605,30 @@ any improvised tool is somewhere in between:
 
 Notes:
 
-- If the action always succeeds (e.g., flipping a clearly visible
-  switch), use `result` directly with no `check`.
+- If the action always succeeds (e.g., flipping a simple switch), use
+  `result` directly with no `check`.
 
-- Use `condition` to restrict access — the interaction is only
-  presented to the player when the condition is met.  For example, an
-  "open" interaction on a locked chest should be gated on
-  `entity:chest.locked == false`.
+- Use `condition` to restrict access.  The interaction is only
+  available when the condition is met: e.g., an "open" interaction on
+  a chest can be gated on `entity:chest.locked == false`.
 
-- Use `skip_check_if` to bypass both visibility gating and the check
-  entirely.  When the `skip_check_if` condition is met, the
-  interaction is available regardless of `condition`, and succeeds
-  without a roll.
+- Use `skip_check_if` to bypass gating and checks entirely.  When
+  `skip_check_if` is met, the interaction is available and succeeds.
 
-- Set `repeatable: true` for tasks the player may retry after failing
-  (bashing a door, searching a desk).  Use false for one-shot attempts
-  where a second try makes no narrative sense.  The engine tracks
-  `repeatable: false` checks and rejects repeats automatically.
+- Set `repeatable: true` for tasks the player may retry after failing.
+  Use false for one-shot attempts where a second try makes no
+  narrative sense.  If the scenario and Scenario Map are ambiguous,
+  use your own judgment and note it in your report.
 
 - The `failure` field is optional.  If you omit it on a checked
   interaction, the engine returns a generic "nothing happens"
   narrative on failure.
 
 - `parameter_signature` declares what the `target` and `using` fields
-  may reference.  Valid types are `"entity"`, `"soft_item"`, and
-  `"room"`.  For example, `attack` accepts `target: ["entity"]` and
-  `using: ["entity", "soft_item"]` (weapons).  A "recharge"
-  interaction on a magical device might accept `using: ["entity",
-  "soft_item"]` for a power source.  Without a signature, the engine
-  accepts any valid target and any in-inventory `using` item.
+  may reference.  For example, a "recharge" interaction on a magical
+  device might accept `using: ["entity", "soft_item"]` for a power
+  source.  Without a signature, the engine accepts any valid target
+  and any in-inventory `using` item.
 
 - When an interaction behaves differently depending on what the player
   uses, define a `using_results` map.  Each key is an item entity ID
@@ -1028,6 +1030,11 @@ Example of a will_reveal structure:
 > TBD: instructions to generate a list of soft items for
 > container-type features, and NPCs...
 
+### 2H. Cleanup
+
+> TBD: instructions to keep global flags up to date, and revise
+> Scenario Map to reflect updates...
+
 
 ---
 
@@ -1237,12 +1244,13 @@ This reaction lives on the source room, which contains the
 the traversal failure) and takes damage (from the reaction).
 
 As an exception, when the player flees combat by using `move`,
-`traversal.succeeded` reactions are **not** evaluated, so do not rely
-on such reactions for cleanup that must always fire on combat escape;
-use a `room.entered` reaction on the destination room instead.
+`traversal.succeeded` reactions are not evaluated, so do not rely on
+such reactions for cleanup that must always fire on combat escape.
+Use a `room.entered` reaction on the destination room instead.
 
 Since `room.entered` fires on all arrivals, regardless of origin, some
-trickery is needed to react only arrivals from a specific entrance:
+trickery is needed if you want to react to arrivals from a specific
+entrance:
 
 - Use `traversal.succeeded` on the source room with a condition on
   `event:exit_id`.  This fires with the player still in the source
@@ -1266,7 +1274,6 @@ not a soft item.
 
 Rooms can have special interactions, similar to entities (see §2B,
 above).
-
 
 ---
 
@@ -1302,15 +1309,54 @@ above).
 
 ## Step 4: Build Mechanics
 
-**Input:** Mechanic list from Step 1 + entities/rooms from Steps 2-3.
-**Output:** The full `"mechanics"` block for `corpus.json`.
+**Input:** Scenario Map + Corpus draft from step 3.
+**Output:** The full `mechanics` block for the corpus.
 
-Two structural kinds of mechanics live here: game-over conditions (win/lose),
-and mechanics containing encounter rules and/or reactions (adventure-wide
-state-based triggers).  A mechanic with only reactions is simply a mechanic
-without encounter rules, not a distinct type.
+Two structural kinds of mechanics live here: game-over conditions
+(win/lose), and mechanics containing encounter rules and/or reactions
+(adventure-wide state-based triggers).
 
-### 4A. Encounters
+### 4A. Game-over conditions
+
+Win/loss conditions should be mechanic entries with `type: "win"` or
+`"lose"`.  Examples:
+
+```json
+"completed_quest": {
+  "id": "completed_quest",
+  "type": "win",
+  "description": "Player completes the main quest.",
+  "condition": {
+    "all": [
+      "flag:artifact_retrieved == true",
+      "flag:player_escaped == true"
+    ]
+  },
+  "narrative": "You emerge into the morning light, the ancient artifact clutched to your chest. Your quest is complete.",
+  "trigger_id": "quest_complete"
+}
+```
+
+```json
+"death_by_fall": {
+  "id": "death_by_fall",
+  "type": "lose",
+  "description": "Player falls into the chasm.",
+  "condition": { "require": "flag:fallen_into_chasm == true" },
+  "narrative": "You lose your footing and tumble into the darkness below. The fall is long, and then there is nothing.",
+  "trigger_id": "chasm_fall"
+}
+```
+
+For multi-step win conditions, use `"all"` to combine separate
+flags. Each flag should be set by a different interaction, exit, or
+encounter along the critical path.
+
+>> FIXME: HP to 0 needs to be explicitly set up, or automatic? <<
+
+
+
+### 4B. Encounters
 
 Encounters are referenced by exits (via `trigger_encounter`) or interactions.
 They follow the same rule structure as NPC behavior encounter_rules:
@@ -1366,42 +1412,6 @@ based on which room triggered them (e.g., different fall damage by room).
 `player_damage` is available at both the rule level (applies unconditionally
 when the rule fires) and the branch level (overrides the rule-level value).
 The engine rolls the dice expression using the active resolution system.
-
-### 4B. Game-over conditions
-
-Model win and loss conditions as mechanic entries with `type: "win"` or
-`"lose"`:
-
-```json
-"completed_quest": {
-  "id": "completed_quest",
-  "type": "win",
-  "description": "Player completes the main quest.",
-  "condition": {
-    "all": [
-      "flag:artifact_retrieved == true",
-      "flag:player_escaped == true"
-    ]
-  },
-  "narrative": "You emerge into the morning light, the ancient artifact clutched to your chest. Your quest is complete.",
-  "trigger_id": "quest_complete"
-}
-```
-
-```json
-"death_by_fall": {
-  "id": "death_by_fall",
-  "type": "lose",
-  "description": "Player falls into the chasm.",
-  "condition": { "require": "flag:fallen_into_chasm == true" },
-  "narrative": "You lose your footing and tumble into the darkness below. The fall is long, and then there is nothing.",
-  "trigger_id": "chasm_fall"
-}
-```
-
-For multi-step win conditions, use `"all"` to combine separate flags. Each
-flag should be set by a different interaction, exit, or encounter along the
-critical path.
 
 ### 4C. Mechanics with reactions only
 
