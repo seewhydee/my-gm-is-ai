@@ -139,7 +139,7 @@ List out every distinct entity mentioned in the scenario, specifying:
 - **Type** — one of:
   - `player` — the player character (exactly one)
   - `npc` — character that can talk or fight
-  - `feature` — environmental object (walls, piles, handkerchiefs)
+  - `feature` — immovable environmental object
   - `item` — object that can be picked up
 
 - **Description** — a note about what this entity is, its location at
@@ -199,7 +199,7 @@ For each mechanic, specify:
   write the JSON later.  Can reference flag IDs (§1D), entity tags
   (§1G), and room/entity state IDs.
 
-#### When to use a mechanic vs. a room/entity reaction
+#### When to use a mechanic vs. a room/entity effect
 
 | Situation | Use |
 |---|---|
@@ -216,7 +216,7 @@ Revisit the room list, and add the following info to each room:
 - **Exits** — every way out.  For each, assign a room-unique exit ID,
   give a brief description (e.g., "through the north doorway"), and
   specify the destination room ID (§1B).
-  
+
   Optionally, describe (i) a set of traversal conditions (stat check
   or other condition to traverse the exit), and/or (ii) conditions
   under which the exit is hidden (e.g., a secret door revealed only
@@ -228,7 +228,7 @@ Revisit the room list, and add the following info to each room:
 - **Special interactions** — assign a room-unique ID to any special
   interaction the player can have with the *room* (not an entity inside
   the room): e.g., shouting out a magic command word.
-  
+
   DO NOT define interactions similar to these generic player actions:
   `move` (traversing rooms), `examine` (cursory or in-depth study), or
   `transfer` (moving items to/from a container or location).
@@ -236,7 +236,7 @@ Revisit the room list, and add the following info to each room:
 - **Reactions** — describe any consequential event-driven reaction
   tied to the *room* (not an entity in the room).  Each reaction can
   occur only if the player is in the room.
-  
+
   Examples:
   - combat triggered when the player enters
   - force-field blocks an exit traversal
@@ -270,10 +270,14 @@ defined, or to be defined later).
 
 Revisit the entity list, and add the following to each entity:
 
-- **Tags** — any semantic features relevant to gameplay.  Tags are
-  defined at your discretion based on adventure requirements (e.g.,
-  items with `heavy` tag can trigger a pressure plate).  Do not define
-  game-irrelevant tags.
+- **Tags** — any semantic features relevant to gameplay.
+  Assign the special tag `container` to any entity that acts as a
+  container with open/close functionality (such as a chest – but not a
+  table with items on top, which cannot open/close).
+
+  Other tags are defined at your discretion based on adventure
+  requirements (e.g., items with `heavy` tag can trigger a pressure
+  plate).  Do not define game-irrelevant tags.
 
 - **Equippable?** — if this entity is an item that can be equipped
   (weapon, armor, shield, ring, etc.), write a textual description of
@@ -283,30 +287,42 @@ Revisit the entity list, and add the following to each entity:
   not structure as JSON.
 
 - **Contained Entities** — if this entity contains other entities
-  (e.g., a drawer holding a key), list the entity IDs inside.  Use the
-  descriptions in §1C as a guide.
+  (e.g., a drawer holding a key, a rubbish pile holding a gem), list
+  the entity IDs inside.  Use the descriptions in §1C as a guide.
 
 - **Special interactions** — for every special interaction the player
   can have with the entity (e.g., pulling a lever), assign a
-  entity-unique interaction ID.  Include the `attack` interaction if
-  the entity can be attacked.
-  
-  DO NOT define interactions similar to the following generic player
-  actions: `examine` (cursory or in-depth study), `talk` (conversing
-  with NPC), or `transfer` (moving items to/from).
+  entity-unique interaction ID.
+
+  Include an `open` and/or `close` interaction if the entity is a
+  container that can be directly opened/closed by the player.
+
+  DO NOT define interactions for built-in generic actions: `attack`,
+  `examine`, `talk`, or `transfer`.
 
 - **State fields** — list each scenario-relevant mutable property the
   entity has, and its initial value (boolean, number, or string).
-  
-  For NPCs, state fields must include `alive` (boolean), and can also
-  include `fled` (boolean, if the NPC can flee), `attitude` (number),
-  `hidden` (boolean), `following` (boolean, for NPC companions),
-  `current_hp` (number, required if the NPC has a `combat` block), and
-  custom fields.  For non-NPC entities, state fields can be `hidden`
-  (boolean), or custom (e.g., `opened`, `locked`, `lit`).
+  Some state fields, listed below, have special engine effects, but
+  you can also define custom ones.
 
-  The boolean state field `hidden` must be set if the entity is
-  concealed from the player, either at game start or subsequently.
+  NPC state fields:
+  - `alive` (boolean) is required
+  - `fled` (boolean) if able to flee
+  - `attitude` (number) if able to change attitude to the player
+  - `hidden` (boolean) if concealable; see below
+  - `following` (boolean) if a possible companion
+  - `current_hp` (number) if able to engage in combat
+  - custom state fields (e.g., `charmed`)
+
+  Non-NPC state fields:
+  - `hidden` (boolean) if concealable; see below
+  - `open` (boolean) for container with open/close functionality,
+    with a `container` tag; initial value is typically false
+  - custom state fields (e.g., `locked`, `lit`)
+
+  The `hidden` state field denotes explicit concealment (e.g., a thief
+  hiding in shadows, or sword buried in rubble).  Do not use it for
+  items that are out of view due to being inside a closed container.
 
   For each custom field, note down its meaning.
 
@@ -318,7 +334,7 @@ Revisit the entity list, and add the following to each entity:
   - picking up an item fires a magic effect
   - NPC attitude going too low trigers combat
   - exiting dialogue alters an NPC's state (e.g., it dies)
-  
+
   Assign each reaction a globally-unique reaction ID.  Then, describe
   (i) the trigger event: a special interaction, a standard player
   action, a global flag set/cleared, a dialogue event, etc.; (ii) any
@@ -370,10 +386,10 @@ For NPCs, also add descriptions for the following:
 - **Dialogue Paths** — for dialogue, if the NPC talks.
   Assign an NPC-unique ID for each special line of conversation the
   player can engage the NPC with.  Must have plot/gameplay relevance.
-  
+
   Examples: bribing a guard to pass a gate, or convincing a prince
   that his vizier is evil.
-  
+
   Describe (i) the conditions for the dialogue path to be available,
   (ii) any gating (e.g., stat check), and how the NPC reacts
   (non-verbatim) if successful/unsuccessful, and (iii) the effects of
@@ -389,7 +405,7 @@ For NPCs, also add descriptions for the following:
   pays to get past — a mechanic), and a will-reveal topic
   `recent_visitors` (reveals which visitors have come through — just
   useful info).
-  
+
   Describe (i) the gating conditions for the NPC to reveal info on the
   topic, (ii) what the NPC conveys (non-verbatim), and (iii) the
   consequences if any.  Regarding consequences: best practice is to
@@ -463,6 +479,8 @@ catching gaps here avoids rework downstream.
       or more entities with that tag defined.
 - [ ] Every entity with `hidden: true` at start has a planned
       mechanism to unhide it (otherwise it is permanently invisible)
+- [ ] Every container-like entity has the `container` tag, and the
+      `open` state field defined
 
 #### Mechanics
 
@@ -513,7 +531,7 @@ Scenario Map, following the corpus schema (§2 Entities).
 
 Here are general tips for writing the JSON objects, followed by
 specific tips for items (§2C), features (§2D), the player (§2E), and
-NPCs (§2F).  NPCs are the most complicated.
+NPCs (§2F).  NPCs are the most complicated, so write them carefully.
 
 #### Description
 
@@ -529,19 +547,101 @@ Example: "A massive black spider, about the size of a large dog, with
 eight glittering red eyes, sharp mandibles, and eight hairy legs".
 
 Do not use excessively poetic language; the GM is responsible for
-turning the description into atmospheric narration.
+making the narration atmospheric.
 
 Avoid situational framing that can be invalidated during the game:
 e.g., "It lurks in the shadows..." is no good if the creature can be
 fought and killed.
 
+#### Interactions
+
+The Scenario Map may describe a set of special interactions – discrete
+non-generic actions the player can perform on the entity.  For each
+interaction, construct an interaction object and put it in the
+`interactions` array.  An interaction object tells the engine how to
+process the interaction: evaluating conditions, rolling checks, and
+applying results.
+
+Example: forcing a stuck door.  Bare-handed is hard; a crowbar helps;
+any improvised tool is somewhere in between:
+
+```json
+{
+  "id": "force_door",
+  "label": "Force door open",
+  "description": "Shoulder the door until the frame splinters.",
+  "check": {
+    "type": "stat_check",
+    "stat": "STR",
+    "dc": 18,
+    "repeatable": true
+  },
+  "success": {
+    "narrative": "The door bursts open with a crash.",
+    "set_flag": { "door_forced": true }
+  },
+  "failure": {
+    "narrative": "The door rattles but holds firm."
+  },
+  "using_results": {
+    "crowbar": {
+      "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+      "success": { "narrative": "You wedge the crowbar into the frame and lever the door open.", "set_flag": { "door_forced": true } },
+      "failure": { "narrative": "The crowbar slips, but the frame groans." }
+    },
+    "*": {
+      "check": { "type": "stat_check", "stat": "STR", "dc": 15, "repeatable": true },
+      "success": { "narrative": "You bash the door with whatever you have at hand and it yields.", "set_flag": { "door_forced": true } },
+      "failure": { "narrative": "Your improvised tool does little damage to the stout door." }
+    }
+  }
+}
+```
+
+Notes:
+
+- If the action always succeeds (e.g., flipping a clearly visible
+  switch), use `result` directly with no `check`.
+
+- Use `condition` to restrict access — the interaction is only
+  presented to the player when the condition is met.  For example, an
+  "open" interaction on a locked chest should be gated on
+  `entity:chest.locked == false`.
+
+- Use `skip_check_if` to bypass both visibility gating and the check
+  entirely.  When the `skip_check_if` condition is met, the
+  interaction is available regardless of `condition`, and succeeds
+  without a roll.
+
+- Set `repeatable: true` for tasks the player may retry after failing
+  (bashing a door, searching a desk).  Use false for one-shot attempts
+  where a second try makes no narrative sense.  The engine tracks
+  `repeatable: false` checks and rejects repeats automatically.
+
+- The `failure` field is optional.  If you omit it on a checked
+  interaction, the engine returns a generic "nothing happens"
+  narrative on failure.
+
+- `parameter_signature` declares what the `target` and `using` fields
+  may reference.  Valid types are `"entity"`, `"soft_item"`, and
+  `"room"`.  For example, `attack` accepts `target: ["entity"]` and
+  `using: ["entity", "soft_item"]` (weapons).  A "recharge"
+  interaction on a magical device might accept `using: ["entity",
+  "soft_item"]` for a power source.  Without a signature, the engine
+  accepts any valid target and any in-inventory `using` item.
+
+- When an interaction behaves differently depending on what the player
+  uses, define a `using_results` map.  Each key is an item entity ID
+  (not soft-item name); the special key `"*"` matches any `using`
+  value not explicitly listed.  The engine substitutes the matched
+  override for the interaction's `check`, `success`, `failure`, and
+  `result` — it replaces them entirely, it does not merge.
+
 #### State fields
 
 When generating the entity's `state_fields`, refer to the state fields
-planned out in the Scenario Map.  Specify the initial value, and add a
-terse description – the GM uses this to infer what the field means.
-Each field must be one of the supported types: `boolean`, `number`, or
-`string`.
+planned out in the Scenario Map.  The description should be terse but
+informative – the GM uses this to infer what the field means.
 
 Example:
 
@@ -554,10 +654,12 @@ Example:
 }
 ```
 
-If an entity is initially concealed (a key in a drawer, a hiding
-thief, etc.), it MUST have a `hidden` state field.  This field is
-handled specially by the engine: when true, the entity is concealed
-(even from the GM) to avoid leakage.
+If an entity is concealed (initially, or subsequently in the
+adventure), it must have a `hidden` state field: e.g., a lurking
+enemy, or a sword in long grass.  When `hidden` is true, the engine
+omits the entity even from the GM (to avoid leakage).  However,
+`hidden` does not apply to entities masked by being in a closed
+container; that case is handled differently (see Containers, below).
 
 #### Entity reactions
 
@@ -610,7 +712,8 @@ ordinary examination suffices if the discovery is made just by
 looking, but a rigorous examination is needed if it involves a
 physical search.  Note how you resolved the ambiguity in your report.
 
-Often, `on_examine` is used to reveal a hidden entity:
+Often, `on_examine` is used to reveal a hidden entity, possibly gated
+by a stat check:
 
 ```json
 {
@@ -637,6 +740,17 @@ you use a separate reaction on `flag.set`, the reveal is deferred to
 the next turn's briefing.  The direct approach is usually preferred
 for dramatic effect, unless otherwise indicated by the scenario.
 
+For containers (see below), examination should not open the container
+as an effect.  Opening should be an explicit player action (usually
+implemented as an interaction type on the container entity).  Even a
+rigorous examination should be interpreted as a physical examination
+of the container's exterior, short of opening it.
+
+An entity can have multiple `on_examine` events. Each is evaluated
+independently in definition order, and every successful event's
+narrative is appended.  This is useful when there are multiple secrets
+to be uncovered by examining a single entity.
+
 ### 2C. Item entities
 
 For every item entity, `name` is required and should be a noun/phrase
@@ -647,13 +761,12 @@ as a last resort, numbers (e.g. "rusty sword 1").
 
 The semantic Tags listed in the Scenario Map go into the `tags` field.
 
-For equippable items, set up an `equip_block` field based on the
-textual description in the Scenario Map, following the corpus schema.
-If the scenario provides incomplete information, use your best
-judgment, and surface the issue in your task report.  Note that
-`equip_block.equip_tags` is *not* the same as the semantic tags: the
-former drive the equipment system (what can be equipped, damage
-expressions, AC, etc.).
+For equippable items, define an `equip_block` field based on the
+textual description in the Scenario Map.  If the scenario provides
+incomplete item stats, use your best judgment, and surface the issue
+in your task report.  Note that `equip_block.equip_tags` drive the
+equipment system (what can be equipped, damage expressions, AC, etc.),
+and are *not* the same as semantic tags.
 
 If a mechanic or reaction is used to gate the player picking up the
 item (e.g., STR check to pull a sword from a stone), use `take_check`
@@ -677,7 +790,7 @@ use `take_check.gating` with a flag that `success` sets:
 ```
 
 For a permanent one-attempt gate (failure locks you out), set
-`check.repeatable` to `false` instead of using `gating`.
+`check.repeatable` to `false`.
 
 ### 2D. Feature entities
 
@@ -692,24 +805,26 @@ rooms where the feature is visible.  The entity ID should be listed in
 
 #### Containers
 
-A common pattern: a `feature` entity (e.g., a chest, a cabinet)
-contains other entities (usually items) that start concealed.  The
-engine provides built-in container mechanics: when a feature entity
-has `tags: ["container"]` and declares `open` in `state_fields`, the
-engine automatically hides its `contained_entities` and `soft_items`
-when `open` is `false`, and surfaces them when `open` is `true`.
+A common pattern: an entity (usually a feature) such as a chest or
+cabinet can be opened/closed, and contains other entities (usually
+items).  The container is initially closed, so the contents are
+concealed.
 
-To model a closed-by-default container, the author only needs:
+The engine provides special support for this case:
 
-1. Set `tags: ["container"]` on the feature entity.
-2. Declare `open` in `state_fields`.
-3. Initialize `open: false` in `hard_state.entity_states`.
-4. List the starting contents in `contained_entities` (and optional
-   loose items in `soft_items`).
-5. Add an interaction that sets `open: true`, with a condition so it
-   only works while the container is closed.
+- The container entity should have a `container` tag AND `open` as a
+  state field.  When `open` is false, the engine hides its contents
+  (`contained_entities` and `soft_items`); when `open` is true, the
+  contents are surfaced.
 
-Example — a chest with a hidden gem:
+- To let the player open/close the container, give the container
+  entity interactions called `open` and `close`, which alter the
+  `open` state as an effect.
+
+- Alternatively, the container's `open` state can be altered by
+  reactions, mechanics, etc.
+
+Example — a chest containing a gem:
 
 ```json
 "chest": {
@@ -730,28 +845,28 @@ Example — a chest with a hidden gem:
         "narrative": "You lift the lid of the chest.",
         "set_entity_state": { "chest": { "open": true } }
       }
+    },
+    {
+      "id": "close",
+      "label": "Close",
+      "description": "Close the chest.",
+      "condition": { "require": "entity:chest.open == true" },
+      "result": {
+        "narrative": "You close the lid of the chest.",
+        "set_entity_state": { "chest": { "open": false } }
+      }
     }
   ]
 }
 ```
 
-The engine automatically hides the chest's contents while `open` is
-`false`, and surfaces them when `open` becomes `true`.  Any individual
-`hidden` state on a contained entity is still respected — so items can
-be individually concealed (by darkness, burial, magic, etc.) even
-inside an open container.
+Note that the `hidden` state of any individual contained entity is
+still respected.  Thus, items can remain concealed (by darkness,
+magic, etc.) even inside an open container.
 
-Soft items declared directly on a closed container entity are treated
-as inside it and are also unavailable until opened.
-
-Containers without the `open` field in `state_fields` (even if tagged
-`"container"`) are treated as default-open — their contents are always
-visible and accessible (e.g., an open shelf or a corpse).
-
-Open/close semantics without a container: doors, windows, and other
-non-container entities may still use `open` as a state field without
-the `container` tag.  The engine only applies container gating when
-*both* the tag and the state field are present.
+Doors, windows, and other non-container entities may still use `open`
+as a state field without the `container` tag.  The engine only applies
+container gating when *both* the tag and the state field are present.
 
 ### 2E. Player entity
 
@@ -932,7 +1047,7 @@ Example of a will_reveal structure:
       target entity's `state_fields`
 - [ ] Entities that span multiple rooms have `spans_rooms` and appear in
       each room's `entities_present` (cross-check with Step 3 once rooms exist)
-- [ ] Entity `reactions` use valid event types (see [`events.md`](events.md))
+- [ ] Entity `reactions` use valid event types (see `events.md`)
 - [ ] Entity `reactions` using `"self"` in `trigger_encounter` or
       `trigger_dialogue` are on entities of the correct type (encounter for
       any, dialogue for `npc` only)
@@ -1055,205 +1170,10 @@ entity (usually a feature) inside it.
   there's something interesting about the entity.  This guides them to
   examine the entity directly to get the actual discovery.
 
-
-
-
-
-
-#### Deterministic (no check)
-```json
-{
-  "id": "leave_secret_compartment",
-  "label": "Leave",
-  "description": "Squeeze back out of the secret compartment.",
-  "result": { "narrative": "You squeeze back out to the Bag Floor." }
-}
-```
-
-#### Probabilistic (with check)
-```json
-{
-  "id": "rummage_rubbish",
-  "label": "Rummage through rubbish",
-  "description": "Search through the pile of rubbish for useful items.",
-  "check": {
-    "type": "stat_check",
-    "stat": "DEX",
-    "dc": 10,
-    "repeatable": true
-  },
-  "success": {
-    "narrative": "Your hands close on something sharp — a giant toenail clipping, usable as a weapon.",
-    "add_item": "toenail_sword"
-  },
-  "failure": {
-    "narrative": "You find nothing useful."
-  }
-}
-```
-
-#### Using_results for item-specific overrides
-
-When an interaction has different outcomes depending on what the player uses,
-you may define a `using_results` map. This allows the same interaction to resolve differently based on the `using` parameter of the `interact` action:
-
-```json
-{
-  "id": "force_through_web",
-  "label": "Force through web",
-  "description": "Push through the dense webbing.",
-  "check": {
-    "type": "stat_check",
-    "stat": "STR",
-    "dc": 14,
-    "repeatable": true
-  },
-  "success": {
-    "narrative": "You force your way through the sticky webbing."
-  },
-  "failure": {
-    "narrative": "You struggle but can't break through."
-  },
-  "using_results": {
-    "toenail_sword": {
-      "check": {
-        "type": "stat_check",
-        "stat": "STR",
-        "dc": 10,
-        "repeatable": true
-      },
-      "success": {
-        "narrative": "You slash through the webbing with the sharp toenail clipping."
-      },
-      "failure": {
-        "narrative": "You hack at the webs but can't cut through."
-      }
-    }
-  }
-}
-```
-
-#### Chained checks pattern
-
-When a check result triggers a follow-up check (for escalating consequences,
-multiple stages, or branching outcomes), encode the follow-up as
-`chain_check` on the success or failure result of the first check.
-
-The typical structure is: a failed (or succeeded) check leads to a second
-check with its own success/failure branches. The second check's failure may
-set a flag that a game-over mechanic watches for, or it may simply produce
-a narrative outcome:
-
-```json
-{
-  "id": "vault_trap",
-  "label": "Disarm the vault trap",
-  "description": "Attempt to disarm the pressure plate.",
-  "check": {
-    "type": "stat_check",
-    "stat": "DEX",
-    "dc": 12,
-    "repeatable": true
-  },
-  "success": {
-    "narrative": "You carefully disable the pressure plate. The vault is safe."
-  },
-  "failure": {
-    "narrative": "The mechanism clicks. Dart shooters whir to life!",
-    "chain_check": {
-      "check": {
-        "type": "stat_check",
-        "stat": "DEX",
-        "dc": 10,
-        "repeatable": true
-      },
-      "success": {
-        "narrative": "You throw yourself aside as darts whistle past your head."
-      },
-      "failure": {
-        "narrative": "A dart catches you in the shoulder. Poison seeps into your veins.",
-        "set_flag": { "poisoned": true }
-      }
-    }
-  }
-}
-```
-
-When the chain check's final failure sets a game-over flag, pair it with
-a `lose` mechanic:
-
-```json
-"fell_to_chasm": {
-  "id": "fell_to_chasm",
-  "type": "lose",
-  "description": "Player falls into the chasm.",
-  "condition": { "require": "flag:fallen_into_chasm == true" },
-  "narrative": "You lose your footing and tumble into the darkness below.",
-  "trigger_id": "chasm_fall"
-}
-```
-
-#### Stat-check-gated attitude changes via `dialogue_paths`
-
-When a scenario calls for a CHA check (or other stat check) to mechanically change an NPC's attitude during special dialogue paths, define a `dialogue_path` in the NPC's `dialogue_guidelines`. The player uses a `talk` action with `dialogue_path` set to the path ID; the engine resolves the check
-and applies `adjust_attitude` (or other results) directly.
-
-Example: a spider that can be flattered with a CHA check to improve attitude:
-
-```json
-"dialogue_paths": {
-  "flatter": {
-    "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
-    "condition": { "require": "attitude:spider < 0" },
-    "check": {
-      "type": "stat_check",
-      "stat": "CHA",
-      "dc": 12,
-      "repeatable": true
-    },
-    "success": {
-      "narrative": "The spider preens at your praise.",
-      "adjust_attitude": { "spider": 1 }
-    }
-  }
-}
-```
-
-**NPC action blocking pattern:**
-
-When an NPC's presence or attitude should block the player from using an
-interaction or examining a room, add a `condition` to the interaction that
-checks the NPC's attitude. If the NPC has low attitude and is present, the
-interaction is unavailable (or produces a different result):
-
-```json
-{
-  "id": "move_handkerchief",
-  "label": "Haul aside the handkerchief",
-  "description": "Pull back the damp handkerchief to see what's underneath.",
-  "condition": {
-    "any": [
-      { "require": "entity:korbar.alive == false" },
-      "attitude:korbar >= 3",
-      "flag:korbar_knows_handkerchief == true"
-    ]
-  },
-  "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
-  "success": {
-    "narrative": "You heave the heavy handkerchief aside, revealing a flap in the canvas floor.",
-    "set_flag": { "handkerchief_moved": true },
-    "reveals": "The handkerchief conceals a flap leading to a secret compartment."
-  },
-  "failure": {
-    "narrative": "The handkerchief is heavier than it looks. You struggle but can't move it."
-  }
-}
-```
-
-When `condition` is not met, the engine omits the interaction from the available
-actions presented to the LLM, effectively blocking the action. Use `any` to
-model alternative unblocking conditions (NPC dead, high enough attitude, or
-flag already set).
+A room can have multiple `on_examine` events. Each is evaluated
+independently in definition order, and every successful event's
+narrative is appended.  This is useful when there are multiple secrets
+to be uncovered by examining a single room.
 
 ### 3E. On-enter events
 
@@ -1337,149 +1257,20 @@ Failed-check consequence:
   when the player enters the room (replacing the legacy `on_enter` field).
 
 **Timing note:** Reactions on state-change events (`flag.set`,
-`entity_state.changed`, `stat.changed`) fire during **deferred dispatch** at
-end-of-turn, not immediately after the triggering action. To chain an
-immediate follow-up check within a single action (e.g., a second stat check
-right after the first), use `chain_check` on the success/failure result
-(see Step 3E).
-
-### 3G. On-examine events
-
-For examine-gated stat checks or conditional discoveries:
-
-**Note:** Earlier versions of this document mistakenly labelled this
-section "Step 6". The correct location is Step 3H.
-
-On-examine events fire when the player uses the `examine` (or `examine
-(rigorous)`) action. They can be placed on rooms or on individual
-entities.  See § 3E for the decision table on when to use `on_examine`
-vs `interaction`.
-
-Fields:
-- `id`: unique identifier for this event
-- `condition`: controls when the event is available (optional)
-- `rigorous_only`: `true` if the player must use a rigorous examine to trigger
-- `check` + `success` + `failure`: a stat_check or roll with outcome branches
-- `result`: a deterministic outcome (no check needed)
-
-#### Pattern A: Deterministic discovery (no check)
-
-When examining something always reveals something — no stat check needed.
-Use `result` (not `check`/`success`):
-
-```json
-{
-  "id": "notice_toenail",
-  "condition": { "require": "flag:toenail_noticed == false" },
-  "rigorous_only": false,
-  "result": {
-    "narrative": "Among the rubbish, you spot a giant toenail clipping — curved and razor-edged. It's disgusting, but it could work as a shortsword.",
-    "set_flag": { "toenail_noticed": true }
-  }
-}
-```
-
-This pattern is appropriate when the scenario says "examining the pile
-reveals..." or "upon closer inspection, the player notices..." without
-mentioning a check. The `condition` prevents the event firing again
-once the flag is set.
-
-#### Pattern B: Examine-gated stat check
-
-When noticing something requires a check (perception, knowledge, etc.):
-
-```json
-{
-  "id": "study_canvas_glow",
-  "condition": { "unless": "flag:glow_noticed == true" },
-  "check": {
-    "type": "stat_check",
-    "stat": "INT",
-    "dc": 12,
-    "repeatable": true
-  },
-  "success": {
-    "narrative": "You deduce that the faint luminescence is magical in nature.",
-    "set_flag": { "glow_noticed": true }
-  }
-}
-```
-
-#### Pattern C: Rigorous-only lore deductions
-
-Some discoveries require a thorough, dedicated examination. Use
-`rigorous_only: true` for these — they only fire when the player uses
-`examine (rigorous)`, not a casual look:
-
-```json
-{
-  "id": "realize_supplies",
-  "condition": { "unless": "flag:realized_supplies == true" },
-  "rigorous_only": true,
-  "check": {
-    "type": "stat_check",
-    "stat": "INT",
-    "dc": 8,
-    "repeatable": false
-  },
-  "success": {
-    "narrative": "As you look over the rubbish, something clicks. This isn't a random pile — it's adventuring gear.",
-    "set_flag": { "realized_supplies": true },
-    "reveals": "The rubbish is actually someone's adventuring supplies, shrunk by the Bag's magic."
-  }
-}
-```
-
-#### Pattern D: Revealing a hidden entity
-
-When the examination uncovers a previously hidden creature or object,
-use `set_entity_state` to un-hide it. The entity must have `hidden`
-declared in its `state_fields` and set to `true` in `hard-state.json`:
-
-```json
-{
-  "id": "reveal_fly",
-  "condition": {
-    "all": [
-      { "require": "entity:stuck_fly.hidden == true" },
-      { "require": "entity:stuck_fly.alive == true" }
-    ]
-  },
-  "rigorous_only": false,
-  "result": {
-    "narrative": "As you examine the sticky strands, one of the masses twitches. It's a FLY — about the size of a dog, tightly wrapped in webbing. Its multifaceted eyes swivel weakly toward you.",
-    "set_entity_state": { "stuck_fly": { "hidden": false } },
-    "set_flag": { "fly_revealed": true }
-  }
-}
-```
-
-The `condition` uses event-type conditions (`entity:<id>.<field>`).
-
-#### Entity vs room placement
-
-When the scenario says "examining the statue, the player notices...",
-place the `on_examine` on the **statue entity**, not the room.  When
-the scenario says "examining the chamber, the player notices...", place
-it on the **room** (see Common Pitfall #23 for details).
-
-#### Multiple on_examine events on one target
-
-An entity or room can have multiple `on_examine` events. Each is
-evaluated independently in definition order, and each matching event's
-narrative is appended.  Use this when a successful INT check chains
-into a second lore check (see the bag_of_holding_from_rubbish event in
-the Bag of Holding corpus for an example of gated sequential
-deductions).
+`entity_state.changed`, `stat.changed`) fire during **deferred
+dispatch** at end-of-turn, not immediately after the triggering
+action. To chain an immediate follow-up check within a single action
+(e.g., a second stat check right after the first), use `chain_check`
+on the success/failure result (see Step 3E).
 
 ### 3H. Soft items
 
 Plausible generic items the player might pick up. These should be
 environmentally appropriate items with no plot significance.
 
-**Test:** Will a condition, mechanic, or specific interaction reference this
-thing by name? If yes, it should be a proper entity, not a soft item.
-
+**Test:** Will a condition, mechanic, or specific interaction
+reference this thing by name? If yes, it should be a proper entity,
+not a soft item.
 
 ---
 
@@ -2060,6 +1851,67 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
 
 ---
 
+#### Chained checks pattern
+
+When a check result triggers a follow-up check (for escalating consequences,
+multiple stages, or branching outcomes), encode the follow-up as
+`chain_check` on the success or failure result of the first check.
+
+The typical structure is: a failed (or succeeded) check leads to a second
+check with its own success/failure branches. The second check's failure may
+set a flag that a game-over mechanic watches for, or it may simply produce
+a narrative outcome:
+
+```json
+{
+  "id": "vault_trap",
+  "label": "Disarm the vault trap",
+  "description": "Attempt to disarm the pressure plate.",
+  "check": {
+    "type": "stat_check",
+    "stat": "DEX",
+    "dc": 12,
+    "repeatable": true
+  },
+  "success": {
+    "narrative": "You carefully disable the pressure plate. The vault is safe."
+  },
+  "failure": {
+    "narrative": "The mechanism clicks. Dart shooters whir to life!",
+    "chain_check": {
+      "check": {
+        "type": "stat_check",
+        "stat": "DEX",
+        "dc": 10,
+        "repeatable": true
+      },
+      "success": {
+        "narrative": "You throw yourself aside as darts whistle past your head."
+      },
+      "failure": {
+        "narrative": "A dart catches you in the shoulder. Poison seeps into your veins.",
+        "set_flag": { "poisoned": true }
+      }
+    }
+  }
+}
+```
+
+When the chain check's final failure sets a game-over flag, pair it with
+a `lose` mechanic:
+
+```json
+"fell_to_chasm": {
+  "id": "fell_to_chasm",
+  "type": "lose",
+  "description": "Player falls into the chasm.",
+  "condition": { "require": "flag:fallen_into_chasm == true" },
+  "narrative": "You lose your footing and tumble into the darkness below.",
+  "trigger_id": "chasm_fall"
+}
+```
+
+---
 ## Naming Conventions (All Steps)
 
 All IDs must be **snake_case, lowercase ASCII**:
