@@ -575,6 +575,25 @@ def resolve_talk(
     return result
 
 
+def _container_is_open(entity_id: str, hard: HardGameState, corpus: ModuleCorpus) -> bool:
+    """Return True if the entity is not a container, or if it is a container
+    and its hard-state ``open`` is ``true``.  Return False if it is a
+    container and ``open`` is ``false``, ``None``, or absent.
+
+    An entity is only treated as a gated container when it has the
+    ``container`` tag AND ``open`` is declared in its state_fields.
+    Without ``open`` declared, a ``container``-tagged entity is
+    default-open (contents always accessible)."""
+    ent = corpus.entities.get(entity_id)
+    if ent is None:
+        return True
+    if "container" not in ent.tags:
+        return True
+    if "open" not in ent.state_fields:
+        return True
+    return hard.entity_states.get(entity_id, {}).get("open") is True
+
+
 def resolve_transfer(
     action: TransferAction,
     hard: HardGameState,
@@ -634,10 +653,14 @@ def resolve_transfer(
             if ent and ent.type == "item":
                 available_pool.add(eid)
             if ent and ent.contained_entities:
-                for cid in ent.contained_entities:
-                    cstate = hard.entity_states.get(cid, {})
-                    if not cstate.get("hidden", False):
-                        available_pool.add(cid)
+                if _container_is_open(eid, hard, corpus):
+                    for cid in ent.contained_entities:
+                        cstate = hard.entity_states.get(cid, {})
+                        if not cstate.get("hidden", False):
+                            available_pool.add(cid)
+            if ent and ent.soft_items:
+                if _container_is_open(eid, hard, corpus):
+                    available_pool.update(ent.soft_items)
         room_soft = room.soft_items or []
         available_pool.update(room_soft)
     elif target_is_entity:
@@ -645,10 +668,11 @@ def resolve_transfer(
         if target_ent:
             if target_ent.type == "item":
                 available_pool.add(target_id)
-            if target_ent.soft_items:
-                available_pool.update(target_ent.soft_items)
-            if target_ent.contained_entities:
-                available_pool.update(target_ent.contained_entities)
+            if _container_is_open(target_id, hard, corpus):
+                if target_ent.soft_items:
+                    available_pool.update(target_ent.soft_items)
+                if target_ent.contained_entities:
+                    available_pool.update(target_ent.contained_entities)
         # Fallback: add room-level items that are not nested inside any
         # other entity in the room (via contained_entities).
         claimed_entities: set[str] = set()
@@ -672,6 +696,24 @@ def resolve_transfer(
 
     for item in taken_items:
         if item not in available_pool:
+            closed_error: str | None = None
+            if target_is_entity:
+                target_ent = corpus.entities.get(target_id)
+                if target_ent and not _container_is_open(target_id, hard, corpus):
+                    if item in target_ent.contained_entities or item in target_ent.soft_items:
+                        closed_error = f"The {target_ent.name or target_id} is closed."
+            else:
+                for eid in room.entities_present:
+                    ent = corpus.entities.get(eid)
+                    if ent and not _container_is_open(eid, hard, corpus):
+                        if item in ent.contained_entities or (ent.soft_items and item in ent.soft_items):
+                            closed_error = f"The {ent.name or eid} is closed."
+                            break
+            if closed_error is not None:
+                return ResolutionResult(
+                    success=False,
+                    error=closed_error,
+                )
             return ResolutionResult(
                 success=False,
                 error=f"Item '{item}' is not available from '{target_id}'",

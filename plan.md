@@ -1,259 +1,238 @@
-# Plan: Unified GatedCheck Pattern
+# Container Semantics — Implementation Plan
 
 ## Problem
 
-The schema has seven features that all express "conditionally fire a check,
-with different outcomes on success vs failure," but each does it differently:
+The current container system forces each adventure corpus author to hand-roll
+a fragile multi-step pattern:
 
-| Feature | Gate field | `skip_check_if`? | Success key | Failure key | Failure shape |
-|---|---|---|---|---|---|
-| `traversal_check` | `gating` | yes | implicit / `success` | `failure_narrative` | bare string |
-| `take_check` | `gating` | **no** | `success` | `failure` | Result |
-| `interaction` | `condition` | **no** | `success` | `failure` | Result |
-| `on_examine` | `condition` | **no** | `success` | `failure` | Result |
-| `dialogue_path` | `condition` | **no** | `success` | `failure` | Result |
-| Encounter rule | `condition` | **no** | `on_success` | `on_failure` | BranchOutcome |
-| `chain_check` | (none) | **no** | `success` | `failure` | Result |
+1. Declare `contained_entities` on the container entity (corpus)
+2. Declare `hidden` in `state_fields` on each contained item (corpus)
+3. Initialize `hidden: true` on each contained item (hard-state)
+4. Write an `on_examine` event or interaction that manually sets
+   `hidden: false` on all contained items when the container is examined/opened
+5. Optionally, declare `open`/`closed` state on the container itself, with an
+   interaction that flips it
 
-Three root causes:
+Each step must be coordinated with the others. A single mistake makes
+items permanently invisible or visible at the wrong time. This is a
+high-cognitive-load task for the generating LLM, and the result is
+fragile.
 
-1. `skip_check_if` was added to traversal_check (the first place that needed it)
-   but never propagated to later features. The clearable-obstacle pattern is
-   generic; it applies equally to "STR check to pull sword from stone" as
-   "STR check to force through webs."
+Additionally, `contained_entities` is static corpus data, but container
+contents are runtime-dynamic. If an NPC interaction or mechanic removes
+an item from a container, the corpus still lists it as contained. The
+engine's current workaround (filtering against player inventory) only
+covers the case where the **player** has the item.
 
-2. `traversal_check` uses `failure_narrative` (bare string) while everything
-   else uses `failure` (Result object). A failed traversal can't set flags,
-   deal damage, chain a check, or modify state.
+## Solution
 
-3. Encounter rules use `on_success`/`on_failure` while everything else uses
-   `success`/`failure`. Also: `set_flags` (plural) vs `set_flag` (singular).
+Introduce a **`container` tag** and reserve the **`open` state field**.
+When an entity has:
 
-The trigger was the inability to cancel a `take_check` once a condition is met
-(cf. scenario-generation.md line 646).
+- `tags: ["container"]`
+- Non-empty `contained_entities`
+- `open` declared in `state_fields`
 
----
+…the engine uses the container's `open` state to decide whether its
+contents are visible and accessible.
 
-## Unified Primitive: GatedCheck
+- If `open` is `false` **or missing from hard state**, the container is
+  treated as closed: its `contained_entities` and `soft_items` are hidden
+  from briefings and cannot be transferred.
+- If `open` is `true`, the contents are surfaced normally, **subject to
+  each item's own `hidden` state**. This keeps `hidden` orthogonal: it can
+  still be used for concealment independent of the container (darkness,
+  burial, magic, etc.).
+
+A container author now only needs:
+
+- `tags: ["container"]`
+- `open` declared in `state_fields`
+- `open: false` initialized in hard-state
+- an interaction that sets `open: true`, gated with
+  `condition: { "require": "entity:<id>.open == false" }`
+
+The engine exposes revealed items factually in `room_after` (via
+`contained_entities` in the briefing); the LLM narrator is responsible
+for prose.
+
+### Why `open` and not `closed`
+
+- Natural language: "the chest is `open: true`" reads normally.
+  The double-negative `closed: false` is harder on humans and LLMs.
+- Matches the existing convention already used in scenario-generation.md
+  examples.
+- Default `false` is correct: a container starts closed.
+
+### Why a tag instead of field-name detection alone
+
+Doors, windows, and other non-container entities may legitimately use
+`open` as a state field. The `container` tag makes the engine's intent
+explicit and prevents false positives.
+
+### Orthogonality of `hidden`
+
+`hidden` on a contained item is **not** managed by the container
+mechanic. Opening a container reveals only the items that are not
+individually `hidden`. This means:
+
+- Authors no longer need `hidden` on items solely because they are in a
+  container.
+- Authors can still use `hidden` for other reasons (buried, invisible,
+  darkened, etc.) even on items inside an open container.
+
+## Changes
+
+### 1. Engine — `build_contained_entities()` gate
+
+**File:** `mgmai/engine/utils.py` (around line 109)
+
+Add a check at the start of `build_contained_entities`:
+
+- If the parent entity has `tags` containing `"container"` **and**
+  its hard state has `open` not equal to `true` (i.e. `false`, `None`, or
+  absent), return an empty list.
+- Otherwise, proceed with existing logic (filter individual `hidden`,
+  filter player inventory/equipped).
+
+If the entity does NOT have the `container` tag, existing behavior is
+unchanged (backward compatibility for piles of junk, corpses, etc. that
+expose contents without an open/close mechanic).
+
+If the entity HAS the `container` tag but does NOT have `open` declared
+in `state_fields`, treat `open` as `true` (default-open; e.g., a shelf
+or a corpse — contents always visible). This preserves the rule that
+`container` + declared `open` is what enables closed-by-default behavior.
+
+### 2. Engine — `resolve_transfer()` gate
+
+**File:** `mgmai/engine/resolver.py` (around line 650)
+
+Introduce a helper, e.g. `_container_is_open(entity_id, hard, corpus)`:
+
+- Returns `True` if the entity is not a container, or if it is a
+  container and its hard-state `open` is `true`.
+- Returns `False` if it is a container and `open` is `false`, `None`, or
+  absent.
+
+Apply it in both `resolve_transfer` branches:
+
+- **Entity target:** if `target_id` is a closed container and any
+  `taken_items` are in its `contained_entities` or `soft_items`, return
+  an error like `The <container> is closed.`
+- **Room target:** when iterating `room.entities_present`, only add an
+  entity's `contained_entities` and `soft_items` to `available_pool` if
+  that entity is open (or not a container). If a requested `taken_item`
+  belongs to a closed container in the room, return the same closed
+  error.
+
+### 3. Engine — no auto-generated reveal prose
+
+**File:** none required
+
+The engine does **not** generate custom narration when a container
+opens. It simply exposes the now-visible `contained_entities` in the
+`room_after` briefing. The LLM narrator receives the factual update and
+can phrase it appropriately.
+
+### 4. Corpus schema docs — reserved state fields and `container` tag
+
+**File:** `schema/corpus.md` (Reserved state fields section)
+
+Add `open` to the list of reserved state fields:
+
+| Field | Meaning |
+|-------|---------|
+| `open` | For entities with `tags: ["container"]` and declared `state_fields.open`: whether the container is open and its `contained_entities` / `soft_items` are accessible. Defaults to closed (`false`) when declared but absent from hard state. |
+
+Update the `tags` row in the entity table to note that the `"container"`
+tag is recognized for `feature` entities (and is not limited to `item`).
+
+### 5. Generation instructions — simplify §2D containers
+
+**File:** `schema/scenario-generation.md` (lines 693–763)
+
+Replace the current four-part hidden-item coordination pattern with:
+
+- Set `tags: ["container"]` on the feature entity.
+- Declare `open` in `state_fields`.
+- Initialize `open: false` in `hard_state.entity_states`.
+- List starting contents in `contained_entities` (and optional loose
+  items in `soft_items`).
+- Add an interaction that sets `open: true`, with a condition so it only
+  works while closed:
 
 ```json
 {
-  "gating":         <ConditionObject>,   // optional — gates whether check is required (take_check, traversal_check)
-  "condition":      <ConditionObject>,   // optional — gates action/event eligibility (interaction, on_examine, dialogue_path)
-  "skip_check_if":  <ConditionObject>,   // optional — bypass check, proceed to success
-  "check":          <CheckType>,         // the roll or stat_check
-  "success":        <Outcome>,           // result on success (or when skip_check_if met)
-  "failure":        <Outcome>            // result on failure
+  "id": "open",
+  "label": "Open",
+  "description": "Open the chest.",
+  "condition": { "require": "entity:chest.open == false" },
+  "result": {
+    "narrative": "You lift the lid of the chest.",
+    "set_entity_state": { "chest": { "open": true } }
+  }
 }
 ```
 
-- `gating` gates whether the check fires (take_check, traversal_check).
-  When false, the action proceeds normally without a check.
-- `condition` gates whether the action/event is available at all (interaction,
-  on_examine, dialogue_path). When false, the action is hidden or the event
-  does not fire.
-- `skip_check_if`: if met, the check is skipped entirely and execution
-  proceeds as if `success` occurred.
-- `<Outcome>` is a `Result` object for `take_check`, `interaction`,
-  `on_examine`, `dialogue_path`, `traversal_check`, and `chain_check`.
-  For encounter rules it is a `BranchOutcome`.
+Remove the example with `glowing_gem.hidden` and the manual
+`set_entity_state` on contained items. Fix the existing typo that sets
+`stone_altar.open` instead of `chest.open`.
 
-### Evaluation order
+Explain that:
 
-Every gated check resolves in this order:
+- The engine automatically hides contents while `open` is `false`.
+- The engine automatically surfaces contents when `open` is `true`,
+  but respects any `hidden` state on individual items.
+- Soft items declared directly on a closed container are treated as
+  inside it and are also unavailable until opened.
 
-1. If `skip_check_if` is present and true → apply `success`, skip the roll.
-2. Else if the gate field (`gating` or `condition`) is present and false →
-   context-specific no-check behavior (see Contextual semantics below).
-3. Else → roll `check`, apply `success` or `failure`.
+### 6. Backward compatibility
 
----
+- Entities with `contained_entities` but **without** the `container`
+  tag work exactly as before (no engine behavior change).
+- Existing adventures (e.g., `bag-of-holding`) continue to function with
+  their hand-rolled `hidden` patterns. They can be migrated to the new
+  pattern when convenient.
+- The `hidden` state field remains supported for non-container
+  concealment.
 
-## Per-Feature Changes
+### 7. Future: runtime container inventory (out of scope for now)
 
-### 1. `take_check` — add `gating`, `skip_check_if`
+A later change should track container contents at runtime (e.g., via an
+engine-managed `_contents` field in entity state, initialized from
+`contained_entities` and kept in sync by `transfer`), so the engine
+knows what's actually in a container regardless of NPC actions or
+narrative changes. This addresses the "removed another way" fragility
+identified in the problem statement. Deferred as a separate project.
 
-Currently:
-```json
-"take_check": {
-  "check": { "type": "stat_check", "stat": "STR", "dc": 17, "repeatable": true },
-  "success": { "narrative": "You pull the sword from the stone." },
-  "failure": { "narrative": "It won't budge." }
-}
-```
+## Migration of existing adventure (bag-of-holding)
 
-After:
-```json
-"take_check": {
-  "gating": { "require": "flag:sword_claimed == false" },
-  "skip_check_if": { "require": "inventory:gauntlets_of_strength" },
-  "check": { "type": "stat_check", "stat": "STR", "dc": 17, "repeatable": true },
-  "success": { "narrative": "...", "set_flag": { "sword_claimed": true } },
-  "failure": { "narrative": "..." }
-}
-```
+**Deferred.** The `bag-of-holding` adventure will be regenerated
+separately. This plan leaves the existing corpus untouched for now.
 
-- `gating`: optional. When present and not met, the check does not fire
-  (item is taken freely, as if there were no `take_check`).
-- `skip_check_if`: optional. When met, the check is bypassed and the item is
-  taken with the `success` Result applied.
+## Validation file
 
-### 2. `take_check` — NO `using_results`
+**File:** `mgmai/models/corpus.py`
 
-The `transfer` action has no `using` parameter. Tool-gated taking is better
-expressed as a two-step interaction flow (interaction reveals + take_check
-handles pickup) or via `skip_check_if` with `inventory:` / `tag:` conditions.
+No schema changes needed. `tags` is already `List[str]`. `open` is
+validated as a regular `state_fields` entry. The engine's runtime checks
+on `tags` and `open` are soft conventions, not Pydantic constraints.
 
-### 3. `traversal_check` — replace `failure_narrative` with `failure` (Result)
+## Tests
 
-`traversal_check.gating` is the field name for consistency with `take_check.gating`. It gates whether the check is required, not traversability.
-
-Currently:
-```json
-"traversal_check": {
-  "condition": { "unless": "flag:webs_cleared == true" },
-  "check": { "type": "stat_check", "stat": "STR", "dc": 14 },
-  "skip_check_if": { "require": "flag:webs_cleared == true" },
-  "failure_narrative": "You strain against the sticky webs."
-}
-```
-
-After:
-```json
-"traversal_check": {
-  "gating": { "unless": "flag:webs_cleared == true" },
-  "check": { "type": "stat_check", "stat": "STR", "dc": 14 },
-  "skip_check_if": { "require": "flag:webs_cleared == true" },
-  "failure": { "narrative": "You strain against the sticky webs." }
-}
-```
-
-- `gating` is optional. When present and false, traversal proceeds without
-  a check and without applying any Result.
-- `failure` is now a full Result object. All existing adventures convert
-  `"failure_narrative": "..."` to `"failure": { "narrative": "..." }`.
-- Optional `success` Result for traversal-success narrative (e.g., first-time
-  flavor text). Richer traversal effects still use `traversal.succeeded`
-  reactions — don't overload the traversal_check with game logic.
-
-### 4. `interaction` — add `skip_check_if`
-
-Already has `condition`, `check`, `success`, `failure`. Add `skip_check_if`
-as an optional field that bypasses the check when met.
-
-### 5. `on_examine` — add `skip_check_if`
-
-Already has `condition`, `check`, `success`, `failure`. Add `skip_check_if`
-as an optional field that bypasses the check when met.
-
-### 6. `dialogue_path` — add `skip_check_if`
-
-Already has `condition`, `check`, `success`, `failure`. Add `skip_check_if`
-as an optional field that bypasses the check when met.
-
-### 7. Encounter rules — rename `on_success`/`on_failure` to `success`/`failure`
-
-- Entity-level `behavior.encounter_rules[].on_success` → `success`
-- Entity-level `behavior.encounter_rules[].on_failure` → `failure`
-- Mechanic-level `rules[].on_success` → `success`
-- Mechanic-level `rules[].on_failure` → `failure`
-- Also: `set_flags` → `set_flag` (consistent with Result objects)
-
-**Risk:** This is the most invasive change. It touches the `EncounterRule` and
-`BranchOutcome` models, `encounters.py`, the callers in `engine.py` and
-`event_bus.py`, every existing encounter corpus, and the encounter tests. The
-project is pre-1.0, so a hard rename is acceptable, but it requires a global
-find/replace and test updates.
-
-Encounter rules do NOT get `skip_check_if`: their top-to-bottom evaluation by
-`condition` already handles conditional bypass naturally (add a prior rule
-with a catch-all condition).
-
-### 8. `chain_check` — add `skip_check_if`
-
-Already has `check`, `success`, `failure`. Add `skip_check_if` as optional.
-
----
-
-## Contextual Gate Semantics
-
-The gate field (`gating`) has context-specific meaning.
-This table must be included in `schema/corpus.md`:
-
-| Feature | Gate field | Gate false means... | `skip_check_if` true means... |
-|---|---|---|---|
-| `take_check` | `gating` | Item taken freely, no Result applied | Item taken, `success` Result applied |
-| `interaction` | `condition` | Interaction unavailable | `success` Result applied without roll |
-| `on_examine` | `condition` | Event does not fire | `success` Result applied without roll |
-| `dialogue_path` | `condition` | Path unavailable | `success` Result applied without roll |
-| `traversal_check` | `gating` | Traversal succeeds without check | Traversal succeeds, `success` Result applied |
-| `chain_check` | (none) | Chain skipped | `success` Result applied without roll |
-| Encounter rule | `condition` | Rule skipped, next rule evaluated | N/A (not added) |
-
-## What Does NOT Change (Intentionally)
-
-- **`traversal_check` and `take_check` use `gating`, not `condition`.** Their
-  semantics ("only require the check when true, otherwise allow the action
-  without a check") differ from `condition` on interactions ("hide the
-  interaction"). Distinct naming avoids author confusion.
-
-- **Encounter branches remain `BranchOutcome`** (not `Result`), because they
-  carry `outcome: "death" | "flee" | "combat"` as a mechanical resolution,
-  not just narrative effects.
-
-- **`using_results` stays on `traversal_check` and `interaction` only.** Not
-  added to `take_check`, `on_examine`, or `dialogue_path`. `take_check` in
-  particular does not get `using_results` because the `transfer` action has no
-  `using` parameter.
-
-- **`will_reveal.conditions` stays as bare strings.** This is a separate
-  structure for LLM-surfaced data, not a checked outcome pattern.
-
----
-
-## Files Affected
-
-| File | Changes |
-|---|---|
-| `mgmai/models/corpus.py` | **Primary source of truth.** Add `gating`/`skip_check_if` to `TakeCheck`; rename `TraversalCheck.condition`→`gating`, `failure_narrative`→`failure`; add optional `success`; add `skip_check_if` to `Interaction`, `OnExamineEvent`, `DialoguePath`, `ChainedCheck`; rename `EncounterRule`/`BranchOutcome` `on_success`→`success`, `on_failure`→`failure`, `set_flags`→`set_flag`. |
-| `mgmai/engine/resolver.py` | Evaluate `skip_check_if`/`condition`/`gating` for `take_check`, `traversal_check`, `interaction`, `on_examine`, `dialogue_path`, `chain_check`; handle `TraversalCheck.failure` Result and optional `success` Result. |
-| `mgmai/engine/encounters.py` | Update `EncounterRule`/`BranchOutcome` field access (`success`, `failure`, `set_flag`). |
-| `mgmai/engine/engine.py` | Update encounter result dict consumption (`set_flag`, branch keys). |
-| `mgmai/engine/event_bus.py` | Update encounter result dict consumption (`set_flag`, branch keys). |
-| `schema/corpus.md` | Update type definitions and field tables for all affected types; add contextual gate semantics table. |
-| `schema/scenario-generation.md` | Update all examples and prose: `traversal_check.condition`→`gating`, `failure_narrative`→`failure`, `on_success`→`success`, `on_failure`→`failure`, `set_flags`→`set_flag`. Add `skip_check_if` examples. |
-| `schema/events.md` | Update `encounter.branched` context prose if it references `on_success`/`on_failure`. |
-| `tests/test_encounters.py` | Update `EncounterRule`/`BranchOutcome` construction and assertions. |
-| `tests/test_resolver.py` | Update `TakeCheck`/`TraversalCheck` construction; add skip/gate tests. |
-| `tests/helpers.py` | Update `_mk_encounter_rule` and traversal helpers. |
-| `tests/test_bag_of_holding_webs.py` | Update assertions for `failure_narrative`→`failure`. |
-| `tests/test_corpus.py` | Update any model-shape validation. |
-| `adventures/bag-of-holding/corpus.json` | Convert `failure_narrative`→`failure`, `condition`→`gating` on traversal checks, `on_success`/`on_failure`/`set_flags` on encounter rules. |
-| All other adventure modules | Same conversions as above. |
-
----
-
-## Implementation Order
-
-1. Update `mgmai/models/corpus.py` — add new fields and renames; this is the
-   runtime source of truth and surfaces every caller that must change.
-2. Update engine resolvers (`resolver.py`, `encounters.py`, `engine.py`,
-   `event_bus.py`) — implement the new evaluation order and field names.
-3. Update tests and helpers (`test_encounters.py`, `test_resolver.py`,
-   `helpers.py`, `test_bag_of_holding_webs.py`, `test_corpus.py`).
-4. Update existing adventure JSON modules (`bag-of-holding/corpus.json`, etc.).
-5. Update schema documentation (`schema/corpus.md`, `schema/scenario-generation.md`,
-   `schema/events.md`) to match the final code.
-6. Run the full test suite: `pytest`
-7. Run `python scripts/validate_adventure.py` on each adventure module.
-
-### New tests to add
-
-- `take_check.gating` false → item taken without check and without Result.
-- `take_check.skip_check_if` true → `success` Result applied, no roll.
-- `traversal_check.gating` false → traversal succeeds without check.
-- `traversal_check.skip_check_if` true → traversal succeeds, `success` Result applied.
-- `traversal_check.failure` Result can set flags, deal damage, chain checks.
-- `interaction.skip_check_if` / `on_examine.skip_check_if` / `dialogue_path.skip_check_if`.
-- `chain_check.skip_check_if`.
-- Encounter rules with renamed `success`/`failure`/`set_flag` branches.
+- Unit: `build_contained_entities` returns empty when parent has
+  container tag + `open: false`.
+- Unit: `build_contained_entities` returns items when parent has
+  container tag + `open: true`.
+- Unit: `build_contained_entities` still filters individually `hidden`
+  items inside an open container.
+- Unit: `build_contained_entities` unchanged without container tag
+  (backward compat).
+- Unit: `resolve_transfer` rejects taking from closed container
+  (entity target and room target).
+- Unit: `resolve_transfer` allows taking from open container.
+- Unit: `resolve_transfer` rejects soft items from closed container.
+- Integration: opening a container makes contents visible in
+  `room_after` briefing without manual `set_entity_state`.
+- Integration: existing adventure corpus passes validation unchanged.

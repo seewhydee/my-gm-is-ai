@@ -601,15 +601,14 @@ Example of a post-dialogue state change:
 
 #### Examination
 
-The On-Examine Effects for rooms and entities in the Scenario Map
-should be translated into `on_examine` effects.
+The On-Examine Effects stated in the Scenario Map should be translated
+into `on_examine` effects.
 
 If the scenario is ambiguous about whether the `on_examine` effect
 triggers on an ordinary or rigorous examination, use your judgment: an
-ordinary examination should suffice if the discovery can be made by
-looking at the object, whereas a rigorous examination is needed if the
-discovery should require a physical search.  Note how you resolved
-this ambiguity in your task report.
+ordinary examination suffices if the discovery is made just by
+looking, but a rigorous examination is needed if it involves a
+physical search.  Note how you resolved the ambiguity in your report.
 
 Often, `on_examine` is used to reveal a hidden entity:
 
@@ -690,6 +689,69 @@ features named `fountain`, with different entity IDs.
 For features spanning multiple rooms, use `spans_rooms` to list all
 rooms where the feature is visible.  The entity ID should be listed in
 `entities_present` for each of those rooms.
+
+#### Containers
+
+A common pattern: a `feature` entity (e.g., a chest, a cabinet)
+contains other entities (usually items) that start concealed.  The
+engine provides built-in container mechanics: when a feature entity
+has `tags: ["container"]` and declares `open` in `state_fields`, the
+engine automatically hides its `contained_entities` and `soft_items`
+when `open` is `false`, and surfaces them when `open` is `true`.
+
+To model a closed-by-default container, the author only needs:
+
+1. Set `tags: ["container"]` on the feature entity.
+2. Declare `open` in `state_fields`.
+3. Initialize `open: false` in `hard_state.entity_states`.
+4. List the starting contents in `contained_entities` (and optional
+   loose items in `soft_items`).
+5. Add an interaction that sets `open: true`, with a condition so it
+   only works while the container is closed.
+
+Example — a chest with a hidden gem:
+
+```json
+"chest": {
+  "type": "feature",
+  "description": "A decrepit wooden chest, its surface covered in dust.",
+  "tags": ["container"],
+  "state_fields": {
+    "open": { "type": "boolean", "description": "Whether the chest is open." }
+  },
+  "contained_entities": ["glowing_gem"],
+  "interactions": [
+    {
+      "id": "open",
+      "label": "Open",
+      "description": "Open the chest.",
+      "condition": { "require": "entity:chest.open == false" },
+      "result": {
+        "narrative": "You lift the lid of the chest.",
+        "set_entity_state": { "chest": { "open": true } }
+      }
+    }
+  ]
+}
+```
+
+The engine automatically hides the chest's contents while `open` is
+`false`, and surfaces them when `open` becomes `true`.  Any individual
+`hidden` state on a contained entity is still respected — so items can
+be individually concealed (by darkness, burial, magic, etc.) even
+inside an open container.
+
+Soft items declared directly on a closed container entity are treated
+as inside it and are also unavailable until opened.
+
+Containers without the `open` field in `state_fields` (even if tagged
+`"container"`) are treated as default-open — their contents are always
+visible and accessible (e.g., an open shelf or a corpse).
+
+Open/close semantics without a container: doors, windows, and other
+non-container entities may still use `open` as a state field without
+the `container` tag.  The engine only applies container gating when
+*both* the tag and the state field are present.
 
 ### 2E. Player entity
 
@@ -969,118 +1031,34 @@ using an `event:` condition:
 ]
 ```
 
-### 3D. Interactions (room-level)
+### 3D. Examination
 
-Define interactions only for room-specific actions that aren't covered by
-generic actions (attack, examine, move, talk, transfer).
+The On-Examine Effects stated in the Scenario Map should be translated
+into `on_examine` effects.
 
-#### When to use `interaction` vs `on_examine`
+If the scenario is ambiguous about whether the `on_examine` effect
+triggers on an ordinary or rigorous examination, use your judgment: an
+ordinary examination suffices if the discovery is made just by
+looking, but a rigorous examination is needed if it involves a
+physical search.  Note how you resolved the ambiguity in your report.
 
-A **frequent anti-pattern** is placing examine-gated discoveries in
-`interactions` instead of `on_examine` events. Use this decision table:
+Sometimes, there is a semantic overlap between examining a room and an
+entity (usually a feature) inside it.
 
-| Scenario phrase | Right mechanism |
-|-----------------|-----------------|
-| "Upon examining the pile, the player notices a toenail" | `on_examine` on the pile entity (or room), with a `result` containing `narrative` |
-| "The player rummages through the pile and pulls out a sword" | `interaction` on the room, with a `check` and `success.add_item` |
-| "Looking closely at the webs reveals a hidden spider (WIS check)" | `on_examine` on the webs entity, with a `check` |
-| "The player hauls aside the heavy handkerchief (STR check)" | `interaction` on the room, with a `check` |
-| "The player picks the lock (DEX check)" | `interaction` on the room or feature, with a `check` |
-| "When the player studies the carving, they recognize the symbol" | `on_examine` on the carving entity, with a `result` |
+- If there's strong overlap between examining the room and the entity,
+  the room and entity can have redundant `on_examine` effects (use
+  flags to avoid double discoveries).  Example: in a room filled with
+  spider webs, searching the room or the webs has the same effect.
 
-**Key rule:** If the scenario describes something the player **notices,
-sees, or recognizes** by looking closely, it belongs in `on_examine`.
-If the scenario describes something the player **does, manipulates, or
-actively performs** (searching, pulling, forcing, hauling), it belongs
-in `interaction`.
+- If the're a partial overlap, a useful pattern is to make the room's
+  `on_examine` produce a narrative hint to the player, indicating that
+  there's something interesting about the entity.  This guides them to
+  examine the entity directly to get the actual discovery.
 
-In the common two-step pattern "examine reveals an item; taking it
-requires a check":
 
-1. **Step 1 — reveal:** Add an `on_examine` event on the containing entity
-   or room. It produces a `narrative` describing what the player sees,
-   sets a `flag` (e.g. `toenail_noticed`), and **unhides** the contained
-   item via `set_entity_state`.
-2. **Step 2 — take:** Add the item entity to the container's
-   `contained_entities` and give it a `take_check`. The player then uses a
-   `transfer` action to take the item, and the engine resolves the
-   `take_check` automatically. (No separate interaction needed.)
 
-The contained item does **not** need to appear in the room's
-`entities_present`. The context assembler surfaces all non-hidden
-contained entities through the parent entity's `contained_entities`
-field in the LLM briefing. Once the item is unhidden, the LLM sees it
-in the container's briefing entry and can propose a `transfer` targeting
-the container.
 
-Example — a loose pile containing a sword that takes effort to pull free:
 
-```json
-// Entity: the rubbish pile
-"rubbish_pile": {
-  "type": "feature",
-  "contained_entities": ["toenail_sword"],
-  "on_examine": [
-    {
-      "id": "notice_toenail",
-      "condition": { "require": "flag:toenail_noticed == false" },
-      "rigorous_only": false,
-      "result": {
-        "narrative": "Among the rubbish, you spot a giant toenail clipping — curved and razor-edged.",
-        "set_flag": { "toenail_noticed": true },
-        "set_entity_state": { "toenail_sword": { "hidden": false } }
-      }
-    }
-  ]
-},
-
-// Entity: the item — must declare 'hidden' in state_fields
-"toenail_sword": {
-  "type": "item",
-  "name": "Toenail Sword",
-  "state_fields": {
-    "hidden": { "type": "boolean", "description": "Whether the sword is visible." }
-  },
-  "take_check": {
-    "gating": { "require": "flag:toenail_sword_found == false" },
-    "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
-    "success": {
-      "narrative": "You work the toenail free from the pile. It's a perfect makeshift shortsword.",
-      "set_flag": { "toenail_sword_found": true }
-    },
-    "failure": {
-      "narrative": "You grasp at the toenail but it's stuck fast. You can't get a grip this time."
-    }
-  }
-}
-
-// In hard-state.json: initialize the contained entity as hidden
-// "entity_states": {
-//   "toenail_sword": { "hidden": true }
-// }
-```
-
-With `gating`, the check only fires while `toenail_sword_found` is false.
-`success` sets that flag, so on the next attempt the check is skipped and the
-item is taken freely.  `repeatable: true` lets the player retry after failure.
-For a permanent one-attempt gate (failure locks you out), drop `gating` and use
-`repeatable: false` instead.
-
-Note: the item does NOT need to be listed in the room's `entities_present`
-array. The assembler discovers it through `rubbish_pile.contained_entities`
-and surfaces it (if not hidden) in the parent entity's briefing.
-
-With this setup: examining the pile → reveals/unhides the toenail
-(Step 1). The next turn's briefing shows `toenail_sword` in
-`rubbish_pile.contained_entities`. A `transfer` action to take
-`toenail_sword` from `rubbish_pile` → engine runs the `take_check`
-(Step 2). No `interaction` is needed, no `entities_present` duplication.
-
-Each interaction must have:
-- **`id`**: snake_case, unique within the room
-- **`label`**: short UI label
-- **`description`**: what the player is attempting
-- `check` + `success` + `failure`, or `result` (deterministic)
 
 #### Deterministic (no check)
 ```json

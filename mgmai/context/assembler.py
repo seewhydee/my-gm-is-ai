@@ -117,7 +117,7 @@ def _build_room(room_id: str,
                 state=dict(entity_state),
                 entity_notes=list(notes),
                 soft_items=list(entity_soft),
-                contained_entities=build_contained_entities(entity, hard, corpus),
+                contained_entities=build_contained_entities(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
                 combat_block=combat_block_dict))
 

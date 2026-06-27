@@ -100,7 +100,7 @@ def inject_following_npcs(
                 state=entity_state,
                 entity_notes=notes,
                 soft_items=list(entity_soft),
-                contained_entities=build_contained_entities(entity, hard, corpus),
+                contained_entities=build_contained_entities(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
             )
         )
@@ -110,11 +110,23 @@ def build_contained_entities(
     entity: object,
     hard: HardGameState,
     corpus: ModuleCorpus,
+    entity_id: str = "",
 ) -> list[BriefingContainedEntity]:
     """Build BriefingContainedEntity list from an entity's contained_entities,
-    filtering out hidden entities and items already in player inventory."""
+    filtering out hidden entities and items already in player inventory.
+
+    When the entity has the ``container`` tag and ``open`` is declared in
+    its state_fields, the container is treated as closed (contents hidden)
+    unless its hard state has ``open: true``.  Entities without the
+    ``container`` tag are unaffected (backward compatibility)."""
     from mgmai.models.corpus import Entity as CorpusEntity
     assert isinstance(entity, CorpusEntity)
+
+    if "container" in entity.tags and "open" in entity.state_fields:
+        estate = hard.entity_states.get(entity_id, {})
+        if estate.get("open") is not True:
+            return []
+
     contained: list[BriefingContainedEntity] = []
     for cid in entity.contained_entities:
         contained_entity = corpus.entities.get(cid)

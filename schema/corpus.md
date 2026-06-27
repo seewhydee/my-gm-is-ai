@@ -721,7 +721,7 @@ Entities are typed objects that appear in rooms or inventory. Keyed by unique `e
 | `description`          | string | all           | Canonical description returned for `examine` action. |
 | `spans_rooms`          | array  | feature       | List of room IDs this entity is visible in (e.g., a battleaxe spanning multiple rooms). |
 | `soft_items`           | array  | all           | Plausible generic items found on/in this entity (e.g., a corpse might have `["loose change", "torn parchment"]`). Same semantics as room soft_items. |
-| `tags`                 | array  | item          | Semantic tags for mechanical matching (e.g., `"weapon"`, `"key_item"`, `"draggable"`). These are distinct from `equip_block.equip_tags`; `tag:<value>` conditions scan this list, not `equip_tags`. |
+| `tags`                 | array  | item, feature | Semantic tags for mechanical matching (e.g., `"weapon"`, `"key_item"`, `"draggable"`). Also supports feature entities: the `"container"` tag enables the container open/close mechanic (see Reserved state fields). These are distinct from `equip_block.equip_tags`; `tag:<value>` conditions scan this list, not `equip_tags`. |
 | `draggable`            | bool   | item          | If true, the item can be dragged but occupies the player (no other manual actions while dragging). |
 | `dragging_note`        | string | item          | Narrative note describing the encumbrance. |
 | `contained_entities`   | array  | all           | List of entity IDs nested inside this entity. Items listed here are available for `transfer` from this entity, even if not listed in the room's `entities_present`. |
@@ -814,6 +814,13 @@ The engine recognises several reserved state fields:
   how attitude can change. The engine initializes attitude from
   `attitude_limits.initial` (default 0). Conditions can check attitude via
   `attitude:<npc_id> <op> <value>`.
+- `open` — for entities with `tags: ["container"]`: when declared in
+  `state_fields` and set to `true` in hard state, the entity's
+  `contained_entities` and `soft_items` are visible and accessible. When
+  `open` is `false` (or absent from hard state), the container is treated as
+  closed — its contents are hidden from briefings and cannot be transferred.
+  The default when declared but missing from state is closed (`false`).
+  Entities without the `container` tag are unaffected by `open`.
 
 `alive` and `fled` are optional at the schema level, but if an entity has reactions
 and can die or flee, declare the corresponding field so the engine scopes the
