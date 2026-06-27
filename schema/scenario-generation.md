@@ -238,7 +238,7 @@ Revisit the room list, and add the following info to each room:
   occur only if the player is in the room.
 
   Examples:
-  - combat triggered when the player enters
+  - a group of enemies attack when the player enters the room
   - force-field blocks an exit traversal
 
   Assign each reaction a globally-unique reaction ID.  Then, describe
@@ -558,9 +558,7 @@ fought and killed.
 The Scenario Map may describe a set of special interactions – discrete
 non-generic actions the player can perform on the entity.  For each
 interaction, construct an interaction object and put it in the
-`interactions` array.  An interaction object tells the engine how to
-process the interaction: evaluating conditions, rolling checks, and
-applying results.
+`interactions` array.
 
 Example: forcing a stuck door.  Bare-handed is hard; a crowbar helps;
 any improvised tool is somewhere in between:
@@ -661,7 +659,7 @@ omits the entity even from the GM (to avoid leakage).  However,
 `hidden` does not apply to entities masked by being in a closed
 container; that case is handled differently (see Containers, below).
 
-#### Entity reactions
+#### Entity Reactions
 
 The `reactions` field is used for event-driven entity behavior.  To
 translate the Scenario Map's reaction description into JSON, refer to
@@ -1089,10 +1087,10 @@ GM can weave in info about entities present.
 DO NOT include hidden information, clues gated behind a rigorous
 search or NPC reveal, or spoilers.
 
-### 3B. Entities present
+### 3B. Entities Present
 
-In `entities_present`, list the IDs for all entities **directly**
-present in the room at game start.  **This includes hidden entities**.
+The `entities_present` field should list the IDs for all entities
+present in the room at game start, **including hidden entities**.
 
 Exclude entities contained in other entities: e.g., if a key is inside
 a box in the room, the key should NOT be in `entities_present`.
@@ -1128,23 +1126,8 @@ description (e.g., dropping through a trapdoor).  This field has no
 gameplay effect: it only adds an indicator telling the player that the
 exit *seems* to be one-way.
 
-Exits do not have a `reactions` field. To react to traversal events
-(`traversal.succeeded`, `traversal.attempted`, etc.), place reactions
-on the **containing room's** `reactions` array. Filter by exit ID
-using an `event:` condition:
-
-```json
-"reactions": [
-  {
-    "id": "on_exit_used",
-    "on": "traversal.succeeded",
-    "condition": { "require": "event:exit_id == exit_climb_down" },
-    "effects": {
-      "result": { "narrative": "You descend carefully." }
-    }
-  }
-]
-```
+Exits have no `reactions` field.  To define a reaction to a traversal
+event, used a room-scoped reaction (§3E).
 
 ### 3D. Examination
 
@@ -1175,95 +1158,102 @@ independently in definition order, and every successful event's
 narrative is appended.  This is useful when there are multiple secrets
 to be uncovered by examining a single room.
 
-### 3E. On-enter events
+### 3E. Room Reactions
 
-For each room, identify any events that should fire when the player enters:
+To implement the room-scoped reactions planned in the Scenario Map,
+consult `events.md` for the spec of triggering events.  Room-scoped
+reactions can only fire when the player is currently in that room.
 
-- Introductory flavour on first entry
-- NPC auto-dialogue (use `trigger_dialogue`)
-- Conditional events (e.g., spider is in this room, trigger an encounter)
-- Flag changes or entity state changes on first visit
+When the player moves from room A to room B via an exit, events fire
+in this sequence, and the reaction-scoping room changes at the moment
+of arrival:
 
-**Pattern for one-shot first-entry events:**
+| Event | Player location | Whose reactions fire |
+|-------|----------------|-----------------------|
+| `traversal.attempted` | A | Room A only |
+| `traversal.succeeded` | A | Room A only |
+| `traversal.failed` | A | Room A only |
+| `room.entered` | B | Room B only |
+
+Therefore, put entry-trigger reactions on the destination room (using
+`room.entered`), and traversal-related reactions on the source room
+(using `traversal.attempted`, `traversal.succeeded`, or
+`traversal.failed`).
+
+Entering a room emits `room.entered` with `room_id` set to the
+destination.  Immediate-phase reactions are permitted on
+`room.entered`, and fire before the entry narration is built — useful
+for blocking or redirecting narration.
+
+Example — portcullis slams shut on entry:
+
 ```json
 {
-  "id": "first_entry_axe_head",
-  "condition": null,
-  "narrative": "The axe head leans at an angle. The handle slopes down into darkness."
+  "id": "portcullis_slam",
+  "on": "room.entered",
+  "condition": { "require": "event:room_id == castle_gatehouse" },
+  "phase": "immediate",
+  "effects": {
+    "result": {
+      "narrative": "The portcullis crashes down behind you.",
+      "set_entity_state": { "portcullis": { "closed": true } }
+    }
+  }
 }
 ```
-With `condition: null`, the event fires on first entry only (the engine tracks it).
 
-**Pattern for conditional automatic events:**
+This reaction lives on the room `castle_gatehouse`, and fires the
+moment the player arrives, before the room description is narrated.
+Use `"once": true` (or a custom condition) to make this one-shot.
+
+Example — goblin ambush on entry:
+
 ```json
 {
-  "id": "fly_groans",
-  "condition": { "require": "entity:stuck_fly.alive == true" },
-  "narrative": "A groaning sound comes from the webbing nearby."
+  "id": "goblin_ambush",
+  "on": "room.entered",
+  "effects": { "trigger_encounter": "goblin_ambush_encounter" }
 }
 ```
 
-### 3F. Room reactions
+Example — falling damage on failed ledge climb:
 
-Reactions on rooms fire when the player is in that room. Use them for
-event-driven triggers that respond to game events (flag changes, check
-outcomes, item acquisition, etc.). See [`events.md`](events.md) for the full
-list of event types and context keys.
-
-**Common patterns:**
-
-State-based trigger reacting to a flag change:
 ```json
-"reactions": [
-  {
-    "id": "room_cleared_reaction",
-    "on": "flag.set",
-    "condition": { "require": "event:flag_name == spider_fled" },
-    "effects": {
-      "result": {
-        "narrative": "With the spider gone, you can finally look around properly.",
-        "set_flag": { "room_safe": true }
-      }
+{
+  "id": "ledge_fall_damage",
+  "on": "traversal.failed",
+  "condition": { "require": "event:exit_id == climb_to_ledge" },
+  "effects": {
+    "result": {
+      "narrative": "You lose your grip and tumble to the ground.",
+      "player_damage": "1d6"
     }
   }
-]
+}
 ```
 
-Failed-check consequence:
-```json
-"reactions": [
-  {
-    "id": "web_fail_damage",
-    "on": "check.failed",
-    "condition": {
-      "all": [
-        { "require": "event:source_id == force_through_web" },
-        { "require": "event:check_type == stat_check" }
-      ]
-    },
-    "effects": {
-      "result": {
-        "narrative": "The webs constrict painfully around you.",
-        "alter_stat": { "STR": { "value": -2 } }
-      }
-    }
-  }
-]
-```
+This reaction lives on the source room, which contains the
+`climb_to_ledge` exit.  On failure, the player stays in the room (from
+the traversal failure) and takes damage (from the reaction).
 
-**When to use room reactions:**
-- `reactions`: event-driven triggers that respond to any game event while the
-  player is in the room. Use `on: "room.entered"` for effects that should fire
-  when the player enters the room (replacing the legacy `on_enter` field).
+As an exception, when the player flees combat by using `move`,
+`traversal.succeeded` reactions are **not** evaluated, so do not rely
+on such reactions for cleanup that must always fire on combat escape;
+use a `room.entered` reaction on the destination room instead.
 
-**Timing note:** Reactions on state-change events (`flag.set`,
-`entity_state.changed`, `stat.changed`) fire during **deferred
-dispatch** at end-of-turn, not immediately after the triggering
-action. To chain an immediate follow-up check within a single action
-(e.g., a second stat check right after the first), use `chain_check`
-on the success/failure result (see Step 3E).
+Since `room.entered` fires on all arrivals, regardless of origin, some
+trickery is needed to react only arrivals from a specific entrance:
 
-### 3H. Soft items
+- Use `traversal.succeeded` on the source room with a condition on
+  `event:exit_id`.  This fires with the player still in the source
+  room, so it cannot read the destination room's state.
+
+- Alternatively, use `set_room_state` in the exit's `success` result
+  to record the entry direction (e.g., `{ "from": "courtyard" }`) and
+  use a room condition like `"room:bunkhouse.from == courtyard"` in
+  the destination's `room.entered` reaction.
+
+### 3F. Soft items
 
 Plausible generic items the player might pick up. These should be
 environmentally appropriate items with no plot significance.
@@ -1271,6 +1261,12 @@ environmentally appropriate items with no plot significance.
 **Test:** Will a condition, mechanic, or specific interaction
 reference this thing by name? If yes, it should be a proper entity,
 not a soft item.
+
+### 3G. Other Fields
+
+Rooms can have special interactions, similar to entities (see §2B,
+above).
+
 
 ---
 
