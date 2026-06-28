@@ -74,6 +74,10 @@ not JSON), and save it to `scenario-map.md` in the adventure module
 folder.  This will be the working plan for all subsequent steps.
 Follow steps 1A to 1H carefully, and in order.
 
+To avoid context pressure, it is strongly recommended NOT to read the
+schema docs in Step 1.  The schema will be read in Step 2, when we
+write the actual JSON.
+
 ### 1A. Adventure metadata
 
 Write down, at the top of the Scenario Map:
@@ -233,6 +237,11 @@ Revisit the room list, and add the following info to each room:
 - **Special interactions** — assign a room-unique ID to any special
   interaction the player can have with the *room* (not an entity inside
   the room): e.g., shouting out a magic command word.
+
+  Interactions can be gated by conditions or checks, and can have
+  diverse success/failure results, including setting flags, altering
+  the states of the same or other entities, moving items around,
+  triggering mechanics, etc.
 
   DO NOT define interactions similar to these generic player actions:
   `move` (traversing rooms), `examine` (cursory or in-depth study), or
@@ -509,12 +518,14 @@ catching gaps here avoids rework downstream.
 **Input:** Scenario Map from Step 1 + Corpus Schema
 **Output:** Corpus metadata, global flags, and entities data
 
-Read the corpus schema (`schema/corpus.md`).  You will now write the
-corpus file (`adventures/MODULE-NAME/corpus.json`), starting with the
-metadata and global flags, followed by the entities block.  The
-Scenario Map (`adventures/MODULE-NAME/scenario-map.md`) should be your
-primary source; only refer to the original scenario to look up missing
-information.
+Read the corpus schema (`schema/corpus.md`), and any other necessary
+subsidiary schema referenced therein.
+
+You will now write the corpus (`adventures/MODULE-NAME/corpus.json`),
+starting with the metadata and global flags, followed by the entities
+block.  The Scenario Map (`adventures/MODULE-NAME/scenario-map.md`)
+should be your primary source; only refer to the original scenario to
+look up missing information.
 
 ### 2A. Metadata and Global Flags
 
@@ -567,6 +578,11 @@ killed.
 The Scenario Map may have planned special interactions – discrete
 non-generic actions the player can perform on the entity.  For each,
 construct an interaction object to put into `interactions`.
+
+Interactions can be gated by conditions or checks, and can have
+distinct success and failure results, which can include setting flags,
+altering entity states, etc.  Optionally, the gating/results can be
+modified if the player uses certain items as part of the interaction.
 
 Example: forcing a stuck door.  Bare-handed is hard; a crowbar helps;
 any improvised tool is somewhere in between:
@@ -634,9 +650,9 @@ Notes:
 
 #### State fields
 
-When generating the entity's `state_fields`, refer to the state fields
-planned out in the Scenario Map.  The description should be terse but
-informative – the GM uses this to infer what the field means.
+Using the state fields planned in the Scenario Map, construct the
+entity's `state_fields`.  Each field must have a terse but informative
+description – the GM needs this to infer what the field means.
 
 Example:
 
@@ -652,21 +668,20 @@ Example:
 If an entity is concealed (initially, or subsequently in the
 adventure), it must have a `hidden` state field: e.g., a lurking
 enemy, or a sword in long grass.  When `hidden` is true, the engine
-omits the entity even from the GM (to avoid leakage).  However,
-`hidden` does not apply to entities masked by being in a closed
-container; that case is handled differently (see Containers, below).
+omits the entity even from the GM (to avoid leakage).  However, don't
+use `hidden` to describe entities that are masked just by being in a
+closed container (see Containers, below).
 
 #### Entity Reactions
 
 The `reactions` field is used for event-driven entity behavior.  To
-translate the Scenario Map's reaction description into JSON, refer to
-the spec in [`events.md`](events.md).  Note: entity reactions only
+help translate the Scenario Map's reaction descriptions into JSON, see
+`events.md` for the specs on trigger events.  Entity reactions only
 trigger if the entity is in the current room, alive, and not-fled.
 
 Reaction `result` objects support the same fields as interaction
-results: `narrative`, `set_flag`, `set_entity_state`, `set_room_state`,
-`alter_stat`, `adjust_attitude`, `add_item`, `remove_item`, `reveals`,
-`chain_check`, and `player_damage`.  Use whichever best fits.
+results: `narrative`, `set_flag`, `set_entity_state`, etc.  Use
+whichever best fits.
 
 Example of an attack on sight reaction:
 ```json
@@ -728,12 +743,12 @@ by a stat check:
 }
 ```
 
-Note: **when does a hidden entity become visible?** If the revealing
-result includes `set_entity_state: { "<entity>": { "hidden": false } }`
-directly, the entity is visible to the narrator in the same turn. If
-you use a separate reaction on `flag.set`, the reveal is deferred to
-the next turn's briefing.  The direct approach is usually preferred
-for dramatic effect, unless otherwise indicated by the scenario.
+The `hidden` state field and its timing semantics are documented in
+`corpus.md` § Reserved state fields.  In brief: when `hidden` is
+`true`, the engine omits the entity from all contexts (GM briefing,
+engine result).  Setting `hidden: false` via `set_entity_state` makes
+it visible in the same turn; flag-mediated reveals are deferred to the
+next turn.
 
 For containers (see below), examination should not open the container
 as an effect.  Opening should be an explicit player action (usually

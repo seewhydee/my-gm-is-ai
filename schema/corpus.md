@@ -812,6 +812,28 @@ The engine recognises several reserved state fields:
   how attitude can change. The engine initializes attitude from
   `attitude_limits.initial` (default 0). Conditions can check attitude via
   `attitude:<npc_id> <op> <value>`.
+- `hidden` — declares explicit concealment (e.g., a lurking enemy, or a sword
+  buried in rubble). When `hidden` is `true`, the engine omits the entity from
+  `entities_visible` in **all** contexts — the GMBriefing, the EngineResult,
+  and the follower injection pass — so neither the LLM nor the player receive
+  any mention of it. When `hidden` is absent from `state_fields` (or present
+  but unset in `entity_states`), the entity is treated as visible.
+
+  **Do not** use `hidden` for items that are merely inside a closed container;
+  that is governed by the container's `open` state (see below).  `hidden` is
+  for entities that are present in the room but not apparent even to the GM
+  until some condition or action reveals them.
+
+  **Timing:** when a result directly sets `hidden: false` via
+  `set_entity_state` (e.g., in an `on_examine` event or an interaction
+  result), the entity becomes visible to the narrator in the **same turn** —
+  the EngineResult built after the action will include it.  If the reveal is
+  gated through a separate reaction on `flag.set` that then sets `hidden:
+  false`, the entity does not appear until the **next turn's** GMBriefing,
+  because state-change events fire during deferred end-of-turn dispatch.
+  Prefer the direct approach for dramatic immediacy, unless the scenario
+  requires the reveal to be deferred.
+
 - `open` — for entities with `tags: ["container"]`: when declared in
   `state_fields` and set to `true` in hard state, the entity's
   `contained_entities` and `soft_items` are visible and accessible. When
@@ -823,6 +845,9 @@ The engine recognises several reserved state fields:
 `alive` and `fled` are optional at the schema level, but if an entity has reactions
 and can die or flee, declare the corresponding field so the engine scopes the
 reactions correctly.
+`hidden` is optional at the schema level, but an entity with `hidden: true` in
+initial hard state must have a planned reveal mechanism — an `on_examine` event
+or interaction that sets `hidden: false` — otherwise it is permanently invisible.
 
 ### `dialogue_guidelines` (for NPC type)
 
