@@ -210,7 +210,6 @@ They can be defined at the room level or on individual entities.
   "id": "string (unique within the defining context)",
   "label": "string (short label for UI/debug)",
   "description": "string (what the player is attempting)",
-  "parameter_signature": { "target": ["entity", "soft_item"], "using": ["entity", "soft_item"] },
   "condition": { /* condition object or null */ },
   "skip_check_if": { /* condition object (optional) */ },
   "check": { /* roll check or null */ },
@@ -226,7 +225,6 @@ They can be defined at the room level or on individual entities.
 | `id`                   | string       | yes      | Unique within the defining context (room or entity). Referenced by `interact` action `interaction_id`. |
 | `label`                | string       | yes      | Human-readable action label. |
 | `description`          | string       | no       | Extended description of the action. |
-| `parameter_signature`  | object       | no       | Constrains what the `target` and `using` fields of the `interact` action can reference. `target` lists accepted types (`entity`, `soft_item`, `room`); `using` lists accepted types. If absent, no parameter restrictions beyond target existence. |
 | `condition`            | object\|null | no       | Condition that must be met for the interaction to be available. |
 | `skip_check_if`        | object       | no       | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition`. |
 | `check`                | object       | no       | A probabilistic check (roll). If absent, `result` is used directly. |

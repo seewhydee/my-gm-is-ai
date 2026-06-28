@@ -846,15 +846,6 @@
               }
             ]
           },
-          "parameter_signature": {
-            "target": [
-              "entity"
-            ],
-            "using": [
-              "entity",
-              "soft_item"
-            ]
-          },
           "check": {
             "type": "stat_check",
             "stat": "STR",

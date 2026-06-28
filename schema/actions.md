@@ -348,9 +348,6 @@ The LLM must output a single structured action, corresponding to the player's in
   in the room or on a present entity.
 - `interaction_id` must match a defined interaction on the target entity, the
   current room, or a generic interaction (e.g., `attack`).
-- The interaction's `parameter_signature` (if defined) is validated: `target`
-  must be of a type listed in `parameter_signature.target`, and `using` must
-  be of a type listed in `parameter_signature.using`.
 - All interaction `conditions` must be met.
 - If the interaction has a `check` (roll), the engine resolves it and selects
   the `success` or `failure` result.

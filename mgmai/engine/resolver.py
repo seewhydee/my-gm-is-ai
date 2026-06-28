@@ -913,27 +913,6 @@ def resolve_interact(
         result.error = f"Conditions not met for interaction '{interaction_id}'"
         return result
 
-    if inter.parameter_signature:
-        sig = inter.parameter_signature
-        entity_types = {"player", "feature", "npc", "item"}
-        if sig.target:
-            target_type = target_entity.type if target_entity else "soft_item"
-            allowed = set(sig.target)
-            if target_type not in allowed and not (
-                "entity" in allowed and target_type in entity_types
-            ):
-                result.error = f"Target type '{target_type}' not allowed for interaction '{interaction_id}' (expected: {sig.target})"
-                return result
-        if sig.using and action.using:
-            using_entity = corpus.entities.get(action.using)
-            using_type = using_entity.type if using_entity else "soft_item"
-            allowed_using = set(sig.using)
-            if using_type not in allowed_using and not (
-                "entity" in allowed_using and using_type in entity_types
-            ):
-                result.error = f"Using item type '{using_type}' not allowed for interaction '{interaction_id}' (expected: {sig.using})"
-                return result
-
     if inter.check:
         # Handle skip_check_if: bypass check and apply success Result
         if inter.skip_check_if and evaluate(inter.skip_check_if, hard, soft, corpus):

@@ -70,10 +70,6 @@ class ConditionExpression(BaseModel):
         return self
 
 
-class ParameterSignature(BaseModel):
-    target: Optional[List[str]] = None
-    using: Optional[List[str]] = None
-
 
 class StatModifier(BaseModel):
     mode: Literal["delta", "set"] = "delta"
@@ -209,7 +205,6 @@ class Interaction(BaseModel):
     id: str
     label: str
     description: Optional[str] = None
-    parameter_signature: Optional[ParameterSignature] = None
     condition: Optional[ConditionExpression] = None
     skip_check_if: Optional[ConditionExpression] = None
     check: Optional[CheckType] = None

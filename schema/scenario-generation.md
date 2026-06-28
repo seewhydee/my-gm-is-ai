@@ -536,18 +536,19 @@ Here are general tips for writing the JSON objects, followed by
 specific tips for items (§2C), features (§2D), the player (§2E), and
 NPCs (§2F).  NPCs are the most complicated, so write them carefully.
 
-While constructing the JSON object, you may find it necessary to
-deviate from the Scenario Map.  Most commonly, this involves adding
-additional elements (flags, entity/room state fields, reactions, etc.)
-that are necessary but not forseen.  Remember these deviations; we
-will revise the Scenario Map (§2H) before progressing to Step 3.
+While constructing the JSON objects, you may find it necessary to
+deviate from the Scenario Map, such as by adding extra unforseen
+elements (flags, entity/room state fields, reactions, special
+interactions, etc.).  Remember the deviations, and revise the Scenario
+Map at the end of Step 2 (§2H) before going to Step 3.  Major
+deviations should be surface in the final task report.
 
 #### Description
 
 When generating each entity's `description`, do not just translate the
 description field from the Scenario Map.  Take a holistic view, and
 write a timeless, spoiler-free description of the entity.  This
-description is provided to the GM whenever the entity is present; it
+description is provided to the GM whenever the entity is present, and
 should be factual, and independent of the entity's state (e.g., dead
 or alive).  You may inject small details to add flavor, without
 contradicting the scenario.
@@ -563,7 +564,7 @@ killed.
 
 #### Interactions
 
-The Scenario Map may have planned out special interactions – discrete
+The Scenario Map may have planned special interactions – discrete
 non-generic actions the player can perform on the entity.  For each,
 construct an interaction object to put into `interactions`.
 
@@ -606,29 +607,23 @@ any improvised tool is somewhere in between:
 Notes:
 
 - If the action always succeeds (e.g., flipping a simple switch), use
-  `result` directly with no `check`.
+  `result` with no `check`.
 
-- Use `condition` to restrict access.  The interaction is only
-  available when the condition is met: e.g., an "open" interaction on
+- Use `condition` to gate availability: e.g., an "open" interaction on
   a chest can be gated on `entity:chest.locked == false`.
 
-- Use `skip_check_if` to bypass gating and checks entirely.  When
-  `skip_check_if` is met, the interaction is available and succeeds.
+- Use `skip_check_if` to bypass gating and checks entirely.
 
-- Set `repeatable: true` for tasks the player may retry after failing.
-  Use false for one-shot attempts where a second try makes no
-  narrative sense.  If the scenario and Scenario Map are ambiguous,
-  use your own judgment and note it in your report.
+- Set `repeatable: false` for tasks where failure is permanent: the
+  engine will block any retry after failure.  For tasks with one-off
+  success (e.g., smashing a pot), use `condition` as described above.
 
-- The `failure` field is optional.  If you omit it on a checked
-  interaction, the engine returns a generic "nothing happens"
-  narrative on failure.
+  If the scenario and Scenario Map are ambiguous about whether an
+  interaction should be one-off success and/or failure, use your
+  judgment; if the decision is tricky, note in your report.
 
-- `parameter_signature` declares what the `target` and `using` fields
-  may reference.  For example, a "recharge" interaction on a magical
-  device might accept `using: ["entity", "soft_item"]` for a power
-  source.  Without a signature, the engine accepts any valid target
-  and any in-inventory `using` item.
+- If the optional `failure` field is omitted, the engine returns a
+  generic "nothing happens" narrative on failure.
 
 - When an interaction behaves differently depending on what the player
   uses, define a `using_results` map.  Each key is an item entity ID
@@ -1297,8 +1292,8 @@ above).
 - [ ] Every interaction without a check has `result`
 - [ ] Every `on_examine` event with a `check` has `success`
 - [ ] Every `on_examine` event without a `check` has `result`
-- [ ] Interactions that should accept a `using` item have a
-  `parameter_signature` defining accepted types
+- [ ] Interactions that should accept a `using` item have a `using_results`
+  map or appropriate condition gating
 - [ ] If interactions reference `using_results`, each key is a valid entity
   ID or `"*"` wildcard
 - [ ] Room `reactions` use valid event types (see [`events.md`](events.md))

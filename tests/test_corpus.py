@@ -33,7 +33,7 @@ from mgmai.models.corpus import (
     Interaction,
     Mechanic,
     ModuleCorpus,
-    ParameterSignature,
+
     Reaction,
     ReactionEffects,
     Result,
@@ -243,16 +243,6 @@ class TestInteraction:
         })
         assert i.result is None
         assert i.check is None
-
-    def test_parameter_signature(self) -> None:
-        i = Interaction.model_validate({
-            "id": "attack",
-            "label": "Attack",
-            "parameter_signature": {"target": ["entity"], "using": ["entity", "soft_item"]},
-        })
-        assert i.parameter_signature is not None
-        assert i.parameter_signature.target == ["entity"]
-        assert i.parameter_signature.using == ["entity", "soft_item"]
 
     def test_with_condition(self) -> None:
         i = Interaction.model_validate({
@@ -793,21 +783,6 @@ class TestAtmosphere:
     def test_missing_tone_raises(self) -> None:
         with pytest.raises(ValidationError):
             Atmosphere.model_validate({"setting": "A world."})
-
-
-class TestParameterSignature:
-    def test_basic(self) -> None:
-        p = ParameterSignature.model_validate({
-            "target": ["entity", "soft_item"],
-            "using": ["entity"],
-        })
-        assert p.target == ["entity", "soft_item"]
-        assert p.using == ["entity"]
-
-    def test_empty(self) -> None:
-        p = ParameterSignature.model_validate({})
-        assert p.target is None
-        assert p.using is None
 
 
 class TestFleeEffect:

@@ -292,14 +292,6 @@
           "id": "unlock_padlock",
           "label": "Unlock the padlock",
           "description": "Poke the rusty key through the rip in the canvas and insert it into the padlock to unlock the bag.",
-          "parameter_signature": {
-            "target": [
-              "entity"
-            ],
-            "using": [
-              "entity"
-            ]
-          },
           "condition": {
             "all": [
               "inventory:rusty_key",
