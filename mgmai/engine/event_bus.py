@@ -209,10 +209,8 @@ def dispatch_reactions(
             narrative: list[str] = []
             revealed: list[str] = []
             from mgmai.engine.resolver import _apply_result_with_check, ResolutionResult
-            resolution_for_chain = None
+            resolution_for_chain = ResolutionResult(success=True)
             chain_rolls: list[dict[str, Any]] = []
-            if resolved.result.then_check is not None:
-                resolution_for_chain = ResolutionResult(success=True)
             _apply_result_with_check(
                 resolved.result,
                 changes=hc, narrative=narrative,
@@ -224,8 +222,7 @@ def dispatch_reactions(
                 source_id=reaction.id,
                 source_type="reaction",
             )
-            if resolution_for_chain is not None:
-                chain_events.extend(resolution_for_chain.events)
+            chain_events.extend(resolution_for_chain.events)
             if rolls is not None:
                 rolls.extend(chain_rolls)
             if triggered_narration is not None:

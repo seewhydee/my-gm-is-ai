@@ -43,11 +43,16 @@ from mgmai.models.actions import (
     OocDiscussionAction,
 )
 from mgmai.models.corpus import (
+    CheckResolution,
+    ConditionExpression,
+    Exit,
+    Interaction,
     Result,
     RollCheck,
     StatCheck,
     StatModifier,
     TakeCheck,
+    TraversalCheck,
 )
 from mgmai.state.manager import StateManager
 from tests.helpers import (
@@ -280,6 +285,35 @@ class TestResolveMove:
         result = resolve_move(action, manager.hard_state, manager.soft_state, manager.corpus, manager)
         assert result.success is True
         assert result.encounter_trigger == "ambush"
+
+    def test_traversal_roll_dict_has_unified_keys(self, state_manager, monkeypatch):
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        corpus.rooms["axe_head"].exits.append(
+            Exit(
+                id="exit_test_unified",
+                direction="A test exit",
+                target_room="axe_handle_upper",
+                traversal_check=TraversalCheck(
+                    check=RollCheck(threshold=0.5, repeatable=True),
+                    failure=Result(narrative="You cannot pass."),
+                ),
+            )
+        )
+        monkeypatch.setattr("random.random", lambda: 0.9)
+        action = MoveAction(
+            action_type="move", target="exit_test_unified", detail="Trying exit"
+        )
+        result = resolve_move(action, hard, state_manager.soft_state, corpus)
+        assert result.hard_changes.player_location is None
+        assert "You cannot pass." in result.triggered_narration
+        assert len(result.rolls) == 1
+        roll = result.rolls[0]
+        assert roll["source_id"] == "exit_test_unified"
+        assert roll["source_type"] == "traversal"
+        assert roll["check_type"] == "roll"
+        assert "traversal_check" in roll
 
 
 class TestResolveTalk:
@@ -606,6 +640,58 @@ class TestResolveInteract:
         result = resolve_interact(action, hard, soft, corpus)
         assert result.success is False
 
+    def test_non_repeatable_interaction_returns_error_on_second_attempt(
+        self, state_manager, monkeypatch
+    ):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        monkeypatch.setattr("random.random", lambda: 0.1)
+        corpus.rooms["axe_head"].interactions.append(
+            Interaction(
+                id="once_only",
+                label="Once Only",
+                check=RollCheck(threshold=0.5, repeatable=False),
+                success=Result(narrative="Done."),
+                failure=Result(narrative="Failed."),
+            )
+        )
+        action = InteractAction(
+            action_type="interact", target="padlock",
+            interaction_id="once_only",
+            detail="Try once",
+        )
+        first = resolve_interact(action, hard, soft, corpus)
+        assert first.success is True
+        second = resolve_interact(action, hard, soft, corpus)
+        assert second.success is False
+        assert "already been attempted" in (second.error or "")
+
+    def test_stat_check_without_stats_returns_error(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        hard.player.stats = None
+        corpus.rooms["axe_head"].interactions.append(
+            Interaction(
+                id="stat_gate",
+                label="Stat Gate",
+                check=StatCheck(stat="STR", dc=10, repeatable=True),
+                success=Result(narrative="Passed."),
+                failure=Result(narrative="Failed."),
+            )
+        )
+        action = InteractAction(
+            action_type="interact", target="padlock",
+            interaction_id="stat_gate",
+            detail="Try stat gate",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is False
+        assert "stat" in (result.error or "").lower()
+
 
 class TestResolveAction:
     def test_dispatches_correctly(self, state_manager):
@@ -847,4 +933,37 @@ class TestResolveTransferTakeCheck:
         failed = [ev for ev in result.events if ev[0] == "check.failed"]
         assert len(failed) == 1
         assert failed[0][1]["source_type"] == "take"
+
+    def test_take_check_skip_check_if_fires_then_check(self, state_manager):
+        """A TakeCheck whose skip_check_if bypasses the check still resolves
+        success.then_check and emits the check event with source_type 'take'."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        hard.flags["skip_take"] = True
+        key = corpus.entities["rusty_key"]
+        key.take_check = TakeCheck(
+            skip_check_if=ConditionExpression(require="flag:skip_take == true"),
+            check=RollCheck(threshold=0.5, repeatable=True),
+            success=Result(
+                narrative="You lift the key effortlessly.",
+                then_check=CheckResolution(
+                    check=RollCheck(threshold=1.0, repeatable=True),
+                    success=Result(set_flag={"skip_then_check_fired": True}),
+                ),
+            ),
+            failure=Result(narrative="The key slips from your grasp."),
+        )
+        action = TransferAction(
+            action_type="transfer",
+            target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.flags_set.get("skip_then_check_fired") is True
+        assert "source_id" in result.rolls[0]
+        assert result.rolls[0]["source_type"] == "take"
 

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -59,6 +60,8 @@ from mgmai.engine.utils import get_following_npc_ids
 from mgmai.engine.systems import get_system_for_corpus
 
 MAX_THEN_CHECK_DEPTH = 3
+
+log = logging.getLogger(__name__)
 
 
 def _emit_event(
@@ -746,9 +749,17 @@ def resolve_transfer(
             if tc.gating and not evaluate(tc.gating, hard, soft, corpus):
                 pass  # Fall through to add item below
             elif tc.skip_check_if and evaluate(tc.skip_check_if, hard, soft, corpus):
-                # Bypass check, apply success Result
+                # Bypass check, apply success Result (including any then_check)
                 if tc.success:
-                    _apply_result(tc.success, changes, triggered_narration, revealed_hints, hard, corpus, soft, state_manager, result, source_id=f"take_{item}", item_origin="take")
+                    _apply_result_with_check(
+                        tc.success,
+                        changes=changes, narrative=triggered_narration,
+                        revealed_hints=revealed_hints, hard=hard, corpus=corpus,
+                        soft=soft, room_id=room_id, rolls=rolls,
+                        state_manager=state_manager, resolution=result,
+                        source_id=f"take_{item}", source_type="take",
+                        item_origin="take",
+                    )
             else:
                 synthetic = Interaction(
                     id=f"take_{item}",
@@ -1024,6 +1035,9 @@ def _resolve_traversal_check(
         )
 
         roll_dict = cr.to_dict()
+        roll_dict["source_id"] = source_id
+        roll_dict["source_type"] = "traversal"
+        roll_dict["check_type"] = "stat_check"
         roll_dict["traversal_check"] = True
         rolls.append(roll_dict)
 
@@ -1045,10 +1059,13 @@ def _resolve_traversal_check(
         roll_val = random.random()
         success_flag = roll_val < check.threshold
         rolls.append({
-            "traversal_check": True,
+            "source_id": source_id,
+            "source_type": "traversal",
+            "check_type": "roll",
             "threshold": check.threshold,
             "result": roll_val,
             "success": success_flag,
+            "traversal_check": True,
         })
 
         if resolution is not None:
@@ -1081,6 +1098,11 @@ def _resolve_interaction_check(
     if check is None:
         return ResolutionResult(success=False, error="Check defined but missing")
 
+    # Clear any stale error on the accumulator so we can use it as a signal
+    # from _resolve_checkable for genuinely unresolvable checks.
+    if resolution is not None:
+        resolution.error = None
+
     changes = HardStateChanges()
     narrative: list[str] = []
     revealed_hints: list[str] = []
@@ -1095,6 +1117,21 @@ def _resolve_interaction_check(
         source_id=inter.id, source_type=source_type,
         track_attempts=True, attempt_key=inter.id,
     )
+
+    # A False return with an error set means the check could not be resolved
+    # (missing stats, or a non-repeatable check already attempted). A normal
+    # failed roll or depth-capped then_check returns False with no error.
+    if not passed and resolution is not None and resolution.error:
+        return ResolutionResult(
+            success=False,
+            error=resolution.error,
+            hard_changes=changes,
+            triggered_narration=narrative,
+            revealed_hints=revealed_hints,
+            room_after_id=room_id,
+            rolls=rolls,
+            encounter_trigger=encounter_trigger,
+        )
 
     return ResolutionResult(
         success=True,
@@ -1318,6 +1355,10 @@ def _resolve_checkable(
     """Resolve a Checkable's check, apply the chosen branch, recurse into
     any then_check. Returns True if the check passed or was skipped."""
     if depth >= MAX_THEN_CHECK_DEPTH:
+        log.warning(
+            "then_check recursion stopped at depth %d (MAX_THEN_CHECK_DEPTH)",
+            MAX_THEN_CHECK_DEPTH,
+        )
         return False
 
     if chk.skip_check_if and evaluate(chk.skip_check_if, hard, soft, corpus):
@@ -1340,6 +1381,11 @@ def _resolve_checkable(
     if track_attempts and not check.repeatable and attempt_key:
         attempted = soft.checks_attempted.get(attempt_key, [])
         if room_id in attempted:
+            if resolution is not None:
+                resolution.error = (
+                    f"Interaction '{attempt_key}' has already been attempted "
+                    "and is not repeatable"
+                )
             return False
 
     if isinstance(check, StatCheck):
