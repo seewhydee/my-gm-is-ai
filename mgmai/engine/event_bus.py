@@ -208,26 +208,23 @@ def dispatch_reactions(
             hc = HardStateChanges()
             narrative: list[str] = []
             revealed: list[str] = []
-            from mgmai.engine.resolver import _apply_result, _resolve_chained_check, ResolutionResult
+            from mgmai.engine.resolver import _apply_result_with_check, ResolutionResult
             resolution_for_chain = None
             chain_rolls: list[dict[str, Any]] = []
             if resolved.result.then_check is not None:
                 resolution_for_chain = ResolutionResult(success=True)
-            _apply_result(
-                resolved.result, hc, narrative, revealed, hard, corpus, soft,
-                state_manager=None,  # event bus dispatches its own reactions
+            _apply_result_with_check(
+                resolved.result,
+                changes=hc, narrative=narrative,
+                revealed_hints=revealed, hard=hard, corpus=corpus,
+                soft=soft, room_id=hard.player.location or "",
+                rolls=chain_rolls,
+                state_manager=None,
                 resolution=resolution_for_chain,
                 source_id=reaction.id,
+                source_type="reaction",
             )
-            if resolved.result.then_check is not None and resolution_for_chain is not None:
-                _resolve_chained_check(
-                    resolved.result.then_check, hard, soft, corpus,
-                    hard.player.location or "",
-                    hc, narrative, revealed, chain_rolls, 0,
-                    state_manager=None,
-                    resolution=resolution_for_chain,
-                    source_id=reaction.id,
-                )
+            if resolution_for_chain is not None:
                 chain_events.extend(resolution_for_chain.events)
             if rolls is not None:
                 rolls.extend(chain_rolls)

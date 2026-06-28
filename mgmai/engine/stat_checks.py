@@ -60,8 +60,9 @@ def format_stat_check_prefix(rolls: list[dict[str, Any]]) -> str:
 
     The prefix is intended to be prepended to the narration shown to the
     player after a player action that involved one or more stat checks.
-    Only rolls with ``type == "stat_check"`` are summarised.  If no such
-    rolls exist, an empty string is returned.
+    Only rolls with ``check_type == "stat_check"`` (or legacy
+    ``type == "stat_check"``) are summarised.  If no such rolls exist, an
+    empty string is returned.
 
     Example output::
 
@@ -72,7 +73,8 @@ def format_stat_check_prefix(rolls: list[dict[str, Any]]) -> str:
     """
     summaries: list[str] = []
     for roll in rolls:
-        if roll.get("type") != "stat_check":
+        check_type = roll.get("check_type") or roll.get("type")
+        if check_type != "stat_check":
             continue
         stat = roll.get("stat")
         success = roll.get("success")

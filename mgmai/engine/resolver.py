@@ -316,6 +316,9 @@ def resolve_move(
             )
 
     traversal_rolls: list[dict[str, Any]] = []
+    traversal_changes = HardStateChanges()
+    traversal_narrative: list[str] = []
+    traversal_hints: list[str] = []
     result = ResolutionResult(
         success=True,
         hard_changes=HardStateChanges(),
@@ -337,16 +340,15 @@ def resolve_move(
             should_check = False
             # Apply success Result if present when skip_check_if is met
             if trav_check.success:
-                skip_changes = HardStateChanges()
-                skip_narrative: list[str] = []
-                skip_hints: list[str] = []
-                _apply_result(trav_check.success, skip_changes, skip_narrative, skip_hints, hard, corpus, soft, state_manager, result, source_id=target_exit_id, item_origin="traversal")
-                if skip_changes.has_changes():
-                    result.hard_changes = skip_changes
-                if skip_narrative:
-                    result.triggered_narration = list(skip_narrative)
-                if skip_hints:
-                    result.revealed_hints = list(skip_hints)
+                _apply_result_with_check(
+                    trav_check.success,
+                    changes=traversal_changes, narrative=traversal_narrative,
+                    revealed_hints=traversal_hints, hard=hard, corpus=corpus,
+                    soft=soft, room_id=room_id, rolls=traversal_rolls,
+                    state_manager=state_manager, resolution=result,
+                    source_id=target_exit_id, source_type="traversal",
+                    item_origin="traversal",
+                )
         elif trav_check.gating:
             should_check = evaluate(trav_check.gating, hard, soft, corpus)
         if should_check:
@@ -362,22 +364,25 @@ def resolve_move(
                 if using_override is not None and using_override.check is not None:
                     effective_check = using_override.check
 
-            traversal_narrative: list[str] = []
-            traversal_changes = HardStateChanges()
             passed = _resolve_traversal_check(
                 effective_check, hard, soft, corpus,
                 traversal_changes, traversal_narrative, traversal_rolls,
                 state_manager, result, target_exit_id,
             )
             if not passed:
-                narrative_result = list(traversal_narrative)
-                failure_result = HardStateChanges()
-                failure_hints: list[str] = []
                 if trav_check.failure:
-                    _apply_result(trav_check.failure, failure_result, narrative_result, failure_hints, hard, corpus, soft, state_manager, result, source_id=target_exit_id, item_origin="traversal")
-                result.hard_changes = failure_result
-                result.triggered_narration = narrative_result
-                result.revealed_hints = failure_hints
+                    _apply_result_with_check(
+                        trav_check.failure,
+                        changes=traversal_changes, narrative=traversal_narrative,
+                        revealed_hints=traversal_hints, hard=hard, corpus=corpus,
+                        soft=soft, room_id=room_id, rolls=traversal_rolls,
+                        state_manager=state_manager, resolution=result,
+                        source_id=target_exit_id, source_type="traversal",
+                        item_origin="traversal",
+                    )
+                result.hard_changes = traversal_changes
+                result.triggered_narration = list(traversal_narrative)
+                result.revealed_hints = list(traversal_hints)
                 result.rolls = traversal_rolls
                 _emit_event(
                     "traversal.failed",
@@ -389,9 +394,23 @@ def resolve_move(
                     hard, soft, corpus, state_manager, result,
                 )
                 return result
+            # Traversal succeeded: apply success Result (including any then_check)
+            if trav_check.success:
+                _apply_result_with_check(
+                    trav_check.success,
+                    changes=traversal_changes, narrative=traversal_narrative,
+                    revealed_hints=traversal_hints, hard=hard, corpus=corpus,
+                    soft=soft, room_id=exit_data.target_room,
+                    rolls=traversal_rolls,
+                    state_manager=state_manager, resolution=result,
+                    source_id=target_exit_id, source_type="traversal",
+                    item_origin="traversal",
+                )
 
     changes = HardStateChanges(player_location=exit_data.target_room)
-    narrative: list[str] = []
+    if exit_data.traversal_check:
+        changes.merge(traversal_changes)
+    narrative: list[str] = list(traversal_narrative)
 
     room_states = hard.room_states.get(exit_data.target_room, {})
     one_way_from = room_states.get("_one_way_from", {})
@@ -413,6 +432,7 @@ def resolve_move(
 
     result.hard_changes = changes
     result.triggered_narration = narrative
+    result.revealed_hints = traversal_hints
     result.room_after_id = exit_data.target_room
     result.rolls = traversal_rolls
     _emit_event(
@@ -973,172 +993,6 @@ def resolve_interact(
     return result
 
 
-def _resolve_chained_check(
-    chained: CheckResolution,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    room_id: str,
-    changes: HardStateChanges,
-    narrative: list[str],
-    revealed_hints: list[str],
-    rolls: list[dict[str, Any]],
-    depth: int = 0,
-    state_manager: Any | None = None,
-    resolution: ResolutionResult | None = None,
-    source_id: str | None = None,
-    source_type: str | None = None,
-) -> None:
-    if depth >= MAX_THEN_CHECK_DEPTH:
-        return
-    if source_type is None:
-        source_type = "reaction" if source_id else "unknown"
-    # Handle skip_check_if: bypass check and apply success Result
-    if chained.skip_check_if and evaluate(chained.skip_check_if, hard, soft, corpus):
-        _apply_result(chained.success, changes, narrative, revealed_hints, hard, corpus, soft, state_manager, resolution, source_id)
-        if chained.success.then_check:
-            _resolve_chained_check(
-                chained.success.then_check, hard, soft, corpus, room_id,
-                changes, narrative, revealed_hints, rolls, depth + 1,
-                state_manager, resolution, source_id, source_type,
-            )
-        return
-    check = chained.check
-    if isinstance(check, StatCheck):
-        _resolve_stat_check_chain(
-            check, chained.success, chained.failure,
-            hard, soft, corpus, room_id,
-            changes, narrative, revealed_hints, rolls, depth,
-            state_manager, resolution, source_id, source_type,
-        )
-    else:
-        _resolve_roll_check_chain(
-            check, chained.success, chained.failure,
-            hard, soft, corpus, room_id,
-            changes, narrative, revealed_hints, rolls, depth,
-            state_manager, resolution, source_id, source_type,
-        )
-
-
-def _resolve_roll_check_chain(
-    check: RollCheck,
-    success: Result,
-    failure: Result | None,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    room_id: str,
-    changes: HardStateChanges,
-    narrative: list[str],
-    revealed_hints: list[str],
-    rolls: list[dict[str, Any]],
-    depth: int,
-    state_manager: Any | None = None,
-    resolution: ResolutionResult | None = None,
-    source_id: str | None = None,
-    source_type: str | None = None,
-) -> None:
-    if source_type is None:
-        source_type = "reaction" if source_id else "unknown"
-    roll_val = random.random()
-    success_flag = roll_val < check.threshold
-
-    branch = success if success_flag else failure
-    result = branch if branch else None
-
-    rolls.append({
-        "threshold": check.threshold,
-        "result": roll_val,
-        "success": success_flag,
-    })
-
-    if resolution is not None:
-        _emit_event(
-            "check.passed" if success_flag else "check.failed",
-            {
-                "check_type": "roll",
-                "threshold": check.threshold,
-                "source_type": source_type,
-                "source_id": source_id or "",
-            },
-            hard, soft, corpus, state_manager, resolution,
-        )
-
-    if result:
-        _apply_result(result, changes, narrative, revealed_hints, hard, corpus, soft, state_manager, resolution, source_id)
-        if result.then_check:
-            _resolve_chained_check(
-                result.then_check, hard, soft, corpus, room_id,
-                changes, narrative, revealed_hints, rolls, depth + 1,
-                state_manager, resolution, source_id, source_type,
-            )
-
-
-def _resolve_stat_check_chain(
-    check: StatCheck,
-    success: Result,
-    failure: Result | None,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    room_id: str,
-    changes: HardStateChanges,
-    narrative: list[str],
-    revealed_hints: list[str],
-    rolls: list[dict[str, Any]],
-    depth: int,
-    state_manager: Any | None = None,
-    resolution: ResolutionResult | None = None,
-    source_id: str | None = None,
-    source_type: str | None = None,
-) -> None:
-    if source_type is None:
-        source_type = "reaction" if source_id else "unknown"
-    stats_block = corpus.stats
-    if stats_block is None:
-        return
-
-    player_stats = hard.player.stats
-    if player_stats is None or check.stat not in player_stats:
-        return
-
-    system = get_system_for_corpus(corpus)
-    cr = system.roll_check(
-        check.stat,
-        player_stats[check.stat],
-        check.dc,
-        flat_modifier=check.modifier,
-        params=check.resolution_params,
-    )
-
-    branch = success if cr.success else failure
-    result = branch if branch else None
-
-    rolls.append(cr.to_dict())
-
-    if resolution is not None:
-        _emit_event(
-            "check.passed" if cr.success else "check.failed",
-            {
-                "check_type": "stat_check",
-                "stat": check.stat,
-                "dc": check.dc,
-                "source_type": source_type,
-                "source_id": source_id or "",
-            },
-            hard, soft, corpus, state_manager, resolution,
-        )
-
-    if result:
-        _apply_result(result, changes, narrative, revealed_hints, hard, corpus, soft, state_manager, resolution, source_id)
-        if result.then_check:
-            _resolve_chained_check(
-                result.then_check, hard, soft, corpus, room_id,
-                changes, narrative, revealed_hints, rolls, depth + 1,
-                state_manager, resolution, source_id, source_type,
-            )
-
-
 def _resolve_traversal_check(
     check: CheckType,
     hard: HardGameState,
@@ -1227,160 +1081,20 @@ def _resolve_interaction_check(
     if check is None:
         return ResolutionResult(success=False, error="Check defined but missing")
 
-    # Non-repeatable gating (shared by both check types)
-    if not check.repeatable:
-        attempted = soft.checks_attempted.get(inter.id, [])
-        if room_id in attempted:
-            return ResolutionResult(
-                success=False,
-                error=f"Interaction '{inter.id}' has already been attempted and is not repeatable",
-            )
-
-    if isinstance(check, StatCheck):
-        check_result = _resolve_stat_check(
-            inter, check, hard, soft, corpus, room_id, encounter_trigger, source_type,
-            state_manager, resolution,
-        )
-    else:
-        check_result = _resolve_roll_check(
-            inter, check, hard, soft, corpus, room_id, encounter_trigger, source_type,
-            state_manager, resolution,
-        )
-
-    if resolution is not None and check_result.rolls:
-        success_flag = any(r.get("success") for r in check_result.rolls)
-        check_type = "stat_check" if isinstance(check, StatCheck) else "roll"
-        ctx: dict[str, Any] = {
-            "check_type": check_type,
-            "source_type": source_type,
-            "source_id": inter.id,
-        }
-        if isinstance(check, StatCheck):
-            ctx["stat"] = check.stat
-            ctx["dc"] = check.dc
-        else:
-            ctx["threshold"] = check.threshold
-        _emit_event(
-            "check.passed" if success_flag else "check.failed",
-            ctx, hard, soft, corpus, state_manager, resolution,
-        )
-
-    return check_result
-
-
-def _resolve_roll_check(
-    inter: Interaction,
-    check: RollCheck,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    room_id: str,
-    encounter_trigger: str | None = None,
-    source_type: str = "interaction",
-    state_manager: Any | None = None,
-    resolution: ResolutionResult | None = None,
-) -> ResolutionResult:
-    roll = random.random()
-    success_flag = roll < check.threshold
-
-    branch = inter.success if success_flag else inter.failure
-    result = branch if branch else inter.result
-
     changes = HardStateChanges()
     narrative: list[str] = []
+    revealed_hints: list[str] = []
     rolls: list[dict[str, Any]] = []
 
-    if not check.repeatable:
-        if inter.id not in soft.checks_attempted:
-            soft.checks_attempted[inter.id] = []
-        soft.checks_attempted[inter.id].append(room_id)
-
-    rolls.append({
-        "check_id": inter.id,
-        "threshold": check.threshold,
-        "result": roll,
-        "success": success_flag,
-    })
-
-    revealed_hints: list[str] = []
-    if result:
-        _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
-        if result.then_check:
-            _resolve_chained_check(
-                result.then_check, hard, soft, corpus, room_id,
-                changes, narrative, revealed_hints, rolls, 0,
-                state_manager, resolution, inter.id, source_type,
-            )
-
-    return ResolutionResult(
-        success=True,
-        hard_changes=changes,
-        triggered_narration=narrative,
-        revealed_hints=revealed_hints,
-        room_after_id=room_id,
-        rolls=rolls,
-        encounter_trigger=encounter_trigger,
+    passed = _resolve_checkable(
+        inter,
+        hard=hard, soft=soft, corpus=corpus, room_id=room_id,
+        changes=changes, narrative=narrative,
+        revealed_hints=revealed_hints, rolls=rolls,
+        state_manager=state_manager, resolution=resolution,
+        source_id=inter.id, source_type=source_type,
+        track_attempts=True, attempt_key=inter.id,
     )
-
-
-def _resolve_stat_check(
-    inter: Interaction,
-    check: StatCheck,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    room_id: str,
-    encounter_trigger: str | None = None,
-    source_type: str = "interaction",
-    state_manager: Any | None = None,
-    resolution: ResolutionResult | None = None,
-) -> ResolutionResult:
-    stats_block = corpus.stats
-    if stats_block is None:
-        return ResolutionResult(
-            success=False, error="Adventure has no stats system defined"
-        )
-
-    player_stats = hard.player.stats
-    if player_stats is None or check.stat not in player_stats:
-        return ResolutionResult(
-            success=False,
-            error=f"Player has no '{check.stat}' stat",
-        )
-
-    stat_value = player_stats[check.stat]
-
-    system = get_system_for_corpus(corpus)
-    cr = system.roll_check(
-        check.stat,
-        stat_value,
-        check.dc,
-        flat_modifier=check.modifier,
-        params=check.resolution_params,
-    )
-
-    branch = inter.success if cr.success else inter.failure
-    result = branch if branch else inter.result
-
-    if not check.repeatable:
-        if inter.id not in soft.checks_attempted:
-            soft.checks_attempted[inter.id] = []
-        soft.checks_attempted[inter.id].append(room_id)
-
-    changes = HardStateChanges()
-    narrative: list[str] = []
-    revealed_hints: list[str] = []
-
-    rolls: list[dict[str, Any]] = [{"check_id": inter.id, **cr.to_dict()}]
-
-    if result:
-        _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
-        if result.then_check:
-            _resolve_chained_check(
-                result.then_check, hard, soft, corpus, room_id,
-                changes, narrative, revealed_hints, rolls, 0,
-                state_manager, resolution, inter.id, source_type,
-            )
 
     return ResolutionResult(
         success=True,
@@ -1439,24 +1153,16 @@ def _resolve_interaction_result(
     changes = HardStateChanges()
     narrative: list[str] = []
     revealed_hints: list[str] = []
+    rolls: list[dict[str, Any]] = []
 
-    _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
-    if result.then_check:
-        rolls: list[dict[str, Any]] = []
-        _resolve_chained_check(
-            result.then_check, hard, soft, corpus, room_id,
-            changes, narrative, revealed_hints, rolls, 0,
-            state_manager, resolution, source_id, source_type,
-        )
-        return ResolutionResult(
-            success=True,
-            hard_changes=changes,
-            triggered_narration=narrative,
-            revealed_hints=revealed_hints,
-            room_after_id=room_id,
-            rolls=rolls,
-            encounter_trigger=encounter_trigger,
-        )
+    _apply_result_with_check(
+        result,
+        changes=changes, narrative=narrative,
+        revealed_hints=revealed_hints, hard=hard, corpus=corpus,
+        soft=soft, room_id=room_id, rolls=rolls,
+        state_manager=state_manager, resolution=resolution,
+        source_id=source_id, source_type=source_type,
+    )
 
     return ResolutionResult(
         success=True,
@@ -1464,6 +1170,7 @@ def _resolve_interaction_result(
         triggered_narration=narrative,
         revealed_hints=revealed_hints,
         room_after_id=room_id,
+        rolls=rolls if rolls else None,
         encounter_trigger=encounter_trigger,
     )
 
@@ -1556,6 +1263,162 @@ def _apply_result(
         revealed_hints.append(result.reveals)
 
 
+def _apply_result_with_check(
+    result: Result,
+    *,
+    changes: HardStateChanges,
+    narrative: list[str],
+    revealed_hints: list[str],
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    room_id: str,
+    rolls: list[dict[str, Any]],
+    state_manager: Any | None = None,
+    resolution: ResolutionResult | None = None,
+    source_id: str | None = None,
+    source_type: str | None = None,
+    then_check_depth: int = 0,
+    item_origin: str = "interaction",
+) -> None:
+    _apply_result(result, changes, narrative, revealed_hints,
+                  hard, corpus, soft, state_manager, resolution,
+                  source_id, item_origin)
+    if result.then_check:
+        _resolve_checkable(
+            result.then_check,
+            hard=hard, soft=soft, corpus=corpus, room_id=room_id,
+            changes=changes, narrative=narrative,
+            revealed_hints=revealed_hints, rolls=rolls,
+            depth=then_check_depth,
+            state_manager=state_manager, resolution=resolution,
+            source_id=source_id, source_type=source_type,
+        )
+
+
+def _resolve_checkable(
+    chk: CheckResolution | Interaction | OnExamineEvent | TraversalCheck,
+    *,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    room_id: str,
+    changes: HardStateChanges,
+    narrative: list[str],
+    revealed_hints: list[str],
+    rolls: list[dict[str, Any]],
+    depth: int = 0,
+    state_manager: Any | None = None,
+    resolution: ResolutionResult | None = None,
+    source_id: str | None = None,
+    source_type: str | None = None,
+    track_attempts: bool = False,
+    attempt_key: str | None = None,
+) -> bool:
+    """Resolve a Checkable's check, apply the chosen branch, recurse into
+    any then_check. Returns True if the check passed or was skipped."""
+    if depth >= MAX_THEN_CHECK_DEPTH:
+        return False
+
+    if chk.skip_check_if and evaluate(chk.skip_check_if, hard, soft, corpus):
+        if chk.success:
+            _apply_result_with_check(
+                chk.success,
+                changes=changes, narrative=narrative,
+                revealed_hints=revealed_hints, hard=hard, corpus=corpus,
+                soft=soft, room_id=room_id, rolls=rolls,
+                state_manager=state_manager, resolution=resolution,
+                source_id=source_id, source_type=source_type,
+                then_check_depth=depth + 1,
+            )
+        return True
+
+    check = getattr(chk, "check", None)
+    if check is None:
+        return False
+
+    if track_attempts and not check.repeatable and attempt_key:
+        attempted = soft.checks_attempted.get(attempt_key, [])
+        if room_id in attempted:
+            return False
+
+    if isinstance(check, StatCheck):
+        stats_block = corpus.stats
+        if stats_block is None:
+            if resolution is not None:
+                resolution.error = "Adventure has no stats system defined"
+            return False
+        player_stats = hard.player.stats
+        if player_stats is None or check.stat not in player_stats:
+            if resolution is not None:
+                resolution.error = f"Player has no '{check.stat}' stat"
+            return False
+        system = get_system_for_corpus(corpus)
+        cr = system.roll_check(
+            check.stat,
+            player_stats[check.stat],
+            check.dc,
+            flat_modifier=check.modifier,
+            params=check.resolution_params,
+        )
+        success_flag = cr.success
+        roll_dict: dict[str, Any] = {
+            "source_id": source_id or "",
+            "source_type": source_type or "",
+            "check_type": "stat_check",
+            "stat": check.stat,
+            "dc": check.dc,
+        }
+        roll_dict.update(cr.to_dict())
+        rolls.append(roll_dict)
+    else:
+        roll_val = random.random()
+        success_flag = roll_val < check.threshold
+        rolls.append({
+            "source_id": source_id or "",
+            "source_type": source_type or "",
+            "check_type": "roll",
+            "threshold": check.threshold,
+            "result": roll_val,
+            "success": success_flag,
+        })
+
+    if resolution is not None:
+        ctx: dict[str, Any] = {
+            "check_type": "stat_check" if isinstance(check, StatCheck) else "roll",
+            "source_type": source_type or "",
+            "source_id": source_id or "",
+        }
+        if isinstance(check, StatCheck):
+            ctx["stat"] = check.stat
+            ctx["dc"] = check.dc
+        else:
+            ctx["threshold"] = check.threshold
+        _emit_event(
+            "check.passed" if success_flag else "check.failed",
+            ctx, hard, soft, corpus, state_manager, resolution,
+        )
+
+    if track_attempts and not check.repeatable and attempt_key:
+        if attempt_key not in soft.checks_attempted:
+            soft.checks_attempted[attempt_key] = []
+        soft.checks_attempted[attempt_key].append(room_id)
+
+    branch = getattr(chk, "success", None) if success_flag else getattr(chk, "failure", None)
+    if branch:
+        _apply_result_with_check(
+            branch,
+            changes=changes, narrative=narrative,
+            revealed_hints=revealed_hints, hard=hard, corpus=corpus,
+            soft=soft, room_id=room_id, rolls=rolls,
+            state_manager=state_manager, resolution=resolution,
+            source_id=source_id, source_type=source_type,
+            then_check_depth=depth + 1,
+        )
+
+    return success_flag
+
+
 def _find_entity_in_room(
     entity_id: str,
     room_id: str,
@@ -1619,14 +1482,16 @@ def _fire_on_examine_events(
             # Handle skip_check_if: bypass check and apply success Result
             if event.skip_check_if and evaluate(event.skip_check_if, hard, soft, corpus):
                 if event.success:
-                    _apply_result(event.success, changes, narrative, revealed_hints, hard, corpus,
-                                  item_origin="examine")
-                    if event.success.then_check:
-                        _resolve_chained_check(
-                            event.success.then_check, hard, soft, corpus, room_id,
-                            changes, narrative, revealed_hints, rolls, 0,
-                            state_manager, resolution, source_id=f"_on_examine_{event.id}",
-                        )
+                    _apply_result_with_check(
+                        event.success,
+                        changes=changes, narrative=narrative,
+                        revealed_hints=revealed_hints, hard=hard, corpus=corpus,
+                        soft=soft, room_id=room_id, rolls=rolls,
+                        state_manager=state_manager, resolution=resolution,
+                        source_id=f"_on_examine_{event.id}",
+                        source_type="examine",
+                        item_origin="examine",
+                    )
                 continue
             # Build a synthetic Interaction for check resolution
             synthetic = Interaction(
@@ -1649,13 +1514,16 @@ def _fire_on_examine_events(
             if result.rolls:
                 rolls.extend(result.rolls)
         elif event.result:
-            _apply_result(event.result, changes, narrative, revealed_hints, hard, corpus,
-                          item_origin="examine")
-            if event.result.then_check:
-                _resolve_chained_check(
-                    event.result.then_check, hard, soft, corpus, room_id,
-                    changes, narrative, revealed_hints, rolls, 0,
-                )
+            _apply_result_with_check(
+                event.result,
+                changes=changes, narrative=narrative,
+                revealed_hints=revealed_hints, hard=hard, corpus=corpus,
+                soft=soft, room_id=room_id, rolls=rolls,
+                state_manager=state_manager, resolution=resolution,
+                source_id=f"_on_examine_{event.id}",
+                source_type="examine",
+                item_origin="examine",
+            )
 
     return {
         "revealed_hints": revealed_hints,

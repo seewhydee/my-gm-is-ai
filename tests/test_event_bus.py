@@ -1005,6 +1005,194 @@ class TestDialoguePathResultThenCheck:
         assert hard.flags.get("dialogue_chain_seen") is True
 
 
+class TestThenCheckDepthCap:
+    """then_check nesting stops at MAX_THEN_CHECK_DEPTH (3)."""
+
+    def setup_method(self):
+        reset_disabled_once()
+
+    def test_then_check_depth_4_is_capped(self, fresh_state_manager):
+        """A then_check nested 4 deep stops at the 4th level."""
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corp = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        from mgmai.models.corpus import CheckResolution, RollCheck
+
+        # Build a 4-deep then_check chain.
+        # Each level sets a flag; the 4th (depth 3) should NOT fire.
+        level4 = CheckResolution(
+            check=RollCheck(threshold=1.0, repeatable=True),
+            success=Result(narrative="level4", set_flag={"depth3_fired": True}),
+        )
+        level3 = CheckResolution(
+            check=RollCheck(threshold=1.0, repeatable=True),
+            success=Result(narrative="level3", then_check=level4),
+        )
+        level2 = CheckResolution(
+            check=RollCheck(threshold=1.0, repeatable=True),
+            success=Result(narrative="level2", then_check=level3),
+        )
+        level1 = CheckResolution(
+            check=RollCheck(threshold=1.0, repeatable=True),
+            success=Result(narrative="level1", then_check=level2),
+        )
+
+        reaction = Reaction(
+            id="depth_test",
+            on="turn.start",
+            effects=ReactionEffects(result=Result(
+                then_check=level1,
+            )),
+        )
+        corp.rooms["bag_floor"].reactions.append(reaction)
+
+        from mgmai.models.actions import WaitAction
+        result = resolve(WaitAction(action_type="wait", detail="wait"), state_manager)
+        assert result.success is True
+        # Depth 0 (level1), depth 1 (level2), depth 2 (level3) fire.
+        # Depth 3 (level4) is stopped by MAX_THEN_CHECK_DEPTH=3.
+        assert hard.flags.get("depth3_fired") is None
+
+
+class TestThenCheckSourceTypeInheritance:
+    """then_check events inherit source_type from the parent resolution."""
+
+    def setup_method(self):
+        reset_disabled_once()
+
+    def test_then_check_inside_interaction_inherits_source_type(self, fresh_state_manager):
+        """A then_check in an interaction failure branch emits with source_type='interaction'."""
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corp = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        from mgmai.models.corpus import CheckResolution, RollCheck
+
+        # An interaction that always fails, with a then_check on failure.
+        room = corp.rooms["bag_floor"]
+        room.interactions.append(Interaction(
+            id="fail_interaction",
+            label="Fail Me",
+            check=RollCheck(threshold=0.0, repeatable=True),
+            success=Result(narrative="Passed."),
+            failure=Result(
+                narrative="It failed.",
+                then_check=CheckResolution(
+                    check=RollCheck(threshold=1.0, repeatable=True),
+                    success=Result(narrative="then_check fired."),
+                ),
+            ),
+        ))
+
+        # Track the source_type on the then_check's emitted event.
+        room.reactions.append(Reaction(
+            id="track_interaction_then_check",
+            on="check.passed",
+            condition=ConditionExpression(require="event:source_type == interaction"),
+            effects=ReactionEffects(result=Result(set_flag={"interaction_then_check_seen": True})),
+        ))
+
+        action = InteractAction(
+            action_type="interact",
+            target="korbar",
+            interaction_id="fail_interaction",
+            detail="try failing",
+        )
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("interaction_then_check_seen") is True
+
+
+class TestResolverThenCheckPaths:
+    """then_check fires from result-only interaction and on-examine paths."""
+
+    def setup_method(self):
+        reset_disabled_once()
+
+    def test_result_only_interaction_then_check_fires(self, fresh_state_manager):
+        """A result-only interaction with a then_check fires it."""
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corp = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        from mgmai.models.corpus import CheckResolution, RollCheck
+
+        room = corp.rooms["bag_floor"]
+        room.interactions.append(Interaction(
+            id="result_then_check_inter",
+            label="Result Check",
+            result=Result(
+                narrative="The mechanism triggers.",
+                then_check=CheckResolution(
+                    check=RollCheck(threshold=1.0, repeatable=True),
+                    success=Result(narrative="You passed the then_check."),
+                ),
+            ),
+        ))
+
+        room.reactions.append(Reaction(
+            id="track_result_then",
+            on="check.passed",
+            condition=ConditionExpression(require="event:source_id == result_then_check_inter"),
+            effects=ReactionEffects(result=Result(set_flag={"result_then_check_seen": True})),
+        ))
+
+        action = InteractAction(
+            action_type="interact",
+            target="korbar",
+            interaction_id="result_then_check_inter",
+            detail="try",
+        )
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("result_then_check_seen") is True
+
+    def test_on_examine_result_then_check_fires(self, fresh_state_manager):
+        """An on_examine event whose result has a then_check fires it."""
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corp = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        from mgmai.models.corpus import CheckResolution, OnExamineEvent, RollCheck
+
+        room = corp.rooms["bag_floor"]
+        room.on_examine.append(OnExamineEvent(
+            id="examine_then_check_event",
+            result=Result(
+                narrative="You notice something odd.",
+                then_check=CheckResolution(
+                    check=RollCheck(threshold=1.0, repeatable=True),
+                    success=Result(narrative="You recall a detail."),
+                ),
+            ),
+        ))
+
+        room.reactions.append(Reaction(
+            id="track_examine_then",
+            on="check.passed",
+            condition=ConditionExpression(require="event:source_type == examine"),
+            effects=ReactionEffects(result=Result(set_flag={"examine_then_check_seen": True})),
+        ))
+
+        from mgmai.models.actions import ExamineAction
+        action = ExamineAction(
+            action_type="examine",
+            target="bag_floor",
+            detail="look around",
+        )
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("examine_then_check_seen") is True
+
+
 class TestEncounterBranchedEvent:
     """Item 3a: branched encounters emit ``encounter.branched`` events."""
 
