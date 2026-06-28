@@ -214,7 +214,7 @@ dialogue paths, or as a deterministic `result` when no check is involved.
 | `alter_stat`        | object | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). Use `"delta"` for damage/buffs (e.g., fall damage: `{ "STR": { "value": -4 } }`); use `"set"` for absolute assignment (e.g., a curse: `{ "INT": { "mode": "set", "value": 3 } }`). |
 | `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
 | `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
-| `chain_check`     | object | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See Chained check below. |
+| `chain_check`     | object | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See [Chained check](#chained-check) below. |
 | `player_damage`   | string | **Optional.** Dice expression rolled as HP damage against the player (e.g., `"2d6"`, `"1d4+1"`). Resolved by the active RPG system. |
 
 #### Chained check (`chain_check`)
@@ -250,8 +250,8 @@ result, using its own success/failure branches.
 |----------------|---------------------|-------------|
 | `check`        | CheckType           | The chained check to resolve (roll or stat_check). |
 | `skip_check_if` | condition object   | **Optional.** When present and evaluated to true, the check is skipped entirely. |
-| `success`      | Result              | Result to apply if the chained check succeeds. |
-| `failure`      | Result (optional)   | Result to apply if the chained check fails. |
+| `success`      | [Result](#result-object)              | Result to apply if the chained check succeeds. |
+| `failure`      | [Result](#result-object) (optional)   | Result to apply if the chained check fails. |
 
 Nested chaining is supported — a chained check's result may itself contain another
 `chain_check`, up to a maximum depth of 3.
@@ -349,14 +349,12 @@ room, able to retry next turn.
 
 | Field               | Type                | Description |
 |---------------------|---------------------|-------------|
-| `check`             | CheckType           | The check to roll: a `roll` or `stat_check`. |
-| `gating`            | condition object    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
-| `skip_check_if`     | condition object    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `gating`). Inverse of `gating` — use this for "don't check when NPC helps" patterns. |
-| `failure`           | Result              | **Optional.** Result applied when the traversal check fails. Contains at minimum a `narrative` field. May include `set_flag`, `alter_stat`, and other Result fields. |
-| `success`           | Result              | **Optional.** Result applied when the traversal check succeeds. Contains at minimum a `narrative` field. May include `set_flag`, `add_item`, and other Result fields. |
+| `check`             | [CheckType](#check-objects)           | The check to roll: a `roll` or `stat_check`. |
+| `gating`            | [condition object](#condition-object)    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
+| `skip_check_if`     | [condition object](#condition-object)    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `gating`). Inverse of `gating` — use this for "don't check when NPC helps" patterns. |
+| `failure`           | [Result](#result-object)              | **Optional.** Result applied when the traversal check fails. Contains at minimum a `narrative` field. May include `set_flag`, `alter_stat`, and other Result fields. |
+| `success`           | [Result](#result-object)              | **Optional.** Result applied when the traversal check succeeds. Contains at minimum a `narrative` field. May include `set_flag`, `add_item`, and other Result fields. |
 | `using_results`     | dict                | **Optional.** Maps item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `move` action carries a `using` parameter matching a key, the override's `check` replaces the traversal check (allowing different DCs per item). |
-
-> **Condition objects** are defined in [Common Primitives](#common-primitives). They are predicate clauses evaluated against game state using the `require`/`unless`/`any`/`all` format. See that section for the full specification.
 
 ---
 
@@ -394,9 +392,6 @@ They can be defined at the room level or on individual entities.
 | `using_results`        | object       | no       | **Optional.** Dict mapping item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `interact` action's `using` field matches a key, the override replaces the interaction's own `check`/`success`/`failure`/`result`. Each override may optionally carry its own `check` (allowing different DCs per item, e.g. STR DC 14 bare-handed vs. DC 10 with a weapon), or a plain `result`. Overrides are leaf-level — the override's check+success+failure (or result) fully replaces the interaction's defaults. |
 
 Interactions include generic types available everywhere (e.g., `attack`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item. Picking up items should use the `transfer` action instead.
-> **Check objects** are defined in [Common Primitives](#common-primitives). Two types exist: `roll` (flat probability) and `stat_check` (ability-score-based resolution with modifiers, advantage/disadvantage). See that section for the full specification.
-
-> **Result objects** (including **chained checks**) are defined in [Common Primitives](#common-primitives). Results carry narrative, flag/state changes, item transfers, stat modifiers, attitude adjustments, damage expressions, and optional chained follow-up checks. See that section for the full specification.
 
 ---
 
@@ -433,10 +428,10 @@ the canvas walls triggers an INT check to deduce the glow is magical."
 | `condition`      | object\|null    | Gating condition. If present and `false`, the event does nothing. If `null`, fires every time the entity/room is examined. |
 | `skip_check_if`  | object          | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
 | `rigorous_only`  | boolean         | If `true`, the event only fires when the examine action has `rigorous: true`. Default `false`. |
-| `check`          | CheckType       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
-| `success`        | Result          | Result applied when the check passes. Required if `check` is present. |
-| `failure`        | Result\|null    | Result applied when the check fails. Optional; if absent, nothing happens on failure. |
-| `result`         | Result\|null    | Deterministic result applied when no `check` is present. Mutually exclusive with `check`. |
+| `check`          | [CheckType](#check-objects)       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
+| `success`        | [Result](#result-object)          | Result applied when the check passes. Required if `check` is present. |
+| `failure`        | [Result\|null](#result-object)    | Result applied when the check fails. Optional; if absent, nothing happens on failure. |
+| `result`         | [Result\|null](#result-object)    | Deterministic result applied when no `check` is present. Mutually exclusive with `check`. |
 
 The base `description` of the entity/room is returned first in the narration;
 on-examine event narratives are appended after it. Results may carry
