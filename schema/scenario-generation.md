@@ -187,36 +187,31 @@ effects are covered later.)  There are two types:
    regardless of which room the player is in.  Encounter rules set
    conditional outcomes (death, flee, stat check, combat).
 
-   Example: dropping from one room to another, and taking fall damage.
+   Examples:
+   - dropping into another room and taking fall damage
+   - a life ward fires if HP drops to ≤ 3
+   - a chained-encounter orchestrator watches a flag set by a first
+     encounter, and triggers a second
 
-   Example: a life ward fires if HP drops to ≤ 3.
-
-   Example: a chained-encounter orchestrator watches a flag set by a
-   first encounter, and triggers a second.
+   For effects occurring *only* when the player is in a given room,
+   use a room reaction instead (§1F).  For effects occurring only when
+   an entity is present, use an entity reaction (§1G).
 
 For each mechanic, specify:
 
 - **Mechanic ID** — assign a globally-unique ID.
 - **Kind** — either game-over condition or mechanic.
-- **Description** — how the mechanic works, its trigger, and its
-  effects (e.g., damage dealt, flags set).
+- **Description** — how the mechanic works, and its effects.
   
-Although the description you provide here is *textual* (not rigorous
-JSON), you should be as clear as possible about the rooms, entities,
-or other game components involved.  Try to reference specific flag IDs
-(§1D), entity tags (§1G), room/entity state IDs, etc.  This serves to
-map out the relations between the different parts of the adventure.
-The same goes for all other descriptions in the Scenario Map.
-
-#### When to use a mechanic vs. a room/entity effect
-
-| Situation | Use |
-|---|---|
-| Trigger should fire regardless of player location | Mechanic with reactions (adventure-wide event watcher) |
-| An encounter can be triggered from >1 room or entity | Mechanic with rules (referenced by `trigger_encounter`) |
-| A condition means the player wins or loses | Game-over condition mechanic |
-| A trigger fires only when the player is in a specific room | Room reaction (§1F) |
-| A trigger fires only near a specific entity | Entity reaction (§1G) |
+In writing the description, do not worry about the schema-following
+implementation of the mechanic; focus on giving a precise *textual*
+writeup.  The triggers and effects of mechanics are very flexible, and
+can involve almost any aspect of any entity or room in the adventure
+module, including branching outcomes.  Your main goal is to provide
+specificity about the rooms, entities, and other game pieces involved:
+name specific flag IDs (§1D), room exit IDs (§1F), entity tags (§1G),
+etc.  The same goes when writing all other descriptions in the
+Scenario Map.
 
 ### 1F. Rooms (Pass 2)
 
@@ -226,23 +221,26 @@ Revisit the room list, and add the following info to each room:
   give a brief description (e.g., "through the north doorway"), and
   specify the destination room ID (§1B).
 
-  Optionally, describe (i) a set of traversal conditions (stat check
-  or other condition to traverse the exit), and/or (ii) conditions
-  under which the exit is hidden (e.g., a secret door revealed only
-  when a lever is pulled).
+  Optionally, describe:
+  - any conditions gating the exit's availability
+  - any success check (e.g., stat check) needed to traverse the exit
+  - any side-effects of succeeding or failing in traversing the exit
 
-- **Entities present** — list the ID of each entity in the room at
+  Be specific: e.g., if a secret door appears when a lever is pulled,
+  state the lever's entity ID, the interaction ID for pulling, etc.
+
+- **Entities present** — list the ID of every entity in the room at
   start (from §1C), including hidden ones (e.g., a lurking thief).
 
 - **Special interactions** — assign a room-unique ID to any special
   interaction the player can have with the *room* (not an entity inside
   the room): e.g., shouting out a magic command word.
 
-  Interactions can be gated by conditions or checks, and can have
-  diverse success/failure results, including setting flags, altering
-  the states of the same or other entities, moving items around,
-  triggering mechanics, etc.
-
+  Interactions can have availability conditions, success checks, and
+  different results on success/failure.  Write a plain-text
+  description, clearly specifying the game pieces affected: give
+  specific flag IDs, room/entity IDs, state field names, etc.
+  
   DO NOT define interactions similar to these generic player actions:
   `move` (traversing rooms), `examine` (cursory or in-depth study), or
   `transfer` (moving items to/from a container or location).
@@ -255,14 +253,18 @@ Revisit the room list, and add the following info to each room:
   - a group of enemies attack when the player enters the room
   - force-field blocks an exit traversal
 
-  Assign each reaction a globally-unique reaction ID.  Then, describe
-  (i) the trigger event: a special interaction, a standard player
-  action, a global flag set/cleared, a dialogue event, etc.; (ii) any
-  additional stat checks or other gating for the reaction to trigger;
-  and (iii) the consequences.  These descriptions should be in plain
-  text, but be as specific as possible.  For example, if any other
-  entity or room is involved, state their IDs; if the reaction depends
-  on an entity's state, name the specific state field.
+  Assign each reaction a globally-unique ID.  Then write up a precise
+  description of the reaction, including:
+
+  - the trigger event: player entering the room, exit traversed, a
+    special interaction is attempted, dialogue/combat start/end, item
+    acquired/lost, global flag or entity state set/cleared, etc.
+  - any additional gating condition for the reaction to occur
+  - the consequences if the reaction indeed occurs
+  - whether the reaction is one-off, or recurring
+
+  Again, don't try to work out the schema-following implementation:
+  focus on naming the specific entity/room IDs, etc.
 
 - **State Fields** — assign a room-unique ID for each mutable property
   of the room, and specify the initial value (boolean, number, or
@@ -272,15 +274,13 @@ Revisit the room list, and add the following info to each room:
 
 - **On-Examine Effects** — describe any effects triggered by the
   player examining the room (the room itself, not an entity in it),
-  possibly gated by a condition or stat check.  Example: viewing a
-  dusty storeroom, and deducing that nobody has come through in years
-  (a plot point).  Can be gated by a stack check or other condition.
+  possibly gated by an availability condition or success check.
+  Example: viewing a dusty storeroom, and deducing that nobody has
+  come through in years (a plot point).
 
-When describing events/reactions, special interactions, or state
-fields, you can reference flags defined in §1D.  If you overlooked a
-flag that you now need, update that list.  You can also reference
-entity tags or IDs for room/entity state fields (whether already
-defined, or to be defined later).
+While writing up the descriptions, you may find it necessary to add
+extra global flags (§1D), update previous rooms (e.g., by adding more
+state fields and reactions), etc.  Do so as necessary.
 
 ### 1G. Entities (Pass 2)
 
@@ -288,38 +288,38 @@ Revisit the entity list, and add the following to each entity:
 
 - **Tags** — any semantic features relevant to gameplay.
   Assign the special tag `container` to any entity that acts as a
-  container with open/close functionality (such as a chest – but not a
-  table with items on top, which cannot open/close).
+  container with open/close functionality (e.g., a chest).  A
+  tabletop, with no open/close function, should not have this tag.
 
   Other tags are defined at your discretion based on adventure
   requirements (e.g., items with `heavy` tag can trigger a pressure
-  plate).  Do not define game-irrelevant tags.
+  plate).  Do not define gameplay-irrelevant tags.
 
 - **Equippable?** — if this entity is an item that can be equipped
   (weapon, armor, shield, ring, etc.), write a textual description of
-  how it is worn or wielded, and any special properties the scenario
-  provided (damage expression, stat bonuses, AC bonus, restrictions
-  such as "two-handed" or "incompatible with shields").  Text only; do
-  not structure as JSON.
+  how it is worn or wielded, and any relevant properties from the
+  scenario (damage expression, stat bonuses, AC bonus, restrictions
+  such as "two-handed" or "incompatible with shields").
 
 - **Contained Entities** — if this entity contains other entities
   (e.g., a drawer holding a key, a rubbish pile holding a gem), list
   the entity IDs inside.  Use the descriptions in §1C as a guide.
 
-- **Special interactions** — for every special interaction the player
-  can have with the entity (e.g., pulling a lever), assign a
-  entity-unique interaction ID.
+- **Special interactions** — assign an entity-unique interaction ID to
+  every special action the player can perform on the entity (e.g.,
+  pulling a lever).  No need for synonyms; one interaction ID per
+  gameplay-relevant interaction.
 
-  Include an `open` and/or `close` interaction if the entity is a
-  container that can be directly opened/closed by the player.
+  Include an `open` and/or `close` interaction if it's a container
+  that can be directly opened/closed by the player.
 
   DO NOT define interactions for built-in generic actions: `attack`,
   `examine`, `talk`, or `transfer`.
 
-- **State fields** — list each scenario-relevant mutable property the
-  entity has, and its initial value (boolean, number, or string).
-  Some state fields, listed below, have special engine effects, but
-  you can also define custom ones.
+- **State fields** — list each of the entity's scenario-relevant
+  mutable properties, and the initial value (boolean, number, or
+  string).  Some state fields, listed below, have special engine
+  effects, but you can also define custom ones.
 
   NPC state fields:
   - `alive` (boolean) is required
@@ -342,41 +342,42 @@ Revisit the entity list, and add the following to each entity:
 
   For each custom field, note down its meaning.
 
-- **Reactions** — describe any consequential event-driven reaction
-  tied to the entity.  Each reaction can occur only if the entity is
-  in the current room (and, for an NPC, alive and active).
+- **Reactions** — describe any event-driven reaction tied to (and
+  usually performed BY) the entity.  Each reaction can occur only if
+  the entity is in the current room (and, for an NPC, alive and active).
 
   Examples:
-  - picking up an item fires a magic effect
-  - NPC attitude going too low trigers combat
-  - exiting dialogue alters an NPC's state (e.g., it dies)
+  - on picking up an item, inflict a curse on the player
+  - on attitude drop, NPC attacks
+  - on exiting dialogue, NPC dies
 
-  Assign each reaction a globally-unique reaction ID.  Then, describe
-  (i) the trigger event: a special interaction, a standard player
-  action, a global flag set/cleared, a dialogue event, etc.; (ii) any
-  additional stat checks or other gating for the reaction to trigger;
-  and (iii) the consequences.
+  Assign each reaction a globally-unique reaction ID.  Describe the
+  reaction (naming specific IDs), including:
+
+  - the trigger event
+  - any additional gating condition for the reaction to occur
+  - the consequences if the reaction indeed occurs
+  - whether the reaction is one-off, or recurring
 
 - **On-Examine Effects** — describe any effects triggered by the
   player examining the entity, possibly gated by a condition or stat
-  check.  Important: this field belongs on the thing being examined,
-  *not* the room containing it.  E.g., when the scenario says "upon
-  examining the statue, the player notices...", the on_examine event
+  check.  Note that this field belongs on the thing being examined,
+  *not* the room containing it: e.g., when the scenario says "upon
+  examining the statue, the player notices...", the examination effect
   belongs on the statue entity.
 
 For items, also note:
 
-- **Take Check** (optional) — conditions or checks that must be passed
-  for the player to take the item.
+- **Take Check** (optional) — availability conditions or success
+  checks for the player to take the item.  Can have failure effects.
 
 For NPCs, also add descriptions for the following:
 
 - **Combat Stats** — if the NPC is combat-capable and the scenario
-  provides stat block details (HP, AC, attack bonus, damage dice,
-  initiative modifier, flee DC, etc.), write them down verbatim.  Also
-  note any special on-hit effects (e.g., poison save, paralysis,
-  ongoing damage).  If the scenario doesn't give exact numbers, just
-  record whatever info is provided.
+  provides a stat block (HP, AC, attack bonus, damage dice, initiative
+  modifier, flee DC, etc.), write it down verbatim.  Note any special
+  combat features, such as on-hit effects.  If the scenario doesn't
+  give exact numbers, record whatever info is provided.
 
 - **Behavior** — if the NPC can fight, enumerate its encounter rules.
   Encounter rules specify the ways a combat encounter might unfold,
@@ -399,22 +400,23 @@ For NPCs, also add descriptions for the following:
   otherwise, the NPC dies.
 
 - **Dialogue Paths** — for dialogue, if the NPC talks.
-  Assign an NPC-unique ID for each special line of conversation the
-  player can engage the NPC with.  Must have plot/gameplay relevance.
+  A dialogue path is any special plot/gameplay-relevant line of
+  conversation the player can engage the NPC with: e.g., bribing a
+  guard to pass a gate, or convincing a prince his vizier is evil.
 
-  Examples: bribing a guard to pass a gate, or convincing a prince
-  that his vizier is evil.
+  Assign an NPC-unique ID for each dialogue path, and describe:
 
-  Describe (i) the conditions for the dialogue path to be available,
-  (ii) any gating (e.g., stat check), and how the NPC reacts
-  (non-verbatim) if successful/unsuccessful, and (iii) the effects of
-  success/failure.  Dialogue paths are often triggering events for
-  mechanics (§1E) or reactions (see above).
+  - availability conditions for the dialogue path
+  - any success gating (e.g., stat check)
+  - how the NPC reacts if successful/unsuccessful (just guidelines and
+    key details; no need for verbatim dialogue; the GM will fill in)
+  - any additional effects of success/failure, such as setting flags,
+    or triggering mechanics/reactions
 
 - **Will-Reveal Topics** — for dialogue, if the NPC talks.
-  Assign an NPC-unique ID for each significant conversational topic
-  the NPC can conditionally divulge information on.  Unlike a dialogue
-  path, such a topic usually has no immediate mechanical effect.
+  Assign an NPC-unique ID for each major topic the NPC might divulge
+  information on.  Unlike a dialogue path, such a topic usually has no
+  immediate mechanical effect.
 
   Example: a guard may have a dialogue path `bribe_to_enter` (player
   pays to get past — a mechanic), and a topic `recent_visitors`
@@ -422,15 +424,14 @@ For NPCs, also add descriptions for the following:
 
   Describe (i) the gating conditions for the NPC to discuss the topic,
   (ii) what the NPC conveys (non-verbatim), and (iii) consequences.
-  Regarding consequences: best practice is to set a global flag (§1D)
-  to track the player's knowledge (different NPCs giving similar info
-  can set the same flag).  Will-reveal topics can also alter entity
-  state fields, but cannot trigger reactions.
+  For consequences, best practice is to set a global flag (§1D) to
+  track the player's knowledge (different NPCs giving similar info can
+  set the same flag).  Will-reveal topics can also alter entity state
+  fields, but cannot trigger reactions.
 
 - **Knowledge** — for dialogue, if the NPC talks.
-  A list of incidental, non-plot-relevant bits of knowledge possessed
-  by the NPC, used by the GM to craft dialogue.  This serves to pin
-  down details that you don't want the GM to ad-lib.
+  A list of canonical non-plot-relevant bits of knowledge possessed by
+  the NPC, to pin down details you don't want the GM to ad-lib.
 
 ### 1H. Cleanup
 
@@ -439,8 +440,11 @@ consistent, every ID required by a mechanic is defined, etc.
 
 For each game mechanic, check that you have assigned it to the right
 host (global, room, or entity), and that it accurately captures the
-spirit of what's written in the scenario.  Minor deviations are OK,
-but should be noted and surfaced in the final task report.
+spirit of what's written in the scenario.  Deviations from the
+scenario may be OK, but should be noted down clearly in:
+
+- an Errata section at the bottom of the Scenario Map
+- your task report
 
 Revise as necessary.
 
@@ -518,14 +522,15 @@ catching gaps here avoids rework downstream.
 **Input:** Scenario Map from Step 1 + Corpus Schema
 **Output:** Corpus metadata, global flags, and entities data
 
-Read the corpus schema (`schema/corpus.md`), and any other necessary
-subsidiary schema referenced therein.
+In preparation for this step, read the latest version of the Scenario
+Map (`adventures/MODULE-NAME/scenario-map.md`), the corpus schema
+(`schema/corpus.md`), and any other necessary subsidiary schema
+referenced therein.
 
 You will now write the corpus (`adventures/MODULE-NAME/corpus.json`),
 starting with the metadata and global flags, followed by the entities
-block.  The Scenario Map (`adventures/MODULE-NAME/scenario-map.md`)
-should be your primary source; only refer to the original scenario to
-look up missing information.
+block.  The Scenario Map should be your primary source; only refer to
+the original scenario to look up missing information.
 
 ### 2A. Metadata and Global Flags
 
@@ -535,24 +540,24 @@ introduction, and atmosphere (setting, tone).
 
 Next, construct `flags_declared` from the list of Global Flags in the
 Scenario Map.  This is just used for validation/debugging.  If, during
-subsequent JSON implementation, you find it necessary to add extra
-global flags, keep `flags_declared` updated.
+subsequent implementation, you find it necessary to add extra global
+flags, keep `flags_declared` updated.
 
 ### 2B. Entity Data
 
 You must now construct a JSON definition for each entity listed in the
-Scenario Map, following the corpus schema (§2 Entities).
+Scenario Map, following the corpus schema.
 
-Here are general tips for writing the JSON objects, followed by
+Here are some general tips for writing the JSON objects, followed by
 specific tips for items (§2C), features (§2D), the player (§2E), and
 NPCs (§2F).  NPCs are the most complicated, so write them carefully.
 
 While constructing the JSON objects, you may find it necessary to
-deviate from the Scenario Map, such as by adding extra unforseen
-elements (flags, entity/room state fields, reactions, special
-interactions, etc.).  Remember the deviations, and revise the Scenario
-Map at the end of Step 2 (§2H) before going to Step 3.  Major
-deviations should be surface in the final task report.
+deviate from the Scenario Map, e.g. by adding extra unforseen elements
+(flags, entity/room state fields, reactions, etc.).  Remember these
+deviations, and revise the Scenario Map at the end of Step 2 (§2H)
+before going to Step 3.  Major deviations must be surfaced in your
+task report.
 
 #### Description
 
@@ -560,8 +565,8 @@ When generating each entity's `description`, do not just translate the
 description field from the Scenario Map.  Take a holistic view, and
 write a timeless, spoiler-free description of the entity.  This
 description is provided to the GM whenever the entity is present, and
-should be factual, and independent of the entity's state (e.g., dead
-or alive).  You may inject small details to add flavor, without
+must be factual and independent of the entity's state (e.g., dead or
+alive).  You may inject small details to add flavor, without
 contradicting the scenario.
 
 Example: "A massive black spider, about the size of a large dog, with
@@ -575,14 +580,15 @@ killed.
 
 #### Interactions
 
-The Scenario Map may have planned special interactions – discrete
+The Scenario Map may have planned some special interactions – discrete
 non-generic actions the player can perform on the entity.  For each,
 construct an interaction object to put into `interactions`.
 
-Interactions can be gated by conditions or checks, and can have
-distinct success and failure results, which can include setting flags,
-altering entity states, etc.  Optionally, the gating/results can be
-modified if the player uses certain items as part of the interaction.
+Interactions can be gated by availability conditions and/or success
+checks, and can have distinct success and failure results.  These
+results can set flags, altering entity states, etc.  Optionally, the
+gating/results can be modified if the player uses certain items as
+part of the interaction.
 
 Example: forcing a stuck door.  Bare-handed is hard; a crowbar helps;
 any improvised tool is somewhere in between:
