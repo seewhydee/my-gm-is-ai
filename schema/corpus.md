@@ -214,7 +214,7 @@ dialogue paths, or as a deterministic `result` when no check is involved.
 | `alter_stat`        | object | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). Use `"delta"` for damage/buffs (e.g., fall damage: `{ "STR": { "value": -4 } }`); use `"set"` for absolute assignment (e.g., a curse: `{ "INT": { "mode": "set", "value": 3 } }`). |
 | `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
 | `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
-| `chain_check`     | object | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See [Chained check](#chained-check) below. |
+| `chain_check`     | [chained check object](#chained-check) | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See [Chained check](#chained-check) below. |
 | `player_damage`   | string | **Optional.** Dice expression rolled as HP damage against the player (e.g., `"2d6"`, `"1d4+1"`). Resolved by the active RPG system. |
 
 #### Chained check (`chain_check`)
@@ -383,12 +383,12 @@ They can be defined at the room level or on individual entities.
 | `id`                   | string       | yes      | Unique within the defining context (room or entity). Referenced by `interact` action `interaction_id`. |
 | `label`                | string       | yes      | Human-readable action label. |
 | `description`          | string       | no       | Extended description of the action. |
-| `condition`            | object\|null | no       | Condition that must be met for the interaction to be available. |
-| `skip_check_if`        | object       | no       | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition`. |
-| `check`                | object       | no       | A probabilistic check (roll). If absent, `result` is used directly. |
-| `success`              | object       | no       | Result when the check succeeds. |
-| `failure`              | object       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
-| `result`               | object       | no       | Deterministic result (used when no `check` is present). |
+| `condition`            | [condition object](#condition-object)\|null | no       | Condition that must be met for the interaction to be available. |
+| `skip_check_if`        | [condition object](#condition-object)       | no       | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition`. |
+| `check`                | [check object](#check-objects)       | no       | A probabilistic check (roll). If absent, `result` is used directly. |
+| `success`              | [result object](#result-object)       | no       | Result when the check succeeds. |
+| `failure`              | [result object](#result-object)       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
+| `result`               | [result object](#result-object)       | no       | Deterministic result (used when no `check` is present). |
 | `using_results`        | object       | no       | **Optional.** Dict mapping item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `interact` action's `using` field matches a key, the override replaces the interaction's own `check`/`success`/`failure`/`result`. Each override may optionally carry its own `check` (allowing different DCs per item, e.g. STR DC 14 bare-handed vs. DC 10 with a weapon), or a plain `result`. Overrides are leaf-level — the override's check+success+failure (or result) fully replaces the interaction's defaults. |
 
 Interactions include generic types available everywhere (e.g., `attack`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item. Picking up items should use the `transfer` action instead.
@@ -425,8 +425,8 @@ the canvas walls triggers an INT check to deduce the glow is magical."
 | Field            | Type            | Description |
 |------------------|-----------------|-------------|
 | `id`             | string          | Unique event identifier within the parent entity or room. |
-| `condition`      | object\|null    | Gating condition. If present and `false`, the event does nothing. If `null`, fires every time the entity/room is examined. |
-| `skip_check_if`  | object          | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
+| `condition`      | [condition object](#condition-object)\|null    | Gating condition. If present and `false`, the event does nothing. If `null`, fires every time the entity/room is examined. |
+| `skip_check_if`  | [condition object](#condition-object)          | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
 | `rigorous_only`  | boolean         | If `true`, the event only fires when the examine action has `rigorous: true`. Default `false`. |
 | `check`          | [CheckType](#check-objects)       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
 | `success`        | [Result](#result-object)          | Result applied when the check passes. Required if `check` is present. |
@@ -460,7 +460,7 @@ A reaction fires when a matching game event occurs and its condition is met.
 |-----------|-----------------|----------|-------------|
 | `id`      | string          | yes      | Unique identifier within the defining context (room, entity, or mechanic). Used for debugging and `once` tracking. Because `once` tracking is global, reaction IDs should be unique across the whole adventure when any reaction uses `once: true`. |
 | `on`      | string          | yes      | Event type to match (see Event types below). |
-| `condition` | object\|null | no | Gating condition evaluated against game state + event context. If the condition evaluates to `true`, the reaction fires. If `false` (or unsatisfied), the reaction does nothing. If `null`, fires unconditionally when the event occurs. |
+| `condition` | [condition object](#condition-object)\|null | no | Gating condition evaluated against game state + event context. If the condition evaluates to `true`, the reaction fires. If `false` (or unsatisfied), the reaction does nothing. If `null`, fires unconditionally when the event occurs. |
 | `effects` | object          | yes      | The effects to apply (see Reaction effects below). |
 | `once`    | boolean         | no       | If `true`, fires at most once per adventure load. Default `false`. For persistent one-shot behavior, prefer flag-gated conditions instead. |
 | `priority` | integer        | no       | Lower values fire earlier. Default `0`. |
@@ -564,7 +564,7 @@ See [`events.md`](events.md) for additional detail on each event's context.
 
 | Field               | Type   | Description |
 |---------------------|--------|-------------|
-| `result`            | object | A `Result` object — same fields as interaction results: `narrative`, `set_flag`, `set_entity_state`, `set_room_state`, `alter_stat`, `adjust_attitude`, `add_item`, `remove_item`, `reveals`, `chain_check`. |
+| `result`            | [result object](#result-object) | A `Result` object — same fields as interaction results: `narrative`, `set_flag`, `set_entity_state`, `set_room_state`, `alter_stat`, `adjust_attitude`, `add_item`, `remove_item`, `reveals`, `chain_check`. |
 | `trigger_encounter` | string | Mechanic ID or entity ID to trigger an encounter. If `"self"`, resolves to the owning entity's ID (for entity-scoped reactions). |
 | `trigger_dialogue`  | string | NPC entity ID to initiate dialogue with. If `"self"`, resolves to the owning entity's ID. |
 | `game_over`         | object | `{ "type": "win"|"lose", "trigger_id": "..." }` — ends the game. |
@@ -951,12 +951,12 @@ or interaction that sets `hidden: false` — otherwise it is permanently invisib
 | Field       | Type   | Description |
 |-------------|--------|-------------|
 | `description` | string | **Required.** Human-readable description of what this path represents. This text is surfaced to LLM Call 1 as the value in `entities_visible[*].dialogue_paths[path_id]`, so the LLM can match player input to the right path. Phrase it as a player intent (e.g., "Compliment the spider's hunting prowess" or "Tell Korbar the spider is dead"). |
-| `condition` | object | Optional. If present, all conditions must be met for the path to be usable. |
-| `skip_check_if` | object | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
-| `check`     | object | Optional. A `roll` or `stat_check`. If present, `success` is required. |
-| `success`   | object | Result applied when the check succeeds. |
-| `failure`   | object | Result applied when the check fails. |
-| `result`    | object | Deterministic result when no `check` is present. Mutually exclusive with `check`. |
+| `condition` | [condition object](#condition-object) | Optional. If present, all conditions must be met for the path to be usable. |
+| `skip_check_if` | [condition object](#condition-object) | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
+| `check`     | [check object](#check-objects) | Optional. A `roll` or `stat_check`. If present, `success` is required. |
+| `success`   | [result object](#result-object) | Result applied when the check succeeds. |
+| `failure`   | [result object](#result-object) | Result applied when the check fails. |
+| `result`    | [result object](#result-object) | Deterministic result when no `check` is present. Mutually exclusive with `check`. |
 
 Path results support the same fields as interaction `Result` objects: `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`, `chain_check`.
 
@@ -1114,7 +1114,7 @@ rule-level value. `outcome: "combat"` starts the multi-round combat system.
 | `id`          | string | Unique mechanic identifier. |
 | `type`        | string | `"win"` or `"lose"`. |
 | `description` | string | Human-readable description of what must happen. |
-| `condition`   | object | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. Follows the condition object format. |
+| `condition`   | [condition object](#condition-object) | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. Follows the condition object format. |
 | `narrative`   | string | Canonical ending prose passed to LLM Call 2 via `triggered_narration`. |
 | `trigger_id`  | string | Set as `game_over.trigger` in hard state; for debugging and save analysis. |
 
