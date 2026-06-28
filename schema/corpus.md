@@ -34,17 +34,21 @@ from it to validate actions, resolve encounters, and apply mechanics.
 
 ## Common Primitives
 
-This section defines common types used throughout the corpus schema:
-conditions, checks, results, and chained checks. All other sections
-reference these primitives.
+This section defines reusable types that appear across multiple parts of
+the corpus schema — conditions, checks, results, and chained checks.
+These are referenced by rooms, entities, mechanics, encounter rules, and
+reactions throughout the document.
 
 ### Condition object
 
-Conditions can appear on exits, interactions, reactions, encounter rules,
-and mechanics. They are predicate clauses evaluated against hard game state and
-the module corpus. A standalone condition is expressed as an **object**; the
-`any` and `all` forms may contain bare condition strings as array elements
-(in addition to nested condition objects).
+A condition is a predicate clause that gates availability — it controls
+whether an exit is shown, an interaction is offered, a reaction fires, or
+a mechanic applies. Conditions are evaluated against hard state (flags,
+entity states, inventory) and soft state (attitudes, dialogue topics).
+
+A standalone condition is expressed as an **object**; the `any` and `all`
+forms may contain bare condition strings as array elements (in addition
+to nested condition objects).
 
 **`require`** — condition must be true for the thing to be available:
 
@@ -112,7 +116,10 @@ Common context keys: `exit_id`, `interaction_id`, `npc_id`, `flag_name`,
 
 #### Check objects
 
-Interactions use one of two check types: `roll` (flat probability) or `stat_check` (ability-score-based resolution).
+A check introduces probabilistic resolution into any gated event —
+interactions, traversal, examine events, dialogue paths, and encounter
+rules. Two check types are available: `roll` (flat probability) and
+`stat_check` (ability-score-based resolution).
 
 **Roll check:**
 
@@ -174,6 +181,12 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 
 #### Result object
 
+A result object describes the consequences of an action — the canonical
+narrative, state mutations, stat adjustments, inventory changes, and
+optional follow-up checks. Result objects appear as `success`/`failure`
+branches in interactions, traversal checks, on-examine events, and
+dialogue paths, or as a deterministic `result` when no check is involved.
+
 ```json
 {
   "narrative": "string (pre-written description of outcome)",
@@ -206,10 +219,11 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 
 #### Chained check (`chain_check`)
 
-A chained check allows a result to trigger an immediate follow-up check (roll or stat
-check) with its own success/failure outcomes. This supports nested resolution within a
-single turn — for example, a key insertion that requires a STR check, and on failure
-triggers a DEX check to catch the slipping key.
+A chained check is a follow-up resolution embedded inside a result. It
+allows a single action to resolve in two stages — for example, a STR
+check to force a door, and on failure a DEX check to catch the slipping
+key before it falls. The chained check fires immediately after its parent
+result, using its own success/failure branches.
 
 ```json
 {
