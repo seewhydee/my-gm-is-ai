@@ -114,13 +114,6 @@ class EquipBlock(BaseModel):
         return ", ".join(parts)
 
 
-class CheckResolution(BaseModel):
-    skip_check_if: Optional[ConditionExpression] = None
-    check: CheckType
-    success: Result
-    failure: Optional[Result] = None
-
-
 class Result(BaseModel):
     narrative: Optional[str] = None
     add_item: Optional[str] = None
@@ -168,6 +161,40 @@ class StatCheck(BaseModel):
 CheckType = RollCheck | StatCheck
 
 
+class Checkable(BaseModel):
+    """A probabilistic check with success/failure branches.
+
+    Shared by Interaction, DialoguePath, OnExamineEvent, TraversalCheck,
+    TakeCheck, and CheckResolution. Subclasses add their own fields
+    (condition, result, gating, using_results, id, label, rigorous_only, ...)
+    and validators that tighten optionality per their semantics.
+    """
+    skip_check_if: Optional[ConditionExpression] = None
+    check: Optional[CheckType] = None
+    success: Optional[Result] = None
+    failure: Optional[Result] = None
+
+
+class CheckResolution(Checkable):
+    """A self-contained check resolution: a check plus its outcome branches.
+
+    Carried by Result.then_check, resolved immediately after the parent
+    result's own effects. Used both as a follow-up (fail STR -> roll DEX to
+    catch the key) and as the sole content of a result (a reaction whose
+    effect is just a check).
+    """
+    check: CheckType
+    success: Result
+
+    @model_validator(mode="after")
+    def require_check_and_success(self) -> "CheckResolution":
+        if self.check is None:
+            raise ValueError("CheckResolution requires 'check'")
+        if self.success is None:
+            raise ValueError("CheckResolution requires 'success'")
+        return self
+
+
 class UsingResultOverride(BaseModel):
     check: Optional[CheckType] = None
     success: Optional[Result] = None
@@ -185,14 +212,11 @@ class UsingResultOverride(BaseModel):
         return self
 
 
-class TakeCheck(BaseModel):
+class TakeCheck(Checkable):
     """A check required to take an item via a transfer action."""
 
     gating: Optional[ConditionExpression] = None
-    skip_check_if: Optional[ConditionExpression] = None
     check: CheckType
-    success: Optional[Result] = None
-    failure: Optional[Result] = None
 
     @model_validator(mode="after")
     def check_success_on_check(self) -> "TakeCheck":
@@ -201,15 +225,11 @@ class TakeCheck(BaseModel):
         return self
 
 
-class Interaction(BaseModel):
+class Interaction(Checkable):
     id: str
     label: str
     description: Optional[str] = None
     condition: Optional[ConditionExpression] = None
-    skip_check_if: Optional[ConditionExpression] = None
-    check: Optional[CheckType] = None
-    success: Optional[Result] = None
-    failure: Optional[Result] = None
     result: Optional[Result] = None
     using_results: Optional[Dict[str, UsingResultOverride]] = None
 
@@ -224,12 +244,9 @@ class Interaction(BaseModel):
         return self
 
 
-class TraversalCheck(BaseModel):
+class TraversalCheck(Checkable):
     check: CheckType
     gating: Optional[ConditionExpression] = None
-    skip_check_if: Optional[ConditionExpression] = None
-    failure: Optional[Result] = None
-    success: Optional[Result] = None
     using_results: Optional[Dict[str, UsingResultOverride]] = None
 
 
@@ -242,14 +259,10 @@ class Exit(BaseModel):
     traversal_check: Optional[TraversalCheck] = None
 
 
-class OnExamineEvent(BaseModel):
+class OnExamineEvent(Checkable):
     id: str
     condition: Optional[ConditionExpression] = None
-    skip_check_if: Optional[ConditionExpression] = None
     rigorous_only: bool = False
-    check: Optional[CheckType] = None
-    success: Optional[Result] = None
-    failure: Optional[Result] = None
     result: Optional[Result] = None
 
     @model_validator(mode="after")
@@ -336,13 +349,9 @@ class WillRevealEntry(BaseModel):
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
 
 
-class DialoguePath(BaseModel):
+class DialoguePath(Checkable):
     description: str
     condition: Optional[ConditionExpression] = None
-    skip_check_if: Optional[ConditionExpression] = None
-    check: Optional[CheckType] = None
-    success: Optional[Result] = None
-    failure: Optional[Result] = None
     result: Optional[Result] = None
 
     @model_validator(mode="after")

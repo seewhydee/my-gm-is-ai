@@ -178,6 +178,17 @@ success/failure outcome.
 The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 `flat` for diceless).
 
+#### Common check-bearing types
+
+The six content types that carry a probabilistic check with success/failure
+branches — `Interaction`, `DialoguePath`, `OnExamineEvent`, `TraversalCheck`,
+`TakeCheck`, and `CheckResolution` (then_check) — all share the same quartet
+of fields: `skip_check_if`, `check`, `success`, and `failure`. These are
+inherited from a shared `Checkable` base in the implementation. Subtypes add
+their own fields (`condition`, `result`, `gating`, `using_results`, `id`,
+`label`, `rigorous_only`, etc.) and may tighten optionality via validators
+(e.g., `CheckResolution` requires both `check` and `success`).
+
 
 #### Result object
 
