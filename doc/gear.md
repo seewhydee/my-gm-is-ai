@@ -287,7 +287,7 @@ content on what the player is wearing:
 | Condition                          | True when |
 |------------------------------------|-----------|
 | `equipped:toenail_sword`           | The item entity ID `toenail_sword` is in `player.equipped`. |
-| `equipped:weapon`                  | Any equipped item has `"weapon"` in its `equip_tags` or `tags`. |
+| `equipped:weapon`                  | Any equipped item has `"weapon"` in its `tags`. |
 
 This enables encounter rules, dialogue branches, and mechanics gated on
 equipment:

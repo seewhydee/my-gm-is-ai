@@ -399,24 +399,6 @@ class TestEvaluateConditionStringTopic:
             evaluate_condition_string("topic:abandonment == true", hs, ss, None)
 
 
-class TestEvaluateConditionStringItem:
-    def test_item_present(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["rusty_key"]})
-        ss = make_soft_state()
-        assert evaluate_condition_string("item:rusty_key", hs, ss, None)
-
-    def test_item_missing(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state()
-        assert not evaluate_condition_string("item:rusty_key", hs, ss, None)
-
-    def test_item_with_operator_raises(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state()
-        with pytest.raises(ValueError, match="item condition must not have operator"):
-            evaluate_condition_string("item:rusty_key == true", hs, ss, None)
-
-
 class TestEvaluateConditionStringStat:
     def _with_stats(self, **overrides):
         hs = make_hard_state()

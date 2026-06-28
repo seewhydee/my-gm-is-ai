@@ -1,11 +1,13 @@
 # Module Corpus Schema
 
-The Module Corpus is the read-only canonical adventure content — the equivalent
-of a printed D&D adventure module. It is never modified during play. All game
-logic, descriptions, entities, encounters, and win/loss conditions live here.
+The Module Corpus is the read-only canonical adventure content — the
+equivalent of a printed D&D adventure module. It is never modified
+during play. All game logic, descriptions, entities, encounters, and
+win/loss conditions live here.
 
-The Context Assembler reads from it to build the GMBriefing. The Engine reads
-from it to validate actions, resolve encounters, and apply mechanics.
+The Context Assembler reads from it to build the GMBriefing. The
+Engine reads from it to validate actions, resolve encounters, and
+apply mechanics.
 
 ## Top-Level Structure
 
@@ -22,48 +24,42 @@ from it to validate actions, resolve encounters, and apply mechanics.
 
 ### `adventure` — Metadata block
 
-| Field          | Type   | Required | Description |
-|----------------|--------|----------|-------------|
-| `id`           | string | no       | Short snake_case identifier (optional). Used for save/load safety. |
-| `title`        | string | yes      | Display title of the adventure. |
-| `credits`      | object | no       | `{ author, source, license }`. |
-| `introduction` | string | yes      | Opening narration read to the player at game start. |
-| `atmosphere`   | object | no       | `{ setting, tone }` — 1-2 sentence narrative guidance for both LLM calls. Setting describes the world; tone describes the desired style (e.g., grim, whimsical). |
+| Field            | Type   | Description                        |
+|------------------|--------|------------------------------------|
+| `id` (*)         | string | snake_case id for save/load check. |
+| `title`          | string | Display title of the adventure.    |
+| `credits` (*)    | object | `{ author, source, license }`.     |
+| `introduction`   | string | Opening narration read to player.  |
+| `atmosphere` (*) | object | `{ setting, tone }` of adventure.  |
+(*) optional
 
 ---
 
 ## Common Primitives
 
-This section defines reusable types that appear across multiple parts of
-the corpus schema — conditions, checks, results, and follow-up checks.
-These are referenced by rooms, entities, mechanics, encounter rules, and
-reactions throughout the document.
+This section defines types used in multiple parts of the corpus
+schema: conditions, checks, results, and follow-up checks.
 
 ### Condition object
 
-A condition is a predicate clause that gates availability — it controls
-whether an exit is shown, an interaction is offered, a reaction fires, or
-a mechanic applies. Conditions are evaluated against hard state (flags,
-entity states, inventory) and soft state (attitudes, dialogue topics).
+A condition is a predicate clause gating availability, e.g. whether an
+exit is shown, a mechanic can be triggered, etc.  There are several
+different forms of condition objects, listed below:
 
-A standalone condition is expressed as an **object**; the `any` and `all`
-forms may contain bare condition strings as array elements (in addition
-to nested condition objects).
-
-**`require`** — condition must be true for the thing to be available:
+**`require`** — condition must be true for availablility.
 
 ```json
 { "require": "flag:handkerchief_moved == true" }
 ```
 
-**`unless`** — condition blocks availability if true:
+**`unless`** — condition blocks availability if true.
 
 ```json
 { "unless": "flag:injured == true" }
 ```
 
-**`any`** — at least one sub-condition must be true. Each element may be a
-condition string *or* a nested condition object:
+**`any`** — at least one sub-condition must be true. Each element may
+be a condition string or a nested condition object:
 
 ```json
 { "any": [
@@ -75,8 +71,8 @@ condition string *or* a nested condition object:
 ] }
 ```
 
-**`all`** — all sub-conditions must be true. Each element may be a condition
-string *or* a nested condition object:
+**`all`** — all sub-conditions must be true. Each element may be a
+condition string or a nested condition object:
 
 ```json
 { "all": [
@@ -85,32 +81,54 @@ string *or* a nested condition object:
 ] }
 ```
 
-A condition object can stand alone (`{ "require": "..." }`) or serve as an
-element inside `any`/`all` arrays, allowing arbitrarily deep nesting of AND/OR
-logic.
+A condition object can stand alone (`{ "require": "..." }`) or serve
+as an element inside `any`/`all` arrays, allowing arbitrarily deep
+logical nesting.
 
-Condition strings use the format `<domain>:<key> <op> <value>`:
+Condition strings have one of two forms:
 
-| Domain       | Example                          | Meaning |
-|--------------|----------------------------------|---------|
-| `flag`       | `flag:door_opened == true`       | Refers to a key in `hard_state.flags`. |
-| `inventory`  | `inventory:rusty_key`            | Checks if an item entity ID is in the player's hard inventory. |
-| `item`       | `item:rusty_key`                 | Alias for `inventory`. |
-| `tag`        | `tag:weapon`                     | Checks if the player's inventory **or equipped items** contain any item with this tag. Scans both lists for backward compatibility. |
-| `entity`     | `entity:spider.alive == true`    | Checks an entity's hard state field. |
-| `room`       | `room:axe_head.visited == true`  | Checks a room state field. |
-| `attitude`   | `attitude:korbar >= 2`           | Checks an NPC's soft-state attitude value. Defaults to the corpus `attitude_limits.initial` if absent from soft state, or 0 if that's undefined. |
-| `topic`      | `topic:abandonment`              | Checks if a topic ID has been discussed in the current dialogue (present in `soft_state.dialogue_state.topics_discussed`). |
-| `stat`       | `stat:STR >= 12`                 | Checks the player's stat value against a threshold. Stat must be declared in `corpus.stats.definitions`; the player's value comes from `hard_state.player.stats`. |
-| `equipped`   | `equipped:toenail_sword`         | Checks if an item entity ID is in the player's `equipped` list. Also accepts tag names — `equipped:weapon` is true if any equipped item has the tag `"weapon"`. |
-| `event`      | `event:exit_id == exit_climb`    | Checks a value in the current event context. Only valid during reaction dispatch (see Reactions below). Outside dispatch, evaluates to `false`. |
+- `<domain>:<key>` — presence-only check (allowed for the `inventory`,
+  `equipped`, `tag`, and `topic` domains).
+- `<domain>:<key> <op> <value>` — compare the key's value against
+  `<value>`. Supported ops: `== true`, `== false`, `== <string>`,
+  `>= <number>`, `> <number>`, `<= <number>`, `< <number>`.
 
-Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`, `<= <number>`, `< <number>`.
+| Domain       | Key                                                 |
+|--------------|-----------------------------------------------------|
+| `flag`       | Global flag ID                                      |
+| `inventory`  | Item entity ID in player's inventory                |
+| `equipped`   | Item entity ID in player's equipped gear.           |
+| `tag`        | Item with this tag in inventory/equipment           |
+| `entity`     | Entity with named state field (e.g. `spider.alive`) |
+| `room`       | Room with named state field (e.g. `parlor.visited`) |
+| `attitude`   | Entity ID of an NPC; value is the NPC's attitude    |
+| `topic`      | Topic ID of a topic discussed in current dialogue   |
+| `stat`       | Stat name; value is the value of that player stat   |
+| `event`      | Value in the current event context; only valid      |
+|              | during event dispatch (see below).                  |
 
-The `event:` domain is only valid during reaction dispatch. Outside dispatch
-(e.g., in interaction conditions or game-over mechanics), it evaluates to `false`.
-Common context keys: `exit_id`, `interaction_id`, `npc_id`, `flag_name`,
-`source_id`, `check_type`, `stat`, `amount`, `new_hp`.
+The `equipped` domain also accepts tag names: `equipped:weapon` is
+true if any equipped item has the tag `"weapon"`.
+
+The `event` domain always evaluates to `false` outside event dispatch.
+See [Reaction object](#reaction-object) for details.
+
+The `room` domain supports a special field `is_current`:
+`room:parlor.is_current == true` is satisfied if the player is
+currently in `parlor`.
+
+The `attitude` domain uses the NPC's runtime attitude if one has been
+set; otherwise it falls back to the `attitude_limits.initial` value
+from the NPC's `dialogue_guidelines` in the corpus.
+
+Examples:
+- `flag:daytime == true` is satisfied if the `daytime` flag is true.
+- `inventory:rusty_key` is satisfied if the item with entity ID
+  `rusty_key` is in player's inventory; not satisfied if the item
+  exists outside inventory.
+- `topic:abandonment` is satisfied if that topic has been discussed in
+  the current dialogue (`soft_state.dialogue_state.topics_discussed`)
+- `stat:STR >= 5` is satisfied if player's current STR stat is >= 5.
 
 ---
 
@@ -268,8 +286,6 @@ Nested follow-ups are supported — a `then_check`'s `Result` may itself contain
 another `then_check`, up to a maximum depth of 3.
 
 ---
-
-
 
 ## `rooms` — Room definitions
 
@@ -904,7 +920,7 @@ or interaction that sets `hidden: false` — otherwise it is permanently invisib
   "will_reveal": {
     "<topic_id>": {
       "description": "string",
-      "conditions": ["attitude:korbar >= 2", "topic:abandonment", "item:rusty_key"],
+      "conditions": ["attitude:korbar >= 2", "topic:abandonment", "inventory:rusty_key"],
       "set_flag": { "<flag_name>": true | false },
       "set_entity_state": { "<entity_id>": { "<field>": <value> } }
     }

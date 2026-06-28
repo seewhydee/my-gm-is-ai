@@ -23,7 +23,7 @@ from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import ConditionStatus
 
-DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|item|stat|equipped|event"
+DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|stat|equipped|event"
 CONDITION_RE = re.compile(
     rf"^({DOMAINS}):([\w.-]+)"
     rf"(?:\s*(==|>=|>|<=|<)\s*(.+))?$"
@@ -147,11 +147,6 @@ def evaluate_condition_string(
         if op is not None:
             raise ValueError(f"topic condition must not have operator: {raw!r}")
         return key in soft_state.dialogue_state.topics_discussed
-
-    if domain == "item":
-        if op is not None:
-            raise ValueError(f"item condition must not have operator: {raw!r}")
-        return key in hard_state.player.inventory
 
     if domain == "stat":
         if op is None or value is None:
@@ -343,10 +338,6 @@ def get_condition_detail(
             detail = f"attitude {key} = {current_val}"
 
     elif domain == "inventory":
-        has_item = key in hard_state.player.inventory
-        detail = f"inventory contains '{key}': {has_item}"
-
-    elif domain == "item":
         has_item = key in hard_state.player.inventory
         detail = f"inventory contains '{key}': {has_item}"
 

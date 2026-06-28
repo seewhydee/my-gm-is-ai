@@ -1830,13 +1830,12 @@ Elements inside `any` and `all` arrays may be:
 |--------------|----------------------------------|---------|
 | `flag`       | `flag:door_opened == true`       | Hard-state flag |
 | `inventory`  | `inventory:rusty_key`            | Item entity ID in player inventory |
-| `item`       | `item:rusty_key`                 | Alias for `inventory` |
-| `tag`        | `tag:weapon`                     | Any item with this tag in player inventory |
+| `tag`        | `tag:weapon`                     | Any item with this tag in inventory or equipped gear |
 | `entity`     | `entity:spider.alive == true`    | Entity hard-state field |
 | `room`       | `room:axe_head.visited == true`  | Room state field |
 | `attitude`   | `attitude:korbar >= 2`           | NPC soft-state attitude |
 | `topic`      | `topic:abandonment`              | Topic ID discussed in current dialogue |
-| `stat`       | `stat:STR >= 12`                 | Player stat value vs threshold. Requires corpus.stats. |
+| `stat`       | `stat:STR >= 12`                 | Player stat value vs threshold |
 | `event`      | `event:exit_id == exit_climb`    | Event context value. Only valid during reaction dispatch. |
 | `any`        | *compound*                       | At least one sub-condition must be true |
 | `all`        | *compound*                       | All sub-conditions must be true |
@@ -1850,9 +1849,9 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
 
 - For `unless`, the inner condition being true **blocks** the action
 - `inventory` and `tag` test presence, not equality
-- `tag:weapon` succeeds if *any* item in inventory has the `"weapon"` tag
-- `stat:STR >= 12` evaluates the player's current Strength value (only valid
-  when corpus has a `stats` block)
+- `tag:weapon` succeeds if *any* item in inventory or equipped gear has the
+  `"weapon"` tag
+- `stat:STR >= 12` evaluates the player's current Strength value
 - `topic:<id>` succeeds if the topic ID appears in
   `dialogue_state.topics_discussed`
 - `room:<id>.is_current` is a special value that checks if the player is

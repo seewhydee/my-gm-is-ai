@@ -173,7 +173,7 @@ Soft State, for the ruling LLM (call 1).
           },
           "secret_compartment": {
             "description": "A hidden cache inside the axe head",
-            "conditions": ["attitude:korbar >= 4", "item:rusty_key"]
+            "conditions": ["attitude:korbar >= 4", "inventory:rusty_key"]
           }
         }
       }
