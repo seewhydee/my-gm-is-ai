@@ -1866,11 +1866,11 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
 
 ---
 
-#### Chained checks pattern
+#### Follow-up checks pattern
 
 When a check result triggers a follow-up check (for escalating consequences,
 multiple stages, or branching outcomes), encode the follow-up as
-`chain_check` on the success or failure result of the first check.
+`then_check` on the success or failure result of the first check.
 
 The typical structure is: a failed (or succeeded) check leads to a second
 check with its own success/failure branches. The second check's failure may
@@ -1893,7 +1893,7 @@ a narrative outcome:
   },
   "failure": {
     "narrative": "The mechanism clicks. Dart shooters whir to life!",
-    "chain_check": {
+    "then_check": {
       "check": {
         "type": "stat_check",
         "stat": "DEX",
@@ -1912,7 +1912,7 @@ a narrative outcome:
 }
 ```
 
-When the chain check's final failure sets a game-over flag, pair it with
+When the follow-up check's final failure sets a game-over flag, pair it with
 a `lose` mechanic:
 
 ```json
@@ -1997,14 +1997,14 @@ All IDs must be **snake_case, lowercase ASCII**:
     DC 10, ~30% vs DC 15, ~5% vs DC 20. Do not set impossible DCs without
     an alternative path.
 
-13. **Chained check maximal depth**: Nested chain_check supports up to 3
+13. **Follow-up check maximal depth**: Nested `then_check` supports up to 3
     levels of depth.
 
 14. **Follower_blacklist**: If an NPC follows the player, and the scenario
     says they refuse to enter certain rooms, add `follower_blacklist` to
     the NPC's entity definition.
 
-15. **Chain check does not trigger game-over directly**: A `chain_check`
+15. **Follow-up check does not trigger game-over directly**: A `then_check`
     failure cannot set `game_over` directly. Instead, use `set_flag` in the
     failure result and add a `lose` mechanic watching that flag.
 

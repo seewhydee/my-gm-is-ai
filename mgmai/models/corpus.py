@@ -114,7 +114,7 @@ class EquipBlock(BaseModel):
         return ", ".join(parts)
 
 
-class ChainedCheck(BaseModel):
+class CheckResolution(BaseModel):
     skip_check_if: Optional[ConditionExpression] = None
     check: CheckType
     success: Result
@@ -131,7 +131,7 @@ class Result(BaseModel):
     set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
     adjust_attitude: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
-    chain_check: Optional[ChainedCheck] = None
+    then_check: Optional[CheckResolution] = None
     player_damage: Optional[str] = None
 
     def has_any_effect(self) -> bool:
@@ -140,7 +140,7 @@ class Result(BaseModel):
             for f in (
                 "narrative", "add_item", "remove_item",
                 "set_flag", "alter_stat", "set_entity_state", "set_room_state",
-                "adjust_attitude", "reveals", "chain_check",
+                "adjust_attitude", "reveals", "then_check",
                 "player_damage",
             )
         )

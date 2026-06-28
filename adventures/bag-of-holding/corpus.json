@@ -860,7 +860,7 @@
           },
           "failure": {
             "narrative": "You strain against the key but it won't budge.",
-            "chain_check": {
+            "then_check": {
               "check": {
                 "type": "stat_check",
                 "stat": "DEX",
@@ -894,7 +894,7 @@
               },
               "failure": {
                 "narrative": "Even with your combined strength, the key won't budge.",
-                "chain_check": {
+                "then_check": {
                   "check": {
                     "type": "stat_check",
                     "stat": "DEX",
@@ -969,7 +969,7 @@
           },
           "effects": {
             "result": {
-              "chain_check": {
+              "then_check": {
                 "check": {
                   "type": "stat_check",
                   "stat": "INT",
@@ -996,7 +996,7 @@
           },
           "effects": {
             "result": {
-              "chain_check": {
+              "then_check": {
                 "check": {
                   "type": "stat_check",
                   "stat": "INT",
@@ -1314,7 +1314,7 @@
           },
           "effects": {
             "result": {
-              "chain_check": {
+              "then_check": {
                 "check": {
                   "type": "stat_check",
                   "stat": "WIS",

@@ -730,32 +730,32 @@ class TestDialoguePathSourceType:
 
 
 class TestReactionChainCheckEvents:
-    """Chain checks inside reaction results emit check.passed/check.failed events."""
+    """Follow-up checks inside reaction results emit check.passed/check.failed events."""
 
-    def test_chain_check_in_reaction_emits_event(self, fresh_state_manager):
+    def test_then_check_in_reaction_emits_event(self, fresh_state_manager):
         state_manager = fresh_state_manager
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
-        from mgmai.models.corpus import ChainedCheck, RollCheck
+        from mgmai.models.corpus import CheckResolution, RollCheck
 
-        # A reaction whose result contains a chain_check.
+        # A reaction whose result contains a then_check.
         room = corpus.rooms["bag_floor"]
         room.reactions.append(Reaction(
             id="reaction_with_chain",
             on="turn.start",
             effects=ReactionEffects(result=Result(
                 narrative="The mechanism whirs.",
-                chain_check=ChainedCheck(
+                then_check=CheckResolution(
                     check=RollCheck(threshold=1.0, repeatable=True),
                     success=Result(narrative="You dodge the needle."),
                 ),
             )),
         ))
 
-        # A second reaction that only fires if the chain check emits an event
+        # A second reaction that only fires if the then_check emits an event
         # with source_type "reaction".
         room.reactions.append(Reaction(
             id="track_reaction_check",
@@ -836,13 +836,13 @@ class TestReactionCombatLogPropagation:
 
 class TestReactionRecursionDepthLimit:
     """The recursion limit caps chains of action-level events emitted by
-    reactions (here, check.passed from chain_check)."""
+    reactions (here, check.passed from then_check)."""
 
     def setup_method(self):
         reset_disabled_once()
 
     def test_recursion_capped_at_max_depth(self, fresh_state_manager):
-        from mgmai.models.corpus import ChainedCheck, RollCheck
+        from mgmai.models.corpus import CheckResolution, RollCheck
         from mgmai.models.actions import WaitAction
 
         state_manager = fresh_state_manager
@@ -852,20 +852,20 @@ class TestReactionRecursionDepthLimit:
         room = corpus.rooms["bag_floor"]
         room.reactions.clear()
 
-        # Seed: a turn.start reaction whose chain_check emits the first
+        # Seed: a turn.start reaction whose then_check emits the first
         # check.passed event (source_type "reaction").
         room.reactions.append(Reaction(
             id="seed",
             on="turn.start",
             effects=ReactionEffects(result=Result(
                 narrative="seed_tick",
-                chain_check=ChainedCheck(
+                then_check=CheckResolution(
                     check=RollCheck(threshold=1.0, repeatable=True),
                     success=Result(narrative="seed_ok"),
                 ),
             )),
         ))
-        # Looper: a check.passed reaction whose own chain_check re-emits
+        # Looper: a check.passed reaction whose own then_check re-emits
         # check.passed, matching itself.  Without the depth limit this would
         # recurse forever.
         room.reactions.append(Reaction(
@@ -874,7 +874,7 @@ class TestReactionRecursionDepthLimit:
             condition=ConditionExpression(require="event:source_type == reaction"),
             effects=ReactionEffects(result=Result(
                 narrative="loop_tick",
-                chain_check=ChainedCheck(
+                then_check=CheckResolution(
                     check=RollCheck(threshold=1.0, repeatable=True),
                     success=Result(narrative="loop_ok"),
                 ),
@@ -953,37 +953,37 @@ class TestEncounterOncePerTurnGuard:
         assert "Encounter 2 fired." not in engine_result.triggered_narration
 
 
-class TestDialoguePathResultChainCheck:
-    """Item 4: result-only dialogue paths emit chain_check events.
+class TestDialoguePathResultThenCheck:
+    """Item 4: result-only dialogue paths emit then_check events.
 
     A dialogue path with a ``result`` (no check) containing a
-    ``chain_check`` must emit ``check.passed``/``check.failed`` for the
-    chained check, with ``source_type='dialogue_path'``.
+    ``then_check`` must emit ``check.passed``/``check.failed`` for the
+    follow-up check, with ``source_type='dialogue_path'``.
     """
 
-    def test_dialogue_path_result_chain_check_emits_event(self, fresh_state_manager):
+    def test_dialogue_path_result_then_check_emits_event(self, fresh_state_manager):
         state_manager = fresh_state_manager
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
-        from mgmai.models.corpus import ChainedCheck, DialoguePath, RollCheck
+        from mgmai.models.corpus import CheckResolution, DialoguePath, RollCheck
 
-        # A result-only dialogue path (no check) with a chain_check.
+        # A result-only dialogue path (no check) with a then_check.
         korbar = corpus.entities["korbar"]
         korbar.dialogue_guidelines.dialogue_paths["rummage"] = DialoguePath(
             description="Rummage through Korbar's pack.",
             result=Result(
                 narrative="You find a trinket.",
-                chain_check=ChainedCheck(
+                then_check=CheckResolution(
                     check=RollCheck(threshold=1.0, repeatable=True),
                     success=Result(narrative="You pocket it cleanly."),
                 ),
             ),
         )
 
-        # A reaction that only fires when the chain check emits an event
+        # A reaction that only fires when the then_check emits an event
         # with source_type dialogue_path.
         room = corpus.rooms["bag_floor"]
         room.reactions.append(Reaction(

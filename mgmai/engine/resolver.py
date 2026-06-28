@@ -35,7 +35,7 @@ from mgmai.models.actions import (
     WaitAction,
 )
 from mgmai.models.corpus import (
-    ChainedCheck,
+    CheckResolution,
     Interaction,
     ModuleCorpus,
     OnExamineEvent,
@@ -58,7 +58,7 @@ from mgmai.engine.dialogue import (
 from mgmai.engine.utils import get_following_npc_ids
 from mgmai.engine.systems import get_system_for_corpus
 
-MAX_CHAIN_CHECK_DEPTH = 3
+MAX_THEN_CHECK_DEPTH = 3
 
 
 def _emit_event(
@@ -974,7 +974,7 @@ def resolve_interact(
 
 
 def _resolve_chained_check(
-    chained: ChainedCheck,
+    chained: CheckResolution,
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
@@ -989,16 +989,16 @@ def _resolve_chained_check(
     source_id: str | None = None,
     source_type: str | None = None,
 ) -> None:
-    if depth >= MAX_CHAIN_CHECK_DEPTH:
+    if depth >= MAX_THEN_CHECK_DEPTH:
         return
     if source_type is None:
         source_type = "reaction" if source_id else "unknown"
     # Handle skip_check_if: bypass check and apply success Result
     if chained.skip_check_if and evaluate(chained.skip_check_if, hard, soft, corpus):
         _apply_result(chained.success, changes, narrative, revealed_hints, hard, corpus, soft, state_manager, resolution, source_id)
-        if chained.success.chain_check:
+        if chained.success.then_check:
             _resolve_chained_check(
-                chained.success.chain_check, hard, soft, corpus, room_id,
+                chained.success.then_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, depth + 1,
                 state_manager, resolution, source_id, source_type,
             )
@@ -1066,9 +1066,9 @@ def _resolve_roll_check_chain(
 
     if result:
         _apply_result(result, changes, narrative, revealed_hints, hard, corpus, soft, state_manager, resolution, source_id)
-        if result.chain_check:
+        if result.then_check:
             _resolve_chained_check(
-                result.chain_check, hard, soft, corpus, room_id,
+                result.then_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, depth + 1,
                 state_manager, resolution, source_id, source_type,
             )
@@ -1131,9 +1131,9 @@ def _resolve_stat_check_chain(
 
     if result:
         _apply_result(result, changes, narrative, revealed_hints, hard, corpus, soft, state_manager, resolution, source_id)
-        if result.chain_check:
+        if result.then_check:
             _resolve_chained_check(
-                result.chain_check, hard, soft, corpus, room_id,
+                result.then_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, depth + 1,
                 state_manager, resolution, source_id, source_type,
             )
@@ -1305,9 +1305,9 @@ def _resolve_roll_check(
     revealed_hints: list[str] = []
     if result:
         _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
-        if result.chain_check:
+        if result.then_check:
             _resolve_chained_check(
-                result.chain_check, hard, soft, corpus, room_id,
+                result.then_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, 0,
                 state_manager, resolution, inter.id, source_type,
             )
@@ -1375,9 +1375,9 @@ def _resolve_stat_check(
 
     if result:
         _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
-        if result.chain_check:
+        if result.then_check:
             _resolve_chained_check(
-                result.chain_check, hard, soft, corpus, room_id,
+                result.then_check, hard, soft, corpus, room_id,
                 changes, narrative, revealed_hints, rolls, 0,
                 state_manager, resolution, inter.id, source_type,
             )
@@ -1441,10 +1441,10 @@ def _resolve_interaction_result(
     revealed_hints: list[str] = []
 
     _apply_result(result, changes, narrative, revealed_hints, hard, corpus)
-    if result.chain_check:
+    if result.then_check:
         rolls: list[dict[str, Any]] = []
         _resolve_chained_check(
-            result.chain_check, hard, soft, corpus, room_id,
+            result.then_check, hard, soft, corpus, room_id,
             changes, narrative, revealed_hints, rolls, 0,
             state_manager, resolution, source_id, source_type,
         )
@@ -1621,9 +1621,9 @@ def _fire_on_examine_events(
                 if event.success:
                     _apply_result(event.success, changes, narrative, revealed_hints, hard, corpus,
                                   item_origin="examine")
-                    if event.success.chain_check:
+                    if event.success.then_check:
                         _resolve_chained_check(
-                            event.success.chain_check, hard, soft, corpus, room_id,
+                            event.success.then_check, hard, soft, corpus, room_id,
                             changes, narrative, revealed_hints, rolls, 0,
                             state_manager, resolution, source_id=f"_on_examine_{event.id}",
                         )
@@ -1651,9 +1651,9 @@ def _fire_on_examine_events(
         elif event.result:
             _apply_result(event.result, changes, narrative, revealed_hints, hard, corpus,
                           item_origin="examine")
-            if event.result.chain_check:
+            if event.result.then_check:
                 _resolve_chained_check(
-                    event.result.chain_check, hard, soft, corpus, room_id,
+                    event.result.then_check, hard, soft, corpus, room_id,
                     changes, narrative, revealed_hints, rolls, 0,
                 )
 

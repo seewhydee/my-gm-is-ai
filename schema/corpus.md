@@ -35,7 +35,7 @@ from it to validate actions, resolve encounters, and apply mechanics.
 ## Common Primitives
 
 This section defines reusable types that appear across multiple parts of
-the corpus schema — conditions, checks, results, and chained checks.
+the corpus schema — conditions, checks, results, and follow-up checks.
 These are referenced by rooms, entities, mechanics, encounter rules, and
 reactions throughout the document.
 
@@ -198,7 +198,7 @@ dialogue paths, or as a deterministic `result` when no check is involved.
   "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
   "adjust_attitude": { "<npc_id>": <delta> },
   "reveals": "string (hint text for the player's future reference)",
-  "chain_check": { /* chained check (optional) */ },
+  "then_check": { /* follow-up check (optional) */ },
   "player_damage": "1d6"
 }
 ```
@@ -214,20 +214,20 @@ dialogue paths, or as a deterministic `result` when no check is involved.
 | `alter_stat`        | object | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). Use `"delta"` for damage/buffs (e.g., fall damage: `{ "STR": { "value": -4 } }`); use `"set"` for absolute assignment (e.g., a curse: `{ "INT": { "mode": "set", "value": 3 } }`). |
 | `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
 | `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
-| `chain_check`     | [Chained check](#chained-check) | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See [Chained check](#chained-check) below. |
+| `then_check`     | [Follow-up check](#follow-up-check-then_check) | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See [Follow-up check](#follow-up-check-then_check) below. |
 | `player_damage`   | string | **Optional.** Dice expression rolled as HP damage against the player (e.g., `"2d6"`, `"1d4+1"`). Resolved by the active RPG system. |
 
-#### Chained check (`chain_check`)
+#### Follow-up check (`then_check`)
 
-A chained check is a follow-up resolution embedded inside a result. It
+A follow-up check is a check-resolution unit embedded inside a result. It
 allows a single action to resolve in two stages — for example, a STR
 check to force a door, and on failure a DEX check to catch the slipping
-key before it falls. The chained check fires immediately after its parent
+key before it falls. The follow-up check fires immediately after its parent
 result, using its own success/failure branches.
 
 ```json
 {
-  "chain_check": {
+  "then_check": {
     "check": {
       "type": "stat_check",
       "stat": "DEX",
@@ -248,13 +248,13 @@ result, using its own success/failure branches.
 
 | Field          | Type                | Description |
 |----------------|---------------------|-------------|
-| `check`        | CheckType           | The chained check to resolve (roll or stat_check). |
+| `check`        | CheckType           | The follow-up check to resolve (roll or stat_check). |
 | `skip_check_if` | condition object   | **Optional.** When present and evaluated to true, the check is skipped entirely. |
-| `success`      | [Result](#result-object)              | Result to apply if the chained check succeeds. |
-| `failure`      | [Result](#result-object) (optional)   | Result to apply if the chained check fails. |
+| `success`      | [Result](#result-object)              | Result to apply if the follow-up check succeeds. |
+| `failure`      | [Result](#result-object) (optional)   | Result to apply if the follow-up check fails. |
 
-Nested chaining is supported — a chained check's result may itself contain another
-`chain_check`, up to a maximum depth of 3.
+Nested follow-ups are supported — a `then_check`'s `Result` may itself contain
+another `then_check`, up to a maximum depth of 3.
 
 ---
 
@@ -435,7 +435,7 @@ the canvas walls triggers an INT check to deduce the glow is magical."
 
 The base `description` of the entity/room is returned first in the narration;
 on-examine event narratives are appended after it. Results may carry
-`set_flag`, `alter_stat`, `add_item`, and `chain_check` like any other result.
+`set_flag`, `alter_stat`, `add_item`, and `then_check` like any other result.
 Multiple on-examine events on the same target all fire (in array order) if
 their conditions are met.
 
@@ -564,7 +564,7 @@ See [`events.md`](events.md) for additional detail on each event's context.
 
 | Field               | Type   | Description |
 |---------------------|--------|-------------|
-| `result`            | [Result](#result-object) | A `Result` object — same fields as interaction results: `narrative`, `set_flag`, `set_entity_state`, `set_room_state`, `alter_stat`, `adjust_attitude`, `add_item`, `remove_item`, `reveals`, `chain_check`. |
+| `result`            | [Result](#result-object) | A `Result` object — same fields as interaction results: `narrative`, `set_flag`, `set_entity_state`, `set_room_state`, `alter_stat`, `adjust_attitude`, `add_item`, `remove_item`, `reveals`, `then_check`. |
 | `trigger_encounter` | string | Mechanic ID or entity ID to trigger an encounter. If `"self"`, resolves to the owning entity's ID (for entity-scoped reactions). |
 | `trigger_dialogue`  | string | NPC entity ID to initiate dialogue with. If `"self"`, resolves to the owning entity's ID. |
 | `game_over`         | object | `{ "type": "win"|"lose", "trigger_id": "..." }` — ends the game. |
@@ -958,7 +958,7 @@ or interaction that sets `hidden: false` — otherwise it is permanently invisib
 | `failure`   | [Result](#result-object) | Result applied when the check fails. |
 | `result`    | [Result](#result-object) | Deterministic result when no `check` is present. Mutually exclusive with `check`. |
 
-Path results support the same fields as interaction `Result` objects: `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`, `chain_check`.
+Path results support the same fields as interaction `Result` objects: `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`, `then_check`.
 
 #### Knowledge tag validation (`will_reveal` flow)
 

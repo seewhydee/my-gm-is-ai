@@ -78,8 +78,9 @@ encounter.
 | `source_id` | string | The interaction, exit, dialogue path, or reaction ID that originated the check. |
 | `source_type` | string | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, `"take"`, or `"reaction"`. |
 
-`source_type: "reaction"` is used when a `chain_check` inside a reaction result
-produces the event.
+`source_type` is inherited from the parent resolution context. A `then_check`
+inside a reaction result emits `source_type: "reaction"`; inside an
+interaction failure branch it emits `source_type: "interaction"`.
 
 ### `dialogue.ended` reasons
 
@@ -122,7 +123,7 @@ dispatching.  This prevents cascading chains where reaction A sets a
 flag, which triggers reaction B, which sets another flag...
 
 Reaction effects *can* emit events (`check.passed`/`check.failed` from
-`chain_check`, `dialogue.started`/`ended`, `combat.started`/`ended`).
+`then_check`, `dialogue.started`/`ended`, `combat.started`/`ended`).
 These are dispatched at the next recursion level, enabling patterns
 like "on dialogue ended, trigger an encounter".
 
