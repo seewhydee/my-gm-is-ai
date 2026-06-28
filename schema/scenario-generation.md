@@ -743,13 +743,6 @@ by a stat check:
 }
 ```
 
-The `hidden` state field and its timing semantics are documented in
-`corpus.md` § Reserved state fields.  In brief: when `hidden` is
-`true`, the engine omits the entity from all contexts (GM briefing,
-engine result).  Setting `hidden: false` via `set_entity_state` makes
-it visible in the same turn; flag-mediated reveals are deferred to the
-next turn.
-
 For containers (see below), examination should not open the container
 as an effect.  Opening should be an explicit player action (usually
 implemented as an interaction type on the container entity).  Even a
