@@ -96,17 +96,18 @@ Condition strings have one of two forms:
 | `attitude`   | Entity ID of an NPC; value is the NPC's attitude    |
 | `topic`      | Topic ID of a topic discussed in current dialogue   |
 | `stat`       | Stat name; value is the value of that player stat   |
-| `event`      | Value in current event context; only valid during event dispatch (see below). |
+| `event`      | Value in current event dispatch context (see below).|
 
 Notes:
 
 - The `equipped` domain also accepts tag names: `equipped:weapon`
   holds if any equipped item has the tag `"weapon"`.
-- The `event` domain always evaluates to `false` outside event
-  dispatch.  See [Reaction object](#reaction-object).
 - The `attitude` domain uses the NPC's runtime attitude if one has
   been set; otherwise it falls back to `attitude_limits.initial` for
   the NPC.  See [NPC attitude](#npc-attitude)
+- The `event` domain is used in [Reaction dispatch](#reaction-object);
+  see that section for details.  It evaluates to `false` outside event
+  dispatch.
 
 Examples:
 - `flag:daytime == true` holds iff the `daytime` flag is true.
@@ -121,17 +122,17 @@ Examples:
 
 ### Check object
 
-A check resolves the success or failure of an event or action:
-interaction, traversal, encounter, etc.  There are two check types:
+A Check resolves the success or failure of an event or action:
+interaction, traversal, encounter, etc.  There are two Check types:
 `roll` (flat probability) and `stat_check` (stat-based resolution).
 
-Either type of check can be set to be repeatable or non-repeatable.
+Either type of Check can be set to be repeatable or non-repeatable.
 If the `repeatable` field is `false`, the engine automatically tracks
 attempts and rejects repeats.
 
-**Roll check:**
+#### Roll Check
 
-Roll succeeds if `random() < threshold`.
+A roll Check succeeds if `random() < threshold`.
 
 ```json
 {
@@ -150,9 +151,9 @@ Roll succeeds if `random() < threshold`.
 | `note` (*)   | string  | Optional designer note            |
 (*) optional
 
-**Stat check:**
+#### Stat Check
 
-Stat checks are [resolution system](#resolution-system) dependent.
+Stat Checks are [resolution system](#resolution-system) dependent.
 
 ```json
 {
@@ -194,12 +195,11 @@ out and a single d20 is rolled.
 
 ### Result object
 
-A result object describes the consequences of an action — the
-canonical narrative, state mutations, stat adjustments, inventory
-changes, and optional follow-up checks. Result objects appear as
-`success`/`failure` branches in interactions, traversal checks,
-on-examine events, and dialogue paths, or as a deterministic `result`
-when no check is involved.
+A Result describes the consequences of an action — the canonical
+narrative, state mutations, stat adjustments, inventory changes, and
+optional follow-up checks. Result objects are used in deterministic
+game mechanics, but are also used in `success` and `failure` branches
+for interactions, traversal checks, dialogue paths, etc.
 
 ```json
 {
@@ -218,7 +218,7 @@ when no check is involved.
 }
 ```
 
-ALL fields in the Result object are optional.
+ALL fields in a Result object are optional.
 
 | Field              | Type     | Description                            |
 |--------------------|----------|----------------------------------------|
@@ -228,11 +228,11 @@ ALL fields in the Result object are optional.
 | `set_flag`         | object   | Hard-state flags to set or clear       |
 | `set_entity_state` | object   | Entity state changes                   |
 | `set_room_state`   | object   | Room state changes                     |
-| `player_damage`       | string   | Damage dealt to player, e.g. `"1d4+1"` |
-| `set_player_location` | string   | Room ID to relocate the player to      |
-| `alter_stat`          | object   | Player stat changes (see below)        |
-| `adjust_attitude`     | object   | NPC attitude changes (see below)       |
-| `reveals`          | string   | Hint text; added to the player's known information for future GMBriefings |
+| `player_damage`    | string   | Damage dealt to player, e.g. `"1d4+1"` |
+| `set_player_location` | string| Room ID to relocate the player to      |
+| `alter_stat`       | object   | Player stat changes (see below)        |
+| `adjust_attitude`  | object   | NPC attitude changes (see below)       |
+| `reveals`          | string   | Player's knowledge update (see below)  |
 | `then_check`       | object   | A follow-up check (see below)          |
 
 Notes:
@@ -265,14 +265,18 @@ Notes:
   the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`.
   See [NPC attitude](#npc-attitude).
 
+- `reveals` is a player-knowledge hint.  If this string is present,
+  the engine appends it to `soft_state.revealed_hints` (with
+  deduplication), whose contents help guide the GM narrator.
+  See the [Soft State schema doc](soft-state.md) for details.
+
 #### Follow-up check
 
-A follow-up check is a check-resolution unit embedded inside a Result
-via the `then_check` field.  It implements multi-stage resolutions for
-actions and effects: e.g., a STR check to jump across a pit, and on
-failure a DEX check to grab the ledge before falling.  The follow-up
-check fires immediately after its parent result, using its own
-success/failure branches.
+A follow-up check can be embedded in a Result's `then_check` field.
+It implements multi-stage resolutions for actions and effects: e.g., a
+STR check to jump across a pit, and on failure a DEX check to grab the
+ledge before falling.  The follow-up check fires immediately after its
+parent result, using its own success/failure branches.
 
 ```json
 {
@@ -295,12 +299,12 @@ success/failure branches.
 }
 ```
 
-| Field             | Type                | Description                            |
-|-------------------|---------------------|----------------------------------------|
-| `check`           | CheckType           | Follow-up Check to resolve             |
-| `skip_check_if`(*)| condition object    | If present and true, check is skipped  |
-| `success`         | [Result](#result-object)| Result if follow-up check succeeds |
-| `failure` (*)     | [Result](#result-object)| Result if follow-up check fails    |
+| Field             | Type      | Description                      |
+|-------------------|-----------|----------------------------------|
+| `check`           | Check     | Follow-up Check to resolve       |
+| `skip_check_if`(*)| Condition | If present and true, skip check  |
+| `success`         | Result    | Result if follow-up succeeds     |
+| `failure` (*)     | Result    | Result if follow-up fails        |
 (*) optional
 
 Nested follow-ups are supported — a follow-up check's success/failure
@@ -308,15 +312,16 @@ results may contain other follow-ups, up to a maximum depth of 3.
 
 ---
 
-## `rooms` — Room definitions
+## Rooms
 
-Each room is keyed by a unique `room_id`. A room is a node in the world graph.
+A room is a location in the adventure module, modeled as a node in a
+world graph keyed by a globally-unique `room_id`.
 
 ```json
 {
   "<room_id>": {
     "name": "string",
-    "description": "string (shown when entering and when player examines room)",
+    "description": "string (shown when player enters or examines room)",
     "entities_present": ["<entity_id>", ...],
     "soft_items": ["string", ...],
     "exits": [ { /* exit */ } ],
@@ -324,33 +329,49 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
     "on_examine": [ { /* on_examine event */ } ],
     "is_start_room": false,
     "reactions": [ { /* reaction */ } ],
-    "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } }
+    "state_fields": { "<field_name>": { "type": "boolean|number|string", "description": "string" } }
   }
 }
 ```
 
-| Field               | Type      | Required | Description |
-|----------------------|-----------|----------|-------------|
-| `name`               | string    | yes      | Short display name (e.g., "Axe Head"). |
-| `description`        | string    | yes      | Full prose description shown on entry and on `examine` room. |
-| `entities_present`   | string[]  | no       | Entity IDs of non-player entities present in this room. The Context Assembler uses this to populate `entities_visible` in GMBriefing, filtered by `state.alive`. |
-| `soft_items`         | string[]  | no       | Plausible generic items that can be found in this room (e.g., `["rock", "loose stone", "dust"]`). These are identified by their general name only — they carry no unique item ID. The engine tracks them in `soft_inventory` when picked up. |
-| `exits`              | array     | no       | Available exits from this room. |
-| `interactions`       | array     | no       | Defined interactions the player can perform in this room. |
-| `on_examine`         | array     | no       | Events that fire when the player examines this room. Each is an `OnExamineEvent` (see below). |
-| `is_start_room`      | boolean   | no       | Exactly one room should have this set to `true`. Player starts here. |
-| `reactions`          | array     | no       | Reactions that fire when the player is in this room (see Reactions below). |
-| `state_fields`       | object    | no       | Declaration of mutable state fields for this room. Follows the same format as entity `state_fields` (see Entities below). |
+| Field                | Type     | Description                            |
+|----------------------|----------|----------------------------------------|
+| `name`               | string   | Short display name                     |
+| `description`        | string   | Prose description of room              |
+| `entities_present`(*)| string[] | IDs of non-player entities present     |
+| `exits` (*)          | array    | All exits out of the room              |
+| `interactions` (*)   | array    | Special interactions with the room     |
+| `on_examine` (*)     | array    | Effects of examining room (see below)  |
+| `is_start_room` (*)  | boolean  | `true` for starting room (only one)    |
+| `reactions` (*)      | array    | Room-scoped reactions (see below)      |
+| `state_fields` (*)   | object   | State fields for this room (see below) |
+| `soft_items` (*)     | string[] | Plausible generic items in the room    |
+(*) optional
 
-Two room state fields cannot be set directly and are managed by the
-engine: `visited` is true iff the room has been visited before by the
-player, and `is_current` is true only for the player's current room.
+Notes:
+
+- The `name` string is used to indicate the player's location in UI
+  during gameplay, whereas `description` guides the GM regarding the
+  characteristics of the room, including when the player enters or
+  looks around (NOT necessarily used verbatim in narration).
+
+- The `exits` field contain an array of Exit objects, one for every
+  possible exit regardless of initial availability/visibility.  Each
+  exit may be gated and/or hidden via its [Exit object](#exit-object).
+
+- Two state fields cannot be set directly and are managed by the
+  engine: `visited` is true iff the room was visited before by the
+  player, and `is_current` is true only for the player's current room.
+
+- Soft objects examples: `["rock", "loose stone", "dust"]`). These are
+  identified by their general name only — they carry no unique item
+  ID. The engine tracks them in `soft_inventory` when picked up.
 
 ### Exit object
 
 ```json
 {
-  "id": "string (unique across all exits)",
+  "id": "string (unique across all exits in the room)",
   "direction": "string (natural-language label, e.g. 'Climb carefully down the axe handle')",
   "target_room": "<room_id>",
   "hide_conditions": [ { /* condition */ } ],
@@ -361,12 +382,17 @@ player, and `is_current` is true only for the player's current room.
 
 | Field             | Type    | Required | Description |
 |-------------------|---------|----------|-------------|
-| `id`              | string  | yes      | Unique exit identifier, referenced by `move` action `target`. |
+| `id`              | string  | yes      | Exit identifier, referenced by `move` action `target`. |
 | `direction`       | string  | yes      | Human-readable direction label for LLM context. |
 | `target_room`     | string  | yes      | Room ID the player ends up in after traversing. |
 | `hide_conditions` | array   | no       | Conditions that must ALL be met for the exit to appear in `exits_available` and be traversable. When `null`/absent, the exit is always visible. When `[]` (empty), the exit is permanently hidden. When non-empty, the exit is hidden until all conditions evaluate to true; once visible, it stays visible. |
 | `traversal_check` | object  | no       | **Optional.** A check (roll or stat_check) that must be passed to succeed at traversing this exit. On failure, the player stays in the current room. See Traversal check below. |
 | `one_way`         | boolean | no       | If `true`, the exit cannot be traversed in reverse. |
+
+Notes:
+
+- Exit IDs must be **globally** unique because reactions can fire on
+  them.
 
 #### Traversal check (`traversal_check`)
 
@@ -403,11 +429,11 @@ room, able to retry next turn.
 
 | Field               | Type                | Description |
 |---------------------|---------------------|-------------|
-| `check`             | [Check](#check-objects)           | The check to roll: a `roll` or `stat_check`. |
-| `gating`            | [Condition](#condition-object)    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
-| `skip_check_if`     | [Condition](#condition-object)    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `gating`). Inverse of `gating` — use this for "don't check when NPC helps" patterns. |
-| `failure`           | [Result](#result-object)              | **Optional.** Result applied when the traversal check fails. Contains at minimum a `narrative` field. May include `set_flag`, `alter_stat`, and other Result fields. |
-| `success`           | [Result](#result-object)              | **Optional.** Result applied when the traversal check succeeds. Contains at minimum a `narrative` field. May include `set_flag`, `add_item`, and other Result fields. |
+| `check`             | Check           | The check to roll: a `roll` or `stat_check`. |
+| `gating`            | Condition    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
+| `skip_check_if`     | Condition    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `gating`). Inverse of `gating` — use this for "don't check when NPC helps" patterns. |
+| `failure`           | Result              | **Optional.** Result applied when the traversal check fails. Contains at minimum a `narrative` field. May include `set_flag`, `alter_stat`, and other Result fields. |
+| `success`           | Result              | **Optional.** Result applied when the traversal check succeeds. Contains at minimum a `narrative` field. May include `set_flag`, `add_item`, and other Result fields. |
 | `using_results`     | dict                | **Optional.** Maps item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `move` action carries a `using` parameter matching a key, the override's `check` replaces the traversal check (allowing different DCs per item). |
 
 ---
@@ -437,12 +463,12 @@ They can be defined at the room level or on individual entities.
 | `id`                   | string       | yes      | Unique within the defining context (room or entity). Referenced by `interact` action `interaction_id`. |
 | `label`                | string       | yes      | Human-readable action label. |
 | `description`          | string       | no       | Extended description of the action. |
-| `condition`            | [Condition](#condition-object)\|null | no       | Condition that must be met for the interaction to be available. |
-| `skip_check_if`        | [Condition](#condition-object)       | no       | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition`. |
-| `check`                | [Check](#check-objects)       | no       | A probabilistic check (roll). If absent, `result` is used directly. |
-| `success`              | [Result](#result-object)       | no       | Result when the check succeeds. |
-| `failure`              | [Result](#result-object)       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
-| `result`               | [Result](#result-object)       | no       | Deterministic result (used when no `check` is present). |
+| `condition`            | Condition\|null | no       | Condition that must be met for the interaction to be available. |
+| `skip_check_if`        | Condition       | no       | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition`. |
+| `check`                | Check       | no       | A probabilistic check (roll). If absent, `result` is used directly. |
+| `success`              | Result       | no       | Result when the check succeeds. |
+| `failure`              | Result       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
+| `result`               | Result       | no       | Deterministic result (used when no `check` is present). |
 | `using_results`        | object       | no       | **Optional.** Dict mapping item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `interact` action's `using` field matches a key, the override replaces the interaction's own `check`/`success`/`failure`/`result`. Each override may optionally carry its own `check` (allowing different DCs per item, e.g. STR DC 14 bare-handed vs. DC 10 with a weapon), or a plain `result`. Overrides are leaf-level — the override's check+success+failure (or result) fully replaces the interaction's defaults. |
 
 Interactions include generic types available everywhere (e.g., `attack`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item. Picking up items should use the `transfer` action instead.
@@ -479,11 +505,11 @@ the canvas walls triggers an INT check to deduce the glow is magical."
 | Field            | Type            | Description |
 |------------------|-----------------|-------------|
 | `id`             | string          | Unique event identifier within the parent entity or room. |
-| `condition`      | [Condition](#condition-object)\|null    | Gating condition. If present and `false`, the event does nothing. If `null`, fires every time the entity/room is examined. |
-| `skip_check_if`  | [Condition](#condition-object)          | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
+| `condition`      | Condition\|null    | Gating condition. If present and `false`, the event does nothing. If `null`, fires every time the entity/room is examined. |
+| `skip_check_if`  | Condition          | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
 | `rigorous_only`  | boolean         | If `true`, the event only fires when the examine action has `rigorous: true`. Default `false`. |
-| `check`          | [Check](#check-objects)       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
-| `success`        | [Result](#result-object)          | Result applied when the check passes. Required if `check` is present. |
+| `check`          | Check       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
+| `success`        | Result          | Result applied when the check passes. Required if `check` is present. |
 | `failure`        | [Result\|null](#result-object)    | Result applied when the check fails. Optional; if absent, nothing happens on failure. |
 | `result`         | [Result\|null](#result-object)    | Deterministic result applied when no `check` is present. Mutually exclusive with `check`. |
 
@@ -514,7 +540,7 @@ A reaction fires when a matching game event occurs and its condition is met.
 |-----------|-----------------|----------|-------------|
 | `id`      | string          | yes      | Unique identifier within the defining context (room, entity, or mechanic). Used for debugging and `once` tracking. Because `once` tracking is global, reaction IDs should be unique across the whole adventure when any reaction uses `once: true`. |
 | `on`      | string          | yes      | Event type to match (see Event types below). |
-| `condition` | [Condition](#condition-object)\|null | no | Gating condition evaluated against game state + event context. If the condition evaluates to `true`, the reaction fires. If `false` (or unsatisfied), the reaction does nothing. If `null`, fires unconditionally when the event occurs. |
+| `condition` | Condition\|null | no | Gating condition evaluated against game state + event context. If the condition evaluates to `true`, the reaction fires. If `false` (or unsatisfied), the reaction does nothing. If `null`, fires unconditionally when the event occurs. |
 | `effects` | object          | yes      | The effects to apply (see Reaction effects below). |
 | `once`    | boolean         | no       | If `true`, fires at most once per adventure load. Default `false`. For persistent one-shot behavior, prefer flag-gated conditions instead. |
 | `priority` | integer        | no       | Lower values fire earlier. Default `0`. |
@@ -618,7 +644,7 @@ See [`events.md`](events.md) for additional detail on each event's context.
 
 | Field               | Type   | Description |
 |---------------------|--------|-------------|
-| `result`            | [Result](#result-object) | A `Result` object — same fields as interaction results: `narrative`, `set_flag`, `set_entity_state`, `set_room_state`, `alter_stat`, `adjust_attitude`, `add_item`, `remove_item`, `reveals`, `then_check`. |
+| `result`            | Result | A `Result` object — same fields as interaction results: `narrative`, `set_flag`, `set_entity_state`, `set_room_state`, `alter_stat`, `adjust_attitude`, `add_item`, `remove_item`, `reveals`, `then_check`. |
 | `trigger_encounter` | string | Mechanic ID or entity ID to trigger an encounter. If `"self"`, resolves to the owning entity's ID (for entity-scoped reactions). |
 | `trigger_dialogue`  | string | NPC entity ID to initiate dialogue with. If `"self"`, resolves to the owning entity's ID. |
 | `game_over`         | object | `{ "type": "win"|"lose", "trigger_id": "..." }` — ends the game. |
@@ -1005,12 +1031,12 @@ or interaction that sets `hidden: false` — otherwise it is permanently invisib
 | Field       | Type   | Description |
 |-------------|--------|-------------|
 | `description` | string | **Required.** Human-readable description of what this path represents. This text is surfaced to LLM Call 1 as the value in `entities_visible[*].dialogue_paths[path_id]`, so the LLM can match player input to the right path. Phrase it as a player intent (e.g., "Compliment the spider's hunting prowess" or "Tell Korbar the spider is dead"). |
-| `condition` | [Condition](#condition-object) | Optional. If present, all conditions must be met for the path to be usable. |
-| `skip_check_if` | [Condition](#condition-object) | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
-| `check`     | [Check](#check-objects) | Optional. A `roll` or `stat_check`. If present, `success` is required. |
-| `success`   | [Result](#result-object) | Result applied when the check succeeds. |
-| `failure`   | [Result](#result-object) | Result applied when the check fails. |
-| `result`    | [Result](#result-object) | Deterministic result when no `check` is present. Mutually exclusive with `check`. |
+| `condition` | Condition | Optional. If present, all conditions must be met for the path to be usable. |
+| `skip_check_if` | Condition | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
+| `check`     | Check | Optional. A `roll` or `stat_check`. If present, `success` is required. |
+| `success`   | Result | Result applied when the check succeeds. |
+| `failure`   | Result | Result applied when the check fails. |
+| `result`    | Result | Deterministic result when no `check` is present. Mutually exclusive with `check`. |
 
 Path results support the same fields as interaction `Result` objects: `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`, `then_check`.
 
@@ -1168,7 +1194,7 @@ rule-level value. `outcome: "combat"` starts the multi-round combat system.
 | `id`          | string | Unique mechanic identifier. |
 | `type`        | string | `"win"` or `"lose"`. |
 | `description` | string | Human-readable description of what must happen. |
-| `condition`   | [Condition](#condition-object) | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. Follows the condition object format. |
+| `condition`   | Condition | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. Follows the condition object format. |
 | `narrative`   | string | Canonical ending prose passed to LLM Call 2 via `triggered_narration`. |
 | `trigger_id`  | string | Set as `game_over.trigger` in hard state; for debugging and save analysis. |
 

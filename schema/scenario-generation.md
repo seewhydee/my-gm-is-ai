@@ -465,8 +465,8 @@ catching gaps here avoids rework downstream.
       inventory; otherwise it should be a `feature` (§1C)
 - [ ] Every win/loss condition and global effect/mechanic from the
       scenario is captured in the global mechanic list (§1E)
-- [ ] All IDs (rooms, entities, flags, mechanics, reactions, dialogue
-      paths, topics) are in snake_case and appropriately disambiguated
+- [ ] All IDs (rooms, entities, flags, mechanics, reactions, etc.) are
+	  in snake_case and appropriately disambiguated
 
 #### Structural correctness
 
@@ -1291,7 +1291,7 @@ above).
 - [ ] Every room has a `name` and `description`
 - [ ] Exactly one room has `is_start_room: true`
 - [ ] Every exit `target_room` references a valid room ID
-- [ ] Every exit ID is unique across all rooms
+- [ ] Every exit ID is unique across its host room
 - [ ] Every entity in `entities_present` exists in the `entities` block
 - [ ] Every `trigger_encounter` in a `traversal.succeeded` reaction
   references a mechanic that will be created in Step 4
