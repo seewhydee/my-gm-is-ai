@@ -107,37 +107,33 @@ Condition strings have one of two forms:
 | `event`      | Value in the current event context; only valid      |
 |              | during event dispatch (see below).                  |
 
-The `equipped` domain also accepts tag names: `equipped:weapon` is
-true if any equipped item has the tag `"weapon"`.
+Notes:
 
-The `event` domain always evaluates to `false` outside event dispatch.
-See [Reaction object](#reaction-object) for details.
-
-The `room` domain supports a special field `is_current`:
-`room:parlor.is_current == true` is satisfied if the player is
-currently in `parlor`.
-
-The `attitude` domain uses the NPC's runtime attitude if one has been
-set; otherwise it falls back to the `attitude_limits.initial` value
-from the NPC's `dialogue_guidelines` in the corpus.
+- The `equipped` domain also accepts tag names: `equipped:weapon`
+  holds if any equipped item has the tag `"weapon"`.
+- The `event` domain always evaluates to `false` outside event
+  dispatch.  See [Reaction object](#reaction-object) for details.
+- The `attitude` domain uses the NPC's runtime attitude if one has
+  been set; otherwise it falls back to the `attitude_limits.initial`
+  value from the NPC's `dialogue_guidelines` in the corpus.
 
 Examples:
-- `flag:daytime == true` is satisfied if the `daytime` flag is true.
-- `inventory:rusty_key` is satisfied if the item with entity ID
-  `rusty_key` is in player's inventory; not satisfied if the item
-  exists outside inventory.
-- `topic:abandonment` is satisfied if that topic has been discussed in
-  the current dialogue (`soft_state.dialogue_state.topics_discussed`)
-- `stat:STR >= 5` is satisfied if player's current STR stat is >= 5.
+- `flag:daytime == true` holds iff the `daytime` flag is true.
+- `inventory:rusty_key` holds iff the item with entity ID `rusty_key`
+  is in player's inventory; it is not satisfied if the item exists
+  outside inventory.
+- `topic:abandonment` holds iff the topic has been discussed in the
+  current dialogue (`soft_state.dialogue_state.topics_discussed`)
+- `stat:STR >= 5` holds iff player's current STR stat is >= 5.
 
 ---
 
 #### Check objects
 
-A check introduces probabilistic resolution into any gated event —
-interactions, traversal, examine events, dialogue paths, and encounter
-rules. Two check types are available: `roll` (flat probability) and
-`stat_check` (ability-score-based resolution).
+A check resolves the success or failure of an event or action:
+interaction, traversal, encounter, etc.  Two check types are currently
+available: `roll` (flat probability) and `stat_check` (stat-based
+resolution).
 
 **Roll check:**
 
@@ -154,8 +150,8 @@ rules. Two check types are available: `roll` (flat probability) and
 |--------------|---------|----------|-------------|
 | `type`       | string  | yes      | `"roll"` — flat probability check. |
 | `threshold`  | number  | yes      | Probability threshold (0.0–1.0). Roll succeeds if `random() < threshold`. |
-| `repeatable` | boolean | yes      | Whether the check can be retried. If `false`, the engine tracks attempts and rejects repeats. |
-| `note`       | string  | no       | Optional designer note. |
+| `repeatable`      | boolean | yes      | Whether the check can be retried. If `false`, the engine tracks attempts and rejects repeats. |
+| `note` | string  | no       | Optional designer note. |
 
 **Stat check:**
 
@@ -319,7 +315,11 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 | `on_examine`         | array     | no       | Events that fire when the player examines this room. Each is an `OnExamineEvent` (see below). |
 | `is_start_room`      | boolean   | no       | Exactly one room should have this set to `true`. Player starts here. |
 | `reactions`          | array     | no       | Reactions that fire when the player is in this room (see Reactions below). |
-| `state_fields`       | object    | no       | Declaration of mutable state fields for this room. Follows the same format as entity `state_fields` (see Entities below). The engine validates that `set_room_state` and `room_states` entries only reference declared fields. The reserved fields `visited` (engine-managed) and `is_current` (virtual, computed from `player.location`) need not be declared. |
+| `state_fields`       | object    | no       | Declaration of mutable state fields for this room. Follows the same format as entity `state_fields` (see Entities below). |
+
+Two room state fields cannot be set directly and are managed by the
+engine: `visited` is true iff the room has been visited before by the
+player, and `is_current` is true only for the player's current room.
 
 ### Exit object
 
