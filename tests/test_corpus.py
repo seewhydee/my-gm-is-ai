@@ -865,7 +865,7 @@ class TestEncounterRule:
         r = EncounterRule.model_validate({
             "condition": {"require": "flag:falling == true"},
             "outcome": "stat_check",
-            "check": {"type": "stat_check", "stat": "DEX", "dc": 10, "repeatable": True},
+            "check": {"type": "stat_check", "stat": "DEX", "target": 10, "repeatable": True},
             "alter_stat": {"CON": {"value": -2}},
             "failure": {
                 "outcome": "flee",
@@ -944,35 +944,31 @@ class TestStatsBlock:
 
 class TestStatCheck:
     def test_minimal(self) -> None:
-        sc = StatCheck.model_validate({"stat": "STR", "dc": 12, "repeatable": False})
+        sc = StatCheck.model_validate({"stat": "STR", "target": 12, "repeatable": False})
         assert sc.stat == "STR"
-        assert sc.dc == 12
+        assert sc.target == 12
         assert sc.repeatable is False
         assert sc.type == "stat_check"
 
     def test_full(self) -> None:
         sc = StatCheck.model_validate({
             "stat": "STR",
-            "dc": 15,
+            "target": 15,
             "modifier": 2,
-            "resolution_params": {"5e": {"advantage": True}},
-            "opposed_by": "entity:spider.DEX",
+            "advantage": True,
             "repeatable": True,
             "note": "A strength check",
-            "skill": "athletics",
         })
         assert sc.modifier == 2
-        assert sc.resolution_params == {"5e": {"advantage": True}}
-        assert sc.opposed_by == "entity:spider.DEX"
-        assert sc.skill == "athletics"
+        assert sc.model_extra == {"advantage": True}
 
     def test_modifier_defaults_to_zero(self) -> None:
-        sc = StatCheck.model_validate({"stat": "DEX", "dc": 10, "repeatable": True})
+        sc = StatCheck.model_validate({"stat": "DEX", "target": 10, "repeatable": True})
         assert sc.modifier == 0
 
-    def test_resolution_params_optional(self) -> None:
-        sc = StatCheck.model_validate({"stat": "CHA", "dc": 14, "repeatable": False})
-        assert sc.resolution_params is None
+    def test_extra_fields_allow_advantage(self) -> None:
+        sc = StatCheck.model_validate({"stat": "CHA", "target": 14, "repeatable": False, "advantage": True})
+        assert sc.model_extra == {"advantage": True}
 
 
 class TestInteractionWithCheck:
@@ -992,7 +988,7 @@ class TestInteractionWithCheck:
         inter = Interaction.model_validate({
             "id": "test_stat",
             "label": "Test",
-            "check": {"type": "stat_check", "stat": "STR", "dc": 12, "repeatable": True},
+            "check": {"type": "stat_check", "stat": "STR", "target": 12, "repeatable": True},
             "success": {"narrative": "Pass"},
             "failure": {"narrative": "Fail"},
         })

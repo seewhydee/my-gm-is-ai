@@ -53,13 +53,13 @@ class CheckResult:
     """
 
     stat: str
-    dc: int
+    target: int
     computed_mod: int
     flat_mod: int
     modifier: int            # total modifier applied (computed_mod + flat_mod)
     raw_roll: int
     total: int
-    margin: int              # total - dc
+    margin: int              # total - target
     success: bool
     advantage: bool
     disadvantage: bool
@@ -68,7 +68,7 @@ class CheckResult:
         return {
             "type": "stat_check",
             "stat": self.stat,
-            "dc": self.dc,
+            "target": self.target,
             "modifier": self.modifier,
             "computed_mod": self.computed_mod,
             "flat_mod": self.flat_mod,
@@ -205,11 +205,11 @@ class ResolutionSystem(ABC):
         self,
         stat: str,
         stat_value: int,
-        dc: int,
+        target: int,
         flat_modifier: int = 0,
         params: dict | None = None,
     ) -> CheckResult:
-        """Resolve an ability/skill check against a DC."""
+        """Resolve an ability/skill check against a target number."""
 
     @abstractmethod
     def roll_initiative(self, modifier: int) -> int:

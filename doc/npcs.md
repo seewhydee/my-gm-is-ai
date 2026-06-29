@@ -121,7 +121,7 @@ Write descriptions as clear player-intent phrases:
       "flatter": {
         "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
         "condition": { "require": "attitude:spider < 0" },
-        "check": { "type": "stat_check", "stat": "CHA", "dc": 12, "repeatable": true },
+        "check": { "type": "stat_check", "stat": "CHA", "target": 12, "repeatable": true },
         "success": {
           "narrative": "The spider preens at your praise.",
           "adjust_attitude": { "spider": 1 }

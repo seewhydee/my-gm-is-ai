@@ -360,9 +360,9 @@ def _resolve_encounter_stat_check(
     cr = system.roll_check(
         check.stat,
         player_stats[check.stat],
-        check.dc,
+        check.target,
         flat_modifier=check.modifier,
-        params=check.resolution_params,
+        params=check.model_extra or {},
     )
     rolls.append({
         "encounter_id": getattr(rule, "id", "encounter"),

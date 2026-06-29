@@ -132,7 +132,7 @@ class TestExecuteTurn:
             success=True,
             action_type="interact",
             target="spider",
-            rolls=[{"type": "stat_check", "stat": "STR", "dc": 10, "success": False}],
+            rolls=[{"type": "stat_check", "stat": "STR", "target": 10, "success": False}],
         )
 
         llm = FakeLLMClient(
@@ -155,7 +155,7 @@ class TestExecuteTurn:
             success=True,
             action_type="interact",
             target="spider",
-            rolls=[{"type": "stat_check", "stat": "DEX", "dc": 12, "success": True}],
+            rolls=[{"type": "stat_check", "stat": "DEX", "target": 12, "success": True}],
             triggered_narration=["You dart past the trap."],
         )
 

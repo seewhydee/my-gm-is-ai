@@ -678,7 +678,7 @@ class TestResolveInteract:
             Interaction(
                 id="stat_gate",
                 label="Stat Gate",
-                check=StatCheck(stat="STR", dc=10, repeatable=True),
+                check=StatCheck(stat="STR", target=10, repeatable=True),
                 success=Result(narrative="Passed."),
                 failure=Result(narrative="Failed."),
             )

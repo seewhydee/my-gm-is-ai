@@ -1029,9 +1029,9 @@ def _resolve_traversal_check(
         cr = system.roll_check(
             check.stat,
             player_stats[check.stat],
-            check.dc,
+            check.target,
             flat_modifier=check.modifier,
-            params=check.resolution_params,
+            params=check.model_extra or {},
         )
 
         roll_dict = cr.to_dict()
@@ -1047,7 +1047,7 @@ def _resolve_traversal_check(
                 {
                     "check_type": "stat_check",
                     "stat": check.stat,
-                    "dc": check.dc,
+                    "target": check.target,
                     "source_type": "traversal",
                     "source_id": source_id,
                 },
@@ -1403,9 +1403,9 @@ def _resolve_checkable(
         cr = system.roll_check(
             check.stat,
             player_stats[check.stat],
-            check.dc,
+            check.target,
             flat_modifier=check.modifier,
-            params=check.resolution_params,
+            params=check.model_extra or {},
         )
         success_flag = cr.success
         roll_dict: dict[str, Any] = {
@@ -1413,7 +1413,7 @@ def _resolve_checkable(
             "source_type": source_type or "",
             "check_type": "stat_check",
             "stat": check.stat,
-            "dc": check.dc,
+            "target": check.target,
         }
         roll_dict.update(cr.to_dict())
         rolls.append(roll_dict)
@@ -1437,7 +1437,7 @@ def _resolve_checkable(
         }
         if isinstance(check, StatCheck):
             ctx["stat"] = check.stat
-            ctx["dc"] = check.dc
+            ctx["target"] = check.target
         else:
             ctx["threshold"] = check.threshold
         _emit_event(

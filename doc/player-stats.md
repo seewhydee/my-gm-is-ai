@@ -73,14 +73,14 @@ This check type exists alongside the `roll` (flat percentage) check:
 |-------|-------------|
 | `type` | `"stat_check"` |
 | `stat` | Stat key (must be defined in corpus.stats.definitions) |
-| `dc` | Difficulty class (or target number) |
+| `target` | Target number / difficulty class |
 | `modifier` | Flat situational modifier (default 0) |
-| `resolution_params` | System-specific options (e.g., advantage for 5e) |
 | `repeatable` | Whether the check can be retried |
-| `opposed_by` | Reserved for future NPC opposed checks |
-| `skill` | Reserved for future skill checks |
 
-The engine dispatches `stat_check` to the active resolution system, which computes the dice formula and produces a success/failure outcome.
+System-specific fields (e.g. `advantage` / `disadvantage` for `5e`) are
+accepted as extra top-level keys. The engine dispatches `stat_check` to the
+active resolution system, which computes the dice formula and produces a
+success/failure outcome.
 
 ### Resolution system abstraction
 
@@ -88,7 +88,7 @@ The resolution system defines **how stat checks translate to probability**, deco
 
 | System | Formula | Use case |
 |--------|---------|----------|
-| `5e` | roll(1d20) + (stat-10)//2 + modifier >= DC | D&D 5e ability checks with advantage/disadvantage |
+| `5e` | roll(1d20) + (stat-10)//2 + modifier >= target | D&D 5e ability checks with advantage/disadvantage |
 | `3d6` | 3d6 <= stat + modifier | GURPS-style |
 | `flat` | stat + modifier >= DC | Diceless / point-buy |
 

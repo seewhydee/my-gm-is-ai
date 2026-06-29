@@ -367,17 +367,17 @@ def make_webs_test_corpus() -> ModuleCorpus:
                 "exit_force_through_web",
                 "bag_floor",
                 traversal_check=TraversalCheck.model_validate({
-                    "check": {"type": "stat_check", "stat": "STR", "dc": 14, "repeatable": True},
+                    "check": {"type": "stat_check", "stat": "STR", "target": 14, "repeatable": True},
                     "gating": {"unless": "flag:webs_cleared == true"},
                     "skip_check_if": {"require": "flag:webs_cleared == true"},
                     "failure": {"narrative": "The webs hold fast."},
                     "using_results": {
                         "toenail_sword": {
-                            "check": {"type": "stat_check", "stat": "STR", "dc": 10, "repeatable": True},
+                            "check": {"type": "stat_check", "stat": "STR", "target": 10, "repeatable": True},
                             "success": {},
                         },
                         "*": {
-                            "check": {"type": "stat_check", "stat": "STR", "dc": 10, "repeatable": True},
+                            "check": {"type": "stat_check", "stat": "STR", "target": 10, "repeatable": True},
                             "success": {},
                         },
                     },
@@ -409,7 +409,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
                 "axe_handle_lower",
                 traversal_check=TraversalCheck.model_validate({
                     "gating": {"require": "inventory:giant_key"},
-                    "check": {"type": "stat_check", "stat": "STR", "dc": 12, "repeatable": True},
+                    "check": {"type": "stat_check", "stat": "STR", "target": 12, "repeatable": True},
                     "skip_check_if": {"require": "entity:korbar.following == true"},
                     "failure": {"narrative": "Too heavy!"},
                 }),

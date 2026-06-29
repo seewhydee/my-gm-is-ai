@@ -713,7 +713,7 @@ everything LLM Call 2 needs to narrate the outcome.
 | `hard_state_changes`           | All applied changes to hard state: location, inventory changes, flag changes, room state changes, entity state changes. LLM Call 2 must not contradict these. |
 | `soft_state_patches_applied`   | Soft-state patches the engine accepted. |
 | `soft_state_patches_rejected`  | Soft-state patches the engine rejected, each with a `reason` string. LLM Call 2 must not narrate rejected changes. |
-| `rolls`                        | Any probabilistic rolls or stat checks the engine resolved. For `roll` checks: `{ outcome, roll, threshold }`. For `stat_check` checks: `{ check_type, stat, dc, raw_roll, modifier, stat_modifier, total, margin, advantage, disadvantage }`. |
+| `rolls`                        | Any probabilistic rolls or stat checks the engine resolved. For `roll` checks: `{ outcome, roll, threshold }`. For `stat_check` checks: `{ check_type, stat, target, raw_roll, modifier, stat_modifier, total, margin, advantage, disadvantage }`. |
 | `encounter_outcome`            | If an encounter triggered, its resolution. |
 | `triggered_narration`          | Pre-written narrative blocks for specific events (e.g., spider fleeing, room entry). LLM Call 2 should incorporate or paraphrase these — they represent canonical prose for key moments. |
 | `game_over`                    | `null` or `{"type": "win"|"lose", "trigger": "string", "narrative": "string"}`. |

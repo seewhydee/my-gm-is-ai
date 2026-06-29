@@ -81,8 +81,8 @@ class TestRegistry:
                 return 0
             def roll_die(self, faces=20, advantage=False, disadvantage=False) -> int:
                 return 1
-            def roll_check(self, stat, stat_value, dc, flat_modifier=0, params=None):
-                return CheckResult(stat, dc, 0, flat_modifier, flat_modifier, 1, 1, 1 - dc, False, False, False)
+            def roll_check(self, stat, stat_value, target, flat_modifier=0, params=None):
+                return CheckResult(stat, target, 0, flat_modifier, flat_modifier, 1, 1, 1 - target, False, False, False)
             def roll_initiative(self, modifier: int) -> int:
                 return 1
             def is_critical(self, roll: int) -> bool:
@@ -172,7 +172,7 @@ class TestFiveEModifiers:
 class TestFiveEChecks:
     def test_roll_check_success(self, monkeypatch) -> None:
         monkeypatch.setattr(random, "randint", lambda a, b: 15)
-        cr = FiveESystem().roll_check("STR", 14, dc=10, flat_modifier=0)
+        cr = FiveESystem().roll_check("STR", 14, target=10, flat_modifier=0)
         assert isinstance(cr, CheckResult)
         assert cr.success is True
         assert cr.raw_roll == 15
@@ -182,15 +182,15 @@ class TestFiveEChecks:
 
     def test_roll_check_failure(self, monkeypatch) -> None:
         monkeypatch.setattr(random, "randint", lambda a, b: 2)
-        cr = FiveESystem().roll_check("STR", 10, dc=20)
+        cr = FiveESystem().roll_check("STR", 10, target=20)
         assert cr.success is False
         assert cr.flat_mod == 0
 
-    def test_roll_check_reads_params_under_system_name(self, monkeypatch) -> None:
+    def test_roll_check_reads_flat_params(self, monkeypatch) -> None:
         vals = iter([5, 18])
         monkeypatch.setattr(random, "randint", lambda a, b: next(vals))
         cr = FiveESystem().roll_check(
-            "DEX", 10, dc=15, params={"5e": {"advantage": True}},
+            "DEX", 10, target=15, params={"advantage": True},
         )
         assert cr.advantage is True
         assert cr.raw_roll == 18  # higher of (5, 18)
@@ -199,7 +199,7 @@ class TestFiveEChecks:
     def test_to_dict_has_canonical_keys(self) -> None:
         d = CheckResult("STR", 10, 2, 0, 2, 8, 10, 0, True, False, False).to_dict()
         assert d["type"] == "stat_check"
-        for key in ("stat", "dc", "modifier", "computed_mod", "flat_mod",
+        for key in ("stat", "target", "modifier", "computed_mod", "flat_mod",
                     "raw_roll", "total", "margin", "success",
                     "advantage", "disadvantage"):
             assert key in d

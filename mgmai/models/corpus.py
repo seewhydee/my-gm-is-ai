@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 IMMEDIATE_ALLOWED_EVENTS = frozenset({
     "interaction.used",
@@ -147,15 +147,13 @@ class RollCheck(BaseModel):
 
 
 class StatCheck(BaseModel):
+    model_config = ConfigDict(extra="allow")
     type: Literal["stat_check"] = "stat_check"
     stat: str
-    dc: int
+    target: int
     modifier: int = 0
-    resolution_params: Optional[Dict[str, Any]] = None
-    opposed_by: Optional[str] = None
     repeatable: bool
     note: Optional[str] = None
-    skill: Optional[str] = None
 
 
 CheckType = RollCheck | StatCheck

@@ -601,7 +601,7 @@ any improvised tool is somewhere in between:
   "check": {
     "type": "stat_check",
     "stat": "STR",
-    "dc": 18,
+    "target": 18,
     "repeatable": true
   },
   "success": {
@@ -613,12 +613,12 @@ any improvised tool is somewhere in between:
   },
   "using_results": {
     "crowbar": {
-      "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+      "check": { "type": "stat_check", "stat": "STR", "target": 12, "repeatable": true },
       "success": { "narrative": "You wedge the crowbar into the frame and lever the door open.", "set_flag": { "door_forced": true } },
       "failure": { "narrative": "The crowbar slips, but the frame groans." }
     },
     "*": {
-      "check": { "type": "stat_check", "stat": "STR", "dc": 15, "repeatable": true },
+      "check": { "type": "stat_check", "stat": "STR", "target": 15, "repeatable": true },
       "success": { "narrative": "You bash the door with whatever you have at hand and it yields.", "set_flag": { "door_forced": true } },
       "failure": { "narrative": "Your improvised tool does little damage to the stout door." }
     }
@@ -738,7 +738,7 @@ by a stat check:
   "check": {
     "type": "stat_check",
     "stat": "WIS",
-    "dc": 12,
+    "target": 12,
     "repeatable": true
   },
   "success": {
@@ -787,7 +787,7 @@ use `take_check.gating` with a flag that `success` sets:
 ```json
 "take_check": {
   "gating": { "require": "flag:sword_claimed == false" },
-  "check": { "type": "stat_check", "stat": "STR", "dc": 17, "repeatable": true },
+  "check": { "type": "stat_check", "stat": "STR", "target": 17, "repeatable": true },
   "success": {
     "narrative": "You wrench the sword from the stone.",
     "set_flag": { "sword_claimed": true }
@@ -956,7 +956,7 @@ Here is an example of a mechanical (one-turn) encounter:
   {
     "condition": { "require": "tag:weapon" },
     "outcome": "stat_check",
-    "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true },
+    "check": { "type": "stat_check", "stat": "STR", "target": 10, "repeatable": true },
     "success": {
       "outcome": "flee",
       "narrative": "You land a solid blow. The goblin hisses and flees.",
@@ -1005,7 +1005,7 @@ with a CHA check:
   "flatter": {
     "description": "Praise the fairy's beauty.",
     "condition": { "require": "attitude:fairy >= 0" },
-    "check": { "type": "stat_check", "stat": "CHA", "dc": 12, "repeatable": true },
+    "check": { "type": "stat_check", "stat": "CHA", "target": 12, "repeatable": true },
     "success": {
       "narrative": "The fairy preens as you praise her.",
       "adjust_attitude": { "fairy": 1 }
@@ -1378,7 +1378,7 @@ They follow the same rule structure as NPC behavior encounter_rules:
     {
       "condition": { "require": "room:axe_head.is_current == true" },
       "outcome": "stat_check",
-      "check": { "type": "stat_check", "stat": "DEX", "dc": 8, "repeatable": true },
+      "check": { "type": "stat_check", "stat": "DEX", "target": 8, "repeatable": true },
       "success": {
         "narrative": "You drop down and land heavily, but survive."
       },
@@ -1884,7 +1884,7 @@ a narrative outcome:
   "check": {
     "type": "stat_check",
     "stat": "DEX",
-    "dc": 12,
+    "target": 12,
     "repeatable": true
   },
   "success": {
@@ -1896,7 +1896,7 @@ a narrative outcome:
       "check": {
         "type": "stat_check",
         "stat": "DEX",
-        "dc": 10,
+        "target": 10,
         "repeatable": true
       },
       "success": {

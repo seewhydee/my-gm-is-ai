@@ -158,31 +158,29 @@ Stat checks are [resolution system](#resolution-system) dependent.
 {
   "type": "stat_check",
   "stat": "STR",
-  "dc": 12,
+  "target": 12,
   "modifier": 0,
-  "resolution_params": { "advantage": true },
+  "advantage": true,
   "repeatable": false,
   "note": "Bend the iron bars."
 }
 ```
 
-| Field                 | Type    | Description                       |
-|-----------------------|---------|-----------------------------------|
-| `type`                | string  | `"stat_check"` — stat-based check |
-| `stat`                | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
-| `dc`                  | integer | Difficulty class                  |
-| `modifier` (*)        | integer | Situational modifier (default 0)  |
-| `resolution_params`(*)| object  | System-specific options           |
-| `repeatable`          | boolean | Whether check can be retried      |
-| `opposed_by` (*)      | string  | For future NPC opposed checks     |
-| `skill` (*)           | string  | For future skill checks           |
-| `note` (*)            | string  | Optional designer note            |
+| Field          | Type    | Description                       |
+|----------------|---------|-----------------------------------|
+| `type`         | string  | `"stat_check"` — stat-based check |
+| `stat`         | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
+| `target`       | integer | Target number / difficulty class  |
+| `modifier` (*) | integer | Situational modifier (default 0)  |
+| `repeatable`   | boolean | Whether check can be retried      |
+| `note` (*)     | string  | Optional designer note            |
 (*) optional
 
-The `5e` system uses roll(1d20) + (stat-10)//2 + modifier >= DC as the
-success formula, with optional advantage/disadvantage specified via
-`resolution_params`: `{ "advantage": true }` / `{ "disadvantage": true }`.
-Other systems, once implemented, can implement their own checks.
+System-specific fields (e.g. `advantage` / `disadvantage` for `5e`) are
+accepted as extra top-level keys. The `5e` system uses
+roll(1d20) + (stat-10)//2 + modifier >= target as the success formula.
+Other systems, once implemented, can implement their own checks and define
+their own extra fields.
 
 ### Result object
 
@@ -236,7 +234,7 @@ immediately after its parent result, using its own success/failure branches.
     "check": {
       "type": "stat_check",
       "stat": "DEX",
-      "dc": 8,
+      "target": 8,
       "repeatable": true
     },
     "success": {
@@ -336,7 +334,7 @@ room, able to retry next turn.
     "check": {
       "type": "stat_check",
       "stat": "STR",
-      "dc": 13,
+      "target": 13,
       "repeatable": true
     },
     "gating": { "require": "inventory:rusty_key" },
@@ -349,7 +347,7 @@ room, able to retry next turn.
     },
     "using_results": {
       "toenail_sword": {
-        "check": { "type": "stat_check", "stat": "STR", "dc": 10, "repeatable": true }
+        "check": { "type": "stat_check", "stat": "STR", "target": 10, "repeatable": true }
       }
     }
   }
@@ -419,7 +417,7 @@ the canvas walls triggers an INT check to deduce the glow is magical."
   "check": {
     "type": "stat_check",
     "stat": "INT",
-    "dc": 12,
+    "target": 12,
     "repeatable": true
   },
   "success": {
@@ -501,7 +499,7 @@ reaction must be one of these event type strings.
 | `traversal.attempted` | `exit_id`, `from_room`, `to_room` | Player attempts to traverse an exit |
 | `traversal.succeeded` | `exit_id`, `from_room`, `to_room` | Exit traversal succeeds |
 | `traversal.failed` | `exit_id`, `from_room`, `fail_reason` | Traversal check fails |
-| `check.passed` | `check_type`, `stat?`, `dc?`, `threshold?`, `source_id`, `source_type` | Any check succeeds |
+| `check.passed` | `check_type`, `stat?`, `target?`, `threshold?`, `source_id`, `source_type` | Any check succeeds |
 | `check.failed` | same as `check.passed` | Any check fails |
 | `interaction.used` | `interaction_id`, `target_id`, `using_item?` | An interaction is attempted |
 | `dialogue.started` | `npc_id` | Dialogue mode begins |
@@ -553,7 +551,7 @@ The `event:` domain is only valid during reaction dispatch. Outside dispatch
 |-----|-------------|
 | `check_type` | `"stat_check"` or `"roll"` |
 | `stat` | The stat key (for stat checks) |
-| `dc` | The difficulty class (for stat checks) |
+| `target` | The target number / difficulty class (for stat checks) |
 | `threshold` | The probability threshold (for rolls) |
 | `source_id` | The interaction, exit, dialogue path, or reaction ID that originated the check |
 | `source_type` | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, `"take"`, or `"reaction"` |
@@ -938,7 +936,7 @@ or interaction that sets `hidden: false` — otherwise it is permanently invisib
   "flatter": {
     "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
     "condition": { "require": "attitude:spider < 0" },
-    "check": { "type": "stat_check", "stat": "CHA", "dc": 12, "repeatable": true },
+    "check": { "type": "stat_check", "stat": "CHA", "target": 12, "repeatable": true },
     "success": {
       "narrative": "The spider preens at your praise.",
       "adjust_attitude": { "spider": 1 }
@@ -1015,7 +1013,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
       "condition": { /* condition object */ },
       "outcome": "death | flee | roll | stat_check",
       "threshold": 0.50,
-      "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+      "check": { "type": "stat_check", "stat": "STR", "target": 12, "repeatable": true },
       "narrative": "string",
       "set_flag": { "<flag>": true },
       "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
@@ -1044,7 +1042,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
     {
       "condition": { "require": "tag:weapon" },
       "outcome": "stat_check",
-      "check": { "type": "stat_check", "stat": "STR", "dc": 17, "repeatable": true },
+      "check": { "type": "stat_check", "stat": "STR", "target": 17, "repeatable": true },
       "success": { "outcome": "flee", "narrative": "You overpower Korbar." },
       "failure": { "outcome": "death", "narrative": "Korbar overpowers you." }
     }
@@ -1079,7 +1077,7 @@ At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be
         "condition": { /* condition object */ },
         "outcome": "death | flee | roll | stat_check | combat",
         "threshold": 0.50,
-        "check": { "type": "stat_check", "stat": "STR", "dc": 12, "repeatable": true },
+        "check": { "type": "stat_check", "stat": "STR", "target": 12, "repeatable": true },
         "success": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
         "failure": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
         "narrative": "string",

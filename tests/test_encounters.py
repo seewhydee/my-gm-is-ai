@@ -194,7 +194,7 @@ class TestResolveEncounter:
             EncounterRule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
-                check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
+                check=StatCheck(type="stat_check", stat="DEX", target=10, repeatable=True),
                 success={
                     "outcome": "flee",
                     "alter_stat": {"DEX": StatModifier(value=-2)},
@@ -214,7 +214,7 @@ class TestResolveEncounter:
             EncounterRule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
-                check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
+                check=StatCheck(type="stat_check", stat="DEX", target=10, repeatable=True),
                 alter_stat={"CON": StatModifier(value=-2)},
                 success={
                     "outcome": "flee",
@@ -239,7 +239,7 @@ class TestEncounterBranchTaken:
             EncounterRule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
-                check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
+                check=StatCheck(type="stat_check", stat="DEX", target=10, repeatable=True),
                 success={"outcome": "flee", "narrative": "You dodge."},
                 failure={"outcome": "death", "narrative": "You die."},
             )
@@ -263,7 +263,7 @@ class TestEncounterBranchTaken:
             EncounterRule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
-                check=StatCheck(type="stat_check", stat="DEX", dc=30, repeatable=True),
+                check=StatCheck(type="stat_check", stat="DEX", target=30, repeatable=True),
                 success={"outcome": "flee", "narrative": "You dodge."},
                 failure={"outcome": "death", "narrative": "You die."},
             )
@@ -329,7 +329,7 @@ class TestEncounterBranchTaken:
             EncounterRule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
-                check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
+                check=StatCheck(type="stat_check", stat="DEX", target=10, repeatable=True),
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
@@ -353,7 +353,7 @@ class TestEncounterBranchCombat:
             EncounterRule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="stat_check",
-                check=StatCheck(type="stat_check", stat="DEX", dc=10, repeatable=True),
+                check=StatCheck(type="stat_check", stat="DEX", target=10, repeatable=True),
                 success={"outcome": "combat", "narrative": "It attacks!"},
                 failure={"outcome": "flee", "narrative": "It flees."},
             )

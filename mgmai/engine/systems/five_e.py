@@ -77,30 +77,29 @@ class FiveESystem(ResolutionSystem):
         self,
         stat: str,
         stat_value: int,
-        dc: int,
+        target: int,
         flat_modifier: int = 0,
         params: dict | None = None,
     ) -> CheckResult:
         computed_mod = self.compute_modifier(stat_value)
         total_mod = computed_mod + flat_modifier
 
-        sys_params = (params or {}).get(self.name, {})
-        advantage = sys_params.get("advantage", False)
-        disadvantage = sys_params.get("disadvantage", False)
+        advantage = (params or {}).get("advantage", False)
+        disadvantage = (params or {}).get("disadvantage", False)
 
         raw_roll = self.roll_die(20, advantage=advantage, disadvantage=disadvantage)
         total = raw_roll + total_mod
-        success = total >= dc
+        success = total >= target
 
         return CheckResult(
             stat=stat,
-            dc=dc,
+            target=target,
             computed_mod=computed_mod,
             flat_mod=flat_modifier,
             modifier=total_mod,
             raw_roll=raw_roll,
             total=total,
-            margin=total - dc,
+            margin=total - target,
             success=success,
             advantage=advantage,
             disadvantage=disadvantage,
@@ -520,6 +519,9 @@ class FiveESystem(ResolutionSystem):
         computed_mod = self.compute_modifier(stat_value)
         total_mod = computed_mod + flat_modifier
 
+        # NOTE: This still uses the old per-system-key nesting. It is
+        # inconsistent with roll_check() and should be flattened when saves
+        # grow corpus-driven params.
         sys_params = (params or {}).get(self.name, {})
         advantage = sys_params.get("advantage", False)
         disadvantage = sys_params.get("disadvantage", False)

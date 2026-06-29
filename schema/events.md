@@ -56,7 +56,7 @@ encounter.
 | `traversal.attempted` | `exit_id`, `from_room`, `to_room` | Player attempts to traverse an exit **before** the traversal check is rolled. |
 | `traversal.succeeded` | `exit_id`, `from_room`, `to_room` | Exit traversal succeeds. |
 | `traversal.failed` | `exit_id`, `from_room`, `fail_reason` | A `traversal_check` fails and the player stays in the current room. |
-| `check.passed` | `check_type`, `stat?`, `dc?`, `threshold?`, `source_id`, `source_type` | Any roll or stat_check succeeds. |
+| `check.passed` | `check_type`, `stat?`, `target?`, `threshold?`, `source_id`, `source_type` | Any roll or stat_check succeeds. |
 | `check.failed` | same as `check.passed` | Any roll or stat_check fails. |
 | `interaction.used` | `interaction_id`, `target_id`, `using_item?` | An interaction is attempted **before** its check is rolled. |
 | `dialogue.started` | `npc_id` | Dialogue mode begins with an NPC. |
@@ -73,7 +73,7 @@ encounter.
 |---|---|---|
 | `check_type` | string | `"stat_check"` or `"roll"`. |
 | `stat` | string\|absent | The stat key for `stat_check` checks. |
-| `dc` | int\|absent | The difficulty class for `stat_check` checks. |
+| `target` | int\|absent | The target number / difficulty class for `stat_check` checks. |
 | `threshold` | float\|absent | The probability threshold for `roll` checks. |
 | `source_id` | string | The interaction, exit, dialogue path, or reaction ID that originated the check. |
 | `source_type` | string | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, `"take"`, or `"reaction"`. |

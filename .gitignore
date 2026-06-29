@@ -26,9 +26,9 @@ htmlcov/
 *.swp
 *.swo
 
-# OS
+# etc
 .DS_Store
 Thumbs.db
 autosave.json
-
+log.json
 temp/

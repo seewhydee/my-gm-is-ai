@@ -122,17 +122,17 @@ class TestFormatStatCheckPrefix:
         assert format_stat_check_prefix(rolls) == ""
 
     def test_single_success(self) -> None:
-        rolls = [{"type": "stat_check", "stat": "STR", "dc": 10, "success": True}]
+        rolls = [{"type": "stat_check", "stat": "STR", "target": 10, "success": True}]
         assert format_stat_check_prefix(rolls) == "**[STR check: success]**\n\n"
 
     def test_single_failure(self) -> None:
-        rolls = [{"type": "stat_check", "stat": "DEX", "dc": 12, "success": False}]
+        rolls = [{"type": "stat_check", "stat": "DEX", "target": 12, "success": False}]
         assert format_stat_check_prefix(rolls) == "**[DEX check: failed]**\n\n"
 
     def test_multiple_checks(self) -> None:
         rolls = [
-            {"type": "stat_check", "stat": "STR", "dc": 10, "success": True},
-            {"type": "stat_check", "stat": "DEX", "dc": 12, "success": False},
+            {"type": "stat_check", "stat": "STR", "target": 10, "success": True},
+            {"type": "stat_check", "stat": "DEX", "target": 12, "success": False},
         ]
         assert format_stat_check_prefix(rolls) == (
             "**[STR check: success]**\n\n**[DEX check: failed]**\n\n"
