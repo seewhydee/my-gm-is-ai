@@ -42,56 +42,48 @@ schema: conditions, checks, results, and follow-up checks.
 
 ### Condition object
 
-A condition is a predicate clause gating availability, e.g. whether an
-exit is shown, a mechanic can be triggered, etc.  There are several
-different forms of condition objects, listed below:
+A condition object describes a predicate clause gating availability:
+whether an exit is shown, a mechanic can be triggered, etc.  They are
+formed from condition strings and, optionally, condition objects
+(allowing for nested logic).  There are several different forms:
 
-**`require`** — condition must be true for availablility.
-
-```json
-{ "require": "flag:handkerchief_moved == true" }
-```
-
-**`unless`** — condition blocks availability if true.
+**`require`** — availability requires condition string to be true.
 
 ```json
-{ "unless": "flag:injured == true" }
+{ "require": "flag:volcano_erupting == true" }
 ```
 
-**`any`** — at least one sub-condition must be true. Each element may
-be a condition string or a nested condition object:
+**`unless`** — availability requires condition string to not be true.
 
 ```json
-{ "any": [
-  "flag:handkerchief_noticed == true",
-  { "all": [
-    "attitude:korbar >= 4",
-    "topic:abandonment"
-  ] }
-] }
+{ "unless": "flag:volcano_erupting == true" }
 ```
 
-**`all`** — all sub-conditions must be true. Each element may be a
-condition string or a nested condition object:
+**`any`** — availability requires at least one sub-condition to be
+true; each sub-condition is a condition string or nested condition.
 
 ```json
-{ "all": [
-  "flag:spider_fled == true",
-  { "unless": "flag:injured == true" }
-] }
+{ "any": [ "flag:volcano_erupting == true",
+		   { "all": [ "entity:frodo.alive", "attitude:frodo >= 4" ] } ] }
 ```
 
-A condition object can stand alone (`{ "require": "..." }`) or serve
-as an element inside `any`/`all` arrays, allowing arbitrarily deep
-logical nesting.
+**`all`** — availability requires all sub-conditions to be true; each
+sub-condition is a condition string or nested condition.
+
+```json
+{ "all": [ "flag:volcano_erupting == true",
+		   { "unless": "inventory:one_ring" } ] }
+```
+
+#### Condition string
 
 Condition strings have one of two forms:
 
-- `<domain>:<key>` — presence-only check (allowed for the `inventory`,
+- `<domain>:<key>` — presence-only check (allowed for `inventory`,
   `equipped`, `tag`, and `topic` domains).
-- `<domain>:<key> <op> <value>` — compare the key's value against
-  `<value>`. Supported ops: `== true`, `== false`, `== <string>`,
-  `>= <number>`, `> <number>`, `<= <number>`, `< <number>`.
+- `<domain>:<key> <op> <value>` — compare key's value against
+  `<value>`. Supported ops: `== true`, `== false`, `== <string>`, `>=
+  <number>`, `> <number>`, `<= <number>`, `< <number>`.
 
 | Domain       | Key                                                 |
 |--------------|-----------------------------------------------------|
@@ -104,18 +96,17 @@ Condition strings have one of two forms:
 | `attitude`   | Entity ID of an NPC; value is the NPC's attitude    |
 | `topic`      | Topic ID of a topic discussed in current dialogue   |
 | `stat`       | Stat name; value is the value of that player stat   |
-| `event`      | Value in the current event context; only valid      |
-|              | during event dispatch (see below).                  |
+| `event`      | Value in current event context; only valid during event dispatch (see below). |
 
 Notes:
 
 - The `equipped` domain also accepts tag names: `equipped:weapon`
   holds if any equipped item has the tag `"weapon"`.
 - The `event` domain always evaluates to `false` outside event
-  dispatch.  See [Reaction object](#reaction-object) for details.
+  dispatch.  See [Reaction object](#reaction-object).
 - The `attitude` domain uses the NPC's runtime attitude if one has
-  been set; otherwise it falls back to the `attitude_limits.initial`
-  value from the NPC's `dialogue_guidelines` in the corpus.
+  been set; otherwise it falls back to `attitude_limits.initial` for
+  the NPC.  See [NPC attitude](#npc-attitude)
 
 Examples:
 - `flag:daytime == true` holds iff the `daytime` flag is true.
@@ -128,14 +119,19 @@ Examples:
 
 ---
 
-#### Check objects
+### Check object
 
 A check resolves the success or failure of an event or action:
-interaction, traversal, encounter, etc.  Two check types are currently
-available: `roll` (flat probability) and `stat_check` (stat-based
-resolution).
+interaction, traversal, encounter, etc.  There are two check types:
+`roll` (flat probability) and `stat_check` (stat-based resolution).
+
+Either type of check can be set to be repeatable or non-repeatable.
+If the `repeatable` field is `false`, the engine automatically tracks
+attempts and rejects repeats.
 
 **Roll check:**
+
+Roll succeeds if `random() < threshold`.
 
 ```json
 {
@@ -146,14 +142,17 @@ resolution).
 }
 ```
 
-| Field        | Type    | Required | Description |
-|--------------|---------|----------|-------------|
-| `type`       | string  | yes      | `"roll"` — flat probability check. |
-| `threshold`  | number  | yes      | Probability threshold (0.0–1.0). Roll succeeds if `random() < threshold`. |
-| `repeatable`      | boolean | yes      | Whether the check can be retried. If `false`, the engine tracks attempts and rejects repeats. |
-| `note` | string  | no       | Optional designer note. |
+| Field        | Type    | Description                       |
+|--------------|---------|-----------------------------------|
+| `type`       | string  | `"roll"` — flat probability check |
+| `threshold`  | number  | Probability threshold (0.0–1.0)   |
+| `repeatable` | boolean | Whether the check can be retried  |
+| `note` (*)   | string  | Optional designer note            |
+(*) optional
 
 **Stat check:**
+
+Stat checks are [resolution system](#resolution-system) dependent.
 
 ```json
 {
@@ -167,44 +166,25 @@ resolution).
 }
 ```
 
-| Field              | Type    | Required | Description |
-|--------------------|---------|----------|-------------|
-| `type`             | string  | yes      | `"stat_check"` — ability-score-based check. |
-| `stat`             | string  | yes      | Stat key (e.g. `"STR"`, `"DEX"`). Must be declared in `stats.definitions`. |
-| `dc`               | integer | yes      | Difficulty class (target number). Typical range: 5 (trivial) to 25 (nearly impossible). |
-| `modifier`         | integer | no       | Flat situational modifier (default 0). E.g. `-2` for a slippery surface. |
-| `resolution_params`| object  | no       | System-specific options. For `5e`: `{ "advantage": true }` or `{ "disadvantage": true }`. |
-| `repeatable`       | boolean | yes      | Whether the check can be retried. |
-| `opposed_by`       | string  | no       | Reserved for future NPC opposed checks. |
-| `skill`            | string  | no       | Reserved for future skill checks. |
-| `note`             | string  | no       | Optional designer note. |
+| Field                 | Type    | Description                       |
+|-----------------------|---------|-----------------------------------|
+| `type`                | string  | `"stat_check"` — stat-based check |
+| `stat`                | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
+| `dc`                  | integer | Difficulty class                  |
+| `modifier` (*)        | integer | Situational modifier (default 0)  |
+| `resolution_params`(*)| object  | System-specific options           |
+| `repeatable`          | boolean | Whether check can be retried      |
+| `opposed_by` (*)      | string  | For future NPC opposed checks     |
+| `skill` (*)           | string  | For future skill checks           |
+| `note` (*)            | string  | Optional designer note            |
+(*) optional
 
-The engine dispatches `stat_check` to the active resolution system (declared in
-`stats.system`), which computes the dice formula and produces a
-success/failure outcome.
+The `5e` system uses roll(1d20) + (stat-10)//2 + modifier >= DC as the
+success formula, with optional advantage/disadvantage specified via
+`resolution_params`: `{ "advantage": true }` / `{ "disadvantage": true }`.
+Other systems, once implemented, can implement their own checks.
 
-**Resolution systems:**
-
-| System | Formula                              | Use case |
-|--------|--------------------------------------|----------|
-| `5e`  | roll(1d20) + (stat-10)//2 + modifier >= DC | D&D 5e ability checks with advantage/disadvantage |
-
-The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
-`flat` for diceless).
-
-#### Common check-bearing types
-
-The six content types that carry a probabilistic check with success/failure
-branches — `Interaction`, `DialoguePath`, `OnExamineEvent`, `TraversalCheck`,
-`TakeCheck`, and the follow-up check carried by the `then_check` field (`CheckResolution`) — all share the same quartet
-of fields: `skip_check_if`, `check`, `success`, and `failure`. These are
-inherited from a shared `Checkable` base in the implementation. Subtypes add
-their own fields (`condition`, `result`, `gating`, `using_results`, `id`,
-`label`, `rigorous_only`, etc.) and may tighten optionality via validators
-(e.g., `CheckResolution` requires both `check` and `success`).
-
-
-#### Result object
+### Result object
 
 A result object describes the consequences of an action — the canonical
 narrative, state mutations, stat adjustments, inventory changes, and
@@ -214,7 +194,7 @@ dialogue paths, or as a deterministic `result` when no check is involved.
 
 ```json
 {
-  "narrative": "string (pre-written description of outcome)",
+  "narrative": "string (description of outcome)",
   "add_item": "<item_id> (optional, adds to player inventory)",
   "remove_item": "<item_id> (optional)",
   "set_flag": { "<flag_name>": true | false },
@@ -1013,7 +993,7 @@ prompted to respect the `will_reveal` readiness signals; if it narrates a
 reveal that the engine rejects, the prose and the mechanical state may
 diverge (same risk as rejected soft-state patches).
 
-#### `attitude_limits`
+#### NPC attitude
 
 NPC attitude is tracked as an integer in `hard_state.entity_states[<npc_id>].attitude`. Positive values indicate friendly disposition; negative values indicate hostility. The `attitude_limits` block constrains how attitude can change:
 
@@ -1195,7 +1175,7 @@ no stat system — existing adventures work unchanged.
 | `definitions`       | object | yes      | Dict of stat key → `{ name, description }`. Keys are short uppercase identifiers (e.g. `"STR"`). |
 | `system` | string | yes      | Named resolution system. Currently supported: `"5e"`. |
 
-### Resolution system abstraction
+### Resolution system
 
 The resolution system defines how stat checks translate to probability, decoupling
 adventures from specific RPG mechanics. The engine scoreboards stat check details

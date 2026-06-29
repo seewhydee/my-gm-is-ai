@@ -1,373 +1,351 @@
-# Plan: Replace `ChainedCheck` with `CheckResolution` + unify the resolver
+# Plan: Flatten and rename the stat check schema
 
-This is a coding and schema-change plan, not a design audit. Pre-alpha: no
-backward-compatibility shims, no aliases, no migration code. Rename
-everywhere.
+Pre-alpha: no backward-compatibility shims, no aliases, no migration code.
+Change everywhere.
 
 ## Motivation
 
-`ChainedCheck` (`{skip_check_if, check, success, failure}`, carried as
-`Result.chain_check`) is used 5× in the sole adventure, in two patterns:
+The `StatCheck` model suffers from three design problems:
 
-- **Pattern A — genuine follow-up (2×):** fail STR to turn the key → roll DEX
-  to catch it before it falls into the Astral. A synchronous complication
-  chained to a failure branch.
-- **Pattern B — standalone check inside a `Result` (3×):** a reaction whose
-  `result` contains *only* a `chain_check` — not chained to anything. This
-  exists because `Result` has a `chain_check` field but no `check` field, so
-  `chain_check` is the single entry point for "a check inside a Result."
+### 1. `resolution_params` is wordy and adds pointless nesting
 
-Four problems follow:
+The field name "resolution params" is engine jargon that means nothing to a
+content author writing JSON. Worse, its value is **structurally
+double-bookkeeping**: every check wraps system-specific flags under the system
+name key (`{"5e": {"advantage": true}}`), but the system is already chosen
+globally at `stats.system = "5e"`. The inner `"5e"` key is pure syntactic
+noise — the engine has to reach through it with
+`(params or {}).get(self.name, {})`, and a content author has to type it on
+every single check.
 
-1. **The name lies for Pattern B.** "Chained" implies a follow-up, but the
-   construct is also the reaction's primary check. The overloading — not the
-   type itself — is what makes it look redundant.
-2. **Five near-duplicate resolver functions.** `_resolve_roll_check` /
-   `_resolve_stat_check` (interaction path) and `_resolve_roll_check_chain` /
-   `_resolve_stat_check_chain` (chain path) are ~90% identical; plus
-   `_resolve_chained_check` as a dispatcher.
-3. **Nine boilerplate call sites.** Every `Result` consumer repeats
-   `if result.chain_check: _resolve_chained_check(...)`.
-4. **Hacky source attribution.** Chain functions default `source_type` to
-   `"reaction" if source_id else "unknown"`, so a follow-up inside an
-   interaction's failure branch is mislabeled.
+### 2. `dc`, `opposed_by`, `skill` leak 5e concepts into the generic model
 
-The other two disposal options were considered and rejected:
+- `dc` (Difficulty Class) is D&D terminology. Other systems use "target
+  number", "threshold", or no numeric target at all (PbtA result bands). The
+  generic model should use a neutral name.
+- `opposed_by` and `skill` are listed as "for future use" and are **always
+  `null`** — everywhere in the adventure data and at every runtime call site.
+  They add 2 null-fields to every stat check without ever being consumed.
+  YAGNI.
 
-- **Merge with `Check` (`RollCheck`/`StatCheck`)?** No — `Check` is a pure
-  check *definition* reused in `EncounterRule.check`, where branches live on
-  the rule. `ChainedCheck` is check *plus branches* (a resolution, not a
-  definition). Different layers; not merge candidates.
-- **Replace with reactions?** No — Pattern A cannot move to the event bus:
-  `check.failed` is not an `IMMEDIATE_ALLOWED_EVENTS` event (it fires
-  *deferred* at end-of-turn, after the action's narration is delivered),
-  state-change events don't cascade during dispatch, and source attribution
-  would break. The synchronous fail-forward drama requires inline resolution.
+### 3. The resulting JSON is ugly and full of dead weight
 
-**Verdict:** keep the construct (a self-contained check-resolution unit that
-fits inside a `Result`), fix the seams — rename it, unify the resolver.
+Every stat check in `corpus.json` serializes 9 fields (including `type`);
+only 4 carry actual data. The rest are `null` or zero-default placeholders.
+Example from the log (showing 8 of the 9 — `type` is omitted):
+
+```json
+{"stat": "CHA", "dc": 9, "modifier": 0, "resolution_params": null,
+ "opposed_by": null, "repeatable": true, "note": null, "skill": null}
+```
+
+Five of nine fields convey nothing. The actual payload (`type`, `stat`,
+`dc`, `repeatable`) is buried in noise. (`modifier` and `note` are
+intentionally retained in the new model — they are legitimate optionals,
+not dead weight.)
+
+### What we're doing about it
+
+Flatten the model entirely. Eliminate `resolution_params`, `opposed_by`, and
+`skill`. Rename `dc` to `target`. Use Pydantic `extra="allow"` to let
+system-specific flags (like `advantage`) live as clean top-level siblings
+alongside `stat` and `target`. System-specific fields are documented per
+system in the schema, not baked into the generic model.
 
 ## Decisions
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | Rename type `ChainedCheck` → `CheckResolution`; rename `Result.chain_check` field → `Result.then_check`. | "Chained" implies a follow-up, but the construct is also used standalone (Pattern B: a reaction whose result is only a check). `then_check` conveys ordering ("apply this result, *then* resolve this check") without the chaining misnomer. |
-| D2 | Introduce a shared `Checkable` Pydantic base carrying `(skip_check_if, check, success, failure)`. `Interaction`, `DialoguePath`, `OnExamineEvent`, `TraversalCheck`, `TakeCheck`, `CheckResolution` all inherit it. | Six models duplicate the quartet today. A shared base ends field-level duplication and makes the unified resolver signature natural. |
-| D3 | Unify the resolver: one `_resolve_checkable()` + one `_apply_result_with_check()` helper. Delete `_resolve_chained_check`, `_resolve_roll_check_chain`, `_resolve_stat_check_chain`, `_resolve_roll_check`, `_resolve_stat_check`. | These five functions are ~90% parallel copies. The synthetic-`Interaction` delegation precedent (`resolver.py:1396`, `resolver.py:1631`) already shows the pattern. |
-| D4 | `then_check` recursion and event emission always use an explicitly-threaded `source_type` (inherited from the parent resolution). Remove the `source_type = "reaction" if source_id else "unknown"` hack (`resolver.py:994`, `1041`, `1095`). | Source attribution becomes coherent: a then_check inside an interaction's failure branch is `source_type="interaction"`, not silently relabeled "reaction". |
-| D5 | Keep `skip_check_if` on `CheckResolution` (inherited from `Checkable`). | **Revises audit point 4.** `skip_check_if` is unused *on chains specifically*, but it is used 8× elsewhere in the family (`adventures/bag-of-holding/corpus.json` L776, L1053, L1075, L1176, L1216, L1264, L1457, L1683). Removing it from one `Checkable` consumer breaks the symmetry for no gain. Keep it inherited and uniformly available. |
-| D6 | Do **not** add a first-class `check` field to `ReactionEffects`. | **Revises audit point 3.** The rename (D1) already resolves Pattern B's "overloading" — `then_check` is a legitimate standalone-in-`Result` construct, no longer pretending to be chained. A separate `effects.check` shortcut would re-introduce two ways to do one thing. Deferred as YAGNI. |
-| D7 | Preserve `MAX_CHAIN_CHECK_DEPTH = 3` and current depth accounting. Add a test that exercises it (no test does today). | The cap is currently untested. Keep the limit; pin it with a test. |
+| D1 | Rename `dc` → `target` in `StatCheck`, `CheckResult`, the roll-dict shape, event contexts, and all documentation. | System-neutral. Just as descriptive. |
+| D2 | Delete `resolution_params` from `StatCheck`. System-specific fields go flat at the check's top level via `extra="allow"`. | Eliminates the redundant `"5e"` inner key and the abstract wrapper name. Content authors write `"advantage": true` directly. |
+| D3 | Delete `opposed_by` and `skill` from `StatCheck`. | YAGNI. Both are always `null`. Add back when actually implemented. |
+| D4 | Add `model_config = ConfigDict(extra="allow")` to `StatCheck`. System-specific fields (e.g. `advantage`, `disadvantage`) are accepted as extra top-level keys. | Allows per-system extensions without bloating the model. The engine reads them from `model_extra`. |
+| D5 | In `FiveESystem.roll_check()`, remove the `params.get(self.name, {})` layer and read `advantage`/`disadvantage` directly from `params`. | The system key was redundant. |
+| D6 | Rename `roll_check()` parameter `dc` → `target` in the `ResolutionSystem` ABC and `FiveESystem`. | Consistency with D1. |
+| D7 | Rename `CheckResult.dc` → `CheckResult.target`. Rename the `"dc"` key in `CheckResult.to_dict()` to `"target"`. | The result object should match the model's naming. |
+| D8 | The `resolution_params` nested structure `{"5e": {"advantage": true}}` is not used in the adventure data at all — 0 occurrences in `corpus.json`. Migration is a no-op on adventure data. | Any migration scope is limited to tests and schema docs. |
+| D9 | Defer flattening `resolve_save()`'s `sys_params = (params or {}).get(self.name, {})` nesting in `five_e.py`. Add a code comment instead, noting it is inconsistent with D5 and should be flattened when saves grow corpus-driven params. | `resolve_save` is only ever called with `params=None` today, so the nesting is dead code. `SaveResult.dc`/`OnHitSave.dc` are a separate (saving-throw) concept and are not renamed. Avoids scope creep. |
 
 ## End-state design
 
 ### Model (`mgmai/models/corpus.py`)
 
-New shared base, placed after `Result` and `CheckType` are defined:
-
 ```python
-class Checkable(BaseModel):
-    """A probabilistic check with success/failure branches.
-
-    Shared by Interaction, DialoguePath, OnExamineEvent, TraversalCheck,
-    TakeCheck, and CheckResolution. Subclasses add their own fields
-    (condition, result, gating, using_results, id, label, rigorous_only, ...)
-    and validators that tighten optionality per their semantics.
-    """
-    skip_check_if: Optional[ConditionExpression] = None
-    check: Optional[CheckType] = None
-    success: Optional[Result] = None
-    failure: Optional[Result] = None
+class StatCheck(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    type: Literal["stat_check"] = "stat_check"
+    stat: str
+    target: int
+    modifier: int = 0
+    repeatable: bool
+    note: Optional[str] = None
 ```
 
-`CheckResolution` replaces `ChainedCheck` (currently L117). `check` and
-`success` are required (override the base's `Optional`); `skip_check_if` and
-`failure` stay optional:
+### JSON examples
 
-```python
-class CheckResolution(Checkable):
-    """A self-contained check resolution: a check plus its outcome branches.
-
-    Carried by Result.then_check, resolved immediately after the parent
-    result's own effects. Used both as a follow-up (fail STR -> roll DEX to
-    catch the key) and as the sole content of a result (a reaction whose
-    effect is just a check).
-    """
-    check: CheckType
-    success: Result
-
-    @model_validator(mode="after")
-    def require_check_and_success(self) -> "CheckResolution":
-        if self.check is None:
-            raise ValueError("CheckResolution requires 'check'")
-        if self.success is None:
-            raise ValueError("CheckResolution requires 'success'")
-        return self
+**5e (current primary system):**
+```json
+{"type": "stat_check", "stat": "STR", "target": 12,
+ "advantage": true, "repeatable": false,
+ "note": "Bend the iron bars."}
 ```
 
-`Result` (L124): rename field `chain_check` → `then_check` (L134). Update
-`has_any_effect`'s field list (L143): replace `"chain_check"` with
-`"then_check"`.
-
-Make the five other check-bearing models inherit `Checkable` and **delete
-their duplicated declarations** of `skip_check_if`, `check`, `success`,
-`failure`:
-
-| Model | Line | Notes |
-|---|---|---|
-| `Interaction` | L204 | keep `id, label, description, condition, result, using_results`; override `check`/`success`/`failure` stay optional; keep existing validator. |
-| `DialoguePath` | L339 | keep `description, condition, result`; keep validator. |
-| `OnExamineEvent` | L245 | keep `id, condition, rigorous_only, result`; keep validator. |
-| `TraversalCheck` | L227 | override `check: CheckType` (required); keep `gating, using_results`. |
-| `TakeCheck` | L188 | override `check: CheckType` (required); keep `gating`; keep validator. |
-
-`from __future__ import annotations` (L17) is already present, so forward
-references to `Result`/`CheckType` in `Checkable` resolve fine regardless of
-definition order.
-
-### Resolver (`mgmai/engine/resolver.py`)
-
-Two new functions replace five old ones.
-
-**`_apply_result_with_check`** — applies a `Result` and, if it carries a
-`then_check`, recurses. This is the single place that fires a result's
-follow-up check. Replaces the 9 inline `if result.chain_check:
-_resolve_chained_check(...)` blocks.
-
-```python
-def _apply_result_with_check(
-    result: Result,
-    *,
-    changes: HardStateChanges,
-    narrative: list[str],
-    revealed_hints: list[str],
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    room_id: str,
-    rolls: list[dict[str, Any]],
-    state_manager: Any | None = None,
-    resolution: ResolutionResult | None = None,
-    source_id: str | None = None,
-    source_type: str | None = None,
-    then_check_depth: int = 0,
-    item_origin: str = "interaction",
-) -> None:
-    _apply_result(result, changes, narrative, revealed_hints,
-                  hard, corpus, soft, state_manager, resolution,
-                  source_id, item_origin)
-    if result.then_check:
-        _resolve_checkable(
-            result.then_check,
-            hard=hard, soft=soft, corpus=corpus, room_id=room_id,
-            changes=changes, narrative=narrative,
-            revealed_hints=revealed_hints, rolls=rolls,
-            depth=then_check_depth,
-            state_manager=state_manager, resolution=resolution,
-            source_id=source_id, source_type=source_type,
-        )
+**Hypothetical PbtA system:**
+```json
+{"type": "stat_check", "stat": "COOL", "target": 0,
+ "move": "act_under_pressure", "repeatable": false}
 ```
 
-**`_resolve_checkable`** — the unified roller. Accepts any `Checkable`
-(duck-typed: has `.skip_check_if, .check, .success, .failure`). Handles
-`skip_check_if`, rolls (stat or roll), picks the branch, emits
-`check.passed`/`check.failed`, and applies the branch via
-`_apply_result_with_check` (which recurses into the branch's own `then_check`).
+### Engine flow
 
-```python
-def _resolve_checkable(
-    chk: Checkable,
-    *,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    room_id: str,
-    changes: HardStateChanges,
-    narrative: list[str],
-    revealed_hints: list[str],
-    rolls: list[dict[str, Any]],
-    depth: int = 0,
-    state_manager: Any | None = None,
-    resolution: ResolutionResult | None = None,
-    source_id: str | None = None,
-    source_type: str | None = None,
-    track_attempts: bool = False,
-    attempt_key: str | None = None,
-) -> bool:
-    """Resolve a Checkable's check, apply the chosen branch, recurse into
-    any then_check. Returns the success flag."""
+**Before:**
+```
+StatCheck.dc / .modifier / .resolution_params
+    → system.roll_check(stat, value, dc, flat_modifier, params=resolution_params)
+        → params.get("5e", {}).get("advantage")
 ```
 
-Behavior, in order:
+**After:**
+```
+StatCheck.target / .modifier / .model_extra
+    → system.roll_check(stat, value, target, flat_modifier, params=model_extra)
+        → params.get("advantage")
+```
 
-1. **Depth guard.** `if depth >= MAX_CHAIN_CHECK_DEPTH: return False` (only
-   reachable via then_check recursion; primary checks call at depth 0).
-2. **`skip_check_if`.** If present and `evaluate(...)` is true, apply
-   `chk.success` via `_apply_result_with_check(success, then_check_depth=depth+1, ...)`
-   and return `True`. (Preserves current `_resolve_chained_check` L996-1005
-   semantics.)
-3. **Repeatable gating** (only when `track_attempts` and `not check.repeatable`):
-   if `attempt_key` already in `soft.checks_attempted` for `room_id`, return
-   early with a `ResolutionResult`-level error signal. (Moved verbatim from
-   `_resolve_interaction_check` L1230-1237.)
-4. **Roll.** `StatCheck` → `system.roll_check(...)`; `RollCheck` →
-   `random.random() < threshold`. Append to `rolls`.
-5. **Emit event.** `check.passed`/`check.failed` with `check_type`, `stat`/`dc`
-   or `threshold`, `source_id`, `source_type` (all explicit — no defaulting
-   hack).
-6. **Record attempt** (when `track_attempts`): append to
-   `soft.checks_attempted[attempt_key]`. (Moved from L1293-1296 / L1365-1368.)
-7. **Apply branch.** `branch = chk.success if passed else chk.failure`. If
-   `branch` is not None, call
-   `_apply_result_with_check(branch, then_check_depth=depth+1, source_id=source_id, source_type=source_type, ...)`.
-8. Return the success flag.
+The resolver extracts `check.model_extra` (or `{}`) and passes it as `params`.
+The system reads `advantage`/`disadvantage` directly — one nesting layer
+removed.
 
-**Missing-stats error handling:** Currently, `_resolve_stat_check` (interaction path) returns an error `ResolutionResult` when `corpus.stats` or player stats are absent, but `_resolve_stat_check_chain` silently returns `None`. After unification, `_resolve_checkable` returns `bool` — use the optional `resolution: ResolutionResult` parameter to carry the error (`resolution.error = "Stats system not available"`) when stats are missing, while still returning `False`. This unifies the handling and gives all callers a consistent error signal.
+### `CheckResult` dataclass
 
-**Surviving call sites** (rewired to the new helpers):
+```python
+@dataclass
+class CheckResult:
+    stat: str
+    target: int
+    computed_mod: int
+    flat_mod: int
+    modifier: int
+    raw_roll: int
+    total: int
+    margin: int              # total - target
+    success: bool
+    advantage: bool
+    disadvantage: bool
 
-| Call site | Line | Change |
-|---|---|---|
-| `_resolve_interaction_check` | L1215 | Delete the dispatch to `_resolve_roll_check`/`_resolve_stat_check`. Call `_resolve_checkable(inter, track_attempts=True, attempt_key=inter.id, source_id=inter.id, source_type=source_type)` into local accumulators, then wrap into `ResolutionResult` as today. Keep the post-roll `check.passed`/`check.failed` emit at L1250-1266 (it carries the interaction-level `check_id` context) — or fold into `_resolve_checkable` and drop the duplicate; pick one, do not emit twice. |
-| `_resolve_using_override` | L1396 | Unchanged: already builds a synthetic `Interaction` and delegates to `_resolve_interaction_check`. |
-| `_fire_on_examine_events` | L1618-1658 | The `event.check` path keeps building a synthetic `Interaction` → `_resolve_interaction_check` (its `then_check` is now handled internally). The `event.result` (deterministic) path replaces `_apply_result` + the L1654 boilerplate with `_apply_result_with_check(event.result, source_id=f"_on_examine_{event.id}", source_type="examine", ...)`. The `skip_check_if` short-circuit at L1620 collapses into `_resolve_checkable`. |
-| `_resolve_interaction_result` (result-only) | L1427 | Replace `_apply_result` + L1444 boilerplate with `_apply_result_with_check(result, source_id=source_id, source_type=source_type, ...)`. |
-| `dispatch_reactions` (`event_bus.py`) | L214-231 | Replace the manual `_apply_result` + `_resolve_chained_check` block with `_apply_result_with_check(resolved.result, source_id=reaction.id, source_type="reaction", ...)`. Drop the `resolution_for_chain = ResolutionResult(success=True)` scaffolding (L214-215) — no longer needed; `_resolve_checkable` emits events directly when `resolution` is passed. |
-| `_resolve_traversal_check` | L1142 | **Required fix:** traversal rolls and returns `bool`; its `success`/`failure` `Result`s are applied by the caller. Verify and fix the caller routes those `Result`s through `_apply_result_with_check` so their `then_check` fires (today it is unclear whether traversal `then_check`s dispatch at all — if broken, this is a bugfix, not a refactor). If the caller uses bare `_apply_result`, upgrade it to `_apply_result_with_check`. Optionally refactor `_resolve_traversal_check` itself to call `_resolve_checkable(..., apply_branch=False)` — secondary, not required for this pass. |
+    def to_dict(self) -> dict:
+        return {
+            "type": "stat_check",
+            "stat": self.stat,
+            "target": self.target,
+            "modifier": self.modifier,
+            "computed_mod": self.computed_mod,
+            "flat_mod": self.flat_mod,
+            "raw_roll": self.raw_roll,
+            "total": self.total,
+            "margin": self.margin,
+            "success": self.success,
+            "advantage": self.advantage,
+            "disadvantage": self.disadvantage,
+        }
+```
 
-**Deleted functions:** `_resolve_chained_check` (L976),
-`_resolve_roll_check_chain` (L1023), `_resolve_stat_check_chain` (L1077),
-`_resolve_roll_check` (L1271), `_resolve_stat_check` (L1326). Also drop the
-`ChainedCheck` import at `resolver.py:38`.
+### `roll_check()` signatures
 
-**Import in `event_bus.py`:** update
-`from mgmai.engine.resolver import _apply_result, _resolve_chained_check, ResolutionResult`
-(`event_bus.py:211`) to `from mgmai.engine.resolver import _apply_result_with_check, ResolutionResult`.
+**ABC (`base.py`):**
+```python
+def roll_check(self, stat: str, stat_value: int, target: int,
+               flat_modifier: int = 0, params: dict | None = None) -> CheckResult:
+```
 
-### Roll-dict shape
+**FiveE (`five_e.py`):**
+```python
+def roll_check(self, stat, stat_value, target, flat_modifier=0, params=None):
+    computed_mod = self.compute_modifier(stat_value)
+    total_mod = computed_mod + flat_modifier
+    advantage = (params or {}).get("advantage", False)
+    disadvantage = (params or {}).get("disadvantage", False)
+    raw_roll = self.roll_die(20, advantage=advantage, disadvantage=disadvantage)
+    total = raw_roll + total_mod
+    success = total >= target
+    return CheckResult(..., target=target, margin=total - target, ...)
+```
 
-Rationalize in one pass: every roll dict gets `source_id`, `source_type`,
-`check_type`, plus type-specific `stat`/`dc` or `threshold`. Drop the
-chain-vs-interaction distinction (`check_id` present vs absent). Update test
-assertions on roll dict keys. This is enabled by D4 (explicit `source_type`
-threading).
+## File-change inventory
 
-## Schema changes (`schema/corpus.md`)
+### `mgmai/models/corpus.py`
+- `StatCheck` (L149–158): delete `resolution_params`, `opposed_by`, `skill`;
+  rename `dc` → `target`; add `model_config = ConfigDict(extra="allow")`.
 
-| Location | Change |
-|---|---|
-| L38 | "conditions, checks, results, and chained checks" → "...results, and follow-up checks". |
-| L201 | `"chain_check": { /* chained check (optional) */ }` → `"then_check": { /* follow-up check (optional) */ }`. |
-| L217 | Result table row: `chain_check` → `then_check`; rename link target. |
-| L220-257 | Rewrite the "#### Chained check (`chain_check`)" section as "#### Follow-up check (`then_check`)". Rename the type to `CheckResolution`. Update the example JSON keys (`chain_check` → `then_check`). Update the field table (`check`, `skip_check_if`, `success`, `failure` — now inherited from `Checkable`). Update the nesting note: "Nested follow-ups are supported — a `then_check`'s `Result` may itself contain a `then_check`, up to a maximum depth of 3." |
-| L438 | "Results may carry `set_flag`, `alter_stat`, `add_item`, and `chain_check` like any other result." → `...and `then_check`...`. |
-| L567 | Reaction-effects `result` row: update the field list to use `then_check`. |
-| L961 | Dialogue path results: update the field list to use `then_check`. |
+### `mgmai/engine/systems/base.py`
+- `CheckResult` (L46–81): rename `dc` → `target` in field list and
+  `to_dict()`. Update `margin` docstring.
+- `roll_check()` ABC (L203–211): rename `dc` → `target`; update docstring.
 
-Add a short "Common check-bearing types" note near the `Checkable` definition
-explaining that `Interaction`, `DialoguePath`, `OnExamineEvent`,
-`TraversalCheck`, `TakeCheck`, and `CheckResolution` all share the
-`(skip_check_if, check, success, failure)` quartet via `Checkable`.
+### `mgmai/engine/systems/five_e.py`
+- `roll_check()` (L76–107): rename parameter `dc` → `target`; replace
+  `sys_params = (params or {}).get(self.name, {})` with direct
+  `advantage = (params or {}).get("advantage", False)` /
+  `disadvantage = (params or {}).get("disadvantage", False)`.
+- `CheckResult(...)` construction call (L95–107): rename `dc=dc` → `target=target`, `margin=total - dc` → `margin=total - target`.
+- `resolve_save()` (L512–541): leave the logic unchanged, but add a code
+  comment at the `sys_params = (params or {}).get(self.name, {})` line
+  noting it is inconsistent with D5 and should be flattened when saves grow
+  corpus-driven params (see D9). Do **not** rename `SaveResult.dc` or the
+  `dc` parameter — saving throws are a separate concept.
 
-## Adventure data migration (`adventures/bag-of-holding/corpus.json`)
+### `mgmai/engine/resolver.py`
+- Interaction path (L1391–1446): `check.dc` → `check.target`;
+  `params=check.resolution_params` → `params=check.model_extra or {}`;
+  `roll_dict["dc"]` → `roll_dict["target"]`; `ctx["dc"]` → `ctx["target"]`.
+  (This path also resolves `then_check`s via `_apply_result_with_check`.)
+- Traversal-check path (L1020–1057): same renames (`.dc` → `.target`,
+  `.resolution_params` → `.model_extra`, `"dc"` → `"target"`). This is the
+  `_resolve_traversal_check` function, not a "then-check" path.
 
-Mechanical rename only — `chain_check` → `then_check` at 5 sites. No
-structural change. Pattern A (L863, L897) and Pattern B (L972, L999, L1317)
-both remain valid as-is.
+### `mgmai/engine/encounters.py`
+- `_resolve_encounter_stat_check()` (L340–371): `check.dc` → `check.target`;
+  `params=check.resolution_params` → `params=check.model_extra or {}`.
 
-| Line | Pattern | Content |
-|---|---|---|
-| L863 | A | `insert_key_into_padlock` failure → DEX save to catch key |
-| L897 | A | same, inside `using_results.korbar` override |
-| L972 | B | reaction on `flag.set: rip_examined` → INT check to recognize Astral Plane |
-| L999 | B | reaction on `flag.set: astral_plane_recognized` → INT check to realize Bag of Holding |
-| L1317 | B | reaction on `room.entered` → WIS check to notice spider |
+### `adventures/bag-of-holding/corpus.json`
+- All 30 `stat_check` objects: rename `"dc"` → `"target"`.
+- **WARNING: there are 31 `"dc"` occurrences in this file, not 30.** The
+  31st, at L211 (`"dc": 11`), is the `dc` of an `OnHitSave` inside the
+  spider's `on_hit_effects` block — a saving-throw DC, NOT a stat check.
+  It must NOT be renamed. Do **not** blind find/replace `"dc"` → `"target"`;
+  scope each replacement to objects whose `"type"` is `"stat_check"`.
+- `resolution_params`, `opposed_by`, `skill`, `modifier`, `note` are already
+  absent from the adventure data — no deletions needed.
 
-## Test changes
+### `schema/corpus.md`
+- L153–185: rewrite the stat check section. Updated JSON example (flat
+  fields, `target` instead of `dc`, `advantage` at top level). Updated field
+  table (remove `resolution_params`, `opposed_by`, `skill`; rename `dc` →
+  `target`). Updated prose about system-specific fields via `extra="allow"`.
+- Update all stat check JSON snippets throughout the file: rename `"dc"` →
+  `"target"`. Confirmed occurrences (all stat checks): L161, L239, L339,
+  L422, L941, L1018, L1047, L1082.
+- L504 and L556: the `check.passed`/`check.failed` context-key table rows
+  (`dc?` and `dc | The difficulty class...`) — rename to `target`. (These
+  duplicate the table in `events.md`; both must be updated.)
 
-Only `tests/test_event_bus.py` references `ChainedCheck` / `chain_check`
-directly (3 tests):
+### `schema/scenario-generation.md`
+- All stat check JSON snippets: rename `"dc"` → `"target"`.
+- Stat check field descriptions: update to match new model.
 
-| Line | Test | Change |
-|---|---|---|
-| L735 | `test_chain_check_in_reaction_emits_event` | Rename to `test_then_check_in_reaction_emits_event`; `from ... import ChainedCheck` → `CheckResolution`; `chain_check=ChainedCheck(...)` → `then_check=CheckResolution(...)`. |
-| L839 | (recursive dispatch test) | Same rename; verify the depth/recursion assertion still holds. |
-| L964 | `test_dialogue_path_result_chain_check_emits_event` | Rename to `..._then_check_...`; same import/field rename. |
+### `schema/events.md`
+- L59–60: `dc?` → `target?` in check.passed/check.failed context table.
+- L76: `dc` → `target` in context key table row.
+- (L168 references stat_check resolution but does not mention `dc`; no
+  change needed there.)
 
-**New tests to add** (in `tests/test_resolver.py` or `tests/test_event_bus.py`):
+### `schema/actions.md`
+- L716: `dc` → `target` in rolls description.
 
-1. **Depth cap.** A `then_check` nested 4 deep stops at depth 3 and logs a
-   warning (no test exercises this today — D7).
-2. **`source_type` inheritance.** A `then_check` inside an interaction's
-    failure branch emits `check.passed`/`check.failed` with
-    `source_type="interaction"` and the interaction's `source_id`. Also:
-    verify a `then_check` inside a **reaction** result retains
-    `source_type="reaction"`, and inside an **examine** event result retains
-    `source_type="examine"` (verifies D4 for all parent types — currently
-    some paths would default to `"reaction"`/`"unknown"`).
-3. **`then_check` on a deterministic `result`-only interaction** fires
-   (covers the `_resolve_interaction_result` path).
-4. **`then_check` on an on-examine `result`** fires (covers the L1654 path).
+### `doc/player-stats.md`
+- L68–82: rewrite the stat_check field table to match new model. Drop
+  `resolution_params`, `opposed_by`, `skill`; rename `dc` → `target`.
+- L90–92: update resolution system table (DC → target).
 
-**Test-assertion updates:** any assertion on roll-dict keys (`check_id`
-present/absent) must match the rationalized roll-dict shape from the
-"Roll-dict shape" section. Grep `tests/` for `"check_id"` and `"rolls"`
-assertions.
+### Test files
 
-## Doc changes
+**`tests/test_corpus.py`:**
+- L868 (`test_with_alter_stat`): `"dc": 10` → `"target": 10` in the
+  `EncounterRule.model_validate` stat_check payload. (Outside the
+  `TestStatCheck` block — easy to miss.)
+- L945–975 (`TestStatCheck`): rename `dc` → `target` and `resolution_params`
+  assertions.
+  - `test_minimal` (L947): `"dc": 12` → `"target": 12`; `sc.dc` → `sc.target`.
+  - `test_full` (L953–967): rewrite. Replace `resolution_params: {"5e": {"advantage": True}}` with flat `"advantage": True`. Delete `opposed_by` and `skill` assertions. Rename `dc` → `target`.
+  - `test_modifier_defaults_to_zero` (L969–971): `"dc"` → `"target"`.
+  - `test_resolution_params_optional` (L973–975): rename to `test_extra_fields_allow_advantage` — validate that `"advantage": true` is accepted via `extra="allow"` and accessible in `model_extra`.
+- L991–998 (`TestInteractionWithCheck.test_with_stat_check`): `"dc"` → `"target"`.
 
-| File | Lines | Change |
-|---|---|---|
-| `schema/events.md` | L81 | "`source_type: "reaction"` is used when a `chain_check` inside a reaction result produces the event" → "...when a `then_check` inside a reaction result produces the event". Note `source_type` is now inherited from the parent resolution context (D4), so a `then_check` inside an interaction emits `source_type="interaction"`. |
-| `schema/events.md` | L125 | "check.passed/check.failed from `chain_check`" → "from `then_check`". |
-| `schema/scenario-generation.md` | L1873, L1896, L2000, L2007 | Rename `chain_check` → `then_check`, "Chained check" → "Follow-up check". Update the depth-limit note (L2000) and the "does not trigger game-over directly" note (L2007). |
+**`tests/test_systems.py`:**
+- L84–85 (fake `ResolutionSystem` stub): rename the `roll_check` parameter
+  `dc` → `target` for consistency with the ABC (D6), and update the
+  positional `CheckResult(stat, dc, ...)` construction and `1 - dc` margin
+  computation to use `target`. (The stub survives positionally even without
+  this, but leaving it is inconsistent with the renamed ABC and
+  `CheckResult`.)
+- L172–206 (`TestFiveEChecks`): rename `dc=` → `target=` in `roll_check()`
+  calls.
+  - L175: `dc=10` → `target=10`.
+  - L185: `dc=20` → `target=20`.
+  - L189–197: `dc=15` → `target=15`; `params={"5e": {"advantage": True}}`
+    → `params={"advantage": True}`.
+  - L199–205: `"dc"` → `"target"` in key assertion list.
+- L409: `assert result.dc == 10` → `result.target == 10`.
+- (L98–99 fake `resolve_save` and L116 `FleeResult(dc=...)` are unchanged —
+  `SaveResult.dc` and `FleeResult.dc` are not being renamed.)
+
+**`tests/test_stat_checks.py`:**
+- L125, L129, L134, L135: roll-dicts use `"dc"`. `format_stat_check_prefix`
+  ignores this key so the tests pass regardless, but D1 renames the
+  roll-dict shape — update to `"target"` for consistency with the canonical
+  engine output.
+
+**`tests/test_encounters.py`:**
+- 6 `StatCheck(..., dc=...)` constructions (L197, L217, L242, L266, L332,
+  L356): rename `dc=` → `target=`. Mandatory — `target` is required, so
+  leaving `dc=` fails validation.
+
+**`tests/helpers.py`:**
+- 4 stat_check JSON payloads in `make_webs_test_corpus` (L370, L376, L380,
+  L412): rename `"dc"` → `"target"`. Mandatory for the same reason.
+
+## What does NOT change
+- `EncounterRule.check: Optional[StatCheck]` — the field type is the same
+  (just the model changed).
+- `SaveResult.dc`, `attack_effect.save.dc` — these are saving throw DCs, a
+  separate D&D-specific concept, not part of the stat check system.
+- `FiveESystem.resolve_save()` (`five_e.py:512–541`): the
+  `sys_params = (params or {}).get(self.name, {})` nesting is left as-is
+  (deferred — see D9); only a code comment is added. `SaveResult.dc` and the
+  `dc` parameter are not renamed.
+- `Checkable`, `CheckResolution`, and the rest of the check inheritance
+  hierarchy.
+- The `roll_check()` signature in `stat_checks.py` shims (they don't
+  reference these fields).
 
 ## Verification
 
-The project configures only `pytest` (`pyproject.toml` L29-30; no ruff/mypy).
 Run from the repo root:
 
 ```
 pytest
 ```
 
-Specifically:
-- Full suite green after each phase.
-- The 3 renamed `test_event_bus.py` tests pass.
-- The 4 new tests pass.
-- `adventures/bag-of-holding` loads cleanly (corpus validation) — covered by
-  the existing corpus/asm tests; run `pytest tests/test_corpus.py
-  tests/test_assembler.py tests/test_bag_of_holding_webs.py`.
-- Manually sanity-play the `insert_key_into_padlock` interaction (Pattern A)
-  and the `notice_spider_on_entry` reaction (Pattern B) to confirm `then_check`
-  resolution and event emission behave as before.
-
-If a lint/typecheck command exists later, add it here and to `AGENTS.md`.
+Specific checks:
+- `tests/test_corpus.py::TestStatCheck` — model validation with new field names.
+- `tests/test_systems.py::TestFiveEChecks` — roll_check() with renamed params.
+- `tests/test_corpus.py::TestInteractionWithCheck` — stat_check inside
+  interactions with `target` field.
+- `tests/test_corpus.py::test_with_alter_stat` — EncounterRule stat_check
+  payload (the easy-to-miss one at L868).
+- `tests/test_encounters.py` — encounter stat checks.
+- `tests/test_stat_checks.py` — roll-dict shape consistency.
+- `tests/test_parser.py` / `tests/test_actions.py` — action parser
+  `target` field is unrelated; should still pass.
+- The adventure bag-of-holding loads cleanly: `pytest
+  tests/test_corpus.py tests/test_assembler.py tests/test_bag_of_holding_webs.py`.
 
 ## Task ordering
 
-**Phase 1 — Pure rename (low risk, lands first).**
-1. `models/corpus.py`: `ChainedCheck` → `CheckResolution`; `Result.chain_check` → `then_check`; update `has_any_effect`.
-2. `resolver.py` + `event_bus.py`: rename all references (`chain_check` → `then_check`, `ChainedCheck` → `CheckResolution`, `MAX_CHAIN_CHECK_DEPTH` → `MAX_THEN_CHECK_DEPTH`). Keep logic identical.
-3. `adventures/bag-of-holding/corpus.json`: rename the 5 sites.
-4. `tests/test_event_bus.py`: rename the 3 tests' references.
-5. `schema/corpus.md`, `schema/events.md`, `schema/scenario-generation.md`: rename.
-6. Rename internal code comments referencing "chain_check" or "chained check" in `mgmai/` and `tests/`.
-7. `pytest` green.
+All changes are a single mechanical pass — one rename, one deletion of dead
+fields, one flattening of `resolution_params`. No phases needed.
 
-**Phase 2 — Resolver unification (the big win).**
-7. Add `_apply_result_with_check` and `_resolve_checkable`.
-8. Rewire the 6 call sites per the table above; delete the 5 old functions.
-9. Rationalize roll-dict shape; fix roll-dict test assertions.
-10. Add the 4 new tests (depth cap, source_type inheritance, result-only interaction then_check, on-examine result then_check).
-11. Verify/fix the traversal `then_check` latent gap.
-12. `pytest` green.
-
-**Phase 3 — Shared `Checkable` base (polish).**
-13. Add `Checkable` to `models/corpus.py`; make the six models inherit it; delete duplicated field declarations; tighten `check`/`success` optionality per model.
-14. Add the "Common check-bearing types" note to `schema/corpus.md`.
-15. `pytest` green.
-
-Phases are independently shippable. Phase 1 is mechanical and should land
-first to shrink the diff of Phase 2. Phase 3 is optional polish that can be
-deferred without affecting Phase 1+2 correctness.
+1. **Model** — `mgmai/models/corpus.py`: `StatCheck` → remove 3 fields,
+   rename 1, add `extra="allow"`.
+2. **Engine core** — `base.py`: `CheckResult` dataclass + `roll_check()`
+   ABC. `five_e.py`: `roll_check()` implementation.
+3. **Engine call sites** — `resolver.py` (2 sites: interaction path +
+   traversal-check path) + `encounters.py` (1 site): rewire `.dc` →
+   `.target`, `.resolution_params` → `.model_extra`.
+4. **Adventure data** — `corpus.json`: 30 replacements of `"dc"` → `"target"`.
+5. **Schema docs** — `corpus.md`, `scenario-generation.md`, `events.md`,
+   `actions.md`: rename `dc` → `target`, update stat check field tables,
+   update JSON examples.
+6. **User docs** — `doc/player-stats.md`: update stat check field table.
+7. **Tests** — update assertions per inventory above.
+8. `pytest` green.
