@@ -426,12 +426,7 @@
         },
         "will_reveal": {}
       },
-      "interactions": [
-        {
-          "id": "attack",
-          "description": "Attack the spider."
-        }
-      ],
+      "interactions": [],
       "behavior": {
         "encounter_rules": [
           {
@@ -666,12 +661,7 @@
           }
         }
       },
-      "interactions": [
-        {
-          "id": "attack",
-          "description": "Attack Korbar."
-        }
-      ],
+      "interactions": [],
       "behavior": {
         "encounter_rules": [
           {

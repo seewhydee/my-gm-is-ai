@@ -236,13 +236,13 @@ class TestInteraction:
         assert i.result is not None
         assert i.result.set_room_state == {"room_a": {"_entered_from": "room_b"}}
 
-    def test_empty_interaction_with_description(self) -> None:
-        i = Interaction.model_validate({
-            "id": "look",
-            "description": "Look around the room",
-        })
-        assert i.result is None
-        assert i.check is None
+    def test_empty_interaction_rejected(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            Interaction.model_validate({
+                "id": "look",
+                "description": "Look around the room",
+            })
+        assert "check" in str(exc_info.value) or "result" in str(exc_info.value)
 
     def test_with_condition(self) -> None:
         i = Interaction.model_validate({

@@ -219,20 +219,20 @@ for interactions, traversal checks, dialogue paths, etc.
 
 ALL fields in a Result object are optional.
 
-| Field              | Type     | Description                            |
-|--------------------|----------|----------------------------------------|
-| `narrative`        | string   | Narrative description of the result    |
-| `add_item`         | string[] | Item entity IDs to add to inventory    |
-| `remove_item`      | string[] | Item entity IDs to drop from inventory |
-| `set_flag`         | object   | Hard-state flags to set or clear       |
-| `set_entity_state` | object   | Entity state changes                   |
-| `set_room_state`   | object   | Room state changes                     |
-| `player_damage`    | string   | Damage dealt to player, e.g. `"1d4+1"` |
-| `set_player_location` | string| Room ID to relocate the player to      |
-| `alter_stat`       | object   | Player stat changes (see below)        |
-| `adjust_attitude`  | object   | NPC attitude changes (see below)       |
-| `reveals`          | string   | Player's knowledge update (see below)  |
-| `then_check`       | object   | A follow-up check (see below)          |
+| Field             | Type     | Description                           |
+|-------------------|----------|---------------------------------------|
+| `narrative`       | string   | Narrative description of the result   |
+| `add_item`        | string[] | Item entity IDs to add to inventory   |
+| `remove_item`     | string[] | Item entity IDs to drop from inventory|
+| `set_flag`        | object   | Hard-state flags to set or clear      |
+| `set_entity_state`| object   | Entity state changes                  |
+| `set_room_state`  | object   | Room state changes                    |
+| `player_damage`   | string   | Damage dealt to player, e.g. `"1d4+1"`|
+| `set_player_location`| string| Room ID to relocate the player to     |
+| `alter_stat`      | object   | Player stat changes (see below)       |
+| `adjust_attitude` | object   | NPC attitude changes (see below)      |
+| `reveals`         | string   | Player's knowledge update (see below) |
+| `then_check`      | object   | A follow-up check (see below)         |
 
 Notes:
 
@@ -333,18 +333,18 @@ world graph keyed by a globally-unique `room_id`.
 }
 ```
 
-| Field                | Type     | Description                         |
-|----------------------|----------|-------------------------------------|
-| `name`               | string   | Short display name                  |
-| `description`        | string   | Prose description of room           |
+| Field                | Type     | Description                        |
+|----------------------|----------|------------------------------------|
+| `name`               | string   | Short display name                 |
+| `description`        | string   | Prose description of room          |
 | `entities_present`(*)| string[] | IDs of non-player entities present at game start |
-| `exits` (*)          | array    | All exits out of the room           |
-| `state_fields` (*)   | object   | State fields for room (see below)   |
-| `interactions` (*)   | array    | See [Interaction](#interaction)     |
-| `on_examine` (*)     | array    | See [On-Examine](#on-examine)       |
-| `reactions` (*)      | array    | See [Reaction](#reaction)           |
-| `soft_items` (*)     | string[] | Plausible generic items in the room |
-| `is_start_room` (*)  | boolean  | `true` for starting room (only one) |
+| `exits` (*)          | array    | All exits out of the room          |
+| `state_fields` (*)   | object   | State fields for room (see below)  |
+| `interactions` (*)   | array    | See [Interaction](#interaction)    |
+| `on_examine` (*)     | array    | See [On-Examine](#on-examine)      |
+| `reactions` (*)      | array    | See [Reaction](#reaction)          |
+| `soft_items` (*)     | string[] | Plausible generic items in the room|
+| `is_start_room` (*)  | boolean  | `true` for starting room (only one)|
 (*) optional
 
 Notes:
@@ -479,8 +479,8 @@ Notes:
   `"*"` wildcard); when the player uses an item matching a key, the
   value replaces the traversal check entirely.  The mapped value can
   be one of these two:
-  - a dict with `"result"` keyed to a [Result](#result)
-  - a dict with `"check"` (a [Check](#check)), `success` (a Result)
+  - a dict with `result` keyed to a [Result](#result)
+  - a dict with `check` (a [Check](#check)), `success` (a Result)
     and optionally `failure` (a Result), with the same semantics as
     [Interaction](#interaction).
 
@@ -511,7 +511,7 @@ gating, and sucess/failure results.
 | Field             | Type      |  Description                      |
 |-------------------|-----------|-----------------------------------|
 | `id`              | string    | ID, unique in room or entity      |
-| `description`     | string    | Description of what the player is attempting |
+| `description`     | string    | Clear description of interaction  |
 | `condition` (*)   | Condition | Whether interaction is available  |
 | `check` (*)       | Check     | Success/failure check             |
 | `skip_check_if`(*)| Condition | Whether interaction auto-succeeds |
@@ -519,33 +519,49 @@ gating, and sucess/failure results.
 | `failure` (*)     | Result    | Result when check fails           |
 | `result` (*)      | Result    | Fixed result (when no check)      |
 | `using_results`(*)| object    | Alt check when using tool         |
+(*) optional
 
-Interactions include generic types available everywhere (e.g., `attack`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item. Picking up items should use the `transfer` action instead.
+Notes:
+
+- `id` should be unique within the room or entity.  The reserved
+  interaction ID `attack` should not be used.  Interaction IDs should
+  also not duplicate the generic actions `move`, `examine`, `talk`,
+  `transfer`, or `wait`, nor similar generic verbs (e.g., `take`), as
+  this risks confusing the GM on how to categorize player actions.
+
+- The role of `description` is to brief the GM on the semantic meaning
+  of the interaction.
+
+- If present, `condition` gates the availability of the interaction;
+  if it evaluates to false, the interaction is not presented as an
+  available option, even to the GM.
+
+- If `check` is omitted, the interaction triggers `result`, which must
+  be defined.  Otherwise, the [Check](#check) is run and triggers
+  either `success` (which must be defined) or `failure` (optional);
+  but `skip_check_if`, if present and evaluating to true, bypasses the
+  check and triggers `success`.
 
 - If `failure` is not specified, a failed check sends a generic
   "nothing happens" message to the GM narrator.
 
-- The `using_results` field accommodates player commands of the form
-  "[INTERACTION] using [ITEM]".  If provided, it should be a dict
-  mapping item entity IDs (or `"*"` wildcard) to `UsingResultOverride`
-  objects. When the `interact` action's `using` field matches a key,
-  the override replaces the interaction's own
-  `check`/`success`/`failure`/`result`. Each override may optionally
-  carry its own `check` (allowing different DCs per item, e.g. STR DC
-  14 bare-handed vs. DC 10 with a weapon), or a plain
-  `result`. Overrides are leaf-level — the override's
-  check+success+failure (or result) fully replaces the interaction's
-  defaults.
+- The `using_results` field, if provided, accommodates player commands
+  of the form "[INTERACTION] using [ITEM]", allowing for alternative
+  resolution paths.  It should be a dict mapping item entity IDs to
+  one of the following objects, which overrides the usual result/check
+  for interactions using the matching item:
+  - a dict with `"result"` keyed to a [Result](#result), describing an
+    alternative unchecked interaction result; OR
+  - a dict with `check`, `success`, and `failure` (optional), which
+    define an alternative [Check](#check),
 
 ---
 
-### On-Examine
+## On-Examine
 
 On-examine effects fire when the player performs an `examine` action
-on the entity or room that carries them. They support stat checks,
-conditional gating, and rigorous-search-only gating — enabling
-patterns like "examining the canvas walls triggers an INT check to
-deduce the glow is magical."
+on an entity or room.  They support stat checks, conditional gating,
+and rigorous-search-only gating.
 
 ```json
 {
@@ -559,7 +575,7 @@ deduce the glow is magical."
     "repeatable": true
   },
   "success": {
-    "narrative": "You deduce that the faint luminescence is magical in nature — a side effect of the Bag's magic.",
+    "narrative": "You deduce that the glow is magical in nature",
     "set_flag": { "glow_noticed": true },
     "reveals": "The glow is magical."
   },
@@ -567,22 +583,29 @@ deduce the glow is magical."
 }
 ```
 
-| Field            | Type            | Description |
-|------------------|-----------------|-------------|
-| `id`             | string          | Unique event identifier within the parent entity or room. |
-| `condition`      | Condition\|null    | Gating condition. If present and `false`, the event does nothing. If `null`, fires every time the entity/room is examined. |
-| `skip_check_if`  | Condition          | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
-| `rigorous_only`  | boolean         | If `true`, the event only fires when the examine action has `rigorous: true`. Default `false`. |
-| `check`          | Check       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
-| `success`        | Result          | Result applied when the check passes. Required if `check` is present. |
-| `failure`        | Result\|null    | Result applied when the check fails. Optional; if absent, nothing happens on failure. |
-| `result`         | Result\|null    | Deterministic result applied when no `check` is present. Mutually exclusive with `check`. |
+| Field             | Type      | Description                          |
+|-------------------|-----------|--------------------------------------|
+| `id`              | string    | ID, unique within parent entity/room |
+| `condition` (*)   | Condition | Gating condition (see below)         |
+| `skip_check_if`(*)| Condition | Whether examination auto-succeeds    |
+| `rigorous_only`   | boolean   | Whether rigorous search is needed    |
+| `check` (*)       | Check     | Success check gating outcome         |
+| `success (*)      | Result    | Result applied when the check passes |
+| `failure` (*)     | Result    | Result applied when check fails      |
+| `result` (*)      | Result    | Result applied when no check         |
+(*) optional
 
-The base `description` of the entity/room is returned first in the narration;
-on-examine event narratives are appended after it. Results may carry
-`set_flag`, `alter_stat`, `add_item`, and `then_check` like any other result.
-Multiple on-examine events on the same target all fire (in array order) if
-their conditions are met.
+Notes:
+
+- The base `description` of the entity/room is returned first in the
+  narration; on-examine event narratives are appended after
+  it. Results may carry `set_flag`, `alter_stat`, `add_item`, and
+  `then_check` like any other result.  Multiple on-examine events on
+  the same target all fire (in array order) if their conditions are
+  met.
+
+- `condition`: If present and `false`, the event does nothing. If
+  `null`, fires every time the entity/room is examined.
 
 ### Reaction
 

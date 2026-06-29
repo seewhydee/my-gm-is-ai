@@ -237,6 +237,8 @@ class Interaction(Checkable):
     def check_mutually_exclusive(self) -> Interaction:
         has_check = self.check is not None
         has_result = self.result is not None
+        if not has_check and not has_result:
+            raise ValueError("Interaction must have at least one of 'check' or 'result'")
         if has_check and has_result:
             raise ValueError("Interaction must have either check or result, not both")
         if has_check and self.success is None:
