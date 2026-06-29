@@ -196,7 +196,7 @@ The schema reserves space for additional systems (e.g., `3d6` for GURPS-style,
 
 The six content types that carry a probabilistic check with success/failure
 branches — `Interaction`, `DialoguePath`, `OnExamineEvent`, `TraversalCheck`,
-`TakeCheck`, and `CheckResolution` (then_check) — all share the same quartet
+`TakeCheck`, and the follow-up check carried by the `then_check` field (`CheckResolution`) — all share the same quartet
 of fields: `skip_check_if`, `check`, `success`, and `failure`. These are
 inherited from a shared `Checkable` base in the implementation. Subtypes add
 their own fields (`condition`, `result`, `gating`, `using_results`, `id`,
@@ -239,16 +239,16 @@ dialogue paths, or as a deterministic `result` when no check is involved.
 | `alter_stat`        | object | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). Use `"delta"` for damage/buffs (e.g., fall damage: `{ "STR": { "value": -4 } }`); use `"set"` for absolute assignment (e.g., a curse: `{ "INT": { "mode": "set", "value": 3 } }`). |
 | `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
 | `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
-| `then_check`     | [Follow-up check](#follow-up-check-then_check) | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See [Follow-up check](#follow-up-check-then_check) below. |
+| `then_check`     | [Follow-up check](#follow-up-check) | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See [Follow-up check](#follow-up-check) below. |
 | `player_damage`   | string | **Optional.** Dice expression rolled as HP damage against the player (e.g., `"2d6"`, `"1d4+1"`). Resolved by the active RPG system. |
 
-#### Follow-up check (`then_check`)
+#### Follow-up check
 
-A follow-up check is a check-resolution unit embedded inside a result. It
-allows a single action to resolve in two stages — for example, a STR
-check to force a door, and on failure a DEX check to catch the slipping
-key before it falls. The follow-up check fires immediately after its parent
-result, using its own success/failure branches.
+A follow-up check is a check-resolution unit embedded inside a result via
+the `then_check` field. It allows a single action to resolve in two stages
+— for example, a STR check to force a door, and on failure a DEX check to
+catch the slipping key before it falls. The follow-up check fires
+immediately after its parent result, using its own success/failure branches.
 
 ```json
 {
@@ -278,8 +278,8 @@ result, using its own success/failure branches.
 | `success`      | [Result](#result-object)              | Result to apply if the follow-up check succeeds. |
 | `failure`      | [Result](#result-object) (optional)   | Result to apply if the follow-up check fails. |
 
-Nested follow-ups are supported — a `then_check`'s `Result` may itself contain
-another `then_check`, up to a maximum depth of 3.
+Nested follow-ups are supported — a follow-up check's `Result` may itself contain
+another `then_check` field, up to a maximum depth of 3.
 
 ---
 
