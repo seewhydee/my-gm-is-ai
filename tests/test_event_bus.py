@@ -119,7 +119,7 @@ class TestImmediateReactionsInResolver:
         korbar = corpus.entities["korbar"]
         korbar.interactions.append(Interaction(
             id="greet",
-            label="Greet Korbar",
+            description="Greet Korbar",
             result=Result(narrative="Korbar grunts noncommittally."),
         ))
 
@@ -176,7 +176,7 @@ class TestOptionBTurnBoundary:
         korbar = corpus.entities["korbar"]
         korbar.interactions.append(Interaction(
             id="conditional_greet",
-            label="Conditional greet",
+            description="Conditional greet",
             condition=ConditionExpression(require="flag:turn_start_flag == true"),
             result=Result(narrative="Korbar nods."),
         ))
@@ -1075,7 +1075,7 @@ class TestThenCheckSourceTypeInheritance:
         room = corp.rooms["bag_floor"]
         room.interactions.append(Interaction(
             id="fail_interaction",
-            label="Fail Me",
+            description="Force a failure to test then_check",
             check=RollCheck(threshold=0.0, repeatable=True),
             success=Result(narrative="Passed."),
             failure=Result(
@@ -1125,7 +1125,7 @@ class TestResolverThenCheckPaths:
         room = corp.rooms["bag_floor"]
         room.interactions.append(Interaction(
             id="result_then_check_inter",
-            label="Result Check",
+            description="Interaction with result+then_check",
             result=Result(
                 narrative="The mechanism triggers.",
                 then_check=CheckResolution(

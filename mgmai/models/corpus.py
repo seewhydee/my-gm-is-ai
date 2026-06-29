@@ -167,7 +167,7 @@ class Checkable(BaseModel):
 
     Shared by Interaction, DialoguePath, OnExamineEvent, TraversalCheck,
     TakeCheck, and CheckResolution. Subclasses add their own fields
-    (condition, result, gating, using_results, id, label, rigorous_only, ...)
+    (condition, result, gating, using_results, id, rigorous_only, ...)
     and validators that tighten optionality per their semantics.
     """
     skip_check_if: Optional[ConditionExpression] = None
@@ -228,8 +228,7 @@ class TakeCheck(Checkable):
 
 class Interaction(Checkable):
     id: str
-    label: str
-    description: Optional[str] = None
+    description: str
     condition: Optional[ConditionExpression] = None
     result: Optional[Result] = None
     using_results: Optional[Dict[str, UsingResultOverride]] = None

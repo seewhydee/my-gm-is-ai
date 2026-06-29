@@ -755,7 +755,6 @@ def _build_room_after(
         interactions_available.append(
             BriefingInteraction(
                 id=inter.id,
-                label=inter.label,
                 description=inter.description,
             )
         )

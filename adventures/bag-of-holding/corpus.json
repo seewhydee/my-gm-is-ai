@@ -794,7 +794,6 @@
       "interactions": [
         {
           "id": "squeeze_through_rip",
-          "label": "Squeeze through the rip",
           "description": "Try to squeeze your whole body through the rip in the canvas wall.",
           "condition": {
             "require": "entity:the_rip.examined == true"
@@ -817,7 +816,6 @@
         },
         {
           "id": "confirm_squeeze_through_rip",
-          "label": "Go through the rip",
           "description": "Ignore the warning and squeeze through the rip into the void beyond.",
           "condition": {
             "require": "flag:rip_squeeze_possible == true"
@@ -831,7 +829,6 @@
         },
         {
           "id": "insert_key_into_padlock",
-          "label": "Insert key into padlock",
           "description": "Push the giant key through the rip and insert it into the padlock on the outside of the Bag.",
           "condition": {
             "all": [
@@ -917,7 +914,6 @@
         },
         {
           "id": "drop_key_through_rip",
-          "label": "Drop key through rip",
           "description": "Drop the giant key through the rip into the gray void beyond.",
           "condition": {
             "all": [
@@ -1093,7 +1089,6 @@
       "interactions": [
         {
           "id": "search_webs_upper_after_fly",
-          "label": "Search the webs",
           "description": "Search through the webbing for anything else of use.",
           "condition": {
             "unless": "entity:stuck_fly.hidden == true"
@@ -1477,7 +1472,6 @@
       "interactions": [
         {
           "id": "search_rubbish_thoroughly",
-          "label": "Search the rubbish thoroughly",
           "description": "Conduct a thorough search of the garbage heap for anything you might have missed beyond the toenail sword.",
           "condition": {
             "all": [
@@ -1507,7 +1501,6 @@
         },
         {
           "id": "move_handkerchief",
-          "label": "Haul aside the handkerchief",
           "description": "Pull back the damp handkerchief to see what's underneath.",
           "condition": {
             "require": "flag:handkerchief_revealed == true"

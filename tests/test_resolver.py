@@ -651,7 +651,7 @@ class TestResolveInteract:
         corpus.rooms["axe_head"].interactions.append(
             Interaction(
                 id="once_only",
-                label="Once Only",
+                description="Test: non-repeatable check",
                 check=RollCheck(threshold=0.5, repeatable=False),
                 success=Result(narrative="Done."),
                 failure=Result(narrative="Failed."),
@@ -677,7 +677,7 @@ class TestResolveInteract:
         corpus.rooms["axe_head"].interactions.append(
             Interaction(
                 id="stat_gate",
-                label="Stat Gate",
+                description="Test: stat check without stats",
                 check=StatCheck(stat="STR", target=10, repeatable=True),
                 success=Result(narrative="Passed."),
                 failure=Result(narrative="Failed."),

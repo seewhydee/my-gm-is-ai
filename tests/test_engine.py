@@ -214,7 +214,7 @@ class TestEngineFullFlow:
             interactions=[
                 Interaction(
                     id="teleport",
-                    label="Step on the glyph",
+                    description="Step on the glyph",
                     result=Result(
                         narrative="The glyph flares and you vanish.",
                         set_player_location="room_b",
@@ -284,7 +284,7 @@ class TestEngineFullFlow:
             interactions=[
                 Interaction(
                     id="teleport",
-                    label="Step on the glyph",
+                    description="Step on the glyph",
                     result=Result(
                         narrative="The glyph flares and you vanish.",
                         set_player_location="room_b",

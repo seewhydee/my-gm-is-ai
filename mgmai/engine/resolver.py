@@ -552,7 +552,7 @@ def resolve_talk(
             else:
                 synthetic_inter = Interaction(
                     id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
-                    label="",
+                    description="",
                     check=path.check,
                     success=path.success,
                     failure=path.failure,
@@ -752,7 +752,7 @@ def resolve_transfer(
             else:
                 synthetic = Interaction(
                     id=f"take_{item}",
-                    label="",
+                    description="",
                     check=tc.check,
                     success=tc.success,
                     failure=tc.failure,
@@ -1150,7 +1150,7 @@ def _resolve_using_override(
         # Build a synthetic Interaction from the override for check resolution
         synthetic_inter = Interaction(
             id=source_id or "_using_override",
-            label="",
+            description="",
             check=override.check,
             success=override.success,
             failure=override.failure,
@@ -1535,7 +1535,7 @@ def _fire_on_examine_events(
             # Build a synthetic Interaction for check resolution
             synthetic = Interaction(
                 id=f"_on_examine_{event.id}",
-                label="",
+                description="",
                 check=event.check,
                 success=event.success,
                 failure=event.failure,

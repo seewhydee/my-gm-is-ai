@@ -288,7 +288,6 @@
       "interactions": [
         {
           "id": "unlock_padlock",
-          "label": "Unlock the padlock",
           "description": "Poke the rusty key through the rip in the canvas and insert it into the padlock to unlock the bag.",
           "condition": {
             "all": [
@@ -430,7 +429,6 @@
       "interactions": [
         {
           "id": "attack",
-          "label": "Attack",
           "description": "Attack the spider."
         }
       ],
@@ -532,7 +530,6 @@
       "interactions": [
         {
           "id": "rummage_for_weapon",
-          "label": "Rummage for a weapon",
           "description": "Root through the piles of giant rubbish looking for something that could be used as a weapon.",
           "condition": {
             "unless": "flag:injured == true"
@@ -562,7 +559,6 @@
       "interactions": [
         {
           "id": "search_handkerchief",
-          "label": "Search the handkerchief",
           "description": "Carefully examine the damp handkerchief, checking for anything unusual hidden beneath or within it.",
           "check": {
             "type": "roll",
@@ -583,7 +579,6 @@
         },
         {
           "id": "move_handkerchief",
-          "label": "Move the handkerchief",
           "description": "Push the damp handkerchief aside to see what — if anything — is underneath.",
           "condition": {
             "require": "flag:handkerchief_noticed == true"
@@ -674,7 +669,6 @@
       "interactions": [
         {
           "id": "attack",
-          "label": "Attack",
           "description": "Attack Korbar."
         }
       ],

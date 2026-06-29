@@ -180,7 +180,7 @@ class TestInteraction:
     def test_with_result_only(self) -> None:
         i = Interaction.model_validate({
             "id": "unlock_padlock",
-            "label": "Unlock the padlock",
+            "description": "Unlock the padlock",
             "result": {"narrative": "The padlock springs open."},
         })
         assert i.result is not None
@@ -189,7 +189,7 @@ class TestInteraction:
     def test_with_check_success_failure(self) -> None:
         i = Interaction.model_validate({
             "id": "search_corner",
-            "label": "Search the corner",
+            "description": "Search the corner",
             "check": {"threshold": 0.5, "repeatable": True},
             "success": {"narrative": "You find a coin."},
             "failure": {"narrative": "Nothing here."},
@@ -201,7 +201,7 @@ class TestInteraction:
         with pytest.raises(ValidationError):
             Interaction.model_validate({
                 "id": "bad_interaction",
-                "label": "Bad",
+                "description": "Bad",
                 "check": {"threshold": 0.5, "repeatable": True},
                 "result": {"narrative": "Should not have both."},
             })
@@ -209,7 +209,7 @@ class TestInteraction:
     def test_result_with_set_flag(self) -> None:
         i = Interaction.model_validate({
             "id": "do_thing",
-            "label": "Do thing",
+            "description": "Do thing",
             "result": {
                 "narrative": "Done.",
                 "set_flag": {"thing_done": True},
@@ -227,7 +227,7 @@ class TestInteraction:
     def test_result_with_set_room_state(self) -> None:
         i = Interaction.model_validate({
             "id": "record_entry",
-            "label": "Record entry",
+            "description": "Record entry",
             "result": {
                 "narrative": "Recorded.",
                 "set_room_state": {"room_a": {"_entered_from": "room_b"}},
@@ -236,10 +236,10 @@ class TestInteraction:
         assert i.result is not None
         assert i.result.set_room_state == {"room_a": {"_entered_from": "room_b"}}
 
-    def test_empty_interaction_is_valid(self) -> None:
+    def test_empty_interaction_with_description(self) -> None:
         i = Interaction.model_validate({
             "id": "look",
-            "label": "Look around",
+            "description": "Look around the room",
         })
         assert i.result is None
         assert i.check is None
@@ -247,7 +247,7 @@ class TestInteraction:
     def test_with_condition(self) -> None:
         i = Interaction.model_validate({
             "id": "open_secret_door",
-            "label": "Open the secret door",
+            "description": "Open the secret door",
             "condition": {"require": "flag:secret_door_found == true"},
             "result": {"narrative": "The secret door slides open.", "set_flag": {"secret_door_open": True}},
         })
@@ -497,7 +497,7 @@ class TestEntity:
             "interactions": [
                 {
                     "id": "pray_at_altar",
-                    "label": "Pray at the altar",
+                    "description": "Pray at the altar",
                     "result": {"narrative": "You feel a divine presence."},
                 },
             ],
@@ -581,7 +581,7 @@ class TestRoom:
             "interactions": [
                 {
                     "id": "pull_lever",
-                    "label": "Pull the lever",
+                    "description": "Pull the lever",
                     "result": {"narrative": "The wall slides open."},
                 },
             ],
@@ -978,7 +978,7 @@ class TestInteractionWithCheck:
     def test_with_roll_check(self) -> None:
         inter = Interaction.model_validate({
             "id": "test_roll",
-            "label": "Test",
+            "description": "Test roll",
             "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
             "success": {"narrative": "Pass"},
             "failure": {"narrative": "Fail"},
@@ -990,7 +990,7 @@ class TestInteractionWithCheck:
     def test_with_stat_check(self) -> None:
         inter = Interaction.model_validate({
             "id": "test_stat",
-            "label": "Test",
+            "description": "Test stat",
             "check": {"type": "stat_check", "stat": "STR", "target": 12, "repeatable": True},
             "success": {"narrative": "Pass"},
             "failure": {"narrative": "Fail"},
@@ -1004,7 +1004,7 @@ class TestInteractionWithCheck:
         with pytest.raises(ValidationError, match="must have either check"):
             Interaction.model_validate({
                 "id": "bad",
-                "label": "Bad",
+                "description": "Bad interaction",
                 "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
                 "result": {"narrative": "Result"},
             })

@@ -139,7 +139,6 @@ def _build_room(room_id: str,
                 continue
         interactions_available.append(
             BriefingInteraction(id=inter.id,
-                                label=inter.label,
                                 description=inter.description))
 
     entity_ids: set[str] = set(room.entities_present)
@@ -159,7 +158,6 @@ def _build_room(room_id: str,
                     continue
             interactions_available.append(
                 BriefingInteraction(id=inter.id,
-                                    label=inter.label,
                                     description=inter.description))
 
     room_notes = soft.room_notes.get(room_id, [])[-5:]

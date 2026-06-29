@@ -219,7 +219,7 @@ class TestResolveWithFollower:
         hard, soft, corpus = _setup
         korbar = corpus.entities["korbar"]
         korbar.interactions.append(
-            Interaction(id="greet", label="Greet", result=Result(narrative="Korbar nods."))
+            Interaction(id="greet", description="Greet Korbar", result=Result(narrative="Korbar nods."))
         )
         hard.player.location = "axe_head"
         result = resolve_interact(

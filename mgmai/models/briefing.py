@@ -22,8 +22,7 @@ from mgmai.models.corpus import DialogueGuidelines
 
 class BriefingInteraction(BaseModel):
     id: str
-    label: str
-    description: Optional[str] = None
+    description: str
 
 
 class PlayerKnowledgeTopic(BaseModel):

@@ -497,7 +497,6 @@ gating, and sucess/failure results.
 ```json
 {
   "id": "string (unique within the defining context)",
-  "label": "string (short label for UI/debug)",
   "description": "string (what the player is attempting)",
   "condition": { /* condition object or null */ },
   "skip_check_if": { /* condition object (optional) */ },
@@ -512,8 +511,7 @@ gating, and sucess/failure results.
 | Field             | Type      |  Description                      |
 |-------------------|-----------|-----------------------------------|
 | `id`              | string    | ID, unique in room or entity      |
-| `label`           | string    | Concise action label              |
-| `description` (*) | string    | Extended description of action    |
+| `description`     | string    | Description of what the player is attempting |
 | `condition` (*)   | Condition | Whether interaction is available  |
 | `check` (*)       | Check     | Success/failure check             |
 | `skip_check_if`(*)| Condition | Whether interaction auto-succeeds |

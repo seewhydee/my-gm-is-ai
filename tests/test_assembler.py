@@ -376,8 +376,7 @@ class TestInteractions:
         inter = next(
             i for i in result.current_room.interactions_available if i.id == "rummage_for_weapon"
         )
-        assert inter.label == "Rummage for a weapon"
-        assert inter.description is not None
+        assert inter.description == "Root through the piles of giant rubbish looking for something that could be used as a weapon."
 
 
 class TestRoomSoftItemsAndNotes:
