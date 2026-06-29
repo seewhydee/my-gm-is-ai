@@ -25,7 +25,7 @@ from pydantic import ValidationError
 
 log = logging.getLogger(__name__)
 
-from mgmai.models.corpus import ModuleCorpus
+from mgmai.models.corpus import ModuleCorpus, RESERVED_ROOM_STATE_FIELDS
 from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from mgmai.models.actions import HardStateChanges
@@ -227,7 +227,7 @@ class StateManager:
             if not declared:
                 continue
             for field_name in state:
-                if field_name in ("visited", "is_current"):
+                if field_name in RESERVED_ROOM_STATE_FIELDS:
                     continue
                 if field_name not in declared:
                     errors.append(f"Room '{room_id}' has undeclared state field: {field_name}")
@@ -472,7 +472,7 @@ class StateManager:
                 declared = corpus.rooms[room_id].state_fields
                 if declared:
                     for field_name in room_changes:
-                        if field_name in ("visited", "is_current"):
+                        if field_name in RESERVED_ROOM_STATE_FIELDS:
                             continue
                         if field_name not in declared:
                             errors.append(f"Room '{room_id}' state change has undeclared field: {field_name}")

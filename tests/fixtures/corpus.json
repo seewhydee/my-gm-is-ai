@@ -204,11 +204,9 @@
         },
         {
           "id": "exit_enter_secret_flap",
-          "hide_conditions": [
-            {
-              "require": "flag:handkerchief_moved == true"
-            }
-          ],
+          "condition": {
+            "require": "flag:handkerchief_moved == true"
+          },
           "direction": "Enter the hidden flap in the canvas wall",
           "target_room": "secret_compartment",
           "one_way": false

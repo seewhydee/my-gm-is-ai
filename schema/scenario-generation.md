@@ -229,8 +229,13 @@ Revisit the room list, and add the following info to each room:
   Be specific: e.g., if a secret door appears when a lever is pulled,
   state the lever's entity ID, the interaction ID for pulling, etc.
 
-- **Entities present** — list the ID of every entity in the room at
-  start (from §1C), including hidden ones (e.g., a lurking thief).
+- **Entities present** — list IDs of every entity present in the room
+  at start (from §1C), including hidden ones (e.g., lurking thief).
+
+  The player must be present in exactly one room.  Each item and NPC
+  may be present in at most one room.  Features are allowed to be
+  present in multiple rooms.  If an entity is inside *another entity*,
+  it is not considered "present" in the surrounding room.
 
 - **Special interactions** — assign a room-unique ID to any special
   interaction the player can have with the *room* (not an entity inside
@@ -511,7 +516,7 @@ catching gaps here avoids rework downstream.
 #### Exits
 
 - [ ] Hidden exits have a planned flag-based reveal mechanism (companion
-      interaction sets a flag, exit hide_conditions require that flag)
+      interaction sets a flag, exit condition requires that flag)
 - [ ] One-way exits have a planned return path (or a narrative reason
       they are permanently one-way)
 
@@ -1117,16 +1122,16 @@ The `exits` field should list ALL possible exits a room can have over
 the course of gameplay.
 
 To make an exit hidden until certain conditions are met, use the
-`hide_conditions` field.  List one or more condition expressions; the
-exit is hidden from the player until ALL conditions evaluate to true.
-Omit the field (or set to `null`) for an exit that is always visible.
+`condition` field.  This is a Condition expression; the exit is
+hidden from the player until the condition evaluates to true.
+When absent, the exit is always visible.
 
-Typically, `hide_conditions` checks a global flag, and there is a
+Typically, `condition` checks a global flag, and there is a
 companion effect (a mechanic, reaction, etc.) that sets this flag to
 reveal the exit.  Example:
 
 ```json
-"hide_conditions": [{ "require": "flag:curtain_opened == true" }]
+"condition": { "require": "flag:curtain_opened == true" }
 ```
 
 If an exit is visible but not necessarily traversible, use the
@@ -1958,9 +1963,9 @@ All IDs must be **snake_case, lowercase ASCII**:
    that changes during play must be declared in `state_fields`. The engine
    validates that `entity_states` and `state_fields` match at startup.
 
-4. **Hidden exits without reveal conditions**: An exit with non-empty
-   `hide_conditions` needs a companion interaction that sets a flag;
-   the conditions should require that flag. Otherwise the exit is permanently
+4. **Hidden exits without reveal conditions**: An exit with a
+   `condition` needs a companion interaction that sets a flag;
+   the condition should require that flag. Otherwise the exit is permanently
    invisible.
 
 5. **One-way exits without return path**: A `one_way: true` exit should have a
@@ -2034,7 +2039,7 @@ All IDs must be **snake_case, lowercase ASCII**:
 
 21. **`event:` domain only works in reactions**: The `event:` condition domain
     is only valid inside reaction conditions during dispatch. Using it in
-    interaction conditions, game-over mechanic conditions, or exit hide_conditions
+    interaction conditions, game-over mechanic conditions, or exit conditions
     will always evaluate to `false`.
 
 22. **`combat.ended` is not yet emitted**: The `combat.ended` event has not

@@ -32,23 +32,16 @@ def is_exit_visible(
 ) -> bool:
     """Return True if the exit should be visible given current state.
 
-    hide_conditions is None          -> always visible
-    hide_conditions is []            -> permanently hidden
-    hide_conditions is [cond, ...]   -> visible only if all conditions are met
-    Once an exit becomes visible it stays visible — its conditions are
-    re-evaluated every turn.
+    condition is None       -> always visible
+    condition is present    -> visible when the condition evaluates to true
+    The condition is re-evaluated every turn.
     """
     from mgmai.engine.conditions import evaluate
 
-    hc = getattr(exit_obj, "hide_conditions", None)
-    if hc is None:
+    cond = getattr(exit_obj, "condition", None)
+    if cond is None:
         return True
-    if not hc:
-        return False
-    for cond in hc:
-        if not evaluate(cond, hard, soft, corpus):
-            return False
-    return True
+    return evaluate(cond, hard, soft, corpus)
 
 
 def get_following_npc_ids(

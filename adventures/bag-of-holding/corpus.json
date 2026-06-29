@@ -1467,11 +1467,9 @@
         },
         {
           "id": "exit_enter_secret_pocket",
-          "hide_conditions": [
-            {
-              "require": "flag:handkerchief_moved == true"
-            }
-          ],
+          "condition": {
+            "require": "flag:handkerchief_moved == true"
+          },
           "direction": "Squeeze through the concealed flap into the secret compartment",
           "target_room": "secret_pocket"
         }

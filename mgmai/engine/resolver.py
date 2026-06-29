@@ -300,22 +300,11 @@ def resolve_move(
             error=f"Exit '{target_exit_id}' not found in room '{room_id}'",
         )
 
-    if exit_data.hide_conditions is not None:
-        if not exit_data.hide_conditions:
+    if exit_data.condition is not None:
+        if not evaluate(exit_data.condition, hard, soft, corpus):
             return ResolutionResult(
                 success=False,
-                error=f"Exit '{target_exit_id}' is permanently hidden.",
-            )
-        all_met = True
-        unmet: list[str] = []
-        for cond in exit_data.hide_conditions:
-            if not evaluate(cond, hard, soft, corpus):
-                all_met = False
-                unmet.append(str(cond))
-        if not all_met:
-            return ResolutionResult(
-                success=False,
-                error=f"Conditions not met for exit '{target_exit_id}'",
+                error=f"Condition not met for exit '{target_exit_id}'",
             )
 
     traversal_rolls: list[dict[str, Any]] = []

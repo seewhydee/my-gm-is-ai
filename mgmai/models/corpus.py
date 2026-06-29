@@ -25,6 +25,8 @@ IMMEDIATE_ALLOWED_EVENTS = frozenset({
     "room.entered",
 })
 
+RESERVED_ROOM_STATE_FIELDS = frozenset({"visited", "is_current"})
+
 
 class Credits(BaseModel):
     author: Optional[str] = None
@@ -253,7 +255,7 @@ class Exit(BaseModel):
     id: str
     direction: str
     target_room: str
-    hide_conditions: Optional[List[ConditionExpression]] = None
+    condition: Optional[ConditionExpression] = None
     one_way: bool = False
     traversal_check: Optional[TraversalCheck] = None
 

@@ -1,9 +1,8 @@
 # Module Corpus Schema
 
 The Module Corpus is the read-only canonical adventure content — the
-equivalent of a printed D&D adventure module. It is never modified
-during play. All game logic, descriptions, entities, encounters, and
-win/loss conditions live here.
+equivalent of a printed D&D adventure module, containing descriptions
+of game logic, rooms, entities, encounters, win/loss conditions, etc.
 
 The Context Assembler reads from it to build the GMBriefing. The
 Engine reads from it to validate actions, resolve encounters, and
@@ -312,7 +311,7 @@ results may contain other follow-ups, up to a maximum depth of 3.
 
 ---
 
-## Rooms
+## Room
 
 A room is a location in the adventure module, modeled as a node in a
 world graph keyed by a globally-unique `room_id`.
@@ -334,18 +333,18 @@ world graph keyed by a globally-unique `room_id`.
 }
 ```
 
-| Field                | Type     | Description                            |
-|----------------------|----------|----------------------------------------|
-| `name`               | string   | Short display name                     |
-| `description`        | string   | Prose description of room              |
-| `entities_present`(*)| string[] | IDs of non-player entities present     |
-| `exits` (*)          | array    | All exits out of the room              |
-| `interactions` (*)   | array    | Special interactions with the room     |
-| `on_examine` (*)     | array    | Effects of examining room (see below)  |
-| `is_start_room` (*)  | boolean  | `true` for starting room (only one)    |
-| `reactions` (*)      | array    | Room-scoped reactions (see below)      |
-| `state_fields` (*)   | object   | State fields for this room (see below) |
-| `soft_items` (*)     | string[] | Plausible generic items in the room    |
+| Field                | Type     | Description                         |
+|----------------------|----------|-------------------------------------|
+| `name`               | string   | Short display name                  |
+| `description`        | string   | Prose description of room           |
+| `entities_present`(*)| string[] | IDs of non-player entities present at game start |
+| `exits` (*)          | array    | All exits out of the room           |
+| `state_fields` (*)   | object   | State fields for room (see below)   |
+| `interactions` (*)   | array    | See [Interaction](#interaction)     |
+| `on_examine` (*)     | array    | See [On-Examine](#on-examine)       |
+| `reactions` (*)      | array    | See [Reaction](#reaction)           |
+| `soft_items` (*)     | string[] | Plausible generic items in the room |
+| `is_start_room` (*)  | boolean  | `true` for starting room (only one) |
 (*) optional
 
 Notes:
@@ -355,49 +354,61 @@ Notes:
   characteristics of the room, including when the player enters or
   looks around (NOT necessarily used verbatim in narration).
 
-- The `exits` field contain an array of Exit objects, one for every
-  possible exit regardless of initial availability/visibility.  Each
-  exit may be gated and/or hidden via its [Exit object](#exit-object).
+- The `entities_present` field lists entities DIRECTLY present in the
+  room (at game start).  If entity A is in room R, and entity B is in
+  entity A (see `contained_entities`, [Entity](#entity)), room R's
+  `entities_present` should list A but not B.
 
-- Two state fields cannot be set directly and are managed by the
-  engine: `visited` is true iff the room was visited before by the
-  player, and `is_current` is true only for the player's current room.
+- The `exits` field contains an array of [Exit](#exit) objects, one
+  for EVERY possible exit, regardless of its initial availability and
+  visibility.  Each exit can be individually gated and/or hidden.
+
+- State fields have room-unique IDs (dict keys) chosen by the corpus
+  author.  Two reserved state fields are engine-managed: `visited` is
+  set to `true` when the player enters a room, and `is_current` is
+  computed (true only for the player's current room).  Neither field
+  has to be declared in `state_fields`.  Do not use `is_current` to
+  relocate the player; use `set_player_location` in a Result.
 
 - Soft objects examples: `["rock", "loose stone", "dust"]`). These are
   identified by their general name only — they carry no unique item
   ID. The engine tracks them in `soft_inventory` when picked up.
 
-### Exit object
+### Exit
 
 ```json
 {
   "id": "string (unique across all exits in the room)",
   "direction": "string (natural-language label, e.g. 'Climb carefully down the axe handle')",
   "target_room": "<room_id>",
-  "hide_conditions": [ { /* condition */ } ],
+  "condition": { /* condition (optional) */ },
   "traversal_check": { /* traversal check (optional) */ },
   "one_way": false
 }
 ```
 
-| Field             | Type    | Required | Description |
-|-------------------|---------|----------|-------------|
-| `id`              | string  | yes      | Exit identifier, referenced by `move` action `target`. |
-| `direction`       | string  | yes      | Human-readable direction label for LLM context. |
-| `target_room`     | string  | yes      | Room ID the player ends up in after traversing. |
-| `hide_conditions` | array   | no       | Conditions that must ALL be met for the exit to appear in `exits_available` and be traversable. When `null`/absent, the exit is always visible. When `[]` (empty), the exit is permanently hidden. When non-empty, the exit is hidden until all conditions evaluate to true; once visible, it stays visible. |
-| `traversal_check` | object  | no       | **Optional.** A check (roll or stat_check) that must be passed to succeed at traversing this exit. On failure, the player stays in the current room. See Traversal check below. |
-| `one_way`         | boolean | no       | If `true`, the exit cannot be traversed in reverse. |
+| Field               | Type      | Description                      |
+|---------------------|-----------|----------------------------------|
+| `id`                | string    | Exit ID (room-unique)            |
+| `direction`         | string    | Human-readable exit label        |
+| `target_room`       | string    | Room ID of destination           |
+| `condition` (*)     | Condition | Gating condition (see below)     |
+| `traversal_check`(*)| object    | Check to use the exit (see below)|
+| `one_way` (*)       | boolean   | Indicates if exit is one-way     |
+(*) optional
 
 Notes:
 
-- Exit IDs must be **globally** unique because reactions can fire on
-  them.
+- `condition` is a gating Condition that must be met for the exit to
+  appear in `exits_available` and be traversable. When absent, the
+  exit is always visible; when present, the exit is hidden until the
+  condition evaluates to true. The condition is re-evaluated each
+  turn.
 
 #### Traversal check (`traversal_check`)
 
-An optional check that gates successful room traversal. Unlike `hide_conditions` (which
-determine whether the exit is shown/available at all), a `traversal_check` makes the
+An optional Check that gates successful room traversal. Unlike `condition` (which
+determines whether the exit is shown/available at all), a `traversal_check` makes the
 exit available but risky — the player may fail the check and remain in the current
 room, able to retry next turn.
 
@@ -438,7 +449,7 @@ room, able to retry next turn.
 
 ---
 
-### Interaction object
+### Interaction
 
 Interactions are named operations that can be performed by or on entities or rooms.
 They can be defined at the room level or on individual entities.
@@ -475,12 +486,13 @@ Interactions include generic types available everywhere (e.g., `attack`) and spe
 
 ---
 
-### On-examine event object
+### On-Examine
 
-On-examine events fire when the player performs an `examine` action on the
-entity or room that carries them. They support stat checks, conditional
-gating, and rigorous-search-only gating — enabling patterns like "examining
-the canvas walls triggers an INT check to deduce the glow is magical."
+On-examine effects fire when the player performs an `examine` action
+on the entity or room that carries them. They support stat checks,
+conditional gating, and rigorous-search-only gating — enabling
+patterns like "examining the canvas walls triggers an INT check to
+deduce the glow is magical."
 
 ```json
 {
@@ -510,8 +522,8 @@ the canvas walls triggers an INT check to deduce the glow is magical."
 | `rigorous_only`  | boolean         | If `true`, the event only fires when the examine action has `rigorous: true`. Default `false`. |
 | `check`          | Check       | **Optional.** A roll or stat_check that gates the outcome. If absent, `result` fires deterministically when `condition` is met. |
 | `success`        | Result          | Result applied when the check passes. Required if `check` is present. |
-| `failure`        | [Result\|null](#result-object)    | Result applied when the check fails. Optional; if absent, nothing happens on failure. |
-| `result`         | [Result\|null](#result-object)    | Deterministic result applied when no `check` is present. Mutually exclusive with `check`. |
+| `failure`        | Result\|null    | Result applied when the check fails. Optional; if absent, nothing happens on failure. |
+| `result`         | Result\|null    | Deterministic result applied when no `check` is present. Mutually exclusive with `check`. |
 
 The base `description` of the entity/room is returned first in the narration;
 on-examine event narratives are appended after it. Results may carry
@@ -519,7 +531,7 @@ on-examine event narratives are appended after it. Results may carry
 Multiple on-examine events on the same target all fire (in array order) if
 their conditions are met.
 
-### Reaction object
+### Reaction
 
 Reactions are the preferred mechanism for state-based and event-driven triggers.
 A reaction fires when a matching game event occurs and its condition is met.
@@ -785,7 +797,7 @@ The `guardian_attack` encounter has a rule whose success branch sets `guardian_d
 
 ---
 
-## `entities` — Entity definitions
+## Entity
 
 Entities are typed objects that appear in rooms or inventory. Keyed by unique `entity_id`.
 
