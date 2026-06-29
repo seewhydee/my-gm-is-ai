@@ -559,27 +559,36 @@ Notes:
 
 ## On-Examine
 
-On-examine effects fire when the player performs an `examine` action
-on an entity or room.  They support stat checks, conditional gating,
-and rigorous-search-only gating.
+Each room and entity object has an optional `on_examine` field for an
+**array** of On-Examine objects.  Each On-Examine object describes a
+possible effect of examination, which can include conditional gating,
+success checks, direct or success/failure results, and optional
+rigorous-search-only gating.
+
+During gameplay, ordinary (cursory) examination does not consume a
+turn, while rigorous examination does.  When the player performs an
+examine action, all eligible On-Examine effects run in array order.
 
 ```json
 {
   "id": "string (unique within the entity or room)",
-  "condition": { "require": "flag:glow_noticed == false" },
-  "rigorous_only": false,
+  "condition": { "require": "inventory:magic_lens" },
+  "skip_check_if": { "require": "flag:lore_master" },
+  "rigorous_only": true,
   "check": {
     "type": "stat_check",
     "stat": "INT",
-    "target": 12,
+    "target": 10,
     "repeatable": true
   },
   "success": {
-    "narrative": "You deduce that the glow is magical in nature",
-    "set_flag": { "glow_noticed": true },
-    "reveals": "The glow is magical."
+    "narrative": "You deduce that the runes warn of a demon",
+    "set_flag": { "demon_warning_found": true },
+    "reveals": "A demon is present in the dungeon"
   },
-  "failure": null
+  "failure": {
+	"narrative": "You can't decipher the runes"
+  }
 }
 ```
 
@@ -590,9 +599,9 @@ and rigorous-search-only gating.
 | `skip_check_if`(*)| Condition | Whether examination auto-succeeds    |
 | `rigorous_only`   | boolean   | Whether rigorous search is needed    |
 | `check` (*)       | Check     | Success check gating outcome         |
-| `success (*)      | Result    | Result applied when the check passes |
+| `success` (*)     | Result    | Result applied when the check passes |
 | `failure` (*)     | Result    | Result applied when check fails      |
-| `result` (*)      | Result    | Result applied when no check         |
+| `result` (*)      | Result    | Result applied if no check           |
 (*) optional
 
 Notes:
@@ -600,17 +609,22 @@ Notes:
 - The base `description` of the entity/room is returned first in the
   narration; on-examine event narratives are appended after
   it. Results may carry `set_flag`, `alter_stat`, `add_item`, and
-  `then_check` like any other result.  Multiple on-examine events on
-  the same target all fire (in array order) if their conditions are
-  met.
+  `then_check` like any other result.
 
-- `condition`: If present and `false`, the event does nothing. If
-  `null`, fires every time the entity/room is examined.
+- The `condition`, `skip_check_if`, `check`, `success`, `failure`, and
+  `result` fields are the same as in [Interaction](#interaction).
+  Note that `result` is mutually exclusive with `success` (and
+  optional `failure`).  Typically, these fields are used to describe
+  whether the player is able to extract a given piece of information.
 
-### Reaction
+- Rigorous examinations can also trigger cursory On-Examine effects
+  (but not vice versa).
 
-Reactions are the preferred mechanism for state-based and event-driven triggers.
-A reaction fires when a matching game event occurs and its condition is met.
+## Reaction
+
+Reactions are the preferred mechanism for state-based and event-driven
+triggers.  A reaction fires when a matching game event occurs and its
+condition is met.
 
 ```json
 {
@@ -624,15 +638,35 @@ A reaction fires when a matching game event occurs and its condition is met.
 }
 ```
 
-| Field     | Type            | Required | Description |
-|-----------|-----------------|----------|-------------|
-| `id`      | string          | yes      | Unique identifier within the defining context (room, entity, or mechanic). Used for debugging and `once` tracking. Because `once` tracking is global, reaction IDs should be unique across the whole adventure when any reaction uses `once: true`. |
-| `on`      | string          | yes      | Event type to match (see Event types below). |
-| `condition` | Condition\|null | no | Gating condition evaluated against game state + event context. If the condition evaluates to `true`, the reaction fires. If `false` (or unsatisfied), the reaction does nothing. If `null`, fires unconditionally when the event occurs. |
-| `effects` | object          | yes      | The effects to apply (see Reaction effects below). |
-| `once`    | boolean         | no       | If `true`, fires at most once per adventure load. Default `false`. For persistent one-shot behavior, prefer flag-gated conditions instead. |
-| `priority` | integer        | no       | Lower values fire earlier. Default `0`. |
-| `phase`   | string          | no       | `"deferred"` (default) or `"immediate"`. Immediate reactions fire before the current action continues; only allowed for `interaction.used`, `traversal.attempted`, `traversal.succeeded`, and `room.entered`. |
+| Field       | Type     | Description                                 |
+|-------------|----------|---------------------------------------------|
+| `id`        | string   | ID, unique in context (room/entity/mechanic)|
+| `on`        | string   | Trigger event (see below)                   |
+| `condition` (*) | Condition | Gating condition (see below)           |
+| `effects`   | object   | Reaction effects to apply (see below)       |
+| `once` (*)  | boolean  | Whether reaction is one-off; default false  |
+| `priority`(*)| integer | Lower values fire earlier; default `0`      |
+| `phase`(*)  | string   | `"deferred"` (default) or `"immediate"`     |
+(*) optional
+
+Notes:
+
+- `id` is mainly used for tracking one-off reactions (i.e., those with
+  `once:true`).  As this tracking is global, IDs for one-off reactions
+  MUST be globally-unique.  Other reactions need only be unique within
+  their context (room, entity, or global mechanics).
+
+- If `condition` is provided, it evaluating to `true` means the
+  reaction fires; if `false` or unsatisfied, the reaction is canceled
+  and does nothing.  Cancellation does not count toward the one chance
+  for a one-off (`once:true`) reaction.
+  
+  If omitted (`null`), the reaction unconditionally fires when the
+  trigger event occurs.
+
+- Immediate reactions fire before the current action continues; only
+  allowed for `interaction.used`, `traversal.attempted`,
+  `traversal.succeeded`, and `room.entered`.
 
 #### Scoping rules
 
