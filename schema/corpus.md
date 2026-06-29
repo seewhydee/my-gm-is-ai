@@ -622,9 +622,14 @@ Notes:
 
 ## Reaction
 
-Reactions are the preferred mechanism for state-based and event-driven
-triggers.  A reaction fires when a matching game event occurs and its
-condition is met.
+Reactions are a flexible mechanism to trigger changes in game state in
+response to pre-specified events.  They can be placed in the
+`reactions` array of a [Room](#room), [Entity](#entity), or
+[Mechanic](#mechanic).  The hosting object determines when the
+reaction is active (i.e., can trigger): room-scoped reactions are
+active when the player is present in the room; entity-scoped reactions
+are active when the entity is in the present room *and* (for NPCs)
+alive and not fled; mechanic-scope reactions are always active.
 
 ```json
 {
@@ -641,12 +646,12 @@ condition is met.
 | Field       | Type     | Description                                 |
 |-------------|----------|---------------------------------------------|
 | `id`        | string   | ID, unique in context (room/entity/mechanic)|
-| `on`        | string   | Trigger event (see below)                   |
+| `on`        | string   | Trigger [Event](#event) (see below)         |
 | `condition` (*) | Condition | Gating condition (see below)           |
 | `effects`   | object   | Reaction effects to apply (see below)       |
 | `once` (*)  | boolean  | Whether reaction is one-off; default false  |
-| `priority`(*)| integer | Lower values fire earlier; default `0`      |
 | `phase`(*)  | string   | `"deferred"` (default) or `"immediate"`     |
+| `priority`(*)| integer | Lower values fire earlier; default `0`      |
 (*) optional
 
 Notes:
@@ -664,19 +669,19 @@ Notes:
   If omitted (`null`), the reaction unconditionally fires when the
   trigger event occurs.
 
-- Immediate reactions fire before the current action continues; only
-  allowed for `interaction.used`, `traversal.attempted`,
-  `traversal.succeeded`, and `room.entered`.
+- The `phase` and `priority` fields determine when a reaction fires.
+  Typically, reactions have `phase:"deferred"` (the default), meaning
+  they fire after the current action is complete.  But reactions with
+  `phase:"immediate"` fire before the current action continues; this
+  is only allowed for four types of trigger events:
+  - `interaction.used`
+  - `traversal.attempted`
+  - `traversal.succeeded`
+  - `room.entered`.
+  Within each phase, the `priority` field can be used to set the
+  firing sequence (lower numbers go first).
 
-#### Scoping rules
-
-| Reaction defined on... | Active when... |
-|------------------------|----------------|
-| `Room` | Player is currently in that room |
-| `Entity` | Entity is in `entities_present` of the current room AND `alive` is not `false` and `fled` is not `true` |
-| `Mechanic` | Always (mechanics are adventure-wide) |
-
-#### Event types
+### Event
 
 > **Full reference:** See [`events.md`](events.md) for the complete event
 catalog, context-key descriptions, immediate/deferred rules, and known
@@ -1245,7 +1250,7 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
 
 ---
 
-## `mechanics` — Encounter and system rules
+## Mechanic
 
 Named mechanics are rules involving aspects of game state not tied to specific
 rooms or entities. They are referenced by exits, interactions, and reactions.
