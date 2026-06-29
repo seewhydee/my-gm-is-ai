@@ -1228,11 +1228,13 @@ def _apply_result(
     if result.narrative:
         narrative.append(result.narrative)
     if result.add_item:
-        changes.inventory_added.append(result.add_item)
-        changes.inventory_added_sources[result.add_item] = item_origin
+        for item_id in result.add_item:
+            changes.inventory_added.append(item_id)
+            changes.inventory_added_sources[item_id] = item_origin
     if result.remove_item:
-        changes.inventory_removed.append(result.remove_item)
-        changes.inventory_removed_reasons[result.remove_item] = item_origin
+        for item_id in result.remove_item:
+            changes.inventory_removed.append(item_id)
+            changes.inventory_removed_reasons[item_id] = item_origin
     if result.set_flag:
         for flag, val in result.set_flag.items():
             if val is False:
@@ -1260,6 +1262,8 @@ def _apply_result(
     if result.set_room_state:
         for room_id, state_changes in result.set_room_state.items():
             changes.room_state_changes.setdefault(room_id, {}).update(state_changes)
+    if result.set_player_location is not None:
+        changes.player_location = result.set_player_location
     if result.adjust_attitude and hard is not None and corpus is not None:
         for npc_id, delta in result.adjust_attitude.items():
             npc_entity = corpus.entities.get(npc_id)

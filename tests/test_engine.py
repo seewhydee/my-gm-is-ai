@@ -31,13 +31,27 @@ from mgmai.models.actions import (
     TransferAction,
     WaitAction,
 )
-from mgmai.models.corpus import BranchOutcome, StatModifier
+from mgmai.models.corpus import (
+    Adventure,
+    Atmosphere,
+    BranchOutcome,
+    Interaction,
+    ModuleCorpus,
+    Reaction,
+    ReactionEffects,
+    Result,
+    StatModifier,
+)
 from mgmai.state.manager import StateManager
 from tests.helpers import (
     build_state_manager,
     make_encounter_trigger_corpus,
     _mk_cond,
     _mk_encounter_rule,
+    _mk_hard_state,
+    _mk_item_entity,
+    _mk_reaction,
+    _mk_room,
 )
 
 
@@ -190,6 +204,122 @@ class TestEngineFullFlow:
         result = resolve(action, state_manager)
         assert result.hard_state_changes is not None
         assert result.hard_state_changes.player_location == "axe_handle_upper"
+
+    def test_interaction_with_set_player_location_moves_player(self, state_manager):
+        glyph = _mk_item_entity("glyph", description="A glowing glyph.")
+        room_a = _mk_room(
+            "room_a",
+            "Room A",
+            entities_present=["glyph"],
+            interactions=[
+                Interaction(
+                    id="teleport",
+                    label="Step on the glyph",
+                    result=Result(
+                        narrative="The glyph flares and you vanish.",
+                        set_player_location="room_b",
+                    ),
+                ),
+            ],
+            is_start_room=True,
+        )
+        room_b = _mk_room("room_b", "Room B")
+        corpus = ModuleCorpus(
+            adventure=Adventure(
+                title="Test",
+                introduction="Test",
+                atmosphere=Atmosphere(setting="test", tone="neutral"),
+            ),
+            rooms={"room_a": room_a, "room_b": room_b},
+            entities={"glyph": glyph},
+            mechanics={},
+            stats=None,
+        )
+        manager = build_state_manager(
+            corpus,
+            hard_state=_mk_hard_state(player_location="room_a"),
+        )
+
+        action = InteractAction(
+            action_type="interact",
+            target="glyph",
+            interaction_id="teleport",
+            detail="Stepping on the glyph",
+        )
+        result = resolve(action, manager)
+        assert result.success is True
+        assert manager.hard_state.player.location == "room_b"
+        assert result.hard_state_changes is not None
+        assert result.hard_state_changes.player_location == "room_b"
+
+    def test_set_player_location_triggers_room_entered_reaction(
+        self, state_manager
+    ):
+        # An interaction result that relocates the player must still go through
+        # the normal room-transition code, firing room.entered reactions in the
+        # destination room.  We use an action result here, not a nested
+        # reaction, to avoid re-entrancy concerns.
+        glyph = _mk_item_entity("glyph", description="A glowing glyph.")
+        room_b = _mk_room(
+            "room_b",
+            "Room B",
+            reactions=[
+                _mk_reaction(
+                    "welcome",
+                    on="room.entered",
+                    effects=ReactionEffects(
+                        result=Result(
+                            narrative="The room welcomes you.",
+                            set_flag={"room_b_entered": True},
+                        )
+                    ),
+                    phase="immediate",
+                ),
+            ],
+        )
+        room_a = _mk_room(
+            "room_a",
+            "Room A",
+            entities_present=["glyph"],
+            interactions=[
+                Interaction(
+                    id="teleport",
+                    label="Step on the glyph",
+                    result=Result(
+                        narrative="The glyph flares and you vanish.",
+                        set_player_location="room_b",
+                    ),
+                ),
+            ],
+            is_start_room=True,
+        )
+        corpus = ModuleCorpus(
+            adventure=Adventure(
+                title="Test",
+                introduction="Test",
+                atmosphere=Atmosphere(setting="test", tone="neutral"),
+            ),
+            rooms={"room_a": room_a, "room_b": room_b},
+            entities={"glyph": glyph},
+            mechanics={},
+            stats=None,
+        )
+        manager = build_state_manager(
+            corpus,
+            hard_state=_mk_hard_state(player_location="room_a"),
+        )
+
+        action = InteractAction(
+            action_type="interact",
+            target="glyph",
+            interaction_id="teleport",
+            detail="Stepping on the glyph",
+        )
+        result = resolve(action, manager)
+        assert result.success is True
+        assert manager.hard_state.player.location == "room_b"
+        assert manager.hard_state.flags.get("room_b_entered") is True
+        assert any("welcomes you" in n for n in result.triggered_narration)
 
     def test_turn_history_appended(self, state_manager):
         action = WaitAction(

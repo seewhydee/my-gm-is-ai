@@ -303,7 +303,7 @@
             "set_flag": {
               "padlock_unlocked": true
             },
-            "remove_item": "rusty_key",
+            "remove_item": ["rusty_key"],
             "reveals": "With the padlock unlocked, you should be able to squirm free through the rip in the canvas."
           }
         }
@@ -547,7 +547,7 @@
           },
           "success": {
             "narrative": "After rummaging through the discarded junk, your hand closes around something promising — a giant toenail clipping, curved and sharp. It is disgusting, but it looks like it could be wielded as a sword.",
-            "add_item": "toenail_sword",
+            "add_item": ["toenail_sword"],
             "reveals": "You found a makeshift weapon: a giant toenail clipping that can be wielded as a sword."
           },
           "failure": {

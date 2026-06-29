@@ -296,6 +296,10 @@ class TestApplyHardChanges:
         manager.apply_hard_changes({"player_location": "bag_floor"})
         assert manager.hard_state.player.location == "bag_floor"
 
+    def test_player_location_unknown_room_raises(self, manager: StateManager) -> None:
+        with pytest.raises(ValueError, match="No matching room for player_location: "):
+            manager.apply_hard_changes(HardStateChanges(player_location="void"))
+
     def test_entity_state_changes_undeclared_field_raises(
         self, manager: StateManager
     ) -> None:

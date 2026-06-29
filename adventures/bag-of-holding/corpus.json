@@ -931,7 +931,7 @@
           },
           "result": {
             "narrative": "You release the key through the rip. It drifts away into the gray void, shrinking until it disappears entirely. The key is gone forever \u2014 and with it, your only hope of escape.",
-            "remove_item": "giant_key",
+            "remove_item": ["giant_key"],
             "set_flag": {
               "key_lost_to_astral": true
             }

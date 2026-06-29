@@ -750,6 +750,19 @@ class TestApplyResult:
         assert changes.entity_state_changes["korbar"]["attitude"] == 3
         assert hard.entity_states["korbar"]["attitude"] == 3  # clamped to step_per_turn
 
+    def test_set_player_location_applied(self, state_manager):
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        from mgmai.models.actions import HardStateChanges
+        from mgmai.models.corpus import Result
+
+        result = Result(set_player_location="bag_floor")
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard, corpus)
+        state_manager.apply_hard_changes(changes)
+        assert changes.player_location == "bag_floor"
+        assert hard.player.location == "bag_floor"
+
 
 class TestResolveTalkDialoguePaths:
     def test_dialogue_path_not_found(self, state_manager):

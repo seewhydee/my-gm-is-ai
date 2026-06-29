@@ -661,7 +661,7 @@ class TestDialogueEndedNoDuplicate:
         room.reactions.append(Reaction(
             id="on_dialogue_end",
             on="dialogue.ended",
-            effects=ReactionEffects(result=Result(add_item="rusty_key")),
+            effects=ReactionEffects(result=Result(add_item=["rusty_key"])),
         ))
 
         # Enter dialogue with Korbar.

@@ -38,7 +38,7 @@ apply mechanics.
 ## Common Primitives
 
 This section defines types used in multiple parts of the corpus
-schema: conditions, checks, results, and follow-up checks.
+schema: conditions, checks, and results.
 
 ### Condition object
 
@@ -159,7 +159,6 @@ Stat checks are [resolution system](#resolution-system) dependent.
   "type": "stat_check",
   "stat": "STR",
   "target": 12,
-  "modifier": 0,
   "advantage": true,
   "repeatable": false,
   "note": "Bend the iron bars."
@@ -176,57 +175,104 @@ Stat checks are [resolution system](#resolution-system) dependent.
 | `note` (*)     | string  | Optional designer note            |
 (*) optional
 
-System-specific fields (e.g. `advantage` / `disadvantage` for `5e`) are
-accepted as extra top-level keys. The `5e` system uses
-roll(1d20) + (stat-10)//2 + modifier >= target as the success formula.
-Other systems, once implemented, can implement their own checks and define
-their own extra fields.
+Aside from the above fields, system-specific fields are accepted as
+extra top-level keys.  Various systems can implement their own checks
+and define their own extra fields.
+
+The `5e` system uses roll(1d20) + (stat-10)//2 + modifier >= target as
+the success formula.  It also uses the following additional fields:
+
+| Field          | Type    | Description                       |
+|----------------|---------|-----------------------------------|
+| `advantage`    | boolean | Roll 2d20 and keep the higher die |
+| `disadvantage` | boolean | Roll 2d20 and keep the lower die  |
+
+Both of these fields are optional.  If both are `true`, they cancel
+out and a single d20 is rolled.
+
+---
 
 ### Result object
 
-A result object describes the consequences of an action — the canonical
-narrative, state mutations, stat adjustments, inventory changes, and
-optional follow-up checks. Result objects appear as `success`/`failure`
-branches in interactions, traversal checks, on-examine events, and
-dialogue paths, or as a deterministic `result` when no check is involved.
+A result object describes the consequences of an action — the
+canonical narrative, state mutations, stat adjustments, inventory
+changes, and optional follow-up checks. Result objects appear as
+`success`/`failure` branches in interactions, traversal checks,
+on-examine events, and dialogue paths, or as a deterministic `result`
+when no check is involved.
 
 ```json
 {
   "narrative": "string (description of outcome)",
-  "add_item": "<item_id> (optional, adds to player inventory)",
-  "remove_item": "<item_id> (optional)",
-  "set_flag": { "<flag_name>": true | false },
+  "add_item": ["<item_id>", "..."],
+  "remove_item": ["<item_id>", "..."],
+  "set_flag": { "<flag_name>": true | false, "..." },
   "set_entity_state": { "<entity_id>": { "<field>": <value>, ... } },
   "set_room_state": { "<room_id>": { "<field>": <value>, ... } },
-  "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
-  "adjust_attitude": { "<npc_id>": <delta> },
+  "player_damage": "1d6",
+  "set_player_location": "<room_id>",
+  "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> }, "..." },
+  "adjust_attitude": { "<npc_id>": <delta>, "..." },
   "reveals": "string (hint text for the player's future reference)",
-  "then_check": { /* follow-up check (optional) */ },
-  "player_damage": "1d6"
+  "then_check": { /* follow-up check (see below) */ }
 }
 ```
 
-| Field         | Type   | Description |
-|---------------|--------|-------------|
-| `narrative`   | string | Canonical narration of the result. Engine passes this to LLM Call 2 via `triggered_narration`. |
-| `add_item`    | string | Item entity ID to add to hard inventory. |
-| `remove_item` | string | Item entity ID to remove from hard inventory. |
-| `set_flag`        | object | Hard-state flags to set or clear. |
-| `set_entity_state` | object | **Optional.** Per-entity state changes: `{ "<entity_id>": { "<field>": <value>, ... } }`. |
-| `set_room_state`  | object | **Optional.** Per-room state changes: `{ "<room_id>": { "<field>": <value>, ... } }`. Useful for recording entry direction or other room-specific state that conditions can read via `room:<room_id>.<field>`. |
-| `alter_stat`        | object | **Optional.** Stat modifiers to apply to the player. Keys are stat abbreviations (must be declared in `corpus.stats.definitions`); values are `{ "mode": "delta"\|"set", "value": <int> }` (mode defaults to `"delta"`). Use `"delta"` for damage/buffs (e.g., fall damage: `{ "STR": { "value": -4 } }`); use `"set"` for absolute assignment (e.g., a curse: `{ "INT": { "mode": "set", "value": 3 } }`). |
-| `adjust_attitude` | object | **Optional.** Relative attitude changes applied by the engine when an interaction succeeds. Keys are NPC entity IDs; values are integer deltas (positive or negative). The engine clamps the new value to the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`. LLM Call 2 cannot propose additional attitude changes for the same NPC on the same turn. |
-| `reveals`         | string | Hint text; added to the player's known information for future GMBriefings. |
-| `then_check`     | [Follow-up check](#follow-up-check) | **Optional.** A follow-up check to resolve immediately after this result. Enables nested "fail → check" patterns (e.g., fail a STR check → immediately resolve a DEX check). See [Follow-up check](#follow-up-check) below. |
-| `player_damage`   | string | **Optional.** Dice expression rolled as HP damage against the player (e.g., `"2d6"`, `"1d4+1"`). Resolved by the active RPG system. |
+ALL fields in the Result object are optional.
+
+| Field              | Type     | Description                            |
+|--------------------|----------|----------------------------------------|
+| `narrative`        | string   | Narrative description of the result    |
+| `add_item`         | string[] | Item entity IDs to add to inventory    |
+| `remove_item`      | string[] | Item entity IDs to drop from inventory |
+| `set_flag`         | object   | Hard-state flags to set or clear       |
+| `set_entity_state` | object   | Entity state changes                   |
+| `set_room_state`   | object   | Room state changes                     |
+| `player_damage`       | string   | Damage dealt to player, e.g. `"1d4+1"` |
+| `set_player_location` | string   | Room ID to relocate the player to      |
+| `alter_stat`          | object   | Player stat changes (see below)        |
+| `adjust_attitude`     | object   | NPC attitude changes (see below)       |
+| `reveals`          | string   | Hint text; added to the player's known information for future GMBriefings |
+| `then_check`       | object   | A follow-up check (see below)          |
+
+Notes:
+
+- All present fields in the Result object are applied.  The fields are
+  *not* mutually exclusive; one Result can deal damage, set multiple
+  flags, alter multiple state fields, add/drop multiple items, etc.
+
+- The `narrative` field informs the GM narrator what happened, but may
+  not be used verbatim.
+
+- During a check, `check.passed`/`check.failed` events (and their
+  immediate reactions) fire before the success/failure branch result
+  is applied.  The result's effects are then accumulated into a batch,
+  and processed as a unit before any follow-up `then_check` resolves.
+  See [Events](events.md).
+
+- At the engine level, action-result changes and immediate-reaction
+  changes are merged and applied atomically.  Deferred reactions
+  (`room.entered`, `turn.end`, etc.) fire after and see the new state.
+
+- For `alter_stat`, the keys are stat abbreviations; values are
+  `{ "mode": "delta"\|"set", "value": <int> }`, with mode defaulting
+  to `"delta"` (i.e., the amount by which to change).  Examples:
+  - `{ "STR": { "value": -4 } }` decreases strength by 4
+  - `{ "INT": { "mode": "set", "value": 3 } }` sets intelligence to 3
+
+- For `adjust_attitude`, keys are NPC entity IDs; values are integer
+  deltas (positive or negative).  The engine clamps the new value to
+  the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`.
+  See [NPC attitude](#npc-attitude).
 
 #### Follow-up check
 
-A follow-up check is a check-resolution unit embedded inside a result via
-the `then_check` field. It allows a single action to resolve in two stages
-— for example, a STR check to force a door, and on failure a DEX check to
-catch the slipping key before it falls. The follow-up check fires
-immediately after its parent result, using its own success/failure branches.
+A follow-up check is a check-resolution unit embedded inside a Result
+via the `then_check` field.  It implements multi-stage resolutions for
+actions and effects: e.g., a STR check to jump across a pit, and on
+failure a DEX check to grab the ledge before falling.  The follow-up
+check fires immediately after its parent result, using its own
+success/failure branches.
 
 ```json
 {
@@ -238,26 +284,27 @@ immediately after its parent result, using its own success/failure branches.
       "repeatable": true
     },
     "success": {
-      "narrative": "You catch it just in time.",
-      "set_flag": { "key_caught": true }
+      "narrative": "You grab the ledge in time."
     },
     "failure": {
-      "narrative": "The key slips through your fingers and falls into the Astral Plane.",
-      "set_flag": { "key_lost_to_astral": true }
+      "narrative": "You drop into the pit.",
+      "set_player_location": "pit_bottom",
+      "player_damage": "2d6"
     }
   }
 }
 ```
 
-| Field          | Type                | Description |
-|----------------|---------------------|-------------|
-| `check`        | CheckType           | The follow-up check to resolve (roll or stat_check). |
-| `skip_check_if` | condition object   | **Optional.** When present and evaluated to true, the check is skipped entirely. |
-| `success`      | [Result](#result-object)              | Result to apply if the follow-up check succeeds. |
-| `failure`      | [Result](#result-object) (optional)   | Result to apply if the follow-up check fails. |
+| Field             | Type                | Description                            |
+|-------------------|---------------------|----------------------------------------|
+| `check`           | CheckType           | Follow-up Check to resolve             |
+| `skip_check_if`(*)| condition object    | If present and true, check is skipped  |
+| `success`         | [Result](#result-object)| Result if follow-up check succeeds |
+| `failure` (*)     | [Result](#result-object)| Result if follow-up check fails    |
+(*) optional
 
-Nested follow-ups are supported — a follow-up check's `Result` may itself contain
-another `then_check` field, up to a maximum depth of 3.
+Nested follow-ups are supported — a follow-up check's success/failure
+results may contain other follow-ups, up to a maximum depth of 3.
 
 ---
 

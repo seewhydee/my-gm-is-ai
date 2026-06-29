@@ -213,15 +213,15 @@ class TestInteraction:
             "result": {
                 "narrative": "Done.",
                 "set_flag": {"thing_done": True},
-                "add_item": "sword",
-                "remove_item": "key",
+                "add_item": ["sword"],
+                "remove_item": ["key"],
                 "reveals": "You see the way out.",
             },
         })
         assert i.result is not None
         assert i.result.set_flag == {"thing_done": True}
-        assert i.result.add_item == "sword"
-        assert i.result.remove_item == "key"
+        assert i.result.add_item == ["sword"]
+        assert i.result.remove_item == ["key"]
         assert i.result.reveals == "You see the way out."
 
     def test_result_with_set_room_state(self) -> None:
@@ -255,6 +255,20 @@ class TestInteraction:
         assert i.condition.require == "flag:secret_door_found == true"
         assert i.result is not None
         assert i.result.narrative == "The secret door slides open."
+
+
+class TestResult:
+    def test_set_player_location(self) -> None:
+        r = Result.model_validate({"set_player_location": "bag_floor"})
+        assert r.set_player_location == "bag_floor"
+
+    def test_has_any_effect_with_location(self) -> None:
+        r = Result(set_player_location="bag_floor")
+        assert r.has_any_effect() is True
+
+    def test_has_any_effect_without_location(self) -> None:
+        r = Result()
+        assert r.has_any_effect() is False
 
 
 class TestMechanic:

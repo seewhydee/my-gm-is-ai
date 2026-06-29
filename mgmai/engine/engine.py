@@ -421,7 +421,7 @@ def resolve(
     encounter_fired_ref[0] = encounter_fired_ref[0] or encounter_outcome is not None
 
     # 7. Room transition and room-entered reactions.
-    new_room = resolution.room_after_id or hard.player.location
+    new_room = hard.player.location
 
     dialogue_exit_reason: str | None = None
     if new_room != old_room:

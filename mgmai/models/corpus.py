@@ -116,8 +116,8 @@ class EquipBlock(BaseModel):
 
 class Result(BaseModel):
     narrative: Optional[str] = None
-    add_item: Optional[str] = None
-    remove_item: Optional[str] = None
+    add_item: Optional[List[str]] = None
+    remove_item: Optional[List[str]] = None
     set_flag: Optional[Dict[str, bool]] = None
     alter_stat: Optional[Dict[str, StatModifier]] = None
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
@@ -126,6 +126,7 @@ class Result(BaseModel):
     reveals: Optional[str] = None
     then_check: Optional[CheckResolution] = None
     player_damage: Optional[str] = None
+    set_player_location: Optional[str] = None
 
     def has_any_effect(self) -> bool:
         return any(
@@ -134,7 +135,7 @@ class Result(BaseModel):
                 "narrative", "add_item", "remove_item",
                 "set_flag", "alter_stat", "set_entity_state", "set_room_state",
                 "adjust_attitude", "reveals", "then_check",
-                "player_damage",
+                "player_damage", "set_player_location",
             )
         )
 

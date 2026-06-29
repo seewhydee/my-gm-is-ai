@@ -492,6 +492,10 @@ class StateManager:
             elif stat_key not in corpus.stats.definitions:
                 errors.append(f"stat_modifiers references undeclared stat: {stat_key}")
 
+        if changes.player_location is not None:
+            if corpus is None or changes.player_location not in corpus.rooms:
+                errors.append(f"No matching room for player_location: {changes.player_location}")
+
         if errors:
             raise ValueError("\n".join(errors))
 

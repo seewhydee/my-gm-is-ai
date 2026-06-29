@@ -1,312 +1,213 @@
-# Plan: Flatten and rename the stat check schema
-
-Pre-alpha: no backward-compatibility shims, no aliases, no migration code.
-Change everywhere.
+# Plan: Add `set_player_location` to the Result schema
 
 ## Motivation
 
-The `StatCheck` model suffers from three design problems:
+The `Result` object (schema/corpus.md:204-234) describes the consequences of
+an action: narrative, item changes, flag changes, stat adjustments, damage,
+follow-up checks, etc.  It is used in success/failure branches of
+interactions, traversal checks, dialogue paths, on-examine events, and
+reactions.
 
-### 1. `resolution_params` is wordy and adds pointless nesting
+The canonical "jump across a pit" example (schema/corpus.md:275-292) has a
+STR traversal check to jump, and on failure a DEX then_check to grab the
+ledge.  If the DEX check also fails, the player falls into the pit — but the
+schema has no way to express "move the player to the pit room".  The example
+lamely sets `"dropped_in_pit": true` as a flag, with no follow-on mechanism
+to actually relocate the player.
 
-The field name "resolution params" is engine jargon that means nothing to a
-content author writing JSON. Worse, its value is **structurally
-double-bookkeeping**: every check wraps system-specific flags under the system
-name key (`{"5e": {"advantage": true}}`), but the system is already chosen
-globally at `stats.system = "5e"`. The inner `"5e"` key is pure syntactic
-noise — the engine has to reach through it with
-`(params or {}).get(self.name, {})`, and a content author has to type it on
-every single check.
+The engine already has a `set_player_location` mutation (hard-state.md:241,
+`HardStateChanges.player_location`) and `StateManager.apply_hard_changes()`
+already applies it (manager.py:498-499).  The gap is that no `Result` field
+wires into it — only action resolvers (e.g. `resolve_move`) can set it.
 
-### 2. `dc`, `opposed_by`, `skill` leak 5e concepts into the generic model
-
-- `dc` (Difficulty Class) is D&D terminology. Other systems use "target
-  number", "threshold", or no numeric target at all (PbtA result bands). The
-  generic model should use a neutral name.
-- `opposed_by` and `skill` are listed as "for future use" and are **always
-  `null`** — everywhere in the adventure data and at every runtime call site.
-  They add 2 null-fields to every stat check without ever being consumed.
-  YAGNI.
-
-### 3. The resulting JSON is ugly and full of dead weight
-
-Every stat check in `corpus.json` serializes 9 fields (including `type`);
-only 4 carry actual data. The rest are `null` or zero-default placeholders.
-Example from the log (showing 8 of the 9 — `type` is omitted):
-
-```json
-{"stat": "CHA", "dc": 9, "modifier": 0, "resolution_params": null,
- "opposed_by": null, "repeatable": true, "note": null, "skill": null}
-```
-
-Five of nine fields convey nothing. The actual payload (`type`, `stat`,
-`dc`, `repeatable`) is buried in noise. (`modifier` and `note` are
-intentionally retained in the new model — they are legitimate optionals,
-not dead weight.)
-
-### What we're doing about it
-
-Flatten the model entirely. Eliminate `resolution_params`, `opposed_by`, and
-`skill`. Rename `dc` to `target`. Use Pydantic `extra="allow"` to let
-system-specific flags (like `advantage`) live as clean top-level siblings
-alongside `stat` and `target`. System-specific fields are documented per
-system in the schema, not baked into the generic model.
+Adding `set_player_location` to `Result` plugs this gap everywhere Results
+are used: interaction outcomes, check success/failure branches, follow-up
+checks, and reaction effects.
 
 ## Decisions
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | Rename `dc` → `target` in `StatCheck`, `CheckResult`, the roll-dict shape, event contexts, and all documentation. | System-neutral. Just as descriptive. |
-| D2 | Delete `resolution_params` from `StatCheck`. System-specific fields go flat at the check's top level via `extra="allow"`. | Eliminates the redundant `"5e"` inner key and the abstract wrapper name. Content authors write `"advantage": true` directly. |
-| D3 | Delete `opposed_by` and `skill` from `StatCheck`. | YAGNI. Both are always `null`. Add back when actually implemented. |
-| D4 | Add `model_config = ConfigDict(extra="allow")` to `StatCheck`. System-specific fields (e.g. `advantage`, `disadvantage`) are accepted as extra top-level keys. | Allows per-system extensions without bloating the model. The engine reads them from `model_extra`. |
-| D5 | In `FiveESystem.roll_check()`, remove the `params.get(self.name, {})` layer and read `advantage`/`disadvantage` directly from `params`. | The system key was redundant. |
-| D6 | Rename `roll_check()` parameter `dc` → `target` in the `ResolutionSystem` ABC and `FiveESystem`. | Consistency with D1. |
-| D7 | Rename `CheckResult.dc` → `CheckResult.target`. Rename the `"dc"` key in `CheckResult.to_dict()` to `"target"`. | The result object should match the model's naming. |
-| D8 | The `resolution_params` nested structure `{"5e": {"advantage": true}}` is not used in the adventure data at all — 0 occurrences in `corpus.json`. Migration is a no-op on adventure data. | Any migration scope is limited to tests and schema docs. |
-| D9 | Defer flattening `resolve_save()`'s `sys_params = (params or {}).get(self.name, {})` nesting in `five_e.py`. Add a code comment instead, noting it is inconsistent with D5 and should be flattened when saves grow corpus-driven params. | `resolve_save` is only ever called with `params=None` today, so the nesting is dead code. `SaveResult.dc`/`OnHitSave.dc` are a separate (saving-throw) concept and are not renamed. Avoids scope creep. |
+| D1 | Add `set_player_location: Optional[str] = None` to the `Result` model. | Symmetrical with `set_entity_state` / `set_room_state`.  One new field, zero new concepts. |
+| D2 | `_apply_result()` writes `changes.player_location` from the field. | Same pattern as `set_flag` → `changes.flags_set`, etc. |
+| D3 | Validate the target room exists in the corpus at `apply_hard_changes()` time. | Matches the existing `set_room_state` validation pattern.  Catch typos before state corruption. |
+| D4 | Change `engine.py` line 424 to use `hard.player.location` directly instead of `resolution.room_after_id or hard.player.location`. | After all changes are applied, `hard.player.location` is the ground truth.  The resolver's `room_after_id` hint was always set to match — the `or` was defensive and is now counterproductive: it suppresses `room.exited`/`room.entered` events when a non-move Result relocates the player.  The encounter block (lines 358-366) already nullifies the location change before apply when a move is blocked, so the hard state stays correct. |
+| D5 | No special handling for "move to same room" — it's a no-op. | The engine already checks `new_room != old_room` (line 427).  If `set_player_location` matches the current room, no transition fires — zero cost. |
+| D6 | If multiple Results in one turn set different locations, the last write wins. | `HardStateChanges.merge()` already handles this: `if other.player_location is not None: self.player_location = other.player_location`.  Immediate-reaction results override action results; deferred reactions fire later and would override.  This is consistent with flag-overwrite semantics. |
 
 ## End-state design
 
 ### Model (`mgmai/models/corpus.py`)
 
 ```python
-class StatCheck(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    type: Literal["stat_check"] = "stat_check"
-    stat: str
-    target: int
-    modifier: int = 0
-    repeatable: bool
-    note: Optional[str] = None
+class Result(BaseModel):
+    narrative: Optional[str] = None
+    add_item: Optional[List[str]] = None
+    remove_item: Optional[List[str]] = None
+    set_flag: Optional[Dict[str, bool]] = None
+    alter_stat: Optional[Dict[str, StatModifier]] = None
+    set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
+    set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
+    adjust_attitude: Optional[Dict[str, int]] = None
+    reveals: Optional[str] = None
+    then_check: Optional[CheckResolution] = None
+    player_damage: Optional[str] = None
+    set_player_location: Optional[str] = None          # NEW
+
+    def has_any_effect(self) -> bool:
+        return any(
+            getattr(self, f) is not None
+            for f in (
+                "narrative", "add_item", "remove_item",
+                "set_flag", "alter_stat", "set_entity_state", "set_room_state",
+                "adjust_attitude", "reveals", "then_check",
+                "player_damage", "set_player_location",    # NEW
+            )
+        )
 ```
 
-### JSON examples
+### JSON example — the canonical pit-jump, improved
 
-**5e (current primary system):**
 ```json
-{"type": "stat_check", "stat": "STR", "target": 12,
- "advantage": true, "repeatable": false,
- "note": "Bend the iron bars."}
-```
-
-**Hypothetical PbtA system:**
-```json
-{"type": "stat_check", "stat": "COOL", "target": 0,
- "move": "act_under_pressure", "repeatable": false}
+{
+  "traversal_check": {
+    "check": { "type": "stat_check", "stat": "STR", "target": 13, "repeatable": true },
+    "failure": {
+      "narrative": "You leap but fall short.",
+      "then_check": {
+        "check": { "type": "stat_check", "stat": "DEX", "target": 8, "repeatable": true },
+        "success": {
+          "narrative": "You grab the ledge in time."
+        },
+        "failure": {
+          "narrative": "You drop into the pit.",
+          "set_player_location": "pit_bottom",
+          "player_damage": "2d6"
+        }
+      }
+    }
+  }
+}
 ```
 
 ### Engine flow
 
-**Before:**
+**Before (pit jump, DEX save fails):**
 ```
-StatCheck.dc / .modifier / .resolution_params
-    → system.roll_check(stat, value, dc, flat_modifier, params=resolution_params)
-        → params.get("5e", {}).get("advantage")
+Result { narrative: "You drop into the pit", set_flag: {"dropped_in_pit": true} }
+  → _apply_result() → changes.flags_set["dropped_in_pit"] = true
+  → apply_hard_changes() → hard.flags["dropped_in_pit"] = true
+  → player stays in current room.  No room transition.
 ```
 
 **After:**
 ```
-StatCheck.target / .modifier / .model_extra
-    → system.roll_check(stat, value, target, flat_modifier, params=model_extra)
-        → params.get("advantage")
-```
-
-The resolver extracts `check.model_extra` (or `{}`) and passes it as `params`.
-The system reads `advantage`/`disadvantage` directly — one nesting layer
-removed.
-
-### `CheckResult` dataclass
-
-```python
-@dataclass
-class CheckResult:
-    stat: str
-    target: int
-    computed_mod: int
-    flat_mod: int
-    modifier: int
-    raw_roll: int
-    total: int
-    margin: int              # total - target
-    success: bool
-    advantage: bool
-    disadvantage: bool
-
-    def to_dict(self) -> dict:
-        return {
-            "type": "stat_check",
-            "stat": self.stat,
-            "target": self.target,
-            "modifier": self.modifier,
-            "computed_mod": self.computed_mod,
-            "flat_mod": self.flat_mod,
-            "raw_roll": self.raw_roll,
-            "total": self.total,
-            "margin": self.margin,
-            "success": self.success,
-            "advantage": self.advantage,
-            "disadvantage": self.disadvantage,
-        }
-```
-
-### `roll_check()` signatures
-
-**ABC (`base.py`):**
-```python
-def roll_check(self, stat: str, stat_value: int, target: int,
-               flat_modifier: int = 0, params: dict | None = None) -> CheckResult:
-```
-
-**FiveE (`five_e.py`):**
-```python
-def roll_check(self, stat, stat_value, target, flat_modifier=0, params=None):
-    computed_mod = self.compute_modifier(stat_value)
-    total_mod = computed_mod + flat_modifier
-    advantage = (params or {}).get("advantage", False)
-    disadvantage = (params or {}).get("disadvantage", False)
-    raw_roll = self.roll_die(20, advantage=advantage, disadvantage=disadvantage)
-    total = raw_roll + total_mod
-    success = total >= target
-    return CheckResult(..., target=target, margin=total - target, ...)
+Result { narrative: "You drop into the pit", set_player_location: "pit_bottom", player_damage: "2d6" }
+  → _apply_result() → changes.player_location = "pit_bottom", changes.player_hp_delta -= 2d6
+  → apply_hard_changes() → hard.player.location = "pit_bottom", hp reduced
+  → engine.py:424 → new_room = hard.player.location = "pit_bottom" ≠ old_room
+  → engine.py:427-455 → room.exited + room.entered events fire
 ```
 
 ## File-change inventory
 
 ### `mgmai/models/corpus.py`
-- `StatCheck` (L149–158): delete `resolution_params`, `opposed_by`, `skill`;
-  rename `dc` → `target`; add `model_config = ConfigDict(extra="allow")`.
-
-### `mgmai/engine/systems/base.py`
-- `CheckResult` (L46–81): rename `dc` → `target` in field list and
-  `to_dict()`. Update `margin` docstring.
-- `roll_check()` ABC (L203–211): rename `dc` → `target`; update docstring.
-
-### `mgmai/engine/systems/five_e.py`
-- `roll_check()` (L76–107): rename parameter `dc` → `target`; replace
-  `sys_params = (params or {}).get(self.name, {})` with direct
-  `advantage = (params or {}).get("advantage", False)` /
-  `disadvantage = (params or {}).get("disadvantage", False)`.
-- `CheckResult(...)` construction call (L95–107): rename `dc=dc` → `target=target`, `margin=total - dc` → `margin=total - target`.
-- `resolve_save()` (L512–541): leave the logic unchanged, but add a code
-  comment at the `sys_params = (params or {}).get(self.name, {})` line
-  noting it is inconsistent with D5 and should be flattened when saves grow
-  corpus-driven params (see D9). Do **not** rename `SaveResult.dc` or the
-  `dc` parameter — saving throws are a separate concept.
+- `Result` class (L117-139): add field `set_player_location: Optional[str] = None` between `adjust_attitude` and `reveals` (or after `player_damage` — either position is fine; after `set_room_state` is semantically clearest).
+- `has_any_effect()` (L130-139): add `"set_player_location"` to the attribute tuple.
 
 ### `mgmai/engine/resolver.py`
-- Interaction path (L1391–1446): `check.dc` → `check.target`;
-  `params=check.resolution_params` → `params=check.model_extra or {}`;
-  `roll_dict["dc"]` → `roll_dict["target"]`; `ctx["dc"]` → `ctx["target"]`.
-  (This path also resolves `then_check`s via `_apply_result_with_check`.)
-- Traversal-check path (L1020–1057): same renames (`.dc` → `.target`,
-  `.resolution_params` → `.model_extra`, `"dc"` → `"target"`). This is the
-  `_resolve_traversal_check` function, not a "then-check" path.
+- `_apply_result()` (L1215-1302): add new block immediately after the `set_room_state` block:
+  ```python
+  if result.set_player_location:
+      changes.player_location = result.set_player_location
+  ```
+  Placed after `set_room_state` (L1262-1264) and before `adjust_attitude` (L1265) to group all location/state mutations together.
 
-### `mgmai/engine/encounters.py`
-- `_resolve_encounter_stat_check()` (L340–371): `check.dc` → `check.target`;
-  `params=check.resolution_params` → `params=check.model_extra or {}`.
+### `mgmai/state/manager.py`
+- `apply_hard_changes()` (L456-548): add room-existence validation for `player_location` in the pre-validation block (L466-493), matching the existing pattern for `room_state_changes`.  New block after the room_state_changes loop (L468-478):
+  ```python
+  if changes.player_location is not None:
+      if corpus is None or changes.player_location not in corpus.rooms:
+          errors.append(f"No matching room for player_location: {changes.player_location}")
+  ```
 
-### `adventures/bag-of-holding/corpus.json`
-- All 30 `stat_check` objects: rename `"dc"` → `"target"`.
-- **WARNING: there are 31 `"dc"` occurrences in this file, not 30.** The
-  31st, at L211 (`"dc": 11`), is the `dc` of an `OnHitSave` inside the
-  spider's `on_hit_effects` block — a saving-throw DC, NOT a stat check.
-  It must NOT be renamed. Do **not** blind find/replace `"dc"` → `"target"`;
-  scope each replacement to objects whose `"type"` is `"stat_check"`.
-- `resolution_params`, `opposed_by`, `skill`, `modifier`, `note` are already
-  absent from the adventure data — no deletions needed.
+### `mgmai/engine/engine.py`
+- Line 424: change
+  ```python
+  new_room = resolution.room_after_id or hard.player.location
+  ```
+  to
+  ```python
+  new_room = hard.player.location
+  ```
+  Rationale: after `_apply_and_merge(action_changes)` at line 367, the hard state is the ground truth.  The resolver's `room_after_id` hint was always set to match the hard state's eventual value; dropping the `or` is a no-op for existing code paths and enables Result-driven location changes to trigger `room.exited`/`room.entered` events.  The encounter block at lines 358-366 handles the one case where they diverge (move blocked by combat) by nullifying `action_changes.player_location` *before* apply, so `hard.player.location` remains correct.
 
 ### `schema/corpus.md`
-- L153–185: rewrite the stat check section. Updated JSON example (flat
-  fields, `target` instead of `dc`, `advantage` at top level). Updated field
-  table (remove `resolution_params`, `opposed_by`, `skill`; rename `dc` →
-  `target`). Updated prose about system-specific fields via `extra="allow"`.
-- Update all stat check JSON snippets throughout the file: rename `"dc"` →
-  `"target"`. Confirmed occurrences (all stat checks): L161, L239, L339,
-  L422, L941, L1018, L1047, L1082.
-- L504 and L556: the `check.passed`/`check.failed` context-key table rows
-  (`dc?` and `dc | The difficulty class...`) — rename to `target`. (These
-  duplicate the table in `events.md`; both must be updated.)
+- L204-217: add `"set_player_location": "<room_id>"` to the Result JSON shape example.
+- L222-234: add row to the field table:
+  ```
+  | `set_player_location` | string   | Room ID to relocate the player to   |
+  ```
+- L287-292: rewrite the pit-jump failure example to use `set_player_location` instead of the lame flag, and add `player_damage` for falling damage:
+  ```json
+  "failure": {
+    "narrative": "You drop into the pit.",
+    "set_player_location": "pit_bottom",
+    "player_damage": "2d6"
+  }
+  ```
 
-### `schema/scenario-generation.md`
-- All stat check JSON snippets: rename `"dc"` → `"target"`.
-- Stat check field descriptions: update to match new model.
+### `schema/hard-state.md`
+- L241: the `set_player_location` row in the engine write operations table already exists — no change needed.  Optionally add a brief note that it is now also exposed as a Result field, but not required.
 
-### `schema/events.md`
-- L59–60: `dc?` → `target?` in check.passed/check.failed context table.
-- L76: `dc` → `target` in context key table row.
-- (L168 references stat_check resolution but does not mention `dc`; no
-  change needed there.)
+## Tests
 
-### `schema/actions.md`
-- L716: `dc` → `target` in rolls description.
+### `tests/test_corpus.py` — model validation
 
-### `doc/player-stats.md`
-- L68–82: rewrite the stat_check field table to match new model. Drop
-  `resolution_params`, `opposed_by`, `skill`; rename `dc` → `target`.
-- L90–92: update resolution system table (DC → target).
+**Class**: Existing `TestResult` (if one exists) or new test functions.
 
-### Test files
+1. **`test_result_set_player_location`** — `Result(set_player_location="bag_floor")` constructs and serializes round-trip correctly.
+2. **`test_result_has_any_effect_with_location`** — `Result(set_player_location="bag_floor").has_any_effect()` returns `True`.
+3. **`test_result_has_any_effect_without_location`** — `Result().has_any_effect()` returns `False` (no regression on empty results).
 
-**`tests/test_corpus.py`:**
-- L868 (`test_with_alter_stat`): `"dc": 10` → `"target": 10` in the
-  `EncounterRule.model_validate` stat_check payload. (Outside the
-  `TestStatCheck` block — easy to miss.)
-- L945–975 (`TestStatCheck`): rename `dc` → `target` and `resolution_params`
-  assertions.
-  - `test_minimal` (L947): `"dc": 12` → `"target": 12`; `sc.dc` → `sc.target`.
-  - `test_full` (L953–967): rewrite. Replace `resolution_params: {"5e": {"advantage": True}}` with flat `"advantage": True`. Delete `opposed_by` and `skill` assertions. Rename `dc` → `target`.
-  - `test_modifier_defaults_to_zero` (L969–971): `"dc"` → `"target"`.
-  - `test_resolution_params_optional` (L973–975): rename to `test_extra_fields_allow_advantage` — validate that `"advantage": true` is accepted via `extra="allow"` and accessible in `model_extra`.
-- L991–998 (`TestInteractionWithCheck.test_with_stat_check`): `"dc"` → `"target"`.
+### `tests/test_resolver.py` — `_apply_result()`
 
-**`tests/test_systems.py`:**
-- L84–85 (fake `ResolutionSystem` stub): rename the `roll_check` parameter
-  `dc` → `target` for consistency with the ABC (D6), and update the
-  positional `CheckResult(stat, dc, ...)` construction and `1 - dc` margin
-  computation to use `target`. (The stub survives positionally even without
-  this, but leaving it is inconsistent with the renamed ABC and
-  `CheckResult`.)
-- L172–206 (`TestFiveEChecks`): rename `dc=` → `target=` in `roll_check()`
-  calls.
-  - L175: `dc=10` → `target=10`.
-  - L185: `dc=20` → `target=20`.
-  - L189–197: `dc=15` → `target=15`; `params={"5e": {"advantage": True}}`
-    → `params={"advantage": True}`.
-  - L199–205: `"dc"` → `"target"` in key assertion list.
-- L409: `assert result.dc == 10` → `result.target == 10`.
-- (L98–99 fake `resolve_save` and L116 `FleeResult(dc=...)` are unchanged —
-  `SaveResult.dc` and `FleeResult.dc` are not being renamed.)
+**Class**: `TestApplyResult` (L710-753).
 
-**`tests/test_stat_checks.py`:**
-- L125, L129, L134, L135: roll-dicts use `"dc"`. `format_stat_check_prefix`
-  ignores this key so the tests pass regardless, but D1 renames the
-  roll-dict shape — update to `"target"` for consistency with the canonical
-  engine output.
+4. **`test_set_player_location_applied`** — `Result(set_player_location="bag_floor")` → `_apply_result()` → `changes.player_location == "bag_floor"`.  Mirror of existing `test_adjust_attitude_applies_delta`.
 
-**`tests/test_encounters.py`:**
-- 6 `StatCheck(..., dc=...)` constructions (L197, L217, L242, L266, L332,
-  L356): rename `dc=` → `target=`. Mandatory — `target` is required, so
-  leaving `dc=` fails validation.
+### `tests/test_state_manager.py` — `apply_hard_changes()`
 
-**`tests/helpers.py`:**
-- 4 stat_check JSON payloads in `make_webs_test_corpus` (L370, L376, L380,
-  L412): rename `"dc"` → `"target"`. Mandatory for the same reason.
+**Class**: `TestApplyHardChanges` (L220-343).
+
+5. **`test_player_location_unknown_room_raises`** — `HardStateChanges(player_location="void")` → `apply_hard_changes()` raises `ValueError` matching `"No matching room for player_location:"`.  This is *new* validation that didn't exist before — currently `player_location` is accepted blindly.
+6. **`test_player_location_apply_from_dict`** — `apply_hard_changes({"player_location": "bag_floor"})` → `hard.player.location == "bag_floor"` (existing test already covers this — verify it still passes).
+
+### `tests/test_engine.py` — full pipeline
+
+7. **`test_interaction_with_set_player_location_moves_player`** — Integration test:
+   - Build a minimal corpus: room A (start), room B, no exits.  Add an interaction in room A whose `success` Result includes `set_player_location: "room_b"`.
+   - Resolve the `interact` action targeting that interaction.
+   - Assert `hard_state.player.location == "room_b"`.
+   - Assert the `EngineResult` reflects the new location.
+8. **`test_move_encounter_block_still_works`** — Non-regression: verify the existing pattern where an encounter blocks a move action still correctly keeps the player in the old room.  (Should already be covered by existing traversal encounter tests — run them to confirm no breakage from the engine.py line 424 change.)
 
 ## What does NOT change
-- `EncounterRule.check: Optional[StatCheck]` — the field type is the same
-  (just the model changed).
-- `SaveResult.dc`, `attack_effect.save.dc` — these are saving throw DCs, a
-  separate D&D-specific concept, not part of the stat check system.
-- `FiveESystem.resolve_save()` (`five_e.py:512–541`): the
-  `sys_params = (params or {}).get(self.name, {})` nesting is left as-is
-  (deferred — see D9); only a code comment is added. `SaveResult.dc` and the
-  `dc` parameter are not renamed.
-- `Checkable`, `CheckResolution`, and the rest of the check inheritance
-  hierarchy.
-- The `roll_check()` signature in `stat_checks.py` shims (they don't
-  reference these fields).
+- `HardStateChanges.player_location` — already exists, already handled by `merge()` and `apply_hard_changes()`.
+- `ResolutionResult.room_after_id` — kept but unused in engine.py line 424 after the change.  Still set by resolvers for informational purposes; could be removed later if unused.
+- `resolve_move()` — unchanged; it already sets both `changes.player_location` and `result.room_after_id`.
+- The encounter block at engine.py:358-366 — unchanged; it nullifies `action_changes.player_location` before apply, which still works.
+- No changes to `ResolveInteraction`, `resolve_talk`, `resolve_equip`, `resolve_unequip`, `resolve_surface`, or any other resolver — `_apply_result()` handles `set_player_location` uniformly wherever a `Result` is consumed.
+
+## Edge cases
+
+| Scenario | Behavior |
+|---|---|
+| `set_player_location` is the current room | No-op: engine.py:427 `new_room != old_room` is False, no transition |
+| `set_player_location` points to a non-existent room | `ValueError` from `apply_hard_changes()` validation |
+| Multiple Results in one turn set different locations | Last write wins via `HardStateChanges.merge()` |
+| A reaction relocates the player mid-turn | `room.exited` fires for the old room, `room.entered` for the new room (immediate phase), deferred reactions fire afterward. This is the same sequence as a normal `move` action. |
+| `set_player_location` + `then_check` in same Result | `_apply_result_with_check` (resolver.py:1305) applies the parent Result's effects first (including the location change), then resolves `then_check` in the same room context (which is now the new room).  The follow-up check's own success/failure Results can relocate again if needed. |
 
 ## Verification
 
@@ -317,35 +218,18 @@ pytest
 ```
 
 Specific checks:
-- `tests/test_corpus.py::TestStatCheck` — model validation with new field names.
-- `tests/test_systems.py::TestFiveEChecks` — roll_check() with renamed params.
-- `tests/test_corpus.py::TestInteractionWithCheck` — stat_check inside
-  interactions with `target` field.
-- `tests/test_corpus.py::test_with_alter_stat` — EncounterRule stat_check
-  payload (the easy-to-miss one at L868).
-- `tests/test_encounters.py` — encounter stat checks.
-- `tests/test_stat_checks.py` — roll-dict shape consistency.
-- `tests/test_parser.py` / `tests/test_actions.py` — action parser
-  `target` field is unrelated; should still pass.
-- The adventure bag-of-holding loads cleanly: `pytest
-  tests/test_corpus.py tests/test_assembler.py tests/test_bag_of_holding_webs.py`.
+- `tests/test_corpus.py` — `Result` model accepts new field
+- `tests/test_resolver.py::TestApplyResult` — `_apply_result` writes to `changes.player_location`
+- `tests/test_state_manager.py::TestApplyHardChanges` — validation and application
+- `tests/test_engine.py` — full-pipeline integration test + non-regression on move-encounter block
+- Existing traversal and interaction tests — no regressions
 
 ## Task ordering
 
-All changes are a single mechanical pass — one rename, one deletion of dead
-fields, one flattening of `resolution_params`. No phases needed.
-
-1. **Model** — `mgmai/models/corpus.py`: `StatCheck` → remove 3 fields,
-   rename 1, add `extra="allow"`.
-2. **Engine core** — `base.py`: `CheckResult` dataclass + `roll_check()`
-   ABC. `five_e.py`: `roll_check()` implementation.
-3. **Engine call sites** — `resolver.py` (2 sites: interaction path +
-   traversal-check path) + `encounters.py` (1 site): rewire `.dc` →
-   `.target`, `.resolution_params` → `.model_extra`.
-4. **Adventure data** — `corpus.json`: 30 replacements of `"dc"` → `"target"`.
-5. **Schema docs** — `corpus.md`, `scenario-generation.md`, `events.md`,
-   `actions.md`: rename `dc` → `target`, update stat check field tables,
-   update JSON examples.
-6. **User docs** — `doc/player-stats.md`: update stat check field table.
-7. **Tests** — update assertions per inventory above.
-8. `pytest` green.
+1. **Model** — `mgmai/models/corpus.py`: add field to `Result`, update `has_any_effect()`.
+2. **Engine application** — `mgmai/engine/resolver.py`: add `set_player_location` block to `_apply_result()`.
+3. **Validation** — `mgmai/state/manager.py`: add room-existence check for `player_location`.
+4. **Engine transition** — `mgmai/engine/engine.py`: change line 424 to use `hard.player.location`.
+5. **Schema docs** — `schema/corpus.md`: update Result table and pit-jump example.
+6. **Tests** — write new tests per the inventory above.
+7. `pytest` green.
