@@ -218,6 +218,20 @@ class StateManager:
                 if field_name not in declared:
                     errors.append(f"Entity '{entity_id}' has undeclared state field: {field_name}")
 
+        # Every field in hard_state.room_states must match declared state_fields
+        for room_id, state in self.hard_state.room_states.items():
+            if room_id not in self.corpus.rooms:
+                # Already reported above; skip field check for unknown rooms
+                continue
+            declared = self.corpus.rooms[room_id].state_fields
+            if not declared:
+                continue
+            for field_name in state:
+                if field_name in ("visited", "is_current"):
+                    continue
+                if field_name not in declared:
+                    errors.append(f"Room '{room_id}' has undeclared state field: {field_name}")
+
         # Entities with combat blocks must declare current_hp in state_fields
         for entity_id, entity in self.corpus.entities.items():
             if entity.combat is not None:
@@ -451,9 +465,17 @@ class StateManager:
         # problem at once, matching the style of ``_validate_cross_references``.
         errors: list[str] = []
         corpus = self.corpus
-        for room_id in changes.room_state_changes:
+        for room_id, room_changes in changes.room_state_changes.items():
             if corpus is None or room_id not in corpus.rooms:
                 errors.append(f"No matching room: {room_id}")
+            else:
+                declared = corpus.rooms[room_id].state_fields
+                if declared:
+                    for field_name in room_changes:
+                        if field_name in ("visited", "is_current"):
+                            continue
+                        if field_name not in declared:
+                            errors.append(f"Room '{room_id}' state change has undeclared field: {field_name}")
 
         for entity_id, entity_changes in changes.entity_state_changes.items():
             if corpus is None or entity_id not in corpus.entities:

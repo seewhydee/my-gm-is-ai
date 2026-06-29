@@ -304,6 +304,26 @@ class TestApplyHardChanges:
                 HardStateChanges(entity_state_changes={"spider": {"magic_level": 9000}})
             )
 
+    def test_room_state_changes_undeclared_field_raises(self) -> None:
+        from mgmai.models.corpus import StateFieldDecl
+        from tests.helpers import build_state_manager, make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        corpus.rooms["axe_head"].state_fields = {
+            "is_lit": StateFieldDecl(type="boolean", description="Whether the room is lit."),
+        }
+        sm = build_state_manager(corpus)
+
+        sm.apply_hard_changes(
+            HardStateChanges(room_state_changes={"axe_head": {"is_lit": True}})
+        )
+        assert sm.hard_state.room_states["axe_head"]["is_lit"] is True
+
+        with pytest.raises(ValueError, match="undeclared field"):
+            sm.apply_hard_changes(
+                HardStateChanges(room_state_changes={"axe_head": {"magic_level": 9000}})
+            )
+
     def test_apply_hard_changes_collects_errors(self, manager: StateManager) -> None:
         with pytest.raises(ValueError) as exc_info:
             manager.apply_hard_changes(

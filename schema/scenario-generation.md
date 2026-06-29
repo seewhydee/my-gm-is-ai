@@ -269,8 +269,8 @@ Revisit the room list, and add the following info to each room:
 - **State Fields** — assign a room-unique ID for each mutable property
   of the room, and specify the initial value (boolean, number, or
   string).  Don't invent these nilly-willy; focus on properties needed
-  for gameplay or narration: e.g., `filled_with_poison_gas`,
-  `time_of_day` (if the scenario progresses time).
+  for gameplay or narration: e.g., `filled_with_poison_gas`.  Do not
+  use the reserved fields `is_current` and `visited`.
 
 - **On-Examine Effects** — describe any effects triggered by the
   player examining the room (the room itself, not an entity in it),
@@ -1592,8 +1592,8 @@ Follow this exact structure:
    all flag values should be booleans.
 
 7. **`room_states`** — for every room in the corpus, add `{ "visited": false }`.
-   If a room has additional state fields (none currently defined), add those
-   with initial values.
+   If a room has additional state fields declared in its `state_fields`, add
+   those with initial values.
 
 8. **`entity_states`** — for every entity that declared `state_fields` in the
    corpus, add an entry with initial values for every declared field:

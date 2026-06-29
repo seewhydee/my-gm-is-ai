@@ -302,7 +302,8 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
     "interactions": [ { /* interaction */ } ],
     "on_examine": [ { /* on_examine event */ } ],
     "is_start_room": false,
-    "reactions": [ { /* reaction */ } ]
+    "reactions": [ { /* reaction */ } ],
+    "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } }
   }
 }
 ```
@@ -318,6 +319,7 @@ Each room is keyed by a unique `room_id`. A room is a node in the world graph.
 | `on_examine`         | array     | no       | Events that fire when the player examines this room. Each is an `OnExamineEvent` (see below). |
 | `is_start_room`      | boolean   | no       | Exactly one room should have this set to `true`. Player starts here. |
 | `reactions`          | array     | no       | Reactions that fire when the player is in this room (see Reactions below). |
+| `state_fields`       | object    | no       | Declaration of mutable state fields for this room. Follows the same format as entity `state_fields` (see Entities below). The engine validates that `set_room_state` and `room_states` entries only reference declared fields. The reserved fields `visited` (engine-managed) and `is_current` (virtual, computed from `player.location`) need not be declared. |
 
 ### Exit object
 

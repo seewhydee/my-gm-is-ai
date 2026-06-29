@@ -328,6 +328,7 @@ class Room(BaseModel):
     on_examine: List[OnExamineEvent] = Field(default_factory=list)
     is_start_room: bool = False
     reactions: List[Reaction] = Field(default_factory=list)
+    state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
 
 
 class StateFieldDecl(BaseModel):

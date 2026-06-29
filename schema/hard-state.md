@@ -131,8 +131,9 @@ For instance, the sample adventure "Trapped In A Bag of Holding" uses these flag
 
 Tracks per-room mutable properties. The primary initial field is `visited`
 (boolean), which the engine sets to `true` the first time the player enters
-a room. Additional per-room fields can be declared by module authors and
-evaluated in condition strings as `room:<room_id>.<field> <op> <value>`.
+a room. Additional per-room fields must be declared in the room's
+`state_fields` in the corpus and evaluated in condition strings as
+`room:<room_id>.<field> <op> <value>`.
 
 ### State field types
 
@@ -145,7 +146,9 @@ evaluated in condition strings as `room:<room_id>.<field> <op> <value>`.
 ### Initialisation
 
 Room state entries are initialised from `hard-state.json`. The engine validates
-at startup that every `room_id` in `room_states` exists in the module corpus.
+at startup that every `room_id` in `room_states` exists in the module corpus,
+and that every field (except `visited` and `is_current`) matches a declared `state_fields` entry
+in that room's corpus definition.
 
 ---
 
