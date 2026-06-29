@@ -81,7 +81,7 @@ Condition strings have one of two forms:
 - `<domain>:<key>` — presence-only check (allowed for `inventory`,
   `equipped`, `tag`, and `topic` domains).
 - `<domain>:<key> <op> <value>` — compare key's value against
-  `<value>`. Supported ops: `== true`, `== false`, `== <string>`, `>=
+	`<value>`. Supported ops: `== true`, `== false`, `== <string>`, `>=
   <number>`, `> <number>`, `<= <number>`, `< <number>`.
 
 | Domain       | Key                                                 |
@@ -119,7 +119,7 @@ Examples:
 
 ---
 
-### Check object
+### Check
 
 A Check resolves the success or failure of an event or action:
 interaction, traversal, encounter, etc.  There are two Check types:
@@ -399,60 +399,100 @@ Notes:
 
 Notes:
 
+- `direction` is used when listing the available exits after a room
+  description.  Inserted verbatim by the engine.  Style convention:
+  one phrase, capitalize, no full stop.  Should be clear enough to
+  distinguish different exits.
+
 - `condition` is a gating Condition that must be met for the exit to
-  appear in `exits_available` and be traversable. When absent, the
-  exit is always visible; when present, the exit is hidden until the
-  condition evaluates to true. The condition is re-evaluated each
-  turn.
+  be shown at all.  If an Exit is unavailable, it does not appear to
+  the player (or GM) as an available exit from the room.  The distinct
+  `traversal_check` field, documented below, describes the conditions
+  and gating for non-automatic (e.g., risky) traversal.
 
-#### Traversal check (`traversal_check`)
+- The `one_way` field is only used to indicate to the player that an
+  exit *seems* one-way (e.g., a trapdoor).  No gameplay effects.
 
-An optional Check that gates successful room traversal. Unlike `condition` (which
-determines whether the exit is shown/available at all), a `traversal_check` makes the
-exit available but risky — the player may fail the check and remain in the current
-room, able to retry next turn.
+#### Traversal Check
+
+A Traversal Check object type, on the optional `traversal_check`
+field, describes the process of traversing a risky and/or difficult
+exit.  (This is different from `condition`, which determines whether
+the exit is shown as an available exit.)  Failure on such a check
+typically means the player remains in the current room.
 
 ```json
 {
   "traversal_check": {
+    "gating": { "require": "flag:ladder_missing == true" },
     "check": {
       "type": "stat_check",
       "stat": "STR",
       "target": 13,
       "repeatable": true
     },
-    "gating": { "require": "inventory:rusty_key" },
-    "skip_check_if": { "require": "flag:korbar_helps_key == true" },
+    "skip_check_if": { "require": "inventory:spring_boots" },
     "failure": {
-      "narrative": "You strain to haul the key but can't make progress."
+	  "narrative": "You try to climb up the wall, but can't make progress."
     },
     "success": {
-      "narrative": "You manage to haul the key across the threshold."
+      "narrative": "You manage to move up the wall."
     },
     "using_results": {
-      "toenail_sword": {
-        "check": { "type": "stat_check", "stat": "STR", "target": 10, "repeatable": true }
+      "grappling_hook": {
+        "check": { "type": "stat_check", "stat": "STR", "target": 8,
+				   "repeatable": true }
       }
     }
   }
 }
 ```
 
-| Field               | Type                | Description |
-|---------------------|---------------------|-------------|
-| `check`             | Check           | The check to roll: a `roll` or `stat_check`. |
-| `gating`            | Condition    | **Optional.** When present, the check only fires if this condition is met. When absent (or the condition is not met), traversal proceeds normally without a check. |
-| `skip_check_if`     | Condition    | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `gating`). Inverse of `gating` — use this for "don't check when NPC helps" patterns. |
-| `failure`           | Result              | **Optional.** Result applied when the traversal check fails. Contains at minimum a `narrative` field. May include `set_flag`, `alter_stat`, and other Result fields. |
-| `success`           | Result              | **Optional.** Result applied when the traversal check succeeds. Contains at minimum a `narrative` field. May include `set_flag`, `add_item`, and other Result fields. |
-| `using_results`     | dict                | **Optional.** Maps item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `move` action carries a `using` parameter matching a key, the override's `check` replaces the traversal check (allowing different DCs per item). |
+| Field               | Type      | Description                 |
+|---------------------|-----------|-----------------------------|
+| `gating` (*)        | Condition | Whether check is active     |
+| `check`             | Check     | Success/failure check       |
+| `skip_check_if` (*) | Condition | Whether check auto-succeeds |
+| `success` (*)       | Result    | Result when traversal works |
+| `failure` (*)       | Result    | Result when traversal fails |
+| `using_results` (*) | dict      | Alt check when using tool   |
+(*) optional
+
+Notes:
+
+- The `gating` condition controls whether the traversal check is
+  active.  True means proceed to do the check (with `skip_check_if`).
+  False means traversal proceeds (normal movement).
+
+- The `skip_check_if` controls whether the check auto-succeeds.  When
+  present and evaluated to true, the check is skipped entirely, and
+  traversal proceeds (normal movement).
+
+- Success also has the side-effect of moving to the destination Room;
+  no need to specify that in `success`.
+
+- Failure also has the side-effect of canceling the traversal; no need
+  to specify that in `failure`.
+
+- The `using_results` field accommodates player commands of the form
+  "[USE EXIT] using [ITEM]".  It is keyed by item entity IDs (or the
+  `"*"` wildcard); when the player uses an item matching a key, the
+  value replaces the traversal check entirely.  The mapped value can
+  be one of these two:
+  - a dict with `"result"` keyed to a [Result](#result)
+  - a dict with `"check"` (a [Check](#check)), `success` (a Result)
+    and optionally `failure` (a Result), with the same semantics as
+    [Interaction](#interaction).
 
 ---
 
-### Interaction
+## Interaction
 
-Interactions are named operations that can be performed by or on entities or rooms.
-They can be defined at the room level or on individual entities.
+Interactions objects describe are discrete, non-generic operations
+that can be performed on (or with) entities or rooms.  Each room and
+entity maintains a separate list of available interactions, and each
+interaction can have its own availability gating, success/failure
+gating, and sucess/failure results.
 
 ```json
 {
@@ -469,20 +509,35 @@ They can be defined at the room level or on individual entities.
 }
 ```
 
-| Field                  | Type         | Required | Description |
-|------------------------|--------------|----------|-------------|
-| `id`                   | string       | yes      | Unique within the defining context (room or entity). Referenced by `interact` action `interaction_id`. |
-| `label`                | string       | yes      | Human-readable action label. |
-| `description`          | string       | no       | Extended description of the action. |
-| `condition`            | Condition\|null | no       | Condition that must be met for the interaction to be available. |
-| `skip_check_if`        | Condition       | no       | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). Inverse of `condition`. |
-| `check`                | Check       | no       | A probabilistic check (roll). If absent, `result` is used directly. |
-| `success`              | Result       | no       | Result when the check succeeds. |
-| `failure`              | Result       | no       | Result when the check fails (optional; if absent, engine returns a generic "nothing happens"). |
-| `result`               | Result       | no       | Deterministic result (used when no `check` is present). |
-| `using_results`        | object       | no       | **Optional.** Dict mapping item entity IDs (or `"*"` wildcard) to `UsingResultOverride` objects. When the `interact` action's `using` field matches a key, the override replaces the interaction's own `check`/`success`/`failure`/`result`. Each override may optionally carry its own `check` (allowing different DCs per item, e.g. STR DC 14 bare-handed vs. DC 10 with a weapon), or a plain `result`. Overrides are leaf-level — the override's check+success+failure (or result) fully replaces the interaction's defaults. |
+| Field             | Type      |  Description                      |
+|-------------------|-----------|-----------------------------------|
+| `id`              | string    | ID, unique in room or entity      |
+| `label`           | string    | Concise action label              |
+| `description` (*) | string    | Extended description of action    |
+| `condition` (*)   | Condition | Whether interaction is available  |
+| `check` (*)       | Check     | Success/failure check             |
+| `skip_check_if`(*)| Condition | Whether interaction auto-succeeds |
+| `success` (*)     | Result    | Result when check succeeds        |
+| `failure` (*)     | Result    | Result when check fails           |
+| `result` (*)      | Result    | Fixed result (when no check)      |
+| `using_results`(*)| object    | Alt check when using tool         |
 
 Interactions include generic types available everywhere (e.g., `attack`) and special corpus-defined ones (e.g., `recharge`). Generic interactions are not automatically applied — the LLM must explicitly propose them via `interact`, and the engine validates the target and any `using` item. Picking up items should use the `transfer` action instead.
+
+- If `failure` is not specified, a failed check sends a generic
+  "nothing happens" message to the GM narrator.
+
+- The `using_results` field accommodates player commands of the form
+  "[INTERACTION] using [ITEM]".  If provided, it should be a dict
+  mapping item entity IDs (or `"*"` wildcard) to `UsingResultOverride`
+  objects. When the `interact` action's `using` field matches a key,
+  the override replaces the interaction's own
+  `check`/`success`/`failure`/`result`. Each override may optionally
+  carry its own `check` (allowing different DCs per item, e.g. STR DC
+  14 bare-handed vs. DC 10 with a weapon), or a plain
+  `result`. Overrides are leaf-level — the override's
+  check+success+failure (or result) fully replaces the interaction's
+  defaults.
 
 ---
 
