@@ -263,9 +263,11 @@ Notes:
 ### Gated Check
 
 A Gated Check wraps a [Check](#check) with a condition that determines
-whether the check is active (`gating`), an optional bypass condition
-(`skip_check_if`), and success/failure [Results](#result).  It is used
-for item `take_check` and exit `traversal_check`.
+whether the check is active, an optional bypass condition, and
+success/failure [Results](#result).  It is intended for situations
+where a player action would normally succeed, but has a chance to fail
+due to gameplay mechanics (specially, it is used in item `take_check`
+and exit `traversal_check`).
 
 ```json
 {
@@ -292,27 +294,24 @@ for item `take_check` and exit `traversal_check`.
 }
 ```
 
-| Field             | Type      | Description                              |
-|-------------------|-----------|------------------------------------------|
-| `gating` (*)      | Condition | Whether the check is active at all       |
-| `check`           | Check     | The Check to resolve (required)          |
-| `skip_check_if`(*)| Condition | If present and true, bypass the check    |
-| `success` (*)     | Result    | Result if check succeeds or is bypassed  |
-| `failure` (*)     | Result    | Result if check fails                    |
-| `using_results`(*)| object    | Item ID → alternate Check override map   |
+| Field             | Type      | Description                          |
+|-------------------|-----------|--------------------------------------|
+| `gating` (*)      | Condition | Whether the check is active          |
+| `check`           | Check     | The Check to resolve (required)      |
+| `skip_check_if`(*)| Condition | If present and true, bypass check    |
+| `success` (*)     | Result    | Result if check succeeds or bypassed |
+| `failure` (*)     | Result    | Result if check fails                |
+| `using_results`(*)| object    | Item ID -> override Check map        |
 > (*) optional
 
-Semantics note: if `gating` evaluates to false, the check is silently
-inactive — the action proceeds with default behavior and *no* Result
-from the check is applied (neither `success` nor `failure`).  If
-`gating` evaluates to true (or is absent) and `skip_check_if` evaluates
-to true, the check is bypassed and `success` is applied.  Otherwise the
-check is rolled normally.
+Note: if `gating` evaluates to false, the check is silently inactive;
+the action proceeds with default behavior and no Result from the check
+is applied (neither `success` nor `failure`).  If `gating` evaluates
+to true (or is absent) and `skip_check_if` evaluates to true, the
+check is bypassed and `success` is applied.  Otherwise the check is
+rolled normally.
 
-For the two accepted `using_results` override shapes (a `result`-keyed
-Result, or a `check`/`success`/`failure` triple), see
-[Interaction](#interaction) and [Traversal Check](#traversal-check);
-the semantics are identical in all contexts that use it.
+For info on `using_results`, see [Interaction](#interaction).
 
 #### Follow-up check
 
@@ -436,14 +435,14 @@ Notes:
 }
 ```
 
-| Field               | Type      | Description                      |
-|---------------------|-----------|----------------------------------|
-| `id`                | string    | Exit ID (room-unique)            |
-| `direction`         | string    | Human-readable exit label        |
-| `target_room`       | string    | Room ID of destination           |
-| `condition` (*)     | Condition | Gating condition (see below)     |
-| `traversal_check`(*)| object    | Check to use the exit (see below)|
-| `one_way` (*)       | boolean   | Indicates if exit is one-way     |
+| Field               | Type        | Description                      |
+|---------------------|-------------|----------------------------------|
+| `id`                | string      | Exit ID (room-unique)            |
+| `direction`         | string      | Human-readable exit label        |
+| `target_room`       | string      | Room ID of destination           |
+| `condition` (*)     | Condition   | Gating condition (see below)     |
+| `traversal_check`(*)| Gated Check | See [Gated Check](#gated-check)  |
+| `one_way` (*)       | boolean     | Indicates if exit is one-way     |
 > (*) optional
 
 Notes:
@@ -459,61 +458,15 @@ Notes:
   `traversal_check` field, documented below, describes the conditions
   and gating for non-automatic (e.g., risky) traversal.
 
+- `traversal_check`, if supplied, gates traversal.  Success and
+  failure have the side-effects of moving to the destination Room, and
+  canceling the traversal, respectively; no need to specify explicitly
+  in `success`/`failure`.  The `using_results` field accommodates
+  player commands of the form "[USE EXIT] using [ITEM]"; the format is
+  the same as in [Interaction](#interaction).
+
 - The `one_way` field is only used to indicate to the player that an
   exit *seems* one-way (e.g., a trapdoor).  No gameplay effects.
-
-#### Traversal Check
-
-The optional `traversal_check` field on an Exit is a [Gated
-Check](#gated-check) that gates non-automatic traversal.  The Exit's
-own `condition` field controls *visibility* of the exit;
-`traversal_check` controls whether traversal requires a check (and
-which check).
-
-```json
-{
-  "traversal_check": {
-    "gating": { "require": "flag:ladder_missing == true" },
-    "check": {
-      "type": "stat_check",
-      "stat": "STR",
-      "target": 13,
-      "repeatable": true
-    },
-    "skip_check_if": { "require": "inventory:spring_boots" },
-    "failure": {
-      "narrative": "You try to climb up the wall, but can't make progress."
-    },
-    "success": {
-      "narrative": "You manage to move up the wall."
-    },
-    "using_results": {
-      "grappling_hook": {
-        "check": { "type": "stat_check", "stat": "STR", "target": 8,
-                   "repeatable": true }
-      }
-    }
-  }
-}
-```
-
-Traversal-specific behavior:
-
-- Success has the side-effect of moving to the destination Room;
-  no need to specify that in `success`.
-
-- Failure also has the side-effect of canceling the traversal; no need
-  to specify that in `failure`.
-
-- The `using_results` field accommodates player commands of the form
-  "[USE EXIT] using [ITEM]".  It is keyed by item entity IDs (or the
-  `"*"` wildcard); when the player uses an item matching a key, the
-  value replaces the traversal check entirely.  The mapped value can
-  be one of these two:
-  - a dict with `result` keyed to a [Result](#result)
-  - a dict with `check` (a [Check](#check)), `success` (a Result)
-    and optionally `failure` (a Result), with the same semantics as
-    [Interaction](#interaction).
 
 ---
 
@@ -840,12 +793,7 @@ unique `entity_id`.
     "soft_items": ["string", ...],
     "contains": ["<entity_id>", ...],
     "tags": ["<tag>", ...],
-    "take_check": { /* take_check */
-      "gating": { "require": "flag:item_claimed == false" },
-      "check": { "type": "stat_check", ... },
-      "success": { "narrative": "...", "set_flag": { "item_claimed": true } },
-      "failure": { "narrative": "..." }
-    },
+    "take_check": { /* Gated Check (optional) */ },
     "equip_block": { /* equip_block */ },
     "interactions": [ { /* interaction */ } ],
     "on_examine": [ { /* on_examine event */ } ],
@@ -937,11 +885,11 @@ Items are entities that can potentially be picked up by the player.
 The player cannot talk to or attack items.  The following fields have
 special meanings for items:
 
-| Field                  | Type   | Description                        |
-|------------------------|--------|------------------------------------|
-| `name`                 | string | Display name (required!)           |
-| `take_check` (*)       | object | Gated check for taking the item    |
-| `equip_block` (*)      | object | For equipment (see below)          |
+| Field              | Type        | Description                     |
+|--------------------|-------------|---------------------------------|
+| `name`             | string      | Display name (required!)        |
+| `take_check` (*)   | Gated Check | See [Gated Check](#gated-check) |
+| `equip_block` (*)  | object      | For equipment (see below)       |
 > (*) optional
 
 Notes:
@@ -949,24 +897,12 @@ Notes:
 - `name` is required for items.  This is what the player sees in the
   inventory display.
 
-- `take_check` (*): GatedCheck — gated check for taking the item.
-  See [Gated Check](#gated-check).
-
-  The check is *not* automatically disabled after a successful take.
-  For a one-time success gate (pass once, then freely take thereafter),
-  use `gating` with a flag that `success` sets.  For a permanent
-  one-attempt gate (failure locks you out), set `check.repeatable` to
-  `false`.
-
-NPC-specific fields:
-
-| Field                  | Type   | Description |
-|------------------------|--------|-------------|
-| `dialogue_guidelines`(*)| object | See [Dialogue Guidelines](#dialogue-guidelines-for-npc-type). |
-| `behavior` (*)         | object | Encounter rules for combat-capable NPCs (see [Behavior](#behavior-for-npc-with-combat)). |
-| `combat` (*)           | object | HP-based combat stats (hp, ac, atk, dmg, etc.). Only for NPCs. |
-| `follower_blacklist`(*)| array of room IDs | Rooms this NPC refuses to enter when following the player. |
-
+- `take_check` is a [Gated Check](#gated-check) for taking the item
+  (e.g., pulling a sword from a stone).  Note that the check is *not*
+  automatically disabled after a successful take.  For a one-time
+  success gate (pass once, then freely take thereafter), use `gating`
+  and set a flag on `success`.  For a permanent one-attempt gate
+  (failure locks you out), set `check.repeatable` to `false`.
 
 ### `equip_block` — Equipment block (`EquipBlock`)
 
@@ -998,6 +934,18 @@ with the equipment system. Items without this block cannot be equipped.
 | `max_equipped`      | `int|null` | no       | How many items of this primary tag may be equipped simultaneously. `1` = standard (one helmet). `2` = rings. `null` = unlimited. Default `1`. The engine uses the *highest* value among items sharing the same primary `equip_tag`. |
 | `damage_expr`       | `string`   | no       | Damage dice expression when wielded (e.g. `"1d6"`, `"2d4"`). Only meaningful when `"weapon"` is in `equip_tags`. Default `"1d8"`. |
 | `attack_bonus`      | `int`      | no       | Flat bonus added to attack rolls. A "+1 sword" has `attack_bonus: 1`. Stacks across equipped weapons. Default `0`. |
+
+
+### NPC
+
+NPC-specific fields:
+
+| Field                  | Type   | Description |
+|------------------------|--------|-------------|
+| `dialogue_guidelines`(*)| object | See [Dialogue Guidelines](#dialogue-guidelines-for-npc-type). |
+| `behavior` (*)         | object | Encounter rules for combat-capable NPCs (see [Behavior](#behavior-for-npc-with-combat)). |
+| `combat` (*)           | object | HP-based combat stats (hp, ac, atk, dmg, etc.). Only for NPCs. |
+| `follower_blacklist`(*)| array of room IDs | Rooms this NPC refuses to enter when following the player. |
 
 #### NPC follower convention (`following` state field)
 
