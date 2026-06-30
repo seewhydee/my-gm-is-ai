@@ -337,7 +337,7 @@ world graph keyed by a globally-unique `room_id`.
 |----------------------|----------|------------------------------------|
 | `name`               | string   | Short display name                 |
 | `description`        | string   | Prose description of room          |
-| `contains`(*)| string[] | IDs of non-player entities directly present at game start |
+| `contains`(*)        | string[] | Entities directly present at start |
 | `exits` (*)          | array    | All exits out of the room          |
 | `state_fields` (*)   | object   | State fields for room (see below)  |
 | `interactions` (*)   | array    | See [Interaction](#interaction)    |
@@ -354,13 +354,15 @@ Notes:
   characteristics of the room, including when the player enters or
   looks around (NOT necessarily used verbatim in narration).
 
-- The `contains` field lists entities DIRECTLY present in the
-  room (at game start).  If entity A is in room R, and entity B is in
-  entity A (see `contains`, [Entity](#entity)), only A is
-  directly present; room R's `contains` lists A but not B.
+- The `contains` field lists the IDs of entities DIRECTLY present in
+  the room (at game start).  If entity A is in room R, and entity B is
+  in entity A (see `contains`, [Entity](#entity)), only A is directly
+  present; room R's `contains` lists A but not B.
 
-- The `exits` field contains an array of [Exit](#exit) objects, one
-  for EVERY possible exit, regardless of its initial availability and
+  The player must not be included (even for the starting room).
+
+- The `exits` field stores an array of [Exit](#exit) objects, one for
+  EVERY possible exit, regardless of its initial availability and
   visibility.  Each exit can be individually gated and/or hidden.
 
 - State fields have room-unique IDs (dict keys) chosen by the corpus
@@ -829,29 +831,37 @@ unique `entity_id`.
 
 The following fields are meaningful for all entity types:
 
-| Field                 | Type   | Description                         |
-|-----------------------|--------|-------------------------------------|
-| `type`                | enum   | `player|feature|npc|item`           |
-| `description`         | string | Canonical prose description         |
-| `tags` (*)            |string[]| Array of semantic tags              |
-| `contains`(*) | string[] | IDs of entities in this entity  |
-| `interactions` (*)    | array  | See [Interaction](#interaction)     |
-| `on_examine` (*)      | array  | See [On-Examine](#on-examine)       |
-| `reactions` (*)       | array  | See [Reaction](#reaction)           |
-| `state_fields` (*)    | object | State fields for entity (see below) |
-| `soft_items` (*)      | array  | Plausible soft items on/in entity   |
+| Field               | Type     | Description                         |
+|---------------------|----------|-------------------------------------|
+| `type`              | enum     | `player|feature|npc|item`           |
+| `description`       | string   | Canonical prose description         |
+| `tags` (*)          | string[] | Array of semantic tags              |
+| `contains`(*)       | string[] | IDs of entities inside this entity  |
+| `interactions` (*)  | array    | See [Interaction](#interaction)     |
+| `on_examine` (*)    | array    | See [On-Examine](#on-examine)       |
+| `reactions` (*)     | array    | See [Reaction](#reaction)           |
+| `state_fields` (*)  | object   | State fields for entity (see below) |
+| `soft_items` (*)    | array    | Plausible soft items on/in entity   |
 (*) optional
 
 Notes:
 
-- `tags` are for mechanical matching (e.g., `"weapon"`, `"key_item"`,
-  `"container"`). Available on all entity types.
-  These are distinct from `equip_block.equip_tags`;
-  `tag:<value>` conditions scan this list, not `equip_tags`.
-  The `"container"` tag enables the container open/close mechanic
-  (see [Reserved state fields](#reserved-state-fields)).
+- NPCs, features, and items each support additional fields, documented
+  in the following subsections.
 
-- State fields ...
+- The semantic `tags` can be accessed using `tag:<value>` specs in
+  [Condition strings](#condition-string).  They are distinct from
+  `equip_block.equip_tags` (see below).  The special `"container"` tag
+  should be placed on entities that act as containers with open/close
+  functionality; see [Reserved state fields](#reserved-state-fields).
+
+- State fields have entity-unique IDs (dict keys) chosen by the corpus
+  author.  The following state fields have special meanings,
+  documented below: `alive`, `fled`, `attitude`, `hidden`,
+  `following`, and `current_hp`.  The corpus author can also define
+  custom state fields.
+
+### Feature
 
 Feature-specific fields:
 
@@ -859,6 +869,8 @@ Feature-specific fields:
 |-----------------|--------|-----------------------------------------|
 | `spans_rooms`(*)| array  | List of room IDs the entity spans       |
 
+
+### Item
 
 Item-specific fields:
 
