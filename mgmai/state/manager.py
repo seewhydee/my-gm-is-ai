@@ -249,7 +249,7 @@ class StateManager:
         _check_ids(self.hard_state.player.inventory, self.corpus.entities, "entity")
         _check_ids(self.hard_state.player.equipped, self.corpus.entities, "entity")
         for room_id, room in self.corpus.rooms.items():
-            _check_ids(room.entities_present, self.corpus.entities, "entity")
+            _check_ids(room.contains, self.corpus.entities, "entity")
 
         # Validate soft state
         _check_ids(self.soft_state.room_notes,   self.corpus.rooms,    "room")

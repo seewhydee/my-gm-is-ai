@@ -67,7 +67,7 @@ def combat_npc_corpus() -> ModuleCorpus:
             "room1": {
                 "name": "Test Room",
                 "description": "A test room.",
-                "entities_present": ["goblin"],
+                "contains": ["goblin"],
                 "exits": [
                     {"id": "exit_north", "direction": "north", "target_room": "room2"},
                 ],

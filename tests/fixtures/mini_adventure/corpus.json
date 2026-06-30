@@ -19,7 +19,7 @@
           "target_room": "hallway"
         }
       ],
-      "entities_present": [],
+      "contains": [],
       "interactions": [],
       "on_examine": [],
       "is_start_room": true
@@ -35,7 +35,7 @@
           "target_room": "start_room"
         }
       ],
-      "entities_present": [],
+      "contains": [],
       "interactions": [],
       "on_examine": []
     }

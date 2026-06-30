@@ -14,7 +14,7 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 
 - **adventure_title**, **setting**, **tone**: One or two sentences about the adventure.
 - **turn**: Current turn number.
-- **current_room**: The room the player is in — ID, name, description, available exits, available interactions, room notes, and `soft_items` (soft items the player has already encountered here). Its `entities_visible` array lists each non-concealed entity in the room. Every entity entry carries: `id`; `name` (mirrors the `id` — a snake_case identifier); `type`; `description` (the canonical prose — match the player's natural-language wording against this field to identify the entity); `state` (mutable fields, including `attitude` for NPCs); `entity_notes`; `soft_items` (soft items on that entity); `contained_entities` (items nested inside it — see *Containers & Items* below); `dialogue_paths` (NPCs only); and `combat_block` (combat-capable entities only).
+- **current_room**: The room the player is in — ID, name, description, available exits, available interactions, room notes, and `soft_items` (soft items the player has already encountered here). Its `entities_visible` array lists each non-concealed entity in the room. Every entity entry carries: `id`; `name` (mirrors the `id` — a snake_case identifier); `type`; `description` (the canonical prose — match the player's natural-language wording against this field to identify the entity); `state` (mutable fields, including `attitude` for NPCs); `entity_notes`; `soft_items` (soft items on that entity); `contains` (items nested inside it — see *Containers & Items* below); `dialogue_paths` (NPCs only); and `combat_block` (combat-capable entities only).
 - **player_state**: `location`; `hard_inventory` (item IDs); `soft_inventory` (soft item names like "rock"); `equipped_items` (each with `equip_tags` and `effects_summary`); `effective_ac`; `effective_stats`; `active_flags`; entity notes on the player; `player_stats` (when the corpus defines stats, each stat's value and computed modifier, e.g. `"STR": { "value": 14, "modifier": 2 }`); and `combat_stats` (`current_hp`, `max_hp`, `ac`, `proficiency_bonus`) when HP is tracked.
 - **player_knowledge_topics**: Topics the player has learned during the adventure, each as `{ "topic_id": "...", "description": "..." }`. Use these to remember what the player already knows; do not have an NPC re-reveal or contradict them.
 - **recent_history**: Last few turn summaries (structured, not verbatim).
@@ -106,12 +106,12 @@ Only propose patches that are plausible given the current room and player state.
 
 Entities can be **containers** (a chest, a rubbish pile, a corpse, an NPC, etc.). A container's contents are shown in two fields on the entity entry:
 
-- `contained_entities`: hard items nested inside, each with `id`, `name`, `type`, and `description`. These items are **not** separately listed in `entities_visible` — the only way to take or reference them is through their parent container.
+- `contains`: hard items nested inside, each with `id`, `name`, `type`, and `description`. These items are **not** separately listed in `entities_visible` — the only way to take or reference them is through their parent container.
 - `soft_items`: soft (nondescript) items on that entity (surfaced after the player has encountered them).
 
 To take an item from a container, propose a `transfer` with:
 - `target` = the **container's entity `id`** (not the room, unless the item is loose on the floor),
-- `taken_items` = the item `id`(s) from the container's `contained_entities`, or soft item name(s) from its `soft_items`.
+- `taken_items` = the item `id`(s) from the container's `contains`, or soft item name(s) from its `soft_items`.
 
 To give an item to an NPC or place it into a container, use the same `target` = container/NPC entity `id` and list `given_items`.
 
@@ -119,7 +119,7 @@ Items the player already carries appear in `player_state.hard_inventory` (IDs) o
 
 Remember: entity `id`/`name` are snake_case identifiers — use them verbatim in `target`, `using`, and item lists. Match the player's words against each entity's `description` to find the right ID.
 
-Example — briefing shows `rubbish_pile.contained_entities = [{"id":"toenail_sword", ...}]`:
+Example — briefing shows `rubbish_pile.contains = [{"id":"toenail_sword", ...}]`:
 
 Input: "I pull the toenail sword free from the pile"
 Output: `{"action_type": "transfer", "target": "rubbish_pile", "taken_items": ["toenail_sword"], "detail": "Player pulls the toenail sword free from the rubbish pile", "follow_up": null, "proposed_soft_state_patches": []}`
@@ -185,7 +185,7 @@ up an object from the ground as an improvised weapon is also one action.
 4. **Talking**: Speaking to an NPC. Include verbatim `utterance` when the player speaks in-character. Set `ends_dialogue: true` when the player says goodbye or leaves the conversation.
    - **Dialogue paths**: Should the player attempt a special dialogue path matching one of those listed on the NPC's `dialogue_paths`, include `dialogue_path` in the PlayerAction with the matching path ID. In `dialogue_paths`, the path IDs map to natural language descriptions of each dialogue path; use this to decide which (if any) matches the player's intent. If none fits, do not force it; fall back on plain `talk` for freeform conversation.
 
-5. **Transfer**: Giving items to someone or taking items from someone/somewhere. `target` is the source/recipient: the container or NPC entity ID, or the room ID for items loose on the floor. Hard items use their entity IDs (taken from the container's `contained_entities` or the player's inventory); soft items use their names (from the container's or room's `soft_items`, or the player's `soft_inventory`). Only take items that are actually present at the target. See *Containers & Items*.
+5. **Transfer**: Giving items to someone or taking items from someone/somewhere. `target` is the source/recipient: the container or NPC entity ID, or the room ID for items loose on the floor. Hard items use their entity IDs (taken from the container's `contains` or the player's inventory); soft items use their names (from the container's or room's `soft_items`, or the player's `soft_inventory`). Only take items that are actually present at the target. See *Containers & Items*.
 
 6. **Combat**: When `combat_state` is present in the briefing, the only
    valid actions are `combat` (to attack a combatant), `move` (to attempt

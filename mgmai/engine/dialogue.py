@@ -125,7 +125,7 @@ def check_room_change_exit(
         return None
 
     new_room_data = corpus.rooms.get(new_room)
-    if new_room_data and npc_id in new_room_data.entities_present:
+    if new_room_data and npc_id in new_room_data.contains:
         return None
 
     # Following NPCs travel with the player; don't exit dialogue.

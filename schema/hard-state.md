@@ -183,7 +183,7 @@ The engine validates at startup that:
 ### State filtering for GMBriefing
 
 When the Context Assembler builds the GMBriefing, it:
-1. Lists entities in `entities_present` for the current room.
+1. Lists entities in `contains` for the current room.
 2. Filters to entities where `state.alive == true` (or the entity has no
    `alive` field — static features are always visible).
 3. Includes a brief description and current state summary for each visible entity.

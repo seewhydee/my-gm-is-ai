@@ -41,7 +41,7 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.conditions import evaluate
-from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs, build_contained_entities, is_exit_visible
+from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs, build_contains, is_exit_visible
 
 
 def assemble(corpus: ModuleCorpus,
@@ -83,7 +83,7 @@ def _build_room(room_id: str,
     assert isinstance(room, CorpusRoom)
 
     entities_visible: list[BriefingEntity] = []
-    for eid in room.entities_present:
+    for eid in room.contains:
         entity = corpus.entities.get(eid)
         if entity is None:
             continue
@@ -117,7 +117,7 @@ def _build_room(room_id: str,
                 state=dict(entity_state),
                 entity_notes=list(notes),
                 soft_items=list(entity_soft),
-                contained_entities=build_contained_entities(entity, hard, corpus, entity_id=eid),
+                contains=build_contains(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
                 combat_block=combat_block_dict))
 
@@ -141,7 +141,7 @@ def _build_room(room_id: str,
             BriefingInteraction(id=inter.id,
                                 description=inter.description))
 
-    entity_ids: set[str] = set(room.entities_present)
+    entity_ids: set[str] = set(room.contains)
     for eid in get_following_npc_ids(hard, corpus):
         entity_ids.add(eid)
 

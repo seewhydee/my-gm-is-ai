@@ -244,7 +244,7 @@ def resolve_examine(
         return result
 
     all_soft = set(room.soft_items or [])
-    for eid in room.entities_present:
+    for eid in room.contains:
         ent = corpus.entities.get(eid)
         if ent and ent.soft_items:
             all_soft.update(ent.soft_items)
@@ -254,7 +254,7 @@ def resolve_examine(
         if room.soft_items and target in room.soft_items:
             surfaced[room_id] = [target]
         else:
-            for eid in room.entities_present:
+            for eid in room.contains:
                 ent = corpus.entities.get(eid)
                 if ent and ent.soft_items and target in ent.soft_items:
                     surfaced[eid] = [target]
@@ -454,7 +454,7 @@ def resolve_talk(
         return ResolutionResult(success=False, error=f"Room '{room_id}' not found")
 
     follower_ids = get_following_npc_ids(hard, corpus)
-    if target_npc not in room.entities_present and target_npc not in follower_ids:
+    if target_npc not in room.contains and target_npc not in follower_ids:
         return ResolutionResult(
             success=False,
             error=f"NPC '{target_npc}' is not present in room '{room_id}'",
@@ -621,7 +621,7 @@ def resolve_transfer(
 
     target_is_room = target_id == room_id
     follower_ids = get_following_npc_ids(hard, corpus)
-    target_is_entity = target_id in room.entities_present or target_id in follower_ids
+    target_is_entity = target_id in room.contains or target_id in follower_ids
 
     if not target_is_room and not target_is_entity:
         return ResolutionResult(
@@ -660,13 +660,13 @@ def resolve_transfer(
 
     available_pool: set[str] = set()
     if target_is_room:
-        for eid in room.entities_present:
+        for eid in room.contains:
             ent = corpus.entities.get(eid)
             if ent and ent.type == "item":
                 available_pool.add(eid)
-            if ent and ent.contained_entities:
+            if ent and ent.contains:
                 if _container_is_open(eid, hard, corpus):
-                    for cid in ent.contained_entities:
+                    for cid in ent.contains:
                         cstate = hard.entity_states.get(cid, {})
                         if not cstate.get("hidden", False):
                             available_pool.add(cid)
@@ -683,18 +683,18 @@ def resolve_transfer(
             if _container_is_open(target_id, hard, corpus):
                 if target_ent.soft_items:
                     available_pool.update(target_ent.soft_items)
-                if target_ent.contained_entities:
-                    available_pool.update(target_ent.contained_entities)
+                if target_ent.contains:
+                    available_pool.update(target_ent.contains)
         # Fallback: add room-level items that are not nested inside any
-        # other entity in the room (via contained_entities).
+        # other entity in the room (via contains).
         claimed_entities: set[str] = set()
-        for eid in room.entities_present:
+        for eid in room.contains:
             if eid == target_id:
                 continue
             ent = corpus.entities.get(eid)
-            if ent and ent.contained_entities:
-                claimed_entities.update(ent.contained_entities)
-        for eid in room.entities_present:
+            if ent and ent.contains:
+                claimed_entities.update(ent.contains)
+        for eid in room.contains:
             ent = corpus.entities.get(eid)
             if ent and ent.type == "item" and eid not in claimed_entities:
                 available_pool.add(eid)
@@ -712,13 +712,13 @@ def resolve_transfer(
             if target_is_entity:
                 target_ent = corpus.entities.get(target_id)
                 if target_ent and not _container_is_open(target_id, hard, corpus):
-                    if item in target_ent.contained_entities or item in target_ent.soft_items:
+                    if item in target_ent.contains or item in target_ent.soft_items:
                         closed_error = f"The {target_ent.name or target_id} is closed."
             else:
-                for eid in room.entities_present:
+                for eid in room.contains:
                     ent = corpus.entities.get(eid)
                     if ent and not _container_is_open(eid, hard, corpus):
-                        if item in ent.contained_entities or (ent.soft_items and item in ent.soft_items):
+                        if item in ent.contains or (ent.soft_items and item in ent.soft_items):
                             closed_error = f"The {ent.name or eid} is closed."
                             break
             if closed_error is not None:
@@ -789,7 +789,7 @@ def resolve_transfer(
             if room.soft_items and item in room.soft_items:
                 surfaced.setdefault(room_id, []).append(item)
             else:
-                for eid in room.entities_present:
+                for eid in room.contains:
                     ent = corpus.entities.get(eid)
                     if ent and ent.soft_items and item in ent.soft_items:
                         surfaced.setdefault(eid, []).append(item)
@@ -1464,9 +1464,9 @@ def _find_entity_in_room(
     room: Any,
     corpus: ModuleCorpus,
 ) -> Any | None:
-    if entity_id in room.entities_present:
+    if entity_id in room.contains:
         return corpus.entities.get(entity_id)
-    for eid in room.entities_present:
+    for eid in room.contains:
         ent = corpus.entities.get(eid)
         if ent and ent.spans_rooms and room_id in ent.spans_rooms:
             if eid == entity_id:

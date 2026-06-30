@@ -306,7 +306,7 @@ The LLM must output a single structured action, corresponding to the player's in
 | `using`    | string\|null  | no       | A valid entity ID or soft item used to assist the examination (e.g., using a torch to look at a dark corner). Tool-assisted examines should usually be `rigorous: true`. |
 
 **Engine validation:**
-- `target` must be a valid entity in the current room's `entities_present`, the
+- `target` must be a valid entity in the current room's `contains`, the
   current room ID, or a soft item name present in the current room or on a
   visible entity.
 - If `using` is specified, the item must be in the player's hard inventory

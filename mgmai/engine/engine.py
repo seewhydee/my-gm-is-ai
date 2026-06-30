@@ -632,7 +632,7 @@ def _validate_soft_patches(
                 reason = f"Invalid room: {room_id}"
             else:
                 all_soft = set(room.soft_items or [])
-                for eid in room.entities_present:
+                for eid in room.contains:
                     ent = corpus.entities.get(eid)
                     if ent and ent.soft_items:
                         all_soft.update(ent.soft_items)
@@ -670,7 +670,7 @@ def _check_note_contradiction(
     for ent_id, state in hard.entity_states.items():
         if room_id is not None:
             room = corpus.rooms.get(room_id)
-            if room is None or ent_id not in room.entities_present:
+            if room is None or ent_id not in room.contains:
                 continue
         ent = corpus.entities.get(ent_id)
         if ent is None:
@@ -701,7 +701,7 @@ def _build_room_after(
         )
 
     entities_visible: list[BriefingEntity] = []
-    for eid in room.entities_present:
+    for eid in room.contains:
         entity = corpus.entities.get(eid)
         if entity is None:
             continue
@@ -788,7 +788,7 @@ def _build_will_reveal_readiness(
         return result
 
     npc_ids: set[str] = set()
-    for eid in room.entities_present:
+    for eid in room.contains:
         npc_ids.add(eid)
     for eid in get_following_npc_ids(hard, corpus):
         npc_ids.add(eid)
@@ -839,7 +839,7 @@ def _build_npc_attitude_limits(
         return result
 
     npc_ids: set[str] = set()
-    for eid in room.entities_present:
+    for eid in room.contains:
         npc_ids.add(eid)
     for eid in get_following_npc_ids(hard, corpus):
         npc_ids.add(eid)

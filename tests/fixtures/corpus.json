@@ -17,7 +17,7 @@
     "axe_head": {
       "name": "Axe Head",
       "description": "You are standing on the tip of a giant battleaxe, its blade resting against a huge wall of canvas. The shaft is as wide as a sidewalk, sloping downward into dimness. A faint luminescence emanates from the canvas walls — some side effect of the bag's magic. Above, barely above head height, the canvas forms a low ceiling, scrunching shut in the centre. The top of the blade has made a small rip in the fabric. If you balance carefully on the tip, you could poke your head through. You can drop down into the darkness below, or clamber carefully down the axe handle.",
-      "entities_present": [
+      "contains": [
         "battleaxe",
         "canvas_walls",
         "rip_in_canvas",
@@ -65,7 +65,7 @@
     "axe_handle_upper": {
       "name": "Axe Handle (Upper)",
       "description": "You are on the upper section of the axe handle, descending through the dimness. The canvas walls continue to glow faintly around you. Extremely sticky webs stretch across the shaft. A stuck fly, trapped in the webbing, twitches weakly. You can walk up or down the handle, or drop down into the darkness below.",
-      "entities_present": [
+      "contains": [
         "battleaxe",
         "canvas_walls",
         "stuck_fly",
@@ -129,7 +129,7 @@
     "axe_handle_lower": {
       "name": "Axe Handle (Lower)",
       "description": "You are on the lower section of the axe handle. The webs here are much denser, blocking the path downward unless you push through. If you look carefully, you see the spider — huge and hungry for blood — lurking in the webs. Below, many irregularly shaped objects are coming into view. It looks like you could drop down safely. There is some muffled clanking from the shadows below.",
-      "entities_present": [
+      "contains": [
         "battleaxe",
         "canvas_walls",
         "webs_dense",
@@ -183,7 +183,7 @@
     "bag_floor": {
       "name": "Bag Floor",
       "description": "You are on the floor of the bag. The canvas walls tower over everything, the axe handle rising upward into the gloom. Loose piles of giant rubbish surround you — empty potion bottles, corks, stale sandwiches, copper pieces, and lint. A disgustingly damp giant handkerchief lies crumpled in one corner. Here is Korbar the Dwarf, drunk and miserable, wearing ridiculously noisy platemail. She eyes you over her tankard.",
-      "entities_present": [
+      "contains": [
         "battleaxe",
         "canvas_walls",
         "rubbish_pile",
@@ -218,7 +218,7 @@
     "secret_compartment": {
       "name": "Secret Compartment",
       "description": "You are in a small, dark compartment hidden behind the canvas wall. It is cramped and dusty. A large rusty key sits in the centre of the space — far too big for any normal lock, but just the right size for the giant padlock outside the bag.",
-      "entities_present": [
+      "contains": [
         "canvas_walls",
         "rusty_key"
       ],

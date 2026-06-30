@@ -210,7 +210,7 @@ class TestEngineFullFlow:
         room_a = _mk_room(
             "room_a",
             "Room A",
-            entities_present=["glyph"],
+            contains=["glyph"],
             interactions=[
                 Interaction(
                     id="teleport",
@@ -280,7 +280,7 @@ class TestEngineFullFlow:
         room_a = _mk_room(
             "room_a",
             "Room A",
-            entities_present=["glyph"],
+            contains=["glyph"],
             interactions=[
                 Interaction(
                     id="teleport",

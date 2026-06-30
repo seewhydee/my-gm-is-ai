@@ -818,7 +818,7 @@ features named `fountain`, with different entity IDs.
 
 For features spanning multiple rooms, use `spans_rooms` to list all
 rooms where the feature is visible.  The entity ID should be listed in
-`entities_present` for each of those rooms.
+`contains` for each of those rooms.
 
 #### Containers
 
@@ -831,7 +831,7 @@ The engine provides special support for this case:
 
 - The container entity should have a `container` tag AND `open` as a
   state field.  When `open` is false, the engine hides its contents
-  (`contained_entities` and `soft_items`); when `open` is true, the
+  (`contains` and `soft_items`); when `open` is true, the
   contents are surfaced.
 
 - To let the player open/close the container, give the container
@@ -851,7 +851,7 @@ Example — a chest containing a gem:
   "state_fields": {
     "open": { "type": "boolean", "description": "Whether the chest is open." }
   },
-  "contained_entities": ["glowing_gem"],
+  "contains": ["glowing_gem"],
   "interactions": [
     {
       "id": "open",
@@ -1068,7 +1068,7 @@ Example of a will_reveal structure:
 - [ ] Every `set_entity_state` in `will_reveal` sets a field declared in the
       target entity's `state_fields`
 - [ ] Entities that span multiple rooms have `spans_rooms` and appear in
-      each room's `entities_present` (cross-check with Step 3 once rooms exist)
+      each room's `contains` (cross-check with Step 3 once rooms exist)
 - [ ] Entity `reactions` use valid event types (see `events.md`)
 - [ ] Entity `reactions` using `"self"` in `trigger_encounter` or
       `trigger_dialogue` are on entities of the correct type (encounter for
@@ -1113,11 +1113,11 @@ search or NPC reveal, or spoilers.
 
 ### 3B. Entities Present
 
-The `entities_present` field should list the IDs for all entities
+The `contains` field should list the IDs for all entities
 present in the room at game start, **including hidden entities**.
 
 Exclude entities contained in other entities: e.g., if a key is inside
-a box in the room, the key should NOT be in `entities_present`.
+a box in the room, the key should NOT be in `contains`.
 
 ### 3C. Exits
 
@@ -1300,7 +1300,7 @@ above).
 - [ ] Exactly one room has `is_start_room: true`
 - [ ] Every exit `target_room` references a valid room ID
 - [ ] Every exit ID is unique across its host room
-- [ ] Every entity in `entities_present` exists in the `entities` block
+- [ ] Every entity in `contains` exists in the `entities` block
 - [ ] Every `trigger_encounter` in a `traversal.succeeded` reaction
   references a mechanic that will be created in Step 4
 - [ ] Every `trigger_dialogue` references a valid NPC entity ID
@@ -1628,7 +1628,7 @@ Follow this exact structure:
 - [ ] Every flag name used anywhere in the corpus appears in `flags`
 - [ ] `player.location` references the room with `is_start_room: true`
 - [ ] No entity in `player.inventory` also appears in a room's
-      `entities_present` at start
+      `contains` at start
 - [ ] If corpus has `stats`: `player.stats` is present, and every key matches
       a key in `stats.definitions`
 - [ ] If corpus has no `stats`: `player.stats` is absent
@@ -1727,7 +1727,7 @@ cross-file consistency issues.
   `set_entity_state` appears in `hard_state.flags`
 - [ ] Every room ID referenced in any exit `target_room`, `spans_rooms`,
   `follower_blacklist`, etc. exists in `corpus.rooms`
-- [ ] Every entity ID referenced in any `entities_present`, `add_item`,
+- [ ] Every entity ID referenced in any `contains`, `add_item`,
   `remove_item`, `set_entity_state`, `trigger_dialogue`, `using_results`
   key, etc. exists in `corpus.entities`
 - [ ] Every mechanic ID referenced in any `trigger_encounter` exists in
@@ -1765,7 +1765,7 @@ cross-file consistency issues.
 - [ ] Every entity with `state_fields` has a complete `entity_states` entry
 - [ ] `entity_states` contains no fields not declared in the entity's `state_fields`
 - [ ] Entities with `hidden: true` in initial `entity_states` are still
-  listed in the room's `entities_present` (the engine handles filtering
+  listed in the room's `contains` (the engine handles filtering
   based on the state field)
 - [ ] `entity_states` contains all fields declared in the entity's `state_fields`
 - [ ] Every NPC with `dialogue_guidelines` has `attitude` in both `state_fields` and `entity_states`
@@ -1993,7 +1993,7 @@ All IDs must be **snake_case, lowercase ASCII**:
    NPC's `attitude_limits.initial`.
 
 10. **Item placement**: Items that start in a specific location appear in
-    that room's `entities_present`. Items the player starts carrying are in
+    that room's `contains`. Items the player starts carrying are in
     `hard_state.player.inventory`. Never put the same item ID in both.
 
 11. **Prose style**: All `description`, `narrative`, and `introduction` fields

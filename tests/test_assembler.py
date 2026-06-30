@@ -22,7 +22,7 @@ import pytest
 
 from mgmai.context.assembler import assemble
 from mgmai.models.briefing import (
-    BriefingContainedEntity,
+    BriefingContainsEntry,
     BriefingEntity,
     BriefingExit,
     BriefingHistoryEntry,
@@ -33,7 +33,7 @@ from mgmai.models.briefing import (
     GMBriefing,
     PlayerStateBriefing,
 )
-from mgmai.engine.utils import build_contained_entities
+from mgmai.engine.utils import build_contains
 from mgmai.models.soft_state import (
     ConversationLogEntry,
     DialogueState,
@@ -106,7 +106,7 @@ class TestAssembleBasic:
 class TestEntityVisibility:
     """Entity filtering: dead entities omitted, state and notes included."""
 
-    def test_entities_present_in_start_room(self, state_manager):
+    def test_contains_in_start_room(self, state_manager):
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
@@ -853,8 +853,8 @@ class TestErrorHandling:
             )
 
     def test_unknown_entity_in_room_skipped(self, state_manager):
-        # Add an unknown entity ID to the room's entities_present
-        state_manager.corpus.rooms["axe_head"].entities_present.append("ghost_entity")
+        # Add an unknown entity ID to the room's contains
+        state_manager.corpus.rooms["axe_head"].contains.append("ghost_entity")
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
@@ -864,7 +864,7 @@ class TestErrorHandling:
         entity_ids = [e.id for e in result.current_room.entities_visible]
         assert "ghost_entity" not in entity_ids
         # Cleanup
-        state_manager.corpus.rooms["axe_head"].entities_present.pop()
+        state_manager.corpus.rooms["axe_head"].contains.pop()
 
     def test_empty_soft_state(self, state_manager):
         state_manager.soft_state.soft_inventory = []
@@ -887,16 +887,16 @@ class TestErrorHandling:
 
 
 class TestBuildContainedEntities:
-    """Unit tests for build_contained_entities() helper."""
+    """Unit tests for build_contains() helper."""
 
     def test_returns_contained_entity_when_not_hidden(self, state_manager):
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         # Add a contained entity relationship to rubbish_pile
-        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": False}
-        result = build_contained_entities(
+        result = build_contains(
             corpus.entities["rubbish_pile"], hard, corpus,
         )
         assert len(result) == 1
@@ -907,9 +907,9 @@ class TestBuildContainedEntities:
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": True}
-        result = build_contained_entities(
+        result = build_contains(
             corpus.entities["rubbish_pile"], hard, corpus,
         )
         assert len(result) == 0
@@ -918,10 +918,10 @@ class TestBuildContainedEntities:
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": False}
         hard.player.inventory = ["toenail_sword"]
-        result = build_contained_entities(
+        result = build_contains(
             corpus.entities["rubbish_pile"], hard, corpus,
         )
         assert len(result) == 0
@@ -930,23 +930,23 @@ class TestBuildContainedEntities:
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": False}
         # Equipped items are no longer in inventory but must still be
         # filtered out so they don't reappear inside their container.
         hard.player.inventory = []
         hard.player.equipped = ["toenail_sword"]
-        result = build_contained_entities(
+        result = build_contains(
             corpus.entities["rubbish_pile"], hard, corpus,
         )
         assert len(result) == 0
 
-    def test_empty_when_no_contained_entities(self, state_manager):
+    def test_empty_when_no_contains(self, state_manager):
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "axe_head"
-        corpus.entities["battleaxe"].contained_entities = []
-        result = build_contained_entities(
+        corpus.entities["battleaxe"].contains = []
+        result = build_contains(
             corpus.entities["battleaxe"], hard, corpus,
         )
         assert result == []
@@ -955,56 +955,56 @@ class TestBuildContainedEntities:
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        corpus.entities["rubbish_pile"].contained_entities = ["nonexistent"]
-        result = build_contained_entities(
+        corpus.entities["rubbish_pile"].contains = ["nonexistent"]
+        result = build_contains(
             corpus.entities["rubbish_pile"], hard, corpus,
         )
         assert len(result) == 0
 
 
 class TestContainedEntitiesSurfacing:
-    """Integration tests: contained_entities appear in the assembler briefing."""
+    """Integration tests: contains appear in the assembler briefing."""
 
     def test_contained_entity_in_briefing_when_unhidden(self, state_manager):
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": False}
         result = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish = _find_entity(result, "rubbish_pile")
         assert rubbish is not None
-        assert len(rubbish.contained_entities) == 1
-        assert rubbish.contained_entities[0].id == "toenail_sword"
+        assert len(rubbish.contains) == 1
+        assert rubbish.contains[0].id == "toenail_sword"
 
     def test_hidden_contained_entity_not_in_briefing(self, state_manager):
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": True}
         result = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish = _find_entity(result, "rubbish_pile")
         assert rubbish is not None
-        assert len(rubbish.contained_entities) == 0
+        assert len(rubbish.contains) == 0
 
     def test_contained_entity_appears_after_unhide(self, state_manager):
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": True}
         result1 = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish1 = _find_entity(result1, "rubbish_pile")
-        assert len(rubbish1.contained_entities) == 0
+        assert len(rubbish1.contains) == 0
         # Unhide and re-assemble
         hard.entity_states["toenail_sword"]["hidden"] = False
         result2 = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish2 = _find_entity(result2, "rubbish_pile")
-        assert len(rubbish2.contained_entities) == 1
-        assert rubbish2.contained_entities[0].id == "toenail_sword"
+        assert len(rubbish2.contains) == 1
+        assert rubbish2.contains[0].id == "toenail_sword"
 
-    def test_empty_contained_entities_when_none_defined(self, state_manager):
+    def test_empty_contains_when_none_defined(self, state_manager):
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
@@ -1012,19 +1012,19 @@ class TestContainedEntitiesSurfacing:
             "look",
         )
         for entity in result.current_room.entities_visible:
-            assert entity.contained_entities == []
+            assert entity.contains == []
 
     def test_contained_inventory_item_excluded_from_briefing(self, state_manager):
         corpus = state_manager.corpus
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        corpus.entities["rubbish_pile"].contained_entities = ["toenail_sword"]
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": False}
         hard.player.inventory = ["toenail_sword"]
         result = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish = _find_entity(result, "rubbish_pile")
         assert rubbish is not None
-        assert len(rubbish.contained_entities) == 0
+        assert len(rubbish.contains) == 0
 
 
 def _find_entity(briefing: GMBriefing, entity_id: str) -> BriefingEntity | None:

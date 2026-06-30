@@ -323,7 +323,7 @@ class Reaction(BaseModel):
 class Room(BaseModel):
     name: str
     description: str
-    entities_present: List[str] = Field(default_factory=list)
+    contains: List[str] = Field(default_factory=list)
     soft_items: List[str] = Field(default_factory=list)
     exits: List[Exit] = Field(default_factory=list)
     interactions: List[Interaction] = Field(default_factory=list)
@@ -418,7 +418,7 @@ class Entity(BaseModel):
     description: str
     spans_rooms: Optional[List[str]] = None
     soft_items: List[str] = Field(default_factory=list)
-    contained_entities: List[str] = Field(default_factory=list)
+    contains: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     take_check: Optional[TakeCheck] = None
     interactions: List[Interaction] = Field(default_factory=list)

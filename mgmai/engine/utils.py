@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from mgmai.models.briefing import BriefingContainedEntity, BriefingEntity
+from mgmai.models.briefing import BriefingContainsEntry, BriefingEntity
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
@@ -93,19 +93,19 @@ def inject_following_npcs(
                 state=entity_state,
                 entity_notes=notes,
                 soft_items=list(entity_soft),
-                contained_entities=build_contained_entities(entity, hard, corpus, entity_id=eid),
+                contains=build_contains(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
             )
         )
 
 
-def build_contained_entities(
+def build_contains(
     entity: object,
     hard: HardGameState,
     corpus: ModuleCorpus,
     entity_id: str = "",
-) -> list[BriefingContainedEntity]:
-    """Build BriefingContainedEntity list from an entity's contained_entities,
+) -> list[BriefingContainsEntry]:
+    """Build BriefingContainsEntry list from an entity's contains,
     filtering out hidden entities and items already in player inventory.
 
     When the entity has the ``container`` tag and ``open`` is declared in
@@ -120,8 +120,8 @@ def build_contained_entities(
         if estate.get("open") is not True:
             return []
 
-    contained: list[BriefingContainedEntity] = []
-    for cid in entity.contained_entities:
+    contained: list[BriefingContainsEntry] = []
+    for cid in entity.contains:
         contained_entity = corpus.entities.get(cid)
         if contained_entity is None:
             continue
@@ -133,7 +133,7 @@ def build_contained_entities(
             or cid in hard.player.equipped
         ):
             continue
-        contained.append(BriefingContainedEntity(
+        contained.append(BriefingContainsEntry(
             id=cid,
             name=contained_entity.name or cid,
             type=contained_entity.type,

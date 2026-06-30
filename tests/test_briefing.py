@@ -18,7 +18,7 @@ import pytest
 from pydantic import ValidationError
 
 from mgmai.models.briefing import (
-    BriefingContainedEntity,
+    BriefingContainsEntry,
     BriefingEntity,
     BriefingExit,
     BriefingHistoryEntry,
@@ -29,9 +29,9 @@ from mgmai.models.briefing import (
 )
 
 
-class TestBriefingContainedEntity:
+class TestBriefingContainsEntry:
     def test_basic(self) -> None:
-        c = BriefingContainedEntity.model_validate({
+        c = BriefingContainsEntry.model_validate({
             "id": "toenail_sword",
             "name": "toenail_sword",
             "type": "item",
@@ -42,7 +42,7 @@ class TestBriefingContainedEntity:
         assert c.description == "A giant toenail clipping."
 
     def test_default_type_is_item(self) -> None:
-        c = BriefingContainedEntity.model_validate({
+        c = BriefingContainsEntry.model_validate({
             "id": "rusty_key",
             "name": "rusty_key",
             "description": "A rusty key.",
@@ -51,7 +51,7 @@ class TestBriefingContainedEntity:
 
     def test_missing_id_raises(self) -> None:
         with pytest.raises(ValidationError):
-            BriefingContainedEntity.model_validate({
+            BriefingContainsEntry.model_validate({
                 "name": "sword",
                 "type": "item",
                 "description": "A sword.",
@@ -71,20 +71,20 @@ class TestBriefingEntity:
         })
         assert e.id == "spider"
         assert e.state["alive"] is True
-        assert e.contained_entities == []
+        assert e.contains == []
 
-    def test_with_contained_entities(self) -> None:
+    def test_with_contains(self) -> None:
         e = BriefingEntity.model_validate({
             "id": "rubbish_pile",
             "name": "rubbish_pile",
             "type": "feature",
             "description": "A pile of rubbish.",
-            "contained_entities": [
+            "contains": [
                 {"id": "toenail_sword", "name": "toenail_sword", "type": "item", "description": "A toenail."},
             ],
         })
-        assert len(e.contained_entities) == 1
-        assert e.contained_entities[0].id == "toenail_sword"
+        assert len(e.contains) == 1
+        assert e.contains[0].id == "toenail_sword"
 
     def test_missing_id_raises(self) -> None:
         with pytest.raises(ValidationError):

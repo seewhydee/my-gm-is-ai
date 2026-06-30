@@ -653,7 +653,7 @@
         "moldy sandwich",
         "giant toenail"
       ],
-      "contained_entities": [
+      "contains": [
         "toenail_sword"
       ],
       "on_examine": [
@@ -752,7 +752,7 @@
     "axe_head": {
       "name": "Axe Head",
       "description": "You are standing on the head of a giant battleaxe, its blade the size of a small plaza. The axe head leans at an angle against the wall of this vast cave. The handle \u2014 about the width of a narrow sidewalk \u2014 slopes downward into the murk. The walls give off a faint luminescence, just enough to see by. Above, just above head height, the canvas walls converge into a low dome, scrunching shut in the center. You notice a small rip in the fabric near the tip of the blade, with a dull gray light winking through it.",
-      "entities_present": [
+      "contains": [
         "giant_axe",
         "canvas_walls",
         "padlock",
@@ -1025,7 +1025,7 @@
     "axe_handle_upper": {
       "name": "Axe Handle (Upper)",
       "description": "You balance carefully on the giant axe handle, which slopes both upward and downward into the gloom. A mass of sticky webs encrusts this section of the handle, dimming the faint glow from the canvas walls. You can barely make out your footing. The webs are denser on the lower side, but there are strange masses of various sizes suspended in the strands \u2014 like cocoons, or captured prey. It's also possible to drop into the darkness below, though it's too dark to see where you'd land.",
-      "entities_present": [
+      "contains": [
         "giant_axe",
         "canvas_walls",
         "webs_upper",
@@ -1147,7 +1147,7 @@
     "axe_handle_lower": {
       "name": "Axe Handle (Lower)",
       "description": "The webs surrounding the giant axe handle are incredibly dense here, forming what looks like a solid barrier across the path downward. The shadows above seem to shift and stir. Peering over the side of the handle, you can make out numerous irregularly-shaped objects below \u2014 it looks like you could drop down safely from this height. If you strain your ears, you might hear a faint clanking and muttering from below.",
-      "entities_present": [
+      "contains": [
         "giant_axe",
         "canvas_walls",
         "webs_lower",
@@ -1420,7 +1420,7 @@
     "bag_floor": {
       "name": "Bag Floor",
       "description": "You stand on the floor of the cave, which is covered with a loose pile of giant-sized rubbish. From the glow of the canvas walls, you can make out copper pieces the size of shields, empty potion bottles you could bathe in, used corks like footstools, lint clumps the size of sheep, and moldy sandwiches that look more like compost heaps than food. The base of the giant axe rests in the center of the pile, its handle rising up into the shadows above. A female dwarf in heavy iron platemail, drunk and miserable-looking, sits beneath a makeshift shelter made from a giant overturned soup ladle.",
-      "entities_present": [
+      "contains": [
         "giant_axe",
         "canvas_walls",
         "rubbish_pile",
@@ -1652,7 +1652,7 @@
     "secret_pocket": {
       "name": "Secret Pocket",
       "description": "You've squeezed into a space about the size of a small closet. The walls are the same faintly-glowing canvas as the rest of the cave, but even stickier and smellier \u2014 the air is close and stale. The only thing of note is a large iron key, heavy and cold, resting on the canvas floor.",
-      "entities_present": [
+      "contains": [
         "canvas_walls",
         "giant_key"
       ],

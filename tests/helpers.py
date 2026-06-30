@@ -89,7 +89,7 @@ def _mk_room(
     name: str,
     description: str = "A room.",
     exits: list[Exit] | None = None,
-    entities_present: list[str] | None = None,
+    contains: list[str] | None = None,
     reactions: list[Reaction] | None = None,
     interactions: list[Interaction] | None = None,
     is_start_room: bool = False,
@@ -99,7 +99,7 @@ def _mk_room(
         name=name,
         description=description,
         exits=exits or [],
-        entities_present=entities_present or [],
+        contains=contains or [],
         reactions=reactions or [],
         interactions=interactions or [],
         is_start_room=is_start_room,
@@ -360,7 +360,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
         "axe_handle_lower",
         "Lower Handle",
         description="The lower axe handle, wrapped in webs.",
-        entities_present=["spider"],
+        contains=["spider"],
         exits=[
             _mk_exit("exit_up_handle_lower", "axe_handle_upper"),
             _mk_exit(
@@ -402,7 +402,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
     floor_room = _mk_room(
         "bag_floor",
         "Bag Floor",
-        entities_present=["korbar"],
+        contains=["korbar"],
         exits=[
             _mk_exit(
                 "exit_climb_up_handle_floor",

@@ -134,7 +134,7 @@ class TestFindEntityInRoomFollowers:
         hard = _load_hard(korbar={"following": True})
         return hard, corpus
 
-    def test_finds_follower_not_in_entities_present(self, _setup):
+    def test_finds_follower_not_in_contains(self, _setup):
         hard, corpus = _setup
         room = corpus.rooms["axe_head"]
         result = _find_entity_in_room_followers("korbar", "axe_head", room, hard, corpus)

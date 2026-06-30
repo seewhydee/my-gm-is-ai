@@ -321,7 +321,7 @@ world graph keyed by a globally-unique `room_id`.
   "<room_id>": {
     "name": "string",
     "description": "string (shown when player enters or examines room)",
-    "entities_present": ["<entity_id>", ...],
+    "contains": ["<entity_id>", ...],
     "soft_items": ["string", ...],
     "exits": [ { /* exit */ } ],
     "interactions": [ { /* interaction */ } ],
@@ -337,7 +337,7 @@ world graph keyed by a globally-unique `room_id`.
 |----------------------|----------|------------------------------------|
 | `name`               | string   | Short display name                 |
 | `description`        | string   | Prose description of room          |
-| `entities_present`(*)| string[] | IDs of non-player entities directly present at game start |
+| `contains`(*)| string[] | IDs of non-player entities directly present at game start |
 | `exits` (*)          | array    | All exits out of the room          |
 | `state_fields` (*)   | object   | State fields for room (see below)  |
 | `interactions` (*)   | array    | See [Interaction](#interaction)    |
@@ -354,10 +354,10 @@ Notes:
   characteristics of the room, including when the player enters or
   looks around (NOT necessarily used verbatim in narration).
 
-- The `entities_present` field lists entities DIRECTLY present in the
+- The `contains` field lists entities DIRECTLY present in the
   room (at game start).  If entity A is in room R, and entity B is in
-  entity A (see `contained_entities`, [Entity](#entity)), only A is
-  directly present; room R's `entities_present` lists A but not B.
+  entity A (see `contains`, [Entity](#entity)), only A is
+  directly present; room R's `contains` lists A but not B.
 
 - The `exits` field contains an array of [Exit](#exit) objects, one
   for EVERY possible exit, regardless of its initial availability and
@@ -808,7 +808,7 @@ unique `entity_id`.
     "description": "string",
     "spans_rooms": ["<room_id>", ...],
     "soft_items": ["string", ...],
-    "contained_entities": ["<entity_id>", ...],
+    "contains": ["<entity_id>", ...],
     "tags": ["<tag>", ...],
     "take_check": { /* take_check */
       "check": { "type": "stat_check", ... },
@@ -834,7 +834,7 @@ The following fields are meaningful for all entity types:
 | `type`                | enum   | `player|feature|npc|item`           |
 | `description`         | string | Canonical prose description         |
 | `tags` (*)            |string[]| Array of semantic tags              |
-| `contained_entities`(*) | string[] | Entities nested inside this entity |
+| `contains`(*) | string[] | IDs of entities in this entity  |
 | `interactions` (*)    | array  | See [Interaction](#interaction)     |
 | `on_examine` (*)      | array  | See [On-Examine](#on-examine)       |
 | `reactions` (*)       | array  | See [Reaction](#reaction)           |
@@ -994,7 +994,7 @@ The engine recognises several reserved state fields:
 
 - `open` — for entities with `tags: ["container"]`: when declared in
   `state_fields` and set to `true` in hard state, the entity's
-  `contained_entities` and `soft_items` are visible and accessible. When
+  `contains` and `soft_items` are visible and accessible. When
   `open` is `false` (or absent from hard state), the container is treated as
   closed — its contents are hidden from briefings and cannot be transferred.
   The default when declared but missing from state is closed (`false`).

@@ -69,7 +69,7 @@ class TestModuleCorpus:
     def test_entities_are_referenced_by_rooms(self, sample_corpus: ModuleCorpus) -> None:
         all_entity_ids = set(sample_corpus.entities.keys())
         for room in sample_corpus.rooms.values():
-            for entity_id in room.entities_present:
+            for entity_id in room.contains:
                 assert entity_id in all_entity_ids, f"Room references unknown entity '{entity_id}'"
 
     def test_exit_targets_are_rooms(self, sample_corpus: ModuleCorpus) -> None:
@@ -594,13 +594,13 @@ class TestRoom:
         })
         assert r.soft_items == ["rock", "loose stone", "stale bread"]
 
-    def test_room_with_entities_present(self) -> None:
+    def test_room_with_contains(self) -> None:
         r = Room.model_validate({
             "name": "Guard Room",
             "description": "A room with guards.",
-            "entities_present": ["guard_1", "guard_2", "captain"],
+            "contains": ["guard_1", "guard_2", "captain"],
         })
-        assert r.entities_present == ["guard_1", "guard_2", "captain"]
+        assert r.contains == ["guard_1", "guard_2", "captain"]
 
 
 class TestRollCheck:
