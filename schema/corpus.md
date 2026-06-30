@@ -138,7 +138,6 @@ A roll Check succeeds if `random() < threshold`.
   "type": "roll",
   "threshold": 0.50,
   "repeatable": false,
-  "note": "Optional designer note."
 }
 ```
 
@@ -161,7 +160,6 @@ Stat Checks are [resolution system](#resolution-system) dependent.
   "target": 12,
   "advantage": true,
   "repeatable": false,
-  "note": "Bend the iron bars."
 }
 ```
 
@@ -202,18 +200,11 @@ for interactions, traversal checks, dialogue paths, etc.
 
 ```json
 {
-  "narrative": "string (description of outcome)",
-  "add_item": ["<item_id>", "..."],
-  "remove_item": ["<item_id>", "..."],
-  "set_flag": { "<flag_id>": true | false, "..." },
-  "set_entity_state": { "<entity_id>": { "<field>": <value>, ... } },
-  "set_room_state": { "<room_id>": { "<field>": <value>, ... } },
-  "player_damage": "1d6",
-  "set_player_location": "<room_id>",
-  "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> }, "..." },
-  "adjust_attitude": { "<npc_id>": <delta>, "..." },
-  "reveals": "string (hint text for the player's future reference)",
-  "then_check": { /* follow-up check (see below) */ }
+  "narrative": "Looting the troll, you discover in its pouch a pair of speed boots and a dagger, which must have been taken from some hapless adventurer",
+  "add_item": [ "speed_boots", "enchanted_dagger" ],
+  "set_flag": { "old_gear_found" : true },
+  "set_entity_state": { "troll": { "looted" : true } },
+  "reveals": "Found gear belonging to an adventurer on a troll's body.",
 }
 ```
 
@@ -272,10 +263,12 @@ Notes:
 #### Follow-up check
 
 A follow-up check can be embedded in a Result's `then_check` field.
-It implements multi-stage resolutions for actions and effects: e.g., a
-STR check to jump across a pit, and on failure a DEX check to grab the
-ledge before falling.  The follow-up check fires immediately after its
-parent result, using its own success/failure branches.
+It implements multi-stage resolutions for actions and effects, firing
+immediately after its parent result using its own success/failure
+branches.
+
+For example, the player may make a STR check to jump across a pit,
+and, on failure, make a DEX check to grab the ledge.
 
 ```json
 {
@@ -304,7 +297,7 @@ parent result, using its own success/failure branches.
 | `skip_check_if`(*)| Condition | If present and true, skip check  |
 | `success`         | Result    | Result if follow-up succeeds     |
 | `failure` (*)     | Result    | Result if follow-up fails        |
-(*) optional
+> (*) optional
 
 Nested follow-ups are supported — a follow-up check's success/failure
 results may contain other follow-ups, up to a maximum depth of 3.
