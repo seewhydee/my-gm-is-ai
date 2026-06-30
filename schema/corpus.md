@@ -190,7 +190,7 @@ out and a single d20 is rolled.
 
 ---
 
-### Result object
+### Result
 
 A Result describes the consequences of an action — the canonical
 narrative, state mutations, stat adjustments, inventory changes, and
@@ -851,17 +851,50 @@ Notes:
 - State fields have entity-unique IDs (dict keys) chosen by the corpus
   author.  The following state fields have special meanings,
   documented below: `alive`, `fled`, `attitude`, `hidden`,
-  `following`, and `current_hp`.  The corpus author can also define
-  custom state fields.
+  `following`, `current_hp`, and `open`.  The corpus author can also
+  define custom state fields.
 
 ### Feature
 
-Feature-specific fields:
+Features describe immovable environmental objects.  The optional
+`spans_room` field can be used to make features span multiple rooms:
 
 | Field           | Type   | Description                             |
 |-----------------|--------|-----------------------------------------|
 | `spans_rooms`(*)| array  | List of room IDs the entity spans       |
+> (*) optional
 
+#### Container
+
+**Containers** are entities like chests or wardrobes, which store
+other entities and can be opened and/or closed.  We document
+containers here since they are most commonly implemented as features;
+however, items (or even NPCs) can also be containers.
+
+Containers should be assigned the following properties:
+
+- `container` tag — A container must have `"container"` in its `tag`
+  array.  This informs the engine to handle them specially.
+
+- `open` state field — A container must have `open` as a declared
+  boolean state field.  It may be initialized to either `true`
+  (container is open) or `false` (container is closed).
+
+- `open` and `close` interactions (optional) — if the player is
+  allowed to perform open/close actions directly on the container (as
+  opposed to indirect methods, like pressing a button elsewhere).
+
+A container's contents are listed in its `contains` and `soft_items`
+fields.  (These fields can also be used for non-container entities:
+e.g., a rubbish pile, which is not a container in the present sense
+since it lacks open/close functionality.)  When the container is open,
+the engine automatically surfaces its contents to the GM and player;
+when the container is closed, the engine makes the contents
+inaccessible.  This concealment is distinct from the effects of the
+`hidden` state (see below).
+
+For entities without the `container` tag, the `open` state field has
+no special meaning.
 
 ### Item
 
@@ -982,10 +1015,11 @@ The engine recognises several reserved state fields:
   any mention of it. When `hidden` is absent from `state_fields` (or present
   but unset in `entity_states`), the entity is treated as visible.
 
-  **Do not** use `hidden` for items that are merely inside a closed container;
-  that is governed by the container's `open` state (see below).  `hidden` is
-  for entities that are present in the room but not apparent even to the GM
-  until some condition or action reveals them.
+  **Do not** use `hidden` for items that are merely inside a closed
+  [container](#container); that is governed by the container's `open`
+  state.  The `hidden` state field is for entities that are present in
+  the room but not apparent even to the GM until some condition or
+  action reveals them.
 
   **Timing:** when a result directly sets `hidden: false` via
   `set_entity_state` (e.g., in an `on_examine` event or an interaction
@@ -997,13 +1031,7 @@ The engine recognises several reserved state fields:
   Prefer the direct approach for dramatic immediacy, unless the scenario
   requires the reveal to be deferred.
 
-- `open` — for entities with `tags: ["container"]`: when declared in
-  `state_fields` and set to `true` in hard state, the entity's
-  `contains` and `soft_items` are visible and accessible. When
-  `open` is `false` (or absent from hard state), the container is treated as
-  closed — its contents are hidden from briefings and cannot be transferred.
-  The default when declared but missing from state is closed (`false`).
-  Entities without the `container` tag are unaffected by `open`.
+- `open` — for [container](#container) entities, as documented above.
 
 `alive` and `fled` are optional at the schema level, but if an entity has reactions
 and can die or flee, declare the corresponding field so the engine scopes the
