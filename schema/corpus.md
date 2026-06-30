@@ -30,7 +30,7 @@ apply mechanics.
 | `credits` (*)    | object | `{ author, source, license }`.     |
 | `introduction`   | string | Opening narration read to player.  |
 | `atmosphere` (*) | object | `{ setting, tone }` of adventure.  |
-(*) optional
+> (*) optional
 
 ---
 
@@ -147,7 +147,7 @@ A roll Check succeeds if `random() < threshold`.
 | `threshold`  | number  | Probability threshold (0.0–1.0)   |
 | `repeatable` | boolean | Whether the check can be retried  |
 | `note` (*)   | string  | Optional designer note            |
-(*) optional
+> (*) optional
 
 #### Stat Check
 
@@ -171,7 +171,7 @@ Stat Checks are [resolution system](#resolution-system) dependent.
 | `modifier` (*) | integer | Situational modifier (default 0)  |
 | `repeatable`   | boolean | Whether check can be retried      |
 | `note` (*)     | string  | Optional designer note            |
-(*) optional
+> (*) optional
 
 Aside from the above fields, system-specific fields are accepted as
 extra top-level keys.  Various systems can implement their own checks
@@ -338,7 +338,7 @@ world graph keyed by a globally-unique `room_id`.
 | `reactions` (*)      | array    | See [Reaction](#reaction)          |
 | `soft_items` (*)     | string[] | Plausible generic items in the room|
 | `is_start_room` (*)  | boolean  | `true` for starting room (only one)|
-(*) optional
+> (*) optional
 
 Notes:
 
@@ -390,7 +390,7 @@ Notes:
 | `condition` (*)     | Condition | Gating condition (see below)     |
 | `traversal_check`(*)| object    | Check to use the exit (see below)|
 | `one_way` (*)       | boolean   | Indicates if exit is one-way     |
-(*) optional
+> (*) optional
 
 Notes:
 
@@ -451,7 +451,7 @@ typically means the player remains in the current room.
 | `success` (*)       | Result    | Result when traversal works |
 | `failure` (*)       | Result    | Result when traversal fails |
 | `using_results` (*) | dict      | Alt check when using tool   |
-(*) optional
+> (*) optional
 
 Notes:
 
@@ -514,7 +514,7 @@ gating, and sucess/failure results.
 | `failure` (*)     | Result    | Result when check fails           |
 | `result` (*)      | Result    | Fixed result (when no check)      |
 | `using_results`(*)| object    | Alt check when using tool         |
-(*) optional
+> (*) optional
 
 Notes:
 
@@ -597,7 +597,7 @@ examine action, all eligible On-Examine effects run in array order.
 | `success` (*)     | Result    | Result applied when the check passes |
 | `failure` (*)     | Result    | Result applied when check fails      |
 | `result` (*)      | Result    | Result applied if no check           |
-(*) optional
+> (*) optional
 
 Notes:
 
@@ -649,7 +649,7 @@ mechanic-scope reactions are always active.
 | `once` (*)  | boolean  | Whether reaction is one-off; default false |
 | `phase`(*)  | string   | `"deferred"` (default) or `"immediate"`    |
 | `priority`(*)| integer | Lower values fire earlier; default `0`     |
-(*) optional
+> (*) optional
 
 Notes:
 
@@ -715,24 +715,24 @@ be omitted if the event lacks that particular detail).
 
 | Trigger                | Context                                     |
 |------------------------|---------------------------------------------|
-| `room.[entered|exited]`| `room_id`                                   |
-| `traversal.[attempted|succeeded]` | `exit_id`, `from_room`, `to_room`|
+| `room.[entered\|exited]`| `room_id`                                  |
+| `traversal.[attempted\|succeeded]` | `exit_id`, `from_room`, `to_room`|
 | `traversal.failed`     | `exit_id`, `from_room`, `fail_reason`       |
 | `interaction.used`     | `interaction_id`, `target_id`, `using_item?`|
-| `flag.[set|cleared]`   | `flag_id`                                   |
+| `flag.[set\|cleared]`  | `flag_id`                                   |
 | `entity_state.changed` | `entity_id`, `field`, `new_value`           |
 | `room_state.changed`   | `room_id`, `field`, `new_value`             |
-| `dialogue.[started|ended]` | `npc_id`, `reason?`                     |
+| `dialogue.[started\|ended]` | `npc_id`, `reason?`                    |
 | `combat.started`       | `combatant_ids`                             |
-| `combat.ended`         | `reason` (`victory|defeat|fled`)            |
+| `combat.ended`         | `reason` (`victory\|defeat\|fled`)          |
 | `item.acquired`        | `item_id`, `source`                         |
 | `item.lost`            | `item_id`, `reason`                         |
 | `equipment.changed`    | `added?`, `removed?`                        |
 | `attitude.changed`     | `npc_id`, `old_value`, `new_value`, `delta` |
 | `stat.changed`         | `stat_name`,`old_value`,`new_value`,`delta` |
-| `player.[damaged|healed]` | `amount`, `new_hp`                       |
+| `player.[damaged\|healed]` | `amount`, `new_hp`                      |
 | `encounter.branched`   | `encounter_id`, `branch`, `outcome`         |
-| `turn.[start|end]`     | `turn_number`                               |
+| `turn.[start\|end]`     | `turn_number`                              |
 
 For the full list, and full documentation of the context keys, see the
 [Events schema doc](events.md).
@@ -835,7 +835,7 @@ The following fields are meaningful for all entity types:
 | `reactions` (*)     | array    | See [Reaction](#reaction)           |
 | `state_fields` (*)  | object   | State fields for entity (see below) |
 | `soft_items` (*)    | array    | Plausible soft items on/in entity   |
-(*) optional
+> (*) optional
 
 Notes:
 
