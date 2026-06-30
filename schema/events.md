@@ -1,10 +1,5 @@
 # Event Model
 
-The engine emits **canonical events** after every meaningful state transition or
-player action. Any object (room, entity, or mechanic) can register **reactions**
-— `(on_event, condition, effects)` tuples — that fire when a matching event
-occurs.
-
 This document is the authoritative reference for:
 
 - Which events the engine emits

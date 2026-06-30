@@ -247,7 +247,7 @@ Notes:
   immediate reactions) fire before the success/failure branch result
   is applied.  The result's effects are then accumulated into a batch,
   and processed as a unit before any follow-up `then_check` resolves.
-  See [Events](events.md).
+  See [Reaction](#reaction).
 
 - At the engine level, action-result changes and immediate-reaction
   changes are merged and applied atomically.  Deferred reactions
@@ -337,7 +337,7 @@ world graph keyed by a globally-unique `room_id`.
 |----------------------|----------|------------------------------------|
 | `name`               | string   | Short display name                 |
 | `description`        | string   | Prose description of room          |
-| `entities_present`(*)| string[] | IDs of non-player entities present at game start |
+| `entities_present`(*)| string[] | IDs of non-player entities directly present at game start |
 | `exits` (*)          | array    | All exits out of the room          |
 | `state_fields` (*)   | object   | State fields for room (see below)  |
 | `interactions` (*)   | array    | See [Interaction](#interaction)    |
@@ -356,8 +356,8 @@ Notes:
 
 - The `entities_present` field lists entities DIRECTLY present in the
   room (at game start).  If entity A is in room R, and entity B is in
-  entity A (see `contained_entities`, [Entity](#entity)), room R's
-  `entities_present` should list A but not B.
+  entity A (see `contained_entities`, [Entity](#entity)), only A is
+  directly present; room R's `entities_present` lists A but not B.
 
 - The `exits` field contains an array of [Exit](#exit) objects, one
   for EVERY possible exit, regardless of its initial availability and
@@ -622,14 +622,16 @@ Notes:
 
 ## Reaction
 
-Reactions are a flexible mechanism to trigger changes in game state in
+Reactions are a flexible mechanism to make changes in game state in
 response to pre-specified events.  They can be placed in the
 `reactions` array of a [Room](#room), [Entity](#entity), or
-[Mechanic](#mechanic).  The hosting object determines when the
-reaction is active (i.e., can trigger): room-scoped reactions are
-active when the player is present in the room; entity-scoped reactions
-are active when the entity is in the present room *and* (for NPCs)
-alive and not fled; mechanic-scope reactions are always active.
+[Mechanic](#mechanic) – called the *scope* of the reaction.
+
+The scope determines when the reaction is active (i.e., can be
+triggered).  Room-scoped reactions are active when the player is
+present in the room; entity-scoped reactions are active when the
+entity is in the present room *and* (for NPCs) alive and not fled;
+mechanic-scope reactions are always active.
 
 ```json
 {
@@ -643,31 +645,30 @@ alive and not fled; mechanic-scope reactions are always active.
 }
 ```
 
-| Field       | Type     | Description                                 |
-|-------------|----------|---------------------------------------------|
-| `id`        | string   | ID, unique in context (room/entity/mechanic)|
-| `on`        | string   | Trigger [Event](#event) (see below)         |
-| `condition` (*) | Condition | Gating condition (see below)           |
-| `effects`   | object   | Reaction effects to apply (see below)       |
-| `once` (*)  | boolean  | Whether reaction is one-off; default false  |
-| `phase`(*)  | string   | `"deferred"` (default) or `"immediate"`     |
-| `priority`(*)| integer | Lower values fire earlier; default `0`      |
+| Field       | Type     | Description                                |
+|-------------|----------|--------------------------------------------|
+| `id`        | string   | ID, unique in scope (room/entity/mechanic) |
+| `on`        | string   | Trigger [Event](#event) (see below)        |
+| `condition` (*) | Condition | Gating condition (see below)          |
+| `effects`   | object   | Reaction effects to apply (see below)      |
+| `once` (*)  | boolean  | Whether reaction is one-off; default false |
+| `phase`(*)  | string   | `"deferred"` (default) or `"immediate"`    |
+| `priority`(*)| integer | Lower values fire earlier; default `0`     |
 (*) optional
 
 Notes:
 
-- `id` is mainly used for tracking one-off reactions (i.e., those with
-  `once:true`).  As this tracking is global, IDs for one-off reactions
-  MUST be globally-unique.  Other reactions need only be unique within
-  their context (room, entity, or global mechanics).
+- `id` is used for debugging and tracking one-off reactions (i.e.,
+  those with `once` true).  As the tracking is global, one-off
+  reactions MUST have globally-unique IDs.  Other reactions need only
+  be unique within their scope (room, entity, or mechanics).
 
-- If `condition` is provided, it evaluating to `true` means the
-  reaction fires; if `false` or unsatisfied, the reaction is canceled
-  and does nothing.  Cancellation does not count toward the one chance
-  for a one-off (`once:true`) reaction.
-  
-  If omitted (`null`), the reaction unconditionally fires when the
-  trigger event occurs.
+- If `condition` is provided, it determines whether the reaction
+  fires.  If it evaluates to false, the reaction does nothing; this
+  does not count toward a one-off reaction's single charge.
+
+  If `condition` is omitted (`null`), the reaction unconditionally
+  fires when the trigger event occurs.
 
 - The `phase` and `priority` fields determine when a reaction fires.
   Typically, reactions have `phase:"deferred"` (the default), meaning
@@ -683,14 +684,43 @@ Notes:
 
 ### Event
 
-> **Full reference:** See [`events.md`](events.md) for the complete event
-catalog, context-key descriptions, immediate/deferred rules, and known
-implementation gaps.
+The event that fires a reaction is determined by two objects:
 
-The summary below lists the most commonly used events. The `on` field of a
-reaction must be one of these event type strings.
+- The **Trigger String** (the `on` field), which together with the
+  Reaction's scope (room/entity/mechanic) sets the initial trigger.
 
-**Action-level events:**
+  For example, suppose a Reaction K has `"on": "room.entered"`.  If K
+  is in a room R, the trigger is the player entering R.  If K is in an
+  entity E, the trigger is the player entering any room where E is
+  directly present (see [Room](#room)).
+
+- The **Event Context**, a flat dictionary of details about the event.
+  For example, a `"room.entered"` trigger provides one context key,
+  `room_id`, which is the ID of the room entered.
+
+  The Event Context can be accessed by Condition blocks inside the
+  Reaction.  Thus, a `condition` block can narrow the reaction to a
+  specific event: e.g., `{"require" : "event:room_id == camp"}`.
+  The `event` condition domain is only valid during reaction dispatch.
+
+**Example**: a goblin NPC that attacks on sight, but only if the NPC
+is in a specific room:
+
+```json
+{
+  "id": "goblin_attack_on_sight",
+  "on": "room.entered",
+  "condition": { "require": "event:room_id == camp" },
+  "phase": "immediate",
+  "effects": { "trigger_encounter": "self" }
+}
+```
+
+See the [Events schema doc](events.md) for the full reference.  A
+summary of all events and their context keys follows.  Keys marked
+with `?` in the tables below are optional — present only when the
+event has that particular detail (e.g., `stat` appears only for
+`stat_check` events, not `roll`).
 
 | Event | Context keys | Emitted when |
 |-------|-------------|-------------|
@@ -730,21 +760,6 @@ reaction must be one of these event type strings.
 | `turn.start` | `turn_number` | Beginning of each turn |
 | `turn.end` | `turn_number` | End of each turn |
 
-#### Event context in conditions
-
-During reaction dispatch, event context values are available via the `event:`
-condition domain. This allows reactions to match on specific event details:
-
-```json
-{ "require": "event:exit_id == exit_climb_down" }
-{ "require": "event:interaction_id == attack" }
-{ "require": "event:npc_id == spider" }
-{ "require": "event:flag_name == spider_fled" }
-```
-
-The `event:` domain is only valid during reaction dispatch. Outside dispatch
-(e.g., in interaction conditions or game-over mechanics), it evaluates to `false`.
-
 #### `check.passed` / `check.failed` context keys
 
 | Key | Description |
@@ -758,7 +773,7 @@ The `event:` domain is only valid during reaction dispatch. Outside dispatch
 
 See [`events.md`](events.md) for additional detail on each event's context.
 
-#### Reaction effects
+#### Reaction Effect
 
 ```json
 {
@@ -778,6 +793,27 @@ See [`events.md`](events.md) for additional detail on each event's context.
 
 At least one of `result` or the reaction-specific fields (`trigger_encounter`,
 `trigger_dialogue`, `game_over`) must be set.
+
+Example: failed-check effect:
+
+```json
+{
+  "id": "web_fail_damage",
+  "on": "check.failed",
+  "condition": {
+    "all": [
+      { "require": "event:source_id == force_through_web" },
+      { "require": "event:check_type == stat_check" }
+    ]
+  },
+  "effects": {
+    "result": {
+      "narrative": "The webs constrict around you.",
+      "alter_stat": { "STR": { "value": -2 } }
+    }
+  }
+}
+```
 
 #### Self-reference for entity-scoped reactions
 
@@ -810,105 +846,6 @@ reaction), the second `trigger_encounter` is silently ignored with a warning log
 A reaction that fires during an encounter can trigger another encounter via
 `trigger_encounter`. The depth-5 recursion limit prevents infinite loops, but
 design reaction conditions carefully to avoid unintended chains.
-
-#### Examples
-
-**State-based trigger (flag change):**
-```json
-{
-  "id": "spider_fled_reaction",
-  "on": "flag.set",
-  "condition": { "require": "event:flag_name == spider_fled" },
-  "effects": {
-    "result": {
-      "narrative": "With the spider gone, the room feels safer.",
-      "set_flag": { "room_cleared": true }
-    }
-  }
-}
-```
-
-**Room-entry encounter:**
-```json
-{
-  "id": "spider_ambush",
-  "on": "room.entered",
-  "condition": { "require": "entity:spider.alive == true" },
-  "effects": { "trigger_encounter": "spider_attack" }
-}
-```
-
-**Chained encounter (reaction → encounter → reaction → encounter):**
-```json
-{
-  "id": "guardian_awakens",
-  "on": "room.entered",
-  "condition": { "require": "event:room_id == cave_depths" },
-  "effects": { "trigger_encounter": "guardian_attack" }
-}
-```
-
-The `guardian_attack` encounter has a rule whose success branch sets `guardian_defeated: true`. A second reaction then fires on that flag:
-
-```json
-{
-  "id": "wraith_appears",
-  "on": "flag.set",
-  "condition": { "require": "event:flag_name == guardian_defeated" },
-  "effects": { "trigger_encounter": "wraith_ambush" }
-}
-```
-
-**Failed-check trigger:**
-```json
-{
-  "id": "web_fail_damage",
-  "on": "check.failed",
-  "condition": {
-    "all": [
-      { "require": "event:source_id == force_through_web" },
-      { "require": "event:check_type == stat_check" }
-    ]
-  },
-  "effects": {
-    "result": {
-      "narrative": "The webs constrict around you.",
-      "alter_stat": { "STR": { "value": -2 } }
-    }
-  }
-}
-```
-
-**Entity-scoped behavior trigger (replaces `behavior.triggers_on`):**
-```json
-{
-  "id": "spider_attack_on_sight",
-  "on": "interaction.used",
-  "condition": { "require": "event:interaction_id == attack" },
-  "effects": { "trigger_encounter": "self" }
-}
-```
-
-**Mechanic with reactions (adventure-wide trigger):**
-```json
-"global_reactions": {
-  "id": "global_reactions",
-  "description": "Adventure-wide state-based reactions.",
-  "reactions": [
-    {
-      "id": "injury_warning",
-      "on": "player.damaged",
-      "condition": { "require": "event:new_hp <= 3" },
-      "effects": {
-        "result": {
-          "narrative": "You are gravely wounded. One more hit could be your last.",
-          "set_flag": { "near_death": true }
-        }
-      }
-    }
-  ]
-}
-```
 
 ---
 
@@ -1345,6 +1282,51 @@ that don't need encounter rules and aren't tied to a specific room or entity.
 The mechanic's `condition` field is only used for game-over and encounter
 mechanics.  Mechanics with only reactions use per-reaction `condition` fields
 instead.
+
+#### Examples
+
+**Chained encounter (reaction → encounter → reaction → encounter):**
+```json
+{
+  "id": "guardian_awakens",
+  "on": "room.entered",
+  "condition": { "require": "event:room_id == cave_depths" },
+  "effects": { "trigger_encounter": "guardian_attack" }
+}
+```
+
+The `guardian_attack` encounter has a rule whose success branch sets `guardian_defeated: true`. A second reaction then fires on that flag:
+
+```json
+{
+  "id": "wraith_appears",
+  "on": "flag.set",
+  "condition": { "require": "event:flag_name == guardian_defeated" },
+  "effects": { "trigger_encounter": "wraith_ambush" }
+}
+```
+
+
+**Mechanic with reactions (adventure-wide trigger):**
+```json
+"global_reactions": {
+  "id": "global_reactions",
+  "description": "Adventure-wide state-based reactions.",
+  "reactions": [
+    {
+      "id": "injury_warning",
+      "on": "player.damaged",
+      "condition": { "require": "event:new_hp <= 3" },
+      "effects": {
+        "result": {
+          "narrative": "You are gravely wounded. One more hit could be your last.",
+          "set_flag": { "near_death": true }
+        }
+      }
+    }
+  ]
+}
+```
 
 ---
 

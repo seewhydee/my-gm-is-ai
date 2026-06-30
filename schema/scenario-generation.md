@@ -250,15 +250,16 @@ Revisit the room list, and add the following info to each room:
   `move` (traversing rooms), `examine` (cursory or in-depth study), or
   `transfer` (moving items to/from a container or location).
 
-- **Reactions** — describe any consequential event-driven reaction
-  tied to the *room* (not an entity in the room).  Each reaction can
-  occur only if the player is in the room.
+- **Reactions** — describe any consequential reaction tied to the
+  *room* (not an entity in the room).  Each reaction can occur only if
+  the player is in the room.
 
   Examples:
   - a group of enemies attack when the player enters the room
   - force-field blocks an exit traversal
 
-  Assign each reaction a globally-unique ID.  Then write up a precise
+  Assign each reaction an ID (globally-unique if it's a one-off
+  reaction, room-unique otherwise).  Then write up a precise
   description of the reaction, including:
 
   - the trigger event: player entering the room, exit traversed, a
@@ -347,17 +348,18 @@ Revisit the entity list, and add the following to each entity:
 
   For each custom field, note down its meaning.
 
-- **Reactions** — describe any event-driven reaction tied to (and
-  usually performed BY) the entity.  Each reaction can occur only if
-  the entity is in the current room (and, for an NPC, alive and active).
+- **Reactions** — describe any consequential reaction tied to the
+  entity.  Each reaction can occur only if the entity is in the
+  current room (and, for an NPC, alive and active).
 
   Examples:
-  - on picking up an item, inflict a curse on the player
-  - on attitude drop, NPC attacks
-  - on exiting dialogue, NPC dies
+  - if an item is picked up, inflict a curse on the player
+  - if an NPC's attitude drops, the NPC attacks
+  - if an NPC exits dialogue, it dies
 
-  Assign each reaction a globally-unique reaction ID.  Describe the
-  reaction (naming specific IDs), including:
+  Assign each reaction an ID (globally-unique if it's a one-off
+  reaction, entity-unique otherwise).  Describe the reaction,
+  including:
 
   - the trigger event
   - any additional gating condition for the reaction to occur
