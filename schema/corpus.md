@@ -260,6 +260,50 @@ Notes:
   deduplication), whose contents help guide the GM narrator.
   See the [Soft State schema doc](soft-state.md) for details.
 
+#### Follow-up check
+
+A follow-up check can be embedded in a Result's `then_check` field.
+It implements multi-stage resolutions for actions and effects, firing
+immediately after its parent result using its own success/failure
+branches.
+
+For example, the player may make a STR check to jump across a pit,
+and, on failure, make a DEX check to grab the ledge.
+
+```json
+{
+  "then_check": {
+    "check": {
+      "type": "stat_check",
+      "stat": "DEX",
+      "target": 8,
+      "repeatable": true
+    },
+    "success": {
+      "narrative": "You grab the ledge in time."
+    },
+    "failure": {
+      "narrative": "You drop into the pit.",
+      "set_player_location": "pit_bottom",
+      "player_damage": "2d6"
+    }
+  }
+}
+```
+
+| Field             | Type      | Description                      |
+|-------------------|-----------|----------------------------------|
+| `check`           | Check     | Follow-up Check to resolve       |
+| `skip_check_if`(*)| Condition | If present and true, skip check  |
+| `success`         | Result    | Result if follow-up succeeds     |
+| `failure` (*)     | Result    | Result if follow-up fails        |
+> (*) optional
+
+Nested follow-ups are supported — a follow-up check's success/failure
+results may contain other follow-ups, up to a maximum depth of 3.
+
+---
+
 ### Gated Check
 
 A Gated Check wraps a [Check](#check) with a condition that determines
@@ -312,48 +356,6 @@ check is bypassed and `success` is applied.  Otherwise the check is
 rolled normally.
 
 For info on `using_results`, see [Interaction](#interaction).
-
-#### Follow-up check
-
-A follow-up check can be embedded in a Result's `then_check` field.
-It implements multi-stage resolutions for actions and effects, firing
-immediately after its parent result using its own success/failure
-branches.
-
-For example, the player may make a STR check to jump across a pit,
-and, on failure, make a DEX check to grab the ledge.
-
-```json
-{
-  "then_check": {
-    "check": {
-      "type": "stat_check",
-      "stat": "DEX",
-      "target": 8,
-      "repeatable": true
-    },
-    "success": {
-      "narrative": "You grab the ledge in time."
-    },
-    "failure": {
-      "narrative": "You drop into the pit.",
-      "set_player_location": "pit_bottom",
-      "player_damage": "2d6"
-    }
-  }
-}
-```
-
-| Field             | Type      | Description                      |
-|-------------------|-----------|----------------------------------|
-| `check`           | Check     | Follow-up Check to resolve       |
-| `skip_check_if`(*)| Condition | If present and true, skip check  |
-| `success`         | Result    | Result if follow-up succeeds     |
-| `failure` (*)     | Result    | Result if follow-up fails        |
-> (*) optional
-
-Nested follow-ups are supported — a follow-up check's success/failure
-results may contain other follow-ups, up to a maximum depth of 3.
 
 ---
 
@@ -898,11 +900,16 @@ Notes:
   inventory display.
 
 - `take_check` is a [Gated Check](#gated-check) for taking the item
-  (e.g., pulling a sword from a stone).  Note that the check is *not*
-  automatically disabled after a successful take.  For a one-time
-  success gate (pass once, then freely take thereafter), use `gating`
-  and set a flag on `success`.  For a permanent one-attempt gate
-  (failure locks you out), set `check.repeatable` to `false`.
+  (e.g., pulling a sword from a stone).  Success and failure have the
+  side-effects of adding the item to the player's inventory, and
+  preventing the item from being taken, respectively; no need to
+  specify `add_item` explicitly in `success`/`failure`.
+
+  Note that the check is *not* automatically disabled after a
+  successful take.  For a one-time success gate (pass once, then
+  freely take thereafter), use `gating` and set a flag on `success`.
+  For a permanent one-attempt gate (failure locks you out), set
+  `check.repeatable` to `false`.
 
 ### `equip_block` — Equipment block (`EquipBlock`)
 
