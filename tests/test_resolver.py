@@ -796,7 +796,7 @@ class TestApplyResult:
         assert hard.player.location == "bag_floor"
 
 
-class TestResolveTalkDialoguePaths:
+class TestResolveTalkPaths:
     def test_dialogue_path_not_found(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
@@ -818,11 +818,12 @@ class TestResolveTalkDialoguePaths:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
-        from mgmai.models.corpus import DialoguePath, ConditionExpression
+        from mgmai.models.corpus import Resolvable, ConditionExpression
 
-        path = DialoguePath(
+        path = Resolvable(
             description="Test path with an impossible condition.",
-            condition=ConditionExpression.model_validate({"require": "flag:impossible_flag == true"})
+            condition=ConditionExpression.model_validate({"require": "flag:impossible_flag == true"}),
+            result=Result(narrative="Should not happen."),
         )
         corpus.entities["korbar"].dialogue_guidelines.dialogue_paths["test_path"] = path
         action = TalkAction(
@@ -841,9 +842,9 @@ class TestResolveTalkDialoguePaths:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
-        from mgmai.models.corpus import DialoguePath, Result
+        from mgmai.models.corpus import Resolvable, Result
 
-        path = DialoguePath(
+        path = Resolvable(
             description="Compliment Korbar on her armor.",
             result=Result(
                 narrative="Korbar seems pleased.",

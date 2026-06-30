@@ -197,11 +197,11 @@ class TestEntityVisibility:
         assert korbar.type == "npc"
 
     def test_dialogue_paths_included_for_npc(self, state_manager):
-        from mgmai.models.corpus import DialoguePath, Result
+        from mgmai.models.corpus import Resolvable, Result
         state_manager.hard_state.player.location = "bag_floor"
         state_manager.corpus.entities["korbar"].dialogue_guidelines.dialogue_paths[
             "test_path"
-        ] = DialoguePath(
+        ] = Resolvable(
             description="Test path description for the assembler.",
             result=Result(narrative="Test"),
         )

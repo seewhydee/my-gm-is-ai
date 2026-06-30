@@ -165,7 +165,7 @@ CheckType = RollCheck | StatCheck
 class Checkable(BaseModel):
     """A probabilistic check with success/failure branches.
 
-    Shared by GatedCheck, Interaction, DialoguePath, OnExamineEvent,
+    Shared by GatedCheck, Resolvable, Interaction, OnExamineEvent,
     and CheckResolution. Subclasses add their own fields
     (condition, result, gating, using_results, id, rigorous_only, ...)
     and validators that tighten optionality per their semantics.
@@ -221,24 +221,39 @@ class GatedCheck(Checkable):
     using_results: Optional[Dict[str, UsingResultOverride]] = None
 
 
-class Interaction(Checkable):
-    id: str
-    description: str
+class Resolvable(Checkable):
+    """The shared primitive for id-bearing, condition-gated resolution nodes.
+
+    Base for Interaction (room/entity), OnExamineEvent, and the entries
+    of an NPC's dialogue_paths.  Subclasses tighten optionality per
+    their context (e.g. Interaction requires id and description).
+    """
+    id: Optional[str] = None
+    description: Optional[str] = None
     condition: Optional[ConditionExpression] = None
     result: Optional[Result] = None
     using_results: Optional[Dict[str, UsingResultOverride]] = None
 
     @model_validator(mode="after")
-    def check_mutually_exclusive(self) -> Interaction:
+    def check_mutually_exclusive(self) -> "Resolvable":
         has_check = self.check is not None
         has_result = self.result is not None
         if not has_check and not has_result:
-            raise ValueError("Interaction must have at least one of 'check' or 'result'")
+            raise ValueError(
+                "Resolvable must have at least one of 'check' or 'result'")
         if has_check and has_result:
-            raise ValueError("Interaction must have either check or result, not both")
+            raise ValueError(
+                "Resolvable must have either check or result, not both")
         if has_check and self.success is None:
-            raise ValueError("Interaction with 'check' must also have 'success'")
+            raise ValueError(
+                "Resolvable with 'check' must also have 'success'")
         return self
+
+
+class Interaction(Resolvable):
+    """A room/entity-scoped Resolvable with required id and description."""
+    id: str = Field(...)
+    description: str = Field(...)
 
 
 class Exit(BaseModel):
@@ -250,21 +265,9 @@ class Exit(BaseModel):
     traversal_check: Optional[GatedCheck] = None
 
 
-class OnExamineEvent(Checkable):
-    id: str
-    condition: Optional[ConditionExpression] = None
+class OnExamineEvent(Resolvable):
+    """A Resolvable tied to the examine action, with rigorous-only gating."""
     rigorous_only: bool = False
-    result: Optional[Result] = None
-
-    @model_validator(mode="after")
-    def check_mutually_exclusive(self) -> OnExamineEvent:
-        has_check = self.check is not None
-        has_result = self.result is not None
-        if has_check and has_result:
-            raise ValueError("OnExamineEvent must have either check or result, not both")
-        if has_check and self.success is None:
-            raise ValueError("OnExamineEvent with 'check' must also have 'success'")
-        return self
 
 
 class GameOverTrigger(BaseModel):
@@ -341,23 +344,6 @@ class WillRevealEntry(BaseModel):
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
 
 
-class DialoguePath(Checkable):
-    description: str
-    condition: Optional[ConditionExpression] = None
-    result: Optional[Result] = None
-
-    @model_validator(mode="after")
-    def check_mutually_exclusive(self) -> "DialoguePath":
-        has_check = self.check is not None
-        has_result = self.result is not None
-        if has_check and has_result:
-            raise ValueError(
-                "DialoguePath must have either check or result, not both")
-        if has_check and self.success is None:
-            raise ValueError("DialoguePath with 'check' must also have 'success'")
-        return self
-
-
 class DialogueGuidelines(BaseModel):
     personality: str
     on_encounter: str = ""
@@ -366,7 +352,13 @@ class DialogueGuidelines(BaseModel):
     knows: List[str] = Field(default_factory=list)
     attitude_limits: AttitudeLimits
     will_reveal: Dict[str, WillRevealEntry] = Field(default_factory=dict)
-    dialogue_paths: Dict[str, DialoguePath] = Field(default_factory=dict)
+    dialogue_paths: Dict[str, Resolvable] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def populate_dialogue_path_ids(self) -> "DialogueGuidelines":
+        for path_id, resolvable in self.dialogue_paths.items():
+            resolvable.id = path_id
+        return self
 
 
 class BranchOutcome(BaseModel):

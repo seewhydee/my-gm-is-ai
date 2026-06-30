@@ -33,7 +33,7 @@ from mgmai.models.corpus import (
     Interaction,
     Mechanic,
     ModuleCorpus,
-
+    Resolvable,
     Reaction,
     ReactionEffects,
     Result,
@@ -56,6 +56,36 @@ class TestModuleCorpus:
         assert len(sample_corpus.rooms) == 5
         assert len(sample_corpus.entities) > 0
         assert len(sample_corpus.mechanics) == 1
+
+    def test_sample_corpus_dialogue_path_ids_populated(self, sample_corpus: ModuleCorpus) -> None:
+        korbar = sample_corpus.entities.get("korbar")
+        assert korbar is not None
+        assert korbar.dialogue_guidelines is not None
+        for path_id, path in korbar.dialogue_guidelines.dialogue_paths.items():
+            assert path.id == path_id
+            assert isinstance(path, Resolvable)
+
+    def test_sample_corpus_on_examine_events_load(self, sample_corpus: ModuleCorpus) -> None:
+        for room in sample_corpus.rooms.values():
+            for event in room.on_examine:
+                assert event.id is not None
+                assert isinstance(event, Resolvable)
+        for entity in sample_corpus.entities.values():
+            for event in entity.on_examine:
+                assert event.id is not None
+                assert isinstance(event, Resolvable)
+
+    def test_sample_corpus_interactions_are_strict_interactions(self, sample_corpus: ModuleCorpus) -> None:
+        for room in sample_corpus.rooms.values():
+            for inter in room.interactions:
+                assert isinstance(inter, Interaction)
+                assert inter.id is not None
+                assert inter.description is not None
+        for entity in sample_corpus.entities.values():
+            for inter in entity.interactions:
+                assert isinstance(inter, Interaction)
+                assert inter.id is not None
+                assert inter.description is not None
 
     def test_start_room_has_is_start_room(self, sample_corpus: ModuleCorpus) -> None:
         start_rooms = [r for r in sample_corpus.rooms.values() if r.is_start_room]
@@ -254,6 +284,64 @@ class TestInteraction:
         assert i.condition.require == "flag:secret_door_found == true"
         assert i.result is not None
         assert i.result.narrative == "The secret door slides open."
+
+    def test_requires_id_and_description(self) -> None:
+        with pytest.raises(ValidationError):
+            Interaction(result=Result(narrative="Missing id and description"))
+        with pytest.raises(ValidationError):
+            Interaction(id="x", result=Result(narrative="Missing description"))
+        with pytest.raises(ValidationError):
+            Interaction(description="x", result=Result(narrative="Missing id"))
+
+
+class TestResolvable:
+    def test_base_resolvable_has_optional_id_and_description(self) -> None:
+        r = Resolvable(result=Result(narrative="No id needed"))
+        assert r.id is None
+        assert r.description is None
+
+    def test_resolvable_requires_check_or_result(self) -> None:
+        with pytest.raises(ValidationError):
+            Resolvable(description="Empty")
+
+    def test_resolvable_check_requires_success(self) -> None:
+        with pytest.raises(ValidationError):
+            Resolvable(check=RollCheck(threshold=0.5, repeatable=True))
+
+    def test_resolvable_check_and_result_mutually_exclusive(self) -> None:
+        with pytest.raises(ValidationError):
+            Resolvable(
+                check=RollCheck(threshold=0.5, repeatable=True),
+                result=Result(narrative="Both"),
+            )
+
+    def test_dialogue_path_id_populated_from_dict_key(self) -> None:
+        guidelines = DialogueGuidelines(
+            personality="test",
+            attitude_limits=AttitudeLimits(min=-5, max=5),
+            dialogue_paths={
+                "flatter": Resolvable(
+                    description="Flatter the spider",
+                    result=Result(narrative="The spider preens."),
+                ),
+            },
+        )
+        assert guidelines.dialogue_paths["flatter"].id == "flatter"
+
+    def test_dialogue_path_id_preserved_when_supplied(self) -> None:
+        guidelines = DialogueGuidelines(
+            personality="test",
+            attitude_limits=AttitudeLimits(min=-5, max=5),
+            dialogue_paths={
+                "flatter": Resolvable(
+                    id="ignored",
+                    description="Flatter the spider",
+                    result=Result(narrative="The spider preens."),
+                ),
+            },
+        )
+        # Dict key wins over any supplied id.
+        assert guidelines.dialogue_paths["flatter"].id == "flatter"
 
 
 class TestResult:

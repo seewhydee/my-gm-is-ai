@@ -100,8 +100,8 @@ def _build_room(room_id: str,
         path_descriptions: dict[str, str] = {}
         if entity.type == "npc" and entity.dialogue_guidelines:
             path_descriptions = {
-                path_id: path.description
-                for path_id, path in entity.dialogue_guidelines.dialogue_paths.items()
+                path_id: resolvable.description
+                for path_id, resolvable in entity.dialogue_guidelines.dialogue_paths.items()
             }
 
         combat_block_dict = None

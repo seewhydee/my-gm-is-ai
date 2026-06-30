@@ -39,7 +39,7 @@ apply mechanics.
 This section defines types used in multiple parts of the corpus
 schema: conditions, checks, and results.
 
-### Condition object
+### Condition
 
 A condition object describes a predicate clause gating availability:
 whether an exit is shown, a mechanic can be triggered, etc.  They are
@@ -308,10 +308,9 @@ results may contain other follow-ups, up to a maximum depth of 3.
 
 A Gated Check wraps a [Check](#check) with a condition that determines
 whether the check is active, an optional bypass condition, and
-success/failure [Results](#result).  It is intended for situations
-where a player action would normally succeed, but has a chance to fail
-due to gameplay mechanics (specially, it is used in item `take_check`
-and exit `traversal_check`).
+success/failure [Results](#result).  It is meant for situations where
+a player action would normally succeed, but faces an obstacle; it is
+used in `take_check` for items and `traversal_check` for room exits.
 
 ```json
 {
@@ -345,7 +344,7 @@ and exit `traversal_check`).
 | `skip_check_if`(*)| Condition | If present and true, bypass check    |
 | `success` (*)     | Result    | Result if check succeeds or bypassed |
 | `failure` (*)     | Result    | Result if check fails                |
-| `using_results`(*)| object    | Item ID -> override Check map        |
+| `using_results`(*)| object    | See [Usage Override](#usage-override)|
 > (*) optional
 
 Note: if `gating` evaluates to false, the check is silently inactive;
@@ -355,7 +354,85 @@ to true (or is absent) and `skip_check_if` evaluates to true, the
 check is bypassed and `success` is applied.  Otherwise the check is
 rolled normally.
 
-For info on `using_results`, see [Interaction](#interaction).
+The `using_results` field, if supplied, should be a dict defining
+[Usage Overrides](#usage-override) for the Gated Check.
+
+---
+
+### Resolvable
+
+A Resolvable is a condition-gated action that resolves to a Result.
+It is used to describe special interactions with [Rooms](#room) and
+[Entities](#entity), [Examination Effects](#examination), and NPC
+[Dialogue Paths](#dialogue-path).
+
+```json
+{
+  "id": "string (optional unless subclass requires it)",
+  "description": "string (optional unless subclass requires it)",
+  "condition": { /* condition object (optional) */ },
+  "skip_check_if": { /* condition object (optional) */ },
+  "check": { /* roll or stat_check (optional) */ },
+  "success": { /* result (required if check is present) */ },
+  "failure": { /* result (optional) */ },
+  "result": { /* deterministic result (optional, mutually exclusive with check) */ },
+  "using_results": { /* item ID -> override (optional) */ }
+}
+```
+
+| Field             | Type      | Description                          |
+|-------------------|-----------|--------------------------------------|
+| `id` (*)          | string    | ID (depends on context)              |
+| `description` (*) | string    | Human-readable description of action |
+| `condition` (*)   | Condition | Availability gate for the action     |
+| `skip_check_if`(*)| Condition | Whether to bypass check and succeed  |
+| `check` (*)       | Check     | Check to resolve result              |
+| `success` (*)     | Result    | Result when check succeeds/bypassed  |
+| `failure` (*)     | Result    | Result when check fails              |
+| `result` (*)      | Result    | Deterministic result                 |
+| `using_results`(*)| object    | See [Usage Override](#usage-override)|
+> (*) optional by default (may be required in some contexts)
+
+Notes:
+
+- The meaning of `id` depends on where the Resolvable is used.  For
+  interactions with rooms and entities, it must be a room-unique or
+  entity-unique ID string.  In other contexts, it is ignored.
+
+- `description` is used to brief the GM on the semantic meaning of the
+  action.  It may be omitted for Examination Effects.
+
+- `condition`, if supplied, gates availability; if it evaluates to
+  `false`, the action is considered unavailable (e.g., a room/entity
+  interaction will not be offered as a player action).
+
+- The action itself should be specified by one of:
+  - a deterministic `result`, OR
+  - a probabilistic `check`, with optional `skip_check_if` to bypass
+    (evaluating to `true` means auto-success), along with `success`
+    (required) and `failure` (optional) Results.
+
+- `using_results`, if supplied, should be a dict defining a set of
+  [Usage Overrides](#usage-override) for the action.
+
+---
+
+### Usage Override
+
+A Usage Override object can be placed in the optional `using_results`
+field of a Gated Check or Resolvable.  It accommodates player commands
+of the form "[ACTION] using [ITEM]" by defining alternative resolution
+paths.
+
+Each Usage Override should be a dict mapping item entity IDs to one of
+the following, overriding the usual result or check for the Gated
+Check or Resolvable:
+
+- a dict with `"result"` keyed to a [Result](#result), describing an
+  alternative unchecked interaction result; OR
+
+- a dict with `check`, `success`, and `failure` (optional), which
+  define an alternative [Check](#check),
 
 ---
 
@@ -388,8 +465,8 @@ world graph keyed by a globally-unique `room_id`.
 | `contains`(*)        | string[] | Entities directly present at start |
 | `exits` (*)          | array    | All exits out of the room          |
 | `state_fields` (*)   | object   | State fields for room (see below)  |
-| `interactions` (*)   | array    | See [Interaction](#interaction)    |
-| `on_examine` (*)     | array    | See [On-Examine](#on-examine)      |
+| `interactions` (*) | Resolvable[] | Special interactions (see below) |
+| `on_examine` (*)     | array    | See [Examination](#examination)    |
 | `reactions` (*)      | array    | See [Reaction](#reaction)          |
 | `soft_items` (*)     | string[] | Plausible generic items in the room|
 | `is_start_room` (*)  | boolean  | `true` for starting room (only one)|
@@ -419,6 +496,21 @@ Notes:
   computed (true only for the player's current room).  Neither field
   has to be declared in `state_fields`.  Do not use `is_current` to
   relocate the player; use `set_player_location` in a Result.
+
+- `interactions` is an array of [Resolvables](#resolvable) describing
+  the non-generic operations that can be performed on (or with) the
+  room.  For each Resolvable,
+
+  - `id` must be room-unique.  It should not be the reserved ID
+    `attack`, or the generic actions `move`, `examine`, `talk`,
+    `transfer`, or `wait`, or similar generic verbs (e.g., `take`).
+
+  - `description` is required, and should describe the semantic
+    meaning of the interaction; it is used to brief the GM on the
+    semantic meaning of the interaction.
+
+  - If `failure` is not specified, a failed check sends a generic
+    "nothing happens" message to the GM narrator.
 
 - Soft objects examples: `["rock", "loose stone", "dust"]`). These are
   identified by their general name only — they carry no unique item
@@ -472,88 +564,19 @@ Notes:
 
 ---
 
-## Interaction
-
-Interactions objects describe are discrete, non-generic operations
-that can be performed on (or with) entities or rooms.  Each room and
-entity maintains a separate list of available interactions, and each
-interaction can have its own availability gating, success/failure
-gating, and sucess/failure results.
-
-```json
-{
-  "id": "string (unique within the defining context)",
-  "description": "string (what the player is attempting)",
-  "condition": { /* condition object or null */ },
-  "skip_check_if": { /* condition object (optional) */ },
-  "check": { /* roll check or null */ },
-  "success": { /* result */ },
-  "failure": { /* result or null */ },
-  "result": { /* result (used when no check is present) */ },
-  "using_results": { /* item-specific overrides (optional) */ }
-}
-```
-
-| Field             | Type      |  Description                      |
-|-------------------|-----------|-----------------------------------|
-| `id`              | string    | ID, unique in room or entity      |
-| `description`     | string    | Clear description of interaction  |
-| `condition` (*)   | Condition | Whether interaction is available  |
-| `check` (*)       | Check     | Success/failure check             |
-| `skip_check_if`(*)| Condition | Whether interaction auto-succeeds |
-| `success` (*)     | Result    | Result when check succeeds        |
-| `failure` (*)     | Result    | Result when check fails           |
-| `result` (*)      | Result    | Fixed result (when no check)      |
-| `using_results`(*)| object    | Alt check when using tool         |
-> (*) optional
-
-Notes:
-
-- `id` should be unique within the room or entity.  The reserved
-  interaction ID `attack` should not be used.  Interaction IDs should
-  also not duplicate the generic actions `move`, `examine`, `talk`,
-  `transfer`, or `wait`, nor similar generic verbs (e.g., `take`), as
-  this risks confusing the GM on how to categorize player actions.
-
-- The role of `description` is to brief the GM on the semantic meaning
-  of the interaction.
-
-- If present, `condition` gates the availability of the interaction;
-  if it evaluates to false, the interaction is not presented as an
-  available option, even to the GM.
-
-- If `check` is omitted, the interaction triggers `result`, which must
-  be defined.  Otherwise, the [Check](#check) is run and triggers
-  either `success` (which must be defined) or `failure` (optional);
-  but `skip_check_if`, if present and evaluating to true, bypasses the
-  check and triggers `success`.
-
-- If `failure` is not specified, a failed check sends a generic
-  "nothing happens" message to the GM narrator.
-
-- The `using_results` field, if provided, accommodates player commands
-  of the form "[INTERACTION] using [ITEM]", allowing for alternative
-  resolution paths.  It should be a dict mapping item entity IDs to
-  one of the following objects, which overrides the usual result/check
-  for interactions using the matching item:
-  - a dict with `"result"` keyed to a [Result](#result), describing an
-    alternative unchecked interaction result; OR
-  - a dict with `check`, `success`, and `failure` (optional), which
-    define an alternative [Check](#check),
-
----
-
-## On-Examine
+## Examination
 
 Each room and entity object has an optional `on_examine` field for an
-**array** of On-Examine objects.  Each On-Examine object describes a
-possible effect of examination, which can include conditional gating,
-success checks, direct or success/failure results, and optional
-rigorous-search-only gating.
+**array** of [Resolvables](#resolvable), describing the outcomes of
+examining the room or entity.  When the player performs an examine
+action, all eligible Resolvables in `on_examine` run in array order.
 
-During gameplay, ordinary (cursory) examination does not consume a
-turn, while rigorous examination does.  When the player performs an
-examine action, all eligible On-Examine effects run in array order.
+The player can opt between ordinary (cursory) examination, which does
+not consume a turn, and rigorous examination, which costs a turn.  To
+account for this, the Resolvables in `on_examine` add an extra field,
+`rigorous_only` (boolean, default `false`).  Resolvables with
+`rigorous_only` only activate under rigorous examination; however,
+rigorous examinations *can* activate cursory-examination Resolvables.
 
 ```json
 {
@@ -578,33 +601,22 @@ examine action, all eligible On-Examine effects run in array order.
 }
 ```
 
+Extra field for Resolvables in `on_examine`:
+
 | Field             | Type      | Description                          |
 |-------------------|-----------|--------------------------------------|
-| `id`              | string    | ID, unique within parent entity/room |
-| `condition` (*)   | Condition | Gating condition (see below)         |
-| `skip_check_if`(*)| Condition | Whether examination auto-succeeds    |
 | `rigorous_only`   | boolean   | Whether rigorous search is needed    |
-| `check` (*)       | Check     | Success check gating outcome         |
-| `success` (*)     | Result    | Result applied when the check passes |
-| `failure` (*)     | Result    | Result applied when check fails      |
-| `result` (*)      | Result    | Result applied if no check           |
-> (*) optional
 
 Notes:
 
-- The base `description` of the entity/room is returned first in the
-  narration; on-examine event narratives are appended after
-  it. Results may carry `set_flag`, `alter_stat`, `add_item`, and
-  `then_check` like any other result.
+- The `narrative` in the [Result](#result) delivered by the
+  examination Resolvable is adapted by the GM into the narration for
+  what the player observes during the examination.  The other Result
+  fields can be used to implement other side-effects, such as setting
+  flags to track the player's information.
 
-- The `condition`, `skip_check_if`, `check`, `success`, `failure`, and
-  `result` fields are the same as in [Interaction](#interaction).
-  Note that `result` is mutually exclusive with `success` (and
-  optional `failure`).  Typically, these fields are used to describe
-  whether the player is able to extract a given piece of information.
-
-- Rigorous examinations can also trigger cursory On-Examine effects
-  (but not vice versa).
+- `id`, `description`, and `using_results` need not be supplied, and
+  and their effects on examination actions are undefined.
 
 ## Reaction
 
@@ -817,7 +829,7 @@ The following fields are meaningful for all entity types:
 | `tags` (*)          | string[] | Array of semantic tags              |
 | `contains`(*)       | string[] | IDs of entities inside this entity  |
 | `interactions` (*)  | array    | See [Interaction](#interaction)     |
-| `on_examine` (*)    | array    | See [On-Examine](#on-examine)       |
+| `on_examine` (*)    | array    | See [Examination](#examination)     |
 | `reactions` (*)     | array    | See [Reaction](#reaction)           |
 | `state_fields` (*)  | object   | State fields for entity (see below) |
 | `soft_items` (*)    | array    | Plausible soft items on/in entity   |
@@ -1081,7 +1093,7 @@ or interaction that sets `hidden: false` — otherwise it is permanently invisib
 | `will_reveal`     | object | Gated dialogue topics. Each topic has a `description`, a `conditions` array (all must be true for the topic to be revealable), and optional `set_flag` / `set_entity_state` side effects. When LLM Call 2 tags a topic as revealed via `knowledge_tags`, the engine validates conditions and applies the side effects. |
 | `dialogue_paths`  | object | **Optional.** Named special dialogue paths that trigger mechanical effects when the player uses them via a `talk` action with `dialogue_path` set. Each path has a required `description` and may have a `condition`, a probabilistic `check` (+`success`/`failure`), or a deterministic `result`. The path ID is the machine key used in the `talk` action; the `description` is surfaced to LLM Call 1 in `entities_visible` as `{path_id: description}` so it can match player intent to the right path. |
 
-#### `dialogue_paths` object
+#### Dialogue Path
 
 ```json
 {
@@ -1107,17 +1119,19 @@ or interaction that sets `hidden: false` — otherwise it is permanently invisib
 }
 ```
 
-| Field       | Type   | Description |
-|-------------|--------|-------------|
-| `description` | string | **Required.** Human-readable description of what this path represents. This text is surfaced to LLM Call 1 as the value in `entities_visible[*].dialogue_paths[path_id]`, so the LLM can match player input to the right path. Phrase it as a player intent (e.g., "Compliment the spider's hunting prowess" or "Tell Korbar the spider is dead"). |
-| `condition` | Condition | Optional. If present, all conditions must be met for the path to be usable. |
-| `skip_check_if` | Condition | **Optional.** When present and evaluated to true, the check is skipped entirely (bypasses `condition`). |
-| `check`     | Check | Optional. A `roll` or `stat_check`. If present, `success` is required. |
-| `success`   | Result | Result applied when the check succeeds. |
-| `failure`   | Result | Result applied when the check fails. |
-| `result`    | Result | Deterministic result when no `check` is present. Mutually exclusive with `check`. |
+Each entry is a [Resolvable](#resolvable).  The dict key is the path ID
+used in the `talk` action (`dialogue_path` field); the `Resolvable.id`
+field is populated from the dict key automatically during model
+validation (and need not be supplied in the JSON).
 
-Path results support the same fields as interaction `Result` objects: `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`, `then_check`.
+The `description` field (required) is surfaced to LLM Call 1 in
+`entities_visible` as `{path_id: description}` so it can match player
+intent to the right path.  The `using_results` field is inherited from
+`Resolvable` but is documented as unused for dialogue paths.
+
+Path results support the same fields as interaction `Result` objects:
+`narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`,
+`then_check`.
 
 #### Knowledge tag validation (`will_reveal` flow)
 

@@ -1,474 +1,732 @@
-# Plan: Unify Take Check and Traversal Check into `GatedCheck`
+# Plan: Unify Interaction, DialoguePath, and OnExamineEvent under `Resolvable`
 
 ## Rationale
 
-The schema currently has two nearly identical constructs for gated,
-check-based resolution in non-interaction contexts:
+Three types in the schema share identical resolution semantics — an
+optional availability `condition`, an optional `skip_check_if` bypass,
+and either a deterministic `result` or a probabilistic `check` with
+`success`/`failure` branches:
 
-| Trait | `TakeCheck` (Item, line 916) | `TraversalCheck` (Exit, line 411) |
+| Trait | `Interaction` | `DialoguePath` | `OnExamineEvent` |
+|---|---|---|---|
+| identity | `id` (field) | dict key | `id` (field) |
+| `description` | yes (required) | yes (required) | — |
+| `condition` | optional | optional | optional |
+| `skip_check_if` | optional | optional | optional |
+| `check` | optional | optional | optional |
+| `success` | optional | optional | optional |
+| `failure` | optional | optional | optional |
+| `result` | optional | optional | optional |
+| `using_results` | optional | **—** | **—** |
+| extra fields | — | — | `rigorous_only` |
+| validator | `check` XOR `result`; if `check` → need `success` | **identical** | `check` XOR `result`; if `check` → need `success` |
+
+`DialoguePath` is a **strict subset** of `Interaction`, and
+`OnExamineEvent` is `Interaction` minus `description`/`using_results`
+plus `rigorous_only`.  The three differ only in their trigger context
+and in which identifying fields are required — not in their resolution
+logic.
+
+The engine proves the equivalence: it **already constructs synthetic
+`Interaction` objects** to route dialogue paths and examine events
+through the same `_resolve_interaction_check()` code path — in three
+separate locations:
+
+| Location | Lines | What it does |
 |---|---|---|
-| `gating` | yes | yes |
-| `check` | yes (required) | yes (required) |
-| `skip_check_if` | yes | yes |
-| `success` | yes (validator requires it when `check` present) | optional (no validator) |
-| `failure` | yes | yes |
-| `using_results` | — | yes (item→alternate-check overrides) |
+| `resolve_talk()` | 552–564 | Builds synthetic `Interaction` from `DialoguePath` fields |
+| `_fire_on_examine_events()` | 1512–1520 | Builds synthetic `Interaction` from `OnExamineEvent` fields |
+| `_resolve_using_override()` | 1130–1138 | Builds synthetic `Interaction` from `UsingResultOverride` fields |
 
-Field-wise, `TakeCheck` is a subset of `TraversalCheck` — the only
-field difference is `using_results`.  However, the two currently differ
-in two non-field ways that this plan must address:
+This is a code smell indicating that the resolution shape is already a
+shared primitive; the subtypes differ only in trigger context.
 
-1. **Validator**: `TakeCheck` has a `check_success_on_check` validator
-   that requires `success` when `check` is present.
-   `TraversalCheck` has no such validator — `success` is optional (and
-   none of the 8 traversal checks in the real corpus define one).
+## Design decision: `Resolvable` primitive + strict `Interaction`
 
-2. **Resolution precedence**: The two engine code paths evaluate
-   `gating` and `skip_check_if` in *opposite order*.  The take path
-   (`resolve_transfer`) checks `gating` first; the traversal path
-   (`resolve_move`) checks `skip_check_if` first.  This only matters
-   when both are present and their evaluations conflict (`gating` false
-   + `skip_check_if` true), but it is a real divergence.
+Rather than overloading the name `Interaction` to cover all three
+contexts (which would mislabel dialogue paths and on-examine events as
+"interactions" when they are really sibling resolvables), we introduce
+a new primitive **`Resolvable`** that carries the shared shape, and
+keep **`Interaction`** as its strict subclass for the room/entity
+context (where `id` and `description` are genuinely required).
 
-This plan unifies both under one `GatedCheck` type **and** aligns the
-resolution logic to a single precedence (gating-first), so that the
-unified type is resolved consistently regardless of call site.
+This mirrors the existing `Checkable` family: `Checkable` is the
+abstract base; `CheckResolution`, `GatedCheck` are concrete
+specializations.  Similarly, `Resolvable` is the abstract base for
+"an id-bearing, condition-gated node that resolves to a `Result` via
+either a deterministic `result` or a probabilistic `check`," and
+`Interaction` / `OnExamineEvent` are concrete specializations tied to
+specific trigger contexts.
 
-The new **`GatedCheck`** primitive is distinct from
-**`FollowUpCheck`** (the `then_check` embedded in a Result), which
-deliberately omits `gating` and `using_results` — a follow-up check
-fires automatically from its parent result, so an extra gate layer is
-redundant and `using_results` makes no sense in that context.
+### Why `Resolvable`?
 
-### Chosen precedence: gating-first
+- Parallels `Checkable` (both `-able` adjectives: "can be checked" /
+  "can be resolved").
+- Accurately describes all three use sites (they all *resolve* to
+  outcomes), unlike `Interactable` (on-examine fires automatically, not
+  "interacted with").
+- Fits the existing `ResolutionResult` / `_resolve_*` vocabulary.
 
-`gating` and `skip_check_if` form a hierarchy, not parallel checks:
+### Optional-vs-required via subclass tightening
 
-- `gating` — *"Does this check exist right now?"* (activation)
-- `skip_check_if` — *"Given the check exists, should we skip rolling?"*
-  (bypass)
-
-You cannot bypass a check that does not exist.  `skip_check_if` is
-logically nested inside `gating`.  This matches the take path's current
-behavior, the semantics note below, and the existing schema prose for
-traversal checks (corpus.md line 458: "True means proceed to do the
-check (with `skip_check_if`).  False means traversal proceeds.").  The
-traversal *engine code* is the outlier and must be reordered to match.
-
-In every scenario where the two diverge (gating false + skip_check_if
-true), gating-first gives the intuitive result: when the obstacle is
-gone (gating false), the check is dormant and neither `success` nor
-`failure` should fire — the action proceeds with default behavior.  The
-real corpus confirms this intent: `gating` conditions are more
-comprehensive than their paired `skip_check_if` conditions, and no
-traversal check defines a `success` result, so the reordering is
-behavior-preserving for all existing data.
+`Resolvable.id` and `Resolvable.description` are `Optional` (so
+dialogue-path JSON, which has no `id`/`description`-as-required, loads
+cleanly).  `Interaction` redeclares them as required — the same pattern
+`CheckResolution(Checkable)` already uses to tighten `check`/`success`
+from `Optional` to required (corpus.py:179–196).  This is proven to
+work in this codebase's Pydantic version.
 
 ## End-state primitives
 
-| Primitive | Has gate? | Has `using_results`? | `success` | Where used |
-|---|---|---|---|---|
-| **GatedCheck** | yes (`gating`) | optional | optional | Item `take_check`, Exit `traversal_check` |
-| **FollowUpCheck** | no (parent result gates it) | no | required | Result `then_check` |
+After this plan, the `Checkable` hierarchy becomes:
+
+| Primitive | Identity | Gate | `using_results`? | Extra | Where used |
+|---|---|---|---|---|---|
+| **Checkable** (base) | — | — | — | `skip_check_if`, `check`, `success`, `failure` | base class |
+| **GatedCheck** | — | `gating` | optional | — | Item `take_check`, Exit `traversal_check` |
+| **CheckResolution** | — | — | — | `check` required, `success` required | Result `then_check` |
+| **Resolvable** (new) | `id` optional | `condition` | optional | `description` optional, `result` | base for Interaction / OnExamineEvent / dialogue_paths |
+| **Interaction** | `id` required | `condition` | optional | `description` required, `result` | Room/Entity `interactions` |
+| **OnExamineEvent** | `id` optional | `condition` | optional (unused) | `description` optional (unused), `result`, `rigorous_only` | Room/Entity `on_examine` |
+
+`DialoguePath` is **removed**.  `dialogue_paths` becomes
+`Dict[str, Resolvable]`; a `DialogueGuidelines` validator populates
+each entry's `id` from the dict key.
+
+### `using_results` scope
+
+`using_results` is carried by `Resolvable` and therefore inherited by
+all three subtypes.  In practice it is only meaningful for room/entity
+`Interaction`s (e.g. "show the guard your badge").  For dialogue paths
+and on-examine events it is **documented as unused** — no validator
+rejects it, to keep the primitive uniform and the hierarchy shallow.
+The schema doc notes this.
 
 ## Schema changes (`schema/corpus.md`)
 
-### 1. Define the `GatedCheck` primitive
+### 1. Add `Resolvable` to the primitives section
 
-Add a new subsection under `## Common Primitives` (alongside `Check`,
-`Result`, `Follow-up check`), before or after `Follow-up check`:
-
-```
-### Gated Check
-
-A Gated Check wraps a [Check](#check) with a condition that determines
-whether the check is active (`gating`), an optional bypass condition
-(`skip_check_if`), and success/failure [Results](#result).  It is used
-for item take checks and exit traversal checks.
-
-| Field             | Type      | Description                              |
-|-------------------|-----------|------------------------------------------|
-| `gating` (*)      | Condition | Whether the check is active at all       |
-| `check`           | Check     | The Check to resolve (required)          |
-| `skip_check_if`(*)| Condition | If present and true, bypass the check    |
-| `success` (*)     | Result    | Result if check succeeds or is bypassed  |
-| `failure` (*)     | Result    | Result if check fails                    |
-| `using_results`(*)| object    | Item ID → alternate Check override map   |
-> (*) optional
-```
-
-Include a JSON example (from the traversal check example, now
-generalized).
-
-Semantics note: if `gating` evaluates to false, the check is silently
-inactive — the action proceeds with default behavior and *no* Result
-from the check is applied (neither `success` nor `failure`).  If
-`gating` evaluates to true (or is absent) and `skip_check_if` evaluates
-to true, the check is bypassed and `success` is applied.  Otherwise the
-check is rolled normally.
-
-For the two accepted `using_results` override shapes (a `result`-keyed
-Result, or a `check`/`success`/`failure` triple), see
-[Interaction](#interaction) and [Traversal Check](#traversal-check);
-the semantics are identical in all contexts that use it.
-
-### 2. Replace `take_check` field description (line 907/916)
-
-The `take_check` row in the Item field table stays — its type becomes
-`GatedCheck`.  Remove the dedicated `take_check` sub-table (lines
-919-926) and replace with a cross-reference, but **preserve the
-take-specific notes** (lines 928-932), which describe behavior not
-covered by the generic GatedCheck primitive:
+Add a new subsection in the primitives area (near `Checkable` /
+`GatedCheck` / `CheckResolution`) describing the unified primitive:
 
 ```
-- `take_check` (*): GatedCheck — gated check for taking the item.
-  See [Gated Check](#gated-check).
+## Resolvable
 
-  The check is *not* automatically disabled after a successful take.
-  For a one-time success gate (pass once, then freely take thereafter),
-  use `gating` with a flag that `success` sets.  For a permanent
-  one-attempt gate (failure locks you out), set `check.repeatable` to
-  `false`.
+A `Resolvable` is the shared primitive for any id-bearing,
+condition-gated node that resolves to a `Result`.  It is the base type
+for `Interaction` (room/entity interactions), `OnExamineEvent`
+(on-examine events), and the entries of an NPC's `dialogue_paths`.
+
+Each `Resolvable` has:
+- an optional `id` (populated from the dict key for `dialogue_paths`
+  entries; required and always present for room/entity `Interaction`s),
+- an optional `description` (required for room/entity `Interaction`s;
+  surfaced to the LLM for dialogue paths; unused for on-examine
+  events),
+- an optional availability `condition`,
+- an optional `skip_check_if` bypass,
+- either a deterministic `result` or a probabilistic `check` with
+  `success`/`failure` branches (mutually exclusive; if `check` is
+  present, `success` must be),
+- an optional `using_results` map (item-based alternative resolutions;
+  meaningful only for room/entity `Interaction`s — documented as unused
+  for dialogue paths and on-examine events).
 ```
 
-### 3. Replace `Traversal Check` subsection (lines 411-481)
+### 2. Update `Interaction` section (lines 475–481)
 
-Replace the entire `#### Traversal Check` subsection — heading,
-description, JSON example, field table, **and** notes (lines 411
-through 481, not just 411-443) — with a cross-reference plus the
-traversal-specific notes that must be preserved:
+Keep the section describing `Interaction` as the room/entity-scoped
+type with required `id` and `description`.  Add a sentence noting it is
+a strict subclass of `Resolvable`:
 
 ```
-#### Traversal Check
+## Interaction
 
-The optional `traversal_check` field on an Exit is a [Gated
-Check](#gated-check) that gates non-automatic traversal.  The Exit's
-own `condition` field controls *visibility* of the exit;
-`traversal_check` controls whether traversal requires a check (and
-which check).
-
-(Keep the existing JSON example, updated to use the unified schema.)
-
-Traversal-specific behavior:
-
-- Success has the side-effect of moving to the destination Room; no
-  need to specify that in `success`.
-- Failure has the side-effect of canceling the traversal; no need to
-  specify that in `failure`.
-- The `using_results` field accommodates player commands of the form
-  "[USE EXIT] using [ITEM]".  It is keyed by item entity IDs (or the
-  `"*"` wildcard); when the player uses an item matching a key, the
-  value replaces the traversal check entirely.  The mapped value can
-  be one of these two:
-  - a dict with `result` keyed to a [Result](#result)
-  - a dict with `check` (a [Check](#check)), `success` (a Result)
-    and optionally `failure` (a Result), with the same semantics as
-    [Interaction](#interaction).
+Interactions describe discrete, non-generic operations performed on (or
+with) entities or rooms, triggered by the `interact` action.  An
+`Interaction` is a `Resolvable` whose `id` and `description` are
+required (they identify and label the interaction for the LLM).  All
+other fields (`condition`, `skip_check_if`, `check`, `success`,
+`failure`, `result`, `using_results`) inherit their semantics from
+`Resolvable`.
 ```
 
-The existing notes describing `gating` and `skip_check_if` behavior
-(lines 458-464) are subsumed by the GatedCheck primitive's semantics
-note and need not be repeated here.
+### 3. Update `dialogue_paths` subsection (lines 1084–1120)
+
+Replace the standalone `DialoguePath` field table with a
+cross-reference to `Resolvable`:
+
+```
+#### `dialogue_paths` object
+
+Each entry is a [Resolvable](#resolvable).  The dict key is the path ID
+used in the `talk` action (`dialogue_path` field); the `Resolvable.id`
+field is populated from the dict key automatically during model
+validation (and need not be supplied in the JSON).
+
+The `description` field (required) is surfaced to LLM Call 1 in
+`entities_visible` as `{path_id: description}` so it can match player
+intent to the right path.  The `using_results` field is inherited from
+`Resolvable` but is documented as unused for dialogue paths.
+
+(The existing JSON example at lines 1086–1107 remains correct — all
+field names are identical.)
+```
+
+Remove the standalone `DialoguePath` field table (lines 1110–1118) and
+the "Path results support the same fields..." note (line 1120), since
+they duplicate the `Resolvable` section.
+
+### 4. Update `On-Examine` subsection (lines 546–607)
+
+Replace the `OnExamineEvent` field descriptions with a reference:
+
+```
+Each On-Examine event is a [Resolvable](#resolvable) with one extra
+field, `rigorous_only` (boolean, default `false`), which restricts the
+event to rigorous (turn-costing) examination.  `id` is supplied in the
+JSON (used as the source identifier in roll dicts and repeatability
+tracking).  `description` is inherited from `Resolvable` but is unused
+for on-examine events (not surfaced to the LLM).  `using_results` is
+inherited but documented as unused.
+```
+
+Keep the JSON example and the notes about cursory vs rigorous
+behavior.  The field table is replaced with the cross-reference above.
 
 ## Model changes (`mgmai/models/corpus.py`)
 
-### 4. Create `GatedCheck` class
+### 5. Rename current `Interaction` → `Resolvable`; make `id`/`description` optional
 
-Add after `Checkable` (line 165), replacing `TakeCheck` (line 216) and
-`TraversalCheck` (line 249):
-
-```python
-class GatedCheck(Checkable):
-    """A check gated by a condition. Used for take checks and traversal checks."""
-    check: CheckType
-    gating: Optional[ConditionExpression] = None
-    using_results: Optional[Dict[str, UsingResultOverride]] = None
-```
-
-This is exactly `TraversalCheck`'s current definition — it's the
-superset.  The `take_check` use site simply won't populate
-`using_results`.
-
-**No validator requiring `success`.**  `success` is optional on
-`GatedCheck` because traversal checks legitimately omit it (none of the
-8 traversal checks in the real corpus define one; the engine falls
-through to default traversal behavior).  This has a consequence for the
-take-check engine path — see step 9.
-
-### 5. Remove `TakeCheck` and `TraversalCheck`
-
-Delete lines 216-228 (`TakeCheck` class + validator) and lines 249-253
-(`TraversalCheck` class).  The `Checkable` base class (line 165) is
-kept as the shared base for both `GatedCheck` and `CheckResolution`
-(FollowUpCheck).
-
-Update the `Checkable` docstring (lines 168-169): replace
-"TraversalCheck, TakeCheck" with "GatedCheck".
-
-### 6. Update `Entity.take_check` field (line 422)
+Replace the current `Interaction` class (lines 224–241) with:
 
 ```python
-# Before:
-take_check: Optional[TakeCheck] = None
-# After:
-take_check: Optional[GatedCheck] = None
-```
+class Resolvable(Checkable):
+    """The shared primitive for id-bearing, condition-gated resolution nodes.
 
-### 7. Update `Exit.traversal_check` field (line 261)
-
-```python
-# Before:
-traversal_check: Optional[TraversalCheck] = None
-# After:
-traversal_check: Optional[GatedCheck] = None
-```
-
-### 8. Validator handling
-
-The `TakeCheck.check_success_on_check` validator (requires `success`
-when `check` is present) is **removed, not relocated**.  `success` is
-optional on `GatedCheck` (step 4).
-
-This is safe only because the take-check engine path is refactored to
-not construct a synthetic `Interaction` (step 9).  The current take
-path builds `Interaction(check=tc.check, success=tc.success, ...)`, and
-`Interaction`'s validator rejects `check` without `success` — so simply
-removing the `TakeCheck` validator without the engine refactor would
-crash at runtime.  After the refactor (step 9), the take path calls
-`_resolve_checkable` directly, which handles a missing `success`
-gracefully (applies nothing on a passed check with no `success`
-branch).
-
-A per-site validator cannot enforce "success required for take,
-optional for traversal" on `GatedCheck` itself, because there is no
-field that reliably discriminates the two contexts (`using_results` is
-optional in both).  The constraint is therefore enforced at the engine
-level: both resolution paths treat a missing `success` as "apply
-nothing."
-
-No corpus migration is needed — the JSON field names are identical
-across the old types, and `success` was already absent from all
-traversal checks.
-
-## Engine changes (`mgmai/engine/resolver.py`)
-
-### 9. `resolve_transfer()` — take check path (line 735)
-
-**Logic change required** (not just a type annotation change).  The
-current code constructs a synthetic `Interaction` to roll the take
-check, which requires `success` via `Interaction`'s validator.  Since
-`success` is now optional on `GatedCheck`, the take path must call
-`_resolve_checkable` directly with the `GatedCheck` (a `Checkable`
-subclass), which handles missing `success`/`failure` gracefully.
-
-The three-branch structure becomes:
-
-```python
-if tc.gating and not evaluate(tc.gating, hard, soft, corpus):
-    pass  # inactive — item taken freely, no result applied
-else:
-    # _resolve_checkable handles skip_check_if (apply success) and the
-    # roll (apply success/failure).  Returns True if passed/bypassed.
-    # Clear any stale error so an unresolvable check can be detected.
-    if result.error is not None:
-        result.error = None
-    passed = _resolve_checkable(
-        tc,
-        hard=hard, soft=soft, corpus=corpus, room_id=room_id,
-        changes=changes, narrative=triggered_narration,
-        revealed_hints=revealed_hints, rolls=rolls,
-        state_manager=state_manager, resolution=result,
-        source_id=f"take_{item}", source_type="take",
-    )
-    if not passed:
-        if result.error:
-            # Unresolvable check (missing stats, etc.) — abort transfer
-            return ResolutionResult(
-                success=False, error=result.error,
-                hard_changes=changes, room_after_id=room_id,
-                rolls=rolls, triggered_narration=triggered_narration,
-                revealed_hints=revealed_hints,
-            )
-        continue  # check failed — item not taken
-```
-
-This eliminates the synthetic `Interaction`, the
-`_resolve_interaction_check` indirection, and the manual
-`check_succeeded` roll inspection.  Changes, narration, hints, and
-rolls are accumulated directly into the passed-in lists.  The
-gating-first precedence matches the traversal path (after step 10).
-
-### 10. `resolve_move()` — traversal check path (line 328)
-
-**Logic change required.**  Reorder the `skip_check_if` / `gating`
-evaluation from skip_check_if-first to **gating-first**, matching the
-take path and the semantics note in step 1.
-
-```python
-# Before (skip_check_if-first):
-should_check = True
-if trav_check.skip_check_if and evaluate(trav_check.skip_check_if, ...):
-    should_check = False
-    if trav_check.success:
-        _apply_result_with_check(trav_check.success, ...)
-elif trav_check.gating:
-    should_check = evaluate(trav_check.gating, ...)
-
-# After (gating-first):
-should_check = True
-if trav_check.gating and not evaluate(trav_check.gating, ...):
-    should_check = False  # inactive — no result applied
-elif trav_check.skip_check_if and evaluate(trav_check.skip_check_if, ...):
-    should_check = False  # bypassed — apply success
-    if trav_check.success:
-        _apply_result_with_check(trav_check.success, ...)
-```
-
-The `using_results` handling and `_resolve_traversal_check` call (lines
-346-400) are unchanged.  No traversal check in the real corpus has a
-`success` result, so this reordering is behavior-preserving for all
-existing data.
-
-### 11. `_resolve_checkable()` type annotation (line 1330)
-
-```python
-# Before:
-chk: CheckResolution | Interaction | OnExamineEvent | TraversalCheck,
-# After:
-chk: CheckResolution | Interaction | OnExamineEvent | GatedCheck,
-```
-
-After step 9, this annotation is now exercised: the take path passes a
-`GatedCheck` directly.  (Previously, `TraversalCheck` appeared in the
-annotation but was never actually passed to `_resolve_checkable` — the
-annotation was vestigial.)
-
-### 12. Update imports
-
-Update the import at line 47: replace `TraversalCheck` with
-`GatedCheck`.
-
-### 13. Consider a shared helper (recommended, optional)
-
-Both paths now implement the same gating-first three-branch decision
-(gating → skip_check_if → roll).  To prevent future drift, consider
-extracting a shared helper that evaluates `gating` and `skip_check_if`
-and returns whether the caller should proceed to roll:
-
-```python
-def _evaluate_gate(
-    gc: GatedCheck, hard, soft, corpus, *,
-    changes, narrative, revealed_hints, rolls,
-    state_manager, resolution, source_id, source_type, room_id,
-) -> bool:
-    """Evaluate gating and skip_check_if.
-
-    Returns True if the caller should roll.  Returns False if the check
-    is inactive (gating false) or bypassed (skip_check_if true); in the
-    bypassed case, success is applied here.
+    Base for Interaction (room/entity), OnExamineEvent, and the entries
+    of an NPC's dialogue_paths.  Subclasses tighten optionality per
+    their context (e.g. Interaction requires id and description).
     """
-    if gc.gating is not None and not evaluate(gc.gating, hard, soft, corpus):
-        return False  # inactive
-    if gc.skip_check_if is not None and evaluate(gc.skip_check_if, hard, soft, corpus):
-        if gc.success:
-            _apply_result_with_check(gc.success, ...)
-        return False  # bypassed
-    return True  # roll
+    id: Optional[str] = None
+    description: Optional[str] = None
+    condition: Optional[ConditionExpression] = None
+    result: Optional[Result] = None
+    using_results: Optional[Dict[str, UsingResultOverride]] = None
+
+    @model_validator(mode="after")
+    def check_mutually_exclusive(self) -> "Resolvable":
+        has_check = self.check is not None
+        has_result = self.result is not None
+        if not has_check and not has_result:
+            raise ValueError(
+                "Resolvable must have at least one of 'check' or 'result'")
+        if has_check and has_result:
+            raise ValueError(
+                "Resolvable must have either check or result, not both")
+        if has_check and self.success is None:
+            raise ValueError(
+                "Resolvable with 'check' must also have 'success'")
+        return self
 ```
 
-The take path would call `_resolve_checkable` only when the helper
-returns True; the traversal path would do its `using_results` + roll
-only when the helper returns True.  This is optional for correctness
-(steps 9-10 already align the logic) but recommended for
-maintainability.
+Note the validator is slightly tightened from the current
+`OnExamineEvent`/`DialoguePath` validators (which permitted
+neither-check-nor-result): the unified primitive requires at least one
+of `check` or `result`.  This matches the current `Interaction`
+validator.  Audit existing dialogue-path and on-examine JSON to confirm
+every entry has at least one (the bag-of-holding corpus does).
+
+### 6. Add strict `Interaction(Resolvable)` subclass
+
+Immediately after `Resolvable`, add:
+
+```python
+class Interaction(Resolvable):
+    """A room/entity-scoped Resolvable with required id and description."""
+    id: str = Field(...)
+    description: str = Field(...)
+```
+
+`Interaction` inherits `check_mutually_exclusive` and all other fields
+from `Resolvable`.  It tightens `id` and `description` to required —
+the same pattern `CheckResolution(Checkable)` uses to tighten
+`check`/`success`.
+
+### 7. Remove `DialoguePath` class (lines 344–358)
+
+Delete the entire `DialoguePath` class and its `check_mutually_exclusive`
+validator.  Its semantics are subsumed by `Resolvable`.
+
+### 8. Convert `OnExamineEvent` to a `Resolvable` subclass (lines 253–267)
+
+Replace the current `OnExamineEvent(Checkable)` class and its validator
+with:
+
+```python
+class OnExamineEvent(Resolvable):
+    rigorous_only: bool = False
+```
+
+`OnExamineEvent` is now a **sibling** of `Interaction` (both extend
+`Resolvable`), not a subclass of `Interaction`.  It inherits
+`check_mutually_exclusive` and all `Resolvable` fields.  `id` stays
+optional at the type level (on-examine JSON supplies it); `description`
+is inherited as optional (on-examine JSON does not supply it, and it is
+unused).  Delete the now-redundant `check_mutually_exclusive` validator
+on `OnExamineEvent`.
+
+### 9. Update `DialogueGuidelines.dialogue_paths` type (line 369)
+
+```python
+# Before:
+dialogue_paths: Dict[str, DialoguePath] = Field(default_factory=dict)
+# After:
+dialogue_paths: Dict[str, Resolvable] = Field(default_factory=dict)
+```
+
+### 10. Add `id` auto-population validator on `DialogueGuidelines`
+
+Because `Resolvable.id` is now `Optional`, dialogue-path JSON (which
+has no `id` field — the id is the dict key) loads cleanly, and a
+parent-level `model_validator(mode="after")` can populate `id` from
+the key after construction:
+
+```python
+class DialogueGuidelines(BaseModel):
+    personality: str
+    on_encounter: str = ""
+    can: List[str] = Field(default_factory=list)
+    cannot: List[str] = Field(default_factory=list)
+    knows: List[str] = Field(default_factory=list)
+    attitude_limits: AttitudeLimits
+    will_reveal: Dict[str, WillRevealEntry] = Field(default_factory=dict)
+    dialogue_paths: Dict[str, Resolvable] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def populate_dialogue_path_ids(self) -> "DialogueGuidelines":
+        for path_id, resolvable in self.dialogue_paths.items():
+            resolvable.id = path_id
+        return self
+```
+
+This validator runs after each `Resolvable` is constructed (which now
+succeeds because `id` is optional), so `id` is always populated before
+any downstream code reads it.
+
+### 11. Update `Checkable` docstring (line 168)
+
+Replace "DialoguePath, OnExamineEvent" with "Resolvable, Interaction,
+OnExamineEvent".  The docstring already lists `GatedCheck` per the
+prior plan.
+
+### 12. Imports in `corpus.py`
+
+`Interaction` and `OnExamineEvent` remain exported.  `DialoguePath` is
+removed.  `Resolvable` is newly exported.  `Room.interactions` and
+`Entity.interactions` keep type `List[Interaction]` (unchanged name —
+`Interaction` is now the strict subclass, which is exactly what those
+fields hold).
+
+## Engine changes
+
+### 13. `resolve_talk()` — eliminate synthetic `Interaction` (lines 552–564)
+
+The dialogue path is now a `Resolvable`, and the resolution helpers
+accept `Resolvable`, so the synthetic wrapper is removed.  The
+recommended approach is to extract a shared `_resolve_interaction()`
+helper (step 15) and call it directly:
+
+```python
+# After (replacing lines 534–578):
+if path is not None:
+    path_result = _resolve_interaction(
+        path, hard, soft, corpus, room_id,
+        state_manager=state_manager,
+        resolution=result,
+        source_type="dialogue_path",
+    )
+    result.hard_changes = path_result.hard_changes or HardStateChanges()
+    result.triggered_narration.extend(path_result.triggered_narration or [])
+    result.revealed_hints.extend(path_result.revealed_hints or [])
+    result.rolls.extend(path_result.rolls or [])
+    result.events.extend(path_result.events or [])
+```
+
+The early `path.condition` check at line 485 stays — it gates dialogue
+*entry* (before any turn is appended), which is a different concern
+from the per-branch `condition` semantics inside `_resolve_interaction`.
+(See step 15 for the double-condition note.)
+
+### 14. `_fire_on_examine_events()` — eliminate synthetic `Interaction` (lines 1512–1520)
+
+Since `OnExamineEvent` is now a `Resolvable`, the `event` object can be
+passed directly to `_resolve_interaction()`:
+
+```python
+# After (replacing lines 1497–1531):
+if event.check:
+    if event.skip_check_if and evaluate(event.skip_check_if, hard, soft, corpus):
+        if event.success:
+            _apply_result_with_check(event.success, ..., source_id=f"_on_examine_{event.id}", source_type="examine", ...)
+        continue
+    ex_result = _resolve_interaction(
+        event, hard, soft, corpus, room_id,
+        state_manager=state_manager,
+        resolution=resolution,
+        source_type="examine",
+    )
+    if ex_result.hard_changes: changes.merge(ex_result.hard_changes)
+    if ex_result.triggered_narration: narrative.extend(ex_result.triggered_narration)
+    if ex_result.revealed_hints: revealed_hints.extend(ex_result.revealed_hints)
+    if ex_result.surfaced_soft_items:
+        for k, v in ex_result.surfaced_soft_items.items():
+            surfaced.setdefault(k, []).extend(v)
+    if ex_result.rolls: rolls.extend(ex_result.rolls)
+elif event.result:
+    _apply_result_with_check(event.result, ..., source_id=f"_on_examine_{event.id}", source_type="examine", ...)
+```
+
+The `rigorous_only` and `condition` filters at lines 1492–1495 stay
+unchanged.
+
+### 15. Extract `_resolve_interaction()` helper from `resolve_interact()`
+
+Extract the body of `resolve_interact()` lines 912–973 (the
+condition/skip_check_if/using_results/result/check dispatch) into a
+shared helper that takes a `Resolvable`:
+
+```python
+def _resolve_interaction(
+    inter: Resolvable,
+    *,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    room_id: str,
+    action_using: str | None = None,
+    state_manager: Any | None = None,
+    resolution: ResolutionResult | None = None,
+    source_type: str = "interaction",
+) -> ResolutionResult:
+    """Resolve a single Resolvable (shared by interact, talk, examine).
+
+    Handles skip_check_if bypass, using_results override, result-only,
+    and check-bearing branches.  Does NOT evaluate the availability
+    `condition` (callers gate entry themselves) and does NOT emit
+    `interaction.used` (callers emit context-appropriate events).
+    """
+    # (body of resolve_interact lines 912–973, generalized; uses inter.id
+    #  as source_id, inter.check/success/failure/result/using_results)
+    ...
+```
+
+Then `resolve_interact()` becomes a thin wrapper that finds the
+`Interaction` by `(target, interaction_id)`, emits
+`interaction.used`, evaluates `inter.condition` (returning
+"Conditions not met" on failure, as today), and delegates to
+`_resolve_interaction(inter, ..., source_type="interaction")`.
+
+**Two contracts the helper must preserve** (flagged in evaluation):
+
+- **No `interaction.used` emission inside the helper.** `resolve_interact`
+  emits `interaction.used` at line 897 *before* resolution;
+  `resolve_talk` and `_fire_on_examine_events` do not emit it.  The
+  helper must not emit it, or dialogue paths / on-examine events would
+  gain a new event.  Callers remain responsible for emitting
+  context-appropriate events.
+- **No `condition` evaluation inside the helper.** `resolve_interact`
+  evaluates `inter.condition` at line 912 (returning an error);
+  `resolve_talk` evaluates `path.condition` early at line 485 (before
+  dialogue entry); `_fire_on_examine_events` evaluates `event.condition`
+  at line 1492 (skipping the event).  Each caller keeps its own
+  condition gate; the helper assumes the caller has already gated.
+
+### 16. `_resolve_interaction_check()` — annotate against `Resolvable`
+
+Change the `inter` parameter type from `Interaction` to `Resolvable`
+(line 1056).  No logic change — the function only reads `inter.check`,
+`inter.success`, `inter.failure`, and `inter.id`, all present on
+`Resolvable`.
+
+### 17. `_resolve_using_override()` — no change (lines 1130–1138)
+
+`UsingResultOverride` is a standalone intermediate type.  The synthetic
+`Interaction` it constructs is internal to the resolution path and not
+surfaced in the schema or public API.  Leave as-is.  (The synthetic
+`Interaction` still validates because `id` and `description` are
+supplied.)
+
+### 18. `_resolve_checkable()` type annotation (line 1309)
+
+```python
+# Before:
+chk: CheckResolution | Interaction | OnExamineEvent | GatedCheck,
+# After:
+chk: CheckResolution | Resolvable | GatedCheck,
+```
+
+`Interaction` and `OnExamineEvent` are both `Resolvable` subtypes, so
+the union simplifies to `Resolvable`.
+
+### 19. Update imports in `resolver.py`
+
+```python
+# Before:
+from mgmai.models.corpus import (
+    ...
+    Interaction,
+    ...
+    OnExamineEvent,
+    ...
+)
+# After:
+from mgmai.models.corpus import (
+    ...
+    Interaction,
+    Resolvable,
+    ...
+    OnExamineEvent,
+    ...
+)
+```
+
+`OnExamineEvent` is still imported (used for the
+`_fire_on_examine_events` parameter type and the `rigorous_only`
+attribute access).  `Interaction` is still imported (used by
+`resolve_interact`'s `matches: list[tuple[Interaction, str]]` and by
+`_resolve_using_override`'s synthetic construction).
+
+## Assembler / engine changes (briefing)
+
+### 20. `assembler.py` — dialogue path description extraction (lines 100–105)
+
+```python
+# Before:
+path_descriptions = {
+    path_id: path.description
+    for path_id, path in entity.dialogue_guidelines.dialogue_paths.items()
+}
+# After (no logic change; rename variable):
+path_descriptions = {
+    path_id: resolvable.description
+    for path_id, resolvable in entity.dialogue_guidelines.dialogue_paths.items()
+}
+```
+
+`resolvable.description` works because `Resolvable` carries
+`description` (optional, but always supplied for dialogue paths).
+
+### 21. `engine.py` `_build_room_after()` — same pattern (lines 718–723)
+
+No logic change; rename loop variable `path` → `resolvable`.
+
+### 22. `utils.py` `inject_following_npcs()` — same pattern (lines 80–85)
+
+No logic change; rename loop variable `path` → `resolvable`.
 
 ## Test changes
 
-### 14. `tests/helpers.py`
+### 23. `tests/test_assembler.py` — update DialoguePath references (line 200)
 
-- `_mk_exit()` (line 113): change `traversal_check: TraversalCheck |
-  None = None` → `traversal_check: GatedCheck | None = None`.
-- Corpus fixture construction (lines 369, 410): change
-  `TraversalCheck.model_validate(...)` to `GatedCheck.model_validate(...)`.
-- Import: replace `TraversalCheck` with `GatedCheck`.
+```python
+# Before:
+from mgmai.models.corpus import DialoguePath, Result
+# After:
+from mgmai.models.corpus import Resolvable, Result
 
-### 15. `tests/test_resolver.py`
+# Before (lines 202–209):
+dialogue_paths["test_path"] = DialoguePath(
+    description="Test path",
+    result=Result(narrative="Test result"),
+)
+# After:
+dialogue_paths["test_path"] = Resolvable(
+    description="Test path",
+    result=Result(narrative="Test result"),
+)
+```
 
-- Import (lines 54-55): replace `TakeCheck` and `TraversalCheck` with
-  `GatedCheck`.
-- `TestResolveTransferTakeCheck` (line 850): update all
-  `TakeCheck(...)` constructor calls (lines 857, 881, 906, 932, 959) to
-  `GatedCheck(...)`.  Field names are identical — no other changes.
-- `test_traversal_roll_dict_has_unified_keys` (line 289): update the
-  `TraversalCheck(...)` constructor call (line 298) to `GatedCheck(...)`.
+No `id=` needed (the `DialogueGuidelines` validator populates it).
 
-### 16. Add precedence tests
+### 24. `tests/test_resolver.py` — update DialoguePath references (line 821)
 
-Add tests verifying the gating-first precedence for both paths,
-specifically the divergence case (gating false + skip_check_if true +
-`success` present):
+```python
+# Before:
+from mgmai.models.corpus import DialoguePath, ConditionExpression
+# After:
+from mgmai.models.corpus import Resolvable, ConditionExpression
 
-- **Traversal**: when `gating` is false and `skip_check_if` is true,
-  `success` is NOT applied (check is inactive).  This is the behavior
-  change from the old skip_check_if-first ordering.
-- **Take**: same — item taken freely, `success` not applied.
+# Before (lines 823–827):
+path = DialoguePath(description="...", condition=..., result=...)
+# After:
+path = Resolvable(description="...", condition=..., result=...)
+```
 
-Without these tests, the precedence is unobservable (no corpus data
-triggers the divergence), so a future regression could slip in
-undetected.
+Update all `DialoguePath(...)` constructor calls (lines 823, 846).  No
+`id=` needed.
 
-### 17. Grep for remaining references
+### 25. `tests/test_event_bus.py` — update DialoguePath references (line 701)
+
+```python
+# Before:
+from mgmai.models.corpus import DialoguePath, RollCheck
+# After:
+from mgmai.models.corpus import Resolvable, RollCheck
+
+# Before (line 705):
+korbar.dialogue_guidelines.dialogue_paths["ask_secret"] = DialoguePath(...)
+# After:
+korbar.dialogue_guidelines.dialogue_paths["ask_secret"] = Resolvable(...)
+```
+
+Same for `"rummage"` at line 975.
+
+### 26. Room/entity interaction test fixtures — verify `Interaction` still works
+
+Tests that construct `Interaction(id=..., description=...)` for
+`room.interactions` / `entity.interactions` continue to work unchanged:
+`Interaction` is still the field type, and its required fields are
+unchanged.  No edit needed unless a test constructed `Interaction`
+*without* `id`/`description` (none do — they were always required).
+
+### 27. Add test for `id` auto-population
+
+```python
+def test_dialogue_path_resolvable_id_populated():
+    guidelines = DialogueGuidelines(
+        personality="test",
+        attitude_limits=AttitudeLimits(min=-5, max=5),
+        dialogue_paths={
+            "flatter": Resolvable(
+                description="Flatter the spider",
+                result=Result(narrative="The spider preens."),
+            ),
+        },
+    )
+    assert guidelines.dialogue_paths["flatter"].id == "flatter"
+```
+
+### 28. Add test for `Interaction` required fields
+
+```python
+import pytest
+from mgmai.models.corpus import Interaction
+
+def test_interaction_requires_id_and_description():
+    with pytest.raises(ValidationError):
+        Interaction(result=Result(narrative="x"))  # missing id, description
+    with pytest.raises(ValidationError):
+        Interaction(id="x", result=Result(narrative="x"))  # missing description
+```
+
+### 29. Add migration test for existing corpus JSON
+
+Verify that `adventures/bag-of-holding/corpus.json` loads correctly
+after the model changes.  All existing dialogue paths use field names
+identical to `Resolvable` (`description`, `condition`, `check`,
+`success`, `failure`, `result`) and omit `id` (now optional, populated
+from the dict key).  All on-examine events supply `id` and omit
+`description` (now optional).  No JSON file changes.
+
+### 30. Grep for remaining references
 
 After changes, run:
 
 ```
-rg 'TakeCheck|TraversalCheck' tests/ mgmai/ schema/ --type py --type md
+rg 'DialoguePath' tests/ mgmai/ schema/ --type py --type md
 ```
 
-to catch any stragglers (e.g., the `Checkable` docstring if not
-updated in step 5).
+Expected: zero matches (the type is fully removed).
+
+```
+rg 'OnExamineEvent' tests/ mgmai/ schema/ --type py --type md
+```
+
+Expected surviving references:
+- `OnExamineEvent` class definition in `corpus.py` (now a subclass of
+  `Resolvable`).
+- `from mgmai.models.corpus import ... OnExamineEvent ...` in
+  `resolver.py` (for `_fire_on_examine_events()` typing and
+  `rigorous_only` access).
+- Schema docs cross-references.
 
 ## What does NOT change
 
-- **The three-branch resolution *semantics*** (gating→inactive /
-  skip_check_if→bypass / check→roll) — the semantics are unchanged,
-  but the traversal path's *implementation* is reordered to
-  gating-first to match.  After this change, both paths follow the
-  same precedence for the first time.
-- `CheckResolution` / FollowUpCheck — no `gating` field is added; it
-  remains a separate primitive.
-- `Interaction` — no changes; it uses `condition` (not `gating`) and
-  has a `result` path for check-less interactions.
-- `UsingResultOverride` — unchanged; it's shared between `GatedCheck`
-  and `Interaction` already.
-- The `Checkable` base class — structurally unchanged (docstring
-  updated only).
-- The adventure corpus JSON files — no migration needed.  The field
-  names (`gating`, `check`, `skip_check_if`, `success`, `failure`,
-  `using_results`) are identical.  The reordering of the traversal
-  path is behavior-preserving because no traversal check in the corpus
-  has a `success` result.
+- **`Checkable` base class** — unchanged.
+- **`GatedCheck`** — unchanged.
+- **`CheckResolution` / FollowUpCheck** — unchanged.
+- **`UsingResultOverride`** — unchanged (and its synthetic
+  `Interaction` in `_resolve_using_override` stays).
+- **`WillRevealEntry`** — unrelated to this unification.
+- **`Room.interactions` / `Entity.interactions` field types** — still
+  `List[Interaction]`.  The name `Interaction` is preserved as the
+  strict room/entity type.
+- **The adventure corpus JSON files** — no migration needed.  All
+  existing dialogue paths use field names identical to `Resolvable`
+  and omit `id` (now optional, auto-populated).  All on-examine events
+  supply `id` and omit `description` (now optional).  No JSON changes.
+- **`BriefingEntity.dialogue_paths`** — still `Dict[str, str]`
+  (path_id → description).  The assembler still extracts descriptions
+  from `Resolvable.description`.
+- **The resolution *semantics*** of dialogue paths and on-examine
+  events — unchanged.  The code is simplified, but runtime behavior is
+  identical: `condition` gates availability, `skip_check_if` bypasses
+  the check, `check`/`result` resolve as before.
+- **`source_type` differentiation** — `"interaction"`, `"dialogue_path"`,
+  and `"examine"` remain distinct in roll dicts and event emission.
+  The extracted `_resolve_interaction()` helper accepts a `source_type`
+  parameter exactly as the current code does.
+- **`interaction.used` event emission** — emitted only by
+  `resolve_interact` (for room/entity interactions), not by
+  `resolve_talk` or `_fire_on_examine_events`.  Preserved by keeping
+  the emit outside the shared helper (step 15).
 
 ## File-change inventory
 
 | File | Change |
 |---|---|
-| `schema/corpus.md` | Add `GatedCheck` primitive section; replace `take_check` sub-table with cross-reference (preserve take-specific notes); replace `Traversal Check` subsection (lines 411-481) with cross-reference (preserve traversal-specific notes) |
-| `mgmai/models/corpus.py` | New `GatedCheck` class; delete `TakeCheck` and `TraversalCheck`; update `Entity.take_check` and `Exit.traversal_check` type annotations; remove `TakeCheck` validator; update `Checkable` docstring |
-| `mgmai/engine/resolver.py` | Reorder traversal path to gating-first; refactor take path to call `_resolve_checkable` directly (eliminate synthetic `Interaction`); update `_resolve_checkable` annotation; update imports; (optionally) extract shared helper |
-| `tests/helpers.py` | Update `TraversalCheck` → `GatedCheck` references |
-| `tests/test_resolver.py` | Update `TakeCheck`/`TraversalCheck` → `GatedCheck` constructor calls; add gating-first precedence tests |
+| `schema/corpus.md` | Add `Resolvable` primitive subsection; update `Interaction` section to note it is a strict `Resolvable` subclass; replace `DialoguePath` field table with cross-reference to `Resolvable`; update `On-Examine` section to reference `Resolvable` |
+| `mgmai/models/corpus.py` | Rename current `Interaction` → `Resolvable` (optional `id`/`description`, carries `check_mutually_exclusive`); add strict `Interaction(Resolvable)` with required `id`/`description`; delete `DialoguePath` class + validator; convert `OnExamineEvent` to `Resolvable` subclass with `rigorous_only` (delete its validator); update `DialogueGuidelines.dialogue_paths` type to `Dict[str, Resolvable]`; add `id` auto-population validator on `DialogueGuidelines`; update `Checkable` docstring |
+| `mgmai/engine/resolver.py` | Extract `_resolve_interaction()` helper from `resolve_interact()` (takes `Resolvable`; no `interaction.used` emit, no `condition` eval inside); refactor `resolve_talk()` to call it directly (eliminate synthetic `Interaction`); simplify `_fire_on_examine_events()` (no synthetic `Interaction`); annotate `_resolve_interaction_check()` and `_resolve_checkable()` against `Resolvable`; update imports |
+| `mgmai/context/assembler.py` | Rename loop variable `path` → `resolvable` (cosmetic); no logic change |
+| `mgmai/engine/engine.py` | Rename loop variable `path` → `resolvable` in `_build_room_after()` (cosmetic); no logic change |
+| `mgmai/engine/utils.py` | Rename loop variable `path` → `resolvable` in `inject_following_npcs()` (cosmetic); no logic change |
+| `tests/test_assembler.py` | `DialoguePath` → `Resolvable` import and constructor calls |
+| `tests/test_resolver.py` | `DialoguePath` → `Resolvable` import and constructor calls |
+| `tests/test_event_bus.py` | `DialoguePath` → `Resolvable` import and constructor calls |
+| `tests/test_corpus.py` or new test | Add test for `id` auto-population from dict key; add test for `Interaction` required fields |
 
 ## Task ordering
 
-1. **Model** — `mgmai/models/corpus.py`: create `GatedCheck`, delete
-   old classes, update field types, update docstring.
-2. **Engine** — `mgmai/engine/resolver.py`: reorder traversal path to
-   gating-first; refactor take path (eliminate synthetic
-   `Interaction`); update annotations and imports.
-3. **Tests/helpers** — update all references to old class names; add
-   precedence tests.
-4. **Schema** — `schema/corpus.md`: add GatedCheck primitive, update
-   Item/Exit sections (preserve context-specific notes).
-5. `pytest` green.
-6. `rg 'TakeCheck|TraversalCheck'` clean.
+1. **Model** — `mgmai/models/corpus.py`:
+   - Rename `Interaction` → `Resolvable`; make `id`/`description`
+     `Optional`; keep `check_mutually_exclusive` (tightened to require
+     at least one of check/result)
+   - Add strict `Interaction(Resolvable)` with required `id`/`description`
+   - Delete `DialoguePath` class + validator
+   - Convert `OnExamineEvent` to `Resolvable` subclass with
+     `rigorous_only`; delete its validator
+   - Update `DialogueGuidelines.dialogue_paths` type to
+     `Dict[str, Resolvable]`; add `id` auto-population validator
+   - Update `Checkable` docstring
+2. **Engine** — `mgmai/engine/resolver.py`:
+   - Extract `_resolve_interaction()` helper from `resolve_interact()`
+     body (takes `Resolvable`; no `interaction.used` emit, no
+     `condition` eval inside)
+   - Refactor `resolve_interact()` to delegate to the helper
+   - Refactor `resolve_talk()` to call `_resolve_interaction()` directly
+     (eliminate synthetic `Interaction`)
+   - Simplify `_fire_on_examine_events()` — remove synthetic
+     `Interaction`, call `_resolve_interaction()` directly
+   - Annotate `_resolve_interaction_check()` and `_resolve_checkable()`
+     against `Resolvable`; update imports
+3. **Assembler/engine briefing** — cosmetic variable renames (3 files)
+4. **Tests** — update all `DialoguePath` → `Resolvable` references;
+   add `id` auto-population test; add `Interaction` required-fields test;
+   add corpus-JSON migration test
+5. **Schema** — `schema/corpus.md`: add `Resolvable` primitive
+   subsection; update `Interaction`, `dialogue_paths`, and On-Examine
+   sections
+6. `pytest` green
+7. `rg 'DialoguePath' tests/ mgmai/ schema/ --type py --type md` clean

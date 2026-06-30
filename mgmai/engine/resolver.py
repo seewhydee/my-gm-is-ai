@@ -41,6 +41,7 @@ from mgmai.models.corpus import (
     Interaction,
     ModuleCorpus,
     OnExamineEvent,
+    Resolvable,
     Result,
     RollCheck,
     StatCheck,
@@ -531,52 +532,14 @@ def resolve_talk(
     # Passing *result* as the resolution accumulator ensures check events are
     # emitted and immediate reactions can fire.
     if path is not None:
-        if path.check:
-            # Handle skip_check_if: bypass check and apply success Result
-            if path.skip_check_if and evaluate(path.skip_check_if, hard, soft, corpus):
-                if path.success:
-                    path_result = _resolve_interaction_result(
-                        path.success, hard, soft, corpus, room_id,
-                        state_manager=state_manager,
-                        resolution=result,
-                        source_id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
-                        source_type="dialogue_path",
-                    )
-                else:
-                    path_result = ResolutionResult(
-                        success=True,
-                        hard_changes=HardStateChanges(),
-                        room_after_id=room_id,
-                    )
-            else:
-                synthetic_inter = Interaction(
-                    id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
-                    description="",
-                    check=path.check,
-                    success=path.success,
-                    failure=path.failure,
-                )
-                path_result = _resolve_interaction_check(
-                    synthetic_inter, hard, soft, corpus, room_id,
-                    state_manager=state_manager,
-                    resolution=result,
-                    source_type="dialogue_path",
-                )
-        elif path.result:
-            path_result = _resolve_interaction_result(
-                path.result, hard, soft, corpus, room_id,
-                state_manager=state_manager,
-                resolution=result,
-                source_id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
-                source_type="dialogue_path",
-            )
-        else:
-            path_result = ResolutionResult(
-                success=True,
-                hard_changes=HardStateChanges(),
-                room_after_id=room_id,
-            )
-
+        path_result = _resolve_interaction(
+            path, hard, soft, corpus, room_id,
+            action_using=getattr(action, "using", None),
+            state_manager=state_manager,
+            resolution=result,
+            source_type="dialogue_path",
+            source_id=f"dialogue_path_{target_npc}_{action.dialogue_path}",
+        )
         result.hard_changes = path_result.hard_changes or HardStateChanges()
         result.triggered_narration.extend(path_result.triggered_narration or [])
         result.revealed_hints.extend(path_result.revealed_hints or [])
@@ -913,64 +876,92 @@ def resolve_interact(
         result.error = f"Conditions not met for interaction '{interaction_id}'"
         return result
 
+    inter_result = _resolve_interaction(
+        inter, hard, soft, corpus, room_id,
+        action_using=action.using,
+        state_manager=state_manager,
+        resolution=result,
+        source_type="interaction",
+    )
+    result.success = inter_result.success
+    result.error = inter_result.error
+    result.hard_changes = inter_result.hard_changes
+    result.triggered_narration = inter_result.triggered_narration
+    result.revealed_hints = inter_result.revealed_hints
+    result.encounter_trigger = inter_result.encounter_trigger or result.encounter_trigger
+    result.rolls = inter_result.rolls
+    result.events.extend(inter_result.events)
+    return result
+
+
+def _resolve_interaction(
+    inter: Resolvable,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    room_id: str,
+    *,
+    action_using: str | None = None,
+    state_manager: Any | None = None,
+    resolution: ResolutionResult | None = None,
+    source_type: str = "interaction",
+    source_id: str | None = None,
+) -> ResolutionResult:
+    """Resolve a single Resolvable (shared by interact, talk, examine).
+
+    Handles skip_check_if bypass, using_results override, result-only,
+    and check-bearing branches.  Does NOT evaluate the availability
+    ``condition`` (callers gate entry themselves) and does NOT emit
+    ``interaction.used`` (callers emit context-appropriate events).
+    """
+    effective_source_id = source_id if source_id is not None else inter.id
+
     if inter.check:
         # Handle skip_check_if: bypass check and apply success Result
         if inter.skip_check_if and evaluate(inter.skip_check_if, hard, soft, corpus):
             if inter.success:
-                skip_result = _resolve_interaction_result(
+                return _resolve_interaction_result(
                     inter.success, hard, soft, corpus, room_id,
                     encounter_trigger=None, state_manager=state_manager,
-                    resolution=result, source_id=inter.id, source_type="interaction",
+                    resolution=resolution, source_id=effective_source_id,
+                    source_type=source_type,
                 )
-                result.success = skip_result.success
-                result.error = skip_result.error
-                result.hard_changes = skip_result.hard_changes
-                result.triggered_narration = skip_result.triggered_narration
-                result.revealed_hints = skip_result.revealed_hints
-                result.encounter_trigger = skip_result.encounter_trigger or result.encounter_trigger
-                result.rolls = skip_result.rolls
-                result.events.extend(skip_result.events)
-            return result
-        check_result = _resolve_interaction_check(inter, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result)
-        # Merge the base interaction event and any events/check results from
-        # the check resolution into a single result.
-        result.success = check_result.success
-        result.error = check_result.error
-        result.hard_changes = check_result.hard_changes
-        result.triggered_narration = check_result.triggered_narration
-        result.revealed_hints = check_result.revealed_hints
-        result.encounter_trigger = check_result.encounter_trigger or result.encounter_trigger
-        result.rolls = check_result.rolls
-        result.events.extend(check_result.events)
-        return result
+            return ResolutionResult(
+                success=True,
+                hard_changes=HardStateChanges(),
+                room_after_id=room_id,
+            )
+        return _resolve_interaction_check(
+            inter, hard, soft, corpus, room_id,
+            encounter_trigger=None, state_manager=state_manager,
+            resolution=resolution, source_type=source_type,
+            source_id=effective_source_id,
+            attempt_key=effective_source_id,
+        )
 
-    if inter.using_results and action.using:
-        item_override = inter.using_results.get(action.using)
+    if inter.using_results and action_using:
+        item_override = inter.using_results.get(action_using)
         if item_override is not None:
-            override_result = _resolve_using_override(item_override, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result, source_id=inter.id, source_type="interaction")
-            result.success = override_result.success
-            result.error = override_result.error
-            result.hard_changes = override_result.hard_changes
-            result.triggered_narration = override_result.triggered_narration
-            result.revealed_hints = override_result.revealed_hints
-            result.encounter_trigger = override_result.encounter_trigger or result.encounter_trigger
-            result.rolls = override_result.rolls
-            result.events.extend(override_result.events)
-            return result
+            return _resolve_using_override(
+                item_override, hard, soft, corpus, room_id,
+                encounter_trigger=None, state_manager=state_manager,
+                resolution=resolution, source_id=effective_source_id,
+                source_type=source_type,
+            )
 
     if inter.result:
-        result_result = _resolve_interaction_result(inter.result, hard, soft, corpus, room_id, encounter_trigger=None, state_manager=state_manager, resolution=result, source_id=inter.id, source_type="interaction")
-        result.success = result_result.success
-        result.error = result_result.error
-        result.hard_changes = result_result.hard_changes
-        result.triggered_narration = result_result.triggered_narration
-        result.revealed_hints = result_result.revealed_hints
-        result.encounter_trigger = result_result.encounter_trigger or result.encounter_trigger
-        result.rolls = result_result.rolls
-        result.events.extend(result_result.events)
-        return result
+        return _resolve_interaction_result(
+            inter.result, hard, soft, corpus, room_id,
+            encounter_trigger=None, state_manager=state_manager,
+            resolution=resolution, source_id=effective_source_id,
+            source_type=source_type,
+        )
 
-    return result
+    return ResolutionResult(
+        success=True,
+        hard_changes=HardStateChanges(),
+        room_after_id=room_id,
+    )
 
 
 def _resolve_traversal_check(
@@ -1053,7 +1044,7 @@ def _resolve_traversal_check(
 
 
 def _resolve_interaction_check(
-    inter: Interaction,
+    inter: Resolvable,
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
@@ -1062,6 +1053,8 @@ def _resolve_interaction_check(
     state_manager: Any | None = None,
     resolution: ResolutionResult | None = None,
     source_type: str = "interaction",
+    source_id: str | None = None,
+    attempt_key: str | None = None,
 ) -> ResolutionResult:
     check = inter.check
     if check is None:
@@ -1077,14 +1070,17 @@ def _resolve_interaction_check(
     revealed_hints: list[str] = []
     rolls: list[dict[str, Any]] = []
 
+    effective_source_id = source_id if source_id is not None else inter.id
+    effective_attempt_key = attempt_key if attempt_key is not None else effective_source_id
+
     passed = _resolve_checkable(
         inter,
         hard=hard, soft=soft, corpus=corpus, room_id=room_id,
         changes=changes, narrative=narrative,
         revealed_hints=revealed_hints, rolls=rolls,
         state_manager=state_manager, resolution=resolution,
-        source_id=inter.id, source_type=source_type,
-        track_attempts=True, attempt_key=inter.id,
+        source_id=effective_source_id, source_type=source_type,
+        track_attempts=True, attempt_key=effective_attempt_key,
     )
 
     # A False return with an error set means the check could not be resolved
@@ -1307,7 +1303,7 @@ def _apply_result_with_check(
 
 
 def _resolve_checkable(
-    chk: CheckResolution | Interaction | OnExamineEvent | GatedCheck,
+    chk: CheckResolution | Resolvable | GatedCheck,
     *,
     hard: HardGameState,
     soft: SoftGameState,
@@ -1495,40 +1491,24 @@ def _fire_on_examine_events(
             continue
 
         if event.check:
-            # Handle skip_check_if: bypass check and apply success Result
-            if event.skip_check_if and evaluate(event.skip_check_if, hard, soft, corpus):
-                if event.success:
-                    _apply_result_with_check(
-                        event.success,
-                        changes=changes, narrative=narrative,
-                        revealed_hints=revealed_hints, hard=hard, corpus=corpus,
-                        soft=soft, room_id=room_id, rolls=rolls,
-                        state_manager=state_manager, resolution=resolution,
-                        source_id=f"_on_examine_{event.id}",
-                        source_type="examine",
-                        item_origin="examine",
-                    )
-                continue
-            # Build a synthetic Interaction for check resolution
-            synthetic = Interaction(
-                id=f"_on_examine_{event.id}",
-                description="",
-                check=event.check,
-                success=event.success,
-                failure=event.failure,
+            ex_result = _resolve_interaction(
+                event, hard, soft, corpus, room_id,
+                state_manager=state_manager,
+                resolution=resolution,
+                source_type="examine",
+                source_id=f"_on_examine_{event.id}",
             )
-            result = _resolve_interaction_check(synthetic, hard, soft, corpus, room_id, state_manager=state_manager, resolution=resolution, source_type="examine")
-            if result.hard_changes:
-                changes.merge(result.hard_changes)
-            if result.triggered_narration:
-                narrative.extend(result.triggered_narration)
-            if result.revealed_hints:
-                revealed_hints.extend(result.revealed_hints)
-            if result.surfaced_soft_items:
-                for k, v in result.surfaced_soft_items.items():
+            if ex_result.hard_changes:
+                changes.merge(ex_result.hard_changes)
+            if ex_result.triggered_narration:
+                narrative.extend(ex_result.triggered_narration)
+            if ex_result.revealed_hints:
+                revealed_hints.extend(ex_result.revealed_hints)
+            if ex_result.surfaced_soft_items:
+                for k, v in ex_result.surfaced_soft_items.items():
                     surfaced.setdefault(k, []).extend(v)
-            if result.rolls:
-                rolls.extend(result.rolls)
+            if ex_result.rolls:
+                rolls.extend(ex_result.rolls)
         elif event.result:
             _apply_result_with_check(
                 event.result,

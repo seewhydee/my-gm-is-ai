@@ -688,7 +688,7 @@ class TestDialogueEndedNoDuplicate:
         assert hard.player.inventory.count("rusty_key") == 1
 
 
-class TestDialoguePathSourceType:
+class TestTalkPathSourceType:
     """Dialogue path checks report source_type 'dialogue_path'."""
 
     def test_dialogue_path_check_source_type(self, fresh_state_manager):
@@ -698,11 +698,11 @@ class TestDialoguePathSourceType:
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
-        from mgmai.models.corpus import DialoguePath, RollCheck
+        from mgmai.models.corpus import Resolvable, RollCheck
 
         # Add a dialogue path with a roll check to Korbar.
         korbar = corpus.entities["korbar"]
-        korbar.dialogue_guidelines.dialogue_paths["ask_secret"] = DialoguePath(
+        korbar.dialogue_guidelines.dialogue_paths["ask_secret"] = Resolvable(
             description="Ask Korbar about the secret.",
             check=RollCheck(threshold=1.0, repeatable=True),
             success=Result(narrative="Korbar whispers the secret."),
@@ -953,7 +953,7 @@ class TestEncounterOncePerTurnGuard:
         assert "Encounter 2 fired." not in engine_result.triggered_narration
 
 
-class TestDialoguePathResultThenCheck:
+class TestTalkPathThenCheck:
     """Item 4: result-only dialogue paths emit then_check events.
 
     A dialogue path with a ``result`` (no check) containing a
@@ -968,11 +968,11 @@ class TestDialoguePathResultThenCheck:
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
-        from mgmai.models.corpus import CheckResolution, DialoguePath, RollCheck
+        from mgmai.models.corpus import CheckResolution, Resolvable, RollCheck
 
         # A result-only dialogue path (no check) with a then_check.
         korbar = corpus.entities["korbar"]
-        korbar.dialogue_guidelines.dialogue_paths["rummage"] = DialoguePath(
+        korbar.dialogue_guidelines.dialogue_paths["rummage"] = Resolvable(
             description="Rummage through Korbar's pack.",
             result=Result(
                 narrative="You find a trinket.",
