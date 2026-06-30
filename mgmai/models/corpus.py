@@ -165,8 +165,8 @@ CheckType = RollCheck | StatCheck
 class Checkable(BaseModel):
     """A probabilistic check with success/failure branches.
 
-    Shared by Interaction, DialoguePath, OnExamineEvent, TraversalCheck,
-    TakeCheck, and CheckResolution. Subclasses add their own fields
+    Shared by GatedCheck, Interaction, DialoguePath, OnExamineEvent,
+    and CheckResolution. Subclasses add their own fields
     (condition, result, gating, using_results, id, rigorous_only, ...)
     and validators that tighten optionality per their semantics.
     """
@@ -213,17 +213,12 @@ class UsingResultOverride(BaseModel):
         return self
 
 
-class TakeCheck(Checkable):
-    """A check required to take an item via a transfer action."""
+class GatedCheck(Checkable):
+    """A check gated by a condition. Used for take checks and traversal checks."""
 
-    gating: Optional[ConditionExpression] = None
     check: CheckType
-
-    @model_validator(mode="after")
-    def check_success_on_check(self) -> "TakeCheck":
-        if self.check is not None and self.success is None:
-            raise ValueError("TakeCheck with 'check' must also have 'success'")
-        return self
+    gating: Optional[ConditionExpression] = None
+    using_results: Optional[Dict[str, UsingResultOverride]] = None
 
 
 class Interaction(Checkable):
@@ -246,19 +241,13 @@ class Interaction(Checkable):
         return self
 
 
-class TraversalCheck(Checkable):
-    check: CheckType
-    gating: Optional[ConditionExpression] = None
-    using_results: Optional[Dict[str, UsingResultOverride]] = None
-
-
 class Exit(BaseModel):
     id: str
     direction: str
     target_room: str
     condition: Optional[ConditionExpression] = None
     one_way: bool = False
-    traversal_check: Optional[TraversalCheck] = None
+    traversal_check: Optional[GatedCheck] = None
 
 
 class OnExamineEvent(Checkable):
@@ -419,7 +408,7 @@ class Entity(BaseModel):
     soft_items: List[str] = Field(default_factory=list)
     contains: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
-    take_check: Optional[TakeCheck] = None
+    take_check: Optional[GatedCheck] = None
     interactions: List[Interaction] = Field(default_factory=list)
     on_examine: List[OnExamineEvent] = Field(default_factory=list)
     dialogue_guidelines: Optional[DialogueGuidelines] = None

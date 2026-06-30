@@ -260,6 +260,60 @@ Notes:
   deduplication), whose contents help guide the GM narrator.
   See the [Soft State schema doc](soft-state.md) for details.
 
+### Gated Check
+
+A Gated Check wraps a [Check](#check) with a condition that determines
+whether the check is active (`gating`), an optional bypass condition
+(`skip_check_if`), and success/failure [Results](#result).  It is used
+for item `take_check` and exit `traversal_check`.
+
+```json
+{
+  "gating": { "require": "flag:ladder_missing == true" },
+  "check": {
+    "type": "stat_check",
+    "stat": "STR",
+    "target": 13,
+    "repeatable": true
+  },
+  "skip_check_if": { "require": "inventory:spring_boots" },
+  "failure": {
+    "narrative": "You try to climb up the wall, but can't make progress."
+  },
+  "success": {
+    "narrative": "You manage to move up the wall."
+  },
+  "using_results": {
+    "grappling_hook": {
+      "check": { "type": "stat_check", "stat": "STR", "target": 8,
+                 "repeatable": true }
+    }
+  }
+}
+```
+
+| Field             | Type      | Description                              |
+|-------------------|-----------|------------------------------------------|
+| `gating` (*)      | Condition | Whether the check is active at all       |
+| `check`           | Check     | The Check to resolve (required)          |
+| `skip_check_if`(*)| Condition | If present and true, bypass the check    |
+| `success` (*)     | Result    | Result if check succeeds or is bypassed  |
+| `failure` (*)     | Result    | Result if check fails                    |
+| `using_results`(*)| object    | Item ID → alternate Check override map   |
+> (*) optional
+
+Semantics note: if `gating` evaluates to false, the check is silently
+inactive — the action proceeds with default behavior and *no* Result
+from the check is applied (neither `success` nor `failure`).  If
+`gating` evaluates to true (or is absent) and `skip_check_if` evaluates
+to true, the check is bypassed and `success` is applied.  Otherwise the
+check is rolled normally.
+
+For the two accepted `using_results` override shapes (a `result`-keyed
+Result, or a `check`/`success`/`failure` triple), see
+[Interaction](#interaction) and [Traversal Check](#traversal-check);
+the semantics are identical in all contexts that use it.
+
 #### Follow-up check
 
 A follow-up check can be embedded in a Result's `then_check` field.
@@ -410,11 +464,11 @@ Notes:
 
 #### Traversal Check
 
-A Traversal Check object type, on the optional `traversal_check`
-field, describes the process of traversing a risky and/or difficult
-exit.  (This is different from `condition`, which determines whether
-the exit is shown as an available exit.)  Failure on such a check
-typically means the player remains in the current room.
+The optional `traversal_check` field on an Exit is a [Gated
+Check](#gated-check) that gates non-automatic traversal.  The Exit's
+own `condition` field controls *visibility* of the exit;
+`traversal_check` controls whether traversal requires a check (and
+which check).
 
 ```json
 {
@@ -428,7 +482,7 @@ typically means the player remains in the current room.
     },
     "skip_check_if": { "require": "inventory:spring_boots" },
     "failure": {
-	  "narrative": "You try to climb up the wall, but can't make progress."
+      "narrative": "You try to climb up the wall, but can't make progress."
     },
     "success": {
       "narrative": "You manage to move up the wall."
@@ -436,34 +490,16 @@ typically means the player remains in the current room.
     "using_results": {
       "grappling_hook": {
         "check": { "type": "stat_check", "stat": "STR", "target": 8,
-				   "repeatable": true }
+                   "repeatable": true }
       }
     }
   }
 }
 ```
 
-| Field               | Type      | Description                 |
-|---------------------|-----------|-----------------------------|
-| `gating` (*)        | Condition | Whether check is active     |
-| `check`             | Check     | Success/failure check       |
-| `skip_check_if` (*) | Condition | Whether check auto-succeeds |
-| `success` (*)       | Result    | Result when traversal works |
-| `failure` (*)       | Result    | Result when traversal fails |
-| `using_results` (*) | dict      | Alt check when using tool   |
-> (*) optional
+Traversal-specific behavior:
 
-Notes:
-
-- The `gating` condition controls whether the traversal check is
-  active.  True means proceed to do the check (with `skip_check_if`).
-  False means traversal proceeds (normal movement).
-
-- The `skip_check_if` controls whether the check auto-succeeds.  When
-  present and evaluated to true, the check is skipped entirely, and
-  traversal proceeds (normal movement).
-
-- Success also has the side-effect of moving to the destination Room;
+- Success has the side-effect of moving to the destination Room;
   no need to specify that in `success`.
 
 - Failure also has the side-effect of canceling the traversal; no need
@@ -913,17 +949,8 @@ Notes:
 - `name` is required for items.  This is what the player sees in the
   inventory display.
 
-- `take_check` gates any attempt by the player to take the item,
-  regardless of where it currently is.  The object contains:
-
-  | Field               | Type      | Description                          |
-  |---------------------|-----------|--------------------------------------|
-  | `check`             | Check     | Success/failure check (required)     |
-  | `gating` (*)        | Condition | Whether the check is active          |
-  | `skip_check_if` (*) | Condition | If true, skip check (apply success)  |
-  | `success` (*)       | Result    | Result if check succeeds             |
-  | `failure` (*)       | Result    | Result if check fails                |
-  > (*) optional
+- `take_check` (*): GatedCheck — gated check for taking the item.
+  See [Gated Check](#gated-check).
 
   The check is *not* automatically disabled after a successful take.
   For a one-time success gate (pass once, then freely take thereafter),

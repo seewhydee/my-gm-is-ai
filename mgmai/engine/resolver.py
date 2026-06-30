@@ -37,6 +37,7 @@ from mgmai.models.actions import (
 )
 from mgmai.models.corpus import (
     CheckResolution,
+    GatedCheck,
     Interaction,
     ModuleCorpus,
     OnExamineEvent,
@@ -44,7 +45,6 @@ from mgmai.models.corpus import (
     RollCheck,
     StatCheck,
     StatModifier,
-    TraversalCheck,
     UsingResultOverride,
 )
 from mgmai.models.combat import CombatLogEntry
@@ -328,9 +328,10 @@ def resolve_move(
     if exit_data.traversal_check:
         trav_check = exit_data.traversal_check
         should_check = True
-        if trav_check.skip_check_if and evaluate(trav_check.skip_check_if, hard, soft, corpus):
-            should_check = False
-            # Apply success Result if present when skip_check_if is met
+        if trav_check.gating and not evaluate(trav_check.gating, hard, soft, corpus):
+            should_check = False  # inactive: traversal proceeds, no result applied
+        elif trav_check.skip_check_if and evaluate(trav_check.skip_check_if, hard, soft, corpus):
+            should_check = False  # bypassed: apply success Result if present
             if trav_check.success:
                 _apply_result_with_check(
                     trav_check.success,
@@ -341,8 +342,6 @@ def resolve_move(
                     source_id=target_exit_id, source_type="traversal",
                     item_origin="traversal",
                 )
-        elif trav_check.gating:
-            should_check = evaluate(trav_check.gating, hard, soft, corpus)
         if should_check:
             # Resolve using_results overrides (weapon-based DC reduction, etc.)
             effective_check = trav_check.check
@@ -734,53 +733,34 @@ def resolve_transfer(
         item_entity = corpus.entities.get(item)
         if item_entity and item_entity.take_check:
             tc = item_entity.take_check
-            # If gating is present and not met, item is taken freely (no check)
             if tc.gating and not evaluate(tc.gating, hard, soft, corpus):
-                pass  # Fall through to add item below
-            elif tc.skip_check_if and evaluate(tc.skip_check_if, hard, soft, corpus):
-                # Bypass check, apply success Result (including any then_check)
-                if tc.success:
-                    _apply_result_with_check(
-                        tc.success,
-                        changes=changes, narrative=triggered_narration,
-                        revealed_hints=revealed_hints, hard=hard, corpus=corpus,
-                        soft=soft, room_id=room_id, rolls=rolls,
-                        state_manager=state_manager, resolution=result,
-                        source_id=f"take_{item}", source_type="take",
-                        item_origin="take",
-                    )
+                pass  # inactive: item taken freely, no result applied
             else:
-                synthetic = Interaction(
-                    id=f"take_{item}",
-                    description="",
-                    check=tc.check,
-                    success=tc.success,
-                    failure=tc.failure,
+                # _resolve_checkable handles skip_check_if (apply success) and
+                # the roll (apply success/failure). Returns True if passed/bypassed.
+                # Clear any stale error so an unresolvable check can be detected.
+                if result.error is not None:
+                    result.error = None
+                passed = _resolve_checkable(
+                    tc,
+                    hard=hard, soft=soft, corpus=corpus, room_id=room_id,
+                    changes=changes, narrative=triggered_narration,
+                    revealed_hints=revealed_hints, rolls=rolls,
+                    state_manager=state_manager, resolution=result,
+                    source_id=f"take_{item}", source_type="take",
+                    item_origin="take",
+                    track_attempts=True, attempt_key=f"take_{item}",
                 )
-                check_result = _resolve_interaction_check(
-                    synthetic, hard, soft, corpus, room_id,
-                    state_manager=state_manager,
-                    resolution=result,
-                    source_type="take",
-                )
-                if not check_result.success:
-                    return check_result
-                if check_result.hard_changes:
-                    changes.merge(check_result.hard_changes)
-                if check_result.triggered_narration:
-                    triggered_narration.extend(check_result.triggered_narration)
-                if check_result.revealed_hints:
-                    revealed_hints.extend(check_result.revealed_hints)
-                if check_result.rolls:
-                    rolls.extend(check_result.rolls)
-
-                check_succeeded = False
-                for roll in check_result.rolls:
-                    if "success" in roll:
-                        check_succeeded = roll["success"]
-                        break
-                if not check_succeeded:
-                    continue
+                if not passed:
+                    if result.error:
+                        # Unresolvable check (missing stats, etc.) — abort transfer
+                        return ResolutionResult(
+                            success=False, error=result.error,
+                            hard_changes=changes, room_after_id=room_id,
+                            rolls=rolls, triggered_narration=triggered_narration,
+                            revealed_hints=revealed_hints,
+                        )
+                    continue  # check failed: item not taken
 
         changes.inventory_added.append(item)
         changes.inventory_added_sources[item] = "transfer"
@@ -1327,7 +1307,7 @@ def _apply_result_with_check(
 
 
 def _resolve_checkable(
-    chk: CheckResolution | Interaction | OnExamineEvent | TraversalCheck,
+    chk: CheckResolution | Interaction | OnExamineEvent | GatedCheck,
     *,
     hard: HardGameState,
     soft: SoftGameState,
@@ -1342,6 +1322,7 @@ def _resolve_checkable(
     resolution: ResolutionResult | None = None,
     source_id: str | None = None,
     source_type: str | None = None,
+    item_origin: str = "interaction",
     track_attempts: bool = False,
     attempt_key: str | None = None,
 ) -> bool:
@@ -1364,6 +1345,7 @@ def _resolve_checkable(
                 state_manager=state_manager, resolution=resolution,
                 source_id=source_id, source_type=source_type,
                 then_check_depth=depth + 1,
+                item_origin=item_origin,
             )
         return True
 
@@ -1453,6 +1435,7 @@ def _resolve_checkable(
             state_manager=state_manager, resolution=resolution,
             source_id=source_id, source_type=source_type,
             then_check_depth=depth + 1,
+            item_origin=item_origin,
         )
 
     return success_flag

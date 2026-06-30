@@ -32,6 +32,7 @@ from mgmai.models.corpus import (
     EncounterRule,
     Entity,
     Exit,
+    GatedCheck,
     Interaction,
     Mechanic,
     ModuleCorpus,
@@ -45,7 +46,6 @@ from mgmai.models.corpus import (
     StatDefinition,
     StatModifier,
     StatsBlock,
-    TraversalCheck,
     UsingResultOverride,
 )
 from mgmai.models.hard_state import HardGameState, PlayerState
@@ -110,7 +110,7 @@ def _mk_exit(
     eid: str,
     target_room: str,
     direction: str = "Go",
-    traversal_check: TraversalCheck | None = None,
+    traversal_check: GatedCheck | None = None,
     one_way: bool = False,
 ) -> Exit:
     return Exit(
@@ -366,7 +366,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
             _mk_exit(
                 "exit_force_through_web",
                 "bag_floor",
-                traversal_check=TraversalCheck.model_validate({
+                traversal_check=GatedCheck.model_validate({
                     "check": {"type": "stat_check", "stat": "STR", "target": 14, "repeatable": True},
                     "gating": {"unless": "flag:webs_cleared == true"},
                     "skip_check_if": {"require": "flag:webs_cleared == true"},
@@ -407,7 +407,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
             _mk_exit(
                 "exit_climb_up_handle_floor",
                 "axe_handle_lower",
-                traversal_check=TraversalCheck.model_validate({
+                traversal_check=GatedCheck.model_validate({
                     "gating": {"require": "inventory:giant_key"},
                     "check": {"type": "stat_check", "stat": "STR", "target": 12, "repeatable": True},
                     "skip_check_if": {"require": "entity:korbar.following == true"},

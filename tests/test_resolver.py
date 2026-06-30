@@ -46,13 +46,12 @@ from mgmai.models.corpus import (
     CheckResolution,
     ConditionExpression,
     Exit,
+    GatedCheck,
     Interaction,
     Result,
     RollCheck,
     StatCheck,
     StatModifier,
-    TakeCheck,
-    TraversalCheck,
 )
 from mgmai.state.manager import StateManager
 from tests.helpers import (
@@ -295,7 +294,7 @@ class TestResolveMove:
                 id="exit_test_unified",
                 direction="A test exit",
                 target_room="axe_handle_upper",
-                traversal_check=TraversalCheck(
+                traversal_check=GatedCheck(
                     check=RollCheck(threshold=0.5, repeatable=True),
                     failure=Result(narrative="You cannot pass."),
                 ),
@@ -314,6 +313,39 @@ class TestResolveMove:
         assert roll["source_type"] == "traversal"
         assert roll["check_type"] == "roll"
         assert "traversal_check" in roll
+
+    def test_traversal_gating_first_precedence(self, state_manager, monkeypatch):
+        """When gating is false and skip_check_if is true, the check is inactive
+        (gating-first), so success is not applied and traversal proceeds."""
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        hard.flags["gate_open"] = False
+        hard.flags["skip_ready"] = True
+        corpus.rooms["axe_head"].exits.append(
+            Exit(
+                id="exit_gating_first",
+                direction="A gated exit",
+                target_room="axe_handle_upper",
+                traversal_check=GatedCheck(
+                    gating=ConditionExpression(require="flag:gate_open == true"),
+                    skip_check_if=ConditionExpression(require="flag:skip_ready == true"),
+                    check=RollCheck(threshold=0.5, repeatable=True),
+                    success=Result(narrative="Success branch applied."),
+                    failure=Result(narrative="Failure branch applied."),
+                ),
+            )
+        )
+        monkeypatch.setattr("random.random", lambda: 0.9)
+        action = MoveAction(
+            action_type="move", target="exit_gating_first", detail="Trying gated exit"
+        )
+        result = resolve_move(action, hard, state_manager.soft_state, corpus)
+        assert result.success is True
+        assert result.hard_changes.player_location == "axe_handle_upper"
+        assert "Success branch applied." not in result.triggered_narration
+        assert "Failure branch applied." not in result.triggered_narration
+        assert len(result.rolls) == 0
 
 
 class TestResolveTalk:
@@ -847,14 +879,14 @@ class TestResolveTalkDialoguePaths:
         assert not result.hard_changes.has_changes()
 
 
-class TestResolveTransferTakeCheck:
+class TestResolveTransferTake:
     def test_take_check_success_adds_item(self, state_manager, monkeypatch):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "secret_compartment"
         key = corpus.entities["rusty_key"]
-        key.take_check = TakeCheck(
+        key.take_check = GatedCheck(
             check=RollCheck(threshold=0.5, repeatable=True),
             success=Result(narrative="You pry the key loose."),
             failure=Result(narrative="The key slips from your grasp."),
@@ -878,7 +910,7 @@ class TestResolveTransferTakeCheck:
         corpus = state_manager.corpus
         hard.player.location = "secret_compartment"
         key = corpus.entities["rusty_key"]
-        key.take_check = TakeCheck(
+        key.take_check = GatedCheck(
             check=RollCheck(threshold=0.5, repeatable=True),
             success=Result(narrative="You pry the key loose."),
             failure=Result(narrative="The key slips from your grasp."),
@@ -903,7 +935,7 @@ class TestResolveTransferTakeCheck:
         corpus = state_manager.corpus
         hard.player.location = "secret_compartment"
         key = corpus.entities["rusty_key"]
-        key.take_check = TakeCheck(
+        key.take_check = GatedCheck(
             check=RollCheck(threshold=0.5, repeatable=True),
             success=Result(narrative="You pry the key loose."),
             failure=Result(narrative="The key slips from your grasp."),
@@ -929,7 +961,7 @@ class TestResolveTransferTakeCheck:
         corpus = state_manager.corpus
         hard.player.location = "secret_compartment"
         key = corpus.entities["rusty_key"]
-        key.take_check = TakeCheck(
+        key.take_check = GatedCheck(
             check=RollCheck(threshold=0.5, repeatable=True),
             success=Result(narrative="You pry the key loose."),
             failure=Result(narrative="The key slips from your grasp."),
@@ -948,15 +980,15 @@ class TestResolveTransferTakeCheck:
         assert failed[0][1]["source_type"] == "take"
 
     def test_take_check_skip_check_if_fires_then_check(self, state_manager):
-        """A TakeCheck whose skip_check_if bypasses the check still resolves
-        success.then_check and emits the check event with source_type 'take'."""
+        """A GatedCheck take_check whose skip_check_if bypasses the check still
+        resolves success.then_check and emits the check event with source_type 'take'."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "secret_compartment"
         hard.flags["skip_take"] = True
         key = corpus.entities["rusty_key"]
-        key.take_check = TakeCheck(
+        key.take_check = GatedCheck(
             skip_check_if=ConditionExpression(require="flag:skip_take == true"),
             check=RollCheck(threshold=0.5, repeatable=True),
             success=Result(
@@ -979,4 +1011,35 @@ class TestResolveTransferTakeCheck:
         assert result.hard_changes.flags_set.get("skip_then_check_fired") is True
         assert "source_id" in result.rolls[0]
         assert result.rolls[0]["source_type"] == "take"
+
+    def test_take_check_gating_first_precedence(self, state_manager, monkeypatch):
+        """When gating is false and skip_check_if is true, the take check is
+        inactive (gating-first), so success is not applied and the item is taken."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        hard.flags["take_gate_open"] = False
+        hard.flags["take_skip_ready"] = True
+        key = corpus.entities["rusty_key"]
+        key.take_check = GatedCheck(
+            gating=ConditionExpression(require="flag:take_gate_open == true"),
+            skip_check_if=ConditionExpression(require="flag:take_skip_ready == true"),
+            check=RollCheck(threshold=0.5, repeatable=True),
+            success=Result(narrative="Success branch applied."),
+            failure=Result(narrative="Failure branch applied."),
+        )
+        monkeypatch.setattr("random.random", lambda: 0.9)
+        action = TransferAction(
+            action_type="transfer",
+            target="secret_compartment",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert "rusty_key" in result.hard_changes.inventory_added
+        assert "Success branch applied." not in result.triggered_narration
+        assert "Failure branch applied." not in result.triggered_narration
+        assert len(result.rolls) == 0
 
