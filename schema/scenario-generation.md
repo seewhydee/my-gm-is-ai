@@ -64,7 +64,8 @@ If anything fails, **stop and fix before proceeding**.
 
 **Objective:** make a structured list of everything that needs to be
 modelled, including consistent IDs for all rooms, entities, flags,
-interactions, state fields, entity tags, etc.  All IDs in snake_case.
+interactions, state fields, entity tags, etc.  All IDs must be in
+snake_case; `self` is reserved.
 
 Read README.md and doc/intro.md, followed by the supplied scenario
 (usually a Markdown file in adventures/MODULE-NAME/).
@@ -702,7 +703,7 @@ Example of an attack on sight reaction:
   {
     "id": "goblin_ambush",
     "on": "room.entered",
-    "effects": { "trigger_encounter": "goblin_attack" }
+    "effect": { "trigger_encounter": "goblin_attack" }
   }
 ]
 ```
@@ -714,7 +715,7 @@ Example of a post-dialogue state change:
     "id": "fly_dies_after_talk",
     "on": "dialogue.ended",
     "condition": { "require": "event:npc_id == stuck_fly" },
-    "effects": {
+    "effect": {
       "result": {
         "set_entity_state": { "stuck_fly": { "alive": false } },
         "narrative": "The fly's groaning ceases. Its tiny body goes still."
@@ -1216,7 +1217,7 @@ Example — portcullis slams shut on entry:
   "on": "room.entered",
   "condition": { "require": "event:room_id == castle_gatehouse" },
   "phase": "immediate",
-  "effects": {
+  "effect": {
     "result": {
       "narrative": "The portcullis crashes down behind you.",
       "set_entity_state": { "portcullis": { "closed": true } }
@@ -1235,7 +1236,7 @@ Example — goblin ambush on entry:
 {
   "id": "goblin_ambush",
   "on": "room.entered",
-  "effects": { "trigger_encounter": "goblin_ambush_encounter" }
+  "effect": { "trigger_encounter": "goblin_ambush_encounter" }
 }
 ```
 
@@ -1246,7 +1247,7 @@ Example — falling damage on failed ledge climb:
   "id": "ledge_fall_damage",
   "on": "traversal.failed",
   "condition": { "require": "event:exit_id == climb_to_ledge" },
-  "effects": {
+  "effect": {
     "result": {
       "narrative": "You lose your grip and tumble to the ground.",
       "player_damage": "1d6"
@@ -1446,7 +1447,7 @@ and context keys.
       "id": "near_death_warning",
       "on": "player.damaged",
       "condition": { "require": "event:new_hp <= 3" },
-      "effects": {
+      "effect": {
         "result": {
           "narrative": "You are gravely wounded. One more hit could be your last.",
           "set_flag": { "near_death": true }
@@ -1478,13 +1479,13 @@ and condition them carefully to avoid runaway loops.
       "id": "guardian_awakens",
       "on": "room.entered",
       "condition": { "require": "event:room_id == cave_depths" },
-      "effects": { "trigger_encounter": "guardian_attack" }
+      "effect": { "trigger_encounter": "guardian_attack" }
     },
     {
       "id": "wraith_appears",
       "on": "flag.set",
-      "condition": { "require": "event:flag_name == guardian_defeated" },
-      "effects": { "trigger_encounter": "wraith_ambush" }
+      "condition": { "require": "event:flag_id == guardian_defeated" },
+      "effect": { "trigger_encounter": "wraith_ambush" }
     }
   ]
 }
@@ -1555,7 +1556,7 @@ Follow this exact structure:
     "save_proficiencies": []
   },
   "flags": {
-    "<flag_name>": false,
+    "<flag_id>": false,
     ...
   },
   "room_states": {
@@ -1865,7 +1866,7 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
   currently in that room (available in encounter rules)
 - `event:<key>` checks a value in the current event context. Only valid inside
   reaction conditions during dispatch. Outside dispatch, evaluates to `false`.
-  Common keys: `exit_id`, `interaction_id`, `npc_id`, `flag_name`, `source_id`,
+  Common keys: `exit_id`, `interaction_id`, `npc_id`, `flag_id`, `source_id`,
   `check_type`, `stat`, `amount`, `new_hp`.
 - `will_reveal.conditions` is a list of bare condition strings, not condition
   objects (e.g., `["attitude:korbar >= 2", "flag:spider_fled == true"]`).

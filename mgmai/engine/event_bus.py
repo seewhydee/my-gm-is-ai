@@ -200,7 +200,7 @@ def dispatch_reactions(
             _disabled_once.add(reaction.id)
 
         # --- "self" resolution ---
-        resolved = _resolve_self(reaction.effects, owner_id)
+        resolved = _resolve_self(reaction.effect, owner_id)
 
         # --- apply result (state mutations) ---
         chain_events: list[tuple[str, dict[str, Any]]] = []

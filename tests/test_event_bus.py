@@ -91,7 +91,7 @@ class TestDispatchReactionsAccumulator:
         reaction = Reaction(
             id="r1",
             on="turn.start",
-            effects=ReactionEffects(
+            effect=ReactionEffects(
                 result=Result(set_flag={"reaction_fired": True})
             ),
         )
@@ -130,7 +130,7 @@ class TestImmediateReactionsInResolver:
             id="imm_interact",
             on="interaction.used",
             phase="immediate",
-            effects=ReactionEffects(
+            effect=ReactionEffects(
                 result=Result(set_flag={"immediate_fired": True})
             ),
         ))
@@ -167,7 +167,7 @@ class TestOptionBTurnBoundary:
         room.reactions.append(Reaction(
             id="turn_start_set_flag",
             on="turn.start",
-            effects=ReactionEffects(
+            effect=ReactionEffects(
                 result=Result(set_flag={"turn_start_flag": True})
             ),
         ))
@@ -211,7 +211,7 @@ class TestFindMatchingReactions:
         entity.reactions.append(Reaction(
             id="korbar_react",
             on="room.entered",
-            effects=ReactionEffects(result=Result(narrative="Korbar reacts")),
+            effect=ReactionEffects(result=Result(narrative="Korbar reacts")),
         ))
 
         matches = find_matching_reactions(
@@ -232,7 +232,7 @@ class TestFindMatchingReactions:
         entity.reactions.append(Reaction(
             id="dead_react",
             on="room.entered",
-            effects=ReactionEffects(result=Result(narrative="ghost")),
+            effect=ReactionEffects(result=Result(narrative="ghost")),
         ))
         hard.entity_states.setdefault("korbar", {})["alive"] = False
 
@@ -256,7 +256,7 @@ class TestFindMatchingReactions:
         entity.reactions.append(Reaction(
             id="fled_react",
             on="room.entered",
-            effects=ReactionEffects(result=Result(narrative="gone")),
+            effect=ReactionEffects(result=Result(narrative="gone")),
         ))
         hard.entity_states.setdefault("korbar", {})["fled"] = True
 
@@ -279,11 +279,11 @@ class TestFindMatchingReactions:
         room.reactions.append(Reaction(
             id="room_react",
             on="flag.set",
-            effects=ReactionEffects(result=Result(narrative="room reacts")),
+            effect=ReactionEffects(result=Result(narrative="room reacts")),
         ))
 
         matches = find_matching_reactions(
-            "flag.set", {"flag_name": "x"}, hard, soft, corpus,
+            "flag.set", {"flag_id": "x"}, hard, soft, corpus,
         )
         ids = [r.id for r, _ in matches]
         assert "room_react" in ids
@@ -300,7 +300,7 @@ class TestFindMatchingReactions:
         mech.reactions.append(Reaction(
             id="mech_react",
             on="turn.end",
-            effects=ReactionEffects(result=Result(narrative="mechanic reacts")),
+            effect=ReactionEffects(result=Result(narrative="mechanic reacts")),
         ))
 
         matches = find_matching_reactions(
@@ -321,17 +321,17 @@ class TestFindMatchingReactions:
             id="low_priority",
             on="flag.set",
             priority=10,
-            effects=ReactionEffects(result=Result(narrative="low")),
+            effect=ReactionEffects(result=Result(narrative="low")),
         ))
         room.reactions.append(Reaction(
             id="high_priority",
             on="flag.set",
             priority=1,
-            effects=ReactionEffects(result=Result(narrative="high")),
+            effect=ReactionEffects(result=Result(narrative="high")),
         ))
 
         matches = find_matching_reactions(
-            "flag.set", {"flag_name": "x"}, hard, soft, corpus,
+            "flag.set", {"flag_id": "x"}, hard, soft, corpus,
         )
         ids = [r.id for r, _ in matches]
         assert ids.index("high_priority") < ids.index("low_priority")
@@ -348,11 +348,11 @@ class TestFindMatchingReactions:
             id="once_react",
             on="flag.set",
             once=True,
-            effects=ReactionEffects(result=Result(narrative="once")),
+            effect=ReactionEffects(result=Result(narrative="once")),
         ))
 
         matches = find_matching_reactions(
-            "flag.set", {"flag_name": "x"}, hard, soft, corpus,
+            "flag.set", {"flag_id": "x"}, hard, soft, corpus,
         )
         assert len(matches) == 1
 
@@ -361,7 +361,7 @@ class TestFindMatchingReactions:
 
         # Should not match anymore
         matches2 = find_matching_reactions(
-            "flag.set", {"flag_name": "x"}, hard, soft, corpus,
+            "flag.set", {"flag_id": "x"}, hard, soft, corpus,
         )
         ids = [r.id for r, _ in matches2]
         assert "once_react" not in ids
@@ -378,19 +378,19 @@ class TestFindMatchingReactions:
             id="conditional",
             on="flag.set",
             condition=ConditionExpression(require="flag:spider_fled == true"),
-            effects=ReactionEffects(result=Result(narrative="cond")),
+            effect=ReactionEffects(result=Result(narrative="cond")),
         ))
 
         # spider_fled is False in fixture, so condition should NOT match
         matches = find_matching_reactions(
-            "flag.set", {"flag_name": "x"}, hard, soft, corpus,
+            "flag.set", {"flag_id": "x"}, hard, soft, corpus,
         )
         assert not any(r.id == "conditional" for r, _ in matches)
 
         # Flip the flag
         hard.flags["spider_fled"] = True
         matches2 = find_matching_reactions(
-            "flag.set", {"flag_name": "x"}, hard, soft, corpus,
+            "flag.set", {"flag_id": "x"}, hard, soft, corpus,
         )
         assert any(r.id == "conditional" for r, _ in matches2)
 
@@ -443,7 +443,7 @@ class TestStateChangeEventDerivation:
         changes = HardStateChanges(flags_set={"new_flag": True})
         old_flags = {}
         events = _derive_state_events(changes, old_stats={}, old_entity_states={}, hard=hard, old_flags=old_flags)
-        assert ("flag.set", {"flag_name": "new_flag"}) in events
+        assert ("flag.set", {"flag_id": "new_flag"}) in events
 
     def test_flag_cleared_event(self):
         from mgmai.models.hard_state import PlayerState
@@ -454,7 +454,7 @@ class TestStateChangeEventDerivation:
         changes = HardStateChanges(flags_cleared=["old_flag"])
         old_flags = {"old_flag": True}
         events = _derive_state_events(changes, old_flags=old_flags, old_stats={}, old_entity_states={}, hard=hard)
-        assert ("flag.cleared", {"flag_name": "old_flag"}) in events
+        assert ("flag.cleared", {"flag_id": "old_flag"}) in events
 
     def test_entity_state_changed_event(self):
         from mgmai.models.hard_state import PlayerState
@@ -573,7 +573,7 @@ class TestReactionTriggerEncounter:
         room.reactions.append(Reaction(
             id="trigger_ambush",
             on="turn.start",
-            effects=ReactionEffects(trigger_encounter="test_ambush"),
+            effect=ReactionEffects(trigger_encounter="test_ambush"),
         ))
 
         # A harmless wait action so the turn resolves.
@@ -600,7 +600,7 @@ class TestReactionTriggerDialogue:
         room.reactions.append(Reaction(
             id="korbar_approaches",
             on="turn.start",
-            effects=ReactionEffects(trigger_dialogue="korbar"),
+            effect=ReactionEffects(trigger_dialogue="korbar"),
         ))
 
         from mgmai.models.actions import WaitAction
@@ -625,7 +625,7 @@ class TestReactionGameOver:
         room.reactions.append(Reaction(
             id="sudden_death",
             on="turn.start",
-            effects=ReactionEffects(
+            effect=ReactionEffects(
                 game_over=GameOverTrigger(type="lose", trigger_id="pitfall")
             ),
         ))
@@ -661,7 +661,7 @@ class TestDialogueEndedNoDuplicate:
         room.reactions.append(Reaction(
             id="on_dialogue_end",
             on="dialogue.ended",
-            effects=ReactionEffects(result=Result(add_item=["rusty_key"])),
+            effect=ReactionEffects(result=Result(add_item=["rusty_key"])),
         ))
 
         # Enter dialogue with Korbar.
@@ -714,7 +714,7 @@ class TestDialoguePathSourceType:
             id="track_dialogue_path_check",
             on="check.passed",
             condition=ConditionExpression(require="event:source_type == dialogue_path"),
-            effects=ReactionEffects(result=Result(set_flag={"dialogue_path_check_seen": True})),
+            effect=ReactionEffects(result=Result(set_flag={"dialogue_path_check_seen": True})),
         ))
 
         action = TalkAction(
@@ -746,7 +746,7 @@ class TestReactionChainCheckEvents:
         room.reactions.append(Reaction(
             id="reaction_with_chain",
             on="turn.start",
-            effects=ReactionEffects(result=Result(
+            effect=ReactionEffects(result=Result(
                 narrative="The mechanism whirs.",
                 then_check=CheckResolution(
                     check=RollCheck(threshold=1.0, repeatable=True),
@@ -761,7 +761,7 @@ class TestReactionChainCheckEvents:
             id="track_reaction_check",
             on="check.passed",
             condition=ConditionExpression(require="event:source_type == reaction"),
-            effects=ReactionEffects(result=Result(set_flag={"reaction_check_seen": True})),
+            effect=ReactionEffects(result=Result(set_flag={"reaction_check_seen": True})),
         ))
 
         from mgmai.models.actions import WaitAction
@@ -819,7 +819,7 @@ class TestReactionCombatLogPropagation:
         room.reactions.append(Reaction(
             id="trigger_combat",
             on="turn.start",
-            effects=ReactionEffects(trigger_encounter="test_combat"),
+            effect=ReactionEffects(trigger_encounter="test_combat"),
         ))
 
         from mgmai.models.actions import WaitAction
@@ -857,7 +857,7 @@ class TestReactionRecursionDepthLimit:
         room.reactions.append(Reaction(
             id="seed",
             on="turn.start",
-            effects=ReactionEffects(result=Result(
+            effect=ReactionEffects(result=Result(
                 narrative="seed_tick",
                 then_check=CheckResolution(
                     check=RollCheck(threshold=1.0, repeatable=True),
@@ -872,7 +872,7 @@ class TestReactionRecursionDepthLimit:
             id="loop",
             on="check.passed",
             condition=ConditionExpression(require="event:source_type == reaction"),
-            effects=ReactionEffects(result=Result(
+            effect=ReactionEffects(result=Result(
                 narrative="loop_tick",
                 then_check=CheckResolution(
                     check=RollCheck(threshold=1.0, repeatable=True),
@@ -935,9 +935,9 @@ class TestEncounterOncePerTurnGuard:
             description="carrier",
             reactions=[
                 Reaction(id="fire_enc1", on="turn.end", priority=0,
-                         effects=ReactionEffects(trigger_encounter="test_enc1")),
+                         effect=ReactionEffects(trigger_encounter="test_enc1")),
                 Reaction(id="fire_enc2", on="turn.end", priority=1,
-                         effects=ReactionEffects(trigger_encounter="test_enc2")),
+                         effect=ReactionEffects(trigger_encounter="test_enc2")),
             ],
         )
 
@@ -990,7 +990,7 @@ class TestDialoguePathResultThenCheck:
             id="track_dialogue_chain",
             on="check.passed",
             condition=ConditionExpression(require="event:source_type == dialogue_path"),
-            effects=ReactionEffects(result=Result(set_flag={"dialogue_chain_seen": True})),
+            effect=ReactionEffects(result=Result(set_flag={"dialogue_chain_seen": True})),
         ))
 
         action = TalkAction(
@@ -1042,7 +1042,7 @@ class TestThenCheckDepthCap:
         reaction = Reaction(
             id="depth_test",
             on="turn.start",
-            effects=ReactionEffects(result=Result(
+            effect=ReactionEffects(result=Result(
                 then_check=level1,
             )),
         )
@@ -1092,7 +1092,7 @@ class TestThenCheckSourceTypeInheritance:
             id="track_interaction_then_check",
             on="check.passed",
             condition=ConditionExpression(require="event:source_type == interaction"),
-            effects=ReactionEffects(result=Result(set_flag={"interaction_then_check_seen": True})),
+            effect=ReactionEffects(result=Result(set_flag={"interaction_then_check_seen": True})),
         ))
 
         action = InteractAction(
@@ -1139,7 +1139,7 @@ class TestResolverThenCheckPaths:
             id="track_result_then",
             on="check.passed",
             condition=ConditionExpression(require="event:source_id == result_then_check_inter"),
-            effects=ReactionEffects(result=Result(set_flag={"result_then_check_seen": True})),
+            effect=ReactionEffects(result=Result(set_flag={"result_then_check_seen": True})),
         ))
 
         action = InteractAction(
@@ -1178,7 +1178,7 @@ class TestResolverThenCheckPaths:
             id="track_examine_then",
             on="check.passed",
             condition=ConditionExpression(require="event:source_type == examine"),
-            effects=ReactionEffects(result=Result(set_flag={"examine_then_check_seen": True})),
+            effect=ReactionEffects(result=Result(set_flag={"examine_then_check_seen": True})),
         ))
 
         from mgmai.models.actions import ExamineAction
@@ -1223,14 +1223,14 @@ class TestEncounterBranchedEvent:
         room.reactions.append(Reaction(
             id="trigger_ambush",
             on="turn.start",
-            effects=ReactionEffects(trigger_encounter="test_ambush"),
+            effect=ReactionEffects(trigger_encounter="test_ambush"),
         ))
 
         # A reaction that fires on encounter.branched, regardless of branch.
         room.reactions.append(Reaction(
             id="track_branch",
             on="encounter.branched",
-            effects=ReactionEffects(result=Result(set_flag={"saw_branched": True})),
+            effect=ReactionEffects(result=Result(set_flag={"saw_branched": True})),
         ))
 
         # Force the encounter roll to fail (0.9 >= 0.5 threshold).
@@ -1269,7 +1269,7 @@ class TestEncounterBranchedEvent:
         room.reactions.append(Reaction(
             id="trigger_ambush",
             on="turn.start",
-            effects=ReactionEffects(trigger_encounter="test_ambush"),
+            effect=ReactionEffects(trigger_encounter="test_ambush"),
         ))
 
         # Only fires on the failure branch.
@@ -1277,13 +1277,13 @@ class TestEncounterBranchedEvent:
             id="track_failure",
             on="encounter.branched",
             condition=ConditionExpression(require="event:branch == failure"),
-            effects=ReactionEffects(result=Result(set_flag={"saw_failure": True})),
+            effect=ReactionEffects(result=Result(set_flag={"saw_failure": True})),
         ))
         room.reactions.append(Reaction(
             id="track_success",
             on="encounter.branched",
             condition=ConditionExpression(require="event:branch == success"),
-            effects=ReactionEffects(result=Result(set_flag={"saw_success": True})),
+            effect=ReactionEffects(result=Result(set_flag={"saw_success": True})),
         ))
 
         # Force failure.

@@ -160,11 +160,11 @@ def _mk_item_entity(
 def _mk_reaction(
     rid: str,
     on: str,
-    effects: ReactionEffects,
+    effect: ReactionEffects,
     condition: ConditionExpression | None = None,
     phase: str | None = None,
 ) -> Reaction:
-    kwargs: dict[str, Any] = {"id": rid, "on": on, "effects": effects}
+    kwargs: dict[str, Any] = {"id": rid, "on": on, "effect": effect}
     if condition is not None:
         kwargs["condition"] = condition
     if phase is not None:
@@ -261,7 +261,7 @@ def make_encounter_trigger_corpus(
                 "test_reaction",
                 on=reaction_event,
                 condition=_mk_cond(require=f"event:exit_id == {exit_id}"),
-                effects=ReactionEffects(trigger_encounter=mechanic_id),
+                effect=ReactionEffects(trigger_encounter=mechanic_id),
                 phase="immediate",
             )
         ],
@@ -320,7 +320,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
                         {"unless": "entity:spider.fled == true"},
                     ]
                 }),
-                effects=ReactionEffects(trigger_encounter="spider_attack"),
+                effect=ReactionEffects(trigger_encounter="spider_attack"),
                 phase="immediate",
             ),
             _mk_reaction(
@@ -333,7 +333,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
                         {"require": "event:new_value == false"},
                     ]
                 }),
-                effects=ReactionEffects(
+                effect=ReactionEffects(
                     result=Result(
                         narrative="The spider dies.",
                         set_flag={"spider_fled": True},

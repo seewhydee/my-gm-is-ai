@@ -13,7 +13,7 @@ resolve mechanics.
 ```json
 {
   "player":       { /* player state */ },
-  "flags":        { "<flag_name>": true | false, ... },
+  "flags":        { "<flag_id>": true | false, ... },
   "room_states":  { "<room_id>": { "<field>": <value>, ... } },
   "entity_states":{ "<entity_id>": { "<field>": <value>, ... } },
   "turn_count":   0,
@@ -54,10 +54,6 @@ resolve mechanics.
 2. Adding an item: the engine pushes the ID onto the `inventory` array. Duplicates
    are allowed only if the module explicitly supports it (tag: `stackable`).
 3. Removing an item: the engine removes the first occurrence from the array.
-4. Draggable items (entity `draggable == true`): the engine sets an implicit
-   flag `dragging_<item_id>` to `true` when the item is in inventory. The player
-   cannot perform manual actions (interact, examine) while dragging.
-   Movement is still allowed.
 5. The engine checks `tag:weapon` by scanning items in inventory
    for the `"weapon"` tag in the entity definition, not by specific item ID.
    This allows future modules to have multiple weapon types.
@@ -83,7 +79,7 @@ or wielding:
 
 ```json
 {
-  "<flag_name>": true | false
+  "<flag_id>": true | false
 }
 ```
 
@@ -115,7 +111,6 @@ For instance, the sample adventure "Trapped In A Bag of Holding" uses these flag
 | `spider_fled`      | Set when the spider flees after being wounded. Prevents re-triggering the spider encounter. |
 | `injured`          | Player is injured. Affects encounter outcomes and blocks certain interactions. |
 | `stunned`          | Player is briefly stunned. Transient narrative flag. |
-| `dragging_<item>`  | Implicitly managed when a draggable item is in inventory. |
 
 ---
 

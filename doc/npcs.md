@@ -393,7 +393,7 @@ NPCs with a `behavior` block can trigger **encounters** — combat or other stru
 ```
 
 Encounters are triggered by entity-scoped reactions (e.g. an `interaction.used`
-reaction on the NPC that uses `effects.trigger_encounter: "self"`) or by a
+reaction on the NPC that uses `effect.trigger_encounter: "self"`) or by a
 `trigger_encounter` result from another reaction or interaction. For example,
 an NPC with the reaction below will trigger its encounter rules when the player
 attacks it:
@@ -404,7 +404,7 @@ attacks it:
     "id": "spider_attack_on_sight",
     "on": "interaction.used",
     "condition": { "require": "event:interaction_id == attack" },
-    "effects": { "trigger_encounter": "self" }
+    "effect": { "trigger_encounter": "self" }
   }
 ]
 ```

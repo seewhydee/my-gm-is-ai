@@ -49,7 +49,7 @@
           "condition": {
             "require": "event:exit_id == exit_drop_from_head"
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "You drop from the axe head into the darkness below. You land hard on the bag floor, and pain shoots through your legs — you are injured.",
               "set_flag": {
@@ -100,7 +100,7 @@
           "id": "event_stuck_fly_warning",
           "on": "room.entered",
           "once": true,
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "As you descend the handle, you encounter extremely sticky webs. A fly is trapped in the webbing, struggling weakly. It looks at you with compound eyes and speaks in a nasally whine: 'S-spider... huge one... in the webs below... watch yourself...' Its wings twitch feebly — it doesn't have long."
             },
@@ -113,7 +113,7 @@
           "condition": {
             "require": "event:exit_id == exit_drop_from_upper"
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "You let go and drop into the darkness. You land painfully on the bag floor, twisting your ankle — you are injured.",
               "set_flag": {
@@ -167,7 +167,7 @@
           "condition": {
             "require": "event:exit_id == exit_drop_from_lower"
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "You drop down from the lower handle, landing with a heavy thud on the bag floor. You are briefly stunned but uninjured.",
               "set_flag": {
@@ -354,7 +354,7 @@
           "condition": {
             "require": "event:npc_id == stuck_fly"
           },
-          "effects": {
+          "effect": {
             "result": {
               "set_entity_state": {
                 "stuck_fly": {
@@ -494,7 +494,7 @@
           "condition": {
             "require": "event:interaction_id == attack"
           },
-          "effects": {
+          "effect": {
             "trigger_encounter": "self"
           },
           "phase": "immediate"
@@ -506,7 +506,7 @@
           "condition": {
             "require": "event:exit_id == exit_through_webs"
           },
-          "effects": {
+          "effect": {
             "trigger_encounter": "self"
           }
         }
@@ -689,7 +689,7 @@
           "condition": {
             "require": "event:interaction_id == attack"
           },
-          "effects": {
+          "effect": {
             "trigger_encounter": "self"
           },
           "phase": "immediate"

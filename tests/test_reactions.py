@@ -59,7 +59,7 @@ class TestReaction:
         r = Reaction(
             id="r1",
             on="flag.set",
-            effects=ReactionEffects(result=Result(set_flag={"y": True})),
+            effect=ReactionEffects(result=Result(set_flag={"y": True})),
         )
         assert r.id == "r1"
         assert r.on == "flag.set"
@@ -73,7 +73,7 @@ class TestReaction:
                 id=f"r_{event}",
                 on=event,
                 phase="immediate",
-                effects=ReactionEffects(result=Result(narrative="x")),
+                effect=ReactionEffects(result=Result(narrative="x")),
             )
             assert r.phase == "immediate"
 
@@ -84,7 +84,7 @@ class TestReaction:
                     id=f"r_{event}",
                     on=event,
                     phase="immediate",
-                    effects=ReactionEffects(result=Result(narrative="x")),
+                    effect=ReactionEffects(result=Result(narrative="x")),
                 )
 
     def test_deferred_phase_allowed_for_any_event(self):
@@ -92,7 +92,7 @@ class TestReaction:
             id="r1",
             on="flag.set",
             phase="deferred",
-            effects=ReactionEffects(result=Result(narrative="x")),
+            effect=ReactionEffects(result=Result(narrative="x")),
         )
         assert r.phase == "deferred"
 
@@ -101,7 +101,7 @@ class TestReaction:
             id="r1",
             on="room.entered",
             once=True,
-            effects=ReactionEffects(result=Result(narrative="x")),
+            effect=ReactionEffects(result=Result(narrative="x")),
         )
         assert r.once is True
 
@@ -110,7 +110,7 @@ class TestReaction:
             id="r1",
             on="room.entered",
             priority=10,
-            effects=ReactionEffects(result=Result(narrative="x")),
+            effect=ReactionEffects(result=Result(narrative="x")),
         )
         assert r.priority == 10
 
@@ -119,7 +119,7 @@ class TestReaction:
             id="r1",
             on="room.entered",
             condition={"require": "flag:x == true"},
-            effects=ReactionEffects(result=Result(narrative="x")),
+            effect=ReactionEffects(result=Result(narrative="x")),
         )
         assert r.condition is not None
 
@@ -133,7 +133,7 @@ class TestMechanicReactionOnly:
                 Reaction(
                     id="r1",
                     on="flag.set",
-                    effects=ReactionEffects(result=Result(set_flag={"x": True})),
+                    effect=ReactionEffects(result=Result(set_flag={"x": True})),
                 )
             ],
         )

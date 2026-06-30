@@ -267,7 +267,7 @@ class TestEngineFullFlow:
                 _mk_reaction(
                     "welcome",
                     on="room.entered",
-                    effects=ReactionEffects(
+                    effect=ReactionEffects(
                         result=Result(
                             narrative="The room welcomes you.",
                             set_flag={"room_b_entered": True},

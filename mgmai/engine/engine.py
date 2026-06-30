@@ -909,19 +909,28 @@ def _derive_state_events(
     for flag, val in hard_changes.flags_set.items():
         old_val = old_flags.get(flag)
         if old_val is True and val is False:
-            events.append(("flag.cleared", {"flag_name": flag}))
+            events.append(("flag.cleared", {"flag_id": flag}))
         elif not old_val and val is True:
-            events.append(("flag.set", {"flag_name": flag}))
+            events.append(("flag.set", {"flag_id": flag}))
 
     for flag in hard_changes.flags_cleared:
         if old_flags.get(flag):
-            events.append(("flag.cleared", {"flag_name": flag}))
+            events.append(("flag.cleared", {"flag_id": flag}))
 
     # entity_state.changed
     for entity_id, entity_changes in hard_changes.entity_state_changes.items():
         for field, new_value in entity_changes.items():
             events.append(("entity_state.changed", {
                 "entity_id": entity_id,
+                "field": field,
+                "new_value": new_value,
+            }))
+
+    # room_state.changed
+    for room_id, room_changes in hard_changes.room_state_changes.items():
+        for field, new_value in room_changes.items():
+            events.append(("room_state.changed", {
+                "room_id": room_id,
                 "field": field,
                 "new_value": new_value,
             }))

@@ -863,17 +863,17 @@ class TestEventDomain:
     def test_event_domain_match(self):
         hs = make_hard_state()
         ss = make_soft_state()
-        event_ctx = {"flag_name": "spider_fled"}
+        event_ctx = {"flag_id": "spider_fled"}
         assert evaluate_condition_string(
-            "event:flag_name == spider_fled", hs, ss, None, event_ctx
+            "event:flag_id == spider_fled", hs, ss, None, event_ctx
         )
 
     def test_event_domain_mismatch(self):
         hs = make_hard_state()
         ss = make_soft_state()
-        event_ctx = {"flag_name": "other"}
+        event_ctx = {"flag_id": "other"}
         assert not evaluate_condition_string(
-            "event:flag_name == spider_fled", hs, ss, None, event_ctx
+            "event:flag_id == spider_fled", hs, ss, None, event_ctx
         )
 
     def test_event_domain_numeric_comparison(self):
@@ -892,23 +892,23 @@ class TestEventDomain:
         ss = make_soft_state()
         event_ctx = {"other_key": "value"}
         assert not evaluate_condition_string(
-            "event:flag_name == spider_fled", hs, ss, None, event_ctx
+            "event:flag_id == spider_fled", hs, ss, None, event_ctx
         )
 
     def test_event_domain_no_context_returns_false(self):
         hs = make_hard_state()
         ss = make_soft_state()
         assert not evaluate_condition_string(
-            "event:flag_name == spider_fled", hs, ss, None, None
+            "event:flag_id == spider_fled", hs, ss, None, None
         )
 
     def test_event_domain_requires_operator(self):
         hs = make_hard_state()
         ss = make_soft_state()
-        event_ctx = {"flag_name": "x"}
+        event_ctx = {"flag_id": "x"}
         with pytest.raises(ValueError, match="requires operator"):
             evaluate_condition_string(
-                "event:flag_name", hs, ss, None, event_ctx
+                "event:flag_id", hs, ss, None, event_ctx
             )
 
     def test_event_domain_in_condition_expression(self):

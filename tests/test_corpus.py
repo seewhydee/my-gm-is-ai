@@ -379,13 +379,10 @@ class TestEntity:
             "name": "Rusty Sword",
             "description": "A rusty sword.",
             "tags": ["weapon", "mundane"],
-            "draggable": True,
-            "dragging_note": "It's heavy.",
         })
         assert e.type == "item"
         assert e.name == "Rusty Sword"
         assert e.tags == ["weapon", "mundane"]
-        assert e.draggable is True
 
     def test_item_without_name_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -558,7 +555,7 @@ class TestRoom:
                     "id": "event_welcome",
                     "on": "room.entered",
                     "condition": {"require": "flag:trap_armed == true"},
-                    "effects": {
+                    "effect": {
                         "result": {
                             "narrative": "Welcome to the trap room.",
                             "set_flag": {"visited_trap_room": True},
@@ -571,8 +568,8 @@ class TestRoom:
         reaction = r.reactions[0]
         assert reaction.condition is not None
         assert reaction.condition.require == "flag:trap_armed == true"
-        assert reaction.effects.result is not None
-        assert reaction.effects.result.narrative == "Welcome to the trap room."
+        assert reaction.effect.result is not None
+        assert reaction.effect.result.narrative == "Welcome to the trap room."
 
     def test_room_with_interactions(self) -> None:
         r = Room.model_validate({

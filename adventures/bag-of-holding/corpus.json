@@ -70,7 +70,7 @@
           "condition": {
             "require": "entity:stuck_fly.alive == true"
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "The fly's groaning ceases. Its tiny body goes still.",
               "set_entity_state": {
@@ -258,7 +258,7 @@
             ]
           },
           "phase": "immediate",
-          "effects": {
+          "effect": {
             "trigger_encounter": "self"
           }
         },
@@ -285,7 +285,7 @@
             ]
           },
           "phase": "immediate",
-          "effects": {
+          "effect": {
             "trigger_encounter": "self"
           }
         },
@@ -305,7 +305,7 @@
               }
             ]
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "With a final screech, the spider curls up and goes still \u2014 dead.",
               "set_flag": {
@@ -499,7 +499,7 @@
               }
             ]
           },
-          "effects": {
+          "effect": {
             "trigger_encounter": "self"
           }
         }
@@ -745,9 +745,7 @@
       "description": "A massive iron key, heavy and cold. Far too large for a normal door \u2014 this must be for something enormous.",
       "tags": [
         "key_item"
-      ],
-      "draggable": true,
-      "dragging_note": "The giant key is extremely heavy. You have to drag it laboriously from room to room."
+      ]
     }
   },
   "rooms": {
@@ -963,7 +961,7 @@
           "condition": {
             "require": "event:flag_name == rip_examined"
           },
-          "effects": {
+          "effect": {
             "result": {
               "then_check": {
                 "check": {
@@ -990,7 +988,7 @@
           "condition": {
             "require": "event:flag_name == astral_plane_recognized"
           },
-          "effects": {
+          "effect": {
             "result": {
               "then_check": {
                 "check": {
@@ -1018,7 +1016,7 @@
             "require": "event:exit_id == exit_drop_from_head"
           },
           "phase": "immediate",
-          "effects": {
+          "effect": {
             "trigger_encounter": "fall_damage_from_head"
           }
         }
@@ -1126,7 +1124,7 @@
             "require": "event:exit_id == exit_drop_from_upper"
           },
           "phase": "immediate",
-          "effects": {
+          "effect": {
             "trigger_encounter": "fall_damage_from_upper"
           }
         },
@@ -1136,7 +1134,7 @@
           "condition": {
             "require": "event:exit_id == exit_down_handle_upper"
           },
-          "effects": {
+          "effect": {
             "result": {
               "set_flag": {
                 "player_above_webs": true
@@ -1307,7 +1305,7 @@
               }
             ]
           },
-          "effects": {
+          "effect": {
             "result": {
               "then_check": {
                 "check": {
@@ -1365,7 +1363,7 @@
               }
             ]
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "You burst through the sticky webbing, clearing a path downward.",
               "set_flag": {
@@ -1380,7 +1378,7 @@
           "condition": {
             "require": "event:flag_name == webs_cleared"
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "The path through the webs now stands open where you broke through."
             }
@@ -1402,7 +1400,7 @@
               }
             ]
           },
-          "effects": {
+          "effect": {
             "trigger_encounter": "spider"
           }
         },
@@ -1413,7 +1411,7 @@
             "require": "event:exit_id == exit_drop_from_lower"
           },
           "phase": "immediate",
-          "effects": {
+          "effect": {
             "trigger_encounter": "fall_damage_from_lower"
           }
         }
@@ -1606,7 +1604,7 @@
           "condition": {
             "require": "event:flag_name == handkerchief_revealed"
           },
-          "effects": {
+          "effect": {
             "result": {
               "set_entity_state": {
                 "giant_handkerchief": {
@@ -1629,7 +1627,7 @@
               }
             ]
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "You can now see the giant handkerchief draped over a corner of the rubbish pile."
             }
@@ -1641,7 +1639,7 @@
           "condition": {
             "require": "event:exit_id == exit_climb_up_handle_floor"
           },
-          "effects": {
+          "effect": {
             "result": {
               "set_flag": {
                 "player_above_webs": false
@@ -1833,7 +1831,7 @@
               }
             ]
           },
-          "effects": {
+          "effect": {
             "result": {
               "narrative": "Korbar collapses in a heap of clattering iron. Her breathing is shallow but steady \u2014 she's unconscious but alive."
             }

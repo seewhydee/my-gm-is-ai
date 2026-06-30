@@ -29,7 +29,7 @@ condition domain:
 ```json
 { "require": "event:exit_id == exit_climb_down" }
 { "require": "event:interaction_id == attack" }
-{ "require": "event:flag_name == spider_fled" }
+{ "require": "event:flag_id == spider_fled" }
 ```
 
 The `event:` domain is **only valid during reaction dispatch**.
@@ -99,9 +99,10 @@ applied. They are dispatched in a single final pass.
 
 | Event | Context keys | Emitted when |
 |---|---|---|
-| `flag.set` | `flag_name` | A flag transitions to `true`. |
-| `flag.cleared` | `flag_name` | A flag transitions to `false`. |
+| `flag.set` | `flag_id` | A flag transitions to `true`. |
+| `flag.cleared` | `flag_id` | A flag transitions to `false`. |
 | `entity_state.changed` | `entity_id`, `field`, `new_value` | Any entity state field changes. |
+| `room_state.changed` | `room_id`, `field`, `new_value` | Any room state field changes. |
 | `attitude.changed` | `npc_id`, `old_value`, `new_value`, `delta` | An NPC's attitude changes. |
 | `stat.changed` | `stat_name`, `old_value`, `new_value`, `delta` | A player stat changes. |
 | `equipment.changed` | `added?`, `removed?` | Equipped gear changes. |
@@ -149,6 +150,15 @@ Immediate reactions are only allowed for these events:
 - `room.entered`
 
 For all other events, `phase: "immediate"` is rejected by the model validator.
+
+--
+
+## Ordering and loop prevention
+
+1. Reactions are sorted by `priority` (lower first), then by scope (entity before room before mechanic), then by definition order.
+2. State-change events are derived once at the end of the turn from the complete state diff, after all action and reaction effects have been applied. They are dispatched in a single final pass; reactions triggered by that pass may mutate state, but no further state-change events are derived from those mutations.
+3. Maximum reaction dispatch recursion depth is 5. Exceeding this stops dispatch with a warning.
+4. Only one encounter can fire per turn (from the resolver or from reactions). Subsequent `trigger_encounter` effects are silently ignored.
 
 ---
 

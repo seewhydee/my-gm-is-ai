@@ -305,7 +305,7 @@ class Reaction(BaseModel):
     id: str
     on: str
     condition: Optional[ConditionExpression] = None
-    effects: ReactionEffects
+    effect: ReactionEffects
     once: bool = False
     priority: int = 0
     phase: Literal["immediate", "deferred"] = "deferred"
@@ -420,8 +420,6 @@ class Entity(BaseModel):
     soft_items: List[str] = Field(default_factory=list)
     contained_entities: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
-    draggable: bool = False
-    dragging_note: Optional[str] = None
     take_check: Optional[TakeCheck] = None
     interactions: List[Interaction] = Field(default_factory=list)
     on_examine: List[OnExamineEvent] = Field(default_factory=list)

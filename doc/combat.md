@@ -303,7 +303,7 @@ authoritative dice results.
         "id": "spider_attack_on_sight",
         "on": "interaction.used",
         "condition": { "require": "event:interaction_id == attack" },
-        "effects": { "trigger_encounter": "self" }
+        "effect": { "trigger_encounter": "self" }
       }
     ],
     "combat": {
