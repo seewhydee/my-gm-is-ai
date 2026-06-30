@@ -80,14 +80,13 @@ class TestModuleCorpus:
                     f"Exit '{exit_.id}' targets unknown room '{exit_.target_room}'"
                 )
 
-    def test_spans_rooms_are_rooms(self, sample_corpus: ModuleCorpus) -> None:
-        room_ids = set(sample_corpus.rooms.keys())
-        for entity in sample_corpus.entities.values():
-            if entity.spans_rooms is not None:
-                for room_id in entity.spans_rooms:
-                    assert room_id in room_ids, (
-                        f"Entity spans unknown room '{room_id}'"
-                    )
+    def test_entities_in_contains_exist(self, sample_corpus: ModuleCorpus) -> None:
+        entity_ids = set(sample_corpus.entities.keys())
+        for room in sample_corpus.rooms.values():
+            for entity_id in room.contains:
+                assert entity_id in entity_ids, (
+                    f"Room contains unknown entity '{entity_id}'"
+                )
 
 
 class TestConditionExpression:
@@ -416,13 +415,13 @@ class TestEntity:
         assert e.behavior is not None
         assert len(e.behavior.encounter_rules) == 1
 
-    def test_feature_with_spans_rooms(self) -> None:
+    def test_feature_in_multiple_rooms(self) -> None:
         e = Entity.model_validate({
             "type": "feature",
             "description": "A giant axe spanning multiple rooms.",
-            "spans_rooms": ["room1", "room2", "room3"],
         })
-        assert e.spans_rooms == ["room1", "room2", "room3"]
+        assert e.type == "feature"
+        assert e.description == "A giant axe spanning multiple rooms."
 
     def test_invalid_type_raises(self) -> None:
         with pytest.raises(ValidationError):

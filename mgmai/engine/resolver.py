@@ -1460,17 +1460,11 @@ def _resolve_checkable(
 
 def _find_entity_in_room(
     entity_id: str,
-    room_id: str,
     room: Any,
     corpus: ModuleCorpus,
 ) -> Any | None:
     if entity_id in room.contains:
         return corpus.entities.get(entity_id)
-    for eid in room.contains:
-        ent = corpus.entities.get(eid)
-        if ent and ent.spans_rooms and room_id in ent.spans_rooms:
-            if eid == entity_id:
-                return ent
     return None
 
 
@@ -1482,7 +1476,7 @@ def _find_entity_in_room_followers(
     corpus: ModuleCorpus,
 ) -> Any | None:
     """Like _find_entity_in_room but also matches following NPCs."""
-    result = _find_entity_in_room(entity_id, room_id, room, corpus)
+    result = _find_entity_in_room(entity_id, room, corpus)
     if result is not None:
         return result
     follower_ids = get_following_npc_ids(hard, corpus)

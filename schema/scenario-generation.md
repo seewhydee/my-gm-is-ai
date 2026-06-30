@@ -816,9 +816,8 @@ proper name.  It only needs to be unambiguous at the level of the
 room(s) the feature occurs in: e.g., two different rooms can have
 features named `fountain`, with different entity IDs.
 
-For features spanning multiple rooms, use `spans_rooms` to list all
-rooms where the feature is visible.  The entity ID should be listed in
-`contains` for each of those rooms.
+For features spanning multiple rooms, list the entity ID in the
+`contains` array of each room where the feature appears.
 
 #### Containers
 
@@ -1067,8 +1066,8 @@ Example of a will_reveal structure:
       type (always boolean)
 - [ ] Every `set_entity_state` in `will_reveal` sets a field declared in the
       target entity's `state_fields`
-- [ ] Entities that span multiple rooms have `spans_rooms` and appear in
-      each room's `contains` (cross-check with Step 3 once rooms exist)
+- [ ] Entities that span multiple rooms appear in each room's `contains`
+      (cross-check with Step 3 once rooms exist)
 - [ ] Entity `reactions` use valid event types (see `events.md`)
 - [ ] Entity `reactions` using `"self"` in `trigger_encounter` or
       `trigger_dialogue` are on entities of the correct type (encounter for
@@ -1725,8 +1724,8 @@ cross-file consistency issues.
 
 - [ ] Every flag name used in any condition string, `set_flag`, or
   `set_entity_state` appears in `hard_state.flags`
-- [ ] Every room ID referenced in any exit `target_room`, `spans_rooms`,
-  `follower_blacklist`, etc. exists in `corpus.rooms`
+- [ ] Every room ID referenced in any exit `target_room`,
+      `follower_blacklist`, etc. exists in `corpus.rooms`
 - [ ] Every entity ID referenced in any `contains`, `add_item`,
   `remove_item`, `set_entity_state`, `trigger_dialogue`, `using_results`
   key, etc. exists in `corpus.entities`

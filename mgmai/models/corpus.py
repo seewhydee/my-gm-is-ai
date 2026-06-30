@@ -416,7 +416,6 @@ class Entity(BaseModel):
     type: Literal["player", "feature", "npc", "item"]
     name: Optional[str] = None
     description: str
-    spans_rooms: Optional[List[str]] = None
     soft_items: List[str] = Field(default_factory=list)
     contains: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)

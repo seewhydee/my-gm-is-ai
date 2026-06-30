@@ -508,24 +508,11 @@
     "giant_axe": {
       "type": "feature",
       "description": "A truly enormous battleaxe, its blade the size of a small plaza. It leans at an angle against the canvas wall, its handle sloping downward into the murky darkness.",
-      "spans_rooms": [
-        "axe_head",
-        "axe_handle_upper",
-        "axe_handle_lower",
-        "bag_floor"
-      ],
       "state_fields": {}
     },
     "canvas_walls": {
       "type": "feature",
       "description": "The walls of the cave are made of rough canvas, faintly luminescent with a soft magical glow. They arch overhead into a dome and scrunch shut at the top, as if part of a giant sack or bag.",
-      "spans_rooms": [
-        "axe_head",
-        "axe_handle_upper",
-        "axe_handle_lower",
-        "bag_floor",
-        "secret_pocket"
-      ],
       "state_fields": {}
     },
     "padlock": {

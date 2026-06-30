@@ -253,25 +253,12 @@
     "battleaxe": {
       "type": "feature",
       "description": "A truly enormous battleaxe, its head resting against the canvas wall. The shaft is as wide as a sidewalk and slopes downward into the dimness. It belongs to Korbar the Dwarf.",
-      "spans_rooms": [
-        "axe_head",
-        "axe_handle_upper",
-        "axe_handle_lower",
-        "bag_floor"
-      ],
       "soft_items": [],
       "state_fields": {}
     },
     "canvas_walls": {
       "type": "feature",
       "description": "The interior walls of the Bag of Holding — vast planes of rough canvas that stretch upward and curve inward to form a ceiling. They emit a faint, magical luminescence that keeps the interior from being pitch black.",
-      "spans_rooms": [
-        "axe_head",
-        "axe_handle_upper",
-        "axe_handle_lower",
-        "bag_floor",
-        "secret_compartment"
-      ],
       "soft_items": [],
       "state_fields": {}
     },

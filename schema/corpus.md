@@ -801,13 +801,13 @@ unique `entity_id`.
     "type": "player | feature | npc | item",
     "name": "string (required for item, optional otherwise)",
     "description": "string",
-    "spans_rooms": ["<room_id>", ...],
     "soft_items": ["string", ...],
     "contains": ["<entity_id>", ...],
     "tags": ["<tag>", ...],
     "take_check": { /* take_check */
+      "gating": { "require": "flag:item_claimed == false" },
       "check": { "type": "stat_check", ... },
-      "success": { "narrative": "..." },
+      "success": { "narrative": "...", "set_flag": { "item_claimed": true } },
       "failure": { "narrative": "..." }
     },
     "equip_block": { /* equip_block */ },
@@ -856,68 +856,80 @@ Notes:
 
 ### Feature
 
-Features describe immovable environmental objects.  The optional
-`spans_room` field can be used to make features span multiple rooms:
+Features describe immovable environmental objects.  The player cannot
+pick up, talk to, or attack features.
 
-| Field           | Type   | Description                             |
-|-----------------|--------|-----------------------------------------|
-| `spans_rooms`(*)| array  | List of room IDs the entity spans       |
-> (*) optional
+Features, unlike NPC and item entities, are allowed to span multiple
+rooms: e.g., the sky can be a single feature that's visible from
+different locations (don't do this on a whim, only if plot-relevant).
+Just list the feature's entity ID in the `contains` field of each room
+where it appears.
 
 #### Container
 
-**Containers** are entities like chests or wardrobes, which store
+**Containers** are entities such as chests or wardrobes, which store
 other entities and can be opened and/or closed.  We document
 containers here since they are most commonly implemented as features;
-however, items (or even NPCs) can also be containers.
+however, items (or even NPCs) are also allowed to be containers.
 
 Containers should be assigned the following properties:
 
 - `container` tag — A container must have `"container"` in its `tag`
   array.  This informs the engine to handle them specially.
 
-- `open` state field — A container must have `open` as a declared
-  boolean state field.  It may be initialized to either `true`
-  (container is open) or `false` (container is closed).
+- `open` state field — A container must have `open` as a boolean state
+  field, initialized to `true` (open) or `false` (closed).
 
-- `open` and `close` interactions (optional) — if the player is
-  allowed to perform open/close actions directly on the container (as
-  opposed to indirect methods, like pressing a button elsewhere).
+- `open` and `close` interactions (optional) — should be defined, if
+  the player can perform open/close actions directly on the container
+  (as opposed to indirect methods, like pressing a button elsewhere).
 
 A container's contents are listed in its `contains` and `soft_items`
 fields.  (These fields can also be used for non-container entities:
 e.g., a rubbish pile, which is not a container in the present sense
 since it lacks open/close functionality.)  When the container is open,
 the engine automatically surfaces its contents to the GM and player;
-when the container is closed, the engine makes the contents
-inaccessible.  This concealment is distinct from the effects of the
-`hidden` state (see below).
+when the container is closed, the contents are inaccessible.  This
+concealment is distinct from the effects of `hidden` (see below).
 
 For entities without the `container` tag, the `open` state field has
 no special meaning.
 
 ### Item
 
-Item-specific fields:
+Items are entities that can potentially be picked up by the player.
+The player cannot talk to or attack items.  The following fields have
+special meanings for items:
 
-| Field                  | Type   | Description |
-|------------------------|--------|-------------|
-| `name`                 | string | Display name for the item (required). |
-| `take_check` (*)       | Check  | Success check for taking the item |
-| `equip_block` (*)      | object | How the item interacts with the equipment system (see below). Items without this block cannot be equipped. |
+| Field                  | Type   | Description                        |
+|------------------------|--------|------------------------------------|
+| `name`                 | string | Display name (required!)           |
+| `take_check` (*)       | object | Gated check for taking the item    |
+| `equip_block` (*)      | object | For equipment (see below)          |
+> (*) optional
 
 Notes:
 
-- `name` is required for item entities; it is what the player sees in
-  the `/inv` panel and what both LLM calls receive in briefings,
-  rather than the raw snake_case entity ID.
+- `name` is required for items.  This is what the player sees in the
+  inventory display.
 
-- The Check in `take_check` is **not** automatically disabled after a
-  successful take; use `check.repeatable: false` for a one-time gate,
-  or remove/hide the item after success. Supports optional `gating`
-  (check only fires if met, otherwise item taken freely),
-  `skip_check_if` (skip check if met, apply `success` Result), and
-  `success`/`failure` Result objects.
+- `take_check` gates any attempt by the player to take the item,
+  regardless of where it currently is.  The object contains:
+
+  | Field               | Type      | Description                          |
+  |---------------------|-----------|--------------------------------------|
+  | `check`             | Check     | Success/failure check (required)     |
+  | `gating` (*)        | Condition | Whether the check is active          |
+  | `skip_check_if` (*) | Condition | If true, skip check (apply success)  |
+  | `success` (*)       | Result    | Result if check succeeds             |
+  | `failure` (*)       | Result    | Result if check fails                |
+  > (*) optional
+
+  The check is *not* automatically disabled after a successful take.
+  For a one-time success gate (pass once, then freely take thereafter),
+  use `gating` with a flag that `success` sets.  For a permanent
+  one-attempt gate (failure locks you out), set `check.repeatable` to
+  `false`.
 
 NPC-specific fields:
 
