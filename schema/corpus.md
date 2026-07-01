@@ -61,7 +61,8 @@ true; each sub-condition is a condition string or nested condition.
 
 ```json
 { "any": [ "flag:volcano_erupting == true",
-		   { "all": [ "entity:frodo.alive", "entity:frodo.attitude >= 4" ] } ] }
+		   { "all": [ "entity:frodo.alive",
+					  "entity:frodo.attitude >= 4" ] } ] }
 ```
 
 **`all`** — availability requires all sub-conditions to be true; each
@@ -195,11 +196,11 @@ and `failure` branches of non-deterministic game mechanics.
 
 ```json
 {
-  "narrative": "Looting the troll, you discover a pair of speed boots and a dagger, probably taken from some hapless adventurer",
-  "add_item": [ "speed_boots", "enchanted_dagger" ],
+  "narrative": "Looting the troll, you find a helmet and a dagger, probably taken from some hapless adventurer",
+  "add_item": [ "helmet", "enchanted_dagger" ],
   "set_flag": { "old_gear_found" : true },
   "set_entity_state": { "troll": { "looted" : true } },
-  "reveals": "Found gear belonging to an adventurer on a troll.",
+  "reveals": "Found gear belonging to another adventurer on a troll.",
 }
 ```
 
@@ -222,7 +223,7 @@ ALL fields in a Result object are optional.
 
 Notes:
 
-- All present fields in the Result object are applied.  The fields are
+- All supplied fields in the Result object are applied.  They are
   *not* mutually exclusive; one Result can deal damage, set multiple
   flags, alter multiple state fields, add/drop multiple items, etc.
 
@@ -233,7 +234,7 @@ Notes:
   The effects are accumulated into a batch, and processed before any
   follow-up `then_check` resolves.  See [Reaction](#reaction).
 
-- At the engine level, action-result changes and immediate-reaction
+- At engine level, action-result changes and immediate-reaction
   changes are merged and applied atomically.  Deferred reactions
   (`room.entered`, `turn.end`, etc.) fire after and see the new state.
 
@@ -716,7 +717,7 @@ be omitted if the event lacks that particular detail).
 | `attitude.changed`     | `npc_id`, `old_value`, `new_value`, `delta` |
 | `stat.changed`         | `stat_name`,`old_value`,`new_value`,`delta` |
 | `player.[damaged\|healed]` | `amount`, `new_hp`                      |
-| `encounter.branched`   | `encounter_id`, `branch`, `outcome`         |
+| `encounter.branched`   | `encounter_id`, `branch`                    |
 | `turn.[start\|end]`     | `turn_number`                              |
 
 For the full list, and full documentation of the context keys, see the
@@ -986,7 +987,7 @@ Notes:
 - `max_equipped` defaults to 1; other values can be chosen for, say,
   rings.  The engine uses the highest value among items in the same slot.
 
-The `5e` system uses the following additional fields, both optional:
+The `5e` system uses these additional fields, both optional:
 
 | Field         | Type    | Description                                |
 |---------------|---------|--------------------------------------------|
@@ -1012,23 +1013,21 @@ The Dialogue object specifies how the NPC engages in conversation.
 
 ```json
 {
-  "guidelines": "string (how to portray this NPC)",
-  "on_encounter": "string (what happens when first met — may reference an auto-event)",
+  "guidelines": "The Jester speaks in riddles, puns, and jibes. He gamely offers himself as the butt of jokes. Yet he's smarter than he looks, and knows much about the goings-on at court. He is fundamentally loyal to the King and will never agree to betray him.",
+  "on_encounter": "The Jester hoots when he sees the player, waving and laughing hysterically",
   "attitude_limits": {
     "min": -5,
     "max": 10,
-    "step_per_turn": 3,
+    "step_per_turn": 2,
     "initial": 0
   },
   "will_reveal": {
-    "<topic_id>": {
-      "description": "string",
-      "conditions": ["entity:korbar.attitude >= 2", "topic:abandonment", "inventory:rusty_key"],
-      "set_flag": { "<flag_id>": true | false },
-      "set_entity_state": { "<entity_id>": { "<field>": <value> } }
+    "vizier_is_lich": {
+      "description": "The jester shares that the vizier is a lich",
+      "conditions": [ "entity:jester.attitude >= 5" ],
+      "set_flag": { "vizier_secret_revealed": true }
     }
   },
-  "dialogue_paths": { /* Dialogue paths */ }
 }
 ```
 
@@ -1134,9 +1133,18 @@ triggered by a reaction).
 "aggro": [
   {
     "condition": { "require": "tag:weapon" },
-    "check": { "type": "stat_check", "stat": "STR", "target": 17, "repeatable": true },
+    "check": { "type": "stat_check",
+               "stat": "STR", "target": 17, "repeatable": true },
     "success": { "narrative": "You drove it off." },
-    "failure": { "narrative": "It overpowers you.", "game_over": { "type": "lose", "trigger_id": "creature" } }
+    "failure": { "narrative": "It overpowers you.",
+                 "game_over": { "type": "lose", "trigger_id": "creature" } }
+  },
+  {
+    "condition": { "require": "true" },
+    "result": {
+      "narrative": "Without a weapon, you are helpless against the creature.",
+      "game_over": { "type": "lose", "trigger_id": "creature" }
+    }
   }
 ]
 ```
@@ -1157,6 +1165,9 @@ Notes:
 
 - Rules are evaluated top-to-bottom. The first rule whose `condition`
   matches is applied.
+- If no rule matches, the encounter silently does nothing (no narrative,
+  no effects, no combat, no game-over).  To avoid this, include a
+  catch-all rule with `"require": "true"` as the last entry.
 - Each rule must have exactly one of `result` (direct) or `check`
   (probabilistic with `success`/`failure` branches).
 - `Result` may contain `trigger_combat: true` to enter combat mode
@@ -1242,15 +1253,10 @@ At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be
     "rules": [
       {
         "condition": { /* condition object */ },
-        "outcome": "death | flee | roll | stat_check | combat",
-        "threshold": 0.50,
+        "result": { "narrative": "...", "set_flag": {}, "game_over": {} },
         "check": { "type": "stat_check", "stat": "STR", "target": 12, "repeatable": true },
-        "success": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
-        "failure": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6", "narrative": "..." },
-        "narrative": "string",
-        "set_flag": {},
-        "alter_stat": {},
-        "player_damage": "3d6"
+        "success": { "narrative": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6" },
+        "failure": { "narrative": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6", "game_over": {} }
       }
     ],
     "reactions": [ { /* reaction (optional) */ } ]
@@ -1259,14 +1265,13 @@ At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be
 ```
 
 Rules are evaluated top-to-bottom. The first rule whose `condition` matches is
-applied. Conditions are condition objects (see Condition object section).
+applied.  If no rule matches, the encounter silently does nothing.
+Each rule must have exactly one of `result` (direct) or `check`
+(probabilistic with `success`/`failure` branches).
 
-Rule and branch `alter_stat` objects follow the same modifier semantics as
-interaction `Result.alter_stat`. `player_damage` accepts a dice expression
-(e.g. `"3d6"`, `"2d4+1"`) that the engine rolls as HP damage against the
-player. Set at the rule level to apply unconditionally when the rule fires;
-set at the branch level (`success`/`failure`) to override the
-rule-level value. `outcome: "combat"` starts the multi-round combat system.
+`alter_stat` and `player_damage` on a branch `Result` follow the same
+modifier semantics as interaction results.  `trigger_combat: true` on a
+firing `Result` starts the multi-round combat system.
 
 Notes on encounters and reactions:
 
