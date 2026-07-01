@@ -53,7 +53,7 @@ def get_following_npc_ids(
     for eid, estate in hard.entity_states.items():
         if estate.get("following") is True:
             ent = corpus.entities.get(eid)
-            if ent is not None and ent.type == "npc" and ent.dialogue_guidelines is not None:
+            if ent is not None and ent.type == "npc" and ent.dialogue is not None:
                 if estate.get("alive") is not False:
                     result.append(eid)
     return result
@@ -78,10 +78,10 @@ def inject_following_npcs(
         notes = soft.entity_notes.get(eid, [])[-5:]
         entity_soft = soft.surfaced_soft_items.get(eid, [])
         path_descriptions: dict[str, str] = {}
-        if entity.type == "npc" and entity.dialogue_guidelines:
+        if entity.type == "npc" and entity.dialogue:
             path_descriptions = {
                 path_id: resolvable.description
-                for path_id, resolvable in entity.dialogue_guidelines.dialogue_paths.items()
+                for path_id, resolvable in entity.dialogue.dialogue_paths.items()
             }
 
         entities_visible.append(

@@ -825,7 +825,7 @@ class TestResolveTalkPaths:
             condition=ConditionExpression.model_validate({"require": "flag:impossible_flag == true"}),
             result=Result(narrative="Should not happen."),
         )
-        corpus.entities["korbar"].dialogue_guidelines.dialogue_paths["test_path"] = path
+        corpus.entities["korbar"].dialogue.dialogue_paths["test_path"] = path
         action = TalkAction(
             action_type="talk",
             target="korbar",
@@ -851,7 +851,7 @@ class TestResolveTalkPaths:
                 adjust_attitude={"korbar": 1},
             )
         )
-        corpus.entities["korbar"].dialogue_guidelines.dialogue_paths["compliment"] = path
+        corpus.entities["korbar"].dialogue.dialogue_paths["compliment"] = path
         action = TalkAction(
             action_type="talk",
             target="korbar",

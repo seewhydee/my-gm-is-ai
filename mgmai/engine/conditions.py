@@ -137,8 +137,8 @@ def evaluate_condition_string(
         attitude_val = entity_state.get("attitude")
         if attitude_val is None and corpus is not None:
             entity = corpus.entities.get(key)
-            if entity is not None and entity.dialogue_guidelines is not None:
-                attitude_val = entity.dialogue_guidelines.attitude_limits.initial
+            if entity is not None and entity.dialogue is not None:
+                attitude_val = entity.dialogue.attitude_limits.initial
         if attitude_val is None:
             return False
         return _compare(attitude_val, op, value)
@@ -330,8 +330,8 @@ def get_condition_detail(
         current_val = hard_state.entity_states.get(key, {}).get("attitude")
         if current_val is None and corpus is not None:
             entity = corpus.entities.get(key)
-            if entity is not None and entity.dialogue_guidelines is not None:
-                current_val = entity.dialogue_guidelines.attitude_limits.initial
+            if entity is not None and entity.dialogue is not None:
+                current_val = entity.dialogue.attitude_limits.initial
         if current_val is None:
             detail = f"attitude {key} = (unknown)"
         else:

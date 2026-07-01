@@ -112,7 +112,7 @@ class DialogueActiveNpc(BaseModel):
     id: str
     name: str
     attitude: int
-    dialogue_guidelines: DialogueGuidelines
+    dialogue: DialogueGuidelines
 
 
 class DialogueContext(BaseModel):

@@ -894,7 +894,7 @@ something vague or nondescript.
 The player entity can have standard `state_fields` like `alive` (if
 death is possible).  Any state field declared here must also be
 initialized in the hard state file (`entity_states.player`) later.  No
-`dialogue_guidelines`, `behavior`, `interactions`, or `on_examine`.
+`dialogue`, `behavior`, `interactions`, or `on_examine`.
 The player usually starts with an empty `equipped` list.
 
 ### 2F. NPC entities
@@ -984,7 +984,7 @@ Here is an example of a mechanical (one-turn) encounter:
 
 #### NPC dialogue
 
-For every conversational NPC, write a `dialogue_guidelines` block.
+For every conversational NPC, write a `dialogue` block.
 Its contents – `personality`, `on_encounter`, `can`/`cannot` arrays,
 `knows`, etc. – guide the GM on how the NPC talks, behaves, and
 responds to the player.  Each string should be concise, informative,
@@ -1059,8 +1059,8 @@ Example of a will_reveal structure:
 - [ ] Every item entity has a non-empty `name` (display name; required by the engine)
 - [ ] State fields for `alive` are `true` for creatures that start alive
 - [ ] Every NPC with a `combat` block has `current_hp` in `state_fields`
-- [ ] Every NPC with `dialogue_guidelines` has `attitude` in `state_fields`
-- [ ] Every NPC with `dialogue_guidelines` has `attitude_limits` declared
+- [ ] Every NPC with `dialogue` has `attitude` in `state_fields`
+- [ ] Every NPC with `dialogue` has `attitude_limits` declared
 - [ ] Every `will_reveal` entry uses valid condition syntax
 - [ ] Every `set_flag` in `will_reveal` sets a value matching the flag's
       type (always boolean)
@@ -1631,9 +1631,9 @@ Follow this exact structure:
 - [ ] If corpus has `stats`: `player.stats` is present, and every key matches
       a key in `stats.definitions`
 - [ ] If corpus has no `stats`: `player.stats` is absent
-- [ ] Every NPC with `dialogue_guidelines` has `attitude` set to the value
+- [ ] Every NPC with `dialogue` has `attitude` set to the value
       from the NPC's `attitude_limits.initial` (default 0) in `entity_states`
-- [ ] Every NPC with `dialogue_guidelines` has `attitude` in both
+- [ ] Every NPC with `dialogue` has `attitude` in both
       `state_fields` and `entity_states`
 - [ ] Every NPC with a `combat` block has `current_hp` in both
       `state_fields` and `entity_states`, initialized to `combat.hp`
@@ -1736,7 +1736,7 @@ cross-file consistency issues.
 - [ ] Every `trigger_dialogue` in a reaction references a valid NPC entity ID
   (or is `"self"` on an NPC entity)
 - [ ] Every reaction `on` field is a valid event type (see [`events.md`](events.md))
-- [ ] Every NPC with `dialogue_guidelines.will_reveal` entries has
+- [ ] Every NPC with `dialogue.will_reveal` entries has
   matching `set_flag` / `set_entity_state` values that exist
 - [ ] Every `adjust_attitude` key references a valid NPC entity that has
   `attitude` declared in `state_fields`
@@ -1767,7 +1767,7 @@ cross-file consistency issues.
   listed in the room's `contains` (the engine handles filtering
   based on the state field)
 - [ ] `entity_states` contains all fields declared in the entity's `state_fields`
-- [ ] Every NPC with `dialogue_guidelines` has `attitude` in both `state_fields` and `entity_states`
+- [ ] Every NPC with `dialogue` has `attitude` in both `state_fields` and `entity_states`
 - [ ] Every NPC with a `combat` block has `current_hp` in both `state_fields`
   and `entity_states`, initialized to `combat.hp`
 - [ ] NPC attitude values are within the `[min, max]` range from their
@@ -1775,7 +1775,7 @@ cross-file consistency issues.
 
 ### Soft-state checks
 
-- [ ] Every NPC with `dialogue_guidelines` has `attitude` initialised in `entity_states`
+- [ ] Every NPC with `dialogue` has `attitude` initialised in `entity_states`
 - [ ] `dialogue_state` has the standard null structure
 - [ ] `player_knowledge` is `[]`
 
@@ -1977,8 +1977,8 @@ All IDs must be **snake_case, lowercase ASCII**:
 6. **Duplicate IDs**: Ensure every ID (room, entity, exit, interaction,
    mechanic, flag, topic) is unique across the entire corpus.
 
-7. **NPCs with neither dialogue_guidelines nor behavior**: Conversational NPCs
-   need `dialogue_guidelines`; combat NPCs need `behavior`. An NPC with
+7. **NPCs with neither dialogue nor behavior**: Conversational NPCs
+   need `dialogue`; combat NPCs need `behavior`. An NPC with
    neither will be purely decorative. If the scenario expects interaction,
    one of these must be present.
 

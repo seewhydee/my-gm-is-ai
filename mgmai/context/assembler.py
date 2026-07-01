@@ -98,10 +98,10 @@ def _build_room(room_id: str,
         entity_soft = soft.surfaced_soft_items.get(eid, [])
 
         path_descriptions: dict[str, str] = {}
-        if entity.type == "npc" and entity.dialogue_guidelines:
+        if entity.type == "npc" and entity.dialogue:
             path_descriptions = {
                 path_id: resolvable.description
-                for path_id, resolvable in entity.dialogue_guidelines.dialogue_paths.items()
+                for path_id, resolvable in entity.dialogue.dialogue_paths.items()
             }
 
         combat_block_dict = None
@@ -310,7 +310,7 @@ def _build_dialogue_context(soft: SoftGameState,
     if npc is None:
         return None
 
-    guidelines = npc.dialogue_guidelines
+    guidelines = npc.dialogue
     if guidelines is None:
         return None
 
@@ -336,7 +336,7 @@ def _build_dialogue_context(soft: SoftGameState,
             id=npc_id,
             name=npc.name or npc_id,
             attitude=attitude,
-            dialogue_guidelines=guidelines),
+            dialogue=guidelines),
         recent_exchanges=recent_exchanges,
         topics_discussed=list(ds.topics_discussed),
         revealed_topics=revealed_topics)

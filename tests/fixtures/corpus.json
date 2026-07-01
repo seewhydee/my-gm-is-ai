@@ -308,7 +308,7 @@
           "description": "The fly's disposition toward the player. Positive is friendly."
         }
       },
-      "dialogue_guidelines": {
+      "dialogue": {
         "personality": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine. Every word is a struggle — it is clearly at death's door.",
         "on_encounter": "The fly, with its dying breath, warns the player about the huge spider lurking in the webs below.",
         "can": [
@@ -392,7 +392,7 @@
           "description": "Whether the entity is hidden from view."
         }
       },
-      "dialogue_guidelines": {
+      "dialogue": {
         "personality": "A mindless predator driven by hunger. It does not speak, bargain, or reason — it only hunts.",
         "on_encounter": "",
         "can": [
@@ -594,7 +594,7 @@
           "description": "Korbar's disposition toward the player. Positive is friendly."
         }
       },
-      "dialogue_guidelines": {
+      "dialogue": {
         "personality": "A cynical dwarven rogue and heavy drinker who was abandoned by her adventuring party three years ago during a stealth mission. She is lonely and bitter but secretly craves company. She speaks with a gruff, working-class accent and punctuates her sentences with swigs from her tankard. Despite her misery, she has a sharp wit and a grudging sense of honour.",
         "on_encounter": "Korbar eyes the new arrival warily from behind her tankard, then lets out a bitter laugh. 'Another one, eh? The Bag's got a new guest. Do not bother trying to escape — I have been here three years and never found a way out.'",
         "can": [

@@ -56,7 +56,7 @@ def post_validate_knowledge_tags(
         if entity_state.get("alive") is False:
             continue
 
-        guidelines = npc_entity.dialogue_guidelines
+        guidelines = npc_entity.dialogue
         if guidelines is None:
             continue
 
@@ -153,11 +153,11 @@ def post_validate_attitude_changes(
             }
             continue
 
-        guidelines = npc_entity.dialogue_guidelines
+        guidelines = npc_entity.dialogue
         if guidelines is None:
             rejected[npc_id] = {
                 "change": change.model_dump(),
-                "reason": f"NPC '{npc_id}' has no dialogue_guidelines",
+                "reason": f"NPC '{npc_id}' has no dialogue",
             }
             continue
 

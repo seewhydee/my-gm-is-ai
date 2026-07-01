@@ -197,7 +197,7 @@ class TestDialogueContext:
                 "id": "korbar",
                 "name": "Korbar the Dwarf",
                 "attitude": 2,
-                "dialogue_guidelines": {
+                "dialogue": {
                     "personality": "Gruff but kind.",
                     "attitude_limits": {"min": -5, "max": 10, "step_per_turn": 3, "initial": 0},
                 },
@@ -210,7 +210,7 @@ class TestDialogueContext:
         })
         assert d.active_npc.id == "korbar"
         assert d.active_npc.attitude == 2
-        assert isinstance(d.active_npc.dialogue_guidelines, DialogueGuidelines)
+        assert isinstance(d.active_npc.dialogue, DialogueGuidelines)
         assert d.revealed_topics == ["padlock_mechanism"]
 
     def test_missing_active_npc_raises(self) -> None:
@@ -309,7 +309,7 @@ class TestGMBriefing:
                     "id": "korbar",
                     "name": "Korbar",
                     "attitude": 2,
-                    "dialogue_guidelines": {
+                    "dialogue": {
                         "personality": "Gruff.",
                         "attitude_limits": {"min": -5, "max": 10, "step_per_turn": 3, "initial": 0},
                     },

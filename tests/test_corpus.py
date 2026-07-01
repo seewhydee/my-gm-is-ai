@@ -60,8 +60,8 @@ class TestModuleCorpus:
     def test_sample_corpus_dialogue_path_ids_populated(self, sample_corpus: ModuleCorpus) -> None:
         korbar = sample_corpus.entities.get("korbar")
         assert korbar is not None
-        assert korbar.dialogue_guidelines is not None
-        for path_id, path in korbar.dialogue_guidelines.dialogue_paths.items():
+        assert korbar.dialogue is not None
+        for path_id, path in korbar.dialogue.dialogue_paths.items():
             assert path.id == path_id
             assert isinstance(path, Resolvable)
 
@@ -451,14 +451,14 @@ class TestEntity:
             "type": "npc",
             "description": "A friendly dwarf.",
             "state_fields": {"alive": {"type": "boolean", "description": "Is alive."}},
-            "dialogue_guidelines": {
+            "dialogue": {
                 "personality": "Gruff but kind.",
                 "attitude_limits": {"min": -5, "max": 10, "step_per_turn": 3, "initial": 0},
             },
         })
         assert e.type == "npc"
-        assert e.dialogue_guidelines is not None
-        assert e.dialogue_guidelines.attitude_limits.min == -5
+        assert e.dialogue is not None
+        assert e.dialogue.attitude_limits.min == -5
 
     def test_item_with_tags(self) -> None:
         e = Entity.model_validate({
@@ -552,8 +552,8 @@ class TestEntity:
         assert reveal.set_entity_state == {"spike_trap": {"disarmed": True}}
 
     @pytest.mark.parametrize("entity_type,extra_field,extra_data", [
-        ("feature", "dialogue_guidelines", {"personality": "Creaky.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
-        ("item", "dialogue_guidelines", {"personality": "Chatty.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
+        ("feature", "dialogue", {"personality": "Creaky.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
+        ("item", "dialogue", {"personality": "Chatty.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
         ("item", "behavior", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
         ("player", "behavior", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
     ])
@@ -571,7 +571,7 @@ class TestEntity:
             "description": "The player character.",
         })
         assert e.type == "player"
-        assert e.dialogue_guidelines is None
+        assert e.dialogue is None
         assert e.behavior is None
 
     def test_entity_with_interactions(self) -> None:

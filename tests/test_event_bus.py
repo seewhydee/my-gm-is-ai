@@ -702,7 +702,7 @@ class TestTalkPathSourceType:
 
         # Add a dialogue path with a roll check to Korbar.
         korbar = corpus.entities["korbar"]
-        korbar.dialogue_guidelines.dialogue_paths["ask_secret"] = Resolvable(
+        korbar.dialogue.dialogue_paths["ask_secret"] = Resolvable(
             description="Ask Korbar about the secret.",
             check=RollCheck(threshold=1.0, repeatable=True),
             success=Result(narrative="Korbar whispers the secret."),
@@ -972,7 +972,7 @@ class TestTalkPathThenCheck:
 
         # A result-only dialogue path (no check) with a then_check.
         korbar = corpus.entities["korbar"]
-        korbar.dialogue_guidelines.dialogue_paths["rummage"] = Resolvable(
+        korbar.dialogue.dialogue_paths["rummage"] = Resolvable(
             description="Rummage through Korbar's pack.",
             result=Result(
                 narrative="You find a trinket.",

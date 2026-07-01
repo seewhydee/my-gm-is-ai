@@ -268,7 +268,7 @@ class StateManager:
                     f"entity type is '{entity.type}', not 'npc'")
                 continue
             value = state["attitude"]
-            guidelines = entity.dialogue_guidelines
+            guidelines = entity.dialogue
             if guidelines is not None:
                 if value < guidelines.attitude_limits.min:
                     errors.append(
@@ -294,7 +294,7 @@ class StateManager:
                 elif self.corpus.entities[entry.source_id].type != "npc":
                     errors.append(f"No matching entity: {entry.source_id}")
                 else:
-                    guidelines = self.corpus.entities[entry.source_id].dialogue_guidelines
+                    guidelines = self.corpus.entities[entry.source_id].dialogue
                     will_reveal = guidelines.will_reveal if guidelines else {}
                     if entry.topic_id not in will_reveal:
                         errors.append(

@@ -476,8 +476,8 @@ def resolve_talk(
 
     # Validate dialogue path early so invalid paths prevent dialogue entry.
     path = None
-    if action.dialogue_path and npc_entity.dialogue_guidelines:
-        path = npc_entity.dialogue_guidelines.dialogue_paths.get(action.dialogue_path)
+    if action.dialogue_path and npc_entity.dialogue:
+        path = npc_entity.dialogue.dialogue_paths.get(action.dialogue_path)
         if path is None:
             return ResolutionResult(
                 success=False,
@@ -1234,7 +1234,7 @@ def _apply_result(
             npc_entity = corpus.entities.get(npc_id)
             if npc_entity is None or npc_entity.type != "npc":
                 continue
-            guidelines = npc_entity.dialogue_guidelines
+            guidelines = npc_entity.dialogue
             if guidelines is None:
                 continue
             limits = guidelines.attitude_limits

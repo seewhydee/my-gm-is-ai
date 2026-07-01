@@ -142,7 +142,7 @@ conversation summary is appended here as an `entity_note` on the NPC.
 ## NPC Attitude Tracking
 
 NPC attitude is now tracked as a `state_fields` entry per NPC in
-`hard_state.entity_states` (see `corpus.md` § `dialogue_guidelines.attitude_limits`
+`hard_state.entity_states` (see `corpus.md` § `dialogue.attitude_limits`
 and the `entity_states` section of `hard-state.md`). Attitude changes are proposed
 by LLM Call 2 via the `attitude_changes` block, post-validated by the engine, and
 applied to `hard_state.entity_states[<npc_id>].attitude` via
@@ -164,10 +164,10 @@ and post-validated by the engine in step 4.5:
 3. If an NPC's hard state says `alive == false`, all attitude changes for that
    NPC are rejected.
 4. The engine initialises each NPC's attitude from the corpus
-   `dialogue_guidelines.attitude_limits.initial` (default 0) if no explicit value
+   `dialogue.attitude_limits.initial` (default 0) if no explicit value
    is provided in the hard state startup file.
 
-### Relationship to `dialogue_guidelines`
+### Relationship to `dialogue`
 
 The module corpus may gate certain dialogue topics behind attitude thresholds
 via the `will_reveal` block. The engine evaluates the `conditions` on each
@@ -447,7 +447,7 @@ text within quotes attributed to the NPC) or the LLM may include a structured
 
 When `active_npc != null`, the Context Assembler includes a `dialogue_context`
 block in the GMBriefing with the last 5 entries from `conversation_log`, the
-NPC's `dialogue_guidelines`, current attitude, and `topics_discussed`. This
+NPC's `dialogue`, current attitude, and `topics_discussed`. This
 gives LLM Call 1 enough conversational awareness to parse player inputs that
 mix action narration with in-character speech, without exposing the full
 verbatim chat log.

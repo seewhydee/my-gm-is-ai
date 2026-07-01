@@ -162,7 +162,7 @@ Soft State, for the ruling LLM (call 1).
       "id": "korbar",
       "name": "Korbar the Dwarf",
       "attitude": 2,
-      "dialogue_guidelines": {
+      "dialogue": {
         "personality": "Cynical dwarven rogue, heavy drinker, lonely but proud.",
         "cannot": ["Leave the bag", "Stop drinking", "Remember which way is north"],
         "knows": ["The padlock mechanism", "The secret compartment in the axe head"],
@@ -201,7 +201,7 @@ Soft State, for the ruling LLM (call 1).
    `entities_visible`, listing all non-concealed entities in the room.
    Each of these entity entries includes the entity ID, current hard
    state, and entity notes (up to 3 most recent). For NPCs with
-   `dialogue_guidelines.dialogue_paths`, `entities_visible[*].dialogue_paths`
+   `dialogue.dialogue_paths`, `entities_visible[*].dialogue_paths`
    is a map of `{path_id: description}` so LLM Call 1 can match player intent
    to the correct special dialogue path.
 
@@ -232,7 +232,7 @@ Soft State, for the ruling LLM (call 1).
 
 9. **Dialogue context** is included when `soft_state.dialogue_state.active_npc`
    is non-null. The block contains the active NPC's identity, attitude,
-   full `dialogue_guidelines`, last 5 entries from `conversation_log`,
+   full `dialogue`, last 5 entries from `conversation_log`,
    `topics_discussed`, and `revealed_topics` (topic IDs already revealed to
    the player). If `active_npc` is null, `dialogue_context` is omitted.
 
@@ -378,7 +378,7 @@ The LLM must output a single structured action, corresponding to the player's in
 | `utterance`      | string  | no       | Verbatim spoken words the player's character says. May be absent if the player is describing speech indirectly or the input is purely non-verbal (e.g., nodding, gesturing). |
 | `detail`         | string  | yes      | Non-verbal context: tone, body language, actions accompanying the speech. |
 | `ends_dialogue`  | boolean | no       | If `true`, signals that the player intends to end the conversation. The engine will archive the conversation log to the NPC's `entity_notes` and clear `dialogue_state.active_npc`. |
-| `dialogue_path`  | string  | no       | If the player is attempting a specific special dialogue path (e.g., flatter, intimidate, persuade, deliver specific information), set this to the path ID declared in the NPC's `dialogue_guidelines.dialogue_paths`. LLM Call 1 receives each path's `description` in `current_room.entities_visible[*].dialogue_paths` as `{path_id: description}` and should use that description to match player intent to the correct path ID. The engine resolves the path's condition, check, and results. Omit for freeform conversation. |
+| `dialogue_path`  | string  | no       | If the player is attempting a specific special dialogue path (e.g., flatter, intimidate, persuade, deliver specific information), set this to the path ID declared in the NPC's `dialogue.dialogue_paths`. LLM Call 1 receives each path's `description` in `current_room.entities_visible[*].dialogue_paths` as `{path_id: description}` and should use that description to match player intent to the correct path ID. The engine resolves the path's condition, check, and results. Omit for freeform conversation. |
 
 **Engine validation:**
 - `target` must be an NPC entity present in the current room, with `state.alive` true.
@@ -754,7 +754,7 @@ LLM Call 2 receives:
 
 4. **Do not reveal hidden information.** If a secret exit is hidden, do not
    mention it. If an NPC knows something but hasn't shared it, the LLM may
-   improvise their dialogue but must respect the `dialogue_guidelines.cannot`
+   improvise their dialogue but must respect the `dialogue.cannot`
    constraints and `will_reveal_readiness` (only tag topics with
    `conditions_met: true` as revealed). The engine provides these constraints
    in the `warnings` field.

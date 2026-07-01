@@ -410,7 +410,7 @@ class Entity(BaseModel):
     take_check: Optional[GatedCheck] = None
     interactions: List[Interaction] = Field(default_factory=list)
     on_examine: List[OnExamineEvent] = Field(default_factory=list)
-    dialogue_guidelines: Optional[DialogueGuidelines] = None
+    dialogue: Optional[DialogueGuidelines] = None
     behavior: Optional[Behavior] = None
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
     follower_blacklist: Optional[List[str]] = None
@@ -420,10 +420,10 @@ class Entity(BaseModel):
 
     @model_validator(mode="after")
     def check_type_specific_fields(self) -> Entity:
-        if self.type != "npc" and self.dialogue_guidelines is not None:
+        if self.type != "npc" and self.dialogue is not None:
             raise ValueError(
-                f"Entity type '{self.type}' must not have 'dialogue_guidelines'. "
-                f"Only 'npc' entities may carry dialogue_guidelines.")
+                f"Entity type '{self.type}' must not have 'dialogue'. "
+                f"Only 'npc' entities may carry dialogue.")
         if self.type != "npc" and self.behavior is not None:
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'behavior'. "

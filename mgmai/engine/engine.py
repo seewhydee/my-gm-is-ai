@@ -716,10 +716,10 @@ def _build_room_after(
         entity_soft = soft.surfaced_soft_items.get(eid, [])
 
         path_descriptions: dict[str, str] = {}
-        if entity.type == "npc" and entity.dialogue_guidelines:
+        if entity.type == "npc" and entity.dialogue:
             path_descriptions = {
                 path_id: resolvable.description
-                for path_id, resolvable in entity.dialogue_guidelines.dialogue_paths.items()
+                for path_id, resolvable in entity.dialogue.dialogue_paths.items()
             }
 
         entities_visible.append(
@@ -798,7 +798,7 @@ def _build_will_reveal_readiness(
         if entity is None or entity.type != "npc":
             continue
 
-        guidelines = entity.dialogue_guidelines
+        guidelines = entity.dialogue
         if guidelines is None:
             continue
 
@@ -849,7 +849,7 @@ def _build_npc_attitude_limits(
         if entity is None or entity.type != "npc":
             continue
 
-        guidelines = entity.dialogue_guidelines
+        guidelines = entity.dialogue
         if guidelines is None:
             continue
 

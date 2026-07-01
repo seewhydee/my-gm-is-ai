@@ -41,7 +41,7 @@
           "description": "Attitude toward the player."
         }
       },
-      "dialogue_guidelines": {
+      "dialogue": {
         "personality": "A talking fly on the verge of death. Speaks in a weak, nasally whine. Knows only one thing of value and is desperate to impart it before expiring.",
         "on_encounter": "The fly groans weakly as you disturb the web.",
         "can": [
@@ -111,7 +111,7 @@
           "description": "Current hit points."
         }
       },
-      "dialogue_guidelines": {
+      "dialogue": {
         "personality": "Vain, stupid, suspicious, and malicious. Speaks in a sibilant hiss. Can be flattered but is fundamentally a predator that sees the player as prey. Grudgingly replies if addressed, but does not initiate conversation.",
         "on_encounter": "The spider watches you with hungry eyes, mandibles twitching.",
         "can": [
@@ -349,7 +349,7 @@
       "follower_blacklist": [
         "secret_pocket"
       ],
-      "dialogue_guidelines": {
+      "dialogue": {
         "personality": "Cynical, tired, and deeply lonely after being abandoned by her adventuring party. Wears ludicrously noisy platemail that prevents stealth. Drinks to forget. Despite her bitterness, she craves companionship and can warm up to respectful treatment.",
         "on_encounter": "Korbar looks up blearily as you approach, reaching instinctively for a weapon that isn't there. 'Who in the nine hells are you?' she slurs.",
         "can": [

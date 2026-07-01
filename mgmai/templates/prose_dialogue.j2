@@ -23,7 +23,7 @@ until the engine sets `dialogue_exited`.
 
 The briefing's `dialogue_context` contains:
 
-- `active_npc`: id, name, attitude, and `dialogue_guidelines`
+- `active_npc`: id, name, attitude, and `dialogue`
   (personality, speech patterns, knowledge constraints)
 - `recent_exchanges`: verbatim back-and-forth for narrative continuity
 - `topics_discussed` / `revealed_topics`: what's already been covered
@@ -51,7 +51,7 @@ not omit any words said by the NPC.  The player sees *only*
 `narration`; `npc_response` is a logging aid, not a substitute.
 
 The NPC should:
-- Stay in character per their `dialogue_guidelines`
+- Stay in character per their `dialogue`
 - Respond naturally to the player's utterance
 - Have their own goals and personality — don't just be a quest-giver
 - Not reveal secrets unless `conditions_met` is true (check `will_reveal_readiness`)

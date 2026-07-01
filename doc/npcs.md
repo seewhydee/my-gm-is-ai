@@ -4,7 +4,7 @@ NPCs are characters the player can interact with. This document covers how NPCs 
 
 ## NPC Definition in the Corpus
 
-An NPC is an entity with `type: "npc"` in the module corpus.  NPCs carry two optional blocks not available to other entity types: `dialogue_guidelines` and `behavior`.
+An NPC is an entity with `type: "npc"` in the module corpus.  NPCs carry two optional blocks not available to other entity types: `dialogue` and `behavior`.
 
 ```json
 {
@@ -17,7 +17,7 @@ An NPC is an entity with `type: "npc"` in the module corpus.  NPCs carry two opt
         "attitude": { "type": "number",  "description": "Disposition toward the player" },
         "hidden":   { "type": "boolean", "description": "Whether the NPC is hidden from view" }
       },
-      "dialogue_guidelines": { ... },
+      "dialogue": { ... },
       "behavior": { ... }
     }
   }
@@ -36,11 +36,11 @@ Additional fields like `hidden`, `injured`, `following`, etc. can be declared as
 
 ## Dialogue Guidelines
 
-The `dialogue_guidelines` block defines an NPC's conversational personality, attitude dynamics, knowledge gating, and exit behaviour.
+The `dialogue` block defines an NPC's conversational personality, attitude dynamics, knowledge gating, and exit behaviour.
 
 ```json
 {
-  "dialogue_guidelines": {
+  "dialogue": {
     "personality": "Gruff, miserable, but secretly lonely. Speaks in short, clipped sentences.",
     "on_encounter": "Korbar looks up from her bottle. 'Another one, eh? How'd you get here?'",
     "can": [
@@ -116,7 +116,7 @@ Write descriptions as clear player-intent phrases:
 
 ```json
 {
-  "dialogue_guidelines": {
+  "dialogue": {
     "dialogue_paths": {
       "flatter": {
         "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
@@ -164,7 +164,7 @@ Attitude is stored in **hard game state** (`entity_states.<npc_id>.attitude`). T
 
 ### Attitude Limits
 
-Defined per-NPC in `dialogue_guidelines.attitude_limits`:
+Defined per-NPC in `dialogue.attitude_limits`:
 
 | Field | Description |
 |-------|-------------|
@@ -188,7 +188,7 @@ Defined per-NPC in `dialogue_guidelines.attitude_limits`:
 
 2. The post-validation engine step then checks each proposal against a set of conditions:
    - NPC exists and is alive
-   - NPC has `dialogue_guidelines`
+   - NPC has `dialogue`
    - `old_value` matches the current hard-state attitude
    - `|new_value - old_value|` does not exceed `step_per_turn`
    - `new_value` is within `[min, max]`
@@ -347,7 +347,7 @@ When dialogue is active, the Context Assembler injects a `dialogue_context` bloc
 
 | Field | Content |
 |-------|---------|
-| `active_npc` | NPC ID, name, current attitude, and full `dialogue_guidelines` |
+| `active_npc` | NPC ID, name, current attitude, and full `dialogue` |
 | `recent_exchanges` | Last 5 player/NPC exchange pairs from the conversation log |
 | `topics_discussed` | List of topic strings discussed so far |
 | `revealed_topics` | Topic IDs this NPC has already revealed to the player |
@@ -419,7 +419,7 @@ Encounter outcomes (death, flee, etc.) update hard state, which in turn gates di
 ## Summary: Per-Turn NPC Data Flow
 
 ```
-Corpus (dialogue_guidelines, will_reveal, attitude_limits)
+Corpus (dialogue, will_reveal, attitude_limits)
     │
     ▼
 Context Assembler ──► GMBriefing

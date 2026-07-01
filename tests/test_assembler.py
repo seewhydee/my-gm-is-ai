@@ -199,7 +199,7 @@ class TestEntityVisibility:
     def test_dialogue_paths_included_for_npc(self, state_manager):
         from mgmai.models.corpus import Resolvable, Result
         state_manager.hard_state.player.location = "bag_floor"
-        state_manager.corpus.entities["korbar"].dialogue_guidelines.dialogue_paths[
+        state_manager.corpus.entities["korbar"].dialogue.dialogue_paths[
             "test_path"
         ] = Resolvable(
             description="Test path description for the assembler.",
@@ -730,7 +730,7 @@ class TestDialogueContext:
         assert result.dialogue_context.active_npc.attitude == 3
         assert result.dialogue_context.topics_discussed == ["introductions"]
 
-    def test_dialogue_guidelines_included(self, state_manager):
+    def test_dialogue_included(self, state_manager):
         state_manager.soft_state.dialogue_state = DialogueState(
             active_npc="korbar",
         )
@@ -742,8 +742,8 @@ class TestDialogueContext:
         )
         ctx = result.dialogue_context
         assert ctx is not None
-        assert ctx.active_npc.dialogue_guidelines.personality != ""
-        assert "cynical" in ctx.active_npc.dialogue_guidelines.personality.lower()
+        assert ctx.active_npc.dialogue.personality != ""
+        assert "cynical" in ctx.active_npc.dialogue.personality.lower()
 
     def test_dialogue_recent_exchanges(self, state_manager):
         state_manager.soft_state.dialogue_state = DialogueState(

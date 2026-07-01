@@ -813,7 +813,7 @@ unique `entity_id`.
     "interactions": [ { /* interaction */ } ],
     "on_examine": [ { /* on_examine event */ } ],
     "reactions": [ { /* reaction */ } ],
-    "dialogue_guidelines": { /* only for npc type */ },
+    "dialogue": { /* only for npc type */ },
     "behavior": { /* only for npc (monster) type */ },
     "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } },
     "follower_blacklist": ["<room_id>", ...]
@@ -1004,7 +1004,7 @@ NPC-specific fields:
 
 | Field                   | Type   | Description |
 |-------------------------|--------|-------------|
-| `dialogue_guidelines`(*)| object | See [Dialogue Guidelines](#dialogue-guidelines). |
+| `dialogue`(*)| object | See [Dialogue Guidelines](#dialogue-guidelines). |
 | `behavior` (*)          | object | Encounter rules for combat-capable NPCs (see [Behavior](#behavior-for-npc-with-combat)). |
 | `combat` (*)            | object | HP-based combat stats (hp, ac, atk, dmg, etc.). Only for NPCs. |
 | `follower_blacklist`(*) | array of room IDs | Rooms this NPC refuses to enter when following the player. |
@@ -1053,7 +1053,7 @@ The engine recognises several reserved state fields:
   this for creatures that can flee or be driven off. Adventures that do not use
   fleeing simply omit the field; it defaults to unset, so the check passes.
 - `attitude` (NPC only) — tracks NPC disposition as an integer. Required for
-  all NPCs that have `dialogue_guidelines`, since `attitude_limits` constrains
+  all NPCs that have `dialogue`, since `attitude_limits` constrains
   how attitude can change. The engine initializes attitude from
   `attitude_limits.initial` (default 0). Conditions can check attitude via
   `attitude:<npc_id> <op> <value>`.
