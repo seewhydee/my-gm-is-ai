@@ -145,6 +145,11 @@ at startup that every `room_id` in `room_states` exists in the module corpus,
 and that every field (except `visited` and `is_current`) matches a declared `state_fields` entry
 in that room's corpus definition.
 
+If a field's `state_fields` declaration in the corpus includes an `initial`
+value and no explicit value is supplied in `hard-state.json`, the engine uses
+the corpus `initial` as the default.  A value supplied in `hard-state.json`
+always overrides the corpus default.
+
 ---
 
 ## `entity_states` — Per-entity mutable state
@@ -179,6 +184,11 @@ The engine validates at startup that:
 - Every entity_id in `entity_states` exists in the module corpus.
 - Every field name matches a declared `state_field` for that entity.
 - Values are of the correct type.
+
+If a field's `state_fields` declaration in the corpus includes an `initial`
+value and no explicit value is supplied in `hard-state.json`, the engine
+uses the corpus `initial` as the default.  A value supplied in
+`hard-state.json` always overrides the corpus default.
 
 ### State filtering for GMBriefing
 

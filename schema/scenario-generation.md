@@ -665,19 +665,35 @@ Notes:
 #### State fields
 
 Using the state fields planned in the Scenario Map, construct the
-entity's `state_fields`.  Each field must have a terse but informative
-description – the GM needs this to infer what the field means.
+entity's `state_fields`.  Each field must have a `type`, a terse but
+informative `description`, and — wherever the initial value differs
+from the type default — an `initial` value.  Including `initial`
+alongside the declaration keeps the corpus self-documenting and
+avoids context-switching between files.
 
 Example:
 
 ```json
 "state_fields": {
-  "alive": { "type": "boolean", "description": "Whether the spider is alive." },
+  "alive": { "type": "boolean", "initial": true, "description": "Whether the spider is alive." },
   "fled": { "type": "boolean", "description": "Whether the spider has fled." },
-  "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 10." },
-  "hidden": { "type": "boolean", "description": "Whether the entity is hidden from view." }
+  "attitude": { "type": "number", "initial": -2, "description": "Attitude toward the player, -10 to 10." },
+  "hidden": { "type": "boolean", "initial": true, "description": "Whether the entity is hidden from view." }
 }
 ```
+
+Notes:
+
+- `initial` is optional.  When omitted, the engine uses the type
+  default (`false` for boolean, `0` for number, `""` for string).
+
+- Fields whose starting value IS the type default (e.g., `fled:
+  false`) do not need an `initial` key, though including it
+  explicitly is harmless.
+
+- The `hard-state.json` file (built in Step 5) can override any
+  corpus `initial` value.  Treat the corpus `initial` as the
+  canonical default.
 
 If an entity is concealed (initially, or subsequently in the
 adventure), it must have a `hidden` state field: e.g., a lurking
@@ -1608,21 +1624,25 @@ Follow this exact structure:
    all flag values should be booleans.
 
 7. **`room_states`** — for every room in the corpus, add `{ "visited": false }`.
-   If a room has additional state fields declared in its `state_fields`, add
-   those with initial values.
+   If a room has additional state fields declared in its `state_fields`, collect
+   those with their initial values.  For each field, use the value from the
+   field's `initial` key if present in the corpus; otherwise use the type
+   default (`false`, `0`, or `""`).
 
 8. **`entity_states`** — for every entity that declared `state_fields` in the
-   corpus, add an entry with initial values for every declared field:
-   - Boolean fields: `false` (or `true` for `alive` on things that start alive)
-   - Number fields: `0` (or the NPC's `attitude_limits.initial` for attitude,
-     or the NPC's `combat.hp` for `current_hp` on combat-capable NPCs)
+   corpus, add an entry with initial values for every declared field.  For each
+   field, use the value from the field's `initial` key if present in the corpus;
+   otherwise use the type default:
+   - Boolean fields: `false`
+   - Number fields: `0` (except `attitude`, which defaults to
+     `attitude_limits.initial`, and `current_hp`, which defaults to `combat.hp`)
    - String fields: `""`
    **Do not skip any entity that has state_fields.** Every field declared in
    the entity's `state_fields` must have a value here.
 
 9. **`turn_count`** — always `0`.
 
-8. **`game_over`** — always `null`.
+10. **`game_over`** — always `null`.
 
 ---
 
@@ -1631,6 +1651,8 @@ Follow this exact structure:
 - [ ] Every room in corpus has a `room_states` entry with `visited: false`
 - [ ] Every entity with `state_fields` in corpus has an `entity_states`
       entry with every field initialised
+- [ ] Every state field with an `initial` in the corpus has a matching
+      value in `room_states`/`entity_states` (or a deliberate override)
 - [ ] Every entity with `hidden` in `state_fields` has `hidden` initialised
       in `entity_states`
 - [ ] Every flag name used anywhere in the corpus appears in `flags`

@@ -438,7 +438,7 @@ world graph keyed by a globally-unique `room_id`.
     "on_examine": [ { /* on_examine event */ } ],
     "is_start_room": false,
     "reactions": [ { /* reaction */ } ],
-    "state_fields": { "<field_name>": { "type": "boolean|number|string", "description": "string" } }
+    "state_fields": { "<field_name>": { "type": "boolean|number|string", "description": "string", "initial": <value> } }
   }
 }
 ```
@@ -483,6 +483,10 @@ Notes:
   - `is_current` is true only for the player's current room.
     This is auto-computed.  Do not move the player by changing this;
     use `set_player_location` in a Result instead.
+
+- Each author-defined state field may include an optional `initial`
+  value (matching the field's `type`), specifying the value at game
+  start.  If omitted, the type default applies (`false`, `0`, `""`).
 
 - `interactions` is an array of [Resolvables](#resolvable) describing
   operations performable on the room.  For each Resolvable,
@@ -791,7 +795,7 @@ Entities are unique objects that appear in rooms or inventory.
     "reactions": [ { /* reaction */ } ],
     "dialogue": { /* only for npc type */ },
     "aggro": { /* only for npc (monster) type */ },
-    "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } },
+    "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string", "initial": <value> } },
     "follower": { /* only for npc type */ }
   }
 }
@@ -839,9 +843,10 @@ Notes:
   | `current_hp` | number  | Current hit points (for combat)           |
   | `open`       | boolean | Container open/closed state               |
 
-  **Author-defined state fields** must be declared in `state_fields`,
-  with a `type` (`"boolean"`, `"number"`, or `"string"`) and a
-  `description` string.  Examples: `looted`, `activated`, `cursed`.
+  **Author-defined state fields** must be declared in `state_fields`.
+  Examples: `looted`, `activated`, `cursed`.  Each must have a `type`
+  (`"boolean"`, `"number"`, or `"string"`), a `description` string,
+  and an optional `initial` value at game start.
 
   The reserved state field `hidden` declares explicit concealment
   (e.g., a lurking enemy, or a sword buried in rubble). When `true`,
@@ -1205,8 +1210,8 @@ NPC's `state_fields`:
 
 ```json
 "state_fields": {
-  "alive": { "type": "boolean", "description": "..." },
-  "attitude": { "type": "number", "description": "..." },
+  "alive": { "type": "boolean", "initial": true, "description": "Whether this NPC is alive." },
+  "attitude": { "type": "number", "initial": 0, "description": "Attitude toward the player, -10 to 10." },
   "following": { "type": "boolean", "description": "Whether this NPC follows the player between rooms." }
 }
 ```
