@@ -61,7 +61,7 @@ true; each sub-condition is a condition string or nested condition.
 
 ```json
 { "any": [ "flag:volcano_erupting == true",
-		   { "all": [ "entity:frodo.alive", "attitude:frodo >= 4" ] } ] }
+		   { "all": [ "entity:frodo.alive", "entity:frodo.attitude >= 4" ] } ] }
 ```
 
 **`all`** — availability requires all sub-conditions to be true; each
@@ -91,7 +91,6 @@ Condition strings have one of two forms:
 | `tag`        | Item with this tag in inventory/equipment           |
 | `entity`     | Entity with named state field (e.g. `spider.alive`) |
 | `room`       | Room with named state field (e.g. `parlor.visited`) |
-| `attitude`   | Entity ID of an NPC; value is the NPC's attitude    |
 | `topic`      | Topic ID of a topic discussed in current dialogue   |
 | `stat`       | Stat name; value is the value of that player stat   |
 | `event`      | Value in current event dispatch context (see below).|
@@ -100,8 +99,12 @@ Notes:
 
 - The `equipped` domain also accepts tag names: `equipped:weapon`
   holds if any equipped item has tag `"weapon"`.
-- The `attitude` domain uses the NPC's current attitude, or, if not
-  set, `attitude_limits.initial`.  See [NPC attitude](#npc-attitude).
+- An NPC's attitude is stored in `entity_states[<npc_id>].attitude` and
+  accessed via `entity:<npc_id>.attitude` conditions, e.g.
+  `entity:frodo.attitude >= 4`.  If the NPC has dialogue,
+  `attitude_limits.initial` provides the default at game start; the
+  corpus author should initialize all dialogue-NPC attitudes to this
+  value in the hard-state JSON.
 - The `event` domain is used in [Reaction dispatch](#reaction-object).
   It evaluates to `false` outside event dispatch.
 
@@ -787,9 +790,9 @@ Entities are unique objects that appear in rooms or inventory.
     "on_examine": [ { /* on_examine event */ } ],
     "reactions": [ { /* reaction */ } ],
     "dialogue": { /* only for npc type */ },
-    "behavior": { /* only for npc (monster) type */ },
+    "aggro": { /* only for npc (monster) type */ },
     "state_fields": { "<field_name>": { "type": "boolean | number | string", "description": "string" } },
-    "follower_blacklist": ["<room_id>", ...]
+    "follower": { /* only for npc type */ }
   }
 }
 ```
@@ -817,27 +820,40 @@ Notes:
 - `tags`, if provided, contains semantic tags that can be accessed via
   `tag:<value>` in [Condition strings](#condition-string).  They are
   distinct from [Equipment Tags](#equipment).
-  
+
   The special `"container"` tag should be placed on entities that act
   as [containers](#container) with open/close functionality.
 
-- State fields have entity-unique IDs (dict keys) chosen by the corpus
-  author.  The following state fields have special meanings,
-  documented below: `alive`, `fled`, `attitude`, `hidden`,
-  `following`, `current_hp`, and `open`.  The corpus author can also
-  define custom state fields.
+- State fields have entity-unique IDs.  There are two types:
 
-  The special state field `hidden` declares explicit concealment
-  (e.g., a lurking enemy, or a sword buried in rubble). When it is
-  present and `true`, the engine omits the entity (even from the GM,
-  to avoid leakage).  DO NOT use `hidden` for entities that are merely
-  inside a closed [container](#container); that kind of concealment is
-  controlled by the container's `open` state.
+  **Reserved state fields** are managed by the engine and never need
+  to be declared in `state_fields`:
+
+  | Field        | Type    | Purpose                                   |
+  |--------------|---------|-------------------------------------------|
+  | `alive`      | boolean | NPC active? (false => reactions inactive) |
+  | `fled`       | boolean | NPC fled? (false => reactions inactive)   |
+  | `attitude`   | integer | NPC disposition (higher == friendlier)    |
+  | `hidden`     | boolean | Explicit concealment (see below)          |
+  | `following`  | boolean | NPC follows player between rooms          |
+  | `current_hp` | number  | Current hit points (for combat)           |
+  | `open`       | boolean | Container open/closed state               |
+
+  **Author-defined state fields** must be declared in `state_fields`,
+  with a `type` (`"boolean"`, `"number"`, or `"string"`) and a
+  `description` string.  Examples: `looted`, `activated`, `cursed`.
+
+  The reserved state field `hidden` declares explicit concealment
+  (e.g., a lurking enemy, or a sword buried in rubble). When `true`,
+  the engine omits the entity (even from the GM, to avoid leakage).
+  DO NOT use `hidden` for entities that are merely inside a closed
+  [container](#container); that kind of concealment is controlled by
+  the container's `open` state.
 
 - `interactions` is an array of [Resolvables](#resolvable) listing
-  non-generic operations that can be performed on the entity.  Each
-  interaction's `id` must be entity-unique.  The rest of the spec is
-  the same as for [Room](#room) interactions.
+  non-generic operations performable on the entity.  Each must have an
+  entity-unique `id`.  The rest of the spec is the same as for
+  [Room](#room) interactions.
 
 ### Feature
 
@@ -978,24 +994,147 @@ The `5e` system uses the following additional fields, both optional:
 NPCs are entities the player can fight or socialize with.  NPC entity
 blocks support the following additional fields:
 
-| Field                   | Type   | Description                       |
-|-------------------------|--------|-----------------------------------|
-| `dialogue`(*)           | object | See [Dialogue](#dialogue) |
-| `behavior` (*)          | object | Encounter rules; see [Behavior](#behavior)) |
-| `combat` (*)            | object | Combat stats (hp, ac, atk, dmg, etc.) |
-| `follower_blacklist`(*) | array of room IDs | Rooms this NPC refuses to enter when following the player. |
+| Field           | Type   | Description                      |
+|-----------------|--------|----------------------------------|
+| `dialogue`(*)   | object | See [Dialogue](#dialogue)        |
+| `aggro` (*)     | object | See [Aggro](#aggro)              |
+| `follower` (*)  | object | See [Follower](#follower)        |
+| `combat` (*)    | object | Combat stats (hp, ac, atk, etc.) |
+> (*) optional
+
+#### Dialogue
+
+The Dialogue object specifies how the NPC engages in conversation.
+
+```json
+{
+  "personality": "string (tone, demeanor, motivations)",
+  "on_encounter": "string (what happens when first met — may reference an auto-event)",
+  "can": ["list of things the NPC can/will do"],
+  "cannot": ["list of things the NPC will never do or say"],
+  "knows": ["list of facts the NPC possesses"],
+  "attitude_limits": {
+    "min": -5,
+    "max": 10,
+    "step_per_turn": 3,
+    "initial": 0
+  },
+  "will_reveal": {
+    "<topic_id>": {
+      "description": "string",
+      "conditions": ["entity:korbar.attitude >= 2", "topic:abandonment", "inventory:rusty_key"],
+      "set_flag": { "<flag_id>": true | false },
+      "set_entity_state": { "<entity_id>": { "<field>": <value> } }
+    }
+  },
+  "dialogue_paths": { /* Dialogue paths */ }
+}
+```
+
+| Field              | Type     | Description                          |
+|--------------------|----------|--------------------------------------|
+| `personality`      | string   | Tone, demeanor, etc.; surfaced to GM |
+| `attitude_limits`(*)| object  | NPC's attitude bounds (see below)    |
+| `on_encounter`(*)  | string   | Describes behavior on first meeting  |
+| `can` (*)          | string[] | Things the NPC can/will do           |
+| `cannot` (*)       | string[] | Things the NPC will never do         |
+| `knows` (*)        | string[] | See [NPC Knowledge](#npc-knowledge)  |
+| `will_reveal` (*)  | object   | See [NPC Knowledge](#npc-knowledge)  |
+| `dialogue_paths`(*)| Resolvable[] | See [Dialogue Path](#dialogue-path) |
 > (*) optional
 
 Notes:
 
-- The following state fields have special meanings for NPCs:
-  - `alive` (boolean) — whether the NPC is active.  Entity reactions are active
-    only when `alive` is not `false`.
-  - `fled` (boolean) — whether the NPC has fled.  Entity reactions are
-    active only when `fled` is not `true`.
-  - `attitude` (integer) — NPC's disposition (higher == friendlier).
-    Required for all NPCs with [dialogue](#dialogue).  Conditions can
-    check attitude via `attitude:<npc_id> <op> <value>`.
+- `personality`, `can`, and `cannot`, are freeform strings used to
+  inform the GM on how the NPC should behave in conversation.
+
+- `on_encounter`, if present, describes the NPC's canonical reaction
+  when first encountered.  The GM should not contradict this, but
+  might not use it verbatim.
+
+- `attitude_limits`, if present, sets the NPC's engine-enforced
+  attitude limits.  All fields are optional.  Defaults: `min: 0`,
+  `max: 0`, `initial: 0`, `step_per_turn: 1`.
+
+  Example: a troll whose hostility can vary, but never turns friendly:
+  `"attitude_limits": { "min": -10, "max": -1 }`.
+
+#### Dialogue Path
+
+A Dialogue Path is any special line of conversation that can trigger
+mechanical effects.  It is modeled as a [Resolvable](#resolvable) with
+a required `description` field.  The `id` should be entity-unique.
+
+```json
+{
+  "convince_orc_dead": {
+    "description": "convince the King the orc has been dealt with",
+    "condition": { "require": "entity:orc.alive == false" },
+    "check": {
+      "type": "stat_check",
+      "stat": "CHA",
+      "target": 12,
+      "repeatable": false
+    },
+    "skip_check_if": { "require": "inventory:orc_head" },
+    "result": {
+	  "narrative" : "The King is overjoyed and gives the player a magic shield",
+	  "add_item": [ "magic_shield" ],
+	  "adjust_attitude": { "king": 3 }
+    }
+  }
+}
+```
+
+When the player converses with the NPC, the GM uses the Resolvable's
+`description` to decide if the player's dialogue should trigger the
+Dialogue Path.  The other fields specify the mechanics: gating
+condition, check, and/or branching outcomes.
+
+#### NPC Knowledge
+
+NPC dialogue revelations follow a post-validation pattern that preserves engine
+authority while letting the creative LLM control dialogue timing:
+
+1. The engine includes each NPC's `will_reveal` readiness in the EngineResult
+   passed to LLM Call 2 (which topics are conditions-met and thus available to
+   be revealed this turn).
+2. LLM Call 2 generates dialogue prose and may emit `knowledge_tags` —
+   structured tags indicating which `will_reveal` topic IDs the NPC actually
+   revealed in its spoken dialogue.
+3. The engine post-validates each tag: is it a declared `will_reveal` topic
+   for this NPC? Are all conditions met? If so, the engine applies the topic's
+   `set_flag` and `set_entity_state` side effects, and records a
+   `KnowledgeEntry` in `soft_state.player_knowledge`.
+4. On subsequent turns, the Context Assembler includes revealed topics (with
+   descriptions) in the GMBriefing, so LLM Call 1 knows what the player has
+   learned.
+
+Invalid or conditions-not-met tags are silently rejected. LLM Call 2 is
+prompted to respect the `will_reveal` readiness signals; if it narrates a
+reveal that the engine rejects, the prose and the mechanical state may
+diverge (same risk as rejected soft-state patches).
+
+- `will_reveal`: Each topic has a `description`, a `conditions` array (all must be true for the topic to be revealable), and optional `set_flag` / `set_entity_state` side effects. When LLM Call 2 tags a topic as revealed via `knowledge_tags`, the engine validates conditions and applies the side effects.
+
+#### Follower
+
+An NPC can carry an optional `follower` object to configure
+follower-specific behavior:
+
+```json
+"follower": {
+  "blacklist": ["<room_id>", ...]
+}
+```
+
+| Field         | Type     | Description |
+|---------------|----------|-------------|
+| `blacklist`   | string[] | Room IDs this NPC refuses to enter when following the player. |
+
+When `entity_states[<npc_id>].following` is `true` and the player moves
+to a room in the blacklist, the engine clears `following` to `false`
+and appends a note that the NPC stays behind.
 
 #### NPC follower convention (`following` state field)
 
@@ -1032,130 +1171,11 @@ schema changes are needed; any NPC that declares `following` in its
 follower.
 
 
-### Dialogue
 
-```json
-{
-  "personality": "string (tone, demeanor, motivations)",
-  "on_encounter": "string (what happens when first met — may reference an auto-event)",
-  "can": ["list of things the NPC can/will do"],
-  "cannot": ["list of things the NPC will never do or say"],
-  "knows": ["list of facts the NPC possesses"],
-  "attitude_limits": {
-    "min": -5,
-    "max": 10,
-    "step_per_turn": 3,
-    "initial": 0
-  },
-  "will_reveal": {
-    "<topic_id>": {
-      "description": "string",
-      "conditions": ["attitude:korbar >= 2", "topic:abandonment", "inventory:rusty_key"],
-      "set_flag": { "<flag_id>": true | false },
-      "set_entity_state": { "<entity_id>": { "<field>": <value> } }
-    }
-  },
-  "dialogue_paths": {
-    "<path_id>": {
-      "description": "What this dialogue path represents — surfaced to LLM Call 1 as a map of path_id → description.",
-      "condition": { /* condition object */ },
-      "check": { /* roll or stat_check */ },
-      "success": { /* result */ },
-      "failure": { /* result */ },
-      "result": { /* deterministic result */ }
-    }
-  }
-}
-```
+### Aggro
 
-| Field             | Type   | Description |
-|-------------------|--------|-------------|
-| `personality`     | string | Tone, demeanor, motivations. Surfaced to both LLM calls. |
-| `on_encounter`    | string | Description of auto-events on first meeting. |
-| `can`             | array  | Things the NPC can/will do. |
-| `cannot`          | array  | Things the NPC will never do or say. The engine flags violations in `warnings`. |
-| `knows`           | array  | Facts the NPC possesses, for LLM dialogue improvisation. |
-| `attitude_limits` | object | Integer attitude bounds (see below). |
-| `will_reveal`     | object | Gated dialogue topics. Each topic has a `description`, a `conditions` array (all must be true for the topic to be revealable), and optional `set_flag` / `set_entity_state` side effects. When LLM Call 2 tags a topic as revealed via `knowledge_tags`, the engine validates conditions and applies the side effects. |
-| `dialogue_paths`  | object | **Optional.** Named special dialogue paths that trigger mechanical effects when the player uses them via a `talk` action with `dialogue_path` set. Each path has a required `description` and may have a `condition`, a probabilistic `check` (+`success`/`failure`), or a deterministic `result`. The path ID is the machine key used in the `talk` action; the `description` is surfaced to LLM Call 1 in `entities_visible` as `{path_id: description}` so it can match player intent to the right path. |
-
-#### Dialogue Path
-
-```json
-{
-  "flatter": {
-    "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
-    "condition": { "require": "attitude:spider < 0" },
-    "check": { "type": "stat_check", "stat": "CHA", "target": 12, "repeatable": true },
-    "success": {
-      "narrative": "The spider preens at your praise.",
-      "adjust_attitude": { "spider": 1 }
-    },
-    "failure": {
-      "narrative": "The spider hisses indifferently."
-    }
-  },
-  "inform_spider_dead": {
-    "description": "Tell Korbar that the spider has been dealt with.",
-    "condition": { "require": "flag:spider_fled == true" },
-    "result": {
-      "adjust_attitude": { "korbar": 3 }
-    }
-  }
-}
-```
-
-Each entry is a [Resolvable](#resolvable).  The dict key is the path ID
-used in the `talk` action (`dialogue_path` field); the `Resolvable.id`
-field is populated from the dict key automatically during model
-validation (and need not be supplied in the JSON).
-
-The `description` field (required) is surfaced to LLM Call 1 in
-`entities_visible` as `{path_id: description}` so it can match player
-intent to the right path.
-
-Path results support the same fields as interaction `Result` objects:
-`narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`,
-`then_check`.
-
-#### Knowledge tag validation (`will_reveal` flow)
-
-NPC dialogue revelations follow a post-validation pattern that preserves engine
-authority while letting the creative LLM control dialogue timing:
-
-1. The engine includes each NPC's `will_reveal` readiness in the EngineResult
-   passed to LLM Call 2 (which topics are conditions-met and thus available to
-   be revealed this turn).
-2. LLM Call 2 generates dialogue prose and may emit `knowledge_tags` —
-   structured tags indicating which `will_reveal` topic IDs the NPC actually
-   revealed in its spoken dialogue.
-3. The engine post-validates each tag: is it a declared `will_reveal` topic
-   for this NPC? Are all conditions met? If so, the engine applies the topic's
-   `set_flag` and `set_entity_state` side effects, and records a
-   `KnowledgeEntry` in `soft_state.player_knowledge`.
-4. On subsequent turns, the Context Assembler includes revealed topics (with
-   descriptions) in the GMBriefing, so LLM Call 1 knows what the player has
-   learned.
-
-Invalid or conditions-not-met tags are silently rejected. LLM Call 2 is
-prompted to respect the `will_reveal` readiness signals; if it narrates a
-reveal that the engine rejects, the prose and the mechanical state may
-diverge (same risk as rejected soft-state patches).
-
-#### NPC attitude
-
-NPC attitude is tracked as an integer in `hard_state.entity_states[<npc_id>].attitude`. Positive values indicate friendly disposition; negative values indicate hostility. The `attitude_limits` block constrains how attitude can change:
-
-| Field          | Type   | Description |
-|----------------|--------|-------------|
-| `min`          | number | Minimum allowed attitude value. The engine rejects any patch that would go below this floor. |
-| `max`          | number | Maximum allowed attitude value. The engine rejects any patch that would go above this ceiling. |
-| `step_per_turn`| number | Maximum change (absolute delta) per turn. Default: 1. |
-| `initial`      | number | Starting attitude value at game start. Default: 0. |
-
-For example, a troll might have `min: -5, max: -1` — it can never become friendly. A guard might have `step_per_turn: 1` — attitude shifts only gradually.
-
-### Behavior
+An NPC's `aggro` block defines how it reacts in hostile encounters —
+what happens when the player attacks it or it initiates combat.
 
 ```json
 {
@@ -1174,11 +1194,10 @@ For example, a troll might have `min: -5, max: -1` — it can never become frien
   ],
   "on_flee": {
     "set_flag": { "<flag>": true },
-    "effect": "string describing subsequent behavior change"
+    "effect": "string describing subsequent NPC behavior after fleeing"
   }
 }
 ```
-
 - Rules are evaluated top-to-bottom. The first rule whose `condition` matches
   is applied. Conditions are condition objects (see Condition object section)
   evaluated against hard state (flags, inventory, entity states) and soft state

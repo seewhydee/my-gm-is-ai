@@ -23,7 +23,7 @@ from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import ConditionStatus
 
-DOMAINS = "flag|inventory|tag|entity|room|attitude|topic|stat|equipped|event"
+DOMAINS = "flag|inventory|tag|entity|room|topic|stat|equipped|event"
 CONDITION_RE = re.compile(
     rf"^({DOMAINS}):([\w.-]+)"
     rf"(?:\s*(==|>=|>|<=|<)\s*(.+))?$"
@@ -127,21 +127,6 @@ def evaluate_condition_string(
         if field_val is None:
             return False
         return _compare(field_val, op, value)
-
-    if domain == "attitude":
-        if op is None or value is None:
-            raise ValueError(
-                f"attitude condition requires operator and value: {raw!r}"
-            )
-        entity_state = hard_state.entity_states.get(key, {})
-        attitude_val = entity_state.get("attitude")
-        if attitude_val is None and corpus is not None:
-            entity = corpus.entities.get(key)
-            if entity is not None and entity.dialogue is not None:
-                attitude_val = entity.dialogue.attitude_limits.initial
-        if attitude_val is None:
-            return False
-        return _compare(attitude_val, op, value)
 
     if domain == "topic":
         if op is not None:
@@ -325,17 +310,6 @@ def get_condition_detail(
     if domain == "flag":
         current = hard_state.flags.get(key, False)
         detail = f"flag {key} = {current}"
-
-    elif domain == "attitude":
-        current_val = hard_state.entity_states.get(key, {}).get("attitude")
-        if current_val is None and corpus is not None:
-            entity = corpus.entities.get(key)
-            if entity is not None and entity.dialogue is not None:
-                current_val = entity.dialogue.attitude_limits.initial
-        if current_val is None:
-            detail = f"attitude {key} = (unknown)"
-        else:
-            detail = f"attitude {key} = {current_val}"
 
     elif domain == "inventory":
         has_item = key in hard_state.player.inventory

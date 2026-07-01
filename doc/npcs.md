@@ -4,7 +4,7 @@ NPCs are characters the player can interact with. This document covers how NPCs 
 
 ## NPC Definition in the Corpus
 
-An NPC is an entity with `type: "npc"` in the module corpus.  NPCs carry two optional blocks not available to other entity types: `dialogue` and `behavior`.
+An NPC is an entity with `type: "npc"` in the module corpus.  NPCs carry two optional blocks not available to other entity types: `dialogue` and `aggro`.
 
 ```json
 {
@@ -18,7 +18,7 @@ An NPC is an entity with `type: "npc"` in the module corpus.  NPCs carry two opt
         "hidden":   { "type": "boolean", "description": "Whether the NPC is hidden from view" }
       },
       "dialogue": { ... },
-      "behavior": { ... }
+      "aggro": { ... }
     }
   }
 }
@@ -64,11 +64,11 @@ The `dialogue` block defines an NPC's conversational personality, attitude dynam
     "will_reveal": {
       "spider_habits": {
         "description": "The spider lurks where the web is densest. Korbor is afraid of it.",
-        "conditions": ["attitude:korbar >= 1"]
+        "conditions": ["entity:korbar.attitude >= 1"]
       },
       "secret_compartment": {
         "description": "There is a hidden flap under the handkerchief leading to a secret compartment.",
-        "conditions": ["attitude:korbar >= 2", "flag:spider_fled == true"],
+        "conditions": ["entity:korbar.attitude >= 2", "flag:spider_fled == true"],
         "set_flag": { "handkerchief_noticed": true },
         "set_entity_state": {
           "korbar": { "told_secret": true }
@@ -120,7 +120,7 @@ Write descriptions as clear player-intent phrases:
     "dialogue_paths": {
       "flatter": {
         "description": "Praise the spider's hunting prowess to improve its attitude toward the player.",
-        "condition": { "require": "attitude:spider < 0" },
+        "condition": { "require": "entity:spider.attitude < 0" },
         "check": { "type": "stat_check", "stat": "CHA", "target": 12, "repeatable": true },
         "success": {
           "narrative": "The spider preens at your praise.",
@@ -243,14 +243,14 @@ Conditions use the usual condition syntax and can reference NPC attitude, flags,
          "conditions_met": true,
          "description": "The spider only hunts at the top of the hour...",
          "conditions": [
-           { "condition": "attitude:korbar >= 1", "met": true, "detail": "attitude korbar = 3" }
+            { "condition": "entity:korbar.attitude >= 1", "met": true, "detail": "entity korbar.attitude = 3" }
          ]
        },
        "secret_compartment": {
          "conditions_met": false,
          "description": "There is a hidden flap...",
          "conditions": [
-           { "condition": "attitude:korbar >= 2", "met": true, "detail": "attitude korbar = 3" },
+            { "condition": "entity:korbar.attitude >= 2", "met": true, "detail": "entity korbar.attitude = 3" },
            { "condition": "flag:spider_fled == true", "met": false, "detail": "flag spider_fled = False" }
          ]
        }
@@ -357,13 +357,13 @@ This context is available to **both LLM calls** via the GMBriefing.  LLM Call 1 
 When dialogue is inactive, `dialogue_context` is `null`.
 
 
-## NPC Behavior & Encounters
+## NPC Aggro & Encounters
 
-NPCs with a `behavior` block can trigger **encounters** — combat or other structured conflict resolution.
+NPCs with an `aggro` block can trigger **encounters** — combat or other structured conflict resolution.
 
 ```json
 {
-  "behavior": {
+  "aggro": {
     "encounter_rules": [
       {
         "condition": { "require": "flag:has_weapon == true" },

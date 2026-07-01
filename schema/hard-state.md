@@ -225,6 +225,12 @@ the ending without soliciting further input.
 | `type`    | string | Describes the outcome (typically `"win"` or `"lose"`). Unrestricted to accommodate tabletop games with non-binary endings. |
 | `trigger` | string | The `trigger_id` of the game-over mechanic that fired (matches module corpus). |
 
+--
+
+## NPC attitude
+
+NPC attitude is tracked as an integer in `hard_state.entity_states[<npc_id>].attitude`. Positive values indicate friendly disposition; negative values indicate hostility.
+
 ---
 
 ## Engine write operations

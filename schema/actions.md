@@ -169,11 +169,11 @@ Soft State, for the ruling LLM (call 1).
         "will_reveal": {
           "padlock_mechanism": {
             "description": "How the exterior padlock can be opened from inside",
-            "conditions": ["attitude:korbar >= 2", "topic:abandonment"]
+            "conditions": ["entity:korbar.attitude >= 2", "topic:abandonment"]
           },
           "secret_compartment": {
             "description": "A hidden cache inside the axe head",
-            "conditions": ["attitude:korbar >= 4", "inventory:rusty_key"]
+            "conditions": ["entity:korbar.attitude >= 4", "inventory:rusty_key"]
           }
         }
       }

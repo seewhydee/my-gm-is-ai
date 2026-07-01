@@ -414,7 +414,7 @@
         "will_reveal": {}
       },
       "interactions": [],
-      "behavior": {
+      "aggro": {
         "encounter_rules": [
           {
             "condition": {
@@ -629,13 +629,13 @@
           "padlock_mechanism": {
             "description": "Korbar explains that the giant padlock on the outside of the bag can be unlocked from the inside. If someone could get the key up to the rip in the canvas at the axe head, they could unlock it and squirm free.",
             "conditions": [
-              "attitude:korbar >= 2"
+              "entity:korbar.attitude >= 2"
             ]
           },
           "secret_compartment": {
             "description": "Korbar reveals that a rusty key is hidden beneath a damp handkerchief in a secret compartment. She points out the handkerchief and tells the player to move it aside.",
             "conditions": [
-              "attitude:korbar >= 4"
+              "entity:korbar.attitude >= 4"
             ],
             "set_flag": {
               "handkerchief_noticed": true
@@ -649,7 +649,7 @@
         }
       },
       "interactions": [],
-      "behavior": {
+      "aggro": {
         "encounter_rules": [
           {
             "condition": {

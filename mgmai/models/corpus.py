@@ -338,8 +338,8 @@ class StateFieldDecl(BaseModel):
 
 
 class AttitudeLimits(BaseModel):
-    min: int
-    max: int
+    min: int = 0
+    max: int = 0
     step_per_turn: int = 1
     initial: int = 0
 
@@ -357,7 +357,7 @@ class DialogueGuidelines(BaseModel):
     can: List[str] = Field(default_factory=list)
     cannot: List[str] = Field(default_factory=list)
     knows: List[str] = Field(default_factory=list)
-    attitude_limits: AttitudeLimits
+    attitude_limits: AttitudeLimits = Field(default_factory=AttitudeLimits)
     will_reveal: Dict[str, WillRevealEntry] = Field(default_factory=dict)
     dialogue_paths: Dict[str, Resolvable] = Field(default_factory=dict)
 
@@ -395,9 +395,13 @@ class FleeEffect(BaseModel):
     effect: str
 
 
-class Behavior(BaseModel):
+class Aggro(BaseModel):
     encounter_rules: List[EncounterRule] = Field(default_factory=list)
     on_flee: Optional[FleeEffect] = None
+
+
+class FollowerConfig(BaseModel):
+    blacklist: List[str] = Field(default_factory=list)
 
 
 class Entity(BaseModel):
@@ -411,9 +415,9 @@ class Entity(BaseModel):
     interactions: List[Interaction] = Field(default_factory=list)
     on_examine: List[OnExamineEvent] = Field(default_factory=list)
     dialogue: Optional[DialogueGuidelines] = None
-    behavior: Optional[Behavior] = None
+    aggro: Optional[Aggro] = None
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
-    follower_blacklist: Optional[List[str]] = None
+    follower: Optional[FollowerConfig] = None
     combat: Optional[CombatBlock] = None
     equip_block: Optional[EquipBlock] = None
     reactions: List[Reaction] = Field(default_factory=list)
@@ -424,10 +428,10 @@ class Entity(BaseModel):
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'dialogue'. "
                 f"Only 'npc' entities may carry dialogue.")
-        if self.type != "npc" and self.behavior is not None:
+        if self.type != "npc" and self.aggro is not None:
             raise ValueError(
-                f"Entity type '{self.type}' must not have 'behavior'. "
-                f"Only 'npc' entities may carry behavior.")
+                f"Entity type '{self.type}' must not have 'aggro'. "
+                f"Only 'npc' entities may carry aggro.")
         if self.type != "npc" and self.combat is not None:
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'combat'. "

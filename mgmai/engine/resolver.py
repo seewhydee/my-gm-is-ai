@@ -419,7 +419,7 @@ def resolve_move(
     existing_changes = changes.room_state_changes.get(exit_data.target_room, {})
     changes.room_state_changes[exit_data.target_room] = {**base_state, **existing_changes}
 
-    # --- follower_blacklist: stop followers who refuse this room ---
+    # --- follower blacklist: stop followers who refuse this room ---
     _check_follower_blacklist(hard, corpus, exit_data.target_room, narrative)
 
     result.hard_changes = changes
@@ -792,7 +792,7 @@ def resolve_interact(
     matches: list[tuple[Interaction, str]] = []
 
     if target_entity:
-        if target_entity.type == "npc" and target_entity.behavior:
+        if target_entity.type == "npc" and target_entity.aggro:
             entity_state = hard.entity_states.get(target_id, {})
             if entity_state.get("alive") is False:
                 return ResolutionResult(
@@ -817,7 +817,7 @@ def resolve_interact(
         # Attacking an NPC always triggers an encounter.  If the NPC has an
         # explicit "attack" interaction defined, that interaction takes
         # precedence and is resolved below.  Otherwise, set an encounter
-        # trigger so the engine dispatches it (using behavior.encounter_rules
+        # trigger so the engine dispatches it (using aggro.encounter_rules
         # if present, or a default "NPC dies" outcome).
         if (
             interaction_id == "attack"
@@ -1536,7 +1536,7 @@ def _check_follower_blacklist(
 ) -> None:
     """Check if any following NPC refuses to enter the target room.
 
-    If an NPC's follower_blacklist includes the target room, clear their
+    If an NPC's follower.blacklist includes the target room, clear their
     ``following`` state and add a narrative note.
     """
     for eid, state in hard.entity_states.items():
@@ -1545,8 +1545,9 @@ def _check_follower_blacklist(
         entity = corpus.entities.get(eid)
         if entity is None:
             continue
-        blacklist = entity.follower_blacklist or []
-        if target_room in blacklist:
+        if entity.follower is None:
+            continue
+        if target_room in entity.follower.blacklist:
             state["following"] = False
             narrative.append(
                 f"{entity.description.split('.')[0]} refuses to follow you "

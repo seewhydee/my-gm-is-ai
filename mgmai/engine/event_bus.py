@@ -395,10 +395,10 @@ def _resolve_reaction_encounter(
     encounter_rules = None
     source_id = encounter_id
 
-    # Try NPC behavior first
+    # Try NPC aggro first
     npc = corpus.entities.get(encounter_id)
-    if npc and npc.behavior:
-        encounter_rules = npc.behavior.encounter_rules
+    if npc and npc.aggro:
+        encounter_rules = npc.aggro.encounter_rules
     else:
         mech = corpus.mechanics.get(encounter_id)
         if mech and mech.rules:

@@ -27,7 +27,7 @@ from mgmai.engine.encounters import (
     apply_flee_effects,
 )
 from mgmai.models.corpus import (
-    Behavior,
+    Aggro,
     EncounterRule,
     ConditionExpression,
     ModuleCorpus,

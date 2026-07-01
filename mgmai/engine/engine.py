@@ -220,8 +220,8 @@ def resolve(
         encounter_rules = None
         encounter_source_id = trigger_id
 
-        if npc and npc.behavior:
-            encounter_rules = npc.behavior.encounter_rules
+        if npc and npc.aggro:
+            encounter_rules = npc.aggro.encounter_rules
         else:
             mech = corpus.mechanics.get(trigger_id)
             if mech and mech.rules:

@@ -403,7 +403,7 @@ For NPCs, also add descriptions for the following:
   Also note any effects of NPC fleeing (e.g., setting a flag, or
   moving the NPC to another room).
 
-  You may omit the behavior specification to accept the default rule:
+  You may omit the aggro specification to accept the default rule:
   if the NPC has combat stats, begin turn-based multi-round combat;
   otherwise, the NPC dies.
 
@@ -480,7 +480,7 @@ catching gaps here avoids rework downstream.
 
 - [ ] Exactly one room is the start room (§1B)
 - [ ] Exactly one entity has `type: "player"` (§1C)
-- [ ] No non-NPC entity has dialogue or behavior plans (§1G)
+- [ ] No non-NPC entity has dialogue or aggro plans (§1G)
 - [ ] Every mechanic that can be triggered by NPC dialogue has a
       Dialogue Path trigger (§1G), with consequences planned via
       reaction, global flag, etc.
@@ -903,21 +903,21 @@ something vague or nondescript.
 The player entity can have standard `state_fields` like `alive` (if
 death is possible).  Any state field declared here must also be
 initialized in the hard state file (`entity_states.player`) later.  No
-`dialogue`, `behavior`, `interactions`, or `on_examine`.
+`dialogue`, `aggro`, `interactions`, or `on_examine`.
 The player usually starts with an empty `equipped` list.
 
 ### 2F. NPC entities
 
-#### `follower_blacklist`
+#### `follower` config
 
 If an NPC can become a follower (via `state_fields.following`), and
 the scenario says they refuse to enter certain rooms, add a
-`follower_blacklist` field listing room IDs they won't enter:
+`follower` object with a `blacklist` field listing room IDs they won't enter:
 
 ```json
 "korbar": {
   "type": "npc",
-  "follower_blacklist": ["secret_compartment"]
+  "follower": { "blacklist": ["secret_compartment"] }
 }
 ```
 
@@ -956,13 +956,13 @@ the validator requires the field to be present.
 If an NPC can engage in a combat encounter with the player (by either
 side attacking), such encounters are typically resolved by either
 single-turn resolution (e.g., one-shot kills), or multi-round combat.
-Dispatch occurs via `behavior.encounter_rules`; the first matching
+Dispatch occurs via `aggro.encounter_rules`; the first matching
 rule takes effect.  Construct these encounter rules from the NPC's
-Behavior description in the Scenario Map, or accept the default rule
+Aggro description in the Scenario Map, or accept the default rule
 (start combat if NPC has a `combat` block, NPC dies otherwise).
 
-If the Scenario Map noted `on_flee` behavior for the NPC, encode it in
-`behavior.on_flee` with any flags or entity state changes it should
+If the Scenario Map noted `on_flee` aggro for the NPC, encode it in
+`aggro.on_flee` with any flags or entity state changes it should
 apply and a short narrative effect description.
 
 Here is an example of a mechanical (one-turn) encounter:
@@ -1020,7 +1020,7 @@ with a CHA check:
 "dialogue_paths": {
   "flatter": {
     "description": "Praise the fairy's beauty.",
-    "condition": { "require": "attitude:fairy >= 0" },
+    "condition": { "require": "entity:fairy.attitude >= 0" },
     "check": { "type": "stat_check", "stat": "CHA", "target": 12, "repeatable": true },
     "success": {
       "narrative": "The fairy preens as you praise her.",
@@ -1039,12 +1039,12 @@ Example of a will_reveal structure:
 "will_reveal": {
   "bag_mechanism": {
     "description": "Korbar explains how the Bag of Holding works — it's a dimensional pocket.",
-    "conditions": ["attitude:korbar >= 1"],
+    "conditions": ["entity:korbar.attitude >= 1"],
     "set_flag": { "bag_of_holding_learned": true }
   },
   "secret_compartment": {
       "description": "Korbar points out a handkerchief in the nearby pile, and says it hides a flap leading to a secret compartment with a key.",
-    "conditions": ["attitude:korbar >= 3"],
+    "conditions": ["entity:korbar.attitude >= 3"],
     "set_flag": { "handkerchief_revealed": true }
   }
 }
@@ -1384,7 +1384,7 @@ encounter along the critical path.
 ### 4B. Encounters
 
 Encounters are referenced by exits (via `trigger_encounter`) or interactions.
-They follow the same rule structure as NPC behavior encounter_rules:
+They follow the same rule structure as NPC aggro encounter_rules:
 
 ```json
 "fall_damage": {
@@ -1734,7 +1734,7 @@ cross-file consistency issues.
 - [ ] Every flag name used in any condition string, `set_flag`, or
   `set_entity_state` appears in `hard_state.flags`
 - [ ] Every room ID referenced in any exit `target_room`,
-      `follower_blacklist`, etc. exists in `corpus.rooms`
+      `follower.blacklist`, etc. exists in `corpus.rooms`
 - [ ] Every entity ID referenced in any `contains`, `add_item`,
   `remove_item`, `set_entity_state`, `trigger_dialogue`, `using_results`
   key, etc. exists in `corpus.entities`
@@ -1818,7 +1818,7 @@ strings.  Condition objects enable compound AND/OR logic with nesting.
 { "any": [
   "flag:handkerchief_noticed == true",
   { "all": [
-    "attitude:korbar >= 4",
+    "entity:korbar.attitude >= 4",
     "flag:padlock_unlocked == false"
   ] }
 ] }
@@ -1849,7 +1849,6 @@ Elements inside `any` and `all` arrays may be:
 | `tag`        | `tag:weapon`                     | Any item with this tag in inventory or equipped gear |
 | `entity`     | `entity:spider.alive == true`    | Entity hard-state field |
 | `room`       | `room:axe_head.visited == true`  | Room state field |
-| `attitude`   | `attitude:korbar >= 2`           | NPC soft-state attitude |
 | `topic`      | `topic:abandonment`              | Topic ID discussed in current dialogue |
 | `stat`       | `stat:STR >= 12`                 | Player stat value vs threshold |
 | `event`      | `event:exit_id == exit_climb`    | Event context value. Only valid during reaction dispatch. |
@@ -1877,7 +1876,7 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
   Common keys: `exit_id`, `interaction_id`, `npc_id`, `flag_id`, `source_id`,
   `check_type`, `stat`, `amount`, `new_hp`.
 - `will_reveal.conditions` is a list of bare condition strings, not condition
-  objects (e.g., `["attitude:korbar >= 2", "flag:spider_fled == true"]`).
+  objects (e.g., `["entity:korbar.attitude >= 2", "flag:spider_fled == true"]`).
 
 ---
 
@@ -1986,8 +1985,8 @@ All IDs must be **snake_case, lowercase ASCII**:
 6. **Duplicate IDs**: Ensure every ID (room, entity, exit, interaction,
    mechanic, flag, topic) is unique across the entire corpus.
 
-7. **NPCs with neither dialogue nor behavior**: Conversational NPCs
-   need `dialogue`; combat NPCs need `behavior`. An NPC with
+7. **NPCs with neither dialogue nor aggro**: Conversational NPCs
+   need `dialogue`; combat NPCs need `aggro`. An NPC with
    neither will be purely decorative. If the scenario expects interaction,
    one of these must be present.
 
@@ -2015,8 +2014,8 @@ All IDs must be **snake_case, lowercase ASCII**:
 13. **Follow-up check maximal depth**: Nested `then_check` supports up to 3
     levels of depth.
 
-14. **Follower_blacklist**: If an NPC follows the player, and the scenario
-    says they refuse to enter certain rooms, add `follower_blacklist` to
+14. **Follower blacklist**: If an NPC follows the player, and the scenario
+    says they refuse to enter certain rooms, add `follower.blacklist` to
     the NPC's entity definition.
 
 15. **Follow-up check does not trigger game-over directly**: A `then_check`
@@ -2045,7 +2044,7 @@ All IDs must be **snake_case, lowercase ASCII**:
 20. **Reactions vs legacy triggers**: Use `reactions` for all event-driven
     effects. Reactions are more flexible (any event × any effect), support
     state-based triggers (flag changes, stat changes), and compose cleanly.
-    The legacy `on_enter`, `on_traverse`, `behavior.triggers_on`, and
+    The legacy `on_enter`, `on_traverse`, `aggro.triggers_on`, and
     `on_dialogue_exit` fields have been removed.
 
 21. **`event:` domain only works in reactions**: The `event:` condition domain

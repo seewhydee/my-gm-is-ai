@@ -168,7 +168,7 @@ Combat starts in one of two ways:
    reaction that triggers an encounter, the encounter rules run first; an
    encounter outcome of `"combat"` (or a direct attack on an NPC without such
    a reaction) starts combat.
-2. **Encounter outcome `"combat"`** — An NPC's `behavior.encounter_rules` or a
+2. **Encounter outcome `"combat"`** — An NPC's `aggro.encounter_rules` or a
    `mechanics` encounter returns outcome `"combat"`.
 
 On entry:
@@ -289,7 +289,7 @@ authoritative dice results.
       "fled": { "type": "boolean", "description": "Has the spider fled?" },
       "current_hp": { "type": "number", "description": "Current hit points." }
     },
-    "behavior": {
+    "aggro": {
       "encounter_rules": [
         {
           "condition": { "require": "spider_fled" },

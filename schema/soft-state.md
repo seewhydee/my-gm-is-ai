@@ -171,7 +171,7 @@ and post-validated by the engine in step 4.5:
 
 The module corpus may gate certain dialogue topics behind attitude thresholds
 via the `will_reveal` block. The engine evaluates the `conditions` on each
-`will_reveal` entry (e.g., `attitude:korbar >= 2`) against the current game
+`will_reveal` entry (e.g., `entity:korbar.attitude >= 2`) against the current game
 state. If the LLM narrates a reveal that the conditions do not permit, the
 engine flags it in `warnings`.
 

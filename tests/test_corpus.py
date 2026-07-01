@@ -20,8 +20,8 @@ from pydantic import ValidationError
 from mgmai.models.corpus import (
     Adventure,
     Atmosphere,
+    Aggro,
     AttitudeLimits,
-    Behavior,
     BranchOutcome,
     ConditionExpression,
     Credits,
@@ -485,12 +485,12 @@ class TestEntity:
         })
         assert e.name is None
 
-    def test_npc_with_behavior(self) -> None:
+    def test_npc_with_aggro(self) -> None:
         e = Entity.model_validate({
             "type": "npc",
             "description": "A hungry spider.",
             "state_fields": {"alive": {"type": "boolean", "description": "Is alive."}},
-            "behavior": {
+            "aggro": {
                 "encounter_rules": [
                     {
                         "condition": {"require": "flag:has_weapon == true"},
@@ -500,8 +500,8 @@ class TestEntity:
                 "on_flee": {"set_flag": {"spider_fled": True}, "effect": "It scurries away."},
             },
         })
-        assert e.behavior is not None
-        assert len(e.behavior.encounter_rules) == 1
+        assert e.aggro is not None
+        assert len(e.aggro.encounter_rules) == 1
 
     def test_feature_in_multiple_rooms(self) -> None:
         e = Entity.model_validate({
@@ -525,7 +525,7 @@ class TestEntity:
             "will_reveal": {
                 "secret1": {
                     "description": "A hidden treasure.",
-                    "conditions": ["attitude:korbar >= 3"],
+                    "conditions": ["entity:korbar.attitude >= 3"],
                     "set_flag": {"treasure_known": True},
                 },
             },
@@ -533,7 +533,7 @@ class TestEntity:
         assert "secret1" in g.will_reveal
         reveal = g.will_reveal["secret1"]
         assert reveal.description == "A hidden treasure."
-        assert reveal.conditions == ["attitude:korbar >= 3"]
+        assert reveal.conditions == ["entity:korbar.attitude >= 3"]
         assert reveal.set_flag == {"treasure_known": True}
 
     def test_will_reveal_with_set_entity_state(self) -> None:
@@ -543,7 +543,7 @@ class TestEntity:
             "will_reveal": {
                 "trap_warning": {
                     "description": "Warns about a trap.",
-                    "conditions": ["attitude:mysterious_npc >= 3"],
+                    "conditions": ["entity:mysterious_npc.attitude >= 3"],
                     "set_entity_state": {"spike_trap": {"disarmed": True}},
                 },
             },
@@ -554,8 +554,8 @@ class TestEntity:
     @pytest.mark.parametrize("entity_type,extra_field,extra_data", [
         ("feature", "dialogue", {"personality": "Creaky.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
         ("item", "dialogue", {"personality": "Chatty.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
-        ("item", "behavior", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
-        ("player", "behavior", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
+        ("item", "aggro", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
+        ("player", "aggro", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
     ])
     def test_invalid_field_for_entity_type_raises(self, entity_type, extra_field, extra_data) -> None:
         with pytest.raises(ValidationError):
@@ -572,7 +572,7 @@ class TestEntity:
         })
         assert e.type == "player"
         assert e.dialogue is None
-        assert e.behavior is None
+        assert e.aggro is None
 
     def test_entity_with_interactions(self) -> None:
         e = Entity.model_validate({
@@ -965,9 +965,9 @@ class TestEncounterRule:
         assert r.failure.alter_stat == {"STR": StatModifier(value=-4), "CON": StatModifier(value=-4)}
 
 
-class TestBehavior:
+class TestAggro:
     def test_encounter_rules(self) -> None:
-        b = Behavior.model_validate({
+        b = Aggro.model_validate({
             "encounter_rules": [
                 {
                     "condition": {"require": "flag:x == true"},
@@ -978,7 +978,7 @@ class TestBehavior:
         assert len(b.encounter_rules) == 1
 
     def test_with_on_flee(self) -> None:
-        b = Behavior.model_validate({
+        b = Aggro.model_validate({
             "encounter_rules": [
                 {
                     "condition": {"require": "flag:has_weapon == true"},

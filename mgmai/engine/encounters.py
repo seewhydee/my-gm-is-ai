@@ -103,8 +103,8 @@ def _apply_encounter_rule(
         set_flags = dict(rule.set_flag or {})
         if npc_id:
             npc = corpus.entities.get(npc_id)
-            if npc and npc.behavior and npc.behavior.on_flee:
-                flee = npc.behavior.on_flee
+            if npc and npc.aggro and npc.aggro.on_flee:
+                flee = npc.aggro.on_flee
                 for flag, val in flee.set_flag.items():
                     set_flags[flag] = val
                 flee_data = {
@@ -191,8 +191,8 @@ def _apply_encounter_rule(
             flee_data = None
             if npc_id:
                 npc = corpus.entities.get(npc_id)
-                if npc and npc.behavior and npc.behavior.on_flee:
-                    flee_obj = npc.behavior.on_flee
+                if npc and npc.aggro and npc.aggro.on_flee:
+                    flee_obj = npc.aggro.on_flee
                     for flag, val in flee_obj.set_flag.items():
                         result["set_flags"][flag] = val
                     flee_data = {
@@ -287,8 +287,8 @@ def _apply_encounter_rule(
             flee_data = None
             if npc_id:
                 npc = corpus.entities.get(npc_id)
-                if npc and npc.behavior and npc.behavior.on_flee:
-                    flee = npc.behavior.on_flee
+                if npc and npc.aggro and npc.aggro.on_flee:
+                    flee = npc.aggro.on_flee
                     for flag, val in flee.set_flag.items():
                         result["set_flags"][flag] = val
                     flee_data = {

@@ -137,7 +137,7 @@
           "flatter": {
             "description": "Praise the spider's hunting prowess or appearance to improve its attitude.",
             "condition": {
-              "require": "attitude:spider < 0"
+              "require": "entity:spider.attitude < 0"
             },
             "check": {
               "type": "stat_check",
@@ -158,7 +158,7 @@
           "persuade_pass": {
             "description": "Ask the spider to let you through the webs peacefully.",
             "condition": {
-              "require": "attitude:spider == 0"
+              "require": "entity:spider.attitude == 0"
             },
             "check": {
               "type": "stat_check",
@@ -186,7 +186,7 @@
           }
         }
       },
-      "behavior": {
+      "aggro": {
         "encounter_rules": [
           {
             "condition": {
@@ -346,9 +346,11 @@
           "description": "Current hit points."
         }
       },
-      "follower_blacklist": [
-        "secret_pocket"
-      ],
+      "follower": {
+        "blacklist": [
+          "secret_pocket"
+        ]
+      },
       "dialogue": {
         "personality": "Cynical, tired, and deeply lonely after being abandoned by her adventuring party. Wears ludicrously noisy platemail that prevents stealth. Drinks to forget. Despite her bitterness, she craves companionship and can warm up to respectful treatment.",
         "on_encounter": "Korbar looks up blearily as you approach, reaching instinctively for a weapon that isn't there. 'Who in the nine hells are you?' she slurs.",
@@ -382,7 +384,7 @@
           "bag_of_holding_knowledge": {
             "description": "Korbar explains that this cave is a Bag of Holding and provides basic information about what a Bag of Holding is.",
             "conditions": [
-              "attitude:korbar >= 1"
+              "entity:korbar.attitude >= 1"
             ],
             "set_flag": {
               "realized_bag_of_holding": true
@@ -391,7 +393,7 @@
           "handkerchief_secret": {
             "description": "Korbar points out the handkerchief covering a secret flap in the bag floor.",
             "conditions": [
-              "attitude:korbar >= 3"
+              "entity:korbar.attitude >= 3"
             ],
             "set_flag": {
               "handkerchief_revealed": true
@@ -447,7 +449,7 @@
             "condition": {
               "all": [
                 {
-                  "require": "attitude:korbar >= 1"
+                  "require": "entity:korbar.attitude >= 1"
                 },
                 {
                   "require": "entity:korbar.convinced_spider_dead == true"

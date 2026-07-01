@@ -348,7 +348,7 @@ class TestEvaluateConditionStringAttitude:
         (-5, "==", -5, True),   # eq negative
         (5, "==", 3, False),    # eq false
     ])
-    def test_attitude_comparisons(self, attitude, op, threshold, expected) -> None:
+    def test_entity_attitude_comparisons(self, attitude, op, threshold, expected) -> None:
         hs = make_hard_state(entity_states={
             "player": {"alive": True},
             "korbar": {"alive": True, "told_secret": False, "attitude": attitude},
@@ -356,29 +356,15 @@ class TestEvaluateConditionStringAttitude:
             "stuck_fly": {"alive": True, "attitude": 0},
         })
         ss = make_soft_state()
-        result = evaluate_condition_string(f"attitude:korbar {op} {threshold}", hs, ss, None)
+        result = evaluate_condition_string(f"entity:korbar.attitude {op} {threshold}", hs, ss, None)
         assert result is expected
 
-    def test_attitude_nonexistent_npc_returns_false(self) -> None:
+    def test_entity_field_nonexistent_key_returns_false(self) -> None:
         hs = make_hard_state()
         ss = make_soft_state()
         assert not evaluate_condition_string(
-            "attitude:nonexistent >= 0", hs, ss, None
+            "entity:nonexistent.attitude >= 0", hs, ss, None
         )
-
-    def test_attitude_missing_operator_raises(self) -> None:
-        hs = make_hard_state()
-        ss = make_soft_state()
-        with pytest.raises(ValueError, match="attitude condition requires operator"):
-            evaluate_condition_string("attitude:korbar", hs, ss, None)
-
-    def test_attitude_defaults_to_corpus_initial(self) -> None:
-        hs = make_hard_state(entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False}})
-        ss = make_soft_state()
-        corpus = make_corpus()
-        # korbar's attitude_limits.initial is 0 in the fixture corpus
-        assert evaluate_condition_string("attitude:korbar >= 0", hs, ss, corpus)
-        assert not evaluate_condition_string("attitude:korbar >= 1", hs, ss, corpus)
 
 
 class TestEvaluateConditionStringTopic:
@@ -461,7 +447,7 @@ class TestEvaluateConditionStringStat:
         hs = self._with_stats()
         ss = make_soft_state()
         condition = ConditionExpression.model_validate({
-            "all": ["stat:CHA >= 15", "attitude:korbar >= 2"],
+            "all": ["stat:CHA >= 15", "entity:korbar.attitude >= 2"],
         })
         from mgmai.engine.conditions import evaluate
         assert not evaluate(condition, hs, ss)
@@ -520,7 +506,7 @@ class TestEvaluateConditionExpression:
         condition = ConditionExpression.model_validate({
             "any": [
                 {"require": "flag:injured == true"},
-                {"require": "attitude:korbar >= 0"},
+                {"require": "entity:korbar.attitude >= 0"},
             ]
         })
         assert evaluate(condition, hs, ss)
@@ -564,7 +550,7 @@ class TestEvaluateConditionExpression:
         condition = ConditionExpression.model_validate({
             "all": [
                 {"unless": "flag:injured == true"},
-                {"require": "attitude:korbar >= 3"},
+                {"require": "entity:korbar.attitude >= 3"},
             ]
         })
         assert evaluate(condition, hs, ss)
@@ -644,7 +630,7 @@ class TestEvaluateWithSampleCorpus:
         assert evaluate_condition_string("tag:weapon", hs, ss, sample_corpus)
         assert not evaluate_condition_string("tag:armor", hs, ss, sample_corpus)
         assert evaluate_condition_string("flag:injured == false", hs, ss, sample_corpus)
-        assert evaluate_condition_string("attitude:korbar >= 2", hs, ss, sample_corpus)
+        assert evaluate_condition_string("entity:korbar.attitude >= 2", hs, ss, sample_corpus)
 
     def test_corpus_entities(self, sample_corpus: ModuleCorpus) -> None:
         assert "toenail_sword" in sample_corpus.entities
@@ -711,7 +697,7 @@ class TestEvaluateWithSampleCorpus:
         )
 
         assert evaluate_condition_string(
-            "attitude:korbar >= 2", hs, ss, sample_corpus
+            "entity:korbar.attitude >= 2", hs, ss, sample_corpus
         )
 
 
@@ -733,8 +719,8 @@ class TestEdgeCases:
         assert evaluate_condition_string("entity:boss.hp <= 10", hs, ss, None)
         assert evaluate_condition_string("room:pit.depth > 2", hs, ss, None)
         assert evaluate_condition_string("room:pit.depth < 5", hs, ss, None)
-        assert evaluate_condition_string("attitude:npc < 0", hs, ss, None)
-        assert evaluate_condition_string("attitude:npc >= -3", hs, ss, None)
+        assert evaluate_condition_string("entity:npc.attitude < 0", hs, ss, None)
+        assert evaluate_condition_string("entity:npc.attitude >= -3", hs, ss, None)
 
     def test_equality_with_string(self) -> None:
         hs = make_hard_state(
@@ -745,7 +731,7 @@ class TestEdgeCases:
         assert evaluate_condition_string("entity:chest.state == open", hs, ss, None)
         assert not evaluate_condition_string("entity:chest.state == closed", hs, ss, None)
         assert evaluate_condition_string("room:tower.weather == stormy", hs, ss, None)
-        assert evaluate_condition_string("attitude:npc == 0", hs, ss, None)
+        assert evaluate_condition_string("entity:npc.attitude == 0", hs, ss, None)
 
     def test_operator_comparison_with_string_value_raises(self) -> None:
         hs = make_hard_state(
