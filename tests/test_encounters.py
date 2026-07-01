@@ -22,10 +22,13 @@ from pathlib import Path
 
 import pytest
 
-from mgmai.engine.encounters import resolve_encounter
+from mgmai.engine.encounters import resolve_encounter, _game_over_dict
 from mgmai.models.corpus import (
     ConditionExpression,
+    EncounterRule,
+    GameOverTrigger,
     ModuleCorpus,
+    Result,
     StatCheck,
     StatDefinition,
     StatsBlock,
@@ -218,6 +221,112 @@ class TestResolveEncounter:
         assert result["narrative"] is not None
         assert result["alter_stat"] == {"CON": StatModifier(value=-4), "STR": StatModifier(value=-4)}
 
+    def test_rule_level_trigger_combat(self, sample_corpus):
+        """Result with trigger_combat=True (no check) propagates."""
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            _mk_encounter_rule(
+                outcome="combat",
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                narrative="The spider drops from the shadows!",
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["trigger_combat"] is True
+        assert result["game_over"] is None
+        assert result["branch_taken"] is None
+        assert result["narrative"] == "The spider drops from the shadows!"
+
+    def test_rule_level_game_over_win(self, sample_corpus):
+        """Result with game_over type=win maps to dict with trigger field."""
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            _mk_encounter_rule(
+                outcome="death",
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                narrative="You won!",
+                game_over_type="win",
+                game_over_trigger="test_npc",
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["game_over"] is not None
+        assert result["game_over"]["type"] == "win"
+        assert result["game_over"]["trigger"] == "test_npc"
+
+    def test_flee_rule_triggers_no_combat_no_game_over(self, sample_corpus):
+        """A flee rule should have trigger_combat=False and game_over=None."""
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            _mk_encounter_rule(
+                outcome="flee",
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                narrative="The creature flees!",
+                set_flag={"creature_fled": True},
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["trigger_combat"] is False
+        assert result["game_over"] is None
+        assert result["set_flags"]["creature_fled"] is True
+
+    def test_no_rules_match_returns_safe_defaults(self, sample_corpus):
+        """When no rules match, result has trigger_combat=False, game_over=None."""
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            _mk_encounter_rule(
+                outcome="death",
+                condition=ConditionExpression(require="flag:nonexistent == true"),
+                narrative="Should not fire.",
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus)
+        assert result["trigger_combat"] is False
+        assert result["game_over"] is None
+        assert result["branch_taken"] is None
+        assert result["narrative"] is None
+
+    def test_branch_with_trigger_combat_roll_fails_no_combat(self, sample_corpus, monkeypatch):
+        """When a roll check fails and failure has no trigger_combat, it stays False."""
+        hard = _load_hard()
+        soft = _load_soft()
+        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+        rules = [
+            _mk_encounter_rule(
+                outcome="roll",
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                threshold=0.5,
+                success={"trigger_combat": True, "narrative": "It attacks!"},
+                failure={"narrative": "It flees."},
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["trigger_combat"] is False
+        assert result["branch_taken"] == "failure"
+        assert result["narrative"] == "It flees."
+
+    def test_result_with_player_damage_and_trigger_combat(self, sample_corpus):
+        """A rule-level result can carry both player_damage and trigger_combat."""
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            _mk_encounter_rule(
+                outcome="combat",
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                narrative="The spider bites you!",
+                trigger_combat=True,
+                player_damage="2d6",
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["trigger_combat"] is True
+        assert result["player_damage"] == "2d6"
+        assert result["narrative"] == "The spider bites you!"
+
 
 class TestEncounterBranchTaken:
     """Item 3a: branched encounters record which branch was taken."""
@@ -371,3 +480,18 @@ class TestEncounterBranchCombat:
         assert result["trigger_combat"] is True
         assert result["game_over"] is None
         assert result["branch_taken"] == "success"
+
+
+class TestGameOverDict:
+    """Direct unit tests for the _game_over_dict mapping function."""
+
+    def test_lose_maps_correctly(self) -> None:
+        go = _game_over_dict(GameOverTrigger(type="lose", trigger_id="spider"))
+        assert go == {"type": "lose", "trigger": "spider"}
+
+    def test_win_maps_correctly(self) -> None:
+        go = _game_over_dict(GameOverTrigger(type="win", trigger_id="escape"))
+        assert go == {"type": "win", "trigger": "escape"}
+
+    def test_none_returns_none(self) -> None:
+        assert _game_over_dict(None) is None

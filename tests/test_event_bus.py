@@ -1296,3 +1296,83 @@ class TestEncounterBranchedEvent:
         assert engine_result.success is True
         assert hard.flags.get("saw_failure") is True
         assert hard.flags.get("saw_success") is None
+
+
+class TestReactionResultWithDispatchFields:
+    """Reaction Result objects carrying trigger_combat / game_over are tolerated
+    without crashing, even though the reaction handler ignores those fields."""
+
+    def test_result_with_trigger_combat_does_not_crash(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="test_trigger",
+            on="turn.start",
+            effect=ReactionEffects(result=Result(
+                narrative="It grows dark.",
+                trigger_combat=True,
+            )),
+        ))
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+        assert engine_result.success is True
+        assert engine_result.combat_triggered is False
+        assert "It grows dark." in engine_result.triggered_narration
+
+    def test_result_with_game_over_does_not_crash(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="test_go",
+            on="turn.start",
+            effect=ReactionEffects(result=Result(
+                narrative="The world ends.",
+                game_over=GameOverTrigger(type="lose", trigger_id="test_doom"),
+                set_flag={"doomed": True},
+            )),
+        ))
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+        assert engine_result.success is True
+        assert engine_result.game_over is None
+        assert "The world ends." in engine_result.triggered_narration
+        assert hard.flags.get("doomed") is True
+
+    def test_result_with_both_dispatch_fields_no_crash(self, fresh_state_manager):
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="test_both",
+            on="turn.start",
+            effect=ReactionEffects(result=Result(
+                narrative="Chaos!",
+                trigger_combat=True,
+                game_over=GameOverTrigger(type="win", trigger_id="test_win"),
+                set_flag={"dispatch_test": True},
+            )),
+        ))
+
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+        assert engine_result.success is True
+        assert engine_result.combat_triggered is False
+        assert engine_result.game_over is None
+        assert "Chaos!" in engine_result.triggered_narration
+        assert hard.flags.get("dispatch_test") is True

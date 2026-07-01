@@ -32,6 +32,7 @@ from mgmai.engine.resolver import (
     resolve_ooc,
     resolve_action,
     _apply_result,
+    _apply_result_with_check,
 )
 from mgmai.models.actions import (
     MoveAction,
@@ -46,6 +47,7 @@ from mgmai.models.corpus import (
     CheckResolution,
     ConditionExpression,
     Exit,
+    GameOverTrigger,
     GatedCheck,
     Interaction,
     Result,
@@ -794,6 +796,99 @@ class TestApplyResult:
         state_manager.apply_hard_changes(changes)
         assert changes.player_location == "bag_floor"
         assert hard.player.location == "bag_floor"
+
+    def test_apply_result_with_trigger_combat_no_crash(self, state_manager):
+        """A Result with trigger_combat=True flows through _apply_result safely."""
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        from mgmai.models.actions import HardStateChanges
+
+        result = Result(narrative="Hello", trigger_combat=True)
+        changes = HardStateChanges()
+        narrative: list[str] = []
+        _apply_result(result, changes, narrative, [], hard, corpus)
+        state_manager.apply_hard_changes(changes)
+        assert narrative == ["Hello"]
+
+    def test_apply_result_with_game_over_no_crash(self, state_manager):
+        """A Result with game_over set flows through _apply_result safely."""
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        from mgmai.models.actions import HardStateChanges
+
+        result = Result(
+            narrative="You die.",
+            game_over=GameOverTrigger(type="lose", trigger_id="test"),
+        )
+        changes = HardStateChanges()
+        narrative: list[str] = []
+        _apply_result(result, changes, narrative, [], hard, corpus)
+        state_manager.apply_hard_changes(changes)
+        assert narrative == ["You die."]
+        assert changes.player_hp_delta is None  # game_over didn't leak into state
+
+    def test_apply_result_with_both_dispatch_fields_no_crash(self, state_manager):
+        """A Result with both trigger_combat and game_over combined with effects."""
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        from mgmai.models.actions import HardStateChanges
+
+        result = Result(
+            narrative="Combat and death!",
+            trigger_combat=True,
+            game_over=GameOverTrigger(type="lose", trigger_id="boss"),
+            set_flag={"boss_defeated": True},
+        )
+        changes = HardStateChanges()
+        narrative: list[str] = []
+        _apply_result(result, changes, narrative, [], hard, corpus)
+        state_manager.apply_hard_changes(changes)
+        assert narrative == ["Combat and death!"]
+        assert changes.flags_set.get("boss_defeated") is True
+        assert changes.player_hp_delta is None
+
+    def test_apply_result_with_check_with_trigger_combat_no_crash(self, state_manager):
+        """_apply_result_with_check handles Result with trigger_combat=True."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        from mgmai.models.actions import HardStateChanges
+
+        result = Result(narrative="Done.", trigger_combat=True)
+        changes = HardStateChanges()
+        narrative: list[str] = []
+        rolls: list[dict] = []
+        _apply_result_with_check(
+            result,
+            changes=changes, narrative=narrative,
+            revealed_hints=[], hard=hard, corpus=corpus,
+            soft=soft, room_id=hard.player.location or "start",
+            rolls=rolls,
+        )
+        assert narrative == ["Done."]
+
+    def test_apply_result_with_check_with_game_over_no_crash(self, state_manager):
+        """_apply_result_with_check handles Result with game_over set."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        from mgmai.models.actions import HardStateChanges
+
+        result = Result(
+            narrative="Game over.",
+            game_over=GameOverTrigger(type="win", trigger_id="escape"),
+        )
+        changes = HardStateChanges()
+        narrative: list[str] = []
+        rolls: list[dict] = []
+        _apply_result_with_check(
+            result,
+            changes=changes, narrative=narrative,
+            revealed_hints=[], hard=hard, corpus=corpus,
+            soft=soft, room_id=hard.player.location or "start",
+            rolls=rolls,
+        )
+        assert narrative == ["Game over."]
 
 
 class TestResolveTalkPaths:

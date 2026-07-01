@@ -220,6 +220,8 @@ ALL fields in a Result object are optional.
 | `adjust_attitude` | object   | NPC attitude changes (see below)      |
 | `reveals`         | string   | Player's knowledge update (see below) |
 | `then_check`      | object   | A follow-up check (see below)         |
+| `trigger_combat`  | boolean  | Enter combat mode (default `false`)   |
+| `game_over`       | object   | End game; see [Game-Over](#game-over) |
 
 Notes:
 
@@ -1151,27 +1153,29 @@ triggered by a reaction).
 
 Each Encounter Rule supports the following fields:
 
-| Field           | Type          | Description                        |
-|-----------------|---------------|------------------------------------|
-| `condition`     | object        | Condition for the rule to fire     |
-| `result` (*)    | Result        | Direct result (use exactly one of `result` or `check`) |
-| `check` (*)     | CheckType     | `RollCheck` or `StatCheck` (use exactly one of `result` or `check`) |
-| `success` (*)   | Result        | Result when check succeeds         |
-| `failure` (*)   | Result        | Result when check fails            |
-| `skip_check_if` (*)| object      | Condition to bypass the check and apply `success` directly |
+| Field          | Type      | Description                             |
+|----------------|-----------|-----------------------------------------|
+| `condition`    | object    | Condition for the rule to fire          |
+| `result` (*)   | Result    | Direct result (mut. excl. with `check`) |
+| `check` (*)    | Check     | Check (mut. excl. with `result`)        |
+| `success` (*)  | Result    | Result when Check succeeds              |
+| `failure` (*)  | Result    | Result when Check fails                 |
+| `skip_check_if`(*)| object | Whether to bypass `check`, auto-succeed |
 > (*) optional
 
 Notes:
 
 - Rules are evaluated top-to-bottom. The first rule whose `condition`
-  matches is applied.
-- If no rule matches, the encounter silently does nothing (no narrative,
-  no effects, no combat, no game-over).  To avoid this, include a
-  catch-all rule with `"require": "true"` as the last entry.
-- Each rule must have exactly one of `result` (direct) or `check`
-  (probabilistic with `success`/`failure` branches).
-- `Result` may contain `trigger_combat: true` to enter combat mode
-  or `game_over` to end the game.
+  matches is applied.  If no rule matches, the encounter silently does
+  nothing (no narrative, no effects, no combat, no game-over).  To
+  avoid this, put a rule with `"require": "true"` as the last entry.
+
+- Each rule must have exactly one of `result` (direct result) or
+  `check` (probabilistic check with success/failure branches).
+
+- The [Results](#result) in `result`, `success`, and/or `failure` can
+  trigger combat by specifying `"trigger_combat": "true"`, or a
+  [Game-Over](#game-over) using the `game_over` field.
 
 #### Follower
 
