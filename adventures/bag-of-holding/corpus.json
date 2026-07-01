@@ -1632,7 +1632,6 @@
   "mechanics": {
     "fall_damage_from_head": {
       "id": "fall_damage_from_head",
-      "description": "Player drops from the Axe Head to the Bag Floor, suffering severe injury.",
       "rules": [
         {
           "condition": {
@@ -1672,7 +1671,6 @@
     },
     "fall_damage_from_upper": {
       "id": "fall_damage_from_upper",
-      "description": "Player drops from Upper Axe Handle, taking damage.",
       "rules": [
         {
           "condition": {
@@ -1707,7 +1705,6 @@
     },
     "fall_damage_from_lower": {
       "id": "fall_damage_from_lower",
-      "description": "Player drops from Lower Axe Handle \u2014 momentarily winded but uninjured.",
       "rules": [
         {
           "condition": {

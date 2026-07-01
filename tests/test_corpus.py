@@ -424,7 +424,6 @@ class TestMechanic:
         m = Mechanic.model_validate({
             "id": "win_escape",
             "type": "win",
-            "description": "Escape the bag.",
             "condition": {"require": "flag:escaped == true"},
             "narrative": "You are free!",
             "trigger_id": "escape",
@@ -438,7 +437,6 @@ class TestMechanic:
         m = Mechanic.model_validate({
             "id": "lose_death",
             "type": "lose",
-            "description": "The player dies.",
             "condition": {"require": "flag:dead == true"},
             "trigger_id": "death",
         })
@@ -447,7 +445,6 @@ class TestMechanic:
     def test_encounter(self) -> None:
         m = Mechanic.model_validate({
             "id": "spider_encounter",
-            "description": "A spider attacks.",
             "rules": [
                 {
                     "condition": {"require": "flag:has_weapon == true"},
@@ -464,7 +461,6 @@ class TestMechanic:
             Mechanic.model_validate({
                 "id": "bad_win",
                 "type": "win",
-                "description": "Bad win.",
                 "trigger_id": "x",
             })
 
@@ -473,7 +469,6 @@ class TestMechanic:
             Mechanic.model_validate({
                 "id": "bad_win",
                 "type": "win",
-                "description": "Bad win.",
                 "condition": {"require": "flag:x == true"},
             })
 
@@ -482,7 +477,6 @@ class TestMechanic:
             Mechanic.model_validate({
                 "id": "bad",
                 "type": "win",
-                "description": "Bad.",
                 "condition": {"require": "flag:x == true"},
                 "trigger_id": "x",
                 "rules": [],
@@ -492,14 +486,12 @@ class TestMechanic:
         with pytest.raises(ValidationError):
             Mechanic.model_validate({
                 "id": "bad",
-                "description": "Just a description.",
             })
 
     def test_invalid_type_raises(self) -> None:
         with pytest.raises(ValidationError):
             Mechanic.model_validate({
                 "id": "bad",
-                "description": "Invalid type.",
                 "type": "draw",
                 "condition": {"require": "flag:x == true"},
                 "trigger_id": "x",

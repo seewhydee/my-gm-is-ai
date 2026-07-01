@@ -444,7 +444,6 @@ class Entity(BaseModel):
 
 class Mechanic(BaseModel):
     id: str
-    description: str
     type: Optional[Literal["win", "lose"]] = None
     condition: Optional[ConditionExpression] = None
     narrative: Optional[str] = None

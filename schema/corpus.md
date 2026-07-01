@@ -1179,8 +1179,12 @@ Notes:
 
 #### Follower
 
-An NPC can carry an optional `follower` object to configure
-follower-specific behavior:
+An NPC entity can be declared as a **follower** — a companion that
+moves with the player between rooms. To enable this, set the NPC's
+`following` state field to `true`.  (The default is `false`.)
+
+An NPC can carry an optional `follower` object to tweak its behavior
+as a follower:
 
 ```json
 "follower": {
@@ -1188,96 +1192,71 @@ follower-specific behavior:
 }
 ```
 
-| Field         | Type     | Description |
-|---------------|----------|-------------|
-| `blacklist`   | string[] | Room IDs this NPC refuses to enter when following the player. |
+| Field       | Type     | Description                          |
+|-------------|----------|--------------------------------------|
+| `blacklist` | string[] | Room IDs the follow refuses to enter |
 
-When `entity_states[<npc_id>].following` is `true` and the player moves
-to a room in the blacklist, the engine clears `following` to `false`
-and appends a note that the NPC stays behind.
-
-#### NPC follower convention (`following` state field)
-
-An NPC entity can be declared as a **follower** — a companion that moves with the
-player between rooms. To enable this, include a boolean `following` field in the
-NPC's `state_fields`:
-
-```json
-"state_fields": {
-  "alive": { "type": "boolean", "initial": true, "description": "Whether this NPC is alive." },
-  "attitude": { "type": "number", "initial": 0, "description": "Attitude toward the player, -10 to 10." },
-  "following": { "type": "boolean", "description": "Whether this NPC follows the player between rooms." }
-}
-```
-
-When `entity_states[<npc_id>].following` is `true`, the engine:
-
-- Injects the NPC into the visible entity list for whatever room the player is in
-  (both the GMBriefing and the EngineResult), so the LLM is always aware of them.
-- Makes the NPC targetable for `examine`, `interact`, `talk`, and `transfer`
-  actions regardless of room.
-- Does not terminate dialogue when the player moves rooms — the follower remains
-  in active conversation.
-- Includes the follower in `will_reveal_readiness` and `npc_attitude_limits`
-  blocks sent to LLM Call 2.
-
-`following` defaults to `false` (not present in `entity_states`). Any interaction
-result can set it to `true` via `set_entity_state` (e.g., after convincing the
-NPC to join), and to `false` to dismiss the follower.
-
-This convention is engine-level, not corpus-level — no new top-level fields or
-schema changes are needed; any NPC that declares `following` in its
-`state_fields` and has it set to `true` in `entity_states` will be treated as a
-follower.
+If the player enters one of these listed rooms while the NPC is
+following, the engine clears the `following` state field.
 
 ---
 
 ## Mechanic
 
-Named mechanics are rules involving aspects of game state not tied to specific
-rooms or entities. They are referenced by exits, interactions, and reactions.
-Game-over conditions live here too.
-
-A mechanic can be:
-- A **game-over condition** (has `type`, `condition`, `trigger_id`)
-- A **mechanic containing rules and/or reactions** — a named bundle
-  of global rules that can contain encounter rules (`rules`),
-  reactions (`reactions`), or both.  A mechanic with only reactions is
-  simply a mechanic without encounter rules, not a distinct type.
-
-At least one of `rules`, `type`+`condition`+`trigger_id`, or `reactions` must be present.
-
-### Encounter
+Mechanics are named bundles of game logic that are not tied to a
+specific room or entity.  They live in a dict in the Corpus' top-level
+`"mechanics"` field (see [Top-Level Structure](#top-level-structure):
 
 ```json
 {
-  "<mechanic_id>": {
-    "id": "string",
-    "description": "string",
-    "rules": [
-      {
-        "condition": { /* condition object */ },
-        "result": { "narrative": "...", "set_flag": {}, "game_over": {} },
-        "check": { "type": "stat_check", "stat": "STR", "target": 12, "repeatable": true },
-        "success": { "narrative": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6" },
-        "failure": { "narrative": "...", "set_flag": {}, "alter_stat": {}, "player_damage": "3d6", "game_over": {} }
-      }
-    ],
-    "reactions": [ { /* reaction (optional) */ } ]
+  "mechanics": {
+    "<mechanic_id>": { /* mechanic */ },
+    ...
   }
 }
 ```
 
-Rules are evaluated top-to-bottom. The first rule whose `condition` matches is
-applied.  If no rule matches, the encounter silently does nothing.
+Conceptually, there are three kinds of mechanic:
+
+- **Game-over** – Ends the game when a condition is met
+- **Encounter** – A sequence of rules that are resolved when triggered
+- **Reaction-Only Mechanic** – A bundle of adventure-wide reactions
+
+As explained below, the type of mechanic depends on which fields are
+supplied.  All fields supported by mechanics are listed here:
+
+All fields:
+
+| Field           | Type      | Description                            |
+|-----------------|-----------|----------------------------------------|
+| `id`            | string    | Globally-unique ID                     |
+| `type` (*)      | string    | `"win"`/`"lose"`; for game-over only   |
+| `condition` (*) | Condition | Game-over or gating condition          |
+| `trigger_id` (*)| string    | Saved game-over trigger                |
+| `narrative` (*) | string    | Canonical game-over ending prose       |
+| `rules` (*)     | EncounterRule[] | Encounter rules (see below)      |
+| `reactions` (*) | Reaction[] | Reactions (see below)                 |
+> (*) optional (subject to constraints below)
+
+
+These are mutually exclusive: a mechanic cannot be both game-over and
+encounter.  A mechanic may carry `reactions` alongside `rules` (but not
+alongside `type`).  At least one of `type`, `rules`, or `reactions`
+must be present.
+
+### Encounter
+
+Encounter rules are evaluated top-to-bottom when the mechanic is
+triggered (via `trigger_encounter` in a reaction effect, or by the
+engine when the player attacks an NPC whose `aggro` references the
+mechanic).  The first rule whose `condition` matches is applied; if no
+rule matches, the encounter silently does nothing.
+
 Each rule must have exactly one of `result` (direct) or `check`
-(probabilistic with `success`/`failure` branches).
+(probabilistic with `success`/`failure` branches).  See
+[Encounter Rule](#aggro) for the rule schema.
 
-`alter_stat` and `player_damage` on a branch `Result` follow the same
-modifier semantics as interaction results.  `trigger_combat: true` on a
-firing `Result` starts the multi-round combat system.
-
-Notes on encounters and reactions:
+Notes:
 
 - Only one encounter can resolve per turn. If a reaction triggers an
   encounter and that encounter has already been triggered (from the
@@ -1291,12 +1270,15 @@ Notes on encounters and reactions:
 
 ### Game-Over
 
+A game-over mechanic is evaluated each turn.  When its `condition`
+evaluates to true, the engine sets `game_over` in hard state and
+ends the game.
+
 ```json
 {
   "<mechanic_id>": {
     "id": "string",
     "type": "win | lose",
-    "description": "string",
     "condition": { /* condition object */ },
     "narrative": "string (canonical ending narration)",
     "trigger_id": "string (matches game_over.trigger in hard state)"
@@ -1304,35 +1286,20 @@ Notes on encounters and reactions:
 }
 ```
 
-| Field         | Type   | Description |
-|---------------|--------|-------------|
-| `id`          | string | Unique mechanic identifier. |
-| `type`        | string | `"win"` or `"lose"`. |
-| `description` | string | Human-readable description of what must happen. |
-| `condition`   | Condition | Evaluated each turn (or when specific triggers fire). When true, `game_over` is set. Follows the condition object format. |
-| `narrative`   | string | Canonical ending prose passed to LLM Call 2 via `triggered_narration`. |
-| `trigger_id`  | string | Set as `game_over.trigger` in hard state; for debugging and save analysis. |
+### Reaction-only
 
-### Mechanic with reactions only
-
-A mechanic that carries only `reactions` (no `type`, `rules`, or `trigger_id`)
-is valid.  This is not a distinct structural type — it is simply a mechanic
-without encounter rules.  Use this for adventure-wide state-based reactions
-that don't need encounter rules and aren't tied to a specific room or entity.
+A mechanic that carries only `reactions` (no `type`, `rules`, or
+`trigger_id`) is valid.  Use this for adventure-wide state-based
+reactions that aren't tied to a specific room or entity.
 
 ```json
 {
   "<mechanic_id>": {
     "id": "string",
-    "description": "string",
     "reactions": [ { /* reaction */ } ]
   }
 }
 ```
-
-The mechanic's `condition` field is only used for game-over and encounter
-mechanics.  Mechanics with only reactions use per-reaction `condition` fields
-instead.
 
 #### Examples
 
@@ -1362,7 +1329,6 @@ The `guardian_attack` encounter has a rule whose success branch sets `guardian_d
 ```json
 "global_reactions": {
   "id": "global_reactions",
-  "description": "Adventure-wide state-based reactions.",
   "reactions": [
     {
       "id": "injury_warning",

@@ -232,12 +232,10 @@ def _mk_encounter_rule(
 
 def _mk_mechanic(
     mid: str,
-    description: str,
     rules: list[EncounterRule],
 ) -> Mechanic:
     return Mechanic(
         id=mid,
-        description=description,
         rules=rules,
     )
 
@@ -310,7 +308,6 @@ def make_encounter_trigger_corpus(
         mechanics={
             mechanic_id: _mk_mechanic(
                 mechanic_id,
-                "Test encounter",
                 rules=[
                     _mk_encounter_rule(
                         outcome=encounter_outcome,
@@ -465,7 +462,6 @@ def make_webs_test_corpus() -> ModuleCorpus:
         mechanics={
             "spider_attack": _mk_mechanic(
                 "spider_attack",
-                "Spider encounter",
                 rules=[
                     _mk_encounter_rule(
                         outcome="combat",

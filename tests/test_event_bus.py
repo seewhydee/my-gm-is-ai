@@ -557,7 +557,6 @@ class TestReactionTriggerEncounter:
         # Add a simple encounter mechanic that sets a flag when it fires.
         corpus.mechanics["test_ambush"] = Mechanic(
             id="test_ambush",
-            description="Test ambush",
             rules=[
                 _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
@@ -806,7 +805,6 @@ class TestReactionCombatLogPropagation:
 
         corpus.mechanics["test_combat"] = Mechanic(
             id="test_combat",
-            description="Test combat encounter",
             rules=[
                 _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
@@ -909,7 +907,6 @@ class TestEncounterOncePerTurnGuard:
 
         corpus.mechanics["test_enc1"] = Mechanic(
             id="test_enc1",
-            description="first encounter",
             rules=[_mk_encounter_rule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="flee",
@@ -919,7 +916,6 @@ class TestEncounterOncePerTurnGuard:
         )
         corpus.mechanics["test_enc2"] = Mechanic(
             id="test_enc2",
-            description="second encounter",
             rules=[_mk_encounter_rule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="flee",
@@ -932,7 +928,6 @@ class TestEncounterOncePerTurnGuard:
         # second trigger_encounter must be suppressed by the guard.
         corpus.mechanics["test_carrier"] = Mechanic(
             id="test_carrier",
-            description="carrier",
             reactions=[
                 Reaction(id="fire_enc1", on="turn.end", priority=0,
                          effect=ReactionEffects(trigger_encounter="test_enc1")),
@@ -1206,7 +1201,6 @@ class TestEncounterBranchedEvent:
         # An encounter mechanic with a roll outcome and branches.
         corpus.mechanics["test_ambush"] = Mechanic(
             id="test_ambush",
-            description="Test ambush",
             rules=[
                 _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
@@ -1253,7 +1247,6 @@ class TestEncounterBranchedEvent:
 
         corpus.mechanics["test_ambush"] = Mechanic(
             id="test_ambush",
-            description="Test ambush",
             rules=[
                 _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),

@@ -142,12 +142,11 @@ class TestMechanicReactionOnly:
 
     def test_empty_mechanic_rejected(self):
         with pytest.raises(ValidationError, match="must have at least one"):
-            Mechanic(id="m1", description="test")
+            Mechanic(id="m1")
 
     def test_game_over_mechanic_still_works(self):
         m = Mechanic(
             id="m1",
-            description="test",
             type="lose",
             condition={"require": "flag:dead == true"},
             trigger_id="death",
@@ -158,7 +157,6 @@ class TestMechanicReactionOnly:
         from mgmai.models.corpus import ConditionExpression
         m = Mechanic(
             id="m1",
-            description="test",
             rules=[_mk_encounter_rule(
                 condition=ConditionExpression(require="flag:x == true"),
                 outcome="death",
@@ -171,7 +169,6 @@ class TestMechanicReactionOnly:
         with pytest.raises(ValidationError, match="not both"):
             Mechanic(
                 id="m1",
-                description="test",
                 type="lose",
                 condition={"require": "flag:dead == true"},
                 trigger_id="death",

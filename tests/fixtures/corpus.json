@@ -695,7 +695,6 @@
     "win_escape_bag": {
       "id": "win_escape_bag",
       "type": "win",
-      "description": "The player unlocks the padlock from the inside using the rusty key and squirms free through the rip in the canvas.",
       "condition": {
         "require": "flag:padlock_unlocked == true"
       },
