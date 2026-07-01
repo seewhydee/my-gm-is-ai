@@ -293,8 +293,10 @@ authoritative dice results.
       "encounter_rules": [
         {
           "condition": { "require": "spider_fled" },
-          "trigger_combat": true,
-          "narrative": "The spider, cornered, skitters forward to attack!"
+          "result": {
+            "trigger_combat": true,
+            "narrative": "The spider, cornered, skitters forward to attack!"
+          }
         }
       ]
     },

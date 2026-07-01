@@ -17,13 +17,13 @@
 from __future__ import annotations
 
 import random
-from typing import Any
+
 
 from mgmai.models.corpus import (
     EncounterRule,
+    GameOverTrigger,
     ModuleCorpus,
     Result,
-    RollCheck,
     StatCheck,
 )
 from mgmai.models.hard_state import HardGameState
@@ -71,10 +71,7 @@ def _empty_result(rolls: list[dict] | None = None) -> dict[str, Any]:
     }
 
 
-def _game_over_dict(
-    go_trigger: Any | None,
-    npc_id: str | None,
-) -> dict[str, str] | None:
+def _game_over_dict(go_trigger: GameOverTrigger | None) -> dict[str, str] | None:
     if go_trigger is None:
         return None
     return {"type": go_trigger.type, "trigger": go_trigger.trigger_id}
@@ -141,7 +138,7 @@ def _apply_encounter_rule(
         "alter_stat": firing_result.alter_stat or {},
         "player_damage": firing_result.player_damage,
         "trigger_combat": firing_result.trigger_combat,
-        "game_over": _game_over_dict(firing_result.game_over, npc_id),
+        "game_over": _game_over_dict(firing_result.game_over),
         "rolls": encounter_rolls,
         "branch_taken": branch_taken,
     }

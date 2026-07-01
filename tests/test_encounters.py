@@ -198,7 +198,7 @@ class TestResolveEncounter:
         assert result["narrative"] is not None
         assert result["alter_stat"] == {"DEX": StatModifier(value=-2)}
 
-    def test_branch_alter_stat_overrides_rule_alter_stat(self, sample_corpus, monkeypatch):
+    def test_branch_alter_stat_on_stat_check_success(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
