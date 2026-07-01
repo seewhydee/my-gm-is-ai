@@ -686,6 +686,15 @@ omits the entity even from the GM (to avoid leakage).  However, don't
 use `hidden` to describe entities that are masked just by being in a
 closed container (see Containers, below).
 
+**Timing:** when a result directly sets `hidden: false` via
+`set_entity_state` (e.g., in an `on_examine` event or interaction
+result), the entity becomes visible to the narrator in the same turn.
+If the reveal is gated through a separate reaction on `flag.set` that
+then sets `hidden: false`, the entity does not appear until the next
+turn, because state-change events fire during deferred end-of-turn
+dispatch.  Prefer the direct approach for dramatic immediacy, unless
+the scenario requires the reveal to be deferred.
+
 #### Entity Reactions
 
 The `reactions` field is used for event-driven entity behavior.  To

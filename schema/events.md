@@ -8,9 +8,7 @@ This document is the authoritative reference for:
 - Which events support `phase: "immediate"` reactions
 - Known gaps in event emission
 
-For how to write reactions, see [`corpus.md`](corpus.md) § Reaction object and
-[`scenario-generation.md`](scenario-generation.md). For the original design
-rationale, see [`plan.md`](../plan.md).
+For how to write reactions, see the [Corpus schema](corpus.md).
 
 ---
 

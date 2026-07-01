@@ -5,8 +5,7 @@ equivalent of a printed D&D adventure module, containing descriptions
 of game logic, rooms, entities, encounters, win/loss conditions, etc.
 
 The Context Assembler reads from it to build the GMBriefing. The
-Engine reads from it to validate actions, resolve encounters, and
-apply mechanics.
+Engine reads from it to validate actions and apply game mechanics.
 
 ## Top-Level Structure
 
@@ -36,15 +35,14 @@ apply mechanics.
 
 ## Common Primitives
 
-This section defines types used in multiple parts of the corpus
-schema: conditions, checks, and results.
+Here we define types used in multiple parts of the corpus schema.
 
 ### Condition
 
 A condition object describes a predicate clause gating availability:
 whether an exit is shown, a mechanic can be triggered, etc.  They are
 formed from condition strings and, optionally, condition objects
-(allowing for nested logic).  There are several different forms:
+(allowing for nested logic).  There are several forms:
 
 **`require`** — availability requires condition string to be true.
 
@@ -80,9 +78,10 @@ Condition strings have one of two forms:
 
 - `<domain>:<key>` — presence-only check (allowed for `inventory`,
   `equipped`, `tag`, and `topic` domains).
-- `<domain>:<key> <op> <value>` — compare key's value against
-	`<value>`. Supported ops: `== true`, `== false`, `== <string>`, `>=
-  <number>`, `> <number>`, `<= <number>`, `< <number>`.
+
+- `<domain>:<key> <op> <value>` — compare to `<value>`. Supported:
+  `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`,
+  `<= <number>`, `< <number>`.
 
 | Domain       | Key                                                 |
 |--------------|-----------------------------------------------------|
@@ -100,19 +99,16 @@ Condition strings have one of two forms:
 Notes:
 
 - The `equipped` domain also accepts tag names: `equipped:weapon`
-  holds if any equipped item has the tag `"weapon"`.
-- The `attitude` domain uses the NPC's runtime attitude if one has
-  been set; otherwise it falls back to `attitude_limits.initial` for
-  the NPC.  See [NPC attitude](#npc-attitude)
-- The `event` domain is used in [Reaction dispatch](#reaction-object);
-  see that section for details.  It evaluates to `false` outside event
-  dispatch.
+  holds if any equipped item has tag `"weapon"`.
+- The `attitude` domain uses the NPC's current attitude, or, if not
+  set, `attitude_limits.initial`.  See [NPC attitude](#npc-attitude).
+- The `event` domain is used in [Reaction dispatch](#reaction-object).
+  It evaluates to `false` outside event dispatch.
 
-Examples:
+**Examples**:
 - `flag:daytime == true` holds iff the `daytime` flag is true.
-- `inventory:rusty_key` holds iff the item with entity ID `rusty_key`
-  is in player's inventory; it is not satisfied if the item exists
-  outside inventory.
+- `inventory:rusty_key` holds iff item with entity ID `rusty_key` is
+  in inventory; not satisfied if the item exists outside inventory.
 - `topic:abandonment` holds iff the topic has been discussed in the
   current dialogue (`soft_state.dialogue_state.topics_discussed`)
 - `stat:STR >= 5` holds iff player's current STR stat is >= 5.
@@ -124,10 +120,8 @@ Examples:
 A Check resolves the success or failure of an event or action:
 interaction, traversal, encounter, etc.  There are two Check types:
 `roll` (flat probability) and `stat_check` (stat-based resolution).
-
-Either type of Check can be set to be repeatable or non-repeatable.
-If the `repeatable` field is `false`, the engine automatically tracks
-attempts and rejects repeats.
+Either type of Check can be repeatable or not; if `repeatable` is
+`false`, the engine tracks attempts and rejects repeats.
 
 #### Roll Check
 
@@ -145,8 +139,8 @@ A roll Check succeeds if `random() < threshold`.
 |--------------|---------|-----------------------------------|
 | `type`       | string  | `"roll"` — flat probability check |
 | `threshold`  | number  | Probability threshold (0.0–1.0)   |
-| `repeatable` | boolean | Whether the check can be retried  |
-| `note` (*)   | string  | Optional designer note            |
+| `repeatable` | boolean | Whether check can be retried      |
+| `note` (*)   | string  | Explanatory designer note         |
 > (*) optional
 
 #### Stat Check
@@ -167,10 +161,10 @@ Stat Checks are [resolution system](#resolution-system) dependent.
 |----------------|---------|-----------------------------------|
 | `type`         | string  | `"stat_check"` — stat-based check |
 | `stat`         | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
-| `target`       | integer | Target number / difficulty class  |
+| `target`       | integer | Check target or difficulty class  |
 | `modifier` (*) | integer | Situational modifier (default 0)  |
 | `repeatable`   | boolean | Whether check can be retried      |
-| `note` (*)     | string  | Optional designer note            |
+| `note` (*)     | string  | Explanatory designer note         |
 > (*) optional
 
 Aside from the above fields, system-specific fields are accepted as
@@ -178,33 +172,31 @@ extra top-level keys.  Various systems can implement their own checks
 and define their own extra fields.
 
 The `5e` system uses roll(1d20) + (stat-10)//2 + modifier >= target as
-the success formula.  It also uses the following additional fields:
+the success formula, and supports these additional optional fields:
 
 | Field          | Type    | Description                       |
 |----------------|---------|-----------------------------------|
 | `advantage`    | boolean | Roll 2d20 and keep the higher die |
 | `disadvantage` | boolean | Roll 2d20 and keep the lower die  |
 
-Both of these fields are optional.  If both are `true`, they cancel
-out and a single d20 is rolled.
+If both fields are `true`, they cancel out and a single d20 is rolled.
 
 ---
 
 ### Result
 
-A Result describes the consequences of an action — the canonical
-narrative, state mutations, stat adjustments, inventory changes, and
-optional follow-up checks. Result objects are used in deterministic
-game mechanics, but are also used in `success` and `failure` branches
-for interactions, traversal checks, dialogue paths, etc.
+A Result describes the consequences of an action — narrative, state
+mutations, stat adjustments, inventory changes, and optional follow-up
+checks. Results can appear either deterministically, or in `success`
+and `failure` branches of non-deterministic game mechanics.
 
 ```json
 {
-  "narrative": "Looting the troll, you discover in its pouch a pair of speed boots and a dagger, which must have been taken from some hapless adventurer",
+  "narrative": "Looting the troll, you discover a pair of speed boots and a dagger, probably taken from some hapless adventurer",
   "add_item": [ "speed_boots", "enchanted_dagger" ],
   "set_flag": { "old_gear_found" : true },
   "set_entity_state": { "troll": { "looted" : true } },
-  "reveals": "Found gear belonging to an adventurer on a troll's body.",
+  "reveals": "Found gear belonging to an adventurer on a troll.",
 }
 ```
 
@@ -231,14 +223,12 @@ Notes:
   *not* mutually exclusive; one Result can deal damage, set multiple
   flags, alter multiple state fields, add/drop multiple items, etc.
 
-- The `narrative` field informs the GM narrator what happened, but may
-  not be used verbatim.
+- `narrative` helps brief the GM, but might not be used verbatim.
 
 - During a check, `check.passed`/`check.failed` events (and their
-  immediate reactions) fire before the success/failure branch result
-  is applied.  The result's effects are then accumulated into a batch,
-  and processed as a unit before any follow-up `then_check` resolves.
-  See [Reaction](#reaction).
+  immediate reactions) fire before applying success/failure results.
+  The effects are accumulated into a batch, and processed before any
+  follow-up `then_check` resolves.  See [Reaction](#reaction).
 
 - At the engine level, action-result changes and immediate-reaction
   changes are merged and applied atomically.  Deferred reactions
@@ -255,20 +245,18 @@ Notes:
   the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`.
   See [NPC attitude](#npc-attitude).
 
-- `reveals` is a player-knowledge hint.  If this string is present,
-  the engine appends it to `soft_state.revealed_hints` (with
-  deduplication), whose contents help guide the GM narrator.
-  See the [Soft State schema doc](soft-state.md) for details.
+- `reveals` is a player-knowledge hint.  If present, the engine
+  appends it to `soft_state.revealed_hints` (with deduplication) to
+  guide the GM; see the [Soft State schema](soft-state.md).
 
 #### Follow-up check
 
 A follow-up check can be embedded in a Result's `then_check` field.
 It implements multi-stage resolutions for actions and effects, firing
-immediately after its parent result using its own success/failure
-branches.
+right after its parent result with its own success/failure branches.
 
-For example, the player may make a STR check to jump across a pit,
-and, on failure, make a DEX check to grab the ledge.
+**Example**: player makes a STR check to jump across a pit, and on
+failure makes a DEX check to grab the ledge.
 
 ```json
 {
@@ -300,17 +288,17 @@ and, on failure, make a DEX check to grab the ledge.
 > (*) optional
 
 Nested follow-ups are supported — a follow-up check's success/failure
-results may contain other follow-ups, up to a maximum depth of 3.
+results may contain other follow-ups, to a maximum depth of 3.
 
 ---
 
 ### Gated Check
 
-A Gated Check wraps a [Check](#check) with a condition that determines
+A Gated Check wraps a [Check](#check) with a condition determining
 whether the check is active, an optional bypass condition, and
 success/failure [Results](#result).  It is meant for situations where
-a player action would normally succeed, but faces an obstacle; it is
-used in `take_check` for items and `traversal_check` for room exits.
+a player action meets a special obstacle (specifically, `take_check`
+for items and `traversal_check` for room exits).
 
 ```json
 {
@@ -347,15 +335,13 @@ used in `take_check` for items and `traversal_check` for room exits.
 | `using_results`(*)| object    | See [Usage Override](#usage-override)|
 > (*) optional
 
-Note: if `gating` evaluates to false, the check is silently inactive;
-the action proceeds with default behavior and no Result from the check
-is applied (neither `success` nor `failure`).  If `gating` evaluates
-to true (or is absent) and `skip_check_if` evaluates to true, the
-check is bypassed and `success` is applied.  Otherwise the check is
-rolled normally.
+Note: if `gating` evaluates to false, the check is inactive and the
+action proceeds as default; neither the `success` nor `failure` Result
+is applied.  If `gating` evaluates to true (or is absent) and
+`skip_check_if` evaluates to true, the check is bypassed and `success`
+is applied.  Otherwise the check is rolled normally.
 
-The `using_results` field, if supplied, should be a dict defining
-[Usage Overrides](#usage-override) for the Gated Check.
+`using_results`, if present, is a set of [Usage Overrides](#usage-override).
 
 ---
 
@@ -396,16 +382,15 @@ It is used to describe special interactions with [Rooms](#room) and
 Notes:
 
 - The meaning of `id` depends on where the Resolvable is used.  For
-  interactions with rooms and entities, it must be a room-unique or
-  entity-unique ID string.  In other contexts, it need not be
-  specified.
+  room and entity interactions, it must be a room-unique or
+  entity-unique ID.  In other contexts, it need not be specified.
 
 - `description` is used to brief the GM on the semantic meaning of the
   action.  It may be omitted for Examination Effects.
 
 - `condition`, if supplied, gates availability; if it evaluates to
-  `false`, the action is considered unavailable (e.g., a room/entity
-  interaction will not be offered as a player action).
+  `false`, the action is unavailable (e.g., a room/entity interaction
+  will not be offered as a player action).
 
 - The action itself should be specified by one of:
   - a deterministic `result`, OR
@@ -413,8 +398,7 @@ Notes:
     (evaluating to `true` means auto-success), along with `success`
     (required) and `failure` (optional) Results.
 
-- `using_results`, if supplied, should be a dict defining a set of
-  [Usage Overrides](#usage-override) for the action.
+- `using_results`, if present, is a set of [Usage Overrides](#usage-override).
 
 ---
 
@@ -422,18 +406,15 @@ Notes:
 
 A Usage Override object can be placed in the optional `using_results`
 field of a Gated Check or Resolvable.  It accommodates player commands
-of the form "[ACTION] using [ITEM]" by defining alternative resolution
-paths.
+of the form "[ACTION] using [ITEM]".  It should be a dict mapping item
+[entity IDs](#entity) to one of the following resolution paths:
 
-Each Usage Override should be a dict mapping item entity IDs to one of
-the following, overriding the usual result or check for the Gated
-Check or Resolvable:
+- a dict with `"result"` keyed to a fixed [Result](#result); OR
 
-- a dict with `"result"` keyed to a [Result](#result), describing an
-  alternative unchecked interaction result; OR
+- a dict with `check`, `success`, and `failure` (optional), defining
+  an alternative [Check](#check),
 
-- a dict with `check`, `success`, and `failure` (optional), which
-  define an alternative [Check](#check),
+This overrides the usual resolution when using the specified item.
 
 ---
 
@@ -475,34 +456,35 @@ world graph keyed by a globally-unique `room_id`.
 
 Notes:
 
-- The `name` string is used to indicate the player's location in UI
-  during gameplay, whereas `description` guides the GM regarding the
-  characteristics of the room, including when the player enters or
-  looks around (NOT necessarily used verbatim in narration).
+- The `name` string is used as the in-game UI label for the room,
+  whereas `description` briefs the GM on the characteristics of the
+  room (NOT necessarily used verbatim in narration).
 
 - The `contains` field lists the IDs of entities DIRECTLY present in
-  the room (at game start).  If entity A is in room R, and entity B is
-  in entity A (see `contains`, [Entity](#entity)), only A is directly
-  present; room R's `contains` lists A but not B.
+  the room at game start.  Note: if entity A is in room R, and entity
+  B is in entity A (see `contains`, [Entity](#entity)), only A is
+  directly present; room R's `contains` lists A but not B.
 
   The player must not be included (even for the starting room).
 
 - The `exits` field stores an array of [Exit](#exit) objects, one for
-  EVERY possible exit, regardless of its initial availability and
-  visibility.  Each exit can be individually gated and/or hidden.
+  EVERY possible exit regardless of initial availability / visibility.
+  Each exit can be individually gated and/or hidden.
 
-- State fields have room-unique IDs (dict keys) chosen by the corpus
-  author.  Two reserved state fields are engine-managed: `visited` is
-  set to `true` when the player enters a room, and `is_current` is
-  computed (true only for the player's current room).  Neither field
-  has to be declared in `state_fields`.  Do not use `is_current` to
-  relocate the player; use `set_player_location` in a Result.
+- State fields have room-unique IDs (dict keys).  They can be freely
+  chosen by the corpus author, except for two reserved engine-managed
+  state fields (neither of which has to be declared):
+
+  - `visited` is set to `true` when the player enters a room.
+
+  - `is_current` is true only for the player's current room.
+    This is auto-computed.  Do not move the player by changing this;
+    use `set_player_location` in a Result instead.
 
 - `interactions` is an array of [Resolvables](#resolvable) describing
-  the non-generic operations that can be performed on (or with) the
-  room.  For each Resolvable,
+  operations performable on the room.  For each Resolvable,
 
-  - `id` must be room-unique.  It should not be the reserved ID
+  - `id` must be room-unique, and should not be the reserved ID
     `attack`, or the generic actions `move`, `examine`, `talk`,
     `transfer`, or `wait`, or similar generic verbs (e.g., `take`).
 
@@ -510,7 +492,7 @@ Notes:
     meaning of the interaction; it is used to brief the GM on the
     semantic meaning of the interaction.
 
-  - If `failure` is not specified, a failed check sends a generic
+  - If `failure` is unspecified, a failed check sends a generic
     "nothing happens" message to the GM narrator.
 
 - Soft objects examples: `["rock", "loose stone", "dust"]`). These are
@@ -542,23 +524,17 @@ Notes:
 
 Notes:
 
-- `direction` is used when listing the available exits after a room
-  description.  Inserted verbatim by the engine.  Style convention:
-  one phrase, capitalize, no full stop.  Should be clear enough to
-  distinguish different exits.
+- `direction` is used verbatim when the engine lists available exits
+  after a room description.  Style convention: one phrase, capitalize,
+  no full stop.  Different exits should be sufficiently distinctive.
 
-- `condition` is a gating Condition that must be met for the exit to
-  be shown at all.  If an Exit is unavailable, it does not appear to
-  the player (or GM) as an available exit from the room.  The distinct
-  `traversal_check` field, documented below, describes the conditions
-  and gating for non-automatic (e.g., risky) traversal.
+- `condition`, if present, is a gating Condition for the availability
+  of the exit.  An unavailable Exit is not shown to the player or GM.
 
-- `traversal_check`, if supplied, gates traversal.  Success and
-  failure have the side-effects of moving to the destination Room, and
-  canceling the traversal, respectively; no need to specify explicitly
-  in `success`/`failure`.  The `using_results` field accommodates
-  player commands of the form "[USE EXIT] using [ITEM]"; the format is
-  the same as in [Interaction](#interaction).
+- `traversal_check`, if present, gates traversal.  Success and failure
+  have the automatic side-effects of moving to the destination Room,
+  and canceling the traversal, respectively.  The `using_results`
+  field accommodates commands of the form "[USE EXIT] using [ITEM]".
 
 - The `one_way` field is only used to indicate to the player that an
   exit *seems* one-way (e.g., a trapdoor).  No gameplay effects.
@@ -567,17 +543,17 @@ Notes:
 
 ## Examination
 
-Each room and entity object has an optional `on_examine` field for an
-**array** of [Resolvables](#resolvable), describing the outcomes of
-examining the room or entity.  When the player performs an examine
-action, all eligible Resolvables in `on_examine` run in array order.
+Each Room and Entity has an optional `on_examine` field that takes an
+**array** of [Resolvables](#resolvable), describing possible
+examination outcomes.  When the player performs an examine action, all
+eligible Resolvables run in array order.
 
 The player can opt between ordinary (cursory) examination, which does
 not consume a turn, and rigorous examination, which costs a turn.  To
 account for this, the Resolvables in `on_examine` add an extra field,
 `rigorous_only` (boolean, default `false`).  Resolvables with
-`rigorous_only` only activate under rigorous examination; however,
-rigorous examinations *can* activate cursory-examination Resolvables.
+`rigorous_only` *only* activate under rigorous examination; rigorous
+examinations *can* activate cursory-examination Resolvables.
 
 ```json
 {
@@ -610,27 +586,26 @@ Extra field for Resolvables in `on_examine`:
 
 Notes:
 
-- To construct the narration for what the player observes during the
-  examination, the GM looks at the `narrative` in the
-  [Result](#result) delivered by the examination Resolvable.  The
-  Result can also impose other side-effects, such as setting flags to
-  track the player's information.
+- To form the narration for what the examination reveals, the GM looks
+  at the `narrative` in the [Result](#result) delivered by the
+  Resolvable.  The Result can also impose other side-effects, such as
+  setting flags to track the player's information.
 
 - `id`, `description`, and `using_results` need not be supplied, and
-  and their effects on examination actions are undefined.
+  their effects on examination actions are undefined.
 
 ## Reaction
 
-Reactions are a flexible mechanism to make changes in game state in
-response to specified events.  They can be placed in the `reactions`
-array of a [Room](#room), [Entity](#entity), or [Mechanic](#mechanic)
-– called the **scope** of the reaction.
+Reactions are a flexible mechanism to change game state in response to
+specified events.  They can be placed in the `reactions` array of a
+[Room](#room), [Entity](#entity), or [Mechanic](#mechanic) – the
+**scope** of the reaction.
 
 The scope determines when the reaction is active (i.e., can be
-triggered).  Room-scoped reactions are active when the player is
-present in the room; entity-scoped reactions are active when the
-entity is in the present room *and* (for NPCs) alive and not fled;
-mechanic-scope reactions are always active.
+triggered).  Room-scoped reactions are active when the player is in
+the room; entity-scoped reactions are active when the entity is in the
+present room *and* (for NPCs) alive and not fled; mechanic-scope
+reactions are always active.
 
 ```json
 {
@@ -658,7 +633,7 @@ mechanic-scope reactions are always active.
 Notes:
 
 - `id` is used for debugging and tracking one-off reactions (those
-  with `once` true).  As the tracking is global, one-off reactions
+  with `once` true).  As this tracking is global, one-off reactions
   MUST have globally-unique IDs.  Other reactions need only be unique
   within their scope (room, entity, or mechanics).
 
@@ -692,16 +667,15 @@ The event that fires a reaction is determined by two objects:
   directly present (see [Room](#room)).
 
 - The **Event Context** – a flat dict of details about the event.  For
-  example, a `"room.entered"` trigger provides one context key,
-  `room_id`, which is the ID of the room entered.
+  example, a `"room.entered"` trigger provides the context key
+  `room_id`: the ID of the room entered.
 
-  The Event Context can be accessed by Condition blocks inside the
-  Reaction.  Thus, a `condition` block can narrow the reaction to a
-  specific event: e.g., `{"require" : "event:room_id == camp"}`.
-  The `event` condition domain is only valid during reaction dispatch.
+  The Event Context can be accessed by Condition blocks in the
+  Reaction using the `event` [Condition String](#condition-string)
+  domain (this domain is only valid during reaction dispatch).  This
+  allows (say) a `condition` to narrow down when the reaction fires.
 
-**Example**: a goblin NPC that attacks on sight, but only if in a
-specific room:
+**Example**: a goblin NPC attacks on sight, but only in a given room.
 
 ```json
 {
@@ -770,7 +744,7 @@ Notes:
 - For `trigger_[encounter|dialogue]`, the `"self"` value resolves to
   the owning entity's ID (for entity-scoped reactions).
 
-Example:
+**Example**: trap fires if it's armed when the player enters the room.
 
 ```json
 {
@@ -786,7 +760,7 @@ Example:
       "player_damage": "2d4",
       "set_flag": { "trap_sprung": true },
       "set_room_state": { "antechamber": { "dart_trap_triggered": true } },
-      "reveals": "The dart trap in the antechamber has been triggered"
+      "reveals": "The dart trap in the antechamber was triggered"
     }
   }
 }
@@ -796,8 +770,7 @@ Example:
 
 ## Entity
 
-Entities are typed objects that appear in rooms or inventory. Keyed by
-unique `entity_id`.
+Entities are unique objects that appear in rooms or inventory.
 
 ```json
 {
@@ -841,11 +814,12 @@ Notes:
 - NPCs, features, and items each support additional fields, documented
   in the following subsections.
 
-- The semantic `tags` can be accessed using `tag:<value>` specs in
-  [Condition strings](#condition-string).  They are distinct from
-  `equip_block.equip_tags` (see below).  The special `"container"` tag
-  should be placed on entities that act as containers with open/close
-  functionality; see [Reserved state fields](#reserved-state-fields).
+- `tags`, if provided, contains semantic tags that can be accessed via
+  `tag:<value>` in [Condition strings](#condition-string).  They are
+  distinct from [Equipment Tags](#equipment).
+  
+  The special `"container"` tag should be placed on entities that act
+  as [containers](#container) with open/close functionality.
 
 - State fields have entity-unique IDs (dict keys) chosen by the corpus
   author.  The following state fields have special meanings,
@@ -853,19 +827,25 @@ Notes:
   `following`, `current_hp`, and `open`.  The corpus author can also
   define custom state fields.
 
-- `interactions` is an array of [Resolvables](#resolvable) describing
-  the non-generic operations that can be performed on (or with) the
-  entity.  `id` must be entity-unique.  The rest of the spec is the
-  same as for [Room](#room) interactions.
+  The special state field `hidden` declares explicit concealment
+  (e.g., a lurking enemy, or a sword buried in rubble). When it is
+  present and `true`, the engine omits the entity (even from the GM,
+  to avoid leakage).  DO NOT use `hidden` for entities that are merely
+  inside a closed [container](#container); that kind of concealment is
+  controlled by the container's `open` state.
+
+- `interactions` is an array of [Resolvables](#resolvable) listing
+  non-generic operations that can be performed on the entity.  Each
+  interaction's `id` must be entity-unique.  The rest of the spec is
+  the same as for [Room](#room) interactions.
 
 ### Feature
 
 Features describe immovable environmental objects.  The player cannot
 pick up, talk to, or attack features.
 
-Features, unlike NPC and item entities, are allowed to span multiple
-rooms: e.g., the sky can be a single feature that's visible from
-different locations (don't do this on a whim, only if plot-relevant).
+Features, unlike NPC and item entities, may span multiple rooms: e.g.,
+the sky can be a single feature visible from different locations.
 Just list the feature's entity ID in the `contains` field of each room
 where it appears.
 
@@ -873,8 +853,8 @@ where it appears.
 
 **Containers** are entities such as chests or wardrobes, which store
 other entities and can be opened and/or closed.  We document
-containers here since they are most commonly implemented as features;
-however, items (or even NPCs) are also allowed to be containers.
+containers here since they are commonly implemented as features, but
+items (or even NPCs) are also allowed to be containers.
 
 Containers should be assigned the following properties:
 
@@ -882,22 +862,21 @@ Containers should be assigned the following properties:
   array.  This informs the engine to handle them specially.
 
 - `open` state field — A container must have `open` as a boolean state
-  field, initialized to `true` (open) or `false` (closed).
+  field, initialized to `true` (open) or `false` (closed).  For
+  entities without the `container` tag, `open` has no special meaning.
 
-- `open` and `close` interactions (optional) — should be defined, if
-  the player can perform open/close actions directly on the container
-  (as opposed to indirect methods, like pressing a button elsewhere).
+- `open` and `close` interactions (optional) — should be defined if
+  the player can perform direct open/close actions (as opposed to
+  indirect methods, like pressing a button elsewhere).
 
 A container's contents are listed in its `contains` and `soft_items`
-fields.  (These fields can also be used for non-container entities:
-e.g., a rubbish pile, which is not a container in the present sense
-since it lacks open/close functionality.)  When the container is open,
-the engine automatically surfaces its contents to the GM and player;
-when the container is closed, the contents are inaccessible.  This
-concealment is distinct from the effects of `hidden` (see below).
+fields.  (These fields can also be used for non-container entities,
+like a rubbish pile, which is not a container in the present sense
+since it lacks open/close functionality.)
 
-For entities without the `container` tag, the `open` state field has
-no special meaning.
+When the container is open, the engine automatically surfaces its
+contents to the GM and player; when the container is closed, the
+contents are inaccessible.  This is distinct from the `hidden` state.
 
 ### Item
 
@@ -917,23 +896,21 @@ Notes:
 - `name` is required for items.  This is what the player sees in the
   inventory display.
 
-- `take_check` is a [Gated Check](#gated-check) for taking the item
-  (e.g., pulling a sword from a stone).  Success and failure have the
-  side-effects of adding the item to the player's inventory, and
-  preventing the item from being taken, respectively; no need to
-  specify `add_item` explicitly in `success`/`failure`.
+- `take_check`, if present, is a [Gated Check](#gated-check) for
+  taking the item (e.g., pulling a sword from a stone).  Success and
+  failure have the side-effects of adding the item to the player's
+  inventory, and preventing the item from being taken, respectively;
+  no need to specify `add_item` explicitly in `success`/`failure`.
 
-  Note that the check is *not* automatically disabled after a
-  successful take.  For a one-time success gate (pass once, then
-  freely take thereafter), use `gating` and set a flag on `success`.
-  For a permanent one-attempt gate (failure locks you out), set
-  `check.repeatable` to `false`.
+  The check is *not* automatically disabled after a successful take.
+  For a one-time success gate (pass once, then freely take
+  thereafter), use `gating` with a flag on `success`.
 
 #### Equipment
 
 **Equipment** refers to item that can be equipped – worn, wielded,
-etc.  An item is treated as equipment if its `equip_block` contains an
-Equip Block object, which specifies the parameters of the equipment.
+etc.  An item is equipment if its `equip_block` contains an Equip
+Block object, which specifies the parameters of the equipment:
 
 ```json
 {
@@ -962,36 +939,34 @@ Notes:
   the extra fields for `5e` are listed below.
 
 - `equip_tags` implements a tag-based equipment system.  The first
-  element defines the "slot" — a broad category that controls
-  compatibility (items in the same slot can conflict).  Remaining tags
-  provide additional categorization (e.g. `["armor", "heavy"]` has
-  slot `"armor"` with sub-tag `"heavy"`).
+  element defines the **slot**, which controls compatibility (items in
+  the same slot can conflict).  The remaining tags provide more
+  context: e.g. `["armor", "heavy"]`.
 
-  Common tags include: `"weapon"`, `"shield"`, `"armor"`, `"ring"`,
-  `"headwear"`, `"handwear"`, `"boots"`, `"two_handed"`.
+  Common equipment tags include: `"weapon"`, `"shield"`, `"armor"`,
+  `"ring"`, `"headwear"`, `"handwear"`, `"boots"`, `"two_handed"`.
 
   Unlike the semantic `tags` in the [Entity](#entity) block, equipment
   tags only describe the item's features **as equipment**.  Only items
-  with the `"weapon"` tag can be wielded as weapons.
+  with the `"weapon"` equipment tag can be wielded as weapons.
 
-- `incompatible_with`, if supplied, lists Equipment Tags conflicting
-  with this item.  When equipping, the engine checks all
-  already-equipped items: if any of *their* tags intersects this list,
-  the equip is rejected.  Default (empty) means items conflict with
+- `incompatible_with`, if supplied, lists equipment tags conflicting
+  with the item.  When equipping, the engine checks already-equipped
+  items: if any of their tags intersects this list, the equip is
+  rejected.  The default (empty) means the item conflicts with
   anything in the same slot (e.g., can't wear two helmets).
-  
-  For two-handed weapons, `"equip_tags": ["two_handed"]` can be paired
-  with (say) `"incompatible_with": ["shield", "handwear"]`).
 
-- `stat_effects` describe stat changes applied while the item is
+  For two-handed weapons, `"equip_tags": ["two_handed"]` can be paired
+  with (say) `"incompatible_with": ["shield", "handwear"]`.
+
+- `stat_effects` stores stat changes applied while the item is
   equipped, in the form `{stat_key: {mode, value}}`.  Any `"set"`
   modifiers apply first, then `"delta"`.
 
 - `max_equipped` defaults to 1; other values can be chosen for, say,
-  rings (2).  The engine uses the highest value among items sharing
-  the same slot tag.
+  rings.  The engine uses the highest value among items in the same slot.
 
-The `5e` system uses the following additional fields, all optional:
+The `5e` system uses the following additional fields, both optional:
 
 | Field         | Type    | Description                                |
 |---------------|---------|--------------------------------------------|
@@ -1000,14 +975,27 @@ The `5e` system uses the following additional fields, all optional:
 
 ### NPC
 
-NPC-specific fields:
+NPCs are entities the player can fight or socialize with.  NPC entity
+blocks support the following additional fields:
 
-| Field                   | Type   | Description |
-|-------------------------|--------|-------------|
-| `dialogue`(*)| object | See [Dialogue Guidelines](#dialogue-guidelines). |
-| `behavior` (*)          | object | Encounter rules for combat-capable NPCs (see [Behavior](#behavior-for-npc-with-combat)). |
-| `combat` (*)            | object | HP-based combat stats (hp, ac, atk, dmg, etc.). Only for NPCs. |
+| Field                   | Type   | Description                       |
+|-------------------------|--------|-----------------------------------|
+| `dialogue`(*)           | object | See [Dialogue](#dialogue) |
+| `behavior` (*)          | object | Encounter rules; see [Behavior](#behavior)) |
+| `combat` (*)            | object | Combat stats (hp, ac, atk, dmg, etc.) |
 | `follower_blacklist`(*) | array of room IDs | Rooms this NPC refuses to enter when following the player. |
+> (*) optional
+
+Notes:
+
+- The following state fields have special meanings for NPCs:
+  - `alive` (boolean) — whether the NPC is active.  Entity reactions are active
+    only when `alive` is not `false`.
+  - `fled` (boolean) — whether the NPC has fled.  Entity reactions are
+    active only when `fled` is not `true`.
+  - `attitude` (integer) — NPC's disposition (higher == friendlier).
+    Required for all NPCs with [dialogue](#dialogue).  Conditions can
+    check attitude via `attitude:<npc_id> <op> <value>`.
 
 #### NPC follower convention (`following` state field)
 
@@ -1043,53 +1031,8 @@ schema changes are needed; any NPC that declares `following` in its
 `state_fields` and has it set to `true` in `entity_states` will be treated as a
 follower.
 
-#### Reserved state fields
 
-The engine recognises several reserved state fields:
-
-- `alive` — entity reactions are active only when `alive` is not `false`. This
-  is conventionally declared for any creature or destructible feature.
-- `fled` — entity reactions are active only when `fled` is not `true`. Declare
-  this for creatures that can flee or be driven off. Adventures that do not use
-  fleeing simply omit the field; it defaults to unset, so the check passes.
-- `attitude` (NPC only) — tracks NPC disposition as an integer. Required for
-  all NPCs that have `dialogue`, since `attitude_limits` constrains
-  how attitude can change. The engine initializes attitude from
-  `attitude_limits.initial` (default 0). Conditions can check attitude via
-  `attitude:<npc_id> <op> <value>`.
-- `hidden` — declares explicit concealment (e.g., a lurking enemy, or a sword
-  buried in rubble). When `hidden` is `true`, the engine omits the entity from
-  `entities_visible` in **all** contexts — the GMBriefing, the EngineResult,
-  and the follower injection pass — so neither the LLM nor the player receive
-  any mention of it. When `hidden` is absent from `state_fields` (or present
-  but unset in `entity_states`), the entity is treated as visible.
-
-  **Do not** use `hidden` for items that are merely inside a closed
-  [container](#container); that is governed by the container's `open`
-  state.  The `hidden` state field is for entities that are present in
-  the room but not apparent even to the GM until some condition or
-  action reveals them.
-
-  **Timing:** when a result directly sets `hidden: false` via
-  `set_entity_state` (e.g., in an `on_examine` event or an interaction
-  result), the entity becomes visible to the narrator in the **same turn** —
-  the EngineResult built after the action will include it.  If the reveal is
-  gated through a separate reaction on `flag.set` that then sets `hidden:
-  false`, the entity does not appear until the **next turn's** GMBriefing,
-  because state-change events fire during deferred end-of-turn dispatch.
-  Prefer the direct approach for dramatic immediacy, unless the scenario
-  requires the reveal to be deferred.
-
-- `open` — for [container](#container) entities, as documented above.
-
-`alive` and `fled` are optional at the schema level, but if an entity has reactions
-and can die or flee, declare the corresponding field so the engine scopes the
-reactions correctly.
-`hidden` is optional at the schema level, but an entity with `hidden: true` in
-initial hard state must have a planned reveal mechanism — an `on_examine` event
-or interaction that sets `hidden: false` — otherwise it is permanently invisible.
-
-### Dialogue Guidelines
+### Dialogue
 
 ```json
 {
@@ -1212,7 +1155,7 @@ NPC attitude is tracked as an integer in `hard_state.entity_states[<npc_id>].att
 
 For example, a troll might have `min: -5, max: -1` — it can never become friendly. A guard might have `step_per_turn: 1` — attitude shifts only gradually.
 
-### `behavior` (for NPC with combat)
+### Behavior
 
 ```json
 {
