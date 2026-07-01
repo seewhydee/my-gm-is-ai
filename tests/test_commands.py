@@ -314,12 +314,13 @@ class TestInventoryCommand:
         hard.player.inventory = []
         sword = state_manager.corpus.entities["toenail_sword"]
         hard.player.equipped = ["toenail_sword"]
-        monkeypatch.setattr(
-            sword.equip_block,
-            "attack_bonus",
-            -1,
+        # ac_bonus is a 5e-specific extra, so rebuild the block with extras.
+        sword.equip_block = EquipBlock(
+            equip_tags=["weapon"],
+            damage_expr="1d6",
+            hit_bonus=-1,
+            ac_bonus=-2,
         )
-        monkeypatch.setattr(sword.equip_block, "ac_bonus", -2)
 
         from mgmai.game.commands import Commands
         rendered: list[str] = []

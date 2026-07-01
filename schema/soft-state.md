@@ -522,7 +522,7 @@ hard-state equipment.
 ```json
 {
   "damage_expr": "1d4",
-  "attack_bonus": 0,
+  "hit_bonus": 0,
   "description": "broken bottle",
   "clears_after_turn": true
 }
@@ -535,7 +535,7 @@ lower priority than a properly equipped weapon but higher than unarmed combat.
 | Field               | Type    | Default  | Description |
 |---------------------|---------|----------|-------------|
 | `damage_expr`       | string  | `"1d6"`  | Damage dice expression. |
-| `attack_bonus`      | int     | `0`      | Flat attack bonus. |
+| `hit_bonus`         | int     | `0`      | Flat bonus to hit rolls. |
 | `description`       | string  | `""`     | Narrative description. |
 | `clears_after_turn` | bool    | `false`  | If true, automatically cleared at the start of the next player turn (one-shot use). |
 
@@ -548,7 +548,7 @@ Set an improvised weapon:
   "field": "set_improvised_weapon",
   "new_value": {
     "damage_expr": "1d4",
-    "attack_bonus": 0,
+    "hit_bonus": 0,
     "description": "broken bottle",
     "clears_after_turn": true
   },

@@ -83,35 +83,42 @@ class EquipBlock(BaseModel):
 
     Only present on item-type entities.  ``None`` means the item cannot
     be equipped (keys, potions, quest items, etc.).
+
+    Core fields are system-agnostic; extra top-level keys are accepted
+    so individual RPG systems can attach their own mechanics (e.g. 5e
+    ``ac_override``, ``ac_bonus``).
     """
+    model_config = ConfigDict(extra="allow")
+
     equip_tags: list[str]
     incompatible_with: list[str] = Field(default_factory=list)
-    equip_effects: Dict[str, StatModifier] = Field(default_factory=dict)
-    ac_override: int | None = None
-    ac_bonus: int = 0
-    two_handed: bool = False
+    stat_effects: Dict[str, StatModifier] = Field(default_factory=dict)
     max_equipped: int | None = 1
     damage_expr: str = "1d8"
-    attack_bonus: int = 0
+    hit_bonus: int = 0
 
     def effects_summary(self) -> str:
         """Compact mechanical-effects summary, shared by briefing and /inv."""
         parts: list[str] = []
-        for stat_key, mod in self.equip_effects.items():
+        for stat_key, mod in self.stat_effects.items():
             if mod.mode == "set":
                 parts.append(f"{stat_key} = {mod.value}")
             else:
                 sign = "+" if mod.value >= 0 else ""
                 parts.append(f"{stat_key} {sign}{mod.value}")
-        if self.ac_override is not None:
-            parts.append(f"AC {self.ac_override}")
-        if self.ac_bonus != 0:
-            parts.append(f"AC {'+' if self.ac_bonus >= 0 else ''}{self.ac_bonus}")
+        # 5e-specific extras are stored as extra fields; use getattr so
+        # non-5e systems (or items without them) still work.
+        ac_override = getattr(self, "ac_override", None)
+        if ac_override is not None:
+            parts.append(f"AC {ac_override}")
+        ac_bonus = getattr(self, "ac_bonus", 0)
+        if ac_bonus != 0:
+            parts.append(f"AC {'+' if ac_bonus >= 0 else ''}{ac_bonus}")
         if "weapon" in self.equip_tags:
             parts.append(f"{self.damage_expr} damage")
-            if self.attack_bonus != 0:
+            if self.hit_bonus != 0:
                 parts.append(
-                    f"{'+' if self.attack_bonus >= 0 else ''}{self.attack_bonus} to hit"
+                    f"{'+' if self.hit_bonus >= 0 else ''}{self.hit_bonus} to hit"
                 )
         return ", ".join(parts)
 

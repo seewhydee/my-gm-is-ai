@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mgmai.models.corpus import ModuleCorpus
+    from mgmai.models.corpus import EquipBlock, ModuleCorpus
     from mgmai.models.hard_state import HardGameState
 
 from mgmai.models.combat import CombatLogEntry
@@ -345,3 +345,14 @@ class ResolutionSystem(ABC):
         (e.g. 5e proficiency bonus on proficient saves).
         """
         return 0
+
+    def get_equip_incompatibilities(self, equip_block: "EquipBlock") -> set[str]:
+        """Return extra equipment tags that conflict with this equip_block.
+
+        Called during equip validation after ``incompatible_with`` has been
+        loaded.  The default returns an empty set.  System-specific
+        incompatibilities should be expressed via conventional tags — e.g.
+        an item tagged ``"two_handed"`` lists ``"shield"`` and
+        ``"handwear"`` in its ``incompatible_with``.
+        """
+        return set()

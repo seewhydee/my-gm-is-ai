@@ -397,7 +397,8 @@ Notes:
 
 - The meaning of `id` depends on where the Resolvable is used.  For
   interactions with rooms and entities, it must be a room-unique or
-  entity-unique ID string.  In other contexts, it is ignored.
+  entity-unique ID string.  In other contexts, it need not be
+  specified.
 
 - `description` is used to brief the GM on the semantic meaning of the
   action.  It may be omitted for Examination Effects.
@@ -458,18 +459,18 @@ world graph keyed by a globally-unique `room_id`.
 }
 ```
 
-| Field                | Type     | Description                        |
-|----------------------|----------|------------------------------------|
-| `name`               | string   | Short display name                 |
-| `description`        | string   | Prose description of room          |
-| `contains`(*)        | string[] | Entities directly present at start |
-| `exits` (*)          | array    | All exits out of the room          |
-| `state_fields` (*)   | object   | State fields for room (see below)  |
-| `interactions` (*) | Resolvable[] | Special interactions (see below) |
-| `on_examine` (*)     | array    | See [Examination](#examination)    |
-| `reactions` (*)      | array    | See [Reaction](#reaction)          |
-| `soft_items` (*)     | string[] | Plausible generic items in the room|
-| `is_start_room` (*)  | boolean  | `true` for starting room (only one)|
+| Field               | Type     | Description                         |
+|---------------------|----------|-------------------------------------|
+| `name`              | string   | Short display name                  |
+| `description`       | string   | Prose description of room           |
+| `contains`(*)       | string[] | Entities directly present at start  |
+| `exits` (*)         | array    | All exits out of the room           |
+| `state_fields` (*)  | object   | State fields for room (see below)   |
+| `interactions` (*)  | Resolvable[] | Special interactions (see below)|
+| `on_examine` (*)    | array    | See [Examination](#examination)     |
+| `reactions` (*)     | array    | See [Reaction](#reaction)           |
+| `soft_items` (*)    | string[] | Plausible generic items in the room |
+| `is_start_room` (*) | boolean  | `true` for starting room (only one) |
 > (*) optional
 
 Notes:
@@ -609,11 +610,11 @@ Extra field for Resolvables in `on_examine`:
 
 Notes:
 
-- The `narrative` in the [Result](#result) delivered by the
-  examination Resolvable is adapted by the GM into the narration for
-  what the player observes during the examination.  The other Result
-  fields can be used to implement other side-effects, such as setting
-  flags to track the player's information.
+- To construct the narration for what the player observes during the
+  examination, the GM looks at the `narrative` in the
+  [Result](#result) delivered by the examination Resolvable.  The
+  Result can also impose other side-effects, such as setting flags to
+  track the player's information.
 
 - `id`, `description`, and `using_results` need not be supplied, and
   and their effects on examination actions are undefined.
@@ -621,9 +622,9 @@ Notes:
 ## Reaction
 
 Reactions are a flexible mechanism to make changes in game state in
-response to pre-specified events.  They can be placed in the
-`reactions` array of a [Room](#room), [Entity](#entity), or
-[Mechanic](#mechanic) – called the *scope* of the reaction.
+response to specified events.  They can be placed in the `reactions`
+array of a [Room](#room), [Entity](#entity), or [Mechanic](#mechanic)
+– called the **scope** of the reaction.
 
 The scope determines when the reaction is active (i.e., can be
 triggered).  Room-scoped reactions are active when the player is
@@ -822,17 +823,17 @@ unique `entity_id`.
 
 The following fields are meaningful for all entity types:
 
-| Field               | Type     | Description                         |
-|---------------------|----------|-------------------------------------|
-| `type`              | enum     | `player|feature|npc|item`           |
-| `description`       | string   | Canonical prose description         |
-| `tags` (*)          | string[] | Array of semantic tags              |
-| `contains`(*)       | string[] | IDs of entities inside this entity  |
-| `interactions` (*)  | array    | See [Interaction](#interaction)     |
-| `on_examine` (*)    | array    | See [Examination](#examination)     |
-| `reactions` (*)     | array    | See [Reaction](#reaction)           |
-| `state_fields` (*)  | object   | State fields for entity (see below) |
-| `soft_items` (*)    | array    | Plausible soft items on/in entity   |
+| Field              | Type     | Description                          |
+|--------------------|----------|--------------------------------------|
+| `type`             | enum     | `player|feature|npc|item`            |
+| `description`      | string   | Canonical prose description          |
+| `tags` (*)         | string[] | Array of semantic tags               |
+| `contains`(*)      | string[] | IDs of entities inside this entity   |
+| `interactions` (*) | Resolvable[] | Special interactions (see below) |
+| `on_examine` (*)   | array    | See [Examination](#examination)      |
+| `reactions` (*)    | array    | See [Reaction](#reaction)            |
+| `state_fields` (*) | object   | State fields for entity (see below)  |
+| `soft_items` (*)   | array    | Plausible soft items on/in entity    |
 > (*) optional
 
 Notes:
@@ -851,6 +852,11 @@ Notes:
   documented below: `alive`, `fled`, `attitude`, `hidden`,
   `following`, `current_hp`, and `open`.  The corpus author can also
   define custom state fields.
+
+- `interactions` is an array of [Resolvables](#resolvable) describing
+  the non-generic operations that can be performed on (or with) the
+  entity.  `id` must be entity-unique.  The rest of the spec is the
+  same as for [Room](#room) interactions.
 
 ### Feature
 
@@ -923,48 +929,85 @@ Notes:
   For a permanent one-attempt gate (failure locks you out), set
   `check.repeatable` to `false`.
 
-### `equip_block` — Equipment block (`EquipBlock`)
+#### Equipment
 
-Optional. Only present on item-type entities. Describes how an item interacts
-with the equipment system. Items without this block cannot be equipped.
+**Equipment** refers to item that can be equipped – worn, wielded,
+etc.  An item is treated as equipment if its `equip_block` contains an
+Equip Block object, which specifies the parameters of the equipment.
 
 ```json
 {
   "equip_tags": ["weapon"],
   "incompatible_with": ["shield"],
-  "equip_effects": { "STR": { "mode": "delta", "value": 1 } },
-  "ac_override": null,
-  "ac_bonus": 0,
-  "two_handed": false,
+  "stat_effects": { "STR": { "mode": "delta", "value": 1 } },
   "max_equipped": 1,
   "damage_expr": "1d8",
-  "attack_bonus": 0
+  "hit_bonus": 0
 }
 ```
 
-| Field               | Type       | Required | Description |
-|---------------------|------------|----------|-------------|
-| `equip_tags`        | `[string]` | yes      | Category tags — e.g. `["headwear"]`, `["weapon"]`, `["armor","heavy"]`, `["shield"]`, `["ring"]`. |
-| `incompatible_with` | `[string]` | no       | Tags that conflict with this item. The engine checks all already-equipped items: if any of *their* `equip_tags` intersects this list, the equip is rejected. Default empty means items conflict with anything sharing their own primary `equip_tag` (first element). |
-| `equip_effects`     | `{string: {mode, value}}` | no | Stat changes applied while equipped. Keys are stat names (e.g. `"STR"`); values follow `StatModifier`: `{"mode": "delta"|"set", "value": int}`. Set modifiers apply first, then delta. |
-| `ac_override`       | `int|null` | no       | If set, player AC becomes this value (e.g. heavy plate: 18). Mutually exclusive in spirit with `ac_bonus` — the highest override among equipped items takes effect. |
-| `ac_bonus`          | `int`      | no       | Added to player's base AC. Stacks across equipped items. Used for shields, light/medium armour, rings of protection. |
-| `two_handed`        | `bool`     | no       | If true, equipping this weapon is incompatible with any other item tagged `"handwear"`, `"weapon"`, or `"shield"`. |
-| `max_equipped`      | `int|null` | no       | How many items of this primary tag may be equipped simultaneously. `1` = standard (one helmet). `2` = rings. `null` = unlimited. Default `1`. The engine uses the *highest* value among items sharing the same primary `equip_tag`. |
-| `damage_expr`       | `string`   | no       | Damage dice expression when wielded (e.g. `"1d6"`, `"2d4"`). Only meaningful when `"weapon"` is in `equip_tags`. Default `"1d8"`. |
-| `attack_bonus`      | `int`      | no       | Flat bonus added to attack rolls. A "+1 sword" has `attack_bonus: 1`. Stacks across equipped weapons. Default `0`. |
+| Field                 | Type     | Description                       |
+|-----------------------|----------|-----------------------------------|
+| `equip_tags`          | string[] | Category tags (see below)         |
+| `incompatible_with`(*)| string[] | Conflicting tags (see below)      |
+| `stat_effects` (*)    | object   | Stat modifiers while equipped     |
+| `max_equipped` (*)    | integer  | How many such items can stack     |
+| `damage_expr` (*)     | string   | Weapon damage, e.g. `"1d8+1"`     |
+| `hit_bonus` (*)       | integer  | Weapon attack bonus               |
 
+Notes:
+
+- Aside from the above fields, extra top-level keys are accepted.
+  Systems can attach their own mechanics through these extra fields;
+  the extra fields for `5e` are listed below.
+
+- `equip_tags` implements a tag-based equipment system.  The first
+  element defines the "slot" — a broad category that controls
+  compatibility (items in the same slot can conflict).  Remaining tags
+  provide additional categorization (e.g. `["armor", "heavy"]` has
+  slot `"armor"` with sub-tag `"heavy"`).
+
+  Common tags include: `"weapon"`, `"shield"`, `"armor"`, `"ring"`,
+  `"headwear"`, `"handwear"`, `"boots"`, `"two_handed"`.
+
+  Unlike the semantic `tags` in the [Entity](#entity) block, equipment
+  tags only describe the item's features **as equipment**.  Only items
+  with the `"weapon"` tag can be wielded as weapons.
+
+- `incompatible_with`, if supplied, lists Equipment Tags conflicting
+  with this item.  When equipping, the engine checks all
+  already-equipped items: if any of *their* tags intersects this list,
+  the equip is rejected.  Default (empty) means items conflict with
+  anything in the same slot (e.g., can't wear two helmets).
+  
+  For two-handed weapons, `"equip_tags": ["two_handed"]` can be paired
+  with (say) `"incompatible_with": ["shield", "handwear"]`).
+
+- `stat_effects` describe stat changes applied while the item is
+  equipped, in the form `{stat_key: {mode, value}}`.  Any `"set"`
+  modifiers apply first, then `"delta"`.
+
+- `max_equipped` defaults to 1; other values can be chosen for, say,
+  rings (2).  The engine uses the highest value among items sharing
+  the same slot tag.
+
+The `5e` system uses the following additional fields, all optional:
+
+| Field         | Type    | Description                                |
+|---------------|---------|--------------------------------------------|
+| `ac_override` | integer | Sets AC to this value; highest takes effect|
+| `ac_bonus`    | integer | Added to base AC (default 0); stacks       |
 
 ### NPC
 
 NPC-specific fields:
 
-| Field                  | Type   | Description |
-|------------------------|--------|-------------|
-| `dialogue_guidelines`(*)| object | See [Dialogue Guidelines](#dialogue-guidelines-for-npc-type). |
-| `behavior` (*)         | object | Encounter rules for combat-capable NPCs (see [Behavior](#behavior-for-npc-with-combat)). |
-| `combat` (*)           | object | HP-based combat stats (hp, ac, atk, dmg, etc.). Only for NPCs. |
-| `follower_blacklist`(*)| array of room IDs | Rooms this NPC refuses to enter when following the player. |
+| Field                   | Type   | Description |
+|-------------------------|--------|-------------|
+| `dialogue_guidelines`(*)| object | See [Dialogue Guidelines](#dialogue-guidelines). |
+| `behavior` (*)          | object | Encounter rules for combat-capable NPCs (see [Behavior](#behavior-for-npc-with-combat)). |
+| `combat` (*)            | object | HP-based combat stats (hp, ac, atk, dmg, etc.). Only for NPCs. |
+| `follower_blacklist`(*) | array of room IDs | Rooms this NPC refuses to enter when following the player. |
 
 #### NPC follower convention (`following` state field)
 
@@ -1046,7 +1089,7 @@ reactions correctly.
 initial hard state must have a planned reveal mechanism — an `on_examine` event
 or interaction that sets `hidden: false` — otherwise it is permanently invisible.
 
-### `dialogue_guidelines` (for NPC type)
+### Dialogue Guidelines
 
 ```json
 {
@@ -1126,8 +1169,7 @@ validation (and need not be supplied in the JSON).
 
 The `description` field (required) is surfaced to LLM Call 1 in
 `entities_visible` as `{path_id: description}` so it can match player
-intent to the right path.  The `using_results` field is inherited from
-`Resolvable` but is documented as unused for dialogue paths.
+intent to the right path.
 
 Path results support the same fields as interaction `Result` objects:
 `narrative`, `set_flag`, `alter_stat`, `adjust_attitude`, `reveals`,

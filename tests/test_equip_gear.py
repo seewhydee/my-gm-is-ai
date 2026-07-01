@@ -82,28 +82,36 @@ class TestEquipBlockModel:
         eb = EquipBlock(equip_tags=["weapon"])
         assert eb.equip_tags == ["weapon"]
         assert eb.incompatible_with == []
-        assert eb.equip_effects == {}
-        assert eb.ac_override is None
-        assert eb.ac_bonus == 0
-        assert eb.two_handed is False
+        assert eb.stat_effects == {}
         assert eb.max_equipped == 1
         assert eb.damage_expr == "1d8"
-        assert eb.attack_bonus == 0
+        assert eb.hit_bonus == 0
 
     def test_custom_values(self):
         eb = EquipBlock(
             equip_tags=["armor", "heavy"],
-            ac_override=18,
             incompatible_with=["light_armor"],
-            equip_effects={"STR": StatModifier(mode="delta", value=1)},
+            stat_effects={"STR": StatModifier(mode="delta", value=1)},
         )
-        assert eb.ac_override == 18
-        assert len(eb.equip_effects) == 1
+        assert len(eb.stat_effects) == 1
 
-    def test_two_handed_and_max_equipped(self):
-        eb = EquipBlock(equip_tags=["weapon"], two_handed=True, max_equipped=None)
-        assert eb.two_handed is True
+    def test_max_equipped_none(self):
+        eb = EquipBlock(equip_tags=["weapon"], max_equipped=None)
         assert eb.max_equipped is None
+
+    def test_extra_fields(self):
+        """5e-specific extras are accepted via extra='allow' but are not core fields."""
+        eb = EquipBlock(
+            equip_tags=["armor", "heavy"],
+            ac_override=18,
+            ac_bonus=0,
+        )
+        assert eb.equip_tags == ["armor", "heavy"]
+        assert getattr(eb, "ac_override") == 18
+        assert getattr(eb, "ac_bonus") == 0
+
+        simple = EquipBlock(equip_tags=["ring"])
+        assert getattr(simple, "ac_override", None) is None
 
 
 # ------------------------------------------------------------------
@@ -338,7 +346,7 @@ class TestImprovisedWeapon:
     def test_improvised_weapon_defaults(self):
         iw = ImprovisedWeapon()
         assert iw.damage_expr == "1d6"
-        assert iw.attack_bonus == 0
+        assert iw.hit_bonus == 0
         assert iw.clears_after_turn is False
 
     def test_set_improvised_weapon(self, state_manager):
@@ -348,7 +356,7 @@ class TestImprovisedWeapon:
             field="set_improvised_weapon",
             new_value={
                 "damage_expr": "1d4",
-                "attack_bonus": 0,
+                "hit_bonus": 0,
                 "description": "broken bottle",
                 "clears_after_turn": True,
             },
@@ -561,7 +569,7 @@ class TestCombatEquipmentStats:
         assert ac == 10  # No AC bonus from the weapon
 
     def test_get_player_attack_bonus_with_equipped_weapon(self, state_manager):
-        """Attack bonus should include weapon attack_bonus from equipped items."""
+        """Attack bonus should include weapon hit_bonus from equipped items."""
         from mgmai.engine.systems.five_e import FiveESystem
 
         hard = state_manager.hard_state
@@ -572,10 +580,10 @@ class TestCombatEquipmentStats:
         base_bonus = system.compute_player_attack_bonus(hard, corpus)
         assert base_bonus == 2  # prof only
 
-        # Equip the sword (attack_bonus=0), should be the same
+        # Equip the sword (hit_bonus=0), should be the same
         hard.player.equipped.append("toenail_sword")
         bonus_with_sword = system.compute_player_attack_bonus(hard, corpus)
-        assert bonus_with_sword == 2  # toenail_sword has attack_bonus=0
+        assert bonus_with_sword == 2  # toenail_sword has hit_bonus=0
 
     def test_get_player_damage_expr_with_equipped_weapon(self, state_manager):
         """Damage expression should use equipped weapon's damage_expr."""

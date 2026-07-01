@@ -74,7 +74,7 @@ def compute_effective_stats(
     """Build effective stats from permanent baseline + equipped item effects.
 
     Per plan.md §4d: start with hard.player.stats, apply set modifiers
-    first, then delta modifiers from each equipped item's equip_effects.
+    first, then delta modifiers from each equipped item's stat_effects.
     Returns None if the player has no stats block.
     """
     from mgmai.models.corpus import StatModifier
@@ -90,7 +90,7 @@ def compute_effective_stats(
         entity = corpus.entities.get(item_id)
         if entity is None or entity.equip_block is None:
             continue
-        for stat_key, mod in entity.equip_block.equip_effects.items():
+        for stat_key, mod in entity.equip_block.stat_effects.items():
             if mod.mode == "set":
                 effective[mod.stat] = mod.value
             elif mod.mode == "delta" and mod.stat in effective:

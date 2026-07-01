@@ -40,7 +40,7 @@ from mgmai.engine.systems.dice import parse_damage_dice
 from mgmai.models.combat import CombatLogEntry
 
 if TYPE_CHECKING:
-    from mgmai.models.corpus import ModuleCorpus, OnHitEffect
+    from mgmai.models.corpus import EquipBlock, ModuleCorpus, OnHitEffect
     from mgmai.models.hard_state import HardGameState
 
 
@@ -168,7 +168,7 @@ class FiveESystem(ResolutionSystem):
                 and entity.equip_block
                 and "weapon" in entity.equip_block.equip_tags
             ):
-                weapon_bonus += entity.equip_block.attack_bonus
+                weapon_bonus += entity.equip_block.hit_bonus
         return str_mod + prof + weapon_bonus
 
     def compute_player_damage_expr(
@@ -475,9 +475,11 @@ class FiveESystem(ResolutionSystem):
         ac_override = None
         for item_id in hard.player.equipped:
             entity = corpus.entities.get(item_id)
-            if entity and entity.equip_block and entity.equip_block.ac_override is not None:
-                if ac_override is None or entity.equip_block.ac_override > ac_override:
-                    ac_override = entity.equip_block.ac_override
+            if entity and entity.equip_block:
+                override_val = getattr(entity.equip_block, "ac_override", None)
+                if override_val is not None:
+                    if ac_override is None or override_val > ac_override:
+                        ac_override = override_val
 
         effective_ac = ac_override if ac_override is not None else base_ac
 
@@ -485,7 +487,7 @@ class FiveESystem(ResolutionSystem):
         for item_id in hard.player.equipped:
             entity = corpus.entities.get(item_id)
             if entity and entity.equip_block:
-                effective_ac += entity.equip_block.ac_bonus
+                effective_ac += getattr(entity.equip_block, "ac_bonus", 0)
 
         return effective_ac
 
@@ -548,3 +550,6 @@ class FiveESystem(ResolutionSystem):
         if stat in profs:
             return getattr(player_state, "proficiency_bonus", None) or 2
         return 0
+
+    # get_equip_incompatibilities() — inherit default (two_handed is now
+    # a conventional equip_tag with explicit incompatible_with entries).

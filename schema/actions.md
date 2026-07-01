@@ -508,11 +508,11 @@ rule questions, or meta-discussion.
 1. Each `unequip_target` must be in `player.equipped`.
 2. `target` must be in `player.inventory`.
 3. `target` must have a non-null `equip_block`.
-4. Build the incompatible tag set from `incompatible_with`, implicit defaults,
-   and `two_handed`.
+4. Build the incompatible tag set from `incompatible_with` and the
+   default self-conflict for items sharing the same slot tag.
 5. Check each already-equipped item (post-unequip) for tag conflicts — reject
    if any overlap.
-6. Check `max_equipped` for the primary tag group.
+6. Check `max_equipped` for the slot tag group.
 7. On success: move `target` from `inventory` → `equipped`; move
    `unequip_targets` from `equipped` → `inventory`.
 

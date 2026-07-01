@@ -32,7 +32,7 @@ class KnowledgeEntry(BaseModel):
 class ImprovisedWeapon(BaseModel):
     """Temporary weapon created from a non-standard object."""
     damage_expr: str = "1d6"
-    attack_bonus: int = 0
+    hit_bonus: int = 0
     description: str = ""
     clears_after_turn: bool = False
 

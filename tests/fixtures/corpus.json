@@ -696,7 +696,7 @@
           "weapon"
         ],
         "damage_expr": "1d6",
-        "attack_bonus": 0
+        "hit_bonus": 0
       },
       "state_fields": {}
     },

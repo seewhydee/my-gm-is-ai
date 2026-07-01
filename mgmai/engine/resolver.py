@@ -1621,7 +1621,7 @@ def resolve_equip(
     3. Reject if equip_block is None.
     4. Build incompatible tag set.
     5. Check each already-equipped item for conflicts.
-    6. Check max_equipped for the primary tag group.
+    6. Check max_equipped for the slot tag group.
     7. On success: move from inventory to equipped.
     """
     target = action.target
@@ -1662,10 +1662,8 @@ def resolve_equip(
 
     # Step 4: Build incompatible tags
     incompatible = set(eb.incompatible_with)
-    if eb.two_handed:
-        incompatible.update(["handwear", "weapon", "shield"])
     if not incompatible and eb.equip_tags:
-        # Default: conflicts with items sharing the primary tag
+        # Default: conflicts with items sharing the same slot tag
         incompatible.add(eb.equip_tags[0])
 
     # Step 5: Check conflicts with already-equipped items
@@ -1683,13 +1681,13 @@ def resolve_equip(
 
     # Step 6: Check max_equipped
     if eb.equip_tags:
-        primary_tag = eb.equip_tags[0]
-        # Collect max_equipped from all items sharing this primary tag
+        slot_tag = eb.equip_tags[0]
+        # Collect max_equipped from all items sharing this slot tag
         max_limit = eb.max_equipped
         for eid in still_equipped:
             eq_entity = corpus.entities.get(eid)
             if eq_entity and eq_entity.equip_block:
-                if eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == primary_tag:
+                if eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == slot_tag:
                     other_max = eq_entity.equip_block.max_equipped
                     if other_max is None:
                         max_limit = None
@@ -1699,12 +1697,12 @@ def resolve_equip(
             current_count = sum(
                 1 for eid in still_equipped
                 if (_e := corpus.entities.get(eid)) and _e.equip_block
-                and _e.equip_block.equip_tags and _e.equip_block.equip_tags[0] == primary_tag
+                and _e.equip_block.equip_tags and _e.equip_block.equip_tags[0] == slot_tag
             )
             if current_count >= max_limit:
                 return ResolutionResult(
                     success=False,
-                    error=f"Cannot equip '{target}': tag '{primary_tag}' limit "
+                    error=f"Cannot equip '{target}': slot '{slot_tag}' limit "
                           f"({max_limit}) would be exceeded (currently {current_count})",
                 )
 

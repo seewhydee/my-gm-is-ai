@@ -153,7 +153,7 @@ an `id`, `name`, `description`, `equip_tags`, and `effects_summary`.
 
 The player may improvise weapons from the environment. Propose a
 `set_improvised_weapon` soft-state patch (field: "set_improvised_weapon") with
-reasonable `damage_expr` and `attack_bonus` values when the player picks up
+reasonable `damage_expr` and `hit_bonus` values when the player picks up
 and wields a non-standard object as a weapon. Use `clears_after_turn: true`
 for fragile or one-shot improvised items (a bottle shatters on impact).
 Otherwise the weapon persists; the player or a future turn can clear it by

@@ -207,7 +207,7 @@ class TestDamageDice:
 # ------------------------------------------------------------------
 
 class TestPlayerStats:
-    def test_attack_bonus(self, combat_hard_state, combat_npc_corpus):
+    def test_hit_bonus(self, combat_hard_state, combat_npc_corpus):
         # STR 16 → mod +3, proficient +2 → +5
         system = FiveESystem()
         bonus = system.compute_player_attack_bonus(
@@ -215,7 +215,7 @@ class TestPlayerStats:
         )
         assert bonus == 5
 
-    def test_attack_bonus_no_stats(self, combat_hard_state, combat_npc_corpus):
+    def test_hit_bonus_no_stats(self, combat_hard_state, combat_npc_corpus):
         hard = combat_hard_state.model_copy(deep=True)
         hard.player.stats = None
         system = FiveESystem()
