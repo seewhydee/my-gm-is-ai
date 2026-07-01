@@ -21,11 +21,11 @@ from mgmai.models.corpus import (
     Adventure,
     Atmosphere,
     AttitudeLimits,
-    BranchOutcome,
     ConditionExpression,
     Credits,
     DialogueGuidelines,
     EncounterRule,
+    GameOverTrigger,
     Entity,
     Exit,
     Interaction,
@@ -388,7 +388,7 @@ class TestMechanic:
             "rules": [
                 {
                     "condition": {"require": "flag:has_weapon == true"},
-                    "outcome": "flee",
+                    "result": {"narrative": "The spider flees!"},
                 },
             ],
         })
@@ -491,7 +491,7 @@ class TestEntity:
             "aggro": [
                 {
                     "condition": {"require": "flag:has_weapon == true"},
-                    "outcome": "flee",
+                    "result": {"narrative": "The spider flees!"},
                 },
             ],
         })
@@ -549,8 +549,8 @@ class TestEntity:
     @pytest.mark.parametrize("entity_type,extra_field,extra_data", [
         ("feature", "dialogue", {"guidelines": "Creaky.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
         ("item", "dialogue", {"guidelines": "Chatty.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
-        ("item", "aggro", [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]),
-        ("player", "aggro", [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]),
+        ("item", "aggro", [{"condition": {"require": "flag:x == true"}, "result": {}}]),
+        ("player", "aggro", [{"condition": {"require": "flag:x == true"}, "result": {}}]),
     ])
     def test_invalid_field_for_entity_type_raises(self, entity_type, extra_field, extra_data) -> None:
         with pytest.raises(ValidationError):
@@ -757,48 +757,6 @@ class TestStateFieldDecl:
             StateFieldDecl.model_validate({"type": "boolean"})
 
 
-class TestBranchOutcome:
-    def test_basic(self) -> None:
-        b = BranchOutcome.model_validate({
-            "outcome": "success",
-            "set_flag": {"door_open": True},
-            "narrative": "The door swings open.",
-        })
-        assert b.outcome == "success"
-        assert b.set_flag == {"door_open": True}
-        assert b.narrative == "The door swings open."
-
-    def test_minimal_outcome_only(self) -> None:
-        b = BranchOutcome.model_validate({"outcome": "death"})
-        assert b.outcome == "death"
-        assert b.set_flag is None
-        assert b.narrative is None
-
-    def test_missing_outcome_defaults_to_none(self) -> None:
-        b = BranchOutcome.model_validate({
-            "set_flag": {"x": True},
-        })
-        assert b.outcome == "none"
-        assert b.set_flag == {"x": True}
-
-    def test_with_alter_stat(self) -> None:
-        b = BranchOutcome.model_validate({
-            "outcome": "flee",
-            "set_flag": {"spider_fled": True},
-            "alter_stat": {
-                "STR": {"value": -4},
-                "DEX": {"value": -4},
-                "CON": {"value": -4},
-            },
-            "narrative": "The spider flees, but you are badly hurt.",
-        })
-        assert b.alter_stat == {
-            "STR": StatModifier(value=-4),
-            "DEX": StatModifier(value=-4),
-            "CON": StatModifier(value=-4),
-        }
-
-
 class TestCredits:
     def test_all_fields(self) -> None:
         c = Credits.model_validate({
@@ -868,76 +826,72 @@ class TestAtmosphere:
 
 
 class TestEncounterRule:
-    def test_outcome_death(self) -> None:
+    def test_result_death(self) -> None:
         r = EncounterRule.model_validate({
             "condition": {"require": "flag:unarmed == true"},
-            "outcome": "death",
+            "result": {
+                "game_over": {"type": "lose", "trigger_id": "test_npc"},
+            },
         })
-        assert r.outcome == "death"
         assert r.condition.require == "flag:unarmed == true"
+        assert r.check is None
+        assert r.result is not None
+        assert r.result.game_over == GameOverTrigger(type="lose", trigger_id="test_npc")
 
-    def test_outcome_flee(self) -> None:
+    def test_result_flee(self) -> None:
         r = EncounterRule.model_validate({
             "condition": {"require": "flag:has_weapon == true"},
-            "outcome": "flee",
+            "result": {
+                "narrative": "It flees!",
+                "set_flag": {"fled": True},
+            },
         })
-        assert r.outcome == "flee"
+        assert r.result is not None
+        assert r.result.narrative == "It flees!"
+        assert r.result.set_flag == {"fled": True}
 
-    def test_outcome_roll(self) -> None:
+    def test_result_combat(self) -> None:
+        r = EncounterRule.model_validate({
+            "condition": {"require": "entity:spider.alive == true"},
+            "result": {
+                "narrative": "It attacks!",
+                "trigger_combat": True,
+            },
+        })
+        assert r.result is not None
+        assert r.result.trigger_combat is True
+
+    def test_check_roll_with_success_and_failure(self) -> None:
         r = EncounterRule.model_validate({
             "condition": {"require": "flag:injured == true"},
-            "outcome": "roll",
-            "threshold": 0.5,
-            "narrative": "The spider lunges!",
-            "set_flag": {"spider_attacked": True},
-        })
-        assert r.outcome == "roll"
-        assert r.threshold == 0.5
-        assert r.narrative == "The spider lunges!"
-        assert r.set_flag == {"spider_attacked": True}
-
-    def test_with_success(self) -> None:
-        r = EncounterRule.model_validate({
-            "condition": {"require": "flag:injured == true"},
-            "outcome": "roll",
-            "threshold": 0.5,
+            "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
             "success": {
-                "outcome": "success",
-                "set_flag": {"spider_fled": True},
-                "narrative": "You drive the spider away.",
+                "narrative": "You drive it away.",
+                "set_flag": {"fled": True},
             },
-        })
-        assert r.success is not None
-        assert r.success.outcome == "success"
-        assert r.success.set_flag == {"spider_fled": True}
-
-    def test_with_failure(self) -> None:
-        r = EncounterRule.model_validate({
-            "condition": {"require": "flag:injured == true"},
-            "outcome": "roll",
-            "threshold": 0.7,
             "failure": {
-                "outcome": "death",
-                "narrative": "The spider overpowers you.",
+                "narrative": "It overpowers you.",
+                "game_over": {"type": "lose", "trigger_id": "npc"},
             },
         })
+        assert r.check is not None
+        assert r.result is None
+        assert r.success is not None
         assert r.failure is not None
-        assert r.failure.outcome == "death"
-        assert r.failure.narrative == "The spider overpowers you."
+        assert r.success.narrative == "You drive it away."
+        assert r.failure.game_over == GameOverTrigger(type="lose", trigger_id="npc")
 
-    def test_with_alter_stat(self) -> None:
+    def test_check_stat_check_with_alter_stat_on_failure(self) -> None:
         r = EncounterRule.model_validate({
             "condition": {"require": "flag:falling == true"},
-            "outcome": "stat_check",
             "check": {"type": "stat_check", "stat": "DEX", "target": 10, "repeatable": True},
-            "alter_stat": {"CON": {"value": -2}},
             "failure": {
-                "outcome": "flee",
                 "alter_stat": {"STR": {"value": -4}, "CON": {"value": -4}},
                 "narrative": "You land badly.",
             },
         })
-        assert r.alter_stat == {"CON": StatModifier(value=-2)}
+        assert r.check is not None
+        assert r.result is None
         assert r.failure is not None
         assert r.failure.alter_stat == {"STR": StatModifier(value=-4), "CON": StatModifier(value=-4)}
 

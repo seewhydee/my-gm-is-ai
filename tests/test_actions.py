@@ -298,13 +298,13 @@ class TestEngineResult:
             "action_type": "move",
             "encounter_outcome": {
                 "encounter_id": "spider_encounter",
-                "outcome": "flee",
+                "combat": False,
                 "narrative_brief": "The spider fled into the shadows.",
             },
         })
         assert r.encounter_outcome is not None
         assert r.encounter_outcome.encounter_id == "spider_encounter"
-        assert r.encounter_outcome.outcome == "flee"
+        assert r.encounter_outcome.combat is False
 
     def test_with_dialogue_exited(self) -> None:
         r = EngineResult.model_validate({

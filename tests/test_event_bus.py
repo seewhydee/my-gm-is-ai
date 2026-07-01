@@ -22,7 +22,6 @@ from mgmai.engine.resolver import _apply_result, resolve_action
 from mgmai.models.actions import HardStateChanges, InteractAction, TalkAction
 from mgmai.models.corpus import (
     ConditionExpression,
-    EncounterRule,
     Entity,
     GameOverTrigger,
     Interaction,
@@ -35,6 +34,7 @@ from mgmai.models.corpus import (
 )
 from mgmai.models.hard_state import HardGameState
 from mgmai.state.manager import StateManager
+from tests.helpers import _mk_encounter_rule
 
 
 @pytest.fixture
@@ -559,7 +559,7 @@ class TestReactionTriggerEncounter:
             id="test_ambush",
             description="Test ambush",
             rules=[
-                EncounterRule(
+                _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="flee",
                     set_flag={"ambush_fled": True},
@@ -808,7 +808,7 @@ class TestReactionCombatLogPropagation:
             id="test_combat",
             description="Test combat encounter",
             rules=[
-                EncounterRule(
+                _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="combat",
                 )
@@ -910,7 +910,7 @@ class TestEncounterOncePerTurnGuard:
         corpus.mechanics["test_enc1"] = Mechanic(
             id="test_enc1",
             description="first encounter",
-            rules=[EncounterRule(
+            rules=[_mk_encounter_rule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="flee",
                 set_flag={"enc1_fired": True},
@@ -920,7 +920,7 @@ class TestEncounterOncePerTurnGuard:
         corpus.mechanics["test_enc2"] = Mechanic(
             id="test_enc2",
             description="second encounter",
-            rules=[EncounterRule(
+            rules=[_mk_encounter_rule(
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 outcome="flee",
                 set_flag={"enc2_fired": True},
@@ -1208,12 +1208,12 @@ class TestEncounterBranchedEvent:
             id="test_ambush",
             description="Test ambush",
             rules=[
-                EncounterRule(
+                _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="roll",
                     threshold=0.5,
-                    success={"outcome": "flee", "narrative": "You win!"},
-                    failure={"outcome": "flee", "narrative": "You scramble away."},
+                    success={"narrative": "You win!"},
+                    failure={"narrative": "You scramble away."},
                 )
             ],
         )
@@ -1255,12 +1255,12 @@ class TestEncounterBranchedEvent:
             id="test_ambush",
             description="Test ambush",
             rules=[
-                EncounterRule(
+                _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="roll",
                     threshold=0.5,
-                    success={"outcome": "flee", "narrative": "You win!"},
-                    failure={"outcome": "flee", "narrative": "You scramble away."},
+                    success={"narrative": "You win!"},
+                    failure={"narrative": "You scramble away."},
                 )
             ],
         )

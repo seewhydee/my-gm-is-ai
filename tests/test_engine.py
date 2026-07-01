@@ -34,7 +34,6 @@ from mgmai.models.actions import (
 from mgmai.models.corpus import (
     Adventure,
     Atmosphere,
-    BranchOutcome,
     Interaction,
     ModuleCorpus,
     Reaction,
@@ -88,8 +87,7 @@ class TestEngineFullFlow:
                 outcome="roll",
                 threshold=0.50,
                 condition=_mk_cond(require="entity:test_npc.alive == true"),
-                failure=BranchOutcome(
-                    outcome="flee",
+                failure=Result(
                     alter_stat={"DEX": StatModifier(value=-4), "CON": StatModifier(value=-4)},
                     player_damage="3d6",
                     narrative="You fall hard!",

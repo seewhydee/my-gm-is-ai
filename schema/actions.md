@@ -664,7 +664,7 @@ everything LLM Call 2 needs to narrate the outcome.
 
   "encounter_outcome": {
     "encounter_id": "spider_encounter",
-    "outcome": "flee",
+    "combat": false,
     "narrative_brief": "The player wounded the spider with their iron sword. It fled into the shadows."
   },
 

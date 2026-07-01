@@ -454,7 +454,7 @@ def _resolve_reaction_encounter(
         hard.game_over = GameOverState(type=go["type"], trigger=go["trigger"])
 
     # Combat entry via encounter outcome
-    if enc_result["outcome"] == "combat":
+    if enc_result["trigger_combat"]:
         from mgmai.engine.combat import enter_combat
         combat_entry = enter_combat([source_id], hard, corpus)
         if combat_entry.get("hard_changes"):
@@ -475,7 +475,6 @@ def _resolve_reaction_encounter(
             {
                 "encounter_id": source_id,
                 "branch": branch_taken,
-                "outcome": enc_result["outcome"],
             },
         ))
 

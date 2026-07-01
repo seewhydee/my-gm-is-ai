@@ -1134,13 +1134,9 @@ triggered by a reaction).
 "aggro": [
   {
     "condition": { "require": "tag:weapon" },
-    "outcome": "stat_check",
     "check": { "type": "stat_check", "stat": "STR", "target": 17, "repeatable": true },
-    "narrative": "The creature lunges at you!",
-    "set_flag": { "attacked": true },
-    "alter_stat": { "STR": { "mode": "delta", "value": -1 } },
-    "success": { "outcome": "flee", "narrative": "You drove it off." },
-    "failure": { "outcome": "death", "narrative": "It overpowers you." }
+    "success": { "narrative": "You drove it off." },
+    "failure": { "narrative": "It overpowers you.", "game_over": { "type": "lose", "trigger_id": "creature" } }
   }
 ]
 ```
@@ -1149,39 +1145,22 @@ Each Encounter Rule supports the following fields:
 
 | Field           | Type          | Description                        |
 |-----------------|---------------|------------------------------------|
-| `condition`     | object        | Condition rule to fire             |
-| `outcome`       | string        | `death/flee/roll/stat_check/combat`|
-| `narrative` (*) | string        | Narration of the outcome           |
-| `threshold` (*) | float         | Probability for `"roll"` outcome   |
-| `check` (*)     | StatCheck     | Check for `"stat_check"` outcome   |
-| `set_flag` (*)  | object        | Flags set when the rule fires      |
-| `alter_stat` (*)| object        | Player stat modifier               |
-| `player_damage` (*)| string     | Damage expression applied to player|
-| `success` (*)   | BranchOutcome | Result when check succeeds         |
-| `failure` (*)   | BranchOutcome | Result when check fails            |
-> (*) optional
-
-BranchOutcome has the following shape:
-
-| Field            | Type           | Description |
-|------------------|----------------|-------------|
-| `outcome`        | string         | Override outcome: `"death"`, `"flee"`, `"roll"`, `"stat_check"`, or `"none"`. Defaults to `"none"`. |
-| `narrative` (*)  | string         | Canonical narration. |
-| `set_flag` (*)   | object         | Flags to set. |
-| `alter_stat` (*) | object         | Player stat modifier (same format as rule-level). |
-| `player_damage` (*)| string        | Damage expression applied to the player. |
+| `condition`     | object        | Condition for the rule to fire     |
+| `result` (*)    | Result        | Direct result (use exactly one of `result` or `check`) |
+| `check` (*)     | CheckType     | `RollCheck` or `StatCheck` (use exactly one of `result` or `check`) |
+| `success` (*)   | Result        | Result when check succeeds         |
+| `failure` (*)   | Result        | Result when check fails            |
+| `skip_check_if` (*)| object      | Condition to bypass the check and apply `success` directly |
 > (*) optional
 
 Notes:
 
 - Rules are evaluated top-to-bottom. The first rule whose `condition`
-  matches is applied. Conditions are evaluated against hard state
-  (flags, inventory, entity states) and soft state (attitudes).
-- When outcome is `"combat"`, the engine transitions to full
-  HP-based combat rather than resolving via a single check.
-- `alter_stat` applies when the rule fires. When a branch
-  (`success`/`failure`) also carries `alter_stat`, the branch values
-  override the rule-level values for the same stat key.
+  matches is applied.
+- Each rule must have exactly one of `result` (direct) or `check`
+  (probabilistic with `success`/`failure` branches).
+- `Result` may contain `trigger_combat: true` to enter combat mode
+  or `game_over` to end the game.
 
 #### Follower
 

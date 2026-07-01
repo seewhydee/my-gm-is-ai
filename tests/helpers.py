@@ -26,7 +26,6 @@ from mgmai.models.actions import HardStateChanges
 from mgmai.models.corpus import (
     Adventure,
     Atmosphere,
-    BranchOutcome,
     CombatBlock,
     ConditionExpression,
     EncounterRule,
@@ -177,28 +176,58 @@ def _mk_encounter_rule(
     condition: ConditionExpression | None = None,
     narrative: str | None = None,
     threshold: float | None = None,
+    set_flag: dict[str, bool] | None = None,
     alter_stat: dict[str, StatModifier] | None = None,
     player_damage: str | None = None,
-    success: BranchOutcome | None = None,
-    failure: BranchOutcome | None = None,
+    success: Result | None = None,
+    failure: Result | None = None,
+    stat_check: dict | None = None,
+    trigger_combat: bool = False,
+    game_over_type: str | None = None,
+    game_over_trigger: str | None = None,
 ) -> EncounterRule:
-    rule_data: dict[str, Any] = {
-        "condition": condition or _mk_cond(require="entity:test_npc.alive == true"),
-        "outcome": outcome,
-    }
+    cond = condition or _mk_cond(require="entity:test_npc.alive == true")
+
+    if outcome in ("roll", "stat_check"):
+        if threshold is not None:
+            check_data: dict[str, Any] = {"type": "roll", "threshold": threshold, "repeatable": True}
+        elif stat_check is not None:
+            check_data = stat_check
+        else:
+            check_data = {"type": "roll", "threshold": 0.5, "repeatable": True}
+
+        rule_data: dict[str, Any] = {
+            "condition": cond,
+            "check": check_data,
+        }
+        if success is not None:
+            rule_data["success"] = success
+        if failure is not None:
+            rule_data["failure"] = failure
+        return EncounterRule.model_validate(rule_data)
+
+    # Non-check outcomes: death, flee, combat -> result-based
+    result_data: dict[str, Any] = {}
     if narrative is not None:
-        rule_data["narrative"] = narrative
-    if threshold is not None:
-        rule_data["threshold"] = threshold
+        result_data["narrative"] = narrative
+    if set_flag is not None:
+        result_data["set_flag"] = set_flag
     if alter_stat is not None:
-        rule_data["alter_stat"] = alter_stat
+        result_data["alter_stat"] = alter_stat
     if player_damage is not None:
-        rule_data["player_damage"] = player_damage
-    if success is not None:
-        rule_data["success"] = success
-    if failure is not None:
-        rule_data["failure"] = failure
-    return EncounterRule.model_validate(rule_data)
+        result_data["player_damage"] = player_damage
+    if trigger_combat or outcome == "combat":
+        result_data["trigger_combat"] = True
+    if outcome == "death" or game_over_type is not None:
+        result_data["game_over"] = {
+            "type": game_over_type or "lose",
+            "trigger_id": game_over_trigger or "test_npc",
+        }
+
+    return EncounterRule.model_validate({
+        "condition": cond,
+        "result": result_data,
+    })
 
 
 def _mk_mechanic(

@@ -17,14 +17,16 @@
 from __future__ import annotations
 
 import random
+from typing import Any
 
 from mgmai.models.corpus import (
     EncounterRule,
     ModuleCorpus,
+    Result,
+    RollCheck,
     StatCheck,
-    StatModifier,
 )
-from mgmai.models.hard_state import HardGameState, GameOverState
+from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.conditions import evaluate
 from mgmai.engine.systems import get_system_for_corpus
@@ -36,28 +38,46 @@ def resolve_encounter(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     npc_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Evaluate encounter rules top-to-bottom. First matching condition wins.
 
     Returns a dict with keys:
-        outcome: str ("death", "flee", "roll_success", "roll_failure", "none")
         narrative: str | None
         set_flags: dict[str, bool]
+        alter_stat: dict[str, StatModifier]
+        player_damage: str | None
+        trigger_combat: bool
         game_over: dict | None  -- {type: str, trigger: str}
+        rolls: list[dict]
+        branch_taken: str | None
     """
     for rule in encounter_rules:
         if evaluate(rule.condition, hard, soft, corpus):
             return _apply_encounter_rule(rule, hard, soft, corpus, npc_id)
 
+    return _empty_result()
+
+
+def _empty_result(rolls: list[dict] | None = None) -> dict[str, Any]:
     return {
-        "outcome": "none",
         "narrative": None,
         "set_flags": {},
         "alter_stat": {},
         "player_damage": None,
+        "trigger_combat": False,
         "game_over": None,
-        "rolls": [],
+        "rolls": rolls or [],
+        "branch_taken": None,
     }
+
+
+def _game_over_dict(
+    go_trigger: Any | None,
+    npc_id: str | None,
+) -> dict[str, str] | None:
+    if go_trigger is None:
+        return None
+    return {"type": go_trigger.type, "trigger": go_trigger.trigger_id}
 
 
 def _apply_encounter_rule(
@@ -66,222 +86,62 @@ def _apply_encounter_rule(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     npc_id: str | None,
-) -> dict:
-    outcome = rule.outcome
+) -> dict[str, Any]:
+    encounter_rolls: list[dict] = []
+    firing_result: Result | None = None
+    branch_taken: str | None = None
 
-    if outcome == "death":
-        return {
-            "outcome": "death",
-            "narrative": rule.narrative,
-            "set_flags": rule.set_flag or {},
-            "alter_stat": rule.alter_stat or {},
-            "player_damage": rule.player_damage,
-            "game_over": {
-                "type": "lose",
-                "trigger": npc_id or "encounter",
-            },
-            "rolls": [],
-        }
+    if rule.check is not None:
+        # Check-bearing rule: resolve the check, pick success/failure
+        check = rule.check
 
-    if outcome == "combat":
-        return {
-            "outcome": "combat",
-            "narrative": rule.narrative,
-            "set_flags": rule.set_flag or {},
-            "alter_stat": rule.alter_stat or {},
-            "player_damage": rule.player_damage,
-            "game_over": None,
-            "rolls": [],
-        }
-
-    if outcome == "flee":
-        return {
-            "outcome": "flee",
-            "narrative": rule.narrative,
-            "set_flags": rule.set_flag or {},
-            "alter_stat": rule.alter_stat or {},
-            "player_damage": rule.player_damage,
-            "game_over": None,
-            "rolls": [],
-        }
-
-    if outcome == "stat_check":
-        if rule.check is None:
-            return {
-                "outcome": "none",
-                "narrative": None,
-                "set_flags": {},
-                "alter_stat": {},
-                "player_damage": None,
-                "game_over": None,
-                "rolls": [],
-            }
-
-        encounter_rolls: list = []
-        success = _resolve_encounter_stat_check(rule, hard, corpus, encounter_rolls)
-        branch = rule.success if success else rule.failure
-
-        if branch is None:
-            return {
-                "outcome": f"stat_check_{'success' if success else 'failure'}",
-                "narrative": rule.narrative,
-                "set_flags": rule.set_flag or {},
-                "alter_stat": rule.alter_stat or {},
-                "player_damage": rule.player_damage,
-                "game_over": None,
-                "rolls": encounter_rolls,
-            }
-
-        sub_outcome = branch.outcome if branch else "none"
-        result: dict = {
-            "outcome": sub_outcome,
-            "narrative": branch.narrative if branch else rule.narrative,
-            "set_flags": {},
-            "alter_stat": {},
-            "player_damage": None,
-            "game_over": None,
-            "rolls": encounter_rolls,
-            "branch_taken": "success" if success else "failure",
-        }
-
-        if rule.set_flag:
-            for flag, val in rule.set_flag.items():
-                result["set_flags"][flag] = val
-        if branch.set_flag:
-            for flag, val in branch.set_flag.items():
-                result["set_flags"][flag] = val
-
-        if rule.alter_stat:
-            result["alter_stat"].update(rule.alter_stat)
-        if branch.alter_stat:
-            result["alter_stat"].update(branch.alter_stat)
-
-        if branch.player_damage is not None:
-            result["player_damage"] = branch.player_damage
-        elif rule.player_damage is not None:
-            result["player_damage"] = rule.player_damage
-
-        if sub_outcome == "death":
-            result["game_over"] = {
-                "type": "lose",
-                "trigger": npc_id or "encounter",
-            }
-
-        return result
-
-    if outcome == "roll":
-        if rule.threshold is None:
-            return {
-                "outcome": "none",
-                "narrative": None,
-                "set_flags": {},
-                "alter_stat": {},
-                "player_damage": None,
-                "game_over": None,
-                "rolls": [],
-            }
-        roll = random.random()
-        success = roll < rule.threshold
-        branch = rule.success if success else rule.failure
-
-        if branch is None:
-            return {
-                "outcome": f"roll_{'success' if success else 'failure'}",
-                "narrative": rule.narrative,
-                "set_flags": rule.set_flag or {},
-                "alter_stat": rule.alter_stat or {},
-                "player_damage": rule.player_damage,
-                "game_over": None,
-                "rolls": [{
+        if isinstance(check, StatCheck):
+            stats_block = corpus.stats
+            player_stats = hard.player.stats
+            if stats_block is None or player_stats is None or check.stat not in player_stats:
+                # No stats system or player stat: auto-pass (preserves legacy behavior)
+                passed = True
+            else:
+                system = get_system_for_corpus(corpus)
+                cr = system.roll_check(
+                    check.stat,
+                    player_stats[check.stat],
+                    check.target,
+                    flat_modifier=check.modifier,
+                    params=check.model_extra or {},
+                )
+                encounter_rolls.append({
                     "encounter_id": npc_id or "encounter",
-                    "threshold": rule.threshold,
-                    "result": roll,
-                    "success": success,
-                }],
-            }
-
-        sub_outcome = branch.outcome if branch else "none"
-        result: dict = {
-            "outcome": sub_outcome,
-            "narrative": branch.narrative if branch else rule.narrative,
-            "set_flags": {},
-            "alter_stat": {},
-            "player_damage": None,
-            "game_over": None,
-            "rolls": [{
+                    **cr.to_dict(),
+                })
+                passed = cr.success
+        else:
+            # RollCheck
+            roll = random.random()
+            passed = roll < check.threshold
+            encounter_rolls.append({
                 "encounter_id": npc_id or "encounter",
-                "threshold": rule.threshold,
+                "threshold": check.threshold,
                 "result": roll,
-                "success": success,
-            }],
-            "branch_taken": "success" if success else "failure",
-        }
+                "success": passed,
+            })
 
-        if rule.set_flag:
-            for flag, val in rule.set_flag.items():
-                result["set_flags"][flag] = val
-        if branch.set_flag:
-            for flag, val in branch.set_flag.items():
-                result["set_flags"][flag] = val
+        firing_result = rule.success if passed else rule.failure
+        branch_taken = "success" if passed else "failure"
+    else:
+        # Result-bearing rule: apply directly
+        firing_result = rule.result
 
-        if rule.alter_stat:
-            result["alter_stat"].update(rule.alter_stat)
-        if branch.alter_stat:
-            result["alter_stat"].update(branch.alter_stat)
-
-        if branch.player_damage is not None:
-            result["player_damage"] = branch.player_damage
-        elif rule.player_damage is not None:
-            result["player_damage"] = rule.player_damage
-
-        if sub_outcome == "death":
-            result["game_over"] = {
-                "type": "lose",
-                "trigger": npc_id or "encounter",
-            }
-
-        return result
+    if firing_result is None:
+        return _empty_result(rolls=encounter_rolls)
 
     return {
-        "outcome": "none",
-        "narrative": None,
-        "set_flags": {},
-        "alter_stat": {},
-        "player_damage": None,
-        "game_over": None,
-        "rolls": [],
+        "narrative": firing_result.narrative,
+        "set_flags": firing_result.set_flag or {},
+        "alter_stat": firing_result.alter_stat or {},
+        "player_damage": firing_result.player_damage,
+        "trigger_combat": firing_result.trigger_combat,
+        "game_over": _game_over_dict(firing_result.game_over, npc_id),
+        "rolls": encounter_rolls,
+        "branch_taken": branch_taken,
     }
-
-
-def _resolve_encounter_stat_check(
-    rule: EncounterRule,
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-    rolls: list,
-) -> bool:
-    """Resolve a stat_check outcome for an encounter rule. Returns True if passed."""
-    if rule.check is None:
-        return True
-
-    check = rule.check
-    stats_block = corpus.stats
-    if stats_block is None:
-        return True
-
-    player_stats = hard.player.stats
-    if player_stats is None or check.stat not in player_stats:
-        return True
-
-    system = get_system_for_corpus(corpus)
-    cr = system.roll_check(
-        check.stat,
-        player_stats[check.stat],
-        check.target,
-        flat_modifier=check.modifier,
-        params=check.model_extra or {},
-    )
-    rolls.append({
-        "encounter_id": getattr(rule, "id", "encounter"),
-        **cr.to_dict(),
-    })
-    return cr.success

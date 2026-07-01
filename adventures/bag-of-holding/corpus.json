@@ -166,8 +166,10 @@
           "condition": {
             "require": "entity:spider.alive == true"
           },
-          "outcome": "combat",
-          "narrative": "The spider drops from the shadows above, mandibles bared and venom glistening!"
+          "result": {
+            "narrative": "The spider drops from the shadows above, mandibles bared and venom glistening!",
+            "trigger_combat": true
+          }
         }
       ],
       "combat": {
@@ -1636,8 +1638,11 @@
           "condition": {
             "require": "room:axe_head.is_current == true"
           },
-          "outcome": "roll",
-          "threshold": 0.5,
+          "check": {
+            "type": "roll",
+            "threshold": 0.5,
+            "repeatable": true
+          },
           "success": {
             "narrative": "You plummet through the darkness and crash onto the floor below. Your ankle twists badly on impact. The pain is searing.",
             "alter_stat": {
@@ -1673,8 +1678,11 @@
           "condition": {
             "require": "room:axe_handle_upper.is_current == true"
           },
-          "outcome": "roll",
-          "threshold": 0.5,
+          "check": {
+            "type": "roll",
+            "threshold": 0.5,
+            "repeatable": true
+          },
           "success": {
             "narrative": "You drop down through the darkness. The landing is rough and painful, but you're still in one piece.",
             "player_damage": "2d6"
@@ -1705,8 +1713,11 @@
           "condition": {
             "require": "room:axe_handle_lower.is_current == true"
           },
-          "outcome": "roll",
-          "threshold": 1.0,
+          "check": {
+            "type": "roll",
+            "threshold": 1.0,
+            "repeatable": true
+          },
           "success": {
             "narrative": "You drop down from the axe handle. The landing jolts you, and you're momentarily winded, but you're otherwise uninjured."
           }

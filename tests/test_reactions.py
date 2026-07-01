@@ -16,6 +16,7 @@ from mgmai.models.corpus import (
     ReactionEffects,
     Result,
 )
+from tests.helpers import _mk_encounter_rule
 
 
 class TestReactionEffects:
@@ -154,11 +155,11 @@ class TestMechanicReactionOnly:
         assert m.type == "lose"
 
     def test_encounter_mechanic_still_works(self):
-        from mgmai.models.corpus import EncounterRule, ConditionExpression
+        from mgmai.models.corpus import ConditionExpression
         m = Mechanic(
             id="m1",
             description="test",
-            rules=[EncounterRule(
+            rules=[_mk_encounter_rule(
                 condition=ConditionExpression(require="flag:x == true"),
                 outcome="death",
             )],
@@ -166,7 +167,7 @@ class TestMechanicReactionOnly:
         assert m.rules is not None
 
     def test_game_over_and_encounter_both_rejected(self):
-        from mgmai.models.corpus import EncounterRule, ConditionExpression
+        from mgmai.models.corpus import ConditionExpression
         with pytest.raises(ValidationError, match="not both"):
             Mechanic(
                 id="m1",
@@ -174,7 +175,7 @@ class TestMechanicReactionOnly:
                 type="lose",
                 condition={"require": "flag:dead == true"},
                 trigger_id="death",
-                rules=[EncounterRule(
+                rules=[_mk_encounter_rule(
                     condition=ConditionExpression(require="flag:x == true"),
                     outcome="death",
                 )],

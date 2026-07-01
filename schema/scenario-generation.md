@@ -987,22 +987,22 @@ Here is an example of a mechanical (one-turn) encounter:
 "encounter_rules": [
   {
     "condition": { "require": "tag:weapon" },
-    "outcome": "stat_check",
     "check": { "type": "stat_check", "stat": "STR", "target": 10, "repeatable": true },
     "success": {
-      "outcome": "flee",
       "narrative": "You land a solid blow. The goblin hisses and flees.",
       "set_flag": { "goblin_fled": true }
     },
     "failure": {
-      "outcome": "death",
-      "narrative": "The goblin strikes back! Its cleaver goes through your neck."
+      "narrative": "The goblin strikes back! Its cleaver goes through your neck.",
+      "game_over": { "type": "lose", "trigger_id": "goblin" }
     }
   },
   {
     "condition": { "unless": "tag:weapon" },
-    "outcome": "death",
-    "narrative": "Bare-handed, you cannot fend off the goblin's attack. It quickly overcomes you."
+    "result": {
+      "narrative": "Bare-handed, you cannot fend off the goblin's attack. It quickly overcomes you.",
+      "game_over": { "type": "lose", "trigger_id": "goblin" }
+    }
   }
 ]
 ```
@@ -1434,18 +1434,15 @@ based on which room triggered them (e.g., different fall damage by room).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `outcome` | str | `"death"`, `"flee"`, `"roll"`, `"stat_check"`, or `"combat"` |
 | `condition` | condition object | Gate for the rule |
-| `check` | StatCheck | The stat check to resolve (for `stat_check` outcome) |
-| `threshold` | float 0-1 | Roll-under threshold (for `roll` outcome) |
-| `narrative` | str | Prose shown when the rule fires |
-| `set_flag` | dict[str, bool] | Flags to set |
-| `alter_stat` | dict[str, StatModifier] | Fixed stat modifications (delta or set) |
-| `player_damage` | str | Dice expression rolled as HP damage (e.g. `"3d6"`, `"2d4+1"`) |
-| `success` | BranchOutcome | Branch when check/roll succeeds |
-| `failure` | BranchOutcome | Branch when check/roll fails |
+| `result` | Result | Direct result (use exactly one of `result` or `check`) |
+| `check` | CheckType | `RollCheck` or `StatCheck` (use exactly one of `result` or `check`) |
+| `success` | Result | Branch when check/roll succeeds |
+| `failure` | Result | Branch when check/roll fails |
+| `skip_check_if` | condition object | Bypass the check, apply `success` directly |
 
-> **When `outcome` is `"combat"`:** The engine starts multi-round combat.
+> **`trigger_combat` on Result:** When a firing `Result` has
+> `trigger_combat: true`, the engine starts multi-round combat.
 > The NPC must have a `combat` block with HP, AC, attack bonus, initiative,
 > etc. — see §2B and [`doc/combat.md`](../doc/combat.md).  Without it, the
 > engine will error.

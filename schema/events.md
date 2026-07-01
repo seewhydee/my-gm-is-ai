@@ -56,7 +56,7 @@ encounter.
 | `dialogue.ended` | `npc_id`, `reason` | Dialogue mode ends. `reason` is one of `player_left`, `ends_dialogue`, `switched_npc`, `stall`, `room_change`, `combat`, or `triggered`. |
 | `combat.started` | `combatant_ids` | Combat begins. |
 | `combat.ended` | `reason` (`victory`\|`defeat`\|`fled`) | Combat ends. |
-| `encounter.branched` | `encounter_id`, `branch` (`success`\|`failure`), `outcome` | A `stat_check` or `roll` encounter rule selects its `success`/`failure` branch. Not emitted for top-level outcomes (`death`/`flee`/`combat`) or when no branch is defined. |
+| `encounter.branched` | `encounter_id`, `branch` (`success`\|`failure`) | A `stat_check` or `roll` encounter rule selects its `success`/`failure` branch. Not emitted for `result`-only rules or when no branch is defined. |
 | `item.acquired` | `item_id`, `source` (`transfer`\|`interaction`\|`examine`\|`unequip`) | An item enters the player's inventory. |
 | `item.lost` | `item_id`, `reason` (`transfer`\|`interaction`\|`destroyed`\|`equip`) | An item leaves the player's inventory. |
 

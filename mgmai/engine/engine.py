@@ -263,8 +263,9 @@ def resolve(
 
             encounter_outcome = EncounterOutcome(
                 encounter_id=encounter_source_id,
-                outcome=enc_result["outcome"],
+                combat=enc_result["trigger_combat"],
                 narrative_brief=enc_result.get("narrative"),
+                branch_taken=enc_result.get("branch_taken"),
             )
             branch_taken = enc_result.get("branch_taken")
             if branch_taken is not None:
@@ -273,13 +274,12 @@ def resolve(
                     {
                         "encounter_id": encounter_source_id,
                         "branch": branch_taken,
-                        "outcome": enc_result["outcome"],
                     },
                 ))
             enc_rolls = enc_result.get("rolls") or []
             rolls.extend(enc_rolls)
 
-            if enc_result["outcome"] == "combat":
+            if enc_result["trigger_combat"]:
                 from mgmai.engine.combat import enter_combat
                 combat_entry = enter_combat([encounter_source_id], hard, corpus)
                 combat_triggered = True
@@ -305,7 +305,7 @@ def resolve(
                 _apply_and_merge(encounter_changes)
                 encounter_outcome = EncounterOutcome(
                     encounter_id=encounter_source_id,
-                    outcome="death",
+                    combat=False,
                     narrative_brief=f"You strike down {trigger_id}.",
                 )
 
@@ -338,7 +338,7 @@ def resolve(
     action_changes.merge(resolution.immediate_changes)
     if (
         encounter_outcome is not None
-        and encounter_outcome.outcome == "combat"
+        and encounter_outcome.combat
         and action_changes.player_location is not None
     ):
         blocked_room = action_changes.player_location

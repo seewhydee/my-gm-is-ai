@@ -255,8 +255,9 @@ class HardStateChanges(BaseModel):
 
 class EncounterOutcome(BaseModel):
     encounter_id: str
-    outcome: str
+    combat: bool = False
     narrative_brief: Optional[str] = None
+    branch_taken: Optional[str] = None
 
 
 class GameOverResult(BaseModel):

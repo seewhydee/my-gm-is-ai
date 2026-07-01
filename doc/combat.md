@@ -166,10 +166,10 @@ Combat starts in one of two ways:
 1. **Direct attack** — The player uses `interact` + `interaction_id: "attack"`
    on an NPC that has a `CombatBlock`. If the NPC has an `interaction.used`
    reaction that triggers an encounter, the encounter rules run first; an
-   encounter outcome of `"combat"` (or a direct attack on an NPC without such
+   encounter `trigger_combat` on result (or a direct attack on an NPC without such
    a reaction) starts combat.
 2. **Encounter outcome `"combat"`** — An NPC's `aggro.encounter_rules` or a
-   `mechanics` encounter returns outcome `"combat"`.
+   `mechanics` encounter returns `result.trigger_combat: true`.
 
 On entry:
 - Player HP is initialised from CON if not already set.
@@ -293,7 +293,7 @@ authoritative dice results.
       "encounter_rules": [
         {
           "condition": { "require": "spider_fled" },
-          "outcome": "combat",
+          "trigger_combat": true,
           "narrative": "The spider, cornered, skitters forward to attack!"
         }
       ]

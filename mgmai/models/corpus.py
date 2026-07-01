@@ -136,6 +136,8 @@ class Result(BaseModel):
     then_check: Optional[CheckResolution] = None
     player_damage: Optional[str] = None
     set_player_location: Optional[str] = None
+    game_over: Optional[GameOverTrigger] = None
+    trigger_combat: bool = False
 
     def has_any_effect(self) -> bool:
         return any(
@@ -146,7 +148,7 @@ class Result(BaseModel):
                 "adjust_attitude", "reveals", "then_check",
                 "player_damage", "set_player_location",
             )
-        )
+        ) or self.game_over is not None or self.trigger_combat
 
 
 class RollCheck(BaseModel):
@@ -365,25 +367,29 @@ class DialogueGuidelines(BaseModel):
         return self
 
 
-class BranchOutcome(BaseModel):
-    outcome: str = "none"
-    set_flag: Optional[Dict[str, bool]] = None
-    alter_stat: Optional[Dict[str, StatModifier]] = None
-    player_damage: Optional[str] = None
-    narrative: Optional[str] = None
+class EncounterRule(Checkable):
+    """An ordered encounter resolution node.
 
-
-class EncounterRule(BaseModel):
+    When condition matches:
+    - If ``check`` is set, resolve it (roll or stat check) and apply the
+      chosen branch's Result (success/failure).
+    - Otherwise apply ``result`` directly.
+    Either branch Result or the rule's ``result`` may carry ``trigger_combat``
+    or ``game_over`` to dispatch combat / game-over to the engine.
+    """
     condition: ConditionExpression
-    outcome: Literal["death", "flee", "roll", "stat_check", "combat"]
-    threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    check: Optional[StatCheck] = None
-    narrative: Optional[str] = None
-    set_flag: Optional[Dict[str, bool]] = None
-    alter_stat: Optional[Dict[str, StatModifier]] = None
-    player_damage: Optional[str] = None
-    success: Optional[BranchOutcome] = None
-    failure: Optional[BranchOutcome] = None
+    result: Optional[Result] = None
+    # Inherited from Checkable:
+    #   skip_check_if, check (CheckType), success (Result), failure (Result)
+
+    @model_validator(mode="after")
+    def check_xor_result(self) -> "EncounterRule":
+        has_check = self.check is not None
+        has_result = self.result is not None
+        if has_check == has_result:
+            raise ValueError(
+                "EncounterRule must have exactly one of 'check' or 'result'")
+        return self
 
 
 
