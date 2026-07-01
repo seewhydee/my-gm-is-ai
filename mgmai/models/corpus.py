@@ -352,11 +352,8 @@ class WillRevealEntry(BaseModel):
 
 
 class DialogueGuidelines(BaseModel):
-    personality: str
+    guidelines: str
     on_encounter: str = ""
-    can: List[str] = Field(default_factory=list)
-    cannot: List[str] = Field(default_factory=list)
-    knows: List[str] = Field(default_factory=list)
     attitude_limits: AttitudeLimits = Field(default_factory=AttitudeLimits)
     will_reveal: Dict[str, WillRevealEntry] = Field(default_factory=dict)
     dialogue_paths: Dict[str, Resolvable] = Field(default_factory=dict)

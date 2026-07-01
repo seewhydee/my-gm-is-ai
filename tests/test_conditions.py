@@ -97,7 +97,7 @@ def make_corpus(**overrides) -> ModuleCorpus:
                 "type": "npc",
                 "description": "A dwarf.",
                 "dialogue": {
-                    "personality": "Grumpy.",
+                    "guidelines": "Grumpy.",
                     "attitude_limits": {"min": -5, "max": 10, "step_per_turn": 3, "initial": 0},
                 },
             },

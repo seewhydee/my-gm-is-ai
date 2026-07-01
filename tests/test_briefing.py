@@ -198,7 +198,7 @@ class TestDialogueContext:
                 "name": "Korbar the Dwarf",
                 "attitude": 2,
                 "dialogue": {
-                    "personality": "Gruff but kind.",
+                    "guidelines": "Gruff but kind.",
                     "attitude_limits": {"min": -5, "max": 10, "step_per_turn": 3, "initial": 0},
                 },
             },
@@ -310,7 +310,7 @@ class TestGMBriefing:
                     "name": "Korbar",
                     "attitude": 2,
                     "dialogue": {
-                        "personality": "Gruff.",
+                        "guidelines": "Gruff.",
                         "attitude_limits": {"min": -5, "max": 10, "step_per_turn": 3, "initial": 0},
                     },
                 },

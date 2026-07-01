@@ -309,23 +309,8 @@
         }
       },
       "dialogue": {
-        "personality": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine. Every word is a struggle — it is clearly at death's door.",
+        "guidelines": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine. Every word is a struggle \u2014 it is clearly at death's door. Can warn about the spider in the webs below, answer simple questions about the spider and the webs, and speak only with great effort. Cannot move from the web, survive much longer, or provide any information beyond the spider and the immediate area. Knows that a huge spider lurks in the dense webs lower down the axe handle, the spider is hungry and aggressive, and the webs get denser the further down you go.",
         "on_encounter": "The fly, with its dying breath, warns the player about the huge spider lurking in the webs below.",
-        "can": [
-          "Warn about the spider in the webs below",
-          "Answer simple questions about the spider and the webs",
-          "Speak only with great effort"
-        ],
-        "cannot": [
-          "Move from the web",
-          "Survive much longer",
-          "Provide any information beyond the spider and the immediate area"
-        ],
-        "knows": [
-          "A huge spider lurks in the dense webs lower down the axe handle",
-          "The spider is hungry and aggressive",
-          "The webs get denser the further down you go"
-        ],
         "attitude_limits": {
           "min": 0,
           "max": 1,
@@ -393,18 +378,8 @@
         }
       },
       "dialogue": {
-        "personality": "A mindless predator driven by hunger. It does not speak, bargain, or reason — it only hunts.",
+        "guidelines": "A mindless predator driven by hunger. It does not speak, bargain, or reason \u2014 it only hunts. Can attack anything that disturbs its webs. Cannot speak, reason, bargain, or feel fear until wounded.",
         "on_encounter": "",
-        "can": [
-          "Attack anything that disturbs its webs"
-        ],
-        "cannot": [
-          "Speak",
-          "Reason",
-          "Bargain",
-          "Feel fear — until wounded"
-        ],
-        "knows": [],
         "attitude_limits": {
           "min": -5,
           "max": -5,
@@ -595,30 +570,8 @@
         }
       },
       "dialogue": {
-        "personality": "A cynical dwarven rogue and heavy drinker who was abandoned by her adventuring party three years ago during a stealth mission. She is lonely and bitter but secretly craves company. She speaks with a gruff, working-class accent and punctuates her sentences with swigs from her tankard. Despite her misery, she has a sharp wit and a grudging sense of honour.",
+        "guidelines": "A cynical dwarven rogue and heavy drinker who was abandoned by her adventuring party three years ago during a stealth mission. She is lonely and bitter but secretly craves company. She speaks with a gruff, working-class accent and punctuates her sentences with swigs from her tankard. Despite her misery, she has a sharp wit and a grudging sense of honour. Can share knowledge about the bag's escape mechanism, reveal the secret compartment location if she trusts the player, provide company and rambling conversation, tell stories about her adventuring days, and mention that the giant battleaxe belongs to her. Cannot fight or agree to fight the giant spider, leave the Bag of Holding, stop drinking, remember which way is north, or climb the axe handle (her platemail is too noisy and heavy). Knows that the padlock on the outside of the bag can be unlocked from inside using the rusty key; a rusty key is hidden in a secret compartment beneath a damp handkerchief on the bag floor; her adventuring party abandoned her here three years ago during a stealth mission; the giant battleaxe belongs to her; she is terrified of spiders, especially the huge one stalking the bag; and there is a rip in the canvas at the top of the axe head that leads to the outside.",
         "on_encounter": "Korbar eyes the new arrival warily from behind her tankard, then lets out a bitter laugh. 'Another one, eh? The Bag's got a new guest. Do not bother trying to escape — I have been here three years and never found a way out.'",
-        "can": [
-          "Share knowledge about the bag's escape mechanism",
-          "Reveal the secret compartment location if she trusts the player",
-          "Provide company and rambling conversation",
-          "Tell stories about her adventuring days",
-          "Mention that the giant battleaxe belongs to her"
-        ],
-        "cannot": [
-          "Fight or agree to fight the giant spider",
-          "Leave the Bag of Holding",
-          "Stop drinking",
-          "Remember which way is north",
-          "Climb the axe handle — her platemail is too noisy and heavy"
-        ],
-        "knows": [
-          "The padlock on the outside of the bag can be unlocked from inside using the rusty key",
-          "A rusty key is hidden in a secret compartment beneath a damp handkerchief on the bag floor",
-          "Her adventuring party abandoned her here three years ago during a stealth mission",
-          "The giant battleaxe belongs to her",
-          "She is terrified of spiders, especially the huge one stalking the bag",
-          "There is a rip in the canvas at the top of the axe head that leads to the outside"
-        ],
         "attitude_limits": {
           "min": -5,
           "max": 10,

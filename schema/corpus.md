@@ -909,8 +909,7 @@ special meanings for items:
 
 Notes:
 
-- `name` is required for items.  This is what the player sees in the
-  inventory display.
+- `name` is required for items; it's shown in the inventory UI.
 
 - `take_check`, if present, is a [Gated Check](#gated-check) for
   taking the item (e.g., pulling a sword from a stone).  Success and
@@ -1008,11 +1007,8 @@ The Dialogue object specifies how the NPC engages in conversation.
 
 ```json
 {
-  "personality": "string (tone, demeanor, motivations)",
+  "guidelines": "string (how to portray this NPC)",
   "on_encounter": "string (what happens when first met — may reference an auto-event)",
-  "can": ["list of things the NPC can/will do"],
-  "cannot": ["list of things the NPC will never do or say"],
-  "knows": ["list of facts the NPC possesses"],
   "attitude_limits": {
     "min": -5,
     "max": 10,
@@ -1033,20 +1029,19 @@ The Dialogue object specifies how the NPC engages in conversation.
 
 | Field              | Type     | Description                          |
 |--------------------|----------|--------------------------------------|
-| `personality`      | string   | Tone, demeanor, etc.; surfaced to GM |
+| `guidelines`       | string   | Tone, demeanor, constraints, etc.    |
 | `attitude_limits`(*)| object  | NPC's attitude bounds (see below)    |
 | `on_encounter`(*)  | string   | Describes behavior on first meeting  |
-| `can` (*)          | string[] | Things the NPC can/will do           |
-| `cannot` (*)       | string[] | Things the NPC will never do         |
-| `knows` (*)        | string[] | See [NPC Knowledge](#npc-knowledge)  |
 | `will_reveal` (*)  | object   | See [NPC Knowledge](#npc-knowledge)  |
 | `dialogue_paths`(*)| Resolvable[] | See [Dialogue Path](#dialogue-path) |
 > (*) optional
 
 Notes:
 
-- `personality`, `can`, and `cannot`, are freeform strings used to
-  inform the GM on how the NPC should behave in conversation.
+- `guidelines` is a freeform prose string used to inform the GM on how
+  the NPC should act in conversation: tone, demeanor, what they know,
+  what they will and will not agree to, what bits of knowledge they do
+  and do not know, etc.
 
 - `on_encounter`, if present, describes the NPC's canonical reaction
   when first encountered.  The GM should not contradict this, but
@@ -1093,29 +1088,83 @@ condition, check, and/or branching outcomes.
 
 #### NPC Knowledge
 
-NPC dialogue revelations follow a post-validation pattern that preserves engine
-authority while letting the creative LLM control dialogue timing:
+The `will_reveal` field describes discrete pieces of knowledge an NPC
+can share with the player.  It should be a dict keyed by topic IDs
+(entity-unique), with value objects having following fields:
 
-1. The engine includes each NPC's `will_reveal` readiness in the EngineResult
-   passed to LLM Call 2 (which topics are conditions-met and thus available to
-   be revealed this turn).
-2. LLM Call 2 generates dialogue prose and may emit `knowledge_tags` —
-   structured tags indicating which `will_reveal` topic IDs the NPC actually
-   revealed in its spoken dialogue.
-3. The engine post-validates each tag: is it a declared `will_reveal` topic
-   for this NPC? Are all conditions met? If so, the engine applies the topic's
-   `set_flag` and `set_entity_state` side effects, and records a
-   `KnowledgeEntry` in `soft_state.player_knowledge`.
-4. On subsequent turns, the Context Assembler includes revealed topics (with
-   descriptions) in the GMBriefing, so LLM Call 1 knows what the player has
-   learned.
+| Field          | Type     | Description                              |
+|----------------|----------|------------------------------------------|
+| `description`  | string   | What the topic reveals; surfaced to GM   |
+| `conditions`   | string[] | Revelation conditions (all must be true) |
+| `set_flag` (*) | object   | Flag mutations when topic revealed       |
+| `set_entity_state` (*) | object| State mutations when topic revealed |
+> (*) optional
 
-Invalid or conditions-not-met tags are silently rejected. LLM Call 2 is
-prompted to respect the `will_reveal` readiness signals; if it narrates a
-reveal that the engine rejects, the prose and the mechanical state may
-diverge (same risk as rejected soft-state patches).
+When a topic's conditions are met, the engine marks it as available
+and surfaces it to the GM, which can decide to narrate the revelation
+(or not, depending on the flow of conversation).
 
-- `will_reveal`: Each topic has a `description`, a `conditions` array (all must be true for the topic to be revealable), and optional `set_flag` / `set_entity_state` side effects. When LLM Call 2 tags a topic as revealed via `knowledge_tags`, the engine validates conditions and applies the side effects.
+Once the revelation occurs and is validated, the engine applies any
+side effects specified by `set_flag` and `set_entity_state`, which use
+the same format as in [Result](#result) objects.  The engine also
+records the topic as already revealed, so it doesn't get repeated.
+
+```json
+"will_reveal": {
+  "vizier_is_lich": {
+    "description": "The jester shares that the vizier is a lich",
+    "conditions": [ "entity:jester.attitude >= 5" ],
+    "set_flag": { "vizier_secret_revealed": true }
+  }
+}
+```
+
+### Aggro
+
+The `aggro` block defines how an NPC reacts in hostile encounters —
+what happens when the player attacks it or it initiates combat.
+
+```json
+{
+  "encounter_rules": [
+    {
+      "condition": { /* condition object */ },
+      "outcome": "death | flee | roll | stat_check",
+      "threshold": 0.50,
+      "check": { "type": "stat_check", "stat": "STR", "target": 12, "repeatable": true },
+      "narrative": "string",
+      "set_flag": { "<flag>": true },
+      "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
+      "success": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "narrative": "..." },
+      "failure": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "narrative": "..." }
+    }
+  ],
+  "on_flee": {
+    "set_flag": { "<flag>": true },
+    "effect": "string describing subsequent NPC behavior after fleeing"
+  }
+}
+```
+
+- Rules are evaluated top-to-bottom. The first rule whose `condition` matches
+  is applied. Conditions are condition objects (see Condition object section)
+  evaluated against hard state (flags, inventory, entity states) and soft state
+  (attitudes).
+- `alter_stat` (optional) applies stat modifiers to the player when the rule fires. Each value is `{ "mode": "delta"|"set", "value": <int> }` (mode defaults to `"delta"`). When a branch (`success`/`failure`) also carries `alter_stat`, the branch values override rule-level values for the same stat key.
+- For phase 1 (kill-or-be-killed resolution), outcomes are:
+  - `death` — player dies, game over.
+  - `flee` — creature flees, applying `on_flee` effects.
+  - `roll` — flat probability check using `threshold`; branches on `success`/`failure`.
+  - `stat_check` — ability-score-based check using a `StatCheck` definition; branches on `success`/`failure`. The `check` field (a `StatCheck` object) is required when outcome is `stat_check`. Example:
+    ```json
+    {
+      "condition": { "require": "tag:weapon" },
+      "outcome": "stat_check",
+      "check": { "type": "stat_check", "stat": "STR", "target": 17, "repeatable": true },
+      "success": { "outcome": "flee", "narrative": "You overpower Korbar." },
+      "failure": { "outcome": "death", "narrative": "Korbar overpowers you." }
+    }
+    ```
 
 #### Follower
 
@@ -1169,54 +1218,6 @@ This convention is engine-level, not corpus-level — no new top-level fields or
 schema changes are needed; any NPC that declares `following` in its
 `state_fields` and has it set to `true` in `entity_states` will be treated as a
 follower.
-
-
-
-### Aggro
-
-An NPC's `aggro` block defines how it reacts in hostile encounters —
-what happens when the player attacks it or it initiates combat.
-
-```json
-{
-  "encounter_rules": [
-    {
-      "condition": { /* condition object */ },
-      "outcome": "death | flee | roll | stat_check",
-      "threshold": 0.50,
-      "check": { "type": "stat_check", "stat": "STR", "target": 12, "repeatable": true },
-      "narrative": "string",
-      "set_flag": { "<flag>": true },
-      "alter_stat": { "<stat_key>": { "mode": "delta"|"set", "value": <int> } },
-      "success": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "narrative": "..." },
-      "failure": { "outcome": "...", "set_flag": {}, "alter_stat": {}, "narrative": "..." }
-    }
-  ],
-  "on_flee": {
-    "set_flag": { "<flag>": true },
-    "effect": "string describing subsequent NPC behavior after fleeing"
-  }
-}
-```
-- Rules are evaluated top-to-bottom. The first rule whose `condition` matches
-  is applied. Conditions are condition objects (see Condition object section)
-  evaluated against hard state (flags, inventory, entity states) and soft state
-  (attitudes).
-- `alter_stat` (optional) applies stat modifiers to the player when the rule fires. Each value is `{ "mode": "delta"|"set", "value": <int> }` (mode defaults to `"delta"`). When a branch (`success`/`failure`) also carries `alter_stat`, the branch values override rule-level values for the same stat key.
-- For phase 1 (kill-or-be-killed resolution), outcomes are:
-  - `death` — player dies, game over.
-  - `flee` — creature flees, applying `on_flee` effects.
-  - `roll` — flat probability check using `threshold`; branches on `success`/`failure`.
-  - `stat_check` — ability-score-based check using a `StatCheck` definition; branches on `success`/`failure`. The `check` field (a `StatCheck` object) is required when outcome is `stat_check`. Example:
-    ```json
-    {
-      "condition": { "require": "tag:weapon" },
-      "outcome": "stat_check",
-      "check": { "type": "stat_check", "stat": "STR", "target": 17, "repeatable": true },
-      "success": { "outcome": "flee", "narrative": "You overpower Korbar." },
-      "failure": { "outcome": "death", "narrative": "Korbar overpowers you." }
-    }
-    ```
 
 ---
 

@@ -742,8 +742,8 @@ class TestDialogueContext:
         )
         ctx = result.dialogue_context
         assert ctx is not None
-        assert ctx.active_npc.dialogue.personality != ""
-        assert "cynical" in ctx.active_npc.dialogue.personality.lower()
+        assert ctx.active_npc.dialogue.guidelines != ""
+        assert "cynical" in ctx.active_npc.dialogue.guidelines.lower()
 
     def test_dialogue_recent_exchanges(self, state_manager):
         state_manager.soft_state.dialogue_state = DialogueState(

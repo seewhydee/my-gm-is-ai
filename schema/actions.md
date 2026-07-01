@@ -163,9 +163,7 @@ Soft State, for the ruling LLM (call 1).
       "name": "Korbar the Dwarf",
       "attitude": 2,
       "dialogue": {
-        "personality": "Cynical dwarven rogue, heavy drinker, lonely but proud.",
-        "cannot": ["Leave the bag", "Stop drinking", "Remember which way is north"],
-        "knows": ["The padlock mechanism", "The secret compartment in the axe head"],
+        "guidelines": "Cynical dwarven rogue, heavy drinker, lonely but proud. Cannot leave the bag, stop drinking, or remember which way is north. Knows the padlock mechanism and the secret compartment in the axe head.",
         "will_reveal": {
           "padlock_mechanism": {
             "description": "How the exterior padlock can be opened from inside",

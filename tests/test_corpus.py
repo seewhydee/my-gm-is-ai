@@ -317,7 +317,7 @@ class TestResolvable:
 
     def test_dialogue_path_id_populated_from_dict_key(self) -> None:
         guidelines = DialogueGuidelines(
-            personality="test",
+            guidelines="test",
             attitude_limits=AttitudeLimits(min=-5, max=5),
             dialogue_paths={
                 "flatter": Resolvable(
@@ -330,7 +330,7 @@ class TestResolvable:
 
     def test_dialogue_path_id_preserved_when_supplied(self) -> None:
         guidelines = DialogueGuidelines(
-            personality="test",
+            guidelines="test",
             attitude_limits=AttitudeLimits(min=-5, max=5),
             dialogue_paths={
                 "flatter": Resolvable(
@@ -452,7 +452,7 @@ class TestEntity:
             "description": "A friendly dwarf.",
             "state_fields": {"alive": {"type": "boolean", "description": "Is alive."}},
             "dialogue": {
-                "personality": "Gruff but kind.",
+                "guidelines": "Gruff but kind.",
                 "attitude_limits": {"min": -5, "max": 10, "step_per_turn": 3, "initial": 0},
             },
         })
@@ -520,7 +520,7 @@ class TestEntity:
 
     def test_will_reveal_entry(self) -> None:
         g = DialogueGuidelines.model_validate({
-            "personality": "Friendly.",
+            "guidelines": "Friendly.",
             "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2, "initial": 0},
             "will_reveal": {
                 "secret1": {
@@ -538,7 +538,7 @@ class TestEntity:
 
     def test_will_reveal_with_set_entity_state(self) -> None:
         g = DialogueGuidelines.model_validate({
-            "personality": "Mysterious.",
+            "guidelines": "Mysterious.",
             "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2, "initial": 0},
             "will_reveal": {
                 "trap_warning": {
@@ -552,8 +552,8 @@ class TestEntity:
         assert reveal.set_entity_state == {"spike_trap": {"disarmed": True}}
 
     @pytest.mark.parametrize("entity_type,extra_field,extra_data", [
-        ("feature", "dialogue", {"personality": "Creaky.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
-        ("item", "dialogue", {"personality": "Chatty.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
+        ("feature", "dialogue", {"guidelines": "Creaky.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
+        ("item", "dialogue", {"guidelines": "Chatty.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
         ("item", "aggro", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
         ("player", "aggro", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
     ])
