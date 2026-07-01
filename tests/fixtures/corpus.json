@@ -389,67 +389,71 @@
         "will_reveal": {}
       },
       "interactions": [],
-      "aggro": {
-        "encounter_rules": [
-          {
-            "condition": {
-              "all": [
-                "tag:weapon",
-                {
-                  "unless": "flag:injured == true"
-                }
-              ]
-            },
+      "aggro": [
+        {
+          "condition": {
+            "all": [
+              "tag:weapon",
+              {
+                "unless": "flag:injured == true"
+              }
+            ]
+          },
+          "outcome": "flee",
+          "narrative": "The spider lunges at you, mandibles clicking hungrily. You swing your weapon with desperate strength, slashing across its legs. It screeches — a horrible, wet sound — and scuttles away into the shadows, ichor trailing behind it.",
+          "set_flag": {
+            "spider_fled": true
+          }
+        },
+        {
+          "condition": {
+            "all": [
+              "tag:weapon",
+              "flag:injured == true"
+            ]
+          },
+          "outcome": "roll",
+          "threshold": 0.5,
+          "narrative": "The spider lunges at you. You swing your weapon, but your injuries slow you — the blade wavers. The outcome hangs in the balance.",
+          "success": {
             "outcome": "flee",
-            "narrative": "The spider lunges at you, mandibles clicking hungrily. You swing your weapon with desperate strength, slashing across its legs. It screeches — a horrible, wet sound — and scuttles away into the shadows, ichor trailing behind it.",
+            "narrative": "Despite your injuries, you land a desperate blow. The spider screeches and scuttles away into the shadows, ichor trailing behind it.",
             "set_flag": {
               "spider_fled": true
             }
           },
-          {
-            "condition": {
-              "all": [
-                "tag:weapon",
-                "flag:injured == true"
-              ]
-            },
-            "outcome": "roll",
-            "threshold": 0.5,
-            "narrative": "The spider lunges at you. You swing your weapon, but your injuries slow you — the blade wavers. The outcome hangs in the balance.",
-            "success": {
-              "outcome": "flee",
-              "narrative": "Despite your injuries, you land a desperate blow. The spider screeches and scuttles away into the shadows, ichor trailing behind it.",
-              "set_flag": {
-                "spider_fled": true
-              }
-            },
-            "failure": {
-              "outcome": "death",
-              "narrative": "Your injured body betrays you — the spider dodges your clumsy swing and sinks its fangs deep. The world goes dark as venom courses through your veins.",
-              "set_flag": {}
-            }
-          },
-          {
-            "condition": {
-              "require": "entity:player.alive == true"
-            },
+          "failure": {
             "outcome": "death",
-            "narrative": "The spider lunges at you, mandibles clicking. You raise your fists, but bare hands are no match for its venomous fangs. The world goes dark as you succumb."
+            "narrative": "Your injured body betrays you — the spider dodges your clumsy swing and sinks its fangs deep. The world goes dark as venom courses through your veins.",
+            "set_flag": {}
           }
-        ],
-        "on_flee": {
-          "set_entity_state": {
-            "spider": {
-              "alive": false
-            }
+        },
+        {
+          "condition": {
+            "require": "entity:player.alive == true"
           },
-          "effect": "The spider retreats into the shadows and will never threaten the player again.",
-          "set_flag": {
-            "spider_fled": true
-          }
+          "outcome": "death",
+          "narrative": "The spider lunges at you, mandibles clicking. You raise your fists, but bare hands are no match for its venomous fangs. The world goes dark as you succumb."
         }
-      },
+      ],
       "reactions": [
+        {
+          "id": "spider_fled_effect",
+          "on": "flag.set",
+          "condition": {
+            "require": "event:flag_name == spider_fled"
+          },
+          "effect": {
+            "result": {
+              "narrative": "The spider retreats into the shadows and will never threaten the player again.",
+              "set_entity_state": {
+                "spider": {
+                  "alive": false
+                }
+              }
+            }
+          }
+        },
         {
           "id": "spider_attack_on_interact",
           "on": "interaction.used",
@@ -602,26 +606,24 @@
         }
       },
       "interactions": [],
-      "aggro": {
-        "encounter_rules": [
-          {
-            "condition": {
-              "require": "flag:injured == true"
-            },
-            "outcome": "death",
-            "narrative": "You lunge at Korbar, but your injuries slow you down. Even through the haze of drink, the dwarf's practised reflexes are more than enough. She sidesteps your clumsy attack and delivers a single, efficient blow to your temple. Everything goes dark.",
-            "set_flag": {}
+      "aggro": [
+        {
+          "condition": {
+            "require": "flag:injured == true"
           },
-          {
-            "condition": {
-              "require": "entity:player.alive == true"
-            },
-            "outcome": "death",
-            "narrative": "You attack Korbar, but the dwarf's iron platemail deflects your blows with contemptuous ease. She sighs, almost sadly, and disarms you with a practised motion before delivering a decisive strike. 'Sorry, friend,' she mutters. 'Ye leave me no choice.'",
-            "set_flag": {}
-          }
-        ]
-      },
+          "outcome": "death",
+          "narrative": "You lunge at Korbar, but your injuries slow you down. Even through the haze of drink, the dwarf's practised reflexes are more than enough. She sidesteps your clumsy attack and delivers a single, efficient blow to your temple. Everything goes dark.",
+          "set_flag": {}
+        },
+        {
+          "condition": {
+            "require": "entity:player.alive == true"
+          },
+          "outcome": "death",
+          "narrative": "You attack Korbar, but the dwarf's iron platemail deflects your blows with contemptuous ease. She sighs, almost sadly, and disarms you with a practised motion before delivering a decisive strike. 'Sorry, friend,' she mutters. 'Ye leave me no choice.'",
+          "set_flag": {}
+        }
+      ],
       "reactions": [
         {
           "id": "korbar_attack_on_interact",

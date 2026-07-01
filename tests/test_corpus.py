@@ -20,7 +20,6 @@ from pydantic import ValidationError
 from mgmai.models.corpus import (
     Adventure,
     Atmosphere,
-    Aggro,
     AttitudeLimits,
     BranchOutcome,
     ConditionExpression,
@@ -29,7 +28,6 @@ from mgmai.models.corpus import (
     EncounterRule,
     Entity,
     Exit,
-    FleeEffect,
     Interaction,
     Mechanic,
     ModuleCorpus,
@@ -490,18 +488,15 @@ class TestEntity:
             "type": "npc",
             "description": "A hungry spider.",
             "state_fields": {"alive": {"type": "boolean", "description": "Is alive."}},
-            "aggro": {
-                "encounter_rules": [
-                    {
-                        "condition": {"require": "flag:has_weapon == true"},
-                        "outcome": "flee",
-                    },
-                ],
-                "on_flee": {"set_flag": {"spider_fled": True}, "effect": "It scurries away."},
-            },
+            "aggro": [
+                {
+                    "condition": {"require": "flag:has_weapon == true"},
+                    "outcome": "flee",
+                },
+            ],
         })
         assert e.aggro is not None
-        assert len(e.aggro.encounter_rules) == 1
+        assert len(e.aggro) == 1
 
     def test_feature_in_multiple_rooms(self) -> None:
         e = Entity.model_validate({
@@ -554,8 +549,8 @@ class TestEntity:
     @pytest.mark.parametrize("entity_type,extra_field,extra_data", [
         ("feature", "dialogue", {"guidelines": "Creaky.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
         ("item", "dialogue", {"guidelines": "Chatty.", "attitude_limits": {"min": 0, "max": 5, "step_per_turn": 2}}),
-        ("item", "aggro", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
-        ("player", "aggro", {"encounter_rules": [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]}),
+        ("item", "aggro", [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]),
+        ("player", "aggro", [{"condition": {"require": "flag:x == true"}, "outcome": "flee"}]),
     ])
     def test_invalid_field_for_entity_type_raises(self, entity_type, extra_field, extra_data) -> None:
         with pytest.raises(ValidationError):
@@ -872,24 +867,6 @@ class TestAtmosphere:
             Atmosphere.model_validate({"setting": "A world."})
 
 
-class TestFleeEffect:
-    def test_basic(self) -> None:
-        f = FleeEffect.model_validate({
-            "set_flag": {"spider_fled": True},
-            "effect": "The spider scurries away into the shadows.",
-        })
-        assert f.set_flag == {"spider_fled": True}
-        assert f.effect == "The spider scurries away into the shadows."
-
-    def test_missing_set_flag_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            FleeEffect.model_validate({"effect": "x"})
-
-    def test_missing_effect_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            FleeEffect.model_validate({"set_flag": {"x": True}})
-
-
 class TestEncounterRule:
     def test_outcome_death(self) -> None:
         r = EncounterRule.model_validate({
@@ -963,35 +940,6 @@ class TestEncounterRule:
         assert r.alter_stat == {"CON": StatModifier(value=-2)}
         assert r.failure is not None
         assert r.failure.alter_stat == {"STR": StatModifier(value=-4), "CON": StatModifier(value=-4)}
-
-
-class TestAggro:
-    def test_encounter_rules(self) -> None:
-        b = Aggro.model_validate({
-            "encounter_rules": [
-                {
-                    "condition": {"require": "flag:x == true"},
-                    "outcome": "flee",
-                },
-            ],
-        })
-        assert len(b.encounter_rules) == 1
-
-    def test_with_on_flee(self) -> None:
-        b = Aggro.model_validate({
-            "encounter_rules": [
-                {
-                    "condition": {"require": "flag:has_weapon == true"},
-                    "outcome": "flee",
-                },
-            ],
-            "on_flee": {
-                "set_flag": {"spider_fled": True},
-                "effect": "It scurries away.",
-            },
-        })
-        assert b.on_flee is not None
-        assert b.on_flee.set_flag == {"spider_fled": True}
 
 
 class TestStatsBlock:

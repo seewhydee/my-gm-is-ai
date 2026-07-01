@@ -386,15 +386,7 @@ class EncounterRule(BaseModel):
     failure: Optional[BranchOutcome] = None
 
 
-class FleeEffect(BaseModel):
-    set_flag: Dict[str, bool]
-    set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
-    effect: str
 
-
-class Aggro(BaseModel):
-    encounter_rules: List[EncounterRule] = Field(default_factory=list)
-    on_flee: Optional[FleeEffect] = None
 
 
 class FollowerConfig(BaseModel):
@@ -412,7 +404,7 @@ class Entity(BaseModel):
     interactions: List[Interaction] = Field(default_factory=list)
     on_examine: List[OnExamineEvent] = Field(default_factory=list)
     dialogue: Optional[DialogueGuidelines] = None
-    aggro: Optional[Aggro] = None
+    aggro: Optional[List[EncounterRule]] = None
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
     follower: Optional[FollowerConfig] = None
     combat: Optional[CombatBlock] = None

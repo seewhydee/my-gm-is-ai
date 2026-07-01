@@ -398,7 +398,7 @@ def _resolve_reaction_encounter(
     # Try NPC aggro first
     npc = corpus.entities.get(encounter_id)
     if npc and npc.aggro:
-        encounter_rules = npc.aggro.encounter_rules
+        encounter_rules = npc.aggro
     else:
         mech = corpus.mechanics.get(encounter_id)
         if mech and mech.rules:
@@ -425,28 +425,6 @@ def _resolve_reaction_encounter(
         else:
             for flag, val in set_flags.items():
                 hard.flags[flag] = val
-
-    if enc_result["flee_effects"]:
-        from mgmai.engine.encounters import apply_flee_effects
-        if changes is not None:
-            # Flee effects mutate hard state directly; capture the deltas into
-            # *changes* by snapshotting before/after.
-            pre_flags = dict(hard.flags)
-            pre_entity = {
-                eid: dict(state)
-                for eid, state in hard.entity_states.items()
-            }
-            apply_flee_effects(enc_result["flee_effects"], hard)
-            for flag, val in hard.flags.items():
-                if pre_flags.get(flag) != val:
-                    changes.flags_set[flag] = val
-            for eid, state in hard.entity_states.items():
-                pre = pre_entity.get(eid, {})
-                delta = {k: v for k, v in state.items() if pre.get(k) != v}
-                if delta:
-                    changes.entity_state_changes.setdefault(eid, {}).update(delta)
-        else:
-            apply_flee_effects(enc_result["flee_effects"], hard)
 
     alter_stat = enc_result.get("alter_stat") or {}
     if alter_stat:

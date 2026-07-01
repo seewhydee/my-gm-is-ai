@@ -44,7 +44,6 @@ def resolve_encounter(
         narrative: str | None
         set_flags: dict[str, bool]
         game_over: dict | None  -- {type: str, trigger: str}
-        flee_effects: dict | None  -- set_flags + set_entity_state + effect string
     """
     for rule in encounter_rules:
         if evaluate(rule.condition, hard, soft, corpus):
@@ -57,7 +56,6 @@ def resolve_encounter(
         "alter_stat": {},
         "player_damage": None,
         "game_over": None,
-        "flee_effects": None,
         "rolls": [],
     }
 
@@ -82,7 +80,6 @@ def _apply_encounter_rule(
                 "type": "lose",
                 "trigger": npc_id or "encounter",
             },
-            "flee_effects": None,
             "rolls": [],
         }
 
@@ -94,32 +91,17 @@ def _apply_encounter_rule(
             "alter_stat": rule.alter_stat or {},
             "player_damage": rule.player_damage,
             "game_over": None,
-            "flee_effects": None,
             "rolls": [],
         }
 
     if outcome == "flee":
-        flee_data = None
-        set_flags = dict(rule.set_flag or {})
-        if npc_id:
-            npc = corpus.entities.get(npc_id)
-            if npc and npc.aggro and npc.aggro.on_flee:
-                flee = npc.aggro.on_flee
-                for flag, val in flee.set_flag.items():
-                    set_flags[flag] = val
-                flee_data = {
-                    "set_flags": flee.set_flag,
-                    "set_entity_state": flee.set_entity_state,
-                    "effect": flee.effect,
-                }
         return {
             "outcome": "flee",
             "narrative": rule.narrative,
-            "set_flags": set_flags,
+            "set_flags": rule.set_flag or {},
             "alter_stat": rule.alter_stat or {},
             "player_damage": rule.player_damage,
             "game_over": None,
-            "flee_effects": flee_data,
             "rolls": [],
         }
 
@@ -132,7 +114,6 @@ def _apply_encounter_rule(
                 "alter_stat": {},
                 "player_damage": None,
                 "game_over": None,
-                "flee_effects": None,
                 "rolls": [],
             }
 
@@ -148,7 +129,6 @@ def _apply_encounter_rule(
                 "alter_stat": rule.alter_stat or {},
                 "player_damage": rule.player_damage,
                 "game_over": None,
-                "flee_effects": None,
                 "rolls": encounter_rolls,
             }
 
@@ -160,7 +140,6 @@ def _apply_encounter_rule(
             "alter_stat": {},
             "player_damage": None,
             "game_over": None,
-            "flee_effects": None,
             "rolls": encounter_rolls,
             "branch_taken": "success" if success else "failure",
         }
@@ -187,26 +166,6 @@ def _apply_encounter_rule(
                 "type": "lose",
                 "trigger": npc_id or "encounter",
             }
-        elif sub_outcome == "flee":
-            flee_data = None
-            if npc_id:
-                npc = corpus.entities.get(npc_id)
-                if npc and npc.aggro and npc.aggro.on_flee:
-                    flee_obj = npc.aggro.on_flee
-                    for flag, val in flee_obj.set_flag.items():
-                        result["set_flags"][flag] = val
-                    flee_data = {
-                        "set_flags": flee_obj.set_flag,
-                        "set_entity_state": flee_obj.set_entity_state,
-                        "effect": flee_obj.effect,
-                    }
-            result["flee_effects"] = flee_data
-        elif sub_outcome == "combat":
-            # No extra handling needed: the "combat" outcome string
-            # propagates to the caller (engine.py / event_bus.py), which
-            # calls enter_combat().  Branch-level set_flags/alter_stat are
-            # already merged above.
-            pass
 
         return result
 
@@ -219,7 +178,6 @@ def _apply_encounter_rule(
                 "alter_stat": {},
                 "player_damage": None,
                 "game_over": None,
-                "flee_effects": None,
                 "rolls": [],
             }
         roll = random.random()
@@ -234,7 +192,6 @@ def _apply_encounter_rule(
                 "alter_stat": rule.alter_stat or {},
                 "player_damage": rule.player_damage,
                 "game_over": None,
-                "flee_effects": None,
                 "rolls": [{
                     "encounter_id": npc_id or "encounter",
                     "threshold": rule.threshold,
@@ -251,7 +208,6 @@ def _apply_encounter_rule(
             "alter_stat": {},
             "player_damage": None,
             "game_over": None,
-            "flee_effects": None,
             "rolls": [{
                 "encounter_id": npc_id or "encounter",
                 "threshold": rule.threshold,
@@ -283,26 +239,6 @@ def _apply_encounter_rule(
                 "type": "lose",
                 "trigger": npc_id or "encounter",
             }
-        elif sub_outcome == "flee":
-            flee_data = None
-            if npc_id:
-                npc = corpus.entities.get(npc_id)
-                if npc and npc.aggro and npc.aggro.on_flee:
-                    flee = npc.aggro.on_flee
-                    for flag, val in flee.set_flag.items():
-                        result["set_flags"][flag] = val
-                    flee_data = {
-                        "set_flags": flee.set_flag,
-                        "set_entity_state": flee.set_entity_state,
-                        "effect": flee.effect,
-                    }
-            result["flee_effects"] = flee_data
-        elif sub_outcome == "combat":
-            # No extra handling needed: the "combat" outcome string
-            # propagates to the caller (engine.py / event_bus.py), which
-            # calls enter_combat().  Branch-level set_flags/alter_stat are
-            # already merged above.
-            pass
 
         return result
 
@@ -313,28 +249,8 @@ def _apply_encounter_rule(
         "alter_stat": {},
         "player_damage": None,
         "game_over": None,
-        "flee_effects": None,
         "rolls": [],
     }
-
-
-def apply_flee_effects(
-    flee_data: dict | None,
-    hard: HardGameState,
-) -> None:
-    """Apply on_flee effects to hard state."""
-    if flee_data is None:
-        return
-
-    set_flags = flee_data.get("set_flags") or {}
-    for flag, val in set_flags.items():
-        hard.flags[flag] = val
-
-    set_entity_state = flee_data.get("set_entity_state") or {}
-    for entity_id, state_changes in set_entity_state.items():
-        if entity_id not in hard.entity_states:
-            hard.entity_states[entity_id] = {}
-        hard.entity_states[entity_id].update(state_changes)
 
 
 def _resolve_encounter_stat_check(

@@ -49,10 +49,7 @@ from mgmai.engine.conditions import evaluate, get_condition_detail
 from mgmai.engine.resolver import resolve_action, ResolutionResult
 from mgmai.engine.utils import inject_following_npcs, get_following_npc_ids, is_exit_visible
 from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
-from mgmai.engine.encounters import (
-    apply_flee_effects,
-    resolve_encounter,
-)
+from mgmai.engine.encounters import resolve_encounter
 from mgmai.engine.dialogue import (
     check_room_change_exit,
     enter_dialogue,
@@ -221,7 +218,7 @@ def resolve(
         encounter_source_id = trigger_id
 
         if npc and npc.aggro:
-            encounter_rules = npc.aggro.encounter_rules
+            encounter_rules = npc.aggro
         else:
             mech = corpus.mechanics.get(trigger_id)
             if mech and mech.rules:
@@ -241,22 +238,6 @@ def resolve(
             set_flags = enc_result.get("set_flags") or {}
             if set_flags:
                 encounter_changes.flags_set.update(set_flags)
-
-            if enc_result["flee_effects"]:
-                pre_flags = dict(hard.flags)
-                pre_entity = {
-                    eid: dict(state)
-                    for eid, state in hard.entity_states.items()
-                }
-                apply_flee_effects(enc_result["flee_effects"], hard)
-                for flag, val in hard.flags.items():
-                    if pre_flags.get(flag) != val:
-                        encounter_changes.flags_set[flag] = val
-                for eid, state in hard.entity_states.items():
-                    pre = pre_entity.get(eid, {})
-                    delta = {k: v for k, v in state.items() if pre.get(k) != v}
-                    if delta:
-                        encounter_changes.entity_state_changes.setdefault(eid, {}).update(delta)
 
             alter_stat = enc_result.get("alter_stat") or {}
             if alter_stat:

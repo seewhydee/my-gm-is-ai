@@ -161,17 +161,15 @@
           }
         }
       },
-      "aggro": {
-        "encounter_rules": [
-          {
-            "condition": {
-              "require": "entity:spider.alive == true"
-            },
-            "outcome": "combat",
-            "narrative": "The spider drops from the shadows above, mandibles bared and venom glistening!"
-          }
-        ]
-      },
+      "aggro": [
+        {
+          "condition": {
+            "require": "entity:spider.alive == true"
+          },
+          "outcome": "combat",
+          "narrative": "The spider drops from the shadows above, mandibles bared and venom glistening!"
+        }
+      ],
       "combat": {
         "hp": 14,
         "ac": 8,

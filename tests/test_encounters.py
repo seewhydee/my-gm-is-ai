@@ -22,12 +22,8 @@ from pathlib import Path
 
 import pytest
 
-from mgmai.engine.encounters import (
-    resolve_encounter,
-    apply_flee_effects,
-)
+from mgmai.engine.encounters import resolve_encounter
 from mgmai.models.corpus import (
-    Aggro,
     EncounterRule,
     ConditionExpression,
     ModuleCorpus,
@@ -86,7 +82,6 @@ class TestResolveEncounter:
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["outcome"] == "flee"
         assert result["set_flags"]["spider_fled"] is True
-        assert result["flee_effects"] is not None
 
     def test_roll_success_branch(self, sample_corpus, monkeypatch):
         hard = _load_hard()
@@ -342,7 +337,7 @@ class TestEncounterBranchCombat:
     The 'combat' outcome string propagates to the caller (engine.py /
     event_bus.py), which calls enter_combat().  These tests confirm the
     explicit arm preserves that behavior for both stat_check and roll
-    branches: outcome stays 'combat', with no game_over or flee_effects.
+    branches: outcome stays 'combat', with no game_over.
     """
 
     def test_stat_check_branch_combat_propagates(self, sample_corpus, monkeypatch):
@@ -361,7 +356,6 @@ class TestEncounterBranchCombat:
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["outcome"] == "combat"
         assert result["game_over"] is None
-        assert result["flee_effects"] is None
         assert result["branch_taken"] == "success"
 
     def test_roll_branch_combat_propagates(self, sample_corpus, monkeypatch):
@@ -380,34 +374,4 @@ class TestEncounterBranchCombat:
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["outcome"] == "combat"
         assert result["game_over"] is None
-        assert result["flee_effects"] is None
         assert result["branch_taken"] == "success"
-
-
-class TestApplyFleeEffects:
-    def test_applies_flags(self, sample_corpus):
-        hard = _load_hard()
-        flee_data = {
-            "set_flags": {"spider_fled": True, "test_flag": False},
-            "set_entity_state": None,
-            "effect": "It fled.",
-        }
-        apply_flee_effects(flee_data, hard)
-        assert hard.flags["spider_fled"] is True
-        assert hard.flags["test_flag"] is False
-
-    def test_applies_entity_state(self, sample_corpus):
-        hard = _load_hard()
-        flee_data = {
-            "set_flags": {"spider_fled": True},
-            "set_entity_state": {"spider": {"alive": False}},
-            "effect": "It fled.",
-        }
-        apply_flee_effects(flee_data, hard)
-        assert hard.entity_states["spider"]["alive"] is False
-
-    def test_none_is_noop(self, sample_corpus):
-        hard = _load_hard()
-        original = hard.flags.get("spider_fled")
-        apply_flee_effects(None, hard)
-        assert hard.flags.get("spider_fled") == original
