@@ -1228,7 +1228,7 @@ class TestEncounterBranchedEvent:
         ))
 
         # Force the encounter roll to fail (0.9 >= 0.5 threshold).
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+        monkeypatch.setattr("random.random", lambda: 0.9)
 
         from mgmai.models.actions import WaitAction
         action = WaitAction(action_type="wait", detail="wait")
@@ -1280,7 +1280,7 @@ class TestEncounterBranchedEvent:
         ))
 
         # Force failure.
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+        monkeypatch.setattr("random.random", lambda: 0.9)
 
         from mgmai.models.actions import WaitAction
         action = WaitAction(action_type="wait", detail="wait")

@@ -84,12 +84,12 @@ class TestResolveEncounter:
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["narrative"] is not None
-        assert result["set_flags"]["spider_fled"] is True
+        assert result["changes"].flags_set["spider_fled"] is True
 
     def test_roll_success_branch(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.1)
+        monkeypatch.setattr("random.random", lambda: 0.1)
         rules = [
             _mk_encounter_rule(
                 outcome="roll",
@@ -109,12 +109,12 @@ class TestResolveEncounter:
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["narrative"] is not None
         assert result["narrative"] == "You win!"
-        assert result["set_flags"]["spider_fled"] is True
+        assert result["changes"].flags_set["spider_fled"] is True
 
     def test_roll_failure_branch(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+        monkeypatch.setattr("random.random", lambda: 0.9)
         rules = [
             _mk_encounter_rule(
                 outcome="roll",
@@ -180,11 +180,16 @@ class TestResolveEncounter:
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus)
         assert result["game_over"] is not None
-        assert result["alter_stat"] == {"CON": StatModifier(value=-4)}
+        assert result["changes"].stat_modifiers == {"CON": StatModifier(value=-4)}
 
     def test_branch_alter_stat_on_stat_check(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
+        hard.player.stats = {"DEX": 10}
+        sample_corpus.stats = StatsBlock(
+            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            system="5e",
+        )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
         rules = [
             _mk_encounter_rule(
@@ -199,11 +204,16 @@ class TestResolveEncounter:
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus)
         assert result["narrative"] is not None
-        assert result["alter_stat"] == {"DEX": StatModifier(value=-2)}
+        assert result["changes"].stat_modifiers == {"DEX": StatModifier(value=-2)}
 
     def test_branch_alter_stat_on_stat_check_success(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
+        hard.player.stats = {"DEX": 10}
+        sample_corpus.stats = StatsBlock(
+            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            system="5e",
+        )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
         rules = [
             _mk_encounter_rule(
@@ -219,7 +229,7 @@ class TestResolveEncounter:
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus)
         assert result["narrative"] is not None
-        assert result["alter_stat"] == {"CON": StatModifier(value=-4), "STR": StatModifier(value=-4)}
+        assert result["changes"].stat_modifiers == {"CON": StatModifier(value=-4), "STR": StatModifier(value=-4)}
 
     def test_rule_level_trigger_combat(self, sample_corpus):
         """Result with trigger_combat=True (no check) propagates."""
@@ -271,7 +281,7 @@ class TestResolveEncounter:
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["trigger_combat"] is False
         assert result["game_over"] is None
-        assert result["set_flags"]["creature_fled"] is True
+        assert result["changes"].flags_set["creature_fled"] is True
 
     def test_no_rules_match_returns_safe_defaults(self, sample_corpus):
         """When no rules match, result has trigger_combat=False, game_over=None."""
@@ -294,7 +304,7 @@ class TestResolveEncounter:
         """When a roll check fails and failure has no trigger_combat, it stays False."""
         hard = _load_hard()
         soft = _load_soft()
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+        monkeypatch.setattr("random.random", lambda: 0.9)
         rules = [
             _mk_encounter_rule(
                 outcome="roll",
@@ -324,7 +334,8 @@ class TestResolveEncounter:
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["trigger_combat"] is True
-        assert result["player_damage"] == "2d6"
+        assert result["changes"].player_hp_delta is not None
+        assert result["changes"].player_hp_delta < 0
         assert result["narrative"] == "The spider bites you!"
 
 
@@ -334,6 +345,11 @@ class TestEncounterBranchTaken:
     def test_stat_check_branch_taken_success(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
+        hard.player.stats = {"DEX": 10}
+        sample_corpus.stats = StatsBlock(
+            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            system="5e",
+        )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
         rules = [
             _mk_encounter_rule(
@@ -375,7 +391,7 @@ class TestEncounterBranchTaken:
     def test_roll_branch_taken_success(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.1)
+        monkeypatch.setattr("random.random", lambda: 0.1)
         rules = [
             _mk_encounter_rule(
                 outcome="roll",
@@ -392,7 +408,7 @@ class TestEncounterBranchTaken:
     def test_roll_branch_taken_failure(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.9)
+        monkeypatch.setattr("random.random", lambda: 0.9)
         rules = [
             _mk_encounter_rule(
                 outcome="roll",
@@ -424,6 +440,11 @@ class TestEncounterBranchTaken:
         """A stat_check with no success/failure doesn't set branch_taken."""
         hard = _load_hard()
         soft = _load_soft()
+        hard.player.stats = {"DEX": 10}
+        sample_corpus.stats = StatsBlock(
+            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            system="5e",
+        )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
         rules = [
             _mk_encounter_rule(
@@ -448,6 +469,11 @@ class TestEncounterBranchCombat:
     def test_stat_check_branch_combat_propagates(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
+        hard.player.stats = {"DEX": 10}
+        sample_corpus.stats = StatsBlock(
+            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            system="5e",
+        )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
         rules = [
             _mk_encounter_rule(
@@ -466,7 +492,7 @@ class TestEncounterBranchCombat:
     def test_roll_branch_combat_propagates(self, sample_corpus, monkeypatch):
         hard = _load_hard()
         soft = _load_soft()
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.1)
+        monkeypatch.setattr("random.random", lambda: 0.1)
         rules = [
             _mk_encounter_rule(
                 outcome="roll",

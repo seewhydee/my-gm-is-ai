@@ -37,6 +37,7 @@ from mgmai.models.actions import (
 )
 from mgmai.models.corpus import (
     CheckResolution,
+    EncounterRule,
     GatedCheck,
     Interaction,
     ModuleCorpus,
@@ -1303,7 +1304,7 @@ def _apply_result_with_check(
 
 
 def _resolve_checkable(
-    chk: CheckResolution | Resolvable | GatedCheck,
+    chk: CheckResolution | Resolvable | GatedCheck | EncounterRule,
     *,
     hard: HardGameState,
     soft: SoftGameState,

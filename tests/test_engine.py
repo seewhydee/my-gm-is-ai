@@ -96,7 +96,7 @@ class TestEngineFullFlow:
         ]
         manager = build_state_manager(corpus)
         # Ensure roll failure (>= 0.50).
-        monkeypatch.setattr("mgmai.engine.encounters.random.random", lambda: 0.80)
+        monkeypatch.setattr("random.random", lambda: 0.80)
         action = MoveAction(
             action_type="move",
             target="exit_drop",
