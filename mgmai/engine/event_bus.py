@@ -256,7 +256,9 @@ def dispatch_reactions(
                     new_events.extend(enc_events)
 
         # --- trigger_dialogue ---
-        if resolved.trigger_dialogue is not None:
+        # Skip dialogue triggers if combat is active — combat and dialogue
+        # are mutually exclusive states.
+        if resolved.trigger_dialogue is not None and (hard.combat is None or not hard.combat.active):
             npc_id = resolved.trigger_dialogue
             from mgmai.engine.dialogue import enter_dialogue, exit_dialogue
 
@@ -436,6 +438,15 @@ def _resolve_reaction_encounter(
             hard.game_over = GameOverState(type="lose", trigger="player_death")
         if combat_entry.get("combat_log") and combat_log is not None:
             combat_log.extend(combat_entry["combat_log"])
+        # Exit dialogue if active — combat and dialogue are mutually exclusive
+        if soft.dialogue_state.active_npc is not None:
+            from mgmai.engine.dialogue import exit_dialogue
+            active_npc = soft.dialogue_state.active_npc
+            exit_dialogue(soft, corpus, hard)
+            events.append(("dialogue.ended", {
+                "npc_id": active_npc,
+                "reason": "combat_started",
+            }))
         events.append(("combat.started", {"combatant_ids": [source_id]}))
 
     branch_taken = enc_result.get("branch_taken")
