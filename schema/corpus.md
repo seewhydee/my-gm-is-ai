@@ -255,7 +255,9 @@ Notes:
   appends it to `soft_state.revealed_hints` (with deduplication) to
   guide the GM; see the [Soft State schema](soft-state.md).
 
-#### Follow-up check
+---
+
+### Follow-up check
 
 A follow-up check can be embedded in a Result's `then_check` field.
 It implements multi-stage resolutions for actions and effects, firing
@@ -298,13 +300,74 @@ results may contain other follow-ups, to a maximum depth of 3.
 
 ---
 
+### Resolvable
+
+A Resolvable describes a player-initiated action that leads to custom
+effects: e.g., special interactions with [Rooms](#room) and
+[Entities](#entity), [examination actions](#examination), and engaging
+in [dialogue paths with NPCs](#dialogue-path).  It is modeled as a
+Condition-gated action resolving to a Result.
+
+```json
+{
+  "id": "string (optional unless subclass requires it)",
+  "description": "string (optional unless subclass requires it)",
+  "condition": { /* condition object (optional) */ },
+  "skip_check_if": { /* condition object (optional) */ },
+  "check": { /* roll or stat_check (optional) */ },
+  "success": { /* result (required if check is present) */ },
+  "failure": { /* result (optional) */ },
+  "result": { /* deterministic result (optional, mutually exclusive with check) */ },
+  "using_results": { /* item ID -> override (optional) */ }
+}
+```
+
+| Field             | Type      | Description                          |
+|-------------------|-----------|--------------------------------------|
+| `id` (*)          | string    | ID (depends on context)              |
+| `description` (*) | string    | Human-readable description of action |
+| `condition` (*)   | Condition | Availability gate for the action     |
+| `skip_check_if`(*)| Condition | Whether to bypass check and succeed  |
+| `result` (*)      | Result    | Fixed result (excl. with `check`)    |
+| `check` (*)        | Check    | Resolving check (excl. with `result`)|
+| `success` (*)     | Result    | Result when check succeeds/bypassed  |
+| `failure` (*)     | Result    | Result when check fails              |
+| `using_results`(*)| object    | See [Usage Override](#usage-override)|
+> (*) optional by default (may be required in some contexts)
+
+Notes:
+
+- The meaning of `id` depends on where the Resolvable is used.  For
+  room and entity interactions, it must be a room-unique or
+  entity-unique ID.  In other contexts, it need not be specified.
+
+- `description` is used to brief the GM on the semantic meaning of the
+  action.  It may be omitted for Examination Effects.
+
+- `condition`, if supplied, gates availability.  For example, for an
+  interaction with a room/entity, `condition` being `false` typically
+  means the interaction is nonsensical in the game's current context,
+  and should not even be offered as a possible player action.
+
+- The action itself is specified by one of:
+  - a deterministic `result` (which directly fires), OR
+  - a probabilistic `check`, with optional `skip_check_if` to bypass
+    (evaluating to `true` means auto-success), branching into either
+    `success` or `failure` (optional, no-op if omitted).
+  The `result` and `check` fields are mutually exclusive.
+
+- `using_results`, if present, describes alternative resolutions when
+  doing the action using items: see [Usage Overrides](#usage-override).
+
+---
+
 ### Gated Check
 
-A Gated Check wraps a [Check](#check) with a condition determining
-whether the check is active, an optional bypass condition, and
-success/failure [Results](#result).  It is meant for situations where
-a player action meets a special obstacle (specifically, `take_check`
-for items and `traversal_check` for room exits).
+A Gated Check describes situations where a player action meets an
+obstacle: specifically, `take_check` for items and `traversal_check`
+for room exits.  It is modeled as a [Check](#check) wrapped with a
+[Condition](#condition) that determines whether the check is active,
+an optional bypass condition, and success/failure [Results](#result).
 
 ```json
 {
@@ -341,70 +404,23 @@ for items and `traversal_check` for room exits).
 | `using_results`(*)| object    | See [Usage Override](#usage-override)|
 > (*) optional
 
-Note: if `gating` evaluates to false, the check is inactive and the
-action proceeds as default; neither the `success` nor `failure` Result
-is applied.  If `gating` evaluates to true (or is absent) and
-`skip_check_if` evaluates to true, the check is bypassed and `success`
-is applied.  Otherwise the check is rolled normally.
-
-`using_results`, if present, is a set of [Usage Overrides](#usage-override).
-
----
-
-### Resolvable
-
-A Resolvable is a condition-gated action that resolves to a Result.
-It is used to describe special interactions with [Rooms](#room) and
-[Entities](#entity), [Examination Effects](#examination), and NPC
-[Dialogue Paths](#dialogue-path).
-
-```json
-{
-  "id": "string (optional unless subclass requires it)",
-  "description": "string (optional unless subclass requires it)",
-  "condition": { /* condition object (optional) */ },
-  "skip_check_if": { /* condition object (optional) */ },
-  "check": { /* roll or stat_check (optional) */ },
-  "success": { /* result (required if check is present) */ },
-  "failure": { /* result (optional) */ },
-  "result": { /* deterministic result (optional, mutually exclusive with check) */ },
-  "using_results": { /* item ID -> override (optional) */ }
-}
-```
-
-| Field             | Type      | Description                          |
-|-------------------|-----------|--------------------------------------|
-| `id` (*)          | string    | ID (depends on context)              |
-| `description` (*) | string    | Human-readable description of action |
-| `condition` (*)   | Condition | Availability gate for the action     |
-| `skip_check_if`(*)| Condition | Whether to bypass check and succeed  |
-| `check` (*)       | Check     | Check to resolve result              |
-| `success` (*)     | Result    | Result when check succeeds/bypassed  |
-| `failure` (*)     | Result    | Result when check fails              |
-| `result` (*)      | Result    | Deterministic result                 |
-| `using_results`(*)| object    | See [Usage Override](#usage-override)|
-> (*) optional by default (may be required in some contexts)
-
 Notes:
 
-- The meaning of `id` depends on where the Resolvable is used.  For
-  room and entity interactions, it must be a room-unique or
-  entity-unique ID.  In other contexts, it need not be specified.
+- If `gating` is supplied and evaluates to false, the check is
+  inactive: the action proceeds normally, ignoring the check entirely
+  (including `success` and `failure`).
+  
+- If the check is active and `skip_check_if` evaluates to true, the
+  check automatically succeeds without rolling; in this case `success`
+  (if present) *is* applied.
+  
+- If the check succeeds or fails, the original action automatically
+  proceeds normally (e.g., a sword is taken from the stone), or fails
+  (e.g., the sword remains stuck), *in addition* to any other effects
+  specified by the optional `success` and `failure` fields.
 
-- `description` is used to brief the GM on the semantic meaning of the
-  action.  It may be omitted for Examination Effects.
-
-- `condition`, if supplied, gates availability; if it evaluates to
-  `false`, the action is unavailable (e.g., a room/entity interaction
-  will not be offered as a player action).
-
-- The action itself should be specified by one of:
-  - a deterministic `result`, OR
-  - a probabilistic `check`, with optional `skip_check_if` to bypass
-    (evaluating to `true` means auto-success), along with `success`
-    (required) and `failure` (optional) Results.
-
-- `using_results`, if present, is a set of [Usage Overrides](#usage-override).
+- `using_results`, if present, describes alternative resolutions when
+  doing the action using items: see [Usage Overrides](#usage-override).
 
 ---
 
@@ -421,6 +437,47 @@ of the form "[ACTION] using [ITEM]".  It should be a dict mapping item
   an alternative [Check](#check),
 
 This overrides the usual resolution when using the specified item.
+
+---
+
+### Encounter Rule
+
+Encounters are game events that can unfold in multiple different ways,
+depending on an ordered list of conditions.  Encounters occur when
+NPCs [attack or are attacked](#aggro), and can also be attached to
+global [Mechanics](#mechanic).  An encounter is defined by an ordered
+array of Encounter Rule objects, each having the following form:
+
+```json
+  {
+    "condition": { "require": "tag:weapon" },
+    "check": { "type": "stat_check",
+               "stat": "STR", "target": 10, "repeatable": true },
+    "skip_check_if": { "require": "stat:CHA >= 14" },
+    "success": { "narrative": "Brandishing your weapon, you hold the orc at bay." },
+    "failure": { "narrative": "The orc overpowers you.",
+                 "game_over": { "type": "lose", "trigger_id": "orc" } }
+  }
+```
+
+| Field             | Type      | Description                          |
+|-------------------|-----------|--------------------------------------|
+| `condition`       | Condition | Condition for the rule to fire       |
+| `result` (*)      | Result    | Direct result (excl. with `check`)   |
+| `check` (*)       | Check     | Resolving check (excl. with `result`)|
+| `skip_check_if`(*)| Condition | Whether to bypass `check` and succeed|
+| `success` (*)     | Result    | Result when Check succeeds           |
+| `failure` (*)     | Result    | Result when Check fails              |
+> (*) optional
+
+When an encounter is triggered, its Encounter Rules are evaluated
+top-to-bottom. The first Encounter Rule whose `condition` holds (if
+any) is applied, and the rest are ignored.
+
+Once triggered, the Encounter Rule is resolved using the `result`,
+`check`, `success`, and/or `failure` fields, which have the same
+meanings as in [Resolvable](#resolvable).  Each Result may trigger
+combat via `trigger_combat`, or game-over via `game_over`.
 
 ---
 
@@ -896,7 +953,7 @@ Containers should be assigned the following properties:
 A container's contents are listed in its `contains` and `soft_items`
 fields.  (These fields can also be used for non-container entities,
 like a rubbish pile, which is not a container in the present sense
-since it lacks open/close functionality.)
+ince it lacks open/close functionality.)
 
 When the container is open, the engine automatically surfaces its
 contents to the GM and player; when the container is closed, the
@@ -1001,12 +1058,12 @@ The `5e` system uses these additional fields, both optional:
 NPCs are entities the player can fight or socialize with.  NPC entity
 blocks support the following additional fields:
 
-| Field           | Type   | Description                      |
-|-----------------|--------|----------------------------------|
-| `dialogue`(*)   | object | See [Dialogue](#dialogue)        |
-| `aggro` (*)     | object | See [Aggro](#aggro)              |
-| `follower` (*)  | object | See [Follower](#follower)        |
-| `combat` (*)    | object | Combat stats (hp, ac, atk, etc.) |
+| Field           | Type   | Description                          |
+|-----------------|--------|--------------------------------------|
+| `dialogue`(*)   | object | NPC's [dialogue settings](#dialogue) |
+| `aggro` (*)     | array  | NPC's [aggro rules](#aggro)          |
+| `follower` (*)  | object | NPC's [follower rules](#follower)    |
+| `combat` (*)    | object | Combat stats (hp, ac, atk, etc.)     |
 > (*) optional
 
 #### Dialogue
@@ -1127,55 +1184,32 @@ records the topic as already revealed, so it doesn't get repeated.
 
 ### Aggro
 
-The `aggro` field is an ordered list of Encounter Rules defining how
-an NPC reacts in hostile encounters (player attack, or combat
-triggered by a reaction).
+The `aggro` field on an NPC entity stores an ordered list of
+[Encounter Rules](#encounter-rule) defining how an NPC reacts in
+hostile encounters (player attack, or combat triggered by a reaction).
 
 ```json
 "aggro": [
   {
     "condition": { "require": "tag:weapon" },
-    "check": { "type": "stat_check",
-               "stat": "STR", "target": 17, "repeatable": true },
-    "success": { "narrative": "You drove it off." },
-    "failure": { "narrative": "It overpowers you.",
-                 "game_over": { "type": "lose", "trigger_id": "creature" } }
+    "result": { "narrative": "Brandishing your weapon, you fight the orc.",
+				"trigger_combat": true },
   },
   {
     "condition": { "require": "true" },
-    "result": {
-      "narrative": "Without a weapon, you are helpless against the creature.",
-      "game_over": { "type": "lose", "trigger_id": "creature" }
-    }
+    "check": { "type": "stat_check",
+               "stat": "STR", "target": 10, "repeatable": true },
+    "success": { "narrative": "Putting up your fists, you start to fight!",
+				 "trigger_combat": true },
+    "failure": { "narrative": "Without a weapon, the orc overpowers you.",
+                 "game_over": { "type": "lose", "trigger_id": "orc" } }
   }
 ]
 ```
 
-Each Encounter Rule supports the following fields:
-
-| Field          | Type      | Description                             |
-|----------------|-----------|-----------------------------------------|
-| `condition`    | object    | Condition for the rule to fire          |
-| `result` (*)   | Result    | Direct result (mut. excl. with `check`) |
-| `check` (*)    | Check     | Check (mut. excl. with `result`)        |
-| `success` (*)  | Result    | Result when Check succeeds              |
-| `failure` (*)  | Result    | Result when Check fails                 |
-| `skip_check_if`(*)| object | Whether to bypass `check`, auto-succeed |
-> (*) optional
-
-Notes:
-
-- Rules are evaluated top-to-bottom. The first rule whose `condition`
-  matches is applied.  If no rule matches, the encounter silently does
-  nothing (no narrative, no effects, no combat, no game-over).  To
-  avoid this, put a rule with `"require": "true"` as the last entry.
-
-- Each rule must have exactly one of `result` (direct result) or
-  `check` (probabilistic check with success/failure branches).
-
-- The [Results](#result) in `result`, `success`, and/or `failure` can
-  trigger combat by specifying `"trigger_combat": "true"`, or a
-  [Game-Over](#game-over) using the `game_over` field.
+If no rule matches, the encounter silently does nothing (no narrative,
+no effects, no combat, no game-over).  To avoid this, put a rule with
+`"require": "true"` as the last entry.
 
 #### Follower
 
@@ -1234,29 +1268,22 @@ All fields:
 | `condition` (*) | Condition | Game-over or gating condition          |
 | `trigger_id` (*)| string    | Saved game-over trigger                |
 | `narrative` (*) | string    | Canonical game-over ending prose       |
-| `rules` (*)     | EncounterRule[] | Encounter rules (see below)      |
+| `rules` (*)     | array     | A list of Encounter Rules (see below)  |
 | `reactions` (*) | Reaction[] | Reactions (see below)                 |
 > (*) optional (subject to constraints below)
 
-
-These are mutually exclusive: a mechanic cannot be both game-over and
-encounter.  A mechanic may carry `reactions` alongside `rules` (but not
-alongside `type`).  At least one of `type`, `rules`, or `reactions`
-must be present.
-
-### Encounter
-
-Encounter rules are evaluated top-to-bottom when the mechanic is
-triggered (via `trigger_encounter` in a reaction effect, or by the
-engine when the player attacks an NPC whose `aggro` references the
-mechanic).  The first rule whose `condition` matches is applied; if no
-rule matches, the encounter silently does nothing.
-
-Each rule must have exactly one of `result` (direct) or `check`
-(probabilistic with `success`/`failure` branches).  See
-[Encounter Rule](#aggro) for the rule schema.
-
 Notes:
+
+- A mechanic cannot be both game-over and an encounter.  It may carry
+  `reactions` alongside `rules` (but not alongside `type`).  At least
+  one of `type`, `rules`, or `reactions` must be present.
+
+- For an encounter-type mechanic, `rules` should be specified, and its
+  value should be a list of [Encounter Rules](#encounter-rule).  When
+  the mechanic is triggered – usually by `trigger_encounter` in a
+  [Reaction Effect](#reaction-effect) – the Encounter Rules are
+  evaluated top-to-bottom.  The first valid one fires; if no rule
+  matches, the encounter silently does nothing.
 
 - Only one encounter can resolve per turn. If a reaction triggers an
   encounter and that encounter has already been triggered (from the
