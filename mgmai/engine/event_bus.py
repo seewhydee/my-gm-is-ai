@@ -272,11 +272,6 @@ def dispatch_reactions(
                 enter_dialogue(soft, npc_id, hard.turn_count, None, "")
                 new_events.append(("dialogue.started", {"npc_id": npc_id}))
 
-        # --- game_over ---
-        if resolved.game_over is not None:
-            go = resolved.game_over
-            hard.game_over = GameOverState(type=go.type, trigger=go.trigger_id)
-
         # Chain-check events are action-level events that the event bus should
         # dispatch recursively alongside other reaction-generated events.
         new_events.extend(chain_events)
@@ -342,7 +337,6 @@ def _resolve_self(
         result=resolved_result,
         trigger_encounter=trigger_encounter,
         trigger_dialogue=trigger_dialogue,
-        game_over=effects.game_over,
     )
 
 

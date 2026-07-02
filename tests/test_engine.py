@@ -378,6 +378,38 @@ class TestEngineGameOver:
         assert result.game_over is not None
         assert result.game_over.type == "win"
 
+    def test_win_condition_via_turn_end_reaction_same_turn(self, state_manager):
+        """A game-over condition satisfied by a turn.end reaction is caught the
+        SAME turn: the end-of-turn poll runs after turn.end reactions settle,
+        so the flag they set is seen immediately (the old mid-turn poll would
+        have missed it until the next turn)."""
+        import copy
+        # Deep-copy the shared session corpus so this mutation cannot leak
+        # into other tests using the same sample_corpus fixture object.
+        state_manager.corpus = copy.deepcopy(state_manager.corpus)
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        assert hard.flags.get("padlock_unlocked") is not True
+
+        # A turn.end reaction sets the flag the win_escape_bag game_over
+        # condition checks (flag:padlock_unlocked == true).
+        corpus.rooms["axe_head"].reactions.append(Reaction(
+            id="unlock_on_turn_end",
+            on="turn.end",
+            effect=ReactionEffects(
+                result=Result(set_flag={"padlock_unlocked": True})),
+        ))
+
+        action = WaitAction(
+            action_type="wait",
+            detail="Checking surroundings",
+        )
+        result = resolve(action, state_manager)
+        assert hard.flags.get("padlock_unlocked") is True
+        assert result.game_over is not None
+        assert result.game_over.type == "win"
+
     def test_no_game_over_when_not_met(self, state_manager):
         action = WaitAction(
             action_type="wait",

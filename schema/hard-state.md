@@ -85,7 +85,7 @@ or wielding:
 
 Flags represent binary world state: conditions discovered, events triggered,
 doors opened, NPCs met, etc. The engine uses flags to evaluate conditions on
-exits, interactions, encounters, and game-over mechanics.
+exits, interactions, encounters, and game-over conditions.
 
 ### Flag lifecycle
 
@@ -233,7 +233,7 @@ the ending without soliciting further input.
 | Field     | Type   | Description |
 |-----------|--------|-------------|
 | `type`    | string | Describes the outcome (typically `"win"` or `"lose"`). Unrestricted to accommodate tabletop games with non-binary endings. |
-| `trigger` | string | The `trigger_id` of the game-over mechanic that fired (matches module corpus). |
+| `trigger` | string | The `trigger_id` of the game-over that fired — from an inline `Result.game_over` or a top-level `game_over_conditions` entry (matches module corpus). |
 
 --
 

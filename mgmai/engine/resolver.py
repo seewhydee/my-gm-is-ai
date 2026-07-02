@@ -50,7 +50,7 @@ from mgmai.models.corpus import (
     UsingResultOverride,
 )
 from mgmai.models.combat import CombatLogEntry
-from mgmai.models.hard_state import HardGameState
+from mgmai.models.hard_state import HardGameState, GameOverState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch
 from mgmai.engine.conditions import evaluate
 from mgmai.engine.dialogue import (
@@ -1268,6 +1268,13 @@ def _apply_result(
         changes.player_hp_delta = existing - dmg_total
     if result.reveals:
         revealed_hints.append(result.reveals)
+    # Inline game-over: propagate from any result (interaction, reaction,
+    # encounter) by setting hard.game_over directly.
+    if result.game_over is not None and hard is not None:
+        hard.game_over = GameOverState(
+            type=result.game_over.type,
+            trigger=result.game_over.trigger_id,
+        )
 
 
 def _apply_result_with_check(

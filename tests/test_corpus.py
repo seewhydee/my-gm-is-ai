@@ -25,6 +25,7 @@ from mgmai.models.corpus import (
     Credits,
     DialogueGuidelines,
     EncounterRule,
+    GameOverCondition,
     GameOverTrigger,
     Entity,
     Exit,
@@ -53,7 +54,8 @@ class TestModuleCorpus:
         assert sample_corpus.adventure.atmosphere.setting
         assert len(sample_corpus.rooms) == 5
         assert len(sample_corpus.entities) > 0
-        assert len(sample_corpus.mechanics) == 1
+        assert len(sample_corpus.mechanics) == 0
+        assert len(sample_corpus.game_over_conditions) == 1
 
     def test_sample_corpus_dialogue_path_ids_populated(self, sample_corpus: ModuleCorpus) -> None:
         korbar = sample_corpus.entities.get("korbar")
@@ -420,28 +422,6 @@ class TestResult:
 
 
 class TestMechanic:
-    def test_game_over_win(self) -> None:
-        m = Mechanic.model_validate({
-            "id": "win_escape",
-            "type": "win",
-            "condition": {"require": "flag:escaped == true"},
-            "narrative": "You are free!",
-            "trigger_id": "escape",
-        })
-        assert m.type == "win"
-        assert m.condition is not None
-        assert m.trigger_id == "escape"
-        assert m.rules is None
-
-    def test_game_over_lose(self) -> None:
-        m = Mechanic.model_validate({
-            "id": "lose_death",
-            "type": "lose",
-            "condition": {"require": "flag:dead == true"},
-            "trigger_id": "death",
-        })
-        assert m.type == "lose"
-
     def test_encounter(self) -> None:
         m = Mechanic.model_validate({
             "id": "spider_encounter",
@@ -454,47 +434,52 @@ class TestMechanic:
         })
         assert m.rules is not None
         assert len(m.rules) == 1
-        assert m.type is None
 
-    def test_game_over_missing_condition_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            Mechanic.model_validate({
-                "id": "bad_win",
-                "type": "win",
-                "trigger_id": "x",
-            })
-
-    def test_game_over_missing_trigger_id_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            Mechanic.model_validate({
-                "id": "bad_win",
-                "type": "win",
-                "condition": {"require": "flag:x == true"},
-            })
-
-    def test_both_type_and_rules_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            Mechanic.model_validate({
-                "id": "bad",
-                "type": "win",
-                "condition": {"require": "flag:x == true"},
-                "trigger_id": "x",
-                "rules": [],
-            })
-
-    def test_neither_type_nor_rules_raises(self) -> None:
+    def test_neither_rules_nor_reactions_raises(self) -> None:
+        # A Mechanic must carry at least one of 'rules' or 'reactions'.
         with pytest.raises(ValidationError):
             Mechanic.model_validate({
                 "id": "bad",
             })
 
-    def test_invalid_type_raises(self) -> None:
+
+class TestGameOverCondition:
+    def test_win_condition_valid(self) -> None:
+        c = GameOverCondition.model_validate({
+            "type": "win",
+            "condition": {"require": "flag:escaped == true"},
+            "trigger_id": "escape",
+            "narrative": "You are free!",
+            "note": "The player escapes the bag.",
+        })
+        assert c.type == "win"
+        assert c.condition is not None
+        assert c.trigger_id == "escape"
+        assert c.narrative == "You are free!"
+        assert c.note == "The player escapes the bag."
+
+    def test_lose_condition_valid(self) -> None:
+        c = GameOverCondition.model_validate({
+            "type": "lose",
+            "condition": {"require": "flag:dead == true"},
+            "trigger_id": "death",
+        })
+        assert c.type == "lose"
+        assert c.narrative is None
+        assert c.note is None
+
+    def test_missing_condition_raises(self) -> None:
         with pytest.raises(ValidationError):
-            Mechanic.model_validate({
-                "id": "bad",
-                "type": "draw",
-                "condition": {"require": "flag:x == true"},
+            GameOverCondition.model_validate({
+                "type": "win",
                 "trigger_id": "x",
+            })
+
+    def test_missing_trigger_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            GameOverCondition.model_validate({
+                "type": "win",
+                "condition": {"require": "flag:x == true"},
             })
 
 

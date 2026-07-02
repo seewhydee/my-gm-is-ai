@@ -301,6 +301,10 @@ def resolve(
                 follow_up=player_action.follow_up,
                 termination_reason="validation failure",
             )
+        # Surface an inline game-over set during action resolution.
+        if hard.game_over is not None and game_over is None:
+            game_over = GameOverResult(
+                type=hard.game_over.type, trigger=hard.game_over.trigger)
         return EngineResult(
             success=False,
             action_type=action_type,
@@ -374,12 +378,6 @@ def resolve(
             hard.game_over = GameOverState(type="lose", trigger=resolution.game_over_trigger)
             game_over = GameOverResult(type="lose", trigger=resolution.game_over_trigger)
 
-    if hard.game_over is None:
-        _check_game_over_mechanics(hard, soft, corpus, game_over_ref := [None])
-        if game_over_ref[0]:
-            game_over = game_over_ref[0]
-            hard.game_over = GameOverState(type=game_over.type, trigger=game_over.trigger)
-
     # Track whether an encounter has already fired this turn, so that
     # subsequent reaction trigger_encounter effects are suppressed.  Preserve
     # any encounter already fired by game-start/turn-start reactions.
@@ -418,9 +416,6 @@ def resolve(
         if dialogue_exit:
             resolution.dialogue_exited = dialogue_exit
             dialogue_exit_reason = "room_change"
-
-    if hard.game_over is not None and game_over is None:
-        game_over = GameOverResult(type=hard.game_over.type, trigger=hard.game_over.trigger)
 
     if action_type == "talk":
         pass
@@ -495,6 +490,21 @@ def resolve(
             combat_log=reaction_combat_log,
         )
         hard.turn_count += 1
+
+    # 9.5 Condition-based game-over poll (after all reactions settle).
+    if hard.game_over is None:
+        go = _check_game_over_conditions(hard, soft, corpus)  # carries narrative
+        if go is not None:
+            hard.game_over = GameOverState(type=go.type, trigger=go.trigger)
+            game_over = go  # preserve the condition's ending narrative
+    # Final reconciliation: surface event-based game_overs (set by encounters,
+    # combat, inline Result.game_over, or any reaction including turn.end) into
+    # EngineResult.game_over.
+    if hard.game_over is not None and game_over is None:
+        game_over = GameOverResult(
+            type=hard.game_over.type,
+            trigger=hard.game_over.trigger,
+        )
 
     # If a reaction started combat, ensure the result reflects it.
     if not combat_triggered and hard.combat is not None and hard.combat.active:
@@ -836,23 +846,24 @@ def _build_npc_attitude_limits(
     return result
 
 
-def _check_game_over_mechanics(
+def _check_game_over_conditions(
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
-    game_over_ref: list[Any],
-) -> None:
-    for mech_id, mech in corpus.mechanics.items():
-        if mech.type is None:
-            continue
+) -> GameOverResult | None:
+    """Poll the top-level cross-cutting game-over predicates.
 
-        if mech.condition and evaluate(mech.condition, hard, soft, corpus):
-            game_over_ref[0] = GameOverResult(
-                type=mech.type,
-                trigger=mech.trigger_id or mech_id,
-                narrative=mech.narrative,
+    Returns a GameOverResult (carrying the entry's ending narrative) for the
+    first satisfied condition, or None if none hold.
+    """
+    for cond in corpus.game_over_conditions:
+        if evaluate(cond.condition, hard, soft, corpus):
+            return GameOverResult(
+                type=cond.type,
+                trigger=cond.trigger_id,
+                narrative=cond.narrative,
             )
-            return
+    return None
 
 
 # ------------------------------------------------------------------

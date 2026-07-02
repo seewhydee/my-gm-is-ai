@@ -1351,47 +1351,69 @@ above).
 ## Step 4: Build Mechanics
 
 **Input:** Scenario Map + Corpus draft from step 3.
-**Output:** The full `mechanics` block for the corpus.
+**Output:** The `mechanics` block and the top-level
+`game_over_conditions` array for the corpus.
 
-Two structural kinds of mechanics live here: game-over conditions
-(win/lose), and mechanics containing encounter rules and/or reactions
-(adventure-wide state-based triggers).
+Game-over (win/lose) outcomes are authored separately (see 4A), and the
+`mechanics` block itself holds only mechanics containing encounter rules
+and/or reactions (adventure-wide state-based triggers) — never game-over
+predicates.
 
-### 4A. Game-over conditions
+### 4A. Game-over outcomes
 
-Win/loss conditions should be mechanic entries with `type: "win"` or
-`"lose"`.  Examples:
+There are two idioms; pick per-case:
 
-```json
-"completed_quest": {
-  "id": "completed_quest",
-  "type": "win",
-  "description": "Player completes the main quest.",
-  "condition": {
-    "all": [
-      "flag:artifact_retrieved == true",
-      "flag:player_escaped == true"
-    ]
-  },
-  "narrative": "You emerge into the morning light, the ancient artifact clutched to your chest. Your quest is complete.",
-  "trigger_id": "quest_complete"
-}
+- **Inline `Result.game_over` (preferred when a single result owns the
+  outcome):** put `game_over` directly on the [Result](corpus.md#result)
+  that causes the ending — a specific killing blow, a fatal choice.  No
+  separate registry entry is needed.
+
+  ```json
+  "confirm_squeeze_through_rip": {
+    "id": "confirm_squeeze_through_rip",
+    "description": "Squeeze through the rip into the void beyond.",
+    "condition": { "require": "flag:rip_squeeze_possible == true" },
+    "result": {
+      "narrative": "You tumble into the endless gray of the Astral Plane.",
+      "game_over": { "type": "lose", "trigger_id": "astral_plane" }
+    }
+  }
+  ```
+
+- **Top-level `game_over_conditions` (for cross-cutting states):** a
+  win/loss predicate reachable from several paths, with no single owning
+  result, goes in the top-level `game_over_conditions` array.  Each entry
+  has `type` (`"win"`/`"lose"`), `condition`, `trigger_id`, and
+  optional `narrative`/`note`.  These are polled once at end of
+  turn.
+
+  ```json
+  "game_over_conditions": [
+    {
+      "type": "win",
+      "note": "Player completes the main quest.",
+      "condition": {
+        "all": [
+          "flag:artifact_retrieved == true",
+          "flag:player_escaped == true"
+        ]
+      },
+      "narrative": "You emerge into the morning light, the ancient artifact clutched to your chest. Your quest is complete.",
+      "trigger_id": "quest_complete"
+    },
+    {
+      "type": "lose",
+      "note": "Player falls into the chasm.",
+      "condition": { "require": "flag:fallen_into_chasm == true" },
+      "narrative": "You lose your footing and tumble into the darkness below. The fall is long, and then there is nothing.",
+      "trigger_id": "chasm_fall"
+    }
+  ]
 ```
 
-```json
-"death_by_fall": {
-  "id": "death_by_fall",
-  "type": "lose",
-  "description": "Player falls into the chasm.",
-  "condition": { "require": "flag:fallen_into_chasm == true" },
-  "narrative": "You lose your footing and tumble into the darkness below. The fall is long, and then there is nothing.",
-  "trigger_id": "chasm_fall"
-}
-```
-
-For multi-step win conditions, use `"all"` to combine separate
-flags. Each flag should be set by a different interaction, exit, or
-encounter along the critical path.
+For multi-step win conditions, use `"all"` to combine separate flags in
+a `game_over_conditions` entry. Each flag should be set by a different
+interaction, exit, or encounter along the critical path.
 
 >> FIXME: HP to 0 needs to be explicitly set up, or automatic? <<
 
@@ -1907,7 +1929,7 @@ multiple stages, or branching outcomes), encode the follow-up as
 
 The typical structure is: a failed (or succeeded) check leads to a second
 check with its own success/failure branches. The second check's failure may
-set a flag that a game-over mechanic watches for, or it may simply produce
+set a flag that a game-over condition watches for, or it may simply produce
 a narrative outcome:
 
 ```json
@@ -1946,18 +1968,24 @@ a narrative outcome:
 ```
 
 When the follow-up check's final failure sets a game-over flag, pair it with
-a `lose` mechanic:
+a top-level `game_over_conditions` entry:
 
 ```json
-"fell_to_chasm": {
-  "id": "fell_to_chasm",
-  "type": "lose",
-  "description": "Player falls into the chasm.",
-  "condition": { "require": "flag:fallen_into_chasm == true" },
-  "narrative": "You lose your footing and tumble into the darkness below.",
-  "trigger_id": "chasm_fall"
-}
+"game_over_conditions": [
+  {
+    "type": "lose",
+    "note": "Player falls into the chasm.",
+    "condition": { "require": "flag:fallen_into_chasm == true" },
+    "narrative": "You lose your footing and tumble into the darkness below.",
+    "trigger_id": "chasm_fall"
+  }
+]
 ```
+
+---
+  
+
+(Showing matches; edit interrupted by user)
 
 ---
 ## Naming Conventions (All Steps)
@@ -2039,7 +2067,8 @@ All IDs must be **snake_case, lowercase ASCII**:
 
 15. **Follow-up check does not trigger game-over directly**: A `then_check`
     failure cannot set `game_over` directly. Instead, use `set_flag` in the
-    failure result and add a `lose` mechanic watching that flag.
+    failure result and add a top-level `game_over_conditions` entry watching
+    that flag.
 
 16. **Hidden entities need a reveal mechanism**: Every entity with
     `hidden: true` in its initial `entity_states` must have a companion
@@ -2068,7 +2097,7 @@ All IDs must be **snake_case, lowercase ASCII**:
 
 21. **`event:` domain only works in reactions**: The `event:` condition domain
     is only valid inside reaction conditions during dispatch. Using it in
-    interaction conditions, game-over mechanic conditions, or exit conditions
+    interaction conditions, game-over condition predicates, or exit conditions
     will always evaluate to `false`.
 
 22. **`combat.ended` is not yet emitted**: The `combat.ended` event has not

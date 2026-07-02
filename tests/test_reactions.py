@@ -38,10 +38,6 @@ class TestReactionEffects:
         effects = ReactionEffects(trigger_dialogue="korbar")
         assert effects.trigger_dialogue == "korbar"
 
-    def test_game_over_only(self):
-        effects = ReactionEffects(game_over=GameOverTrigger(type="lose", trigger_id="death"))
-        assert effects.game_over is not None
-
     def test_empty_result_rejected(self):
         with pytest.raises(ValidationError, match="at least one effect"):
             ReactionEffects(result=Result())
@@ -144,15 +140,6 @@ class TestMechanicReactionOnly:
         with pytest.raises(ValidationError, match="must have at least one"):
             Mechanic(id="m1")
 
-    def test_game_over_mechanic_still_works(self):
-        m = Mechanic(
-            id="m1",
-            type="lose",
-            condition={"require": "flag:dead == true"},
-            trigger_id="death",
-        )
-        assert m.type == "lose"
-
     def test_encounter_mechanic_still_works(self):
         from mgmai.models.corpus import ConditionExpression
         m = Mechanic(
@@ -163,17 +150,3 @@ class TestMechanicReactionOnly:
             )],
         )
         assert m.rules is not None
-
-    def test_game_over_and_encounter_both_rejected(self):
-        from mgmai.models.corpus import ConditionExpression
-        with pytest.raises(ValidationError, match="not both"):
-            Mechanic(
-                id="m1",
-                type="lose",
-                condition={"require": "flag:dead == true"},
-                trigger_id="death",
-                rules=[_mk_encounter_rule(
-                    condition=ConditionExpression(require="flag:x == true"),
-                    outcome="death",
-                )],
-            )

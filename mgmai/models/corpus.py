@@ -284,18 +284,31 @@ class GameOverTrigger(BaseModel):
     trigger_id: str
 
 
+class GameOverCondition(BaseModel):
+    """A cross-cutting win/loss predicate polled once at end of turn.
+
+    For outcomes owned by a single result (a specific killing blow, a fatal
+    choice), prefer inline ``Result.game_over``.  Use this only for terminal
+    states reachable from several paths with no single inline home.
+    """
+    type: Literal["win", "lose"]
+    condition: ConditionExpression
+    trigger_id: str
+    narrative: Optional[str] = None
+    note: Optional[str] = None
+
+
 class ReactionEffects(BaseModel):
     result: Optional[Result] = None
     trigger_encounter: Optional[str] = None
     trigger_dialogue: Optional[str] = None
-    game_over: Optional[GameOverTrigger] = None
 
     @model_validator(mode="after")
     def check_non_empty(self) -> ReactionEffects:
         has_result = self.result is not None and self.result.has_any_effect()
         has_reaction = any(
             f is not None
-            for f in (self.trigger_encounter, self.trigger_dialogue, self.game_over)
+            for f in (self.trigger_encounter, self.trigger_dialogue)
         )
         if not has_result and not has_reaction:
             raise ValueError("ReactionEffects must have at least one effect set")
@@ -443,32 +456,33 @@ class Entity(BaseModel):
 
 
 class Mechanic(BaseModel):
+    """A named bundle of game logic not tied to a specific room or entity.
+
+    A Mechanic is one of exactly two kinds, distinguished by which field is
+    populated:
+
+    - Encounter (``rules``): an event-driven encounter fired by a
+      ``trigger_encounter`` effect (or NPC aggro).  ``condition`` optionally
+      gates whether the encounter may fire.
+    - Reaction-Only (``reactions``): a bundle of event-driven reactions with
+      no encounter rules.
+
+    Game-over predicates are no longer a Mechanic kind: event-local outcomes
+    use inline ``Result.game_over`` and cross-cutting ones use the top-level
+    ``ModuleCorpus.game_over_conditions`` list.
+    """
     id: str
-    type: Optional[Literal["win", "lose"]] = None
     condition: Optional[ConditionExpression] = None
-    narrative: Optional[str] = None
-    trigger_id: Optional[str] = None
     rules: Optional[List[EncounterRule]] = None
     reactions: List[Reaction] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_shape(self) -> Mechanic:
-        is_game_over = self.type is not None
         is_encounter = self.rules is not None
         is_reaction_only = bool(self.reactions)
-        if is_game_over and is_encounter:
+        if not is_encounter and not is_reaction_only:
             raise ValueError(
-                "Mechanic must be either a game-over condition (type, condition, trigger_id) "
-                "or an encounter (rules), not both")
-        if is_game_over:
-            if self.condition is None:
-                raise ValueError("Game-over mechanic requires 'condition'")
-            if self.trigger_id is None:
-                raise ValueError("Game-over mechanic requires 'trigger_id'")
-        if not is_game_over and not is_encounter and not is_reaction_only:
-            raise ValueError(
-                "Mechanic must have at least one of: 'type' (game-over), "
-                "'rules', or 'reactions'")
+                "Mechanic must have at least one of: 'rules' or 'reactions'")
         return self
 
 
@@ -529,5 +543,6 @@ class ModuleCorpus(BaseModel):
     rooms: Dict[str, Room]
     entities: Dict[str, Entity]
     mechanics: Dict[str, Mechanic] = Field(default_factory=dict)
+    game_over_conditions: List[GameOverCondition] = Field(default_factory=list)
     flags_declared: Optional[List[str]] = None
     stats: Optional[StatsBlock] = None

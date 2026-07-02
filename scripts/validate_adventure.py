@@ -190,14 +190,7 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
                     f"Entity '{entity_id}' interaction '{inter.id}' has check but no success branch"
                 )
 
-    # 9. Mechanics validation
-    for mech_id, mech in corpus.mechanics.items():
-        if mech.type is not None and mech.type not in ("win", "lose"):
-            errors.append(
-                f"Mechanic '{mech_id}' has invalid type '{mech.type}' (expected 'win' or 'lose')"
-            )
-
-    # 10. CombatBlock validation
+    # 9. CombatBlock validation
     from mgmai.engine.combat import parse_damage_dice
     for entity_id, entity in corpus.entities.items():
         if entity.combat is None:

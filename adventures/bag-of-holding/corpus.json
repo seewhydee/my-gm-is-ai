@@ -766,6 +766,10 @@
             "narrative": "You squeeze through the rip and tumble into the gray void. There is no up or down here. The Bag of Holding shrinks to a distant speck, then vanishes entirely. You float helplessly in the endless gray of the Astral Plane.",
             "set_flag": {
               "player_squeezed_through_rip": true
+            },
+            "game_over": {
+              "type": "lose",
+              "trigger_id": "astral_plane"
             }
           }
         },
@@ -1721,46 +1725,6 @@
         }
       ]
     },
-    "player_escaped": {
-      "id": "player_escaped",
-      "type": "win",
-      "description": "Player unlocks the padlock and escapes the Bag of Holding.",
-      "condition": {
-        "require": "flag:padlock_unlocked == true"
-      },
-      "narrative": "With the padlock open, the neck of the Bag yawns wide. You scramble upward, pulling yourself out into the world beyond. Fresh air hits your face \u2014 real air, not the stale atmosphere of the Bag. You're out. You're free. What happens next is up to you.",
-      "trigger_id": "escape_bag"
-    },
-    "lost_to_astral_plane_rip": {
-      "id": "lost_to_astral_plane_rip",
-      "type": "lose",
-      "description": "Player squeezed through the rip into the Astral Plane.",
-      "condition": {
-        "require": "flag:player_squeezed_through_rip == true"
-      },
-      "narrative": "You drift in the endless gray emptiness of the Astral Plane. Time loses all meaning. Perhaps, eventually, something will find you. But it's unlikely.",
-      "trigger_id": "astral_plane"
-    },
-    "lost_key_to_astral": {
-      "id": "lost_key_to_astral",
-      "type": "lose",
-      "description": "The key fell through the rip into the Astral Plane \u2014 the player is trapped forever.",
-      "condition": {
-        "require": "flag:key_lost_to_astral == true"
-      },
-      "narrative": "The key is gone \u2014 swallowed by the Astral Plane. With no other way to unlock the padlock, you are trapped inside the Bag of Holding forever. Perhaps Korbar will share her soup ladle shelter.",
-      "trigger_id": "key_lost"
-    },
-    "spider_killed_player": {
-      "id": "spider_killed_player",
-      "type": "lose",
-      "description": "Player was killed by the spider.",
-      "condition": {
-        "require": "entity:player.alive == false"
-      },
-      "narrative": "Your body slumps to the canvas floor, another forgotten thing inside the Bag of Holding. The spider clicks its mandibles contentedly.",
-      "trigger_id": "player_death"
-    },
     "global_reactions": {
       "id": "global_reactions",
       "description": "Adventure-wide state-based reactions.",
@@ -1790,6 +1754,26 @@
       ]
     }
   },
+  "game_over_conditions": [
+    {
+      "type": "win",
+      "note": "Player unlocks the padlock and escapes the Bag of Holding.",
+      "condition": {
+        "require": "flag:padlock_unlocked == true"
+      },
+      "narrative": "With the padlock open, the neck of the Bag yawns wide. You scramble upward, pulling yourself out into the world beyond. Fresh air hits your face \u2014 real air, not the stale atmosphere of the Bag. You're out. You're free. What happens next is up to you.",
+      "trigger_id": "escape_bag"
+    },
+    {
+      "type": "lose",
+      "note": "The key fell through the rip into the Astral Plane \u2014 the player is trapped forever.",
+      "condition": {
+        "require": "flag:key_lost_to_astral == true"
+      },
+      "narrative": "The key is gone \u2014 swallowed by the Astral Plane. With no other way to unlock the padlock, you are trapped inside the Bag of Holding forever. Perhaps Korbar will share her soup ladle shelter.",
+      "trigger_id": "key_lost"
+    }
+  ],
   "stats": {
     "definitions": {
       "STR": {

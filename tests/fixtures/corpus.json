@@ -691,9 +691,9 @@
     "padlock_unlocked",
     "spider_fled"
   ],
-  "mechanics": {
-    "win_escape_bag": {
-      "id": "win_escape_bag",
+  "mechanics": {},
+  "game_over_conditions": [
+    {
       "type": "win",
       "condition": {
         "require": "flag:padlock_unlocked == true"
@@ -701,5 +701,5 @@
       "narrative": "The padlock springs open with a satisfying CLUNK. The neck of the bag loosens, and fresh air floods in from above. You haul yourself up through the rip, squirming free of the canvas prison at last. Freedom! You tumble out onto solid ground, gasping with relief. The Bag of Holding lies at your feet, looking far smaller and more innocent from the outside. You are free!",
       "trigger_id": "escape_bag"
     }
-  }
+  ]
 }

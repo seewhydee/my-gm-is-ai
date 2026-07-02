@@ -15,6 +15,7 @@ Engine reads from it to validate actions and apply game mechanics.
   "rooms":        { "<room_id>": { /* room */ } },
   "entities":     { "<entity_id>": { /* entity */ } },
   "mechanics":    { "<mechanic_id>": { /* mechanic */ } },
+  "game_over_conditions": [ { /* global game-over condition */ } ],
   "stats":        { /* stat definitions (optional) */ },
   "flags_declared": [ "<flag_id>", ... ]
 }
@@ -106,7 +107,7 @@ Notes:
   `attitude_limits.initial` provides the default at game start; the
   corpus author should initialize all dialogue-NPC attitudes to this
   value in the hard-state JSON.
-- The `event` domain is used in [Reaction dispatch](#reaction-object).
+- The `event` domain is used in [Reaction dispatch](#reaction).
   It evaluates to `false` outside event dispatch.
 
 **Examples**:
@@ -144,7 +145,7 @@ A roll Check succeeds if `random() < threshold`.
 | `type`       | string  | `"roll"` — flat probability check |
 | `threshold`  | number  | Probability threshold (0.0–1.0)   |
 | `repeatable` | boolean | Whether check can be retried      |
-| `note` (*)   | string  | Explanatory designer note         |
+| `note` (*)   | string  | Author note (not shown to player) |
 > (*) optional
 
 #### Stat Check
@@ -168,7 +169,7 @@ Stat Checks are [resolution system](#resolution-system) dependent.
 | `target`       | integer | Check target or difficulty class  |
 | `modifier` (*) | integer | Situational modifier (default 0)  |
 | `repeatable`   | boolean | Whether check can be retried      |
-| `note` (*)     | string  | Explanatory designer note         |
+| `note` (*)     | string  | Author note (not shown to player) |
 > (*) optional
 
 Aside from the above fields, system-specific fields are accepted as
@@ -221,7 +222,7 @@ ALL fields in a Result object are optional.
 | `reveals`         | string   | Player's knowledge update (see below) |
 | `then_check`      | object   | A follow-up check (see below)         |
 | `trigger_combat`  | boolean  | Enter combat mode (default `false`)   |
-| `game_over`       | object   | End game; see [Game-Over](#game-over) |
+| `game_over`       | Game-Over| [End the game](#game-over)            |
 
 Notes:
 
@@ -254,6 +255,9 @@ Notes:
 - `reveals` is a player-knowledge hint.  If present, the engine
   appends it to `soft_state.revealed_hints` (with deduplication) to
   guide the GM; see the [Soft State schema](soft-state.md).
+
+- `game_over`, if present, triggers the end of the game using the
+  parameters in the supplied [Game-Over object](#game-over).
 
 ---
 
@@ -442,7 +446,7 @@ This overrides the usual resolution when using the specified item.
 
 ### Encounter Rule
 
-Encounters are game events that can unfold in multiple different ways,
+Encounters are game events that can unfold in different ways,
 depending on an ordered list of conditions.  Encounters occur when
 NPCs [attack or are attacked](#aggro), and can also be attached to
 global [Mechanics](#mechanic).  An encounter is defined by an ordered
@@ -478,6 +482,24 @@ Once triggered, the Encounter Rule is resolved using the `result`,
 `check`, `success`, and/or `failure` fields, which have the same
 meanings as in [Resolvable](#resolvable).  Each Result may trigger
 combat via `trigger_combat`, or game-over via `game_over`.
+
+---
+
+### Game-Over
+
+A Game-Over object specifies a win or loss outcome.
+
+```json
+{ "type": "lose", "trigger_id": "" }
+```
+
+| Field        | Type   | Description                          |
+|--------------|--------|--------------------------------------|
+| `type`       | string | `"win"` or `"lose"`                  |
+| `trigger_id` | string | Descriptor for the game-over outcome |
+
+In the final copy of the hard game state, the `trigger_id` is saved to
+`game_over.trigger` for debugging, player review, etc.
 
 ---
 
@@ -791,25 +813,21 @@ describes what the reaction does if successfully triggered:
 {
   "result": { /* Result object (same as interaction results) */ },
   "trigger_encounter": "<mechanic_id or entity_id>",
-  "trigger_dialogue": "<npc_entity_id>",
-  "game_over": { "type": "win|lose", "trigger_id": "string" }
+  "trigger_dialogue": "<npc_entity_id>"
 }
 ```
 
 The Reaction Effect must contain at least one of the following fields
 (if more than one is supplied, they all apply):
 
-| Field               | Type     | Description                         |
-|---------------------|----------|-------------------------------------|
-| `result`            | Result   | A [Result](#result) to run          |
-| `trigger_encounter` | string   | Mechanic or entity ID               |
-| `trigger_dialogue`  | string   | NPC entity ID to start dialogue     |
-| `game_over`         | Game-Over| A [Game-Over](#game-over) condition |
+| Field               | Type      | Description                        |
+|---------------------|-----------|------------------------------------|
+| `result`            | Result    | A [Result](#result) to run         |
+| `trigger_encounter` | string    | Mechanic or entity ID              |
+| `trigger_dialogue`  | string    | NPC entity ID to start dialogue    |
 
-Notes:
-
-- For `trigger_[encounter|dialogue]`, the `"self"` value resolves to
-  the owning entity's ID (for entity-scoped reactions).
+Note: For `trigger_[encounter|dialogue]`, the `"self"` value resolves
+to the owning entity's ID (for entity-scoped reactions).
 
 **Example**: trap fires if it's armed when the player enters the room.
 
@@ -1250,70 +1268,48 @@ specific room or entity.  They live in a dict in the Corpus' top-level
 }
 ```
 
-Conceptually, there are three types of mechanic:
+All fields supported by Mechanic objects are listed here:
 
-- **Game-Over** – Ends the game when a condition is met
-- **Encounter** – A set of possibilities that resolve when triggered
-- **Reaction-Only Mechanic** – A bundle of adventure-wide reactions
-
-The type of mechanic depends on which fields are supplied.  A
-Game-Over condition has `type`, `condition`, and `trigger_id` (in
-which case `reactions` should not be present).  The other two types
-should carry one of `rules` or `reactions` (or both), and should not
-have `type` or `condition`.
-
-All fields supported by mechanics are listed here:
-
-| Field           | Type      | Description                            |
-|-----------------|-----------|----------------------------------------|
-| `id`            | string    | Globally-unique ID                     |
-| `type` (*)      | string    | `"win"`/`"lose"`; for game-over only   |
-| `condition` (*) | Condition | Game-over or gating condition          |
-| `trigger_id` (*)| string    | Saved game-over trigger                |
-| `narrative` (*) | string    | Canonical game-over ending prose       |
-| `rules` (*)     | array     | A list of Encounter Rules (see below)  |
-| `reactions` (*) | Reaction[] | Reactions (see below)                 |
+| Field           | Type       | Description                            |
+|-----------------|------------|----------------------------------------|
+| `id`            | string     | Globally-unique ID                     |
+| `condition` (*) | Condition  | Encounter gating condition (see below) |
+| `rules` (*)     | array      | A list of Encounter Rules (see below)  |
+| `reactions` (*) | Reaction[] | Reactions (see below)                  |
 > (*) optional (subject to constraints below)
 
-Notes:
+Conceptually, there are two kinds of mechanic, distinguished by which
+field is present:
 
-- For an encounter-type mechanic, `rules` should be specified, and its
-  value should be a list of [Encounter Rules](#encounter-rule).  When
-  the mechanic is triggered – usually by `trigger_encounter` in a
-  [Reaction Effect](#reaction-effect) – the Encounter Rules are
-  evaluated top-to-bottom.  The first valid one fires; if no rule
-  matches, the encounter silently does nothing.
+| Kind          | Must have   |
+|---------------|-------------|
+| Encounter     | `rules`     |
+| Reaction-Only | `reactions` |
 
-- An encounter can only resolve once per turn. If a reaction triggers
+A Mechanic must have at least one of `rules` or `reactions`.
+
+- An **Encounter Mechanic** describes an Encounter (a series of events
+  that can unfold in different ways): for this type, `rules` should
+  contain an ordered list of [Encounter Rules](#encounter-rule), which
+  are evaluated top-to-bottom when the mechanic is triggered (usually
+  via `trigger_encounter`).  The first valid Encounter Rule fires; if
+  no rule matches, the encounter silently does nothing.
+
+  `condition` (optional) is an Encounter gating condition: when a
+  `trigger_encounter` targets this mechanic, `condition` is evaluated
+  first, and if it is `false` the encounter does not fire.
+
+  An encounter can only resolve once per turn. If a reaction triggers
   an encounter that has already been triggered this turn, the second
   `trigger_encounter` is silently ignored with a warning log.
 
-- A reaction that fires during an encounter can trigger another
-  encounter via `trigger_encounter`, up to a depth-5 limit.
+  Encounter Mechanics can also carry `reactions`.  A reaction that
+  fires during an encounter can trigger another encounter via
+  `trigger_encounter`, up to a depth-5 limit.
 
-### Game-Over
-
-A game-over mechanic is evaluated each turn.  When its `condition`
-evaluates to true, the engine sets `game_over` in hard state and
-ends the game.
-
-```json
-{
-  "<mechanic_id>": {
-    "id": "string",
-    "type": "win | lose",
-    "condition": { /* condition object */ },
-    "narrative": "string (canonical ending narration)",
-    "trigger_id": "string (matches game_over.trigger in hard state)"
-  }
-}
-```
-
-### Reaction-only
-
-A mechanic that carries only `reactions` (no `type`, `rules`, or
-`trigger_id`) is valid.  Use this for adventure-wide state-based
-reactions that aren't tied to a specific room or entity.
+- A **Reaction-Only Mechanic** carries only `reactions`: a list of
+  [Reactions](#reaction) that are always active, reacting to
+  adventure-wide triggers not tied to a specific room or entity.
 
 ```json
 {
@@ -1366,6 +1362,48 @@ The `guardian_attack` encounter has a rule whose success branch sets `guardian_d
     }
   ]
 }
+```
+
+--
+
+## Global Game-Over_Conditions
+
+The top-level `game_over_conditions` field of the Module Corpus can
+store game-over conditions accessible from any point in the game.
+
+This field is meant for *globally significant* game-overs, usually
+those that can be reached via several routes and aren't tied to
+specific parts of the game.  For "local" game-overs (e.g., falling
+into a specific pit), set `game_over` in a [Result](#result).
+
+If `game_over_conditions` is supplied, it should be an array of
+objects with these fields:
+
+| Field            | Type      | Description                       |
+|------------------|-----------|-----------------------------------|
+| `condition`      | Condition | Predicate polled each turn        |
+| `type`           | string    | `"win"` or `"lose"`               |
+| `trigger_id`     | string    | Copied into `game_over.trigger`   |
+| `narrative` (*)  | string    | Canonical ending narration        |
+| `note` (*)       | string    | Author note (not shown to player) |
+> (*) optional
+
+The engine polls `condition` once per turn, after all reactions have
+settled.  The first entry with `condition` evaluating to `true` ends
+the game using `type` and `trigger_id` as the [Game-Over](#game-over)
+parameters, and with `narrative` (optional) as the ending narration.
+
+Example:
+
+```json
+"game_over_conditions": [
+  {
+    "type": "win",
+    "condition": { "require": "entity:dragon.alive == false" },
+    "trigger_id": "killed_dragon",
+    "narrative": "The dragon is dead. You have defeated the boss!"
+  }
+]
 ```
 
 ---

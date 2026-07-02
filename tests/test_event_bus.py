@@ -625,7 +625,7 @@ class TestReactionGameOver:
             id="sudden_death",
             on="turn.start",
             effect=ReactionEffects(
-                game_over=GameOverTrigger(type="lose", trigger_id="pitfall")
+                result=Result(game_over=GameOverTrigger(type="lose", trigger_id="pitfall"))
             ),
         ))
 
@@ -1291,9 +1291,10 @@ class TestEncounterBranchedEvent:
         assert hard.flags.get("saw_success") is None
 
 
-class TestReactionResultWithDispatchFields:
-    """Reaction Result objects carrying trigger_combat / game_over are tolerated
-    without crashing, even though the reaction handler ignores those fields."""
+class TestReactionResultDispatchFields:
+    """A reaction Result's ``game_over`` now takes effect (ends the game) via
+    ``_apply_result``, while ``trigger_combat`` on a reaction Result is still
+    not acted upon (only encounters/inline combat start combat)."""
 
     def test_result_with_trigger_combat_does_not_crash(self, fresh_state_manager):
         state_manager = fresh_state_manager
@@ -1339,7 +1340,9 @@ class TestReactionResultWithDispatchFields:
         action = WaitAction(action_type="wait", detail="wait")
         engine_result = resolve(action, state_manager)
         assert engine_result.success is True
-        assert engine_result.game_over is None
+        assert engine_result.game_over is not None
+        assert engine_result.game_over.type == "lose"
+        assert engine_result.game_over.trigger == "test_doom"
         assert "The world ends." in engine_result.triggered_narration
         assert hard.flags.get("doomed") is True
 
@@ -1366,6 +1369,8 @@ class TestReactionResultWithDispatchFields:
         engine_result = resolve(action, state_manager)
         assert engine_result.success is True
         assert engine_result.combat_triggered is False
-        assert engine_result.game_over is None
+        assert engine_result.game_over is not None
+        assert engine_result.game_over.type == "win"
+        assert engine_result.game_over.trigger == "test_win"
         assert "Chaos!" in engine_result.triggered_narration
         assert hard.flags.get("dispatch_test") is True

@@ -32,7 +32,7 @@ condition domain:
 
 The `event:` domain is **only valid during reaction dispatch**.
 Outside dispatch (e.g., in interaction conditions, exit conditions, or
-game-over mechanic conditions), it always evaluates to `false`.
+game-over condition predicates), it always evaluates to `false`.
 
 
 ---
