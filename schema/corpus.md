@@ -1383,18 +1383,27 @@ Example:
 
 ## Player Stats
 
-The optional `stats` field of the [Corpus](top-level-structure)
-declares what player stats the adventure uses.  Player stats are a set
-of named numerical fields that play the following roles:
+An RPG system typically tracks a large set of player data (level,
+armor class, etc.).  This data is stored in the player's data block
+`hard_state.player` in the [Hard State](hard-state.md), and is used in
+combat.
+
+For the Corpus, we mainly work with a core subset of the player data
+referred to as **Player Stats**.  These are numerical fields that
+perform the following roles:
 
 - They can be queried via [Condition Strings](#condition-string) like
   `"stat:CHA >= 14"`.
 
 - They can be modified by [Results](#result) via the `alter_stat`
-  field, or by [Equipment](#equipment) via the `stat_effects` field;
-  these changes trigger `stat.change` [Events](#event).
+  field, or by wearing/wielding [Equipment](#equipment) via the
+  `stat_effects` field.  These changes trigger `stat.change`
+  [Events](#event).
 
 - They are used in [Stat Checks](#stat-checks).
+
+The optional `stats` field of the [Corpus](top-level-structure)
+declares what player stats the adventure uses.
 
 ```json
 {
@@ -1417,13 +1426,6 @@ of named numerical fields that play the following roles:
 
 The resolution system defines how stat checks translate to
 probability, decoupling adventures from specific RPG mechanics.
-
-The ability scores live in `hard_state.player.stats` as a dict of stat
-key → integer value. The full player state (`PlayerState`) also
-carries combat-relevant fields — `level` (default 1), `current_hp`,
-`max_hp`, `ac` (armour class), `proficiency_bonus`, and
-`save_proficiencies` (list of stat keys) — documented in
-[hard-state.md](hard-state.md).
 
 On startup, the engine validates that:
 - Every stat key in the player state has a matching definition in
