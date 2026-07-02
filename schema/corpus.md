@@ -207,30 +207,30 @@ and `failure` branches of non-deterministic game mechanics.
 
 ALL fields in a Result object are optional.
 
-| Field             | Type     | Description                           |
-|-------------------|----------|---------------------------------------|
-| `narrative`       | string   | Narrative description of the result   |
-| `add_item`        | string[] | Item entity IDs to add to inventory   |
-| `remove_item`     | string[] | Item entity IDs to drop from inventory|
-| `set_flag`        | object   | Hard-state flags to set or clear      |
-| `set_entity_state`| object   | Entity state changes                  |
-| `set_room_state`  | object   | Room state changes                    |
-| `player_damage`   | string   | Damage dealt to player, e.g. `"1d4+1"`|
-| `set_player_location`| string| Room ID to relocate the player to     |
-| `alter_stat`      | object   | Player stat changes (see below)       |
-| `adjust_attitude` | object   | NPC attitude changes (see below)      |
-| `reveals`         | string   | Player's knowledge update (see below) |
-| `then_check`      | object   | A follow-up check (see below)         |
-| `trigger_combat`  | boolean  | Enter combat mode (default `false`)   |
-| `game_over`       | Game-Over| [End the game](#game-over)            |
+| Field              | Type     | Description                          |
+|--------------------|----------|--------------------------------------|
+| `narrative`        | string   | Narrative description of the result  |
+| `add_item`         | string[] | Item IDs to add to inventory         |
+| `remove_item`      | string[] | Item IDs to drop from inventory      |
+| `set_flag`         | object   | `{ "<flag_id>": <value>, ... } `     |
+| `set_room_state`   | object   | `{ "<room_id>": { "<field>": <value>, ... }, ... }` |
+| `set_entity_state` | object   | `{ "<entity_id>": { "<field>": <value>, ... } }`    |
+| `alter_stat`       | object   | `{ "<STAT>": { "mode": "delta"\|"set", "value": <int>, ... }, ... }` |
+| `set_player_location`| string | Room ID to relocate the player to    |
+| `player_damage`    | string   | Damage dealt to player, e.g. `"1d4"` |
+| `adjust_attitude`  | object   | NPC attitude delta — `{ "<npc_id>": <int> }` |
+| `reveals`          | string   | Player knowledge update (see below)  |
+| `then_check`       | object   | A follow-up check (see below)        |
+| `trigger_combat`   | boolean  | Enter combat mode (default `false`)  |
+| `game_over`        | Game-Over| End the game (see below)             |
 
 Notes:
 
-- All supplied fields in the Result object are applied.  They are
-  *not* mutually exclusive; one Result can deal damage, set multiple
-  flags, alter multiple state fields, add/drop multiple items, etc.
+- All supplied fields are applied together; thus, a single Result can
+  deal damage, set multiple flags, alter multiple state fields across
+  several entities and rooms, add/drop multiple items, etc.
 
-- `narrative` helps brief the GM, but might not be used verbatim.
+- `narrative` briefs the GM but might not be used verbatim.
 
 - During a check, `check.passed`/`check.failed` events (and their
   immediate reactions) fire before applying success/failure results.
@@ -241,23 +241,27 @@ Notes:
   changes are merged and applied atomically.  Deferred reactions
   (`room.entered`, `turn.end`, etc.) fire after and see the new state.
 
-- For `alter_stat`, the keys are stat abbreviations; values are
-  `{ "mode": "delta"\|"set", "value": <int> }`, with mode defaulting
-  to `"delta"` (i.e., the amount by which to change).  Examples:
+- `set_flag` sets global boolean flags.  A `false` value clears the
+  flag; any truthy value sets it.
+
+- `set_room_state` sets [Room](#room) state fields, and similarly
+  `set_entity_state` sets [Entity](#entity) state fields.  Each value
+  must match the type declared in the corresponding `state_field`.
+
+- `alter_stat` keys are stat labels (e.g. `"STR"`); mode, if omitted,
+  defaults to `"delta"`.  Examples:
   - `{ "STR": { "value": -4 } }` decreases strength by 4
   - `{ "INT": { "mode": "set", "value": 3 } }` sets intelligence to 3
 
-- For `adjust_attitude`, keys are NPC entity IDs; values are integer
-  deltas (positive or negative).  The engine clamps the new value to
-  the NPC's `attitude_limits.[min, max]` and respects `step_per_turn`.
-  See [NPC attitude](#npc-attitude).
+- `adjust_attitude` keys are NPC entity IDs; values are integer
+  deltas.  The engine clamps to `attitude_limits.[min, max]` and
+  respects `step_per_turn`.  See [NPC attitude](#npc-attitude).
 
-- `reveals` is a player-knowledge hint.  If present, the engine
-  appends it to `soft_state.revealed_hints` (with deduplication) to
+- `reveals` appends to `soft_state.revealed_hints` (deduplicated) to
   guide the GM; see the [Soft State schema](soft-state.md).
 
-- `game_over`, if present, triggers the end of the game using the
-  parameters in the supplied [Game-Over object](#game-over).
+- `game_over`, if present, ends the game; see
+  [GameOverTrigger](#gameovertrigger).
 
 ---
 
@@ -1262,107 +1266,76 @@ specific room or entity.  They live in a dict in the Corpus' top-level
 ```json
 {
   "mechanics": {
-    "<mechanic_id>": { /* mechanic */ },
-    ...
+    "curse_effects": {
+      "reactions": [
+        {
+          "id": "guardians_awaken",
+          "on": "flag.set",
+          "condition": { "require": "event:flag_id == curse_active" },
+          "effect": {
+            "result" : {
+              "narrative" : "The guardians awaken!",
+              "set_entity_state" : {
+				"guardian_1": { "alive": true },
+				"guardian_2": { "alive": true }
+			  }
+			}
+		  }
+		},
+        {
+          "id": "curse_debuff",
+          "on": "flag.set",
+          "condition": {
+			"all": [ "event:flag_id == curse_active",
+					 { "unless": "inventory:amulet_of_protection" } ]
+		  },
+          "effect": {
+			"result": {
+              "narrative": "The curse saps your vitality",
+			  "alter_stat": { "CON": { "mode": "delta", "value": -5 } }
+			}
+          }
+		}
+      ]
+    }
   }
 }
 ```
 
 All fields supported by Mechanic objects are listed here:
 
-| Field           | Type       | Description                            |
-|-----------------|------------|----------------------------------------|
-| `id`            | string     | Globally-unique ID                     |
-| `condition` (*) | Condition  | Encounter gating condition (see below) |
-| `rules` (*)     | array      | A list of Encounter Rules (see below)  |
-| `reactions` (*) | Reaction[] | Reactions (see below)                  |
+| Field           | Type       | Description                   |
+|-----------------|------------|-------------------------------|
+| `condition` (*) | Condition  | An encounter-gating condition |
+| `rules` (*)     | array      | A list of Encounter Rules     |
+| `reactions` (*) | Reaction[] | A set of global reactions     |
 > (*) optional (subject to constraints below)
 
 Conceptually, there are two kinds of mechanic, distinguished by which
 field is present:
 
-| Kind          | Must have   |
-|---------------|-------------|
-| Encounter     | `rules`     |
-| Reaction-Only | `reactions` |
+- An **Encounter Mechanic** must have `rules`, and describes an
+  Encounter (a set of possibilities that can unfold in various ways).
+  When the mechanic is triggered (usually via `trigger_encounter`),
+  the ordered list of [Encounter Rules](#encounter-rule) stored in
+  `rules` is evaluated top-to-bottom .  The first valid Encounter Rule
+  is run; if no rule matches, the encounter silently does nothing.
 
-A Mechanic must have at least one of `rules` or `reactions`.
+  `condition`, if supplied, is a gating condition: when the mechanic
+  is triggered, `condition` is evaluated first, and if it is `false`
+  the encounter is cancelled (without checking `rules`).
 
-- An **Encounter Mechanic** describes an Encounter (a series of events
-  that can unfold in different ways): for this type, `rules` should
-  contain an ordered list of [Encounter Rules](#encounter-rule), which
-  are evaluated top-to-bottom when the mechanic is triggered (usually
-  via `trigger_encounter`).  The first valid Encounter Rule fires; if
-  no rule matches, the encounter silently does nothing.
+  An Encounter Mechanic can only resolve once per turn.  If a reaction
+  triggers an Encounter Mechanic that has already been triggered this
+  turn, the second trigger is ignored.  However, reactions can trigger
+  *other* encounters, etc., up to a depth-5 limit.
 
-  `condition` (optional) is an Encounter gating condition: when a
-  `trigger_encounter` targets this mechanic, `condition` is evaluated
-  first, and if it is `false` the encounter does not fire.
-
-  An encounter can only resolve once per turn. If a reaction triggers
-  an encounter that has already been triggered this turn, the second
-  `trigger_encounter` is silently ignored with a warning log.
-
-  Encounter Mechanics can also carry `reactions`.  A reaction that
-  fires during an encounter can trigger another encounter via
-  `trigger_encounter`, up to a depth-5 limit.
+  An Encounter Mechanic is also allowed to carry `reactions`; this is
+  handled in the same way as a Reaction-Only Mechanic, below.
 
 - A **Reaction-Only Mechanic** carries only `reactions`: a list of
   [Reactions](#reaction) that are always active, reacting to
   adventure-wide triggers not tied to a specific room or entity.
-
-```json
-{
-  "<mechanic_id>": {
-    "id": "string",
-    "reactions": [ { /* reaction */ } ]
-  }
-}
-```
-
-#### Examples
-
-**Chained encounter (reaction → encounter → reaction → encounter):**
-```json
-{
-  "id": "guardian_awakens",
-  "on": "room.entered",
-  "condition": { "require": "event:room_id == cave_depths" },
-  "effect": { "trigger_encounter": "guardian_attack" }
-}
-```
-
-The `guardian_attack` encounter has a rule whose success branch sets `guardian_defeated: true`. A second reaction then fires on that flag:
-
-```json
-{
-  "id": "wraith_appears",
-  "on": "flag.set",
-  "condition": { "require": "event:flag_id == guardian_defeated" },
-  "effect": { "trigger_encounter": "wraith_ambush" }
-}
-```
-
-
-**Mechanic with reactions (adventure-wide trigger):**
-```json
-"global_reactions": {
-  "id": "global_reactions",
-  "reactions": [
-    {
-      "id": "injury_warning",
-      "on": "player.damaged",
-      "condition": { "require": "event:new_hp <= 3" },
-      "effect": {
-        "result": {
-          "narrative": "You are gravely wounded. One more hit could be your last.",
-          "set_flag": { "near_death": true }
-        }
-      }
-    }
-  ]
-}
-```
 
 --
 

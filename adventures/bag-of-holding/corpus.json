@@ -1635,7 +1635,6 @@
   },
   "mechanics": {
     "fall_damage_from_head": {
-      "id": "fall_damage_from_head",
       "rules": [
         {
           "condition": {
@@ -1674,7 +1673,6 @@
       ]
     },
     "fall_damage_from_upper": {
-      "id": "fall_damage_from_upper",
       "rules": [
         {
           "condition": {
@@ -1708,7 +1706,6 @@
       ]
     },
     "fall_damage_from_lower": {
-      "id": "fall_damage_from_lower",
       "rules": [
         {
           "condition": {
@@ -1726,7 +1723,6 @@
       ]
     },
     "global_reactions": {
-      "id": "global_reactions",
       "description": "Adventure-wide state-based reactions.",
       "reactions": [
         {

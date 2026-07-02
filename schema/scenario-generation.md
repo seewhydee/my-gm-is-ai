@@ -1483,7 +1483,6 @@ and context keys.
 
 ```json
 "global_reactions": {
-  "id": "global_reactions",
   "description": "Adventure-wide state-based reactions.",
   "reactions": [
     {
@@ -1515,7 +1514,6 @@ and condition them carefully to avoid runaway loops.
 
 ```json
 "global_reactions": {
-  "id": "global_reactions",
   "description": "Chains the guardian fight into the wraith ambush.",
   "reactions": [
     {

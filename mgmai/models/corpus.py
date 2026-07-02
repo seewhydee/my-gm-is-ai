@@ -471,7 +471,6 @@ class Mechanic(BaseModel):
     use inline ``Result.game_over`` and cross-cutting ones use the top-level
     ``ModuleCorpus.game_over_conditions`` list.
     """
-    id: str
     condition: Optional[ConditionExpression] = None
     rules: Optional[List[EncounterRule]] = None
     reactions: List[Reaction] = Field(default_factory=list)

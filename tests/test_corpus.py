@@ -424,7 +424,6 @@ class TestResult:
 class TestMechanic:
     def test_encounter(self) -> None:
         m = Mechanic.model_validate({
-            "id": "spider_encounter",
             "rules": [
                 {
                     "condition": {"require": "flag:has_weapon == true"},
@@ -439,7 +438,6 @@ class TestMechanic:
         # A Mechanic must carry at least one of 'rules' or 'reactions'.
         with pytest.raises(ValidationError):
             Mechanic.model_validate({
-                "id": "bad",
             })
 
 
