@@ -409,11 +409,11 @@ Notes:
 - If `gating` is supplied and evaluates to false, the check is
   inactive: the action proceeds normally, ignoring the check entirely
   (including `success` and `failure`).
-  
+
 - If the check is active and `skip_check_if` evaluates to true, the
   check automatically succeeds without rolling; in this case `success`
   (if present) *is* applied.
-  
+
 - If the check succeeds or fails, the original action automatically
   proceeds normally (e.g., a sword is taken from the stone), or fails
   (e.g., the sword remains stuck), *in addition* to any other effects
@@ -1250,16 +1250,19 @@ specific room or entity.  They live in a dict in the Corpus' top-level
 }
 ```
 
-Conceptually, there are three kinds of mechanic:
+Conceptually, there are three types of mechanic:
 
-- **Game-over** – Ends the game when a condition is met
-- **Encounter** – A sequence of rules that are resolved when triggered
+- **Game-Over** – Ends the game when a condition is met
+- **Encounter** – A set of possibilities that resolve when triggered
 - **Reaction-Only Mechanic** – A bundle of adventure-wide reactions
 
-As explained below, the type of mechanic depends on which fields are
-supplied.  All fields supported by mechanics are listed here:
+The type of mechanic depends on which fields are supplied.  A
+Game-Over condition has `type`, `condition`, and `trigger_id` (in
+which case `reactions` should not be present).  The other two types
+should carry one of `rules` or `reactions` (or both), and should not
+have `type` or `condition`.
 
-All fields:
+All fields supported by mechanics are listed here:
 
 | Field           | Type      | Description                            |
 |-----------------|-----------|----------------------------------------|
@@ -1274,10 +1277,6 @@ All fields:
 
 Notes:
 
-- A mechanic cannot be both game-over and an encounter.  It may carry
-  `reactions` alongside `rules` (but not alongside `type`).  At least
-  one of `type`, `rules`, or `reactions` must be present.
-
 - For an encounter-type mechanic, `rules` should be specified, and its
   value should be a list of [Encounter Rules](#encounter-rule).  When
   the mechanic is triggered – usually by `trigger_encounter` in a
@@ -1285,15 +1284,12 @@ Notes:
   evaluated top-to-bottom.  The first valid one fires; if no rule
   matches, the encounter silently does nothing.
 
-- Only one encounter can resolve per turn. If a reaction triggers an
-  encounter and that encounter has already been triggered (from the
-  resolver or from another reaction), the second `trigger_encounter`
-  is silently ignored with a warning log.
+- An encounter can only resolve once per turn. If a reaction triggers
+  an encounter that has already been triggered this turn, the second
+  `trigger_encounter` is silently ignored with a warning log.
 
 - A reaction that fires during an encounter can trigger another
-  encounter via `trigger_encounter`. The depth-5 recursion limit
-  prevents infinite loops, but design reaction conditions carefully to
-  avoid unintended chains.
+  encounter via `trigger_encounter`, up to a depth-5 limit.
 
 ### Game-Over
 
