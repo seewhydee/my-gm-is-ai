@@ -17,7 +17,8 @@ resolve mechanics.
   "room_states":  { "<room_id>": { "<field>": <value>, ... } },
   "entity_states":{ "<entity_id>": { "<field>": <value>, ... } },
   "turn_count":   0,
-  "game_over":    null
+  "game_over":    null,
+  "combat":       null
 }
 ```
 
@@ -29,6 +30,7 @@ resolve mechanics.
 {
   "location": "<room_id>",
   "inventory": ["<item_entity_id>", ...],
+  "equipped": ["<item_entity_id>", ...],
   "stats": {
     "STR": 14,
     "DEX": 12,
@@ -36,16 +38,28 @@ resolve mechanics.
     "INT": 10,
     "WIS": 8,
     "CHA": 16
-  }
+  },
+  "level": 1,
+  "current_hp": 10,
+  "max_hp": 10,
+  "ac": null,
+  "proficiency_bonus": 2,
+  "save_proficiencies": ["STR", "CON"]
 }
 ```
 
-| Field      | Type     | Description |
-|------------|----------|-------------|
-| `location` | string   | Current room ID. Must match a key in the module corpus `rooms`. |
-| `inventory`| string[] | List of item entity IDs the player is carrying (hard inventory). |
-| `equipped` | string[] | List of item entity IDs the player currently has equipped. Items in `equipped` are NOT in `inventory` — equipping moves the ID from one list to the other. Defaults to `[]`. |
-| `stats`    | object   | Player ability scores. Optional dict of stat key → integer value. Keys must match `stats.definitions` in the corpus. When stats are present in the corpus, this field should also be present (and vice versa). The engine validates key consistency on startup. |
+| Field                   | Type     | Description |
+|-------------------------|----------|-------------|
+| `location`              | string   | Current room ID. Must match a key in the module corpus `rooms`. |
+| `inventory`             | string[] | List of item entity IDs the player is carrying (hard inventory). |
+| `equipped`              | string[] | List of item entity IDs the player currently has equipped. Items in `equipped` are NOT in `inventory` — equipping moves the ID from one list to the other. Defaults to `[]`. |
+| `stats`                 | object   | Player ability scores. Optional dict of stat key → integer value. Keys must match `stats.definitions` in the corpus. When stats are present in the corpus, this field should also be present (and vice versa). The engine validates key consistency on startup. |
+| `level`                 | int      | Player level (default 1). |
+| `current_hp`            | int|null| Current hit points, or `null` if HP tracking is not used. |
+| `max_hp`                | int|null| Maximum hit points, or `null` if HP tracking is not used. |
+| `ac`                    | int|null| Explicit armour class value. When `null`, AC is computed from base (10 + DEX mod) plus equipment bonuses. Set an explicit value to override the computation. |
+| `proficiency_bonus`     | int|null| Proficiency bonus for attack rolls and proficient saving throws. When `null`, defaults to the 5e standard based on `level`. |
+| `save_proficiencies`    | string[] | List of stat keys (e.g. `"STR"`, `"DEX"`) the player is proficient in for saving throws. |
 
 ### Inventory rules
 
@@ -237,6 +251,68 @@ the ending without soliciting further input.
 
 --
 
+## `combat` — Combat state
+
+When non-null, the game is in combat mode. The field holds a `CombatState` object
+managing initiative, turn order, and a combat log. When `null`, standard
+exploration/resolution is active.
+
+```json
+{
+  "active": true,
+  "combatants": ["player", "spider"],
+  "initiative_order": ["player", "spider"],
+  "current_index": 0,
+  "round_number": 1,
+  "log": []
+}
+```
+
+| Field               | Type     | Description |
+|---------------------|----------|-------------|
+| `active`            | bool     | Whether combat is currently in progress. |
+| `combatants`        | string[] | List of participant IDs — `"player"` plus NPC entity IDs. |
+| `initiative_order`  | string[] | Sorted turn order of combatants. |
+| `current_index`     | int      | Index into `initiative_order` for the actor whose turn it is. |
+| `round_number`      | int      | Current combat round (starts at 1). |
+| `log`               | object[] | List of `CombatLogEntry` objects recording each action taken. |
+
+### Combat log entry
+
+```json
+{
+  "round": 1,
+  "actor": "player",
+  "action": "attack",
+  "target": "spider",
+  "attack_roll": 15,
+  "attack_total": 18,
+  "ac": 13,
+  "hit": true,
+  "critical": false,
+  "damage_roll": "1d8+2",
+  "damage": 7,
+  "remaining_hp": 5,
+  "on_hit_effects": []
+}
+```
+
+| Field            | Type     | Description |
+|------------------|----------|-------------|
+| `round`          | int      | The round number this entry belongs to. |
+| `actor`          | string   | Who took the action (`"player"` or an NPC entity ID). |
+| `action`         | string   | Action type: `"attack"`, `"flee"`, `"death"`, etc. |
+| `target`         | string?  | Target of the action (if applicable). |
+| `attack_roll`    | int?     | Raw d20 roll. |
+| `attack_total`   | int?     | Total after modifiers. |
+| `ac`             | int?     | Target's AC at time of attack. |
+| `hit`            | bool?    | Whether the attack landed. |
+| `critical`       | bool?    | Whether the attack was a critical hit. |
+| `damage_roll`    | string?  | Damage dice expression rolled. |
+| `damage`         | int?     | Final damage dealt. |
+| `remaining_hp`   | int?     | Target's HP after damage. |
+| `on_hit_effects` | object[] | On-hit save effects that triggered (see `combat` in corpus.md). |
+
 ## NPC attitude
 
 NPC attitude is tracked as an integer in `hard_state.entity_states[<npc_id>].attitude`. Positive values indicate friendly disposition; negative values indicate hostility.
@@ -306,7 +382,8 @@ All of these are reflected in the `hard_state_changes` block of EngineResult.
     "korbar": { "alive": true, "told_secret": false }
   },
   "turn_count": 0,
-  "game_over": null
+  "game_over": null,
+  "combat": null
 }
 ```
 

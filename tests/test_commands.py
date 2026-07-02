@@ -334,7 +334,7 @@ class TestInventoryCommand:
 
 
 class TestCharCommand:
-    """Character stats command: /c, /char, and bare c/char/stats/sheet."""
+    """Character stats command: /c, /char, and bare c/char/sheet."""
 
     @pytest.fixture
     def char_cmds(self, state_manager, monkeypatch):

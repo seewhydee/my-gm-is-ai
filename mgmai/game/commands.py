@@ -42,7 +42,7 @@ except ImportError:
         return text
 
 _BARE_INV_WORDS = frozenset({"i", "inv", "inventory"})
-_BARE_CHAR_WORDS = frozenset({"c", "char", "character", "stats", "sheet"})
+_BARE_CHAR_WORDS = frozenset({"c", "char", "character", "sheet"})
 
 class Commands:
     def __init__(
@@ -95,7 +95,6 @@ class Commands:
                 "c": self._cmd_char,
                 "char": self._cmd_char,
                 "character": self._cmd_char,
-                "stats": self._cmd_char,
                 "sheet": self._cmd_char,
             }.get(cmd)
 

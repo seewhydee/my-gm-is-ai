@@ -74,7 +74,7 @@ sub-condition is a condition string or nested condition.
 		   { "unless": "inventory:one_ring" } ] }
 ```
 
-#### Condition string
+#### Condition String
 
 Condition strings have one of two forms:
 
@@ -1339,7 +1339,7 @@ field is present:
 
 --
 
-## Global Game-Over_Conditions
+## Global Game-Over Conditions
 
 The top-level `game_over_conditions` field of the Module Corpus can
 store game-over conditions accessible from any point in the game.
@@ -1381,11 +1381,20 @@ Example:
 
 ---
 
-## `stats` — Player ability scores (optional)
+## Player Stats
 
-When present, the `stats` block declares which ability scores the adventure uses
-and which resolution system applies to stat checks. If absent, the adventure has
-no stat system — existing adventures work unchanged.
+The optional `stats` field of the [Corpus](top-level-structure)
+declares what player stats the adventure uses.  Player stats are a set
+of named numerical fields that play the following roles:
+
+- They can be queried via [Condition Strings](#condition-string) like
+  `"stat:CHA >= 14"`.
+
+- They can be modified by [Results](#result) via the `alter_stat`
+  field, or by [Equipment](#equipment) via the `stat_effects` field;
+  these changes trigger `stat.change` [Events](#event).
+
+- They are used in [Stat Checks](#stat-checks).
 
 ```json
 {
@@ -1406,31 +1415,22 @@ no stat system — existing adventures work unchanged.
 | `definitions`       | object | yes      | Dict of stat key → `{ name, description }`. Keys are short uppercase identifiers (e.g. `"STR"`). |
 | `system` | string | yes      | Named resolution system. Currently supported: `"5e"`. |
 
-### Resolution system
+The resolution system defines how stat checks translate to
+probability, decoupling adventures from specific RPG mechanics.
 
-The resolution system defines how stat checks translate to probability, decoupling
-adventures from specific RPG mechanics. The engine scoreboards stat check details
-in `EngineResult.rolls`, including the stat name, DC, modifier breakdown, raw
-roll, total, margin (total − DC), and advantage/disadvantage status.
+The ability scores live in `hard_state.player.stats` as a dict of stat
+key → integer value. The full player state (`PlayerState`) also
+carries combat-relevant fields — `level` (default 1), `current_hp`,
+`max_hp`, `ac` (armour class), `proficiency_bonus`, and
+`save_proficiencies` (list of stat keys) — documented in
+[hard-state.md](hard-state.md).
 
-### Player character stats
-
-Player stat values live in `hard_state.player.stats` as a dict of stat key →
-integer value. On startup, the engine validates that:
-- Every stat key in the player state has a matching definition in `stats.definitions`.
+On startup, the engine validates that:
+- Every stat key in the player state has a matching definition in
+  `stats.definitions`.
 - Stats are consistently present or absent in both corpus and hard state.
-- If `stats` is present in the corpus, `player.stats` should be present in
-  hard state (and vice versa).
-
-The Context Assembler computes each stat's modifier from the resolution system
-(e.g., `(stat - 10) // 2` for 5e) and includes the full `player_stats` block
-in the GMBriefing so the LLM knows the player's capabilities without doing math.
-
-### Stat condition domain
-
-Stats can be used in condition strings via the `stat` domain (see Condition
-object section). Example: `stat:INT >= 14` gates an interaction on the player's
-Intelligence score.
+- If `stats` is present in the corpus, `player.stats` should be
+  present in hard state (and vice versa).
 
 ---
 
