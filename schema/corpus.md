@@ -207,22 +207,22 @@ and `failure` branches of non-deterministic game mechanics.
 
 ALL fields in a Result object are optional.
 
-| Field              | Type     | Description                          |
-|--------------------|----------|--------------------------------------|
-| `narrative`        | string   | Narrative description of the result  |
-| `add_item`         | string[] | Item IDs to add to inventory         |
-| `remove_item`      | string[] | Item IDs to drop from inventory      |
-| `set_flag`         | object   | `{ "<flag_id>": <value>, ... } `     |
-| `set_room_state`   | object   | `{ "<room_id>": { "<field>": <value>, ... }, ... }` |
-| `set_entity_state` | object   | `{ "<entity_id>": { "<field>": <value>, ... } }`    |
-| `alter_stat`       | object   | `{ "<STAT>": { "mode": "delta"\|"set", "value": <int>, ... }, ... }` |
+| Field               | Type     | Description                         |
+|---------------------|----------|-------------------------------------|
+| `narrative`         | string   | Narrative description of the result |
+| `add_item`          | string[] | Item IDs to add to inventory        |
+| `remove_item`       | string[] | Item IDs to drop from inventory     |
+| `set_flag`          | object   | `{ "<flag_id>": <value>, ... } `    |
+| `set_room_state`    | object   | `{ "<room_id>": { "<field>": <value>, ...}, ...}`   |
+| `set_entity_state`  | object   | `{ "<entity_id>": { "<field>": <value>, ... }, ...}`|
+| `alter_stat`        | object   | `{ "<STAT>": { "mode": "delta"\|"set", "value": <int> }, ... }` |
 | `set_player_location`| string | Room ID to relocate the player to    |
-| `player_damage`    | string   | Damage dealt to player, e.g. `"1d4"` |
-| `adjust_attitude`  | object   | NPC attitude delta — `{ "<npc_id>": <int> }` |
-| `reveals`          | string   | Player knowledge update (see below)  |
-| `then_check`       | object   | A follow-up check (see below)        |
-| `trigger_combat`   | boolean  | Enter combat mode (default `false`)  |
-| `game_over`        | Game-Over| End the game (see below)             |
+| `player_damage`     | string   | Damage dealt to player, e.g. `"1d4"`|
+| `adjust_attitude`   | object   | NPC attitude delta — `{ "<npc_id>": <int> }` |
+| `reveals`           | string   | Player knowledge update (see below) |
+| `then_check`        | FollowUpCheck | See [Follow-Up](#follow-up)    |
+| `trigger_combat`    | boolean  | Enter combat mode (default `false`) |
+| `game_over`         | GameOver | End the game (see below)            |
 
 Notes:
 
@@ -235,7 +235,7 @@ Notes:
 - During a check, `check.passed`/`check.failed` events (and their
   immediate reactions) fire before applying success/failure results.
   The effects are accumulated into a batch, and processed before any
-  follow-up `then_check` resolves.  See [Reaction](#reaction).
+  [FollowUpCheck](#follow-up) resolves.  See [Reaction](#reaction).
 
 - At engine level, action-result changes and immediate-reaction
   changes are merged and applied atomically.  Deferred reactions
@@ -260,16 +260,16 @@ Notes:
 - `reveals` appends to `soft_state.revealed_hints` (deduplicated) to
   guide the GM; see the [Soft State schema](soft-state.md).
 
-- `game_over`, if present, ends the game; see
-  [GameOverTrigger](#gameovertrigger).
+- `game_over`, if present, [ends the game](#game-over).
 
 ---
 
-### Follow-up check
+### Follow-Up
 
-A follow-up check can be embedded in a Result's `then_check` field.
-It implements multi-stage resolutions for actions and effects, firing
-right after its parent result with its own success/failure branches.
+A FollowUpCheck object can be put in a Result's `then_check` field.
+This implements multi-stage resolutions for actions and effects,
+firing right after the parent result with its own success/failure
+branches.
 
 **Example**: player makes a STR check to jump across a pit, and on
 failure makes a DEX check to grab the ledge.
@@ -297,7 +297,7 @@ failure makes a DEX check to grab the ledge.
 
 | Field             | Type      | Description                      |
 |-------------------|-----------|----------------------------------|
-| `check`           | Check     | Follow-up Check to resolve       |
+| `check`           | Check     | Follow-up check to resolve       |
 | `skip_check_if`(*)| Condition | If present and true, skip check  |
 | `success`         | Result    | Result if follow-up succeeds     |
 | `failure` (*)     | Result    | Result if follow-up fails        |
@@ -310,8 +310,8 @@ results may contain other follow-ups, to a maximum depth of 3.
 
 ### Resolvable
 
-A Resolvable describes a player-initiated action that leads to custom
-effects: e.g., special interactions with [Rooms](#room) and
+A Resolvable object describes a player-initiated action that leads to
+custom effects: e.g., special interactions with [Rooms](#room) and
 [Entities](#entity), [examination actions](#examination), and engaging
 in [dialogue paths with NPCs](#dialogue-path).  It is modeled as a
 Condition-gated action resolving to a Result.
@@ -320,12 +320,12 @@ Condition-gated action resolving to a Result.
 {
   "id": "string (optional unless subclass requires it)",
   "description": "string (optional unless subclass requires it)",
-  "condition": { /* condition object (optional) */ },
-  "skip_check_if": { /* condition object (optional) */ },
+  "condition": { /* Condition (optional) */ },
+  "skip_check_if": { /* Condition (optional) */ },
   "check": { /* roll or stat_check (optional) */ },
-  "success": { /* result (required if check is present) */ },
-  "failure": { /* result (optional) */ },
-  "result": { /* deterministic result (optional, mutually exclusive with check) */ },
+  "success": { /* Result (required if check is present) */ },
+  "failure": { /* Result (optional) */ },
+  "result": { /* Result (optional, mutually exclusive with check) */ },
   "using_results": { /* item ID -> override (optional) */ }
 }
 ```
@@ -337,10 +337,10 @@ Condition-gated action resolving to a Result.
 | `condition` (*)   | Condition | Availability gate for the action     |
 | `skip_check_if`(*)| Condition | Whether to bypass check and succeed  |
 | `result` (*)      | Result    | Fixed result (excl. with `check`)    |
-| `check` (*)        | Check    | Resolving check (excl. with `result`)|
+| `check` (*)       | Check     | Resolving check (excl. with `result`)|
 | `success` (*)     | Result    | Result when check succeeds/bypassed  |
 | `failure` (*)     | Result    | Result when check fails              |
-| `using_results`(*)| object    | See [Usage Override](#usage-override)|
+| `using_results`(*)| UsageOverride | See [Usage Override](#usage-override)|
 > (*) optional by default (may be required in some contexts)
 
 Notes:
@@ -365,13 +365,13 @@ Notes:
   The `result` and `check` fields are mutually exclusive.
 
 - `using_results`, if present, describes alternative resolutions when
-  doing the action using items: see [Usage Overrides](#usage-override).
+  doing the action using items: see [Usage Override](#usage-override).
 
 ---
 
 ### Gated Check
 
-A Gated Check describes situations where a player action meets an
+A **gated check** describes situations where a player action meets an
 obstacle: specifically, `take_check` for items and `traversal_check`
 for room exits.  It is modeled as a [Check](#check) wrapped with a
 [Condition](#condition) that determines whether the check is active,
@@ -409,7 +409,7 @@ an optional bypass condition, and success/failure [Results](#result).
 | `skip_check_if`(*)| Condition | If present and true, bypass check    |
 | `success` (*)     | Result    | Result if check succeeds or bypassed |
 | `failure` (*)     | Result    | Result if check fails                |
-| `using_results`(*)| object    | See [Usage Override](#usage-override)|
+| `using_results`(*)| UsageOverride | See [Usage Override](#usage-override)|
 > (*) optional
 
 Notes:
@@ -428,14 +428,14 @@ Notes:
   specified by the optional `success` and `failure` fields.
 
 - `using_results`, if present, describes alternative resolutions when
-  doing the action using items: see [Usage Overrides](#usage-override).
+  doing the action using items: see [Usage Override](#usage-override).
 
 ---
 
 ### Usage Override
 
-A Usage Override object can be placed in the optional `using_results`
-field of a Gated Check or Resolvable.  It accommodates player commands
+A UsageOverride object can be placed in the optional `using_results`
+field of a GatedCheck or Resolvable.  It accommodates player commands
 of the form "[ACTION] using [ITEM]".  It should be a dict mapping item
 [entity IDs](#entity) to one of the following resolution paths:
 
@@ -450,11 +450,11 @@ This overrides the usual resolution when using the specified item.
 
 ### Encounter Rule
 
-Encounters are game events that can unfold in different ways,
+**Encounters** are game events that can unfold in different ways,
 depending on an ordered list of conditions.  Encounters occur when
 NPCs [attack or are attacked](#aggro), and can also be attached to
 global [Mechanics](#mechanic).  An encounter is defined by an ordered
-array of Encounter Rule objects, each having the following form:
+array of EncounterRule objects, each having the following form:
 
 ```json
   {
@@ -478,11 +478,11 @@ array of Encounter Rule objects, each having the following form:
 | `failure` (*)     | Result    | Result when Check fails              |
 > (*) optional
 
-When an encounter is triggered, its Encounter Rules are evaluated
-top-to-bottom. The first Encounter Rule whose `condition` holds (if
-any) is applied, and the rest are ignored.
+When an encounter is triggered, its rules are evaluated in order. The
+first rule whose `condition` holds (if any) is applied, and the rest
+are ignored.
 
-Once triggered, the Encounter Rule is resolved using the `result`,
+Once triggered, the EncounterRule is resolved using the `result`,
 `check`, `success`, and/or `failure` fields, which have the same
 meanings as in [Resolvable](#resolvable).  Each Result may trigger
 combat via `trigger_combat`, or game-over via `game_over`.
@@ -491,7 +491,7 @@ combat via `trigger_combat`, or game-over via `game_over`.
 
 ### Game-Over
 
-A Game-Over object specifies a win or loss outcome.
+A GameOver object specifies a win or loss outcome.
 
 ```json
 { "type": "lose", "trigger_id": "" }
@@ -529,18 +529,18 @@ world graph keyed by a globally-unique `room_id`.
 }
 ```
 
-| Field               | Type     | Description                         |
-|---------------------|----------|-------------------------------------|
-| `name`              | string   | Short display name                  |
-| `description`       | string   | Prose description of room           |
-| `contains`(*)       | string[] | Entities directly present at start  |
-| `exits` (*)         | array    | All exits out of the room           |
-| `state_fields` (*)  | object   | State fields for room (see below)   |
+| Field               | Type         | Description                     |
+|---------------------|--------------|---------------------------------|
+| `name`              | string       | Short display name              |
+| `description`       | string       | Prose description (for GM)      |
+| `contains`(*)       | string[]     | Entities present at start       |
+| `exits` (*)         | Exit[]       | All exits out of the room       |
+| `state_fields` (*)  | object       | `{ "<field>": <spec>, ...  }`   |
 | `interactions` (*)  | Resolvable[] | Special interactions (see below)|
-| `on_examine` (*)    | array    | See [Examination](#examination)     |
-| `reactions` (*)     | array    | See [Reaction](#reaction)           |
-| `soft_items` (*)    | string[] | Plausible generic items in the room |
-| `is_start_room` (*) | boolean  | `true` for starting room (only one) |
+| `on_examine` (*)    | array        | See [Examination](#examination) |
+| `reactions` (*)     | Reaction[]   | See [Reaction](#reaction)       |
+| `soft_items` (*)    | string[]     | Plausible generic items in room |
+| `is_start_room` (*) | boolean      |`true` for starting room only    |
 > (*) optional
 
 Notes:
@@ -549,7 +549,7 @@ Notes:
   whereas `description` briefs the GM on the characteristics of the
   room (NOT necessarily used verbatim in narration).
 
-- The `contains` field lists the IDs of entities DIRECTLY present in
+- The `contains` field lists the IDs of entities *directly* present in
   the room at game start.  Note: if entity A is in room R, and entity
   B is in entity A (see `contains`, [Entity](#entity)), only A is
   directly present; room R's `contains` lists A but not B.
@@ -557,22 +557,30 @@ Notes:
   The player must not be included (even for the starting room).
 
 - The `exits` field stores an array of [Exit](#exit) objects, one for
-  EVERY possible exit regardless of initial availability / visibility.
+  every possible exit regardless of initial availability / visibility.
   Each exit can be individually gated and/or hidden.
 
-- State fields have room-unique IDs (dict keys).  They can be freely
-  chosen by the corpus author, except for two reserved engine-managed
-  state fields (neither of which has to be declared):
+- State fields describe distinct aspects of the room's state, and are
+  labeled by room-unique IDs.  There are two reserved state fields
+  managed by the engine, which need not be declared in `state_fields`:
 
   - `visited` is set to `true` when the player enters a room.
 
-  - `is_current` is true only for the player's current room.
-    This is auto-computed.  Do not move the player by changing this;
-    use `set_player_location` in a Result instead.
+  - `is_current` is auto-computed, and true only for the player's
+    current room.  Do not move the player by trying to change this;
+    use `set_player_location` in a Result.
 
-- Each author-defined state field may include an optional `initial`
-  value (matching the field's `type`), specifying the value at game
-  start.  If omitted, the type default applies (`false`, `0`, `""`).
+  Any other state fields needed for the adventure must be declared in
+  `state_fields`.  This should be a dict keyed by the state field
+  name, with values of the form
+
+    `{ "type": TYPE, "description": DESC, "initial": VALUE }`
+
+  where
+
+  - TYPE is one of `"boolean"`, `"number"`, or `"string"`
+  - DESC is a string describing the nature of the state field
+  - VALUE is a value matching the declared type.
 
 - `interactions` is an array of [Resolvables](#resolvable) describing
   operations performable on the room.  For each Resolvable,
@@ -605,14 +613,14 @@ Notes:
 }
 ```
 
-| Field               | Type        | Description                      |
-|---------------------|-------------|----------------------------------|
-| `id`                | string      | Exit ID (room-unique)            |
-| `direction`         | string      | Human-readable exit label        |
-| `target_room`       | string      | Room ID of destination           |
-| `condition` (*)     | Condition   | Gating condition (see below)     |
-| `traversal_check`(*)| Gated Check | See [Gated Check](#gated-check)  |
-| `one_way` (*)       | boolean     | Indicates if exit is one-way     |
+| Field               | Type       | Description                      |
+|---------------------|------------|----------------------------------|
+| `id`                | string     | Exit ID (room-unique)            |
+| `direction`         | string     | Human-readable exit label        |
+| `target_room`       | string     | Room ID of destination           |
+| `condition` (*)     | Condition  | Gating condition (see below)     |
+| `traversal_check`(*)| GatedCheck | See [Gated Check](#gated-check)  |
+| `one_way` (*)       | boolean    | Indicates if exit is one-way     |
 > (*) optional
 
 Notes:
@@ -712,15 +720,15 @@ reactions are always active.
 }
 ```
 
-| Field       | Type     | Description                                |
-|-------------|----------|--------------------------------------------|
-| `id`        | string   | ID, unique in scope (room/entity/mechanic) |
-| `on`        | string   | Reaction trigger; see [Event](#event)      |
-| `condition` (*) | Condition | Gating condition (see below)          |
-| `effect`    | object   | See [Reaction Effect](#reaction-effect)    |
-| `once` (*)  | boolean  | Whether reaction is one-off; default false |
-| `phase`(*)  | string   | `"deferred"` (default) or `"immediate"`    |
-| `priority`(*)| integer | Lower values fire earlier; default `0`     |
+| Field         | Type         | Description                           |
+|---------------|--------------|---------------------------------------|
+| `id`          | string       | Reaction ID, unique in scope          |
+| `on`          | string       | The [reaction trigger](#event)        |
+| `condition`(*)| Condition    | Activation condition for reaction     |
+| `effect`      | ReactionEffect | What it does when triggered         |
+| `once` (*)    | boolean      | Whether it is one-off; default false  |
+| `phase`(*)    | string       | `"deferred"` (default) / `"immediate"`|
+| `priority`(*) | integer      | Lower = fires earlier; default `0`    |
 > (*) optional
 
 Notes:
@@ -787,7 +795,7 @@ be omitted if the event lacks that particular detail).
 | Trigger                | Context                                     |
 |------------------------|---------------------------------------------|
 | `room.[entered\|exited]`| `room_id`                                  |
-| `traversal.[attempted\|succeeded]` | `exit_id`, `from_room`, `to_room`|
+| `traversal.[attempted\|succeeded]`| `exit_id`, `from_room`, `to_room`|
 | `traversal.failed`     | `exit_id`, `from_room`, `fail_reason`       |
 | `interaction.used`     | `interaction_id`, `target_id`, `using_item?`|
 | `flag.[set\|cleared]`  | `flag_id`                                   |
@@ -803,7 +811,7 @@ be omitted if the event lacks that particular detail).
 | `stat.changed`         | `stat_name`,`old_value`,`new_value`,`delta` |
 | `player.[damaged\|healed]` | `amount`, `new_hp`                      |
 | `encounter.branched`   | `encounter_id`, `branch`                    |
-| `turn.[start\|end]`     | `turn_number`                              |
+| `turn.[start\|end]`    | `turn_number`                               |
 
 For the full list, and full documentation of the context keys, see the
 [Events schema doc](events.md).
@@ -894,7 +902,7 @@ The following fields are meaningful for all entity types:
 | `interactions` (*) | Resolvable[] | Special interactions (see below) |
 | `on_examine` (*)   | array    | See [Examination](#examination)      |
 | `reactions` (*)    | array    | See [Reaction](#reaction)            |
-| `state_fields` (*) | object   | State fields for entity (see below)  |
+| `state_fields` (*) | object   | `{ "<field>": <spec>, ...  }`        |
 | `soft_items` (*)   | array    | Plausible soft items on/in entity    |
 > (*) optional
 
@@ -910,25 +918,19 @@ Notes:
   The special `"container"` tag should be placed on entities that act
   as [containers](#container) with open/close functionality.
 
-- State fields have entity-unique IDs.  There are two types:
+- State fields describe distinct aspects of the entity's state, and
+	are labeled by entity-unique IDs.  There are several reserved state
+  fields, which need not be declared in `state_fields`:
 
-  **Reserved state fields** are managed by the engine and never need
-  to be declared in `state_fields`:
-
-  | Field        | Type    | Purpose                                   |
-  |--------------|---------|-------------------------------------------|
-  | `alive`      | boolean | NPC active? (false => reactions inactive) |
-  | `fled`       | boolean | NPC fled? (false => reactions inactive)   |
-  | `attitude`   | integer | NPC disposition (higher == friendlier)    |
-  | `hidden`     | boolean | Explicit concealment (see below)          |
-  | `following`  | boolean | NPC follows player between rooms          |
-  | `current_hp` | number  | Current hit points (for combat)           |
-  | `open`       | boolean | Container open/closed state               |
-
-  **Author-defined state fields** must be declared in `state_fields`.
-  Examples: `looted`, `activated`, `cursed`.  Each must have a `type`
-  (`"boolean"`, `"number"`, or `"string"`), a `description` string,
-  and an optional `initial` value at game start.
+  | Reserved Field | Type    | Purpose                                 |
+  |----------------|---------|-----------------------------------------|
+  | `alive`        | boolean | NPC active? (false => reactions off)    |
+  | `fled`         | boolean | NPC fled? (false => reactions off)      |
+  | `attitude`     | integer | NPC disposition (higher == friendlier)  |
+  | `hidden`       | boolean | Explicit concealment (see below)        |
+  | `following`    | boolean | NPC follows player between rooms        |
+  | `current_hp`   | number  | Current hit points (for combat)         |
+  | `open`         | boolean | Container open/closed state             |
 
   The reserved state field `hidden` declares explicit concealment
   (e.g., a lurking enemy, or a sword buried in rubble). When `true`,
@@ -937,6 +939,18 @@ Notes:
   [container](#container); that kind of concealment is controlled by
   the container's `open` state.
 
+  Any other state fields needed for the adventure (`looted`, `cursed`,
+  etc.) must be declared in `state_fields`.  This should be a dict
+  keyed by the state field name, with values of the form
+
+    `{ "type": TYPE, "description": DESC, "initial": VALUE }`
+
+  where
+
+  - TYPE is one of `"boolean"`, `"number"`, or `"string"`
+  - DESC is a string describing the nature of the state field
+  - VALUE is a value matching the declared type.
+  
 - `interactions` is an array of [Resolvables](#resolvable) listing
   non-generic operations performable on the entity.  Each must have an
   entity-unique `id`.  The rest of the spec is the same as for
@@ -987,25 +1001,25 @@ Items are entities that can potentially be picked up by the player.
 The player cannot talk to or attack items.  The following fields have
 special meanings for items:
 
-| Field              | Type        | Description                     |
-|--------------------|-------------|---------------------------------|
-| `name`             | string      | Display name (required!)        |
-| `take_check` (*)   | Gated Check | See [Gated Check](#gated-check) |
-| `equip_block` (*)  | object      | For equipment (see below)       |
+| Field              | Type       | Description                 |
+|--------------------|------------|-----------------------------|
+| `name`             | string     | Display name (required!)    |
+| `take_check` (*)   | GatedCheck | Obstacle to taking the item |
+| `equip_block` (*)  | object     | For equipment (see below)   |
 > (*) optional
 
 Notes:
 
 - `name` is required for items; it's shown in the inventory UI.
 
-- `take_check`, if present, is a [Gated Check](#gated-check) for
+- `take_check`, if present, is a [gated check](#gated-check) for
   taking the item (e.g., pulling a sword from a stone).  Success and
   failure have the side-effects of adding the item to the player's
   inventory, and preventing the item from being taken, respectively;
   no need to specify `add_item` explicitly in `success`/`failure`.
 
-  The check is *not* automatically disabled after a successful take.
-  For a one-time success gate (pass once, then freely take
+  The gated check is *not* automatically disabled after a successful
+  take.  For a one-time success gate (pass once, then freely take
   thereafter), use `gating` with a flag on `success`.
 
 #### Equipment
@@ -1181,8 +1195,8 @@ can share with the player.  It should be a dict keyed by topic IDs
 |----------------|----------|------------------------------------------|
 | `description`  | string   | What the topic reveals; surfaced to GM   |
 | `conditions`   | string[] | Revelation conditions (all must be true) |
-| `set_flag` (*) | object   | Flag mutations when topic revealed       |
-| `set_entity_state` (*) | object| State mutations when topic revealed |
+| `set_flag` (*) | object   | `{ "<flag_id>": <value>, ... } `         |
+| `set_entity_state` (*) | object| `{ "<entity_id>": { "<field>": <value>, ...}, ...}` |
 > (*) optional
 
 When a topic's conditions are met, the engine marks it as available
@@ -1191,7 +1205,7 @@ and surfaces it to the GM, which can decide to narrate the revelation
 
 Once the revelation occurs and is validated, the engine applies any
 side effects specified by `set_flag` and `set_entity_state`, which use
-the same format as in [Result](#result) objects.  The engine also
+the same formats as the fields in [Result](#result).  The engine also
 records the topic as already revealed, so it doesn't get repeated.
 
 ```json
@@ -1207,7 +1221,7 @@ records the topic as already revealed, so it doesn't get repeated.
 ### Aggro
 
 The `aggro` field on an NPC entity stores an ordered list of
-[Encounter Rules](#encounter-rule) defining how an NPC reacts in
+[encounter rules](#encounter-rule) defining how an NPC reacts in
 hostile encounters (player attack, or combat triggered by a reaction).
 
 ```json
@@ -1304,11 +1318,11 @@ specific room or entity.  They live in a dict in the Corpus' top-level
 
 All fields supported by Mechanic objects are listed here:
 
-| Field           | Type       | Description                   |
-|-----------------|------------|-------------------------------|
-| `condition` (*) | Condition  | An encounter-gating condition |
-| `rules` (*)     | array      | A list of Encounter Rules     |
-| `reactions` (*) | Reaction[] | A set of global reactions     |
+| Field           | Type            | Description                   |
+|-----------------|-----------------|-------------------------------|
+| `condition` (*) | Condition       | An encounter-gating condition |
+| `rules` (*)     | EncounterRule[] | A triggerable encounter       |
+| `reactions` (*) | Reaction[]      | A set of global reactions     |
 > (*) optional (subject to constraints below)
 
 Conceptually, there are two kinds of mechanic, distinguished by which
@@ -1363,7 +1377,7 @@ objects with these fields:
 
 The engine polls `condition` once per turn, after all reactions have
 settled.  The first entry with `condition` evaluating to `true` ends
-the game using `type` and `trigger_id` as the [Game-Over](#game-over)
+the game using `type` and `trigger_id` as the [GameOver](#game-over)
 parameters, and with `narrative` (optional) as the ending narration.
 
 Example:
