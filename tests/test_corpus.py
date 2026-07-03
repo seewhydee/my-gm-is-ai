@@ -990,7 +990,7 @@ class TestStatsBlock:
     def test_valid(self) -> None:
         sb = StatsBlock.model_validate({
             "definitions": {
-                "STR": {"name": "Strength", "description": "Physical might"},
+                "STR": {"name": "Strength"},
             },
             "system": "5e",
         })
@@ -999,22 +999,24 @@ class TestStatsBlock:
 
     def test_default_system(self) -> None:
         sb = StatsBlock.model_validate({
-            "definitions": {"STR": {"name": "Strength", "description": ""}},
+            "definitions": {"STR": {"name": "Strength"}},
         })
         assert sb.system == "5e"
 
     def test_unsupported_system_raises(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown RPG system"):
-            StatsBlock.model_validate({
-                "definitions": {"STR": {"name": "Strength", "description": ""}},
-                "system": "gurps",
-            })
+        sb = StatsBlock.model_validate({
+            "definitions": {"STR": {"name": "Strength"}},
+            "system": "gurps",
+        })
+        from mgmai.engine.systems import get_system
+        with pytest.raises(ValueError, match="Unknown system"):
+            get_system(sb.system)
 
     def test_definitions_can_hold_six_stats(self) -> None:
         stat_names = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
         sb = StatsBlock.model_validate({
             "definitions": {
-                s: {"name": s, "description": f"The {s} stat"}
+                s: {"name": s}
                 for s in stat_names
             },
         })

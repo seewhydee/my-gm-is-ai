@@ -107,6 +107,7 @@ class StateManager:
         reset_disabled_once()
 
         self.validate_cross_references()
+        self._validate_stats_system()
         self._validate_player_stats()
         self._init_player_combat_defaults()
 
@@ -185,6 +186,7 @@ class StateManager:
                 raise ValueError(f"Invalid value for '{field}': {e}") from e
 
         self.validate_cross_references()
+        self._validate_stats_system()
         self._validate_player_stats()
         self._init_player_combat_defaults()
 
@@ -303,6 +305,13 @@ class StateManager:
 
         if errors:
             raise ValueError("\n".join(errors))
+
+    def _validate_stats_system(self) -> None:
+        """Validate the corpus's declared RPG system against the registry."""
+        if self.corpus is None or self.corpus.stats is None:
+            return
+        from mgmai.engine.systems import get_system
+        get_system(self.corpus.stats.system)  # raises ValueError for unknown
 
     def _validate_player_stats(self) -> None:
         if self.corpus is None or self.hard_state is None:

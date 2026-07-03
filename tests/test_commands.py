@@ -394,7 +394,7 @@ class TestCharCommand:
         from mgmai.models.corpus import StatsBlock, StatDefinition
         state_manager.hard_state.player.stats = None
         state_manager.corpus.stats = StatsBlock(
-            definitions={"STR": StatDefinition(name="Strength", description="")},
+            definitions={"STR": StatDefinition(name="Strength")},
             system="5e",
         )
         from mgmai.game.commands import Commands
@@ -410,9 +410,9 @@ class TestCharCommand:
         from mgmai.models.corpus import StatsBlock, StatDefinition
         state_manager.corpus.stats = StatsBlock(
             definitions={
-                "STR": StatDefinition(name="Strength", description=""),
-                "DEX": StatDefinition(name="Dexterity", description=""),
-                "CON": StatDefinition(name="Constitution", description=""),
+                "STR": StatDefinition(name="Strength"),
+                "DEX": StatDefinition(name="Dexterity"),
+                "CON": StatDefinition(name="Constitution"),
             },
             system="5e",
         )

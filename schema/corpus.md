@@ -1383,56 +1383,57 @@ Example:
 
 ## Player Stats
 
-An RPG system typically tracks a large set of player data (level,
-armor class, etc.).  This data is stored in the player's data block
-`hard_state.player` in the [Hard State](hard-state.md), and is used in
-combat.
+RPG systems often track a large set of player data (level, armor
+class, etc.).  We store this data in `hard_state.player` in the game's
+[Hard State](hard-state.md), and use it during combat.
 
-For the Corpus, we mainly work with a core subset of the player data
-referred to as **Player Stats**.  These are numerical fields that
-perform the following roles:
+In the Corpus, we focus on a core subset of player data that directly
+affects out-of-combat game mechanics, referred to as **Player Stats**.
+These numerical fields perform the following roles:
+
+- They are used in [Stat Checks](#stat-checks).
 
 - They can be queried via [Condition Strings](#condition-string) like
   `"stat:CHA >= 14"`.
 
-- They can be modified by [Results](#result) via the `alter_stat`
-  field, or by wearing/wielding [Equipment](#equipment) via the
-  `stat_effects` field.  These changes trigger `stat.change`
-  [Events](#event).
+- They can be altered by [Results](#result) via the `alter_stat`
+  field, triggering `stat.changed` [Events](#event).  They can also be
+  modified by wearing/wielding [Equipment](#equipment).
 
-- They are used in [Stat Checks](#stat-checks).
-
-The optional `stats` field of the [Corpus](top-level-structure)
-declares what player stats the adventure uses.
+The schema aims to be agnostic about the choice of RPG system.  The
+system, along with the set of supported player stats, is declared in
+each Corpus' `stats` field at [top-level](top-level-structure).
 
 ```json
 {
+  "system": "5e",
   "definitions": {
-    "STR": { "name": "Strength", "description": "Physical power" },
-    "DEX": { "name": "Dexterity", "description": "Agility and reflexes" },
-    "CON": { "name": "Constitution", "description": "Endurance" },
-    "INT": { "name": "Intelligence", "description": "Reasoning" },
-    "WIS": { "name": "Wisdom", "description": "Perception" },
-    "CHA": { "name": "Charisma", "description": "Force of personality" }
+    "STR": { "name": "Strength" },
+    "DEX": { "name": "Dexterity" },
+    "CON": { "name": "Constitution" },
+    "INT": { "name": "Intelligence" },
+    "WIS": { "name": "Wisdom" },
+    "CHA": { "name": "Charisma" }
   },
-  "system": "5e"
 }
 ```
 
-| Field               | Type   | Required | Description |
-|---------------------|--------|----------|-------------|
-| `definitions`       | object | yes      | Dict of stat key → `{ name, description }`. Keys are short uppercase identifiers (e.g. `"STR"`). |
-| `system` | string | yes      | Named resolution system. Currently supported: `"5e"`. |
+| Field         | Type   | Description                    |
+|---------------|--------|--------------------------------|
+| `system`      | string | RPG system ID, e.g. `"5e"`     |
+| `definitions` | object | Dict of stat key → `{ name }`  |
 
-The resolution system defines how stat checks translate to
-probability, decoupling adventures from specific RPG mechanics.
+`system` specifies how to perform [Stat Checks](#stat-checks).  If the
+value is not a supported RPG system, the adventure will not load.
 
-On startup, the engine validates that:
-- Every stat key in the player state has a matching definition in
-  `stats.definitions`.
-- Stats are consistently present or absent in both corpus and hard state.
-- If `stats` is present in the corpus, `player.stats` should be
-  present in hard state (and vice versa).
+`definitions` is keyed by stat IDs.  These are the same stat IDs used
+in Stat Checks, Condition Strings, and other parts of the corpus.  For
+each stat, `name` is used to print the stat in the character sheet;
+other fields may be added later.
+
+The engine uses the `stats` field to validate that the corpus and hard
+state are consistent in their use of stats (e.g., every stat key in
+the player state has a matching definition in the corpus).
 
 ---
 

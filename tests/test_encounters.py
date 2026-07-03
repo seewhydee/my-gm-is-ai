@@ -187,7 +187,7 @@ class TestResolveEncounter:
         soft = _load_soft()
         hard.player.stats = {"DEX": 10}
         sample_corpus.stats = StatsBlock(
-            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            definitions={"DEX": StatDefinition(name="DEX")},
             system="5e",
         )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
@@ -211,7 +211,7 @@ class TestResolveEncounter:
         soft = _load_soft()
         hard.player.stats = {"DEX": 10}
         sample_corpus.stats = StatsBlock(
-            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            definitions={"DEX": StatDefinition(name="DEX")},
             system="5e",
         )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
@@ -347,7 +347,7 @@ class TestEncounterBranchTaken:
         soft = _load_soft()
         hard.player.stats = {"DEX": 10}
         sample_corpus.stats = StatsBlock(
-            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            definitions={"DEX": StatDefinition(name="DEX")},
             system="5e",
         )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
@@ -371,7 +371,7 @@ class TestEncounterBranchTaken:
         # stat check actually rolls (otherwise it short-circuits to True).
         hard.player.stats = {"DEX": 10}
         sample_corpus.stats = StatsBlock(
-            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            definitions={"DEX": StatDefinition(name="DEX")},
             system="5e"
         )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 1)
@@ -442,7 +442,7 @@ class TestEncounterBranchTaken:
         soft = _load_soft()
         hard.player.stats = {"DEX": 10}
         sample_corpus.stats = StatsBlock(
-            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            definitions={"DEX": StatDefinition(name="DEX")},
             system="5e",
         )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)
@@ -471,7 +471,7 @@ class TestEncounterBranchCombat:
         soft = _load_soft()
         hard.player.stats = {"DEX": 10}
         sample_corpus.stats = StatsBlock(
-            definitions={"DEX": StatDefinition(name="DEX", description="Dexterity")},
+            definitions={"DEX": StatDefinition(name="DEX")},
             system="5e",
         )
         monkeypatch.setattr("mgmai.engine.systems.five_e.random.randint", lambda a, b: 20)

@@ -487,7 +487,6 @@ class Mechanic(BaseModel):
 
 class StatDefinition(BaseModel):
     name: str
-    description: str
 
 
 class OnHitSave(BaseModel):
@@ -528,13 +527,6 @@ class CombatBlock(BaseModel):
 class StatsBlock(BaseModel):
     definitions: Dict[str, StatDefinition]
     system: str = "5e"
-
-    @model_validator(mode="after")
-    def check_system(self) -> StatsBlock:
-        supported = {"5e"}
-        if self.system not in supported:
-            raise ValueError(f"Unknown RPG system: {self.system!r}. ")
-        return self
 
 
 class ModuleCorpus(BaseModel):

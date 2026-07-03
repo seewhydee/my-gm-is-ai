@@ -61,12 +61,12 @@ FIXTURES_DIR = TEST_DIR / "fixtures"
 
 _STATS_5E = StatsBlock(
     definitions={
-        "STR": StatDefinition(name="Strength", description="Physical power"),
-        "DEX": StatDefinition(name="Dexterity", description="Agility"),
-        "CON": StatDefinition(name="Constitution", description="Endurance"),
-        "INT": StatDefinition(name="Intelligence", description="Reasoning"),
-        "WIS": StatDefinition(name="Wisdom", description="Perception"),
-        "CHA": StatDefinition(name="Charisma", description="Personality"),
+        "STR": StatDefinition(name="Strength"),
+        "DEX": StatDefinition(name="Dexterity"),
+        "CON": StatDefinition(name="Constitution"),
+        "INT": StatDefinition(name="Intelligence"),
+        "WIS": StatDefinition(name="Wisdom"),
+        "CHA": StatDefinition(name="Charisma"),
     },
     system="5e",
 )
