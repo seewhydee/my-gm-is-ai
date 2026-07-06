@@ -1,356 +1,330 @@
-# Plan: Remove Game-Over Mechanic from the Mechanic type
+# Plan: Quantity-aware inventory with real stacking
 
-## The problem with `Mechanic`
+## Problem statement
 
-The `Mechanic` class (`mgmai/models/corpus.py:445`) is meant to be a named
-bundle of game logic not tied to a specific room or entity. In practice it
-conflates **three orthogonally different primitives** behind one undiscriminated
-Pydantic model, distinguished only by which fields happen to be populated:
+Entity IDs in the corpus are **dict keys** — unique by definition. For NPCs
+and rooms this maps cleanly; items do not. Items are a **confused hybrid**:
+their IDs serve as both type definitions (the corpus `entities` entry) and
+instance references (entries in player `inventory` / `equipped` / room
+`contains`). This creates concrete gaps:
 
-| Kind            | Discriminator       | Trigger model               | Purpose of `condition`       |
-|-----------------|---------------------|-----------------------------|------------------------------|
-| Game-Over       | `type` non-None     | **Poll-based** (every turn) | Termination predicate        |
-| Encounter       | `rules` non-None    | **Event-driven**            | Gating: can encounter fire?  |
-| Reaction-Only   | `reactions` present | **Event-driven** (always)   | (unused)                     |
+1. **No duplicate prevention.** `inventory_added` (`manager.py:514`) is a
+   bare `list.append()` with no tag check or dedup. A sword can appear
+   twice in inventory — meaningless for a unique artifact.
+2. **Removal is ambiguous.** `list.remove()` (`manager.py:519`) deletes
+   only the first occurrence. Given two potions and one `remove_item`,
+   the engine can't know which was "the one used."
+3. **No counting.** The `inventory` domain condition (`conditions.py:80`)
+   is a binary `key in list` — you can't write `inventory:potion >= 3`.
+4. **No per-instance state.** Two swords share a single
+   `entity_states["sword"]` entry — you can't have one rusty and one sharp.
+5. **Equipped *does* guard against duplicates** (`manager.py:523`) but
+   inventory does not — an inconsistent split.
+6. **The `stackable` tag is documented but unimplemented.** `hard-state.md`
+   claims "Duplicates are allowed only if the module explicitly supports it
+   (tag: `stackable`)." The tag does not exist anywhere in the code.
+7. **Room `contains` duplicates are silently collapsed.** The transfer
+   resolver builds `available_pool` as a `set[str]` (`resolver.py:624`) —
+   if the corpus defines two potions in a room, the player can only pick
+   up one.
 
-The Game-Over kind does not belong with the other two. An Encounter or
-Reaction-Only mechanic is **event-driven**: it sits idle until a reaction fires
-`trigger_encounter`, or until its `on` event matches. A Game-Over mechanic is a
-**passive predicate** — nothing triggers it. The engine polls it every turn in a
-separate loop (`_check_game_over_mechanics`, `engine.py:839-855`), parallel to
-and conceptually alien to the event system. One type, two execution models.
+### Why the original "stackable = discrete duplicates" plan is insufficient
 
-Three aggravating factors make this worse:
+The earlier draft proposed `stackable` as a tag permitting duplicate list
+entries, with quantity tracking deferred. That deferral does not hold:
 
-1. **The poll is mis-placed in the turn lifecycle.** It runs at `engine.py:377`,
-   *before* deferred reactions, state-change events, and `turn.end` reactions
-   (phases 7–9). So a game-over condition satisfied by a same-turn reaction —
-   e.g. a `turn.end` poison that kills the player — is missed and only caught on
-   the *next* turn. The predicate sees stale state.
+- **Money is unrepresentable.** "50 coins + 30 coins = 80 coins" cannot be
+  modelled. The `list[str]` representation permits discrete duplicates
+  (3 separate `potion` entries) but not fungible quantity, and `list.remove()`
+  is silently lossy for fungibles.
+- **The deferral is not independent of the representation.** Committing to
+  `list[str]` with duplicates is *exactly* what blocks counting and money
+  later. Shipping `stackable` as discrete-dupes locks in a representation
+  the deferred features require us to undo.
+- **The name `stackable` promises quantity semantics it doesn't deliver.**
+  In RPG convention "stackable" means quantity aggregation (a stack of 80
+  gold); using it for "discrete dupes allowed" misleads module authors.
 
-2. **The schema documents a second game-over path that doesn't actually work.**
-   `Result.game_over` is the natural, inline authoring idiom — a result declares
-   "this outcome ends the game" right where the killing blow falls (documented at
-   `corpus.md:224`, demonstrated in the aggro example at `corpus.md:1205`). But
-   `_apply_result` (`resolver.py:1181-1270`) **silently drops `Result.game_over`**;
-   only the encounter path extracts it (`encounters.py:123`). So for interactions
-   and reactions, the inline idiom is broken — proven by
-   `test_result_with_game_over_does_not_crash` (`test_event_bus.py:1321`), which
-   asserts `engine_result.game_over is None`. This breakage has forced authors to
-   fall back on the polled Game-Over Mechanic as a workaround, even for outcomes
-   that have a perfectly natural inline home.
+### Design decision: model quantity now
 
-3. **Type confusion in the docs.** `corpus.md` types both `Result.game_over`
-   (line 224) and `ReactionEffects.game_over` (line 807) as `Mechanic`, when
-   both are actually `GameOverTrigger` (`corpus.py:282`). The polled
-   `Mechanic.type`/`trigger_id`/`narrative` and the inline `GameOverTrigger`
-   share field names but are different things.
+Migrate `player.inventory` from `list[str]` to `Dict[str, int]`
+(item_id → count), implement real stacking with counts, and make
+`stackable` mean what it says. This resolves gaps 1–3, 6, and 7 in one
+coherent design. Per-instance state (gap 4) remains out of scope.
 
-The clean fix is to (a) remove the Game-Over kind from `Mechanic` entirely, (b)
-repair the inline `Result.game_over` path so it works everywhere — making it the
-primary authoring idiom — and (c) retain a small, optional top-level predicate
-list for the residual cases (cross-cutting win/loss states with no single inline
-home).
+| Item type                | Tagged?       | Count?            | Behavior                                       |
+|--------------------------|---------------|-------------------|------------------------------------------------|
+| Unique (sword, artifact) | No `stackable`| Always 1          | Adding when present raises; count never > 1    |
+| Consumable (potion, coin)| `stackable`   | 1..`max_stack`    | Adds increment; removes decrement; countable   |
 
-### Authoring model: inline vs. predicate
+### Confirmed design choices
 
-Not every game-over has the same shape, and the design must let the author pick
-per-case rather than forcing one bucket:
+- **Representation:** `player.inventory: Dict[str, int]`. Old saves are
+  **not** supported — fixtures and the sample adventure are migrated to
+  dict form. Python dicts support `in` and key iteration, so the ~16
+  read sites (`eid in hard.player.inventory`, `for item_id in ...`,
+  `list(...)`) keep working unchanged; only the two mutation sites and
+  serialization change.
+- **`stackable` tag + optional `max_stack` field.** `stackable` is a tag
+  on item entities (consistent with the existing `container` tag). `max_stack`
+  is an optional `Entity` field (default unlimited), gated to `type=="item"`.
+- **Quantity in results:** `Result.add_item`/`remove_item` stay as
+  `List[str]` (each entry +1; repeats allowed for stackables); add
+  `add_item_count`/`remove_item_count: Dict[str,int]` for bulk grants
+  (`{"coins": 30}`). Backward compatible.
+- **Quantity in transfers:** `TransferAction` gains `given_counts`/
+  `taken_counts: Dict[str,int]` alongside the existing lists, so the LLM
+  can express "take 300 coins" without repeating an ID 300 times.
+- **Conditions:** `inventory:coins >= 30` works (operator on `inventory`
+  domain).
+- **Deltas:** `HardStateChanges.inventory_added`/`_removed` →
+  `Dict[str,int]` (item→count).
+- **Equip-one-from-stack:** equipping a stackable item decrements the
+  stack by 1; unequipping increments. Equipped stays `list[str]` (unique).
+- **Remove shortfall:** hard `ValueError` in `apply_hard_changes`
+  (deterministic path); resolver path silently skips + debug-logs
+  (fuzzy LLM output). Mirrors the add-dedup split.
 
-- **Event-local outcomes** (a specific enemy's killing blow, a fatal choice):
-  belong **inline** on the `Result` that causes them. The author writes
-  `game_over` where the death happens — no separate registry to maintain. This is
-  the natural idiom, and repairing it is the central enabler.
-- **Cross-cutting / catch-all states** (a terminal flag reachable by several
-  paths; "the player is dead" from any source): belong as a **top-level
-  predicate**, because no single result owns them and duplicating `game_over`
-  across N results is worse than one declaration.
+### What this does NOT address (out of scope)
 
-There is a useful asymmetry: **wins are few and state-based** (often no single
-result owns "you win"); **losses are many and event-local** (each enemy, each
-trap). The corpus confirms this — see the per-entry migration in Work Item 3.
-
-### Resolution
-
-1. **`Mechanic` keeps `condition`.** It is the Encounter gating field, read at
-   `engine.py:225` and `event_bus.py:405-407` when a `trigger_encounter` fires.
-   Only the game-over-specific fields (`type`, `trigger_id`, `narrative`) leave
-   `Mechanic`. After this, `Mechanic` has exactly two kinds: Encounter (`rules`)
-   and Reaction-Only (`reactions`).
-
-2. **Fix inline `Result.game_over`** to propagate from any result
-   (interaction, reaction, encounter) by setting `hard.game_over` inside
-   `_apply_result`, mirroring how `ReactionEffects.game_over` is already handled
-   at `event_bus.py:276-278`. This makes the documented idiom actually work and
-   becomes the primary authoring path.
-
-3. **Add an optional top-level `game_over_conditions` list** for cross-cutting
-   predicates, polled once at **end of turn** (after `turn.end` reactions
-   settle), with a single reconciliation that also surfaces event-based
-   game-overs (including those set by `turn.end` reactions) into
-   `EngineResult.game_over`. This replaces and broadens today's mis-placed poll.
-
-4. **Forbid `Result.game_over` and `ReactionEffects.game_over` from coexisting**
-   on one effect, so authoring stays unambiguous.
+- **Room-side stackable depletion.** The engine does not track how many of
+  a stackable item remain in a room; `available_pool` is a presence set
+  rebuilt each turn from the corpus, never depleted. Bulk room money must
+  be modelled as a granting entity (e.g. `coin_pile`) whose take
+  interaction uses `add_item_count: {"coins": 300}` gated by a flag, so it
+  fires once. Direct `taken_counts` from a room is best-effort and trusts
+  the LLM. Documented in `actions.md`.
+- **Per-instance state.** Two distinct magic swords must still be defined
+  as separate corpus entities (`flame_blade`, `frost_blade`).
+- **Soft inventory quantities.** `soft_inventory` stays `list[str]`.
 
 ---
 
-## Work Items
+## Work items
 
-### 1. Pydantic models — `mgmai/models/corpus.py`
+### Phase 1 — Models
 
-**`Mechanic` (`line 445`)** — remove the game-over fields, keep `condition`:
-- Delete `type: Optional[Literal["win", "lose"]] = None`
-- Delete `narrative: Optional[str] = None`
-- Delete `trigger_id: Optional[str] = None`
-- **Keep** `condition: Optional[ConditionExpression] = None` (Encounter gating)
-- **Keep** `rules` and `reactions`
+**1. `mgmai/models/hard_state.py:23-33` — `PlayerState.inventory`**
+Change `inventory: list[str]` → `Dict[str, int] = Field(default_factory=dict)`.
 
-**Simplify `check_shape` (`line 454`)** — drop all `is_game_over` branches.
-The validator reduces to: a Mechanic must have at least one of `rules` or
-`reactions` (else error). `condition` is now an optional Encounter gating field,
-unchecked here.
+**2. `mgmai/models/corpus.py:415-455` — `Entity` fields**
+Add `max_stack: Optional[int] = None`. Gate to `type=="item"` in
+`check_type_specific_fields` (`:433`): raise if `max_stack` set on a
+non-item, and if set, `max_stack` must be ≥ 1.
 
-**New model `GameOverCondition`** (place near `GameOverTrigger`, `line 282`):
-```python
-class GameOverCondition(BaseModel):
-    id: str
-    type: Literal["win", "lose"]
-    condition: ConditionExpression
-    trigger_id: str
-    narrative: Optional[str] = None
-    description: Optional[str] = None
-```
-This is the Game-Over Mechanic's fields, lifted to a dedicated top-level model.
-`condition` and `trigger_id` are required (mirroring today's validator at
-`corpus.py:463-467`). `description` is author-facing only (the existing
-`Mechanic` silently dropped it since it had no such field; this model keeps it).
+**3. `mgmai/models/corpus.py:126-151` — `Result` fields**
+Add `add_item_count: Optional[Dict[str, int]] = None` and
+`remove_item_count: Optional[Dict[str, int]] = None`.
 
-**`ModuleCorpus`** — add:
-```python
-game_over_conditions: List[GameOverCondition] = Field(default_factory=list)
-```
-The `mechanics` dict stays as-is.
+**4. `mgmai/models/actions.py:62-76` — `TransferAction` fields**
+Add `given_counts: Optional[Dict[str, int]] = None` and
+`taken_counts: Optional[Dict[str, int]] = None`. Update
+`check_non_empty_transfer` to treat a non-empty count dict as satisfying
+the non-empty requirement. Validate counts are ≥ 1.
 
-**`ReactionEffects` (`line 287`)** — add a validator forbidding both
-`result.game_over` and `game_over` being set on the same effect:
-```python
-@model_validator(mode="after")
-def _no_double_game_over(self) -> ReactionEffects:
-    if self.game_over is not None and self.result is not None \
-            and self.result.game_over is not None:
-        raise ValueError(
-            "Specify either effect.game_over or effect.result.game_over, not both")
-    return self
-```
+**5. `mgmai/models/actions.py:176-253` — `HardStateChanges`**
+Change `inventory_added`/`inventory_removed` from `List[str]` to
+`Dict[str, int]`. Update `merge()` (`:196-236`) to sum counts. Update
+`has_changes()` (`:238-253`) to check `bool(dict)`. Keep
+`inventory_added_sources`/`inventory_removed_reasons` keyed by item_id
+(one source per distinct item).
 
-**`GameOverTrigger` (`line 282`)** — unchanged. Remains the type used by
-`Result.game_over` and `ReactionEffects.game_over`.
+**6. `mgmai/models/briefing.py:92-102` — `PlayerStateBriefing.hard_inventory`**
+Change type to `Dict[str, int]`.
 
-### 2. Inline game-over propagation — `mgmai/engine/resolver.py`
+### Phase 2 — State manager
 
-**`_apply_result` (`line 1181`)** — handle `result.game_over`. After the existing
-field handling (e.g. after the `reveals` block, ~`line 1269`), add:
-```python
-if result.game_over is not None and hard is not None:
-    hard.game_over = GameOverState(
-        type=result.game_over.type,
-        trigger=result.game_over.trigger_id,
-    )
-```
-This mirrors `event_bus.py:276-278`. It is the fix that makes inline
-`Result.game_over` work for interactions and reactions.
+**7. `mgmai/state/manager.py:514-519` — `apply_hard_changes` inventory mutation**
+Replace `append`/`remove` with increment/decrement:
+- **Add** (per item, count `n` from the delta):
+  - Look up entity in `self.corpus.entities`.
+  - Unknown item (not in corpus) → treat as non-stackable unique.
+  - Non-stackable + already present (`n` ≥ 1 while key exists) → `ValueError`.
+  - Non-stackable + `n > 1` → `ValueError`.
+  - Stackable → `inventory[key] += n`; if `max_stack` set and
+    `inventory[key] > max_stack` → `ValueError`.
+- **Remove** (per item, count `n`):
+  - `current = inventory.get(key, 0)`. If `n > current` → `ValueError`
+    (shortfall).
+  - `inventory[key] -= n`; if `<= 0`, `del inventory[key]`.
 
-**Note on the encounter path:** `encounters.py:89` calls `_apply_result` on the
-firing result *and* separately extracts `firing_result.game_over` into the result
-dict (`encounters.py:123`), which the engine sets again at `engine.py:241`. After
-this fix that extraction is redundant (harmless double-set of the same value).
-Removing `encounters.py:123` + the `engine.py:239-245` re-set is **optional
-cleanup** — leave it if you want to minimize churn.
+**8. `mgmai/state/manager.py:251` — cross-ref validation**
+Verify `_check_ids` iterates the collection generically; if it indexes,
+adjust to iterate `inventory.keys()`.
 
-**Tests to update** (`tests/test_resolver.py`):
-- `test_apply_result_with_game_over_*` (~`line 814`) and
-  `test_apply_result_with_check_with_game_over_*` (~`line 871`) currently assert
-  the game_over is "tolerated" (i.e. dropped). Re-state them to assert
-  `hard.game_over` is now set.
-- `tests/test_event_bus.py::TestReactionResultWithDispatchFields` (`line 1294`)
-  documents the old "tolerated/ignored" behavior. In particular
-  `test_result_with_game_over_does_not_crash` (`line 1321`) asserts
-  `engine_result.game_over is None` — flip that to assert it is now set, and
-  rename the class to reflect that dispatch fields on a reaction `Result` now
-  take effect.
+**9. `mgmai/state/manager.py:142-191` — `_apply_char_sheet_data`**
+Char-sheet `inventory` override must now be a dict. Document; the existing
+`model_fields` setattr path will reject a list via pydantic.
 
-### 3. Engine: replace the poll — `mgmai/engine/engine.py`
+### Phase 3 — Resolver
 
-**Delete `_check_game_over_mechanics` (`line 839`)** and add a replacement that
-iterates `corpus.game_over_conditions`:
-```python
-def _check_game_over_conditions(hard, soft, corpus):
-    for cond in corpus.game_over_conditions:
-        if evaluate(cond.condition, hard, soft, corpus):
-            return GameOverResult(
-                type=cond.type,
-                trigger=cond.trigger_id,
-                narrative=cond.narrative,
-            )
-    return None
-```
+**10. `mgmai/engine/resolver.py:595-622` — transfer give**
+Merge `given_items` (list, each +1) + `given_counts` (dict) into a combined
+per-item count. For each `(item, n)`:
+- If in `hard.player.inventory`: validate `inventory[item] >= n`; on
+  shortfall → `result.success = False, error = "not enough"`. Record
+  `inventory_removed[item] += n`.
+- Non-stackable with `n > 1` is automatically a shortfall (count capped at
+  1 by the manager dedup invariant) — surface the same error.
+- Soft-item branch (`elif item in soft.soft_inventory`) stays list-only
+  (soft items have no counts); `n > 1` on a soft item → error.
 
-**Remove the mis-placed poll (`lines 377-381`)** and the now-redundant mid-turn
-reconciliation (`lines 422-423`). The latter is safe to remove: the only consumer
-of the local `game_over` after it is the main return at `line 543`, which the new
-end-of-turn reconciliation (below) covers. (The explicit `game_over` sets at
-`line 242` [encounter] and `line 275` [combat] must STAY — they feed the
-early-return path at `line 311`.)
+**11. `mgmai/engine/resolver.py:672-744` — transfer take**
+Merge `taken_items` + `taken_counts` into a combined per-item count. For
+each `(item, n)`:
+- Gate on `item in available_pool` (presence only — room depletion is out
+  of scope).
+- If item is non-stackable and `n > 1` → `result.success = False` (only
+  one exists).
+- `take_check` (`:697-727`) runs once per distinct item ID regardless of
+  count.
+- On pass: `inventory_added[item] += n`.
 
-**Add end-of-turn poll + reconciliation** between the `turn.end` dispatch
-(`line 486-496`) and the result construction (`line 505`):
-```python
-# 9.5 Condition-based game-over poll (after all reactions settle).
-if hard.game_over is None:
-    go = _check_game_over_conditions(hard, soft, corpus)  # carries narrative
-    if go is not None:
-        hard.game_over = GameOverState(type=go.type, trigger=go.trigger)
-        game_over = go  # preserve the condition's ending narrative
-# Final reconciliation: surface event-based game_overs (set by encounters,
-# combat, or any reaction including turn.end) into EngineResult.game_over.
-if hard.game_over is not None and game_over is None:
-    game_over = GameOverResult(
-        type=hard.game_over.type,
-        trigger=hard.game_over.trigger,
-    )
-```
-**On `narrative`:** the condition-based path keeps its `narrative` (assigned
-directly from the poll result). The reconciliation branch — which only fires
-for *event-based* game_overs that left the local `game_over` unset — does not
-carry `narrative`, matching today's behavior (the encounter path at
-`engine.py:242` and combat path at `engine.py:275` likewise build
-`GameOverResult` without narrative). For inline `Result.game_over`, the ending
-prose already reaches the GM through `triggered_narration` from `_apply_result`;
-for the top-level conditions, the `narrative` field on the entry is the source.
-This is consistent with the current engine; no new gap is introduced.
+**12. `mgmai/engine/resolver.py:1196-1203` — `_apply_result`**
+Merge `add_item` (each +1) + `add_item_count` into `inventory_added` dict;
+same for `remove_item`/`remove_item_count`. Silently skip + debug-log:
+- Non-stackable duplicate adds (item already in inventory).
+- Remove shortfalls (insufficient count).
+This is the fuzzy-LLM-output path; a hard error would be too severe.
 
-**Early-return path (`line 304-315`)** — add the same one-line reconciliation
-before the `return` so `EngineResult.game_over` is consistent on failed
-resolutions too:
-```python
-if hard.game_over is not None and game_over is None:
-    game_over = GameOverResult(
-        type=hard.game_over.type, trigger=hard.game_over.trigger)
-```
+**13. `mgmai/engine/resolver.py:1720-1763` — equip / unequip**
+- **Equip:** validate at least 1 in inventory. Decrement inventory by 1
+  (delete key at 0). Append to `equipped`. Works for both unique and
+  stackable (equip-one-from-stack). Equipped's existing duplicate guard
+  (`manager.py:523`) stays.
+- **Unequip:** remove from `equipped`, increment inventory by 1.
 
-### 4. Adventure corpus — `adventures/bag-of-holding/corpus.json`
+**14. `mgmai/engine/resolver.py:624-665` — `available_pool` (no code change)**
+Document that room-side stackable quantity is not depleted. No behavioural
+change for v1.
 
-The four game-over mechanics (`mechanics` block, `line 1632`) migrate by kind:
+### Phase 4 — Conditions
 
-| Entry | Kind | Migration |
-|---|---|---|
-| `lost_to_astral_plane_rip` (`line 1734`) | event-local (single result) | **inline** on the `confirm_squeeze_through_rip` result (`line 765`): add `"game_over": {"type":"lose","trigger_id":"astral_plane"}`. Its narrative at `line 766` already *is* the loss prose. Remove the mechanic. |
-| `player_escaped` (`line 1724`) | cross-cutting win (flag set at `line 797` AND `line 831`; distinct escape narrative ≠ padlock-open narrative) | **top-level predicate** → move to `game_over_conditions` as-is. |
-| `lost_key_to_astral` (`line 1744`) | cross-cutting loss (flag set at 3 paths: `line 815`, `849`, `874`) | **top-level predicate** → move to `game_over_conditions` as-is. One declaration beats 3× inline duplication. |
-| `spider_killed_player` (`line 1754`) | **dead code** | **remove.** Its condition `entity:player.alive == false` can never hold: nothing in the engine sets `player.alive = false` (combat kills NPCs' `alive`, not the player's). Combat death already ends the game directly at `engine.py:274` with the same `trigger_id` `"player_death"`. |
+**15. `mgmai/engine/conditions.py:77-80` — `inventory` domain**
+Allow operator. When present: `count = hard_state.player.inventory.get(key, 0)`;
+`return _compare(count, op, value)`. Without operator: `return count > 0`.
 
-Add the top-level field:
-```json
-"game_over_conditions": [
-  { "id": "player_escaped", "type": "win",
-    "condition": { "require": "flag:padlock_unlocked == true" },
-    "trigger_id": "escape_bag",
-    "narrative": "<keep line 1731 narrative>",
-    "description": "<keep line 1727 description>" },
-  { "id": "lost_key_to_astral", "type": "lose",
-    "condition": { "require": "flag:key_lost_to_astral == true" },
-    "trigger_id": "key_lost",
-    "narrative": "<keep line 1751 narrative>",
-    "description": "<keep line 1747 description>" }
-]
-```
-The `global_reactions` mechanic (`line 1764`) is Reaction-Only and stays
-unchanged. After migration, `mechanics` contains only `global_reactions`.
+**16. `mgmai/engine/conditions.py:314-316` — `get_condition_detail`**
+Mirror the count-aware branch for the inventory domain.
 
-**Known limitation (out of scope):** non-combat death (HP → 0 from a trap's
-`player_damage`) is not handled by anything today — combat death is. If a future
-adventure needs a trap-death catch-all, add a `game_over_conditions` entry whose
-condition can actually hold (e.g. once the engine sets `player.alive = false` on
-HP depletion), or add an inline `game_over` to the trap's result.
+**17. `tag:` / `equipped:` domains (`conditions.py:82-95, 149-160`)**
+Unchanged — iterate keys (works with dict). Stay presence-only.
 
-### 5. Test fixture — `tests/fixtures/corpus.json`
+### Phase 5 — Engine, briefing, CLI, templates
 
-`win_escape_bag` (`line 695`) is a win predicate on `flag:padlock_unlocked ==
-true` — move it verbatim from `mechanics` to a new top-level
-`game_over_conditions` array. Keep its `type`, `condition`, `narrative`,
-`trigger_id`. (If other tests in `test_engine.py` rely on it being a `Mechanic`,
-update them per Work Item 7.)
+**18. `mgmai/engine/engine.py:944-958` — event derivation**
+Emit one `item.acquired`/`item.lost` event per distinct item with a `count`
+field (read from the dict delta), instead of N events for N stacked.
 
-### 6. Test code — `tests/test_corpus.py`
+**19. Membership checks** — `engine.py:687`, `assembler.py:94`,
+`engine/utils.py:132`: `eid in hard.player.inventory` works unchanged with
+a dict.
 
-- **`TestMechanic`** — remove game-over-specific tests:
-  `test_game_over_win` (`line 423`), `test_game_over_lose` (`line 436`),
-  `test_game_over_missing_condition_raises` (`line 459`),
-  `test_game_over_missing_trigger_id_raises` (`line 467`),
-  `test_both_type_and_rules_raises` (`line 475`).
-- Restate `test_neither_type_nor_rules_raises` (`line 485`) to verify rejection
-  of a Mechanic with neither `rules` nor `reactions`.
-- **New `TestGameOverCondition`** — cover valid construction, missing
-  `condition`/`trigger_id` rejection, and both `win`/`lose` types.
-- **`TestResult`** — no changes needed. `Result.game_over` is unchanged
-  (still `Optional[GameOverTrigger]`); its validation is already covered at
-  `line 363`/`390`.
-- **New test for the `ReactionEffects` double-game-over validator** (Work Item 1).
+**20. `mgmai/context/assembler.py:221` — briefing build**
+`hard_inventory=dict(hard.player.inventory)`.
 
-### 7. Test code — `tests/test_engine.py`
+**21. `mgmai/game/commands.py:395-402` — `/inv` rendering**
+Render `name (xN)` when count > 1.
 
-**`TestEngineGameOver` (`line 368`):** the fixture's `win_escape_bag` is now a
-top-level `game_over_condition` polled at end of turn. `test_win_condition`
-(`line 369`) should still pass: setting `padlock_unlocked` and waiting fires the
-end-of-turn poll → `result.game_over.type == "win"`. Verify; if the poll's new
-end-of-turn placement changes timing for this test, adjust the assertion. Add a
-test that a win condition satisfied by a `turn.end` reaction is caught **same
-turn** (the old poll would have missed it until next turn).
+**22. `mgmai/engine/systems/five_e.py:208` — weapon tag scan**
+Iterates keys; works unchanged.
 
-### 8. Test code — `tests/test_reactions.py`
+**23. `mgmai/logging.py:88` — state snapshot**
+Now a dict; works unchanged.
 
-- `test_game_over_mechanic_still_works` (`line 147`) — remove (Game-Over kind
-  gone). Replace with a reaction-only-mechanic construction test if not already
-  covered.
-- `test_game_over_and_encounter_both_rejected` (`line 167`) — remove (the
-  constraint it tests no longer exists).
+**24. Template renderer** — locate the template consuming `hard_inventory`
+and update it to render counts (`xN` when count > 1).
 
-### 9. Validation script — `scripts/validate_adventure.py`
+### Phase 6 — Schema docs
 
-Remove the game-over-type block (`lines 194-198`). Optionally add a check that
-each `game_over_conditions` entry has `type` in `("win","lose")` and a
-`condition` + `trigger_id` (the model already enforces this, so this is
-redundant — skip unless consistency with other corpus checks is desired).
+**25. `schema/hard-state.md:42,51,63-72,394`**
+Change `inventory` type to `object` (item_id → count). Rewrite add/remove
+rules: stackable increments, non-stackable raises on duplicate, `max_stack`
+cap, remove shortfall raises. Update example to `"inventory": {}`.
 
-### 10. Schema documentation — `schema/corpus.md`
+**26. `schema/corpus.md:201-214` — Result**
+Document `add_item_count`/`remove_item_count`. Note `add_item` repeats are
+allowed for stackables (each +1).
 
-**Rewrite the Mechanic section (`lines 1238-1363`):**
-- Describe exactly two kinds: Encounter and Reaction-Only.
-- Remove all Game-Over references; remove `type`/`trigger_id`/`narrative` from
-  the field table. **Keep `condition`**, restated as "Encounter gating condition
-  (optional; evaluated when a `trigger_encounter` targets this mechanic)".
-- Replace the Game-Over JSON example with: (a) an inline `Result.game_over`
-  example (the primary idiom), and (b) a top-level `game_over_conditions`
-  example (the cross-cutting idiom).
+**27. `schema/corpus.md:879-918` — Entity**
+Add `stackable` tag and `max_stack` field to the entity docs.
 
-**New `game_over_conditions` subsection** under Top-Level Structure: explain it
-holds cross-cutting win/loss predicates polled once at end of turn, that
-event-local game-overs should instead use inline `Result.game_over`, and that
-inline is the preferred idiom when a single result owns the outcome.
+**28. `schema/corpus.md:81-116` — condition strings**
+`inventory` domain now supports operators (`inventory:coins >= 30`).
 
-**Fix type references:**
-- `line 224` (`Result` table): `"game_over": Mechanic` → `"game_over": GameOverTrigger`.
-- `line 807` (`ReactionEffect` table): `"game_over": Mechanic` → `"game_over": GameOverTrigger`.
+**29. `schema/actions.md`**
+- Update `TransferAction` (`:418-427`): document `given_counts`/
+  `taken_counts`; non-stackable items reject count > 1.
+- Update `hard_inventory`/`inventory_added`/`inventory_removed` (`:118-119,
+  648-649, 711`) to dict form.
+- Document the room-side depletion limitation for `taken_counts`.
 
-**Document the `effect.game_over` vs `effect.result.game_over` exclusivity**
-(Work Item 1) in the Reaction Effect section.
+**30. `schema/events.md:60-61`**
+Add `count` to `item.acquired`/`item.lost` payloads.
 
-### 11. Verify
+### Phase 7 — Tests
 
-- `pytest` (full suite).
-- Type-check and lint per the project's commands (check `AGENTS.md` / `pyproject.toml`;
-  if absent, ask and record them in `AGENTS.md`).
-- Play-test Bag of Holding: confirm the escape win, the key-lost loss, and the
-  astral-plane loss (now inline) all still fire; confirm spider combat death
-  still ends the game (via the combat path, now without the redundant mechanic).
+**31. Migrate list-form inventory fixtures to dict form:**
+`tests/fixtures/hard-state.json`, `tests/fixtures/mini_adventure/hard-state.json`,
+the sample adventure's `hard-state.json`, `autosave.json` (if retained),
+and shared fixtures in `tests/helpers.py`.
+
+**32. `tests/test_conditions.py:180`**
+Rewrite `test_inventory_with_operator_raises` → count-operator tests; add
+`inventory:coins >= 30` true/false cases and presence (`count > 0`).
+
+**33. `tests/test_state_manager.py:225,229,235,659,698`**
+Update for dict inventory. Add: quantity add/remove, non-stackable dedup
+raises, `max_stack` cap raises, remove-shortfall raises.
+
+**34. `tests/test_actions.py:92`**
+Update `test_transfer`; add `given_counts`/`taken_counts` validation cases
+(non-empty check, count ≥ 1).
+
+**35. `tests/test_resolver.py`**
+Update give/take/equip for dict deltas. Add: take 300 coins (stackable,
+increments by 300), give 300 coins (validates sufficient, shortfall
+fails), take 2 of a non-stackable sword (rejected), non-stackable
+duplicate add skipped, remove-shortfall skipped, equip-one-from-stack.
+
+**36. `tests/test_event_bus.py:520`**
+Update provenance test for the `count` field on `item.acquired`/`item.lost`.
+
+**37. `tests/test_equip_gear.py`**
+Add equip-one-from-stack; verify non-stackable equip unchanged.
+
+**38. `tests/test_assembler.py:478`, `tests/test_commands.py:223`**
+Dict briefing; `/inv` `xN` rendering.
+
+**39. New money-scenario test**
+- Start: `inventory = {"coins": 50}`.
+- Grant 30 via `add_item_count` → 80.
+- `inventory:coins >= 30` true; `>= 51` false; `>= 80` true.
+- Pick up 300 via `taken_counts` in one transfer → 380.
+- Spend 30 via `remove_item_count` → 350.
+- Spend 1000 → manager raises (shortfall); resolver path skips + logs.
+- `max_stack` cap: add past cap raises.
+
+---
+
+## Rollback risk
+
+Non-zero (unlike the original discrete-dupes plan). The sample adventure's
+`hard-state.json` and all inventory fixtures must be migrated to dict form,
+and ~7 test files need updates. No behaviour change for unique items
+(count stays 1). The migration is mechanical because `in`/iteration are
+dict-compatible.
+
+## Implementation order
+
+1. Phases 1–2 (models + manager) — establish the new representation and
+   mutation semantics.
+2. Phase 3 (resolver) — feed quantities through transfers, results, equip.
+3. Phase 4 (conditions) — enable `inventory:id >= N`.
+4. Phase 5 (engine/briefing/CLI/templates) — surface counts to LLM and
+   player.
+5. Phase 6 (docs) — update all schema references.
+6. Phase 7 (tests) — migrate fixtures, rewrite the operator test, add the
+   money scenario.
+
+Run `pytest` and the lint/typecheck commands after each phase.

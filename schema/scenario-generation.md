@@ -1586,7 +1586,7 @@ Follow this exact structure:
 {
   "player": {
     "location": "<start_room_id>",
-    "inventory": [],
+    "inventory": {},
     "equipped": [],
     "stats": { /* only if corpus has a stats block */ },
     "level": 1,
@@ -1617,7 +1617,7 @@ Follow this exact structure:
 
 1. **`player.location`** — set to the room ID with `is_start_room: true`
 
-2. **`player.inventory`** — always `[]` at start unless the scenario specifies
+2. **`player.inventory`** — always `{}` at start unless the scenario specifies
    starting items (extremely rare). Even if the player "has" something narratively,
    it's usually a soft item or entity in the start room.
 
@@ -1884,7 +1884,7 @@ Elements inside `any` and `all` arrays may be:
 | Domain       | Example                          | Meaning |
 |--------------|----------------------------------|---------|
 | `flag`       | `flag:door_opened == true`       | Hard-state flag |
-| `inventory`  | `inventory:rusty_key`            | Item entity ID in player inventory |
+| `inventory`  | `inventory:rusty_key`            | Item entity ID in player inventory (count > 0); operators like `inventory:coins >= 30` are supported for stackable items |
 | `tag`        | `tag:weapon`                     | Any item with this tag in inventory or equipped gear |
 | `entity`     | `entity:spider.alive == true`    | Entity hard-state field |
 | `room`       | `room:axe_head.visited == true`  | Room state field |
@@ -1902,7 +1902,8 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
 ### Usage notes
 
 - For `unless`, the inner condition being true **blocks** the action
-- `inventory` and `tag` test presence, not equality
+- `inventory` tests presence (count > 0) by default and supports quantity
+  operators for stackable items; `tag` tests presence, not equality
 - `tag:weapon` succeeds if *any* item in inventory or equipped gear has the
   `"weapon"` tag
 - `stat:STR >= 12` evaluates the player's current Strength value

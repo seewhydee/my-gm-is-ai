@@ -248,7 +248,7 @@ class TestInventoryCommand:
         """Render inventory with actual state items, using corpus names."""
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
         hard = state_manager.hard_state
-        hard.player.inventory = ["rusty_key"]
+        hard.player.inventory = {"rusty_key": 1}
         hard.player.equipped = ["toenail_sword"]
 
         from mgmai.game.commands import Commands
@@ -265,11 +265,25 @@ class TestInventoryCommand:
         assert "toenail_sword" not in output
         assert "rusty_key" not in output
 
+    def test_inv_with_stack_count(self, state_manager, monkeypatch) -> None:
+        """Render inventory shows quantity for items with count > 1."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        hard = state_manager.hard_state
+        hard.player.inventory = {"rusty_key": 5}
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/inv")
+
+        output = "\n".join(rendered)
+        assert "Rusty Key (x5)" in output
+
     def test_inv_empty(self, state_manager, monkeypatch) -> None:
         """Render inventory when carrying nothing."""
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
         hard = state_manager.hard_state
-        hard.player.inventory = []
+        hard.player.inventory = {}
         hard.player.equipped = []
 
         from mgmai.game.commands import Commands
@@ -311,7 +325,7 @@ class TestInventoryCommand:
         from mgmai.models.corpus import EquipBlock
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
         hard = state_manager.hard_state
-        hard.player.inventory = []
+        hard.player.inventory = {}
         sword = state_manager.corpus.entities["toenail_sword"]
         hard.player.equipped = ["toenail_sword"]
         # ac_bonus is a 5e-specific extra, so rebuild the block with extras.

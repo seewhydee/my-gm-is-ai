@@ -506,16 +506,16 @@ class TestStateChangeEventDerivation:
     def test_item_acquired_event(self):
         from mgmai.models.hard_state import PlayerState
         hard = HardGameState(player=PlayerState(location="room1"))
-        changes = HardStateChanges(inventory_added=["rusty_key"])
+        changes = HardStateChanges(inventory_added={"rusty_key": 1})
         events = _derive_state_events(changes, old_flags={}, old_stats={}, old_entity_states={}, hard=hard)
-        assert ("item.acquired", {"item_id": "rusty_key", "source": "interaction"}) in events
+        assert ("item.acquired", {"item_id": "rusty_key", "count": 1, "source": "interaction"}) in events
 
     def test_item_lost_event(self):
         from mgmai.models.hard_state import PlayerState
         hard = HardGameState(player=PlayerState(location="room1"))
-        changes = HardStateChanges(inventory_removed=["rusty_key"])
+        changes = HardStateChanges(inventory_removed={"rusty_key": 1})
         events = _derive_state_events(changes, old_flags={}, old_stats={}, old_entity_states={}, hard=hard)
-        assert ("item.lost", {"item_id": "rusty_key", "reason": "interaction"}) in events
+        assert ("item.lost", {"item_id": "rusty_key", "count": 1, "reason": "interaction"}) in events
 
     def test_item_event_provenance(self):
         """The derived source/reason comes from the provenance maps recorded
@@ -523,18 +523,34 @@ class TestStateChangeEventDerivation:
         from mgmai.models.hard_state import PlayerState
         hard = HardGameState(player=PlayerState(location="room1"))
         changes = HardStateChanges(
-            inventory_added=["gift", "sheathed_sword"],
-            inventory_removed=["potion", "blade"],
+            inventory_added={"gift": 1, "sheathed_sword": 1},
+            inventory_removed={"potion": 1, "blade": 1},
             inventory_added_sources={"gift": "transfer", "sheathed_sword": "unequip"},
             inventory_removed_reasons={"potion": "transfer", "blade": "equip"},
         )
         events = _derive_state_events(
             changes, old_flags={}, old_stats={}, old_entity_states={}, hard=hard,
         )
-        assert ("item.acquired", {"item_id": "gift", "source": "transfer"}) in events
-        assert ("item.acquired", {"item_id": "sheathed_sword", "source": "unequip"}) in events
-        assert ("item.lost", {"item_id": "potion", "reason": "transfer"}) in events
-        assert ("item.lost", {"item_id": "blade", "reason": "equip"}) in events
+        assert ("item.acquired", {"item_id": "gift", "count": 1, "source": "transfer"}) in events
+        assert ("item.acquired", {"item_id": "sheathed_sword", "count": 1, "source": "unequip"}) in events
+        assert ("item.lost", {"item_id": "potion", "count": 1, "reason": "transfer"}) in events
+        assert ("item.lost", {"item_id": "blade", "count": 1, "reason": "equip"}) in events
+
+    def test_item_event_with_count(self):
+        """item.acquired / item.lost include the count for stackable items."""
+        from mgmai.models.hard_state import PlayerState
+        hard = HardGameState(player=PlayerState(location="room1"))
+        changes = HardStateChanges(
+            inventory_added={"gold_coin": 50},
+            inventory_removed={"arrow": 10},
+            inventory_added_sources={"gold_coin": "transfer"},
+            inventory_removed_reasons={"arrow": "transfer"},
+        )
+        events = _derive_state_events(
+            changes, old_flags={}, old_stats={}, old_entity_states={}, hard=hard,
+        )
+        assert ("item.acquired", {"item_id": "gold_coin", "count": 50, "source": "transfer"}) in events
+        assert ("item.lost", {"item_id": "arrow", "count": 10, "reason": "transfer"}) in events
 
     def test_no_events_for_empty_changes(self):
         from mgmai.models.hard_state import PlayerState
@@ -684,7 +700,7 @@ class TestDialogueEndedNoDuplicate:
         assert engine_result.success is True
         assert soft.dialogue_state.active_npc is None
         # The item should have been added exactly once.
-        assert hard.player.inventory.count("rusty_key") == 1
+        assert hard.player.inventory.get("rusty_key") == 1
 
 
 class TestTalkPathSourceType:

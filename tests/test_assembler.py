@@ -476,14 +476,14 @@ class TestPlayerState:
         assert result.player_state.location == "axe_head"
 
     def test_hard_inventory(self, state_manager):
-        state_manager.hard_state.player.inventory = ["rusty_key", "toenail_sword"]
+        state_manager.hard_state.player.inventory = {"rusty_key": 1, "toenail_sword": 1}
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
             state_manager.soft_state,
             "look",
         )
-        assert result.player_state.hard_inventory == ["rusty_key", "toenail_sword"]
+        assert result.player_state.hard_inventory == {"rusty_key": 1, "toenail_sword": 1}
 
     def test_soft_inventory(self, state_manager):
         state_manager.soft_state.soft_inventory = ["rock", "cork"]
@@ -920,7 +920,7 @@ class TestBuildContainedEntities:
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": False}
-        hard.player.inventory = ["toenail_sword"]
+        hard.player.inventory = {"toenail_sword": 1}
         result = build_contains(
             corpus.entities["rubbish_pile"], hard, corpus,
         )
@@ -934,7 +934,7 @@ class TestBuildContainedEntities:
         hard.entity_states["toenail_sword"] = {"hidden": False}
         # Equipped items are no longer in inventory but must still be
         # filtered out so they don't reappear inside their container.
-        hard.player.inventory = []
+        hard.player.inventory = {}
         hard.player.equipped = ["toenail_sword"]
         result = build_contains(
             corpus.entities["rubbish_pile"], hard, corpus,
@@ -1020,7 +1020,7 @@ class TestContainedEntitiesSurfacing:
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
         hard.entity_states["toenail_sword"] = {"hidden": False}
-        hard.player.inventory = ["toenail_sword"]
+        hard.player.inventory = {"toenail_sword": 1}
         result = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish = _find_entity(result, "rubbish_pile")
         assert rubbish is not None

@@ -78,17 +78,19 @@ sub-condition is a condition string or nested condition.
 
 Condition strings have one of two forms:
 
-- `<domain>:<key>` — presence-only check (allowed for `inventory`,
-  `equipped`, `tag`, and `topic` domains).
+- `<domain>:<key>` — presence-only check (allowed for `equipped`,
+  `tag`, and `topic` domains). For `inventory`, omitting the operator
+  checks that the count is greater than 0.
 
 - `<domain>:<key> <op> <value>` — compare to `<value>`. Supported:
   `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`,
-  `<= <number>`, `< <number>`.
+  `<= <number>`, `< <number>`. `inventory` supports operators for
+  quantity comparisons.
 
 | Domain       | Key                                                 |
 |--------------|-----------------------------------------------------|
 | `flag`       | Global flag ID                                      |
-| `inventory`  | Item entity ID in player's inventory                |
+| `inventory`  | Item entity ID in player's inventory; operators compare quantity |
 | `equipped`   | Item entity ID in player's equipped gear.           |
 | `tag`        | Item with this tag in inventory/equipment           |
 | `entity`     | Entity with named state field (e.g. `spider.alive`) |
@@ -113,7 +115,9 @@ Notes:
 **Examples**:
 - `flag:daytime == true` holds iff the `daytime` flag is true.
 - `inventory:rusty_key` holds iff item with entity ID `rusty_key` is
-  in inventory; not satisfied if the item exists outside inventory.
+  in inventory (count > 0); not satisfied if the item exists outside inventory.
+- `inventory:gold_coins >= 30` holds iff the player has at least 30 of the
+  stackable item `gold_coins`.
 - `topic:abandonment` holds iff the topic has been discussed in the
   current dialogue (`soft_state.dialogue_state.topics_discussed`)
 - `stat:STR >= 5` holds iff player's current STR stat is >= 5.
@@ -199,6 +203,7 @@ and `failure` branches of non-deterministic game mechanics.
 {
   "narrative": "Looting the troll, you find a helmet and a dagger, probably taken from some hapless adventurer",
   "add_item": [ "helmet", "enchanted_dagger" ],
+  "add_item_count": { "gold_coins": 50 },
   "set_flag": { "old_gear_found" : true },
   "set_entity_state": { "troll": { "looted" : true } },
   "reveals": "Found gear belonging to another adventurer on a troll.",
@@ -210,8 +215,10 @@ ALL fields in a Result object are optional.
 | Field               | Type     | Description                         |
 |---------------------|----------|-------------------------------------|
 | `narrative`         | string   | Narrative description of the result |
-| `add_item`          | string[] | Item IDs to add to inventory        |
-| `remove_item`       | string[] | Item IDs to drop from inventory     |
+| `add_item`          | string[] | Item IDs to add to inventory (each +1) |
+| `add_item_count`    | object   | Item IDs → integer counts to add    |
+| `remove_item`       | string[] | Item IDs to remove from inventory (each -1) |
+| `remove_item_count` | object   | Item IDs → integer counts to remove |
 | `set_flag`          | object   | `{ "<flag_id>": <value>, ... } `    |
 | `set_room_state`    | object   | `{ "<room_id>": { "<field>": <value>, ...}, ...}`   |
 | `set_entity_state`  | object   | `{ "<entity_id>": { "<field>": <value>, ... }, ...}`|
@@ -253,8 +260,22 @@ Notes:
   - `{ "STR": { "value": -4 } }` decreases strength by 4
   - `{ "INT": { "mode": "set", "value": 3 } }` sets intelligence to 3
 
-- `adjust_attitude` keys are NPC entity IDs; values are integer
-  deltas.  The engine clamps to `attitude_limits.[min, max]` and
+- `add_item` adds one of each listed item. Repeats are allowed and
+  increment the count independently, so `["potion", "potion"]` adds 2
+  potions. Stackable items aggregate; non-stackable items raise an error
+  if a duplicate would be created.
+
+- `add_item_count` adds explicit quantities (e.g.
+  `{ "gold_coins": 50 }`). It may be combined with `add_item` for the
+  same item; counts are summed.
+
+- `remove_item` removes one of each listed item. Repeats remove multiple
+  counts.
+
+- `remove_item_count` removes explicit quantities. If the inventory has
+  fewer than requested, the deterministic path raises an error; when the
+  values come from fuzzy LLM output, the engine silently skips the
+  shortfall.
   respects `step_per_turn`.  See [NPC attitude](#npc-attitude).
 
 - `reveals` appends to `soft_state.revealed_hints` (deduplicated) to
@@ -436,13 +457,13 @@ Notes:
 
 A UsageOverride object can be placed in the optional `using_results`
 field of a GatedCheck or Resolvable.  It accommodates player commands
-of the form "[ACTION] using [ITEM]".  It should be a dict mapping item
-[entity IDs](#entity) to one of the following resolution paths:
+of the form "[ACTION] using [ITEM]".  It should be an object mapping
+item [entity IDs](#entity) to one of the following resolution paths:
 
-- a dict with `"result"` keyed to a fixed [Result](#result); OR
+- an object with `"result"` keyed to a fixed [Result](#result); OR
 
-- a dict with `check`, `success`, and `failure` (optional), defining
-  an alternative [Check](#check),
+- an object with `check`, `success`, and `failure` (optional),
+  defining an alternative [Check](#check),
 
 This overrides the usual resolution when using the specified item.
 
@@ -560,27 +581,26 @@ Notes:
   every possible exit regardless of initial availability / visibility.
   Each exit can be individually gated and/or hidden.
 
-- State fields describe distinct aspects of the room's state, and are
-  labeled by room-unique IDs.  There are two reserved state fields
-  managed by the engine, which need not be declared in `state_fields`:
+- State fields describe various mutable aspects of the room's state.
+  They are labeled by room-unique IDs.  There are two reserved state
+  fields, which are managed by the engine and need not be declared:
 
   - `visited` is set to `true` when the player enters a room.
 
-  - `is_current` is auto-computed, and true only for the player's
-    current room.  Do not move the player by trying to change this;
-    use `set_player_location` in a Result.
+  - `is_current` is true only for the player's current room.  This is
+    auto-computed, so do not move the player by trying to change this;
+    use `set_player_location` in a Result instead.
 
-  Any other state fields needed for the adventure must be declared in
-  `state_fields`.  This should be a dict keyed by the state field
-  name, with values of the form
+  Any other state field needed by the adventure should be declared in
+  `state_fields`, keyed by its ID and having values of the form
 
-    `{ "type": TYPE, "description": DESC, "initial": VALUE }`
+    `{ "type": TYPE, "description": DESC, "initial": INIT }`
 
   where
 
   - TYPE is one of `"boolean"`, `"number"`, or `"string"`
   - DESC is a string describing the nature of the state field
-  - VALUE is a value matching the declared type.
+  - INIT is the value at game start, matching the declared type.
 
 - `interactions` is an array of [Resolvables](#resolvable) describing
   operations performable on the room.  For each Resolvable,
@@ -767,7 +787,7 @@ The event that fires a reaction is determined by two objects:
   entity E, the trigger is the player entering any room where E is
   directly present (see [Room](#room)).
 
-- The **Event Context** – a flat dict of details about the event.  For
+- The **Event Context** – a flat map of details about the event.  For
   example, a `"room.entered"` trigger provides the context key
   `room_id`: the ID of the room entered.
 
@@ -880,6 +900,7 @@ Entities are unique objects that appear in rooms or inventory.
     "tags": ["<tag>", ...],
     "take_check": { /* Gated Check (optional) */ },
     "equip_block": { /* equip_block */ },
+    "max_stack": 99,
     "interactions": [ { /* interaction */ } ],
     "on_examine": [ { /* on_examine event */ } ],
     "reactions": [ { /* reaction */ } ],
@@ -918,9 +939,16 @@ Notes:
   The special `"container"` tag should be placed on entities that act
   as [containers](#container) with open/close functionality.
 
-- State fields describe distinct aspects of the entity's state, and
-	are labeled by entity-unique IDs.  There are several reserved state
-  fields, which need not be declared in `state_fields`:
+  The special `"stackable"` tag may be placed on item entities to allow
+  their inventory count to exceed 1. Stackable items support quantity
+  comparisons in conditions (e.g. `inventory:coins >= 30`).
+
+- `max_stack` (items only, optional) caps the inventory count for a
+  stackable item. Must be ≥ 1 if set.
+
+- State fields describe various mutable aspects of the entity's state.
+  They are labeled by entity-unique IDs.  There are several reserved
+  state fields, which need not be declared in `state_fields`:
 
   | Reserved Field | Type    | Purpose                                 |
   |----------------|---------|-----------------------------------------|
@@ -932,24 +960,24 @@ Notes:
   | `current_hp`   | number  | Current hit points (for combat)         |
   | `open`         | boolean | Container open/closed state             |
 
-  The reserved state field `hidden` declares explicit concealment
-  (e.g., a lurking enemy, or a sword buried in rubble). When `true`,
-  the engine omits the entity (even from the GM, to avoid leakage).
-  DO NOT use `hidden` for entities that are merely inside a closed
+  The `hidden` state field declares explicit concealment (e.g., a
+  lurking enemy, or a sword buried in rubble). When `true`, the engine
+  omits the entity (even from the GM, to avoid leakage).  DO NOT use
+  `hidden` for entities that are merely inside a closed
   [container](#container); that kind of concealment is controlled by
   the container's `open` state.
 
-  Any other state fields needed for the adventure (`looted`, `cursed`,
-  etc.) must be declared in `state_fields`.  This should be a dict
-  keyed by the state field name, with values of the form
+  Any other state field needed by the adventure (`looted`, `cursed`,
+  etc.) should be declared in `state_fields`, keyed by its ID and
+  having values of the form
 
-    `{ "type": TYPE, "description": DESC, "initial": VALUE }`
+    `{ "type": TYPE, "description": DESC, "initial": INIT }`
 
   where
 
   - TYPE is one of `"boolean"`, `"number"`, or `"string"`
   - DESC is a string describing the nature of the state field
-  - VALUE is a value matching the declared type.
+  - INIT is the value at game start, matching the declared type.
   
 - `interactions` is an array of [Resolvables](#resolvable) listing
   non-generic operations performable on the entity.  Each must have an
@@ -1188,7 +1216,7 @@ condition, check, and/or branching outcomes.
 #### NPC Knowledge
 
 The `will_reveal` field describes discrete pieces of knowledge an NPC
-can share with the player.  It should be a dict keyed by topic IDs
+can share with the player.  It should be an object keyed by topic IDs
 (entity-unique), with value objects having following fields:
 
 | Field          | Type     | Description                              |
@@ -1273,8 +1301,8 @@ following, the engine clears the `following` state field.
 
 ## Mechanic
 
-Mechanics are named bundles of game logic that are not tied to a
-specific room or entity.  They live in a dict in the Corpus' top-level
+Mechanics are named bundles of game logic not tied to a specific room
+or entity.  They live in an object in the Corpus' top-level
 `"mechanics"` field (see [Top-Level Structure](#top-level-structure):
 
 ```json
@@ -1435,7 +1463,7 @@ each Corpus' `stats` field at [top-level](top-level-structure).
 | Field         | Type   | Description                    |
 |---------------|--------|--------------------------------|
 | `system`      | string | RPG system ID, e.g. `"5e"`     |
-| `definitions` | object | Dict of stat key → `{ name }`  |
+| `definitions` | object | Map of stat key → `{ name }`   |
 
 `system` specifies how to perform [Stat Checks](#stat-checks).  If the
 value is not a supported RPG system, the adventure will not load.
@@ -1471,16 +1499,6 @@ This field is typically generated during cross-validation, after all
 corpus sections are complete. It is optional at the schema level — the
 engine treats it as `Optional[List[str]]` and skips validation when
 absent.
-
----
-
-## Example Module
-
-In the reference implementation, the module corpus is loaded once at
-startup from a JSON file. The engine holds it in memory as a read-only
-data structure. No vector database or semantic search is needed — all
-lookups are by deterministic ID.
-
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
 > This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

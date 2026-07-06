@@ -126,7 +126,9 @@ class EquipBlock(BaseModel):
 class Result(BaseModel):
     narrative: Optional[str] = None
     add_item: Optional[List[str]] = None
+    add_item_count: Optional[Dict[str, int]] = None
     remove_item: Optional[List[str]] = None
+    remove_item_count: Optional[Dict[str, int]] = None
     set_flag: Optional[Dict[str, bool]] = None
     alter_stat: Optional[Dict[str, StatModifier]] = None
     set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
@@ -143,7 +145,8 @@ class Result(BaseModel):
         return any(
             getattr(self, f) is not None
             for f in (
-                "narrative", "add_item", "remove_item",
+                "narrative", "add_item", "add_item_count",
+                "remove_item", "remove_item_count",
                 "set_flag", "alter_stat", "set_entity_state", "set_room_state",
                 "adjust_attitude", "reveals", "then_check",
                 "player_damage", "set_player_location",
@@ -428,6 +431,7 @@ class Entity(BaseModel):
     follower: Optional[FollowerConfig] = None
     combat: Optional[CombatBlock] = None
     equip_block: Optional[EquipBlock] = None
+    max_stack: Optional[int] = None
     reactions: List[Reaction] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -448,6 +452,13 @@ class Entity(BaseModel):
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'equip_block'. "
                 f"Only 'item' entities may carry equip_block.")
+        if self.type != "item" and self.max_stack is not None:
+            raise ValueError(
+                f"Entity type '{self.type}' must not have 'max_stack'. "
+                f"Only 'item' entities may carry max_stack.")
+        if self.type == "item" and self.max_stack is not None and self.max_stack < 1:
+            raise ValueError(
+                "Item 'max_stack' must be >= 1 if set.")
         if self.type == "item" and not self.name:
             raise ValueError(
                 "Item entities must have a non-empty 'name' "

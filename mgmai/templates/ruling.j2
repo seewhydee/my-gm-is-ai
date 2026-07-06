@@ -15,7 +15,7 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 - **adventure_title**, **setting**, **tone**: One or two sentences about the adventure.
 - **turn**: Current turn number.
 - **current_room**: The room the player is in — ID, name, description, available exits, available interactions, room notes, and `soft_items` (soft items the player has already encountered here). Its `entities_visible` array lists each non-concealed entity in the room. Every entity entry carries: `id`; `name` (display label; the `id` is the canonical snake_case key); `type`; `description` (the canonical prose — match the player's natural-language wording against this field to identify the entity); `state` (mutable fields, including `attitude` for NPCs); `entity_notes`; `soft_items` (soft items on that entity); `contains` (items nested inside it — see *Containers & Items* below); `dialogue_paths` (NPCs only); and `combat_block` (combat-capable entities only).
-- **player_state**: `location`; `hard_inventory` (item IDs); `soft_inventory` (soft item names like "rock"); `equipped_items` (each with `equip_tags` and `effects_summary`); `effective_ac`; `effective_stats`; `active_flags`; entity notes on the player; `player_stats` (when the corpus defines stats, each stat's value and computed modifier, e.g. `"STR": { "value": 14, "modifier": 2 }`); and `combat_stats` (`current_hp`, `max_hp`, `ac`, `proficiency_bonus`) when HP is tracked.
+- **player_state**: `location`; `hard_inventory` (item IDs mapped to counts, e.g. `{"coins": 80}`); `soft_inventory` (soft item names like "rock"); `equipped_items` (each with `equip_tags` and `effects_summary`); `effective_ac`; `effective_stats`; `active_flags`; entity notes on the player; `player_stats` (when the corpus defines stats, each stat's value and computed modifier, e.g. `"STR": { "value": 14, "modifier": 2 }`); and `combat_stats` (`current_hp`, `max_hp`, `ac`, `proficiency_bonus`) when HP is tracked.
 - **player_knowledge_topics**: Topics the player has learned during the adventure, each as `{ "topic_id": "...", "description": "..." }`. Use these to remember what the player already knows; do not have an NPC re-reveal or contradict them.
 - **recent_history**: Last few turn summaries (structured, not verbatim).
 - **dialogue_context**: (if in conversation) Active NPC details, attitude, dialogue guidelines, recent exchanges, topics discussed, and revealed topics.
@@ -62,9 +62,11 @@ You MUST output a single JSON object with the following structure.
 
 **transfer** — Give or take items:
 - `target` (string, required): The source/recipient — the container or NPC entity ID, or the room ID for items loose on the floor. See *Containers & Items* below.
-- `given_items` (array of strings, optional): Item IDs or soft item names to give
-- `taken_items` (array of strings, optional): Item IDs or soft item names to take
-- At least one of `given_items` or `taken_items` must be non-empty
+- `given_items` (array of strings, optional): Item IDs or soft item names to give (each counts as one)
+- `taken_items` (array of strings, optional): Item IDs or soft item names to take (each counts as one)
+- `given_counts` (object, optional): Item IDs mapped to quantities to give, e.g. `{"coins": 50}`
+- `taken_counts` (object, optional): Item IDs mapped to quantities to take, e.g. `{"coins": 50}`
+- At least one of the four item fields must be non-empty
 
 **wait** — Pass time or do something plot-insignificant:
 - No additional fields. Use `detail` to describe what the player does (e.g. "checking inventory contents").

@@ -70,7 +70,7 @@ class TestLoadAndValidation:
         sm.corpus = StateManager.load_corpus(FIXTURES_DIR / "corpus.json")
         sm.hard_state = StateManager.load_hard_state(FIXTURES_DIR / "hard-state.json")
         sm.soft_state = StateManager.load_soft_state(FIXTURES_DIR / "soft-state.json")
-        sm.hard_state.player.inventory.append("magic_wand")
+        sm.hard_state.player.inventory["magic_wand"] = 1
         with pytest.raises(ValueError, match="No matching entity: "):
             sm.validate_cross_references()
 
@@ -223,19 +223,62 @@ class TestApplyHardChanges:
         assert manager.hard_state.player.location == "bag_floor"
 
     def test_inventory_add(self, manager: StateManager) -> None:
-        manager.apply_hard_changes(HardStateChanges(inventory_added=["toenail_sword"]))
+        manager.apply_hard_changes(HardStateChanges(inventory_added={"toenail_sword": 1}))
         assert "toenail_sword" in manager.hard_state.player.inventory
+        assert manager.hard_state.player.inventory["toenail_sword"] == 1
 
     def test_inventory_remove(self, manager: StateManager) -> None:
-        manager.hard_state.player.inventory = ["rusty_key", "toenail_sword"]
-        manager.apply_hard_changes(HardStateChanges(inventory_removed=["rusty_key"]))
+        manager.hard_state.player.inventory = {"rusty_key": 1, "toenail_sword": 1}
+        manager.apply_hard_changes(HardStateChanges(inventory_removed={"rusty_key": 1}))
         assert "rusty_key" not in manager.hard_state.player.inventory
         assert "toenail_sword" in manager.hard_state.player.inventory
 
-    def test_inventory_remove_missing_is_noop(self, manager: StateManager) -> None:
-        manager.hard_state.player.inventory = []
-        manager.apply_hard_changes(HardStateChanges(inventory_removed=["missing"]))
-        assert manager.hard_state.player.inventory == []
+    def test_inventory_remove_missing_raises(self, manager: StateManager) -> None:
+        manager.hard_state.player.inventory = {}
+        with pytest.raises(ValueError, match="Cannot remove"):
+            manager.apply_hard_changes(HardStateChanges(inventory_removed={"missing": 1}))
+
+    def test_inventory_add_quantity(self, manager: StateManager) -> None:
+        from tests.helpers import _mk_item_entity
+        manager.corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        manager.apply_hard_changes(HardStateChanges(inventory_added={"gold_coin": 5}))
+        assert manager.hard_state.player.inventory["gold_coin"] == 5
+
+    def test_inventory_add_quantity_to_existing(self, manager: StateManager) -> None:
+        from tests.helpers import _mk_item_entity
+        manager.corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        manager.hard_state.player.inventory["gold_coin"] = 5
+        manager.apply_hard_changes(HardStateChanges(inventory_added={"gold_coin": 3}))
+        assert manager.hard_state.player.inventory["gold_coin"] == 8
+
+    def test_inventory_remove_quantity(self, manager: StateManager) -> None:
+        manager.hard_state.player.inventory = {"gold_coin": 5}
+        manager.apply_hard_changes(HardStateChanges(inventory_removed={"gold_coin": 3}))
+        assert manager.hard_state.player.inventory["gold_coin"] == 2
+
+    def test_inventory_non_stackable_duplicate_raises(self, manager: StateManager) -> None:
+        manager.hard_state.player.inventory = {"toenail_sword": 1}
+        with pytest.raises(ValueError, match="Cannot add non-stackable"):
+            manager.apply_hard_changes(HardStateChanges(inventory_added={"toenail_sword": 1}))
+
+    def test_inventory_max_stack_cap_raises(self, manager: StateManager) -> None:
+        from tests.helpers import _mk_item_entity
+        manager.corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        manager.corpus.entities["gold_coin"].max_stack = 10
+        manager.hard_state.player.inventory = {"gold_coin": 8}
+        with pytest.raises(ValueError, match="max_stack"):
+            manager.apply_hard_changes(HardStateChanges(inventory_added={"gold_coin": 5}))
+
+    def test_inventory_remove_shortfall_raises(self, manager: StateManager) -> None:
+        manager.hard_state.player.inventory = {"gold_coin": 2}
+        with pytest.raises(ValueError, match="Cannot remove"):
+            manager.apply_hard_changes(HardStateChanges(inventory_removed={"gold_coin": 5}))
 
     def test_flags_set(self, manager: StateManager) -> None:
         manager.apply_hard_changes(HardStateChanges(flags_set={"spider_fled": True}))
@@ -662,7 +705,7 @@ class TestApplyCharSheet:
             "system": "5e",
             "player": {
                 "location": "bag_floor",
-                "inventory": ["toenail_sword"],
+                "inventory": {"toenail_sword": 1},
                 "stats": {
                     "STR": 15,
                     "DEX": 14,
@@ -701,7 +744,7 @@ class TestApplyCharSheet:
             sm._apply_char_sheet_data({
                 "system": "5e",
                 "player": {
-                    "inventory": ["magic_wand"],
+                    "inventory": {"magic_wand": 1},
                     "stats": {
                         "STR": 15,
                         "DEX": 14,
@@ -755,7 +798,7 @@ class TestSaveLoadRoundtrip:
 
     def test_roundtrip_preserves_core_state(self, manager, tmp_path) -> None:
         manager.hard_state.player.location = "bag_floor"
-        manager.hard_state.player.inventory = ["rusty_key", "toenail_sword"]
+        manager.hard_state.player.inventory = {"rusty_key": 1, "toenail_sword": 1}
         manager.hard_state.flags["my_flag"] = True
         manager.hard_state.turn_count = 7
         manager.hard_state.entity_states["spider"]["alive"] = False

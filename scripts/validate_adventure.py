@@ -41,7 +41,9 @@ def _collect_addable_from_result(result, addable_entities: set[str]) -> None:
     if result is None:
         return
     if result.add_item:
-        addable_entities.add(result.add_item)
+        addable_entities.update(result.add_item)
+    if result.add_item_count:
+        addable_entities.update(result.add_item_count.keys())
 
 
 def validate_adventure(adventure_dir: Path) -> list[str]:
@@ -129,19 +131,31 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
     for room in corpus.rooms.values():
         for inter in room.interactions:
             if inter.result and inter.result.add_item:
-                addable_entities.add(inter.result.add_item)
+                addable_entities.update(inter.result.add_item)
             if inter.success and inter.success.add_item:
-                addable_entities.add(inter.success.add_item)
+                addable_entities.update(inter.success.add_item)
             if inter.failure and inter.failure.add_item:
-                addable_entities.add(inter.failure.add_item)
+                addable_entities.update(inter.failure.add_item)
+            if inter.result and inter.result.add_item_count:
+                addable_entities.update(inter.result.add_item_count.keys())
+            if inter.success and inter.success.add_item_count:
+                addable_entities.update(inter.success.add_item_count.keys())
+            if inter.failure and inter.failure.add_item_count:
+                addable_entities.update(inter.failure.add_item_count.keys())
     for entity in corpus.entities.values():
         for inter in entity.interactions:
             if inter.result and inter.result.add_item:
-                addable_entities.add(inter.result.add_item)
+                addable_entities.update(inter.result.add_item)
             if inter.success and inter.success.add_item:
-                addable_entities.add(inter.success.add_item)
+                addable_entities.update(inter.success.add_item)
             if inter.failure and inter.failure.add_item:
-                addable_entities.add(inter.failure.add_item)
+                addable_entities.update(inter.failure.add_item)
+            if inter.result and inter.result.add_item_count:
+                addable_entities.update(inter.result.add_item_count.keys())
+            if inter.success and inter.success.add_item_count:
+                addable_entities.update(inter.success.add_item_count.keys())
+            if inter.failure and inter.failure.add_item_count:
+                addable_entities.update(inter.failure.add_item_count.keys())
     # Also check on_examine events' add_item and set_entity_state (unhide)
     for entity in corpus.entities.values():
         for event in entity.on_examine:

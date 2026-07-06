@@ -115,7 +115,7 @@ class TestAxeHandleLowerWebbing:
     def test_force_through_web_with_sword_reduces_dc(self, monkeypatch):
         hard = make_webs_hard_state(
             location="axe_handle_lower",
-            inventory=["toenail_sword"],
+            inventory={"toenail_sword": 1},
         )
         self._suppress_spider(hard)
         sm = build_state_manager(make_webs_test_corpus(), hard_state=hard)
@@ -158,7 +158,7 @@ class TestAxeHandleLowerWebbing:
     def test_force_through_web_triggers_spider_encounter(self, monkeypatch):
         hard = make_webs_hard_state(
             location="axe_handle_lower",
-            inventory=["toenail_sword"],
+            inventory={"toenail_sword": 1},
             spider_hidden=False,
             spider_fled=False,
         )

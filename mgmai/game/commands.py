@@ -371,7 +371,7 @@ class Commands:
             return _escape(entity.name or item_id)
 
         lines: list[str] = []
-        carried = list(hard.player.inventory)
+        carried = list(hard.player.inventory.items())
 
         if hard.player.equipped:
             lines.append("[bold]Equipped[/bold]")
@@ -394,9 +394,12 @@ class Commands:
 
         if carried:
             lines.append("[bold]Carried[/bold]")
-            for item_id in carried:
+            for item_id, count in carried:
                 entity = corpus.entities.get(item_id)
-                lines.append(f"  {_item_label(item_id)}")
+                label = _item_label(item_id)
+                if count > 1:
+                    label = f"{label} (x{count})"
+                lines.append(f"  {label}")
                 if entity and entity.description:
                     lines.append(f"    [dim italic]{_escape(entity.description)}[/dim italic]")
             lines.append("")

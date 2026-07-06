@@ -36,7 +36,7 @@ the `/inv` panel and in the LLM-facing `equipped_items` briefing, rather than
 the raw snake_case entity ID. (Other entity types may omit `name`, in which
 case the engine falls back to the entity ID.)
 
-The player can then equip it via the LLM ("I draw the sword") and unequip it ("I sheathe it").  The engine handles moving IDs between the `inventory` and `equipped` lists, computing effective stats, and validating conflicts.
+The player can then equip it via the LLM ("I draw the sword") and unequip it ("I sheathe it").  The engine handles adjusting inventory counts and moving IDs between `inventory` and `equipped`, computing effective stats, and validating conflicts.
 
 ---
 
@@ -131,7 +131,9 @@ Two new player actions control equipment:
    default self-conflict for items sharing the same slot tag.
 5. Check each already-equipped item (post-unequip) — if any of its `equip_tags` overlaps the incompatible set, reject.
 6. Check `max_equipped` for the slot tag group.
-7. On success: move `target` from `inventory` → `equipped`; move `unequip_targets` from `equipped` → `inventory`.
+7. On success: decrement `target`'s count in `inventory` by 1 (remove the key
+   if the count reaches 0) and append it to `equipped`; increment each
+   `unequip_target`'s count in `inventory` by 1 and remove it from `equipped`.
 
 ### `unequip` — Unequip an item
 
@@ -147,8 +149,8 @@ Two new player actions control equipment:
 |----------|----------|-------------|
 | `target` | `string` | Entity ID of the item to unequip.  Must be in `player.equipped`. |
 
-On success: the item moves from `equipped` → `inventory`, and its stat
-modifiers, AC bonuses, and damage expression stop applying.
+On success: the item is removed from `equipped` and its count in `inventory`
+is incremented by 1. Its stat modifiers, AC bonuses, and damage expression stop applying.
 
 ### Hard state changes
 
@@ -322,7 +324,7 @@ visible in `player_state`:
 ```json
 {
   "player_state": {
-    "hard_inventory": ["iron_sword", "health_potion"],
+    "hard_inventory": {"iron_sword": 1, "health_potion": 1},
     "equipped_items": [
       {
         "id": "toenail_sword",
@@ -371,13 +373,14 @@ reference them.  They carry no mechanical weight.
 ## Save and Load
 
 The `equipped` field is a `list[str]` on `PlayerState` in `HardGameState`.
-It is serialised and deserialised alongside `inventory`:
+`inventory` is a `dict[str, int]` mapping item IDs to counts.
+It is serialised and deserialised alongside `equipped`:
 
 ```json
 {
   "player": {
     "location": "bag_floor",
-    "inventory": ["health_potion", "torch"],
+    "inventory": {"health_potion": 1, "torch": 1},
     "equipped": ["toenail_sword"]
   }
 }

@@ -410,22 +410,34 @@ The LLM must output a single structured action, corresponding to the player's in
 | Field          | Type            | Required | Description |
 |----------------|-----------------|----------|-------------|
 | `target`       | string          | yes      | Entity ID (NPC or container) or room ID (for dropping items on the floor). |
-| `given_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is giving to the target. |
-| `taken_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is taking from the target. |
+| `given_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is giving to the target (each counts as one). |
+| `taken_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is taking from the target (each counts as one). |
+| `given_counts` | object\|null    | no       | Item IDs or soft item names mapped to quantities to give, e.g. `{ "gold_coins": 50 }`. |
+| `taken_counts` | object\|null    | no       | Item IDs or soft item names mapped to quantities to take, e.g. `{ "gold_coins": 50 }`. |
 
 **Engine validation:**
 - `target` must be an entity ID present in the room, or current room ID.
 - Each item in `given_items` must be in the player's hard inventory
   (entity IDs) or soft inventory (soft item names).
-- Each item in `taken_items` must be obtainable from the target: entity IDs 
+- Each item in `taken_items` must be obtainable from the target: entity IDs
   must be listed in the target entity's or room's available inventory;
-  soft item names must appear in the target's `soft_items` or the room's 
+  soft item names must appear in the target's `soft_items` or the room's
   `soft_items`.
+- `given_counts`/`taken_counts` may be used for stackable items to move
+  quantities greater than 1 in a single action. Non-stackable hard items
+  reject counts greater than 1.
 - On success, items are moved accordingly between inventories.
 - If the target is a room, `given_items` are removed from the player's inventory
   and added to the room's available pool; `taken_items` are removed from the
   room's available pool and added to the player's inventory.
-- At least one of `given_items` or `taken_items` should be non-empty.
+- At least one of `given_items`, `taken_items`, `given_counts`, or
+  `taken_counts` should be non-empty.
+
+**Note on room-side stackable depletion:** the engine does not track how
+many of a stackable item remain in a room. `taken_counts` for room items
+is best-effort and trusts the LLM not to overdraw the available quantity.
+For finite room resources such as a coin pile, model them as a granting
+entity whose interaction uses `add_item_count` gated by a flag.
 
 ---
 
@@ -645,8 +657,8 @@ everything LLM Call 2 needs to narrate the outcome.
 
   "hard_state_changes": {
     "player_location": "bag_floor",
-    "inventory_added": [],
-    "inventory_removed": [],
+    "inventory_added": {},
+    "inventory_removed": {},
     "flags_set": { "spider_fled": true },
     "flags_cleared": [],
     "room_state_changes": {

@@ -126,7 +126,7 @@ class TestResolveEquip:
         corpus = state_manager.corpus
 
         # Place the item in inventory
-        hard.player.inventory.append("toenail_sword")
+        hard.player.inventory["toenail_sword"] = 1
 
         action = EquipAction(
             action_type="equip",
@@ -161,7 +161,7 @@ class TestResolveEquip:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
-        hard.player.inventory.append("rusty_key")
+        hard.player.inventory["rusty_key"] = 1
 
         action = EquipAction(
             action_type="equip",
@@ -178,7 +178,7 @@ class TestResolveEquip:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
-        hard.player.inventory.append("toenail_sword")
+        hard.player.inventory["toenail_sword"] = 1
 
         action = EquipAction(
             action_type="equip",
@@ -195,7 +195,7 @@ class TestResolveEquip:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
-        hard.player.inventory.append("toenail_sword")
+        hard.player.inventory["toenail_sword"] = 1
 
         action = EquipAction(
             action_type="equip",
@@ -206,6 +206,25 @@ class TestResolveEquip:
         result = resolve_equip(action, hard, soft, corpus)
         assert result.success is False
         assert "not currently equipped" in (result.error or "")
+
+    def test_equip_one_from_stack(self, state_manager):
+        """Equipping an item with count > 1 only removes one from inventory."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+
+        # Although toenail_sword is non-stackable, the resolver decrements by 1.
+        hard.player.inventory["toenail_sword"] = 3
+
+        action = EquipAction(
+            action_type="equip",
+            target="toenail_sword",
+            detail="Equipping one sword from a stack",
+        )
+        result = resolve_equip(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
+        assert hard.player.inventory.get("toenail_sword") == 3  # resolver does not mutate hard state
 
 
 # ------------------------------------------------------------------
@@ -230,7 +249,7 @@ class TestResolveUnequip:
         assert result.success is True
         assert result.hard_changes is not None
         assert "toenail_sword" in result.hard_changes.equipped_removed
-        assert "toenail_sword" in result.hard_changes.inventory_added
+        assert result.hard_changes.inventory_added["toenail_sword"] == 1
         assert result.hard_changes.equipment_changed is True
 
     def test_unequip_not_equipped(self, state_manager):
@@ -260,7 +279,7 @@ class TestResolveActionDispatch:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
-        hard.player.inventory.append("toenail_sword")
+        hard.player.inventory["toenail_sword"] = 1
 
         action = EquipAction(
             action_type="equip",
@@ -298,11 +317,11 @@ class TestStateManagerEquipment:
     def test_apply_equip_changes(self, state_manager):
         """StateManager.apply_hard_changes should move IDs between lists."""
         hard = state_manager.hard_state
-        hard.player.inventory.append("toenail_sword")
+        hard.player.inventory["toenail_sword"] = 1
 
         changes = HardStateChanges(
             equipped_added=["toenail_sword"],
-            inventory_removed=["toenail_sword"],
+            inventory_removed={"toenail_sword": 1},
             equipment_changed=True,
         )
         state_manager.apply_hard_changes(changes)
@@ -316,7 +335,7 @@ class TestStateManagerEquipment:
 
         changes = HardStateChanges(
             equipped_removed=["toenail_sword"],
-            inventory_added=["toenail_sword"],
+            inventory_added={"toenail_sword": 1},
             equipment_changed=True,
         )
         state_manager.apply_hard_changes(changes)
@@ -325,7 +344,7 @@ class TestStateManagerEquipment:
 
     def test_equipped_defaults_to_empty(self):
         """Old save files without `equipped` should default to empty list."""
-        player_data = {"location": "room1", "inventory": []}
+        player_data = {"location": "room1", "inventory": {}}
         from mgmai.models.hard_state import PlayerState
         ps = PlayerState.model_validate(player_data)
         assert ps.equipped == []
@@ -464,7 +483,7 @@ class TestTagDomainBackwardCompat:
         corpus = state_manager.corpus
         from mgmai.engine.conditions import evaluate_condition_string
 
-        hard.player.inventory.append("toenail_sword")
+        hard.player.inventory["toenail_sword"] = 1
         result = evaluate_condition_string("tag:weapon", hard, soft, corpus)
         assert result is True
 
@@ -692,6 +711,23 @@ class TestHardStateChangesEquipment:
         b = HardStateChanges(equipment_changed=True)
         a.merge(b)
         assert a.equipment_changed is True
+
+    def test_merge_inventory_added_sums_counts(self):
+        """merge should sum inventory_added counts for shared keys."""
+        a = HardStateChanges(inventory_added={"gold_coin": 10, "arrow": 5})
+        b = HardStateChanges(inventory_added={"gold_coin": 20, "potion": 1})
+        a.merge(b)
+        assert a.inventory_added["gold_coin"] == 30
+        assert a.inventory_added["arrow"] == 5
+        assert a.inventory_added["potion"] == 1
+
+    def test_merge_inventory_removed_sums_counts(self):
+        """merge should sum inventory_removed counts for shared keys."""
+        a = HardStateChanges(inventory_removed={"gold_coin": 5})
+        b = HardStateChanges(inventory_removed={"gold_coin": 3, "arrow": 2})
+        a.merge(b)
+        assert a.inventory_removed["gold_coin"] == 8
+        assert a.inventory_removed["arrow"] == 2
 
     def test_has_changes_equipment(self):
         """has_changes should detect equipment changes."""

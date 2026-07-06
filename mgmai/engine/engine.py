@@ -944,16 +944,18 @@ def _derive_state_events(
     # item.acquired / item.lost (from inventory changes).  Provenance
     # (source/reason) is recorded where inventory is mutated; it defaults to
     # "interaction" when unset.
-    for item in hard_changes.inventory_added:
-        source = hard_changes.inventory_added_sources.get(item, "interaction")
+    for item_id, count in hard_changes.inventory_added.items():
+        source = hard_changes.inventory_added_sources.get(item_id, "interaction")
         events.append(("item.acquired", {
-            "item_id": item,
+            "item_id": item_id,
+            "count": count,
             "source": source,
         }))
-    for item in hard_changes.inventory_removed:
-        reason = hard_changes.inventory_removed_reasons.get(item, "interaction")
+    for item_id, count in hard_changes.inventory_removed.items():
+        reason = hard_changes.inventory_removed_reasons.get(item_id, "interaction")
         events.append(("item.lost", {
-            "item_id": item,
+            "item_id": item_id,
+            "count": count,
             "reason": reason,
         }))
 
@@ -1086,9 +1088,17 @@ def _summarize_resolution(
         if hc.player_location:
             parts.append(f"Moved to {hc.player_location}")
         if hc.inventory_added:
-            parts.append(f"Gained: {', '.join(hc.inventory_added)}")
+            gained = [
+                f"{item_id} x{count}" if count > 1 else item_id
+                for item_id, count in hc.inventory_added.items()
+            ]
+            parts.append(f"Gained: {', '.join(gained)}")
         if hc.inventory_removed:
-            parts.append(f"Lost: {', '.join(hc.inventory_removed)}")
+            lost = [
+                f"{item_id} x{count}" if count > 1 else item_id
+                for item_id, count in hc.inventory_removed.items()
+            ]
+            parts.append(f"Lost: {', '.join(lost)}")
         if hc.flags_set:
             flags = [f"{k}={v}" for k, v in hc.flags_set.items()]
             parts.append(f"Flags set: {', '.join(flags)}")

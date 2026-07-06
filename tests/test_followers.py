@@ -208,12 +208,13 @@ class TestResolveWithFollower:
     def test_transfer_to_follower_in_any_room(self, _setup):
         hard, soft, corpus = _setup
         hard.player.location = "axe_head"
-        hard.player.inventory = ["toenail_sword"]
+        hard.player.inventory = {"toenail_sword": 1}
         result = resolve_transfer(
             TransferAction(action_type="transfer", target="korbar", given_items=["toenail_sword"], detail="Give"),
             hard, soft, corpus,
         )
         assert result.success is True
+        assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
 
     def test_interact_follower_in_any_room(self, _setup):
         hard, soft, corpus = _setup

@@ -218,7 +218,7 @@ def _build_player_state(
 
     return PlayerStateBriefing(
         location=hard.player.location,
-        hard_inventory=list(hard.player.inventory),
+        hard_inventory=dict(hard.player.inventory),
         soft_inventory=list(soft.soft_inventory),
         equipped_items=equipped_items,
         effective_ac=effective_ac,

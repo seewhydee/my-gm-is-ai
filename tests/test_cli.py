@@ -169,7 +169,7 @@ class TestCliBoot:
         save_file = tmp_path / "save.json"
         save_file.write_text(
             f'{{"adventure_path": "{MINI_ADVENTURE}", '
-            f'"hard": {{"player": {{"location": "axe_head", "inventory": []}}, '
+            f'"hard": {{"player": {{"location": "axe_head", "inventory": {{}}}}, '
             f'"flags": {{}}, "room_states": {{}}, "entity_states": {{}}, "turn_count": 0}}, '
             f'"soft": {{"soft_inventory": [], "room_notes": {{}}, "entity_notes": {{}}, '
             f'"turn_history": [], '

@@ -160,13 +160,13 @@ class TestPlayerStateBriefing:
     def test_basic(self) -> None:
         p = PlayerStateBriefing.model_validate({
             "location": "axe_handle_lower",
-            "hard_inventory": ["iron_sword"],
+            "hard_inventory": {"iron_sword": 1},
             "soft_inventory": ["rock"],
             "active_flags": {"injured": False},
             "entity_notes": [],
         })
         assert p.location == "axe_handle_lower"
-        assert p.hard_inventory == ["iron_sword"]
+        assert p.hard_inventory == {"iron_sword": 1}
         assert p.active_flags["injured"] is False
 
 
@@ -274,7 +274,7 @@ class TestGMBriefing:
             },
             "player_state": {
                 "location": "axe_handle_lower",
-                "hard_inventory": ["iron_sword"],
+                "hard_inventory": {"iron_sword": 1},
                 "soft_inventory": ["rock"],
                 "active_flags": {"injured": False},
             },

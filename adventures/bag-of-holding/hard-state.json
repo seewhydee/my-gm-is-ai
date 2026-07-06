@@ -1,7 +1,7 @@
 {
   "player": {
     "location": "axe_head",
-    "inventory": [],
+    "inventory": {},
     "equipped": [],
     "stats": {
       "STR": 10,

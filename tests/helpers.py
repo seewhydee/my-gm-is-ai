@@ -246,12 +246,12 @@ def _mk_hard_state(
     entity_states: dict[str, dict[str, Any]] | None = None,
     room_states: dict[str, dict[str, Any]] | None = None,
     stats: dict[str, int] | None = None,
-    inventory: list[str] | None = None,
+    inventory: dict[str, int] | None = None,
 ) -> HardGameState:
     return HardGameState(
         player=PlayerState(
             location=player_location,
-            inventory=inventory or [],
+            inventory=inventory or {},
             stats=stats or copy.deepcopy(_STATS_10),
         ),
         flags=flags or {},
@@ -482,7 +482,7 @@ def make_webs_hard_state(
     spider_alive: bool = True,
     spider_fled: bool = False,
     spider_hidden: bool = True,
-    inventory: list[str] | None = None,
+    inventory: dict[str, int] | None = None,
     korbar_following: bool = False,
 ) -> HardGameState:
     """Build a hard state matching make_webs_test_corpus."""
@@ -515,7 +515,7 @@ def make_webs_hard_state(
         flags=default_flags,
         entity_states=entity_states,
         room_states=room_states,
-        inventory=inventory or [],
+        inventory=inventory or {},
     )
 
 
@@ -547,7 +547,7 @@ def make_char_sheet_corpus(
 
 def make_char_sheet_state(
     location: str = "axe_head",
-    inventory: list[str] | None = None,
+    inventory: dict[str, int] | None = None,
     stats: dict[str, int] | None = None,
 ) -> HardGameState:
     """Build a hard state matching make_char_sheet_corpus."""
@@ -558,7 +558,7 @@ def make_char_sheet_state(
         entity_states={},
         room_states=room_states,
         stats=stats or copy.deepcopy(_STATS_10),
-        inventory=inventory or [],
+        inventory=inventory or {},
     )
 
 

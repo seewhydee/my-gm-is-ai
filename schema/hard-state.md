@@ -1,12 +1,9 @@
 # Hard Game State Schema
 
-Hard game state is the authoritative, engine-managed runtime state. It is
-directly mutated **only** by the engine during action resolution. The LLM
-never writes to hard state; it may only read it via the GMBriefing.
-
-Hard state is initialised from a file (e.g., `hard-state.json`) at game start,
-persisted between turns, and queried by the engine to validate actions and
-resolve mechanics.
+Hard game state records the mutable aspects of the adventure.  It is
+initialised from a file (e.g., `hard-state.json`) at game start, and
+**only** mutated by the engine.  The LLM never writes directly to hard
+state; it only submits actions for the engine to validate and resolve.
 
 ## Top-Level Structure
 
@@ -22,23 +19,84 @@ resolve mechanics.
 }
 ```
 
+These fields are documented below.  See the [Corpus](corpus.md) schema
+for the (immutable) definitions of rooms, entities, mechanics, etc.
+
 ---
 
-## `player` — Player state
+## Player State
+
+The `player` block describes the player's state.
+
+### Core fields
+
+The following fields form the system-agnostic core of the player state.
+Additional fields may be required by the declared RPG system; see
+[5e system fields](#5e-system-fields) below.
 
 ```json
 {
   "location": "<room_id>",
-  "inventory": ["<item_entity_id>", ...],
-  "equipped": ["<item_entity_id>", ...],
-  "stats": {
-    "STR": 14,
-    "DEX": 12,
-    "CON": 13,
-    "INT": 10,
-    "WIS": 8,
-    "CHA": 16
-  },
+  "stats": { "STR": 14, "DEX": 12, "CON": 13,
+			 "INT": 10, "WIS": 8, "CHA": 16 },
+  "inventory": { "<item_entity_id>": <count>, ... },
+  "equipped": ["<item_entity_id>", ...]
+}
+```
+
+| Field      | Type     | Description                         |
+|------------|----------|-------------------------------------|
+| `location` | string   | Room ID of room the player is in    |
+| `stats`    | object   | Player stats (stat key → integer)   |
+| `inventory`| object   | Item entity IDs → integer counts    |
+| `equipped` | string[] | Entity IDs for equipped items       |
+
+Notes:
+
+- `location` must match the room ID of a room in the corpus.
+
+- `stats` should be null if the corpus does not define stats.
+  Otherwise, it should be an object mapping each player stat ID (a
+  string) to its current valu (an integer).  All stats defined in the
+  corpus (see [corpus.md](corpus.md#player-stats)) must be present.
+
+- `inventory` is an object mapping item entity IDs to their integer
+  counts, such that:
+  - Each key must match an item entity ID defined in the corpus.
+  - Items without the `stackable` tag are unique: their count is always
+    1, and adding another raises an error.
+  - Items with the `stackable` tag may have counts ≥ 1. If the item
+    defines `max_stack`, the count may never exceed it.
+  - Removing an item decrements the count; the key is deleted when the
+    count reaches 0.
+  Note that items in `equipped` are NOT in `inventory`.  Equipping
+  decrements the inventory count by 1 (and may delete the key). Defaults
+  to `{}`.
+
+### Equipment rules
+
+Parallel to `inventory`, `equipped` tracks items the player is actively wearing
+or wielding:
+
+1. Items in `equipped` are referenced by entity ID, matching `inventory`.
+2. Equipping an item: the engine decrements the item's count in `inventory`
+   by 1 and appends the ID to `equipped`. The tag conflict resolver runs first
+   (see `corpus.md` § `equip_block`).
+3. Unequipping an item: the engine removes the ID from `equipped` and
+   increments the item's count in `inventory` by 1.
+4. Equipment stat modifiers are computed on-the-fly — `hard.player.stats` remains
+   the permanent baseline and is never modified by equipment.
+5. `equipped` defaults to `[]` for backward compatibility with old save files
+   that do not contain the field.
+
+### 5e system fields
+
+When `corpus.stats.system` is `"5e"`, the following additional fields are
+accepted in the player state. Other systems may define their own set of
+system-specific fields.
+
+```json
+{
   "level": 1,
   "current_hp": 10,
   "max_hp": 10,
@@ -48,44 +106,20 @@ resolve mechanics.
 }
 ```
 
-| Field                   | Type     | Description |
-|-------------------------|----------|-------------|
-| `location`              | string   | Current room ID. Must match a key in the module corpus `rooms`. |
-| `inventory`             | string[] | List of item entity IDs the player is carrying (hard inventory). |
-| `equipped`              | string[] | List of item entity IDs the player currently has equipped. Items in `equipped` are NOT in `inventory` — equipping moves the ID from one list to the other. Defaults to `[]`. |
-| `stats`                 | object   | Player ability scores. Optional dict of stat key → integer value. Keys must match `stats.definitions` in the corpus. When stats are present in the corpus, this field should also be present (and vice versa). The engine validates key consistency on startup. |
-| `level`                 | int      | Player level (default 1). |
-| `current_hp`            | int|null| Current hit points, or `null` if HP tracking is not used. |
-| `max_hp`                | int|null| Maximum hit points, or `null` if HP tracking is not used. |
-| `ac`                    | int|null| Explicit armour class value. When `null`, AC is computed from base (10 + DEX mod) plus equipment bonuses. Set an explicit value to override the computation. |
-| `proficiency_bonus`     | int|null| Proficiency bonus for attack rolls and proficient saving throws. When `null`, defaults to the 5e standard based on `level`. |
-| `save_proficiencies`    | string[] | List of stat keys (e.g. `"STR"`, `"DEX"`) the player is proficient in for saving throws. |
+| Field                | Type     | Description                         |
+|----------------------|----------|-------------------------------------|
+| `level`              | integer  | Player level (default 1)            |
+| `current_hp` (*)     | integer  | Current hit points                  |
+| `max_hp` (*)         | integer  | Maximum hit points                  |
+| `ac`                 | integer  | Explicit AC, if not computed        |
+| `proficiency_bonus` (*) | integer| Proficiency bonus (5e standard)   |
+| `save_proficiencies` | string[] | Stat IDs for saving throw proficiencies |
 
-### Inventory rules
+When `ac` is `null`, AC is computed from base (10 + DEX mod) plus
+equipment bonuses. Set an explicit value to override the computation.
 
-1. Items in inventory are referenced by their entity ID as defined in the
-   module corpus `entities` block.
-2. Adding an item: the engine pushes the ID onto the `inventory` array. Duplicates
-   are allowed only if the module explicitly supports it (tag: `stackable`).
-3. Removing an item: the engine removes the first occurrence from the array.
-5. The engine checks `tag:weapon` by scanning items in inventory
-   for the `"weapon"` tag in the entity definition, not by specific item ID.
-   This allows future modules to have multiple weapon types.
-
-### Equipment rules
-
-Parallel to `inventory`, `equipped` tracks items the player is actively wearing
-or wielding:
-
-1. Items in `equipped` are referenced by entity ID, matching `inventory`.
-2. Equipping an item: the engine removes the ID from `inventory` and appends it
-   to `equipped`. The tag conflict resolver runs first (see `corpus.md` § `equip_block`).
-3. Unequipping an item: the engine removes the ID from `equipped` and appends it
-   to `inventory`.
-4. Equipment stat modifiers are computed on-the-fly — `hard.player.stats` remains
-   the permanent baseline and is never modified by equipment.
-5. `equipped` defaults to `[]` for backward compatibility with old save files
-   that do not contain the field.
+When `proficiency_bonus` is `null`, it defaults to the standard 5e
+progression for the player's `level`.
 
 ---
 
@@ -360,7 +394,7 @@ All of these are reflected in the `hard_state_changes` block of EngineResult.
 {
   "player": {
     "location": "axe_head",
-    "inventory": []
+    "inventory": {}
     // "stats": { "STR": 14, "DEX": 12, ... } — optional ability scores
   },
   "flags": {

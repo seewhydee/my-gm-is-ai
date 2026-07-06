@@ -104,7 +104,7 @@ def combat_hard_state() -> HardGameState:
     return HardGameState.model_validate({
         "player": {
             "location": "room1",
-            "inventory": [],
+            "inventory": {},
             "stats": {
                 "STR": 16,
                 "DEX": 14,
@@ -241,7 +241,7 @@ class TestPlayerStats:
             "tags": ["weapon"],
         }
         corpus2 = ModuleCorpus.model_validate(corpus_dict)
-        hard.player.inventory.append("longsword")
+        hard.player.inventory["longsword"] = 1
         system = FiveESystem()
         expr = system.compute_player_damage_expr(hard, corpus2)
         assert expr == "1d8+3"  # weapon → 1d8 base

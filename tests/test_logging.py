@@ -110,7 +110,7 @@ class TestFormatStateSnapshot:
         soft = state_manager.soft_state
         snap = format_state_snapshot(hard, soft)
         assert snap["player_location"] == "axe_head"
-        assert isinstance(snap["hard_inventory"], list)
+        assert isinstance(snap["hard_inventory"], dict)
         assert isinstance(snap["flags"], dict)
         assert "turn_count" in snap
 

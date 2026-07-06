@@ -1,7 +1,7 @@
 {
   "player": {
     "location": "start_room",
-    "inventory": [],
+    "inventory": {},
     "stats": {
       "STR": 10,
       "DEX": 10,

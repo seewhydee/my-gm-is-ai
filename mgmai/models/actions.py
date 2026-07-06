@@ -64,15 +64,30 @@ class TransferAction(_BaseAction):
     target: str
     given_items: Optional[List[str]] = None
     taken_items: Optional[List[str]] = None
+    given_counts: Optional[Dict[str, int]] = None
+    taken_counts: Optional[Dict[str, int]] = None
 
     @model_validator(mode="after")
     def check_non_empty_transfer(self) -> TransferAction:
         gi = self.given_items
         ti = self.taken_items
-        if (gi is None or len(gi) == 0) and (ti is None or len(ti) == 0):
+        gc = self.given_counts
+        tc = self.taken_counts
+        has_gi = gi is not None and len(gi) > 0
+        has_ti = ti is not None and len(ti) > 0
+        has_gc = gc is not None and len(gc) > 0
+        has_tc = tc is not None and len(tc) > 0
+        if not any((has_gi, has_ti, has_gc, has_tc)):
             raise ValueError(
-                "TransferAction must have at least one of given_items or "
-                "taken_items be non-empty")
+                "TransferAction must have at least one of given_items, "
+                "taken_items, given_counts, or taken_counts be non-empty")
+        for count_dict in (gc, tc):
+            if count_dict is not None:
+                for item_id, count in count_dict.items():
+                    if count < 1:
+                        raise ValueError(
+                            f"Transfer count for '{item_id}' must be >= 1, "
+                            f"got {count}")
         return self
 
 
@@ -175,9 +190,9 @@ class PlayerAction:
 
 class HardStateChanges(BaseModel):
     player_location: Optional[str] = None
-    inventory_added: List[str] = Field(default_factory=list)
-    inventory_removed: List[str] = Field(default_factory=list)
-    # Provenance for the inventory lists above, used to derive item.acquired /
+    inventory_added: Dict[str, int] = Field(default_factory=dict)
+    inventory_removed: Dict[str, int] = Field(default_factory=dict)
+    # Provenance for the inventory dicts above, used to derive item.acquired /
     # item.lost events with an accurate source/reason.  Keys are item IDs;
     # entries default to "interaction" when absent (see _derive_state_events).
     inventory_added_sources: Dict[str, str] = Field(default_factory=dict)
@@ -197,8 +212,10 @@ class HardStateChanges(BaseModel):
         """Merge another HardStateChanges into this one in-place."""
         if other.player_location is not None:
             self.player_location = other.player_location
-        self.inventory_added.extend(other.inventory_added)
-        self.inventory_removed.extend(other.inventory_removed)
+        for item_id, count in other.inventory_added.items():
+            self.inventory_added[item_id] = self.inventory_added.get(item_id, 0) + count
+        for item_id, count in other.inventory_removed.items():
+            self.inventory_removed[item_id] = self.inventory_removed.get(item_id, 0) + count
         self.inventory_added_sources.update(other.inventory_added_sources)
         self.inventory_removed_reasons.update(other.inventory_removed_reasons)
         self.equipped_added.extend(other.equipped_added)

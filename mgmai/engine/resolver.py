@@ -66,6 +66,34 @@ MAX_THEN_CHECK_DEPTH = 3
 log = logging.getLogger(__name__)
 
 
+def _merge_item_counts(
+    items: list[str] | None,
+    counts: dict[str, int] | None,
+) -> dict[str, int]:
+    """Merge a list of item IDs (each counts as +1) with an explicit count map."""
+    result: dict[str, int] = {}
+    if items:
+        for item_id in items:
+            result[item_id] = result.get(item_id, 0) + 1
+    if counts:
+        for item_id, count in counts.items():
+            result[item_id] = result.get(item_id, 0) + count
+    return result
+
+
+def _is_stackable(item_id: str, corpus: ModuleCorpus | None) -> bool:
+    """Return True if *item_id* is tagged stackable in the corpus.
+
+    Unknown items are treated as non-stackable.
+    """
+    if corpus is None:
+        return False
+    entity = corpus.entities.get(item_id)
+    if entity is None:
+        return False
+    return "stackable" in entity.tags
+
+
 def _emit_event(
     event_type: str,
     context: dict[str, Any],
@@ -594,6 +622,8 @@ def resolve_transfer(
 
     given_items = action.given_items or []
     taken_items = action.taken_items or []
+    given_counts = action.given_counts or {}
+    taken_counts = action.taken_counts or {}
 
     changes = HardStateChanges()
     soft_patches: list[SoftStatePatch] = []
@@ -604,11 +634,24 @@ def resolve_transfer(
         room_after_id=room_id,
     )
 
-    for item in given_items:
+    for item, count in _merge_item_counts(given_items, given_counts).items():
         if item in hard.player.inventory:
-            changes.inventory_removed.append(item)
+            current = hard.player.inventory[item]
+            if count > current:
+                result.success = False
+                result.error = f"Not enough '{item}' to give (have {current}, need {count})"
+                return result
+            if not _is_stackable(item, corpus) and count > 1:
+                result.success = False
+                result.error = f"Cannot give {count} of non-stackable item '{item}'"
+                return result
+            changes.inventory_removed[item] = count
             changes.inventory_removed_reasons[item] = "transfer"
         elif item in soft.soft_inventory:
+            if count > 1:
+                result.success = False
+                result.error = f"Cannot give {count} of soft item '{item}'"
+                return result
             soft_patches.append(
                 SoftStatePatch(
                     field="soft_inventory_remove",
@@ -669,7 +712,7 @@ def resolve_transfer(
     revealed_hints: list[str] = []
     rolls: list[dict[str, Any]] = []
 
-    for item in taken_items:
+    for item, count in _merge_item_counts(taken_items, taken_counts).items():
         if item not in available_pool:
             closed_error: str | None = None
             if target_is_entity:
@@ -692,6 +735,12 @@ def resolve_transfer(
             return ResolutionResult(
                 success=False,
                 error=f"Item '{item}' is not available from '{target_id}'",
+            )
+
+        if not _is_stackable(item, corpus) and count > 1:
+            return ResolutionResult(
+                success=False,
+                error=f"Cannot take {count} of non-stackable item '{item}'",
             )
 
         item_entity = corpus.entities.get(item)
@@ -726,7 +775,7 @@ def resolve_transfer(
                         )
                     continue  # check failed: item not taken
 
-        changes.inventory_added.append(item)
+        changes.inventory_added[item] = count
         changes.inventory_added_sources[item] = "transfer"
         # Surface the soft item on its source
         if target_is_room:
@@ -1193,13 +1242,35 @@ def _apply_result(
 ) -> None:
     if result.narrative:
         narrative.append(result.narrative)
-    if result.add_item:
-        for item_id in result.add_item:
-            changes.inventory_added.append(item_id)
+    if result.add_item or result.add_item_count:
+        added = _merge_item_counts(result.add_item, result.add_item_count)
+        for item_id, count in added.items():
+            current = hard.player.inventory.get(item_id, 0) if hard is not None else 0
+            if not _is_stackable(item_id, corpus) and current > 0:
+                log.debug(
+                    "_apply_result: skipping duplicate add of non-stackable item '%s'",
+                    item_id,
+                )
+                continue
+            if not _is_stackable(item_id, corpus) and count > 1:
+                log.debug(
+                    "_apply_result: skipping add of non-stackable item '%s' with count %d",
+                    item_id, count,
+                )
+                continue
+            changes.inventory_added[item_id] = changes.inventory_added.get(item_id, 0) + count
             changes.inventory_added_sources[item_id] = item_origin
-    if result.remove_item:
-        for item_id in result.remove_item:
-            changes.inventory_removed.append(item_id)
+    if result.remove_item or result.remove_item_count:
+        removed = _merge_item_counts(result.remove_item, result.remove_item_count)
+        for item_id, count in removed.items():
+            current = hard.player.inventory.get(item_id, 0) if hard is not None else 0
+            if count > current:
+                log.debug(
+                    "_apply_result: skipping remove of '%s' (need %d, have %d)",
+                    item_id, count, current,
+                )
+                continue
+            changes.inventory_removed[item_id] = changes.inventory_removed.get(item_id, 0) + count
             changes.inventory_removed_reasons[item_id] = item_origin
     if result.set_flag:
         for flag, val in result.set_flag.items():
@@ -1715,14 +1786,14 @@ def resolve_equip(
                           f"({max_limit}) would be exceeded (currently {current_count})",
                 )
 
-    # Step 7: Success — move target from inventory to equipped
+    # Step 7: Success — move one target from inventory to equipped
     changes = HardStateChanges()
-    changes.inventory_removed.append(target)
+    changes.inventory_removed[target] = 1
     changes.inventory_removed_reasons[target] = "equip"
     changes.equipped_added.append(target)
     for uid in action.unequip_targets:
         changes.equipped_removed.append(uid)
-        changes.inventory_added.append(uid)
+        changes.inventory_added[uid] = 1
         changes.inventory_added_sources[uid] = "unequip"
     changes.equipment_changed = True
 
@@ -1759,7 +1830,7 @@ def resolve_unequip(
 
     changes = HardStateChanges()
     changes.equipped_removed.append(target)
-    changes.inventory_added.append(target)
+    changes.inventory_added[target] = 1
     changes.inventory_added_sources[target] = "unequip"
     changes.equipment_changed = True
 

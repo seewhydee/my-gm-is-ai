@@ -24,18 +24,18 @@ class TestPlayerState:
     def test_basic(self) -> None:
         p = PlayerState.model_validate({
             "location": "axe_head",
-            "inventory": ["iron_sword"],
+            "inventory": {"iron_sword": 1},
         })
         assert p.location == "axe_head"
-        assert p.inventory == ["iron_sword"]
+        assert p.inventory == {"iron_sword": 1}
 
     def test_empty_inventory(self) -> None:
         p = PlayerState.model_validate({"location": "room1"})
-        assert p.inventory == []
+        assert p.inventory == {}
 
     def test_missing_location_raises(self) -> None:
         with pytest.raises(ValidationError):
-            PlayerState.model_validate({"inventory": []})
+            PlayerState.model_validate({"inventory": {}})
 
 
 class TestGameOverState:
@@ -80,7 +80,7 @@ class TestHardGameState:
         h = HardGameState.model_validate({
             "player": {
                 "location": "bag_floor",
-                "inventory": ["rusty_key"],
+                "inventory": {"rusty_key": 1},
             },
             "flags": {
                 "injured": False,
@@ -97,7 +97,7 @@ class TestHardGameState:
             "turn_count": 5,
             "game_over": None,
         })
-        assert h.player.inventory == ["rusty_key"]
+        assert h.player.inventory == {"rusty_key": 1}
         assert h.flags["spider_fled"] is True
         assert h.room_states["axe_head"]["visited"] is True
         assert h.entity_states["spider"]["fled"] is True

@@ -93,12 +93,49 @@ class TestPlayerAction:
         a = PlayerAction.model_validate({
             "action_type": "transfer",
             "target": "korbar",
+            "given_counts": {"rusty_key": 1},
+            "taken_counts": {"rock": 2},
+            "detail": "The player hands over the key and takes two rocks.",
+        })
+        assert a.given_counts == {"rusty_key": 1}
+        assert a.taken_counts == {"rock": 2}
+
+    def test_transfer_with_legacy_lists(self) -> None:
+        a = PlayerAction.model_validate({
+            "action_type": "transfer",
+            "target": "korbar",
             "given_items": ["rusty_key"],
             "taken_items": ["rock"],
             "detail": "The player hands over the key and takes the rock.",
         })
         assert a.given_items == ["rusty_key"]
         assert a.taken_items == ["rock"]
+
+    def test_transfer_count_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be >= 1"):
+            PlayerAction.model_validate({
+                "action_type": "transfer",
+                "target": "korbar",
+                "given_counts": {"rusty_key": 0},
+                "detail": "Invalid zero count.",
+            })
+
+    def test_transfer_count_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be >= 1"):
+            PlayerAction.model_validate({
+                "action_type": "transfer",
+                "target": "korbar",
+                "taken_counts": {"rock": -1},
+                "detail": "Invalid negative count.",
+            })
+
+    def test_transfer_empty_all_fields_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="at least one"):
+            PlayerAction.model_validate({
+                "action_type": "transfer",
+                "target": "korbar",
+                "detail": "Nothing given or taken.",
+            })
 
     def test_wait(self) -> None:
         a = PlayerAction.model_validate({
@@ -401,8 +438,8 @@ class TestEngineResult:
             "action_type": "interact",
             "hard_state_changes": {
                 "player_location": "bag_floor",
-                "inventory_added": ["rusty_key"],
-                "inventory_removed": ["iron_sword"],
+                "inventory_added": {"rusty_key": 1},
+                "inventory_removed": {"iron_sword": 1},
                 "flags_set": {"spider_fled": True, "door_opened": True},
                 "flags_cleared": ["stunned"],
                 "room_state_changes": {
@@ -415,8 +452,8 @@ class TestEngineResult:
             },
         })
         assert r.hard_state_changes is not None
-        assert r.hard_state_changes.inventory_added == ["rusty_key"]
-        assert r.hard_state_changes.inventory_removed == ["iron_sword"]
+        assert r.hard_state_changes.inventory_added == {"rusty_key": 1}
+        assert r.hard_state_changes.inventory_removed == {"iron_sword": 1}
         assert r.hard_state_changes.flags_cleared == ["stunned"]
         assert r.hard_state_changes.room_state_changes["bag_floor"]["visited"] is True
         assert r.hard_state_changes.entity_state_changes["spider"]["fled"] is True

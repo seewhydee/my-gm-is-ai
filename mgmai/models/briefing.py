@@ -91,7 +91,7 @@ class PlayerCombatStats(BaseModel):
 
 class PlayerStateBriefing(BaseModel):
     location: str
-    hard_inventory: List[str] = Field(default_factory=list)
+    hard_inventory: Dict[str, int] = Field(default_factory=dict)
     soft_inventory: List[str] = Field(default_factory=list)
     equipped_items: List[EquippedItemBriefing] = Field(default_factory=list)
     effective_ac: int = 10

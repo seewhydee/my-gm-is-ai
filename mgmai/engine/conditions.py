@@ -38,8 +38,10 @@ def parse_condition_string(
 ) -> tuple[str, str, str | None, str | None]:
     """Parse a bare condition string into (domain, key, operator, value).
 
-    Returns the operator and value as ``None`` for presence-only conditions
-    (``inventory`` and ``tag``).
+    Returns the operator and value as ``None`` for presence-only domains
+    (``tag`` and ``equipped``). ``inventory`` supports operators for
+    quantity comparisons (e.g. ``inventory:coins >= 30``); without an
+    operator it checks presence (count > 0).
     """
     match = CONDITION_RE.match(raw)
     if match is None:
@@ -75,9 +77,12 @@ def evaluate_condition_string(
         return _compare(flag_val, op, value)
 
     if domain == "inventory":
+        count = hard_state.player.inventory.get(key, 0)
         if op is not None:
-            raise ValueError(f"inventory condition must not have operator: {raw!r}")
-        return key in hard_state.player.inventory
+            if value is None:
+                raise ValueError(f"inventory condition with operator requires value: {raw!r}")
+            return _compare(count, op, value)
+        return count > 0
 
     if domain == "tag":
         if op is not None:
@@ -312,8 +317,11 @@ def get_condition_detail(
         detail = f"flag {key} = {current}"
 
     elif domain == "inventory":
-        has_item = key in hard_state.player.inventory
-        detail = f"inventory contains '{key}': {has_item}"
+        count = hard_state.player.inventory.get(key, 0)
+        if op is not None:
+            detail = f"inventory '{key}' count = {count} (need {op} {value})"
+        else:
+            detail = f"inventory contains '{key}': {count > 0} (count = {count})"
 
     elif domain == "tag":
         if corpus is not None:

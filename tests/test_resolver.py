@@ -34,6 +34,7 @@ from mgmai.engine.resolver import (
     _apply_result,
     _apply_result_with_check,
 )
+from mgmai.engine.conditions import evaluate_condition_string
 from mgmai.models.actions import (
     MoveAction,
     ExamineAction,
@@ -42,6 +43,8 @@ from mgmai.models.actions import (
     TransferAction,
     WaitAction,
     OocDiscussionAction,
+    EquipAction,
+    HardStateChanges,
 )
 from mgmai.models.corpus import (
     CheckResolution,
@@ -129,7 +132,7 @@ class TestResolveExamine:
         assert "not in your inventory" in (result.error or "")
 
     def test_examine_with_using_in_inventory(self, state_manager):
-        state_manager.hard_state.player.inventory.append("rusty_key")
+        state_manager.hard_state.player.inventory["rusty_key"] = 1
         action = ExamineAction(action_type="examine", target="padlock", using="rusty_key", detail="Poking with key")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.success is True
@@ -400,7 +403,7 @@ class TestResolveTransfer:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
-        hard.player.inventory.append("toenail_sword")
+        hard.player.inventory["toenail_sword"] = 1
         action = TransferAction(
             action_type="transfer", target="korbar",
             given_items=["toenail_sword"],
@@ -408,7 +411,7 @@ class TestResolveTransfer:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        assert "toenail_sword" in result.hard_changes.inventory_removed
+        assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
 
     def test_give_item_not_in_inventory(self, state_manager):
         hard = state_manager.hard_state
@@ -436,7 +439,7 @@ class TestResolveTransfer:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        assert "rusty_key" in result.hard_changes.inventory_added
+        assert result.hard_changes.inventory_added.get("rusty_key") == 1
 
     def test_transfer_target_not_found(self, state_manager):
         hard = state_manager.hard_state
@@ -604,7 +607,7 @@ class TestResolveInteract:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        assert "rusty_key" in result.hard_changes.inventory_added
+        assert result.hard_changes.inventory_added.get("rusty_key") == 1
 
     def test_attack_on_npc_with_behavior(self, state_manager):
         hard = state_manager.hard_state
@@ -637,7 +640,7 @@ class TestResolveInteract:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "axe_head"
-        hard.player.inventory.append("rusty_key")
+        hard.player.inventory["rusty_key"] = 1
         action = InteractAction(
             action_type="interact", target="padlock",
             interaction_id="unlock_padlock",
@@ -1147,4 +1150,174 @@ class TestResolveTransferTake:
         assert "Success branch applied." not in result.triggered_narration
         assert "Failure branch applied." not in result.triggered_narration
         assert len(result.rolls) == 0
+
+
+class TestResolveTransferCounts:
+    """Quantity-aware give/take behavior."""
+
+    def test_take_300_coins(self, state_manager):
+        """Taking a large stackable quantity records the full count."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        # Add a stackable coin entity to the room
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A shiny coin.", tags=["stackable"]
+        )
+        corpus.rooms["bag_floor"].contains.append("gold_coin")
+        action = TransferAction(
+            action_type="transfer", target="bag_floor",
+            taken_counts={"gold_coin": 300},
+            detail="Taking a pile of coins",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_added.get("gold_coin") == 300
+
+    def test_give_300_coins_shortfall(self, state_manager):
+        """Giving more than available fails without removing anything."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        hard.player.inventory["gold_coin"] = 100
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_counts={"gold_coin": 300},
+            detail="Giving more coins than owned",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "Not enough" in (result.error or "")
+        assert result.hard_changes.inventory_removed == {}
+
+    def test_take_2_non_stackable_sword_rejected(self, state_manager):
+        """Taking more than one non-stackable item is rejected."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        action = TransferAction(
+            action_type="transfer", target="secret_compartment",
+            taken_counts={"rusty_key": 2},
+            detail="Trying to take two rusty keys",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "Cannot take 2 of non-stackable" in (result.error or "")
+
+    def test_non_stackable_duplicate_add_skipped(self, state_manager):
+        """_apply_result skips adding a duplicate non-stackable item."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.inventory["toenail_sword"] = 1
+        from mgmai.engine.resolver import _apply_result
+        result = Result(add_item=["toenail_sword"])
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard=hard, corpus=corpus)
+        assert changes.inventory_added.get("toenail_sword") is None
+
+    def test_remove_shortfall_skipped(self, state_manager):
+        """_apply_result skips removing more than currently held."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.inventory["rusty_key"] = 1
+        from mgmai.engine.resolver import _apply_result
+        result = Result(remove_item_count={"rusty_key": 5})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard=hard, corpus=corpus)
+        assert changes.inventory_removed.get("rusty_key") is None
+
+    def test_equip_one_from_stack(self, state_manager):
+        """Equipping removes only one copy from a stack."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.inventory["toenail_sword"] = 3
+        action = EquipAction(
+            action_type="equip",
+            target="toenail_sword",
+            detail="Equipping one sword",
+        )
+        from mgmai.engine.resolver import resolve_equip
+        result = resolve_equip(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
+        assert result.hard_changes.equipped_added == ["toenail_sword"]
+
+
+class TestMoneyScenario:
+    """End-to-end money/stackable scenario (plan item 39)."""
+
+    def test_full_money_flow(self, state_manager):
+        """Walk through the full stackable-item lifecycle."""
+        from tests.helpers import _mk_item_entity
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+
+        # Set up a stackable gold_coin entity in the room
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A shiny gold coin.", tags=["stackable"]
+        )
+        corpus.rooms["axe_head"].contains.append("gold_coin")
+
+        # Step 1: Start with 50 coins
+        hard.player.inventory["gold_coin"] = 50
+
+        # Step 2: Grant 30 via add_item_count → 80
+        result = Result(add_item_count={"gold_coin": 30})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard=hard, corpus=corpus)
+        state_manager.apply_hard_changes(changes)
+        assert hard.player.inventory["gold_coin"] == 80
+
+        # Step 3: Check conditions
+        assert evaluate_condition_string("inventory:gold_coin >= 30", hard, soft, None)
+        assert not evaluate_condition_string("inventory:gold_coin >= 81", hard, soft, None)
+        assert evaluate_condition_string("inventory:gold_coin >= 80", hard, soft, None)
+
+        # Step 4: Pick up 300 via taken_counts in one transfer → 380
+        action = TransferAction(
+            action_type="transfer", target="axe_head",
+            taken_counts={"gold_coin": 300},
+            detail="Picking up a pile of coins",
+        )
+        xfer_result = resolve_transfer(action, hard, soft, corpus)
+        assert xfer_result.success is True
+        state_manager.apply_hard_changes(xfer_result.hard_changes)
+        assert hard.player.inventory["gold_coin"] == 380
+
+        # Step 5: Spend 30 via remove_item_count → 350
+        result = Result(remove_item_count={"gold_coin": 30})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard=hard, corpus=corpus)
+        state_manager.apply_hard_changes(changes)
+        assert hard.player.inventory["gold_coin"] == 350
+
+        # Step 6: Spend 1000 → manager raises (shortfall)
+        changes = HardStateChanges(inventory_removed={"gold_coin": 1000})
+        with pytest.raises(ValueError, match="Cannot remove"):
+            state_manager.apply_hard_changes(changes)
+        # Inventory unchanged after failed apply
+        assert hard.player.inventory["gold_coin"] == 350
+
+        # Step 7: Resolver path skips on shortfall (fuzzy-LLM path)
+        result = Result(remove_item_count={"gold_coin": 1000})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard=hard, corpus=corpus)
+        # No removal recorded because count > current
+        assert changes.inventory_removed.get("gold_coin") is None
+
+        # Step 8: max_stack cap raises
+        corpus.entities["gold_coin"].max_stack = 500
+        hard.player.inventory["gold_coin"] = 400
+        changes = HardStateChanges(inventory_added={"gold_coin": 200})
+        with pytest.raises(ValueError, match="max_stack"):
+            state_manager.apply_hard_changes(changes)
 

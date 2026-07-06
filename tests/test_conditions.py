@@ -23,6 +23,7 @@ from mgmai.engine.conditions import (
     evaluate_condition_string,
     parse_condition_string,
     evaluate_require,
+    get_condition_detail,
 )
 from mgmai.models.corpus import ConditionExpression, ModuleCorpus
 from mgmai.models.hard_state import HardGameState, PlayerState
@@ -31,7 +32,7 @@ from mgmai.models.soft_state import SoftGameState
 
 def make_hard_state(**overrides) -> HardGameState:
     defaults = {
-        "player": {"location": "axe_head", "inventory": []},
+        "player": {"location": "axe_head", "inventory": {}},
         "flags": {
             "injured": False,
             "stunned": False,
@@ -163,7 +164,7 @@ class TestEvaluateConditionStringFlag:
 
 class TestEvaluateConditionStringInventory:
     def test_inventory_has_item(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["rusty_key"]})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"rusty_key": 1}})
         ss = make_soft_state()
         assert evaluate_condition_string("inventory:rusty_key", hs, ss, None)
 
@@ -173,32 +174,69 @@ class TestEvaluateConditionStringInventory:
         assert not evaluate_condition_string("inventory:rusty_key", hs, ss, None)
 
     def test_inventory_empty(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": []})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {}})
         ss = make_soft_state()
         assert not evaluate_condition_string("inventory:rusty_key", hs, ss, None)
 
-    def test_inventory_with_operator_raises(self) -> None:
+    def test_inventory_with_operator(self) -> None:
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"coins": 30}})
+        ss = make_soft_state()
+        assert evaluate_condition_string("inventory:coins >= 30", hs, ss, None)
+        assert not evaluate_condition_string("inventory:coins >= 31", hs, ss, None)
+        assert evaluate_condition_string("inventory:coins", hs, ss, None)
+
+    def test_inventory_operator_missing_item(self) -> None:
         hs = make_hard_state()
         ss = make_soft_state()
-        with pytest.raises(ValueError, match="inventory condition must not have operator"):
-            evaluate_condition_string("inventory:rusty_key == true", hs, ss, None)
+        assert not evaluate_condition_string("inventory:coins >= 1", hs, ss, None)
+
+
+class TestGetConditionDetailInventory:
+    def test_detail_presence(self) -> None:
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"coins": 30}})
+        ss = make_soft_state()
+        status = get_condition_detail("inventory:coins", hs, ss, None)
+        assert status.met is True
+        assert "count = 30" in status.detail
+
+    def test_detail_operator_met(self) -> None:
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"coins": 30}})
+        ss = make_soft_state()
+        status = get_condition_detail("inventory:coins >= 30", hs, ss, None)
+        assert status.met is True
+        assert "count = 30" in status.detail
+        assert ">=" in status.detail
+
+    def test_detail_operator_not_met(self) -> None:
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"coins": 30}})
+        ss = make_soft_state()
+        status = get_condition_detail("inventory:coins >= 31", hs, ss, None)
+        assert status.met is False
+        assert "count = 30" in status.detail
+
+    def test_detail_missing_item(self) -> None:
+        hs = make_hard_state()
+        ss = make_soft_state()
+        status = get_condition_detail("inventory:coins >= 1", hs, ss, None)
+        assert status.met is False
+        assert "count = 0" in status.detail
 
 
 class TestEvaluateConditionStringTag:
     def test_tag_weapon_found(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["sword"]})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"sword": 1}})
         ss = make_soft_state()
         corpus = make_corpus()
         assert evaluate_condition_string("tag:weapon", hs, ss, corpus)
 
     def test_tag_weapon_not_found(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["shield"]})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"shield": 1}})
         ss = make_soft_state()
         corpus = make_corpus()
         assert not evaluate_condition_string("tag:weapon", hs, ss, corpus)
 
     def test_tag_magic_found(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["magic_sword"]})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"magic_sword": 1}})
         ss = make_soft_state()
         corpus = make_corpus()
         assert evaluate_condition_string("tag:magic", hs, ss, corpus)
@@ -211,13 +249,13 @@ class TestEvaluateConditionStringTag:
         assert not evaluate_condition_string("tag:weapon", hs, ss, corpus)
 
     def test_tag_item_not_in_corpus_ignored(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["bogus"]})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"bogus": 1}})
         ss = make_soft_state()
         corpus = make_corpus()
         assert not evaluate_condition_string("tag:weapon", hs, ss, corpus)
 
     def test_tag_missing_corpus_raises(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["sword"]})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"sword": 1}})
         ss = make_soft_state()
         with pytest.raises(ValueError, match="tag condition requires corpus"):
             evaluate_condition_string("tag:weapon", hs, ss, None)
@@ -588,7 +626,7 @@ class TestEvaluateWithSampleCorpus:
         self, sample_corpus: ModuleCorpus
     ) -> None:
         hs = HardGameState.model_validate({
-            "player": {"location": "axe_head", "inventory": ["toenail_sword"]},
+            "player": {"location": "axe_head", "inventory": {"toenail_sword": 1}},
             "flags": {
                 "injured": False,
                 "stunned": False,
@@ -641,7 +679,7 @@ class TestEvaluateWithSampleCorpus:
         self, sample_corpus: ModuleCorpus
     ) -> None:
         hs = HardGameState.model_validate({
-            "player": {"location": "bag_floor", "inventory": ["toenail_sword"]},
+            "player": {"location": "bag_floor", "inventory": {"toenail_sword": 1}},
             "flags": {
                 "injured": False,
                 "stunned": False,
@@ -780,7 +818,7 @@ class TestEdgeCases:
 
     def test_condition_expression_with_all_mixed_uses_corpus_for_tag(self) -> None:
         hs = make_hard_state(
-            player={"location": "axe_head", "inventory": ["sword"]},
+            player={"location": "axe_head", "inventory": {"sword": 1}},
             flags={"injured": False},
         )
         ss = make_soft_state()
@@ -795,7 +833,7 @@ class TestEdgeCases:
 
     def test_condition_expression_with_all_mixed_tag_fails_when_injured(self) -> None:
         hs = make_hard_state(
-            player={"location": "axe_head", "inventory": ["sword"]},
+            player={"location": "axe_head", "inventory": {"sword": 1}},
             flags={"injured": True},
         )
         ss = make_soft_state()
@@ -820,7 +858,7 @@ class TestEdgeCases:
             evaluate(condition, hs, ss)
 
     def test_unless_with_tag_condition(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["sword"]})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"sword": 1}})
         ss = make_soft_state()
         corpus = make_corpus()
         condition = ConditionExpression.model_validate({
@@ -829,7 +867,7 @@ class TestEdgeCases:
         assert not evaluate(condition, hs, ss, corpus)
 
     def test_unless_with_inventory_condition(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": ["rusty_key"]})
+        hs = make_hard_state(player={"location": "axe_head", "inventory": {"rusty_key": 1}})
         ss = make_soft_state()
         condition = ConditionExpression.model_validate({
             "unless": "inventory:rusty_key"

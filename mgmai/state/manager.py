@@ -459,6 +459,65 @@ class StateManager:
         return adv_path or ""
 
     # ------------------------------------------------------------------
+    # Inventory mutation helpers
+    # ------------------------------------------------------------------
+
+    def _entity_stackable_info(self, item_id: str) -> tuple[bool, int | None]:
+        """Return (is_stackable, max_stack) for an item id.
+
+        Unknown items are treated as non-stackable unique items.
+        """
+        if self.corpus is None or item_id not in self.corpus.entities:
+            return False, None
+        entity = self.corpus.entities[item_id]
+        return "stackable" in entity.tags, entity.max_stack
+
+    def _add_item_to_inventory(self, item_id: str, count: int) -> None:
+        """Increment the inventory count for *item_id* by *count*.
+
+        Raises ValueError for duplicate non-stackable items or exceeding
+        max_stack for stackable items.
+        """
+        assert self.hard_state is not None
+        inventory = self.hard_state.player.inventory
+        stackable, max_stack = self._entity_stackable_info(item_id)
+        current = inventory.get(item_id, 0)
+
+        if not stackable:
+            if current > 0:
+                raise ValueError(
+                    f"Cannot add non-stackable item '{item_id}': already in inventory")
+            if count > 1:
+                raise ValueError(
+                    f"Cannot add non-stackable item '{item_id}' with count {count}")
+            inventory[item_id] = 1
+            return
+
+        new_count = current + count
+        if max_stack is not None and new_count > max_stack:
+            raise ValueError(
+                f"Cannot add {count} of stackable item '{item_id}': "
+                f"would exceed max_stack of {max_stack} (current {current})")
+        inventory[item_id] = new_count
+
+    def _remove_item_from_inventory(self, item_id: str, count: int) -> None:
+        """Decrement the inventory count for *item_id* by *count*.
+
+        Raises ValueError if the inventory has fewer than *count*.
+        """
+        assert self.hard_state is not None
+        inventory = self.hard_state.player.inventory
+        current = inventory.get(item_id, 0)
+        if count > current:
+            raise ValueError(
+                f"Cannot remove {count} of '{item_id}': only {current} in inventory")
+        new_count = current - count
+        if new_count <= 0:
+            del inventory[item_id]
+        else:
+            inventory[item_id] = new_count
+
+    # ------------------------------------------------------------------
     # Mutation helpers (called by the engine)
     # ------------------------------------------------------------------
 
@@ -511,12 +570,11 @@ class StateManager:
         if changes.player_location is not None:
             self.hard_state.player.location = changes.player_location
 
-        for item in changes.inventory_added:
-            self.hard_state.player.inventory.append(item)
+        for item_id, count in changes.inventory_added.items():
+            self._add_item_to_inventory(item_id, count)
 
-        for item in changes.inventory_removed:
-            if item in self.hard_state.player.inventory:
-                self.hard_state.player.inventory.remove(item)
+        for item_id, count in changes.inventory_removed.items():
+            self._remove_item_from_inventory(item_id, count)
 
         # Equipment changes: move IDs between inventory and equipped
         for item in changes.equipped_added:
