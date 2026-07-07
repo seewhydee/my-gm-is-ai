@@ -41,6 +41,11 @@ class HardGameState(BaseModel):
     flags: Dict[str, bool] = Field(default_factory=dict)
     room_states: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     entity_states: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    # Runtime containment maps, initialised from the corpus at load time.
+    # {room_id: {entity_id: count}}
+    room_contains: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    # {container_entity_id: {entity_id: count}}
+    entity_contains: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     turn_count: int = 0
     game_over: Optional[GameOverState] = None
     combat: Optional[CombatState] = None

@@ -124,6 +124,7 @@ def combat_hard_state() -> HardGameState:
         "entity_states": {
             "goblin": {"alive": True, "current_hp": 7},
         },
+        "room_contains": {"room1": {"goblin": 1}},
         "turn_count": 0,
     })
 

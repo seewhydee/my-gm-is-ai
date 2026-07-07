@@ -721,6 +721,41 @@ class TestRoom:
             "contains": ["guard_1", "guard_2", "captain"],
         })
         assert r.contains == ["guard_1", "guard_2", "captain"]
+        assert r.contains_map == {"guard_1": 1, "guard_2": 1, "captain": 1}
+
+    def test_room_with_mixed_contains(self) -> None:
+        r = Room.model_validate({
+            "name": "Treasury",
+            "description": "A room full of gold.",
+            "contains": ["goblin", "chest", {"gold_coin": 50}],
+        })
+        assert r.contains == ["goblin", "chest", {"gold_coin": 50}]
+        assert r.contains_map == {"goblin": 1, "chest": 1, "gold_coin": 50}
+
+    def test_contains_duplicate_ids_sum_counts(self) -> None:
+        r = Room.model_validate({
+            "name": "Treasury",
+            "description": "A room full of gold.",
+            "contains": ["gold_coin", {"gold_coin": 50}],
+        })
+        assert r.contains_map == {"gold_coin": 51}
+
+    def test_contains_multi_key_object_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Room.model_validate({
+                "name": "Treasury",
+                "description": "A room full of gold.",
+                "contains": [{"gold_coin": 50, "silver_coin": 30}],
+            })
+
+    def test_entity_with_mixed_contains(self) -> None:
+        from mgmai.models.corpus import Entity
+        e = Entity.model_validate({
+            "type": "feature",
+            "description": "A chest.",
+            "contains": ["rusty_key", {"gold_coin": 10}],
+        })
+        assert e.contains_map == {"rusty_key": 1, "gold_coin": 10}
 
 
 class TestRollCheck:

@@ -22,7 +22,9 @@ from pydantic import ValidationError
 
 from mgmai.state.manager import StateManager, StateNotLoadedError
 from mgmai.models.actions import HardStateChanges
-from mgmai.models.soft_state import SoftStatePatch, TurnHistoryEntry
+from mgmai.models.corpus import Entity, ModuleCorpus
+from mgmai.models.hard_state import HardGameState
+from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from tests.helpers import (
     build_state_manager,
     make_char_sheet_corpus,
@@ -791,6 +793,188 @@ class TestApplyCharSheet:
         sm = self._make_sm()
         with pytest.raises(FileNotFoundError, match="Character sheet file not found"):
             sm.apply_char_sheet("nonexistent.json")
+
+
+class TestContainmentMaps:
+    """Runtime containment map initialisation and mutation."""
+
+    def test_load_all_rebuilds_room_contains_from_corpus(self) -> None:
+        sm = StateManager(FIXTURES_DIR)
+        assert "axe_head" in sm.hard_state.room_contains
+        assert sm.hard_state.room_contains["axe_head"]["battleaxe"] == 1
+
+    def test_load_all_rebuilds_entity_contains_from_corpus(self) -> None:
+        # Build a corpus with an entity that contains another entity.
+        from tests.helpers import make_char_sheet_corpus, _mk_item_entity
+        from mgmai.models.corpus import Entity
+        corpus = make_char_sheet_corpus()
+        corpus.entities["chest"] = Entity(
+            type="feature",
+            description="A chest.",
+            contains=["toenail_sword"],
+        )
+        corpus.entities["toenail_sword"] = _mk_item_entity(
+            "toenail_sword", description="A sword.", name="Toenail Sword"
+        )
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = HardGameState.model_validate({
+            "player": {"location": "axe_head"},
+        })
+        sm.soft_state = SoftGameState()
+        sm._init_contains_from_corpus()
+        assert sm.hard_state.entity_contains.get("chest") == {"toenail_sword": 1}
+
+    def test_load_save_preserves_mutated_counts(self, manager, tmp_path) -> None:
+        manager.hard_state.room_contains["axe_head"]["gold_coin"] = 20
+        save_path = tmp_path / "save.json"
+        manager.save(str(save_path))
+
+        sm2 = StateManager()
+        sm2.load_save(save_path)
+        assert sm2.hard_state.room_contains["axe_head"]["gold_coin"] == 20
+
+    def test_load_save_backfills_legacy_save(self, manager, tmp_path) -> None:
+        save_path = tmp_path / "save.json"
+        manager.save(str(save_path))
+
+        # Strip containment keys to simulate a legacy save.
+        data = json.loads(save_path.read_text())
+        del data["hard"]["room_contains"]
+        del data["hard"]["entity_contains"]
+        save_path.write_text(json.dumps(data))
+
+        sm2 = StateManager()
+        sm2.load_save(save_path)
+        assert "axe_head" in sm2.hard_state.room_contains
+        assert sm2.hard_state.room_contains["axe_head"]["battleaxe"] == 1
+
+    def test_apply_hard_changes_adds_room_contains(self, manager) -> None:
+        from tests.helpers import _mk_item_entity
+        manager.corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        manager.apply_hard_changes(HardStateChanges(
+            room_contains_added={"axe_head": {"gold_coin": 50}}
+        ))
+        assert manager.hard_state.room_contains["axe_head"]["gold_coin"] == 50
+
+    def test_apply_hard_changes_removes_room_contains(self, manager) -> None:
+        from tests.helpers import _mk_item_entity
+        manager.corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        manager.hard_state.room_contains["axe_head"]["gold_coin"] = 50
+        manager.apply_hard_changes(HardStateChanges(
+            room_contains_removed={"axe_head": {"gold_coin": 20}}
+        ))
+        assert manager.hard_state.room_contains["axe_head"]["gold_coin"] == 30
+
+    def test_apply_hard_changes_deletes_zero_count_keys(self, manager) -> None:
+        from tests.helpers import _mk_item_entity
+        manager.corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        manager.hard_state.room_contains["axe_head"]["gold_coin"] = 5
+        manager.apply_hard_changes(HardStateChanges(
+            room_contains_removed={"axe_head": {"gold_coin": 5}}
+        ))
+        assert "gold_coin" not in manager.hard_state.room_contains["axe_head"]
+
+    def test_apply_hard_changes_rejects_non_stackable_gt_one_in_world(self, manager) -> None:
+        with pytest.raises(ValueError, match="non-stackable"):
+            manager.apply_hard_changes(HardStateChanges(
+                room_contains_added={"axe_head": {"toenail_sword": 2}}
+            ))
+
+    def test_apply_hard_changes_rejects_max_stack_overflow_in_world(self, manager) -> None:
+        from tests.helpers import _mk_item_entity
+        manager.corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        manager.corpus.entities["gold_coin"].max_stack = 10
+        manager.hard_state.room_contains["axe_head"]["gold_coin"] = 8
+        with pytest.raises(ValueError, match="max_stack"):
+            manager.apply_hard_changes(HardStateChanges(
+                room_contains_added={"axe_head": {"gold_coin": 5}}
+            ))
+
+    def test_apply_hard_changes_rejects_removing_more_than_present(self, manager) -> None:
+        from tests.helpers import _mk_item_entity
+        manager.corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        manager.hard_state.room_contains["axe_head"]["gold_coin"] = 5
+        with pytest.raises(ValueError, match="only 5 present"):
+            manager.apply_hard_changes(HardStateChanges(
+                room_contains_removed={"axe_head": {"gold_coin": 10}}
+            ))
+
+    def test_validate_cross_references_rejects_non_item_count_gt_one(self) -> None:
+        from tests.helpers import _mk_room, _mk_npc_entity
+        corpus = ModuleCorpus.model_validate({
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "start": _mk_room("start", "Start", contains=[{"npc": 2}]).model_dump(),
+            },
+            "entities": {
+                "npc": _mk_npc_entity("npc").model_dump(),
+            },
+        })
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = HardGameState.model_validate({"player": {"location": "start"}})
+        sm.soft_state = SoftGameState()
+        with pytest.raises(ValueError, match="non-item entity"):
+            sm.validate_cross_references()
+
+    def test_validate_cross_references_rejects_non_stackable_item_count_gt_one(self) -> None:
+        from tests.helpers import _mk_room, _mk_item_entity
+        corpus = ModuleCorpus.model_validate({
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "start": _mk_room("start", "Start", contains=[{"sword": 2}]).model_dump(),
+            },
+            "entities": {
+                "sword": _mk_item_entity("sword", description="A sword.", name="Sword").model_dump(),
+            },
+        })
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = HardGameState.model_validate({"player": {"location": "start"}})
+        sm.soft_state = SoftGameState()
+        with pytest.raises(ValueError, match="non-stackable item"):
+            sm.validate_cross_references()
+
+    def test_validate_cross_references_rejects_self_reference(self) -> None:
+        from tests.helpers import make_char_sheet_corpus
+        corpus = make_char_sheet_corpus()
+        corpus.entities["chest"] = Entity(type="feature", description="A chest.", contains=["chest"])
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = HardGameState.model_validate({"player": {"location": "axe_head"}})
+        sm.soft_state = SoftGameState()
+        with pytest.raises(ValueError, match="contains itself"):
+            sm.validate_cross_references()
+
+    def test_validate_cross_references_rejects_player_in_contains(self) -> None:
+        from tests.helpers import _mk_room, _mk_npc_entity
+        corpus = ModuleCorpus.model_validate({
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "start": _mk_room("start", "Start", contains=["player"]).model_dump(),
+            },
+            "entities": {
+                "player": Entity(type="player", description="The player.").model_dump(),
+                "npc": _mk_npc_entity("npc").model_dump(),
+            },
+        })
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = HardGameState.model_validate({"player": {"location": "start"}})
+        sm.soft_state = SoftGameState()
+        with pytest.raises(ValueError, match="contains the player entity"):
+            sm.validate_cross_references()
 
 
 class TestSaveLoadRoundtrip:

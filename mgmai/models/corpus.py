@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 IMMEDIATE_ALLOWED_EVENTS = frozenset({
     "interaction.used",
@@ -26,6 +26,34 @@ IMMEDIATE_ALLOWED_EVENTS = frozenset({
 })
 
 RESERVED_ROOM_STATE_FIELDS = frozenset({"visited", "is_current"})
+
+
+def _normalize_contains(contains: List[Union[str, Dict[str, int]]]) -> Dict[str, int]:
+    """Normalise a mixed-type contains list into a {entity_id: count} map.
+
+    Plain strings count as 1. Dict elements must be single-key count objects.
+    Duplicate IDs have their counts summed.
+    """
+    result: Dict[str, int] = {}
+    for entry in contains:
+        if isinstance(entry, str):
+            result[entry] = result.get(entry, 0) + 1
+        elif isinstance(entry, dict):
+            if len(entry) != 1:
+                raise ValueError(
+                    "Each count-object in 'contains' must have exactly one key"
+                )
+            for eid, count in entry.items():
+                if not isinstance(count, int) or count < 1:
+                    raise ValueError(
+                        f"Count for '{eid}' in 'contains' must be a positive integer"
+                    )
+                result[eid] = result.get(eid, 0) + count
+        else:
+            raise ValueError(
+                "Each entry in 'contains' must be a string or a single-key count-object"
+            )
+    return result
 
 
 class Credits(BaseModel):
@@ -340,7 +368,7 @@ class Reaction(BaseModel):
 class Room(BaseModel):
     name: str
     description: str
-    contains: List[str] = Field(default_factory=list)
+    contains: List[Union[str, Dict[str, int]]] = Field(default_factory=list)
     soft_items: List[str] = Field(default_factory=list)
     exits: List[Exit] = Field(default_factory=list)
     interactions: List[Interaction] = Field(default_factory=list)
@@ -348,6 +376,21 @@ class Room(BaseModel):
     is_start_room: bool = False
     reactions: List[Reaction] = Field(default_factory=list)
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
+    _contains_map: Dict[str, int] = PrivateAttr(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _build_contains_map(self) -> "Room":
+        self._contains_map = _normalize_contains(self.contains)
+        return self
+
+    @property
+    def contains_map(self) -> Dict[str, int]:
+        """Normalised {entity_id: count} view of ``contains``.
+
+        Runtime code must use this property or the runtime maps in
+        ``HardGameState``; never iterate the raw ``contains`` list directly.
+        """
+        return dict(self._contains_map)
 
 
 class StateFieldDecl(BaseModel):
@@ -420,7 +463,7 @@ class Entity(BaseModel):
     name: Optional[str] = None
     description: str
     soft_items: List[str] = Field(default_factory=list)
-    contains: List[str] = Field(default_factory=list)
+    contains: List[Union[str, Dict[str, int]]] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     take_check: Optional[GatedCheck] = None
     interactions: List[Interaction] = Field(default_factory=list)
@@ -433,6 +476,21 @@ class Entity(BaseModel):
     equip_block: Optional[EquipBlock] = None
     max_stack: Optional[int] = None
     reactions: List[Reaction] = Field(default_factory=list)
+    _contains_map: Dict[str, int] = PrivateAttr(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _build_contains_map(self) -> "Entity":
+        self._contains_map = _normalize_contains(self.contains)
+        return self
+
+    @property
+    def contains_map(self) -> Dict[str, int]:
+        """Normalised {entity_id: count} view of ``contains``.
+
+        Runtime code must use this property or the runtime maps in
+        ``HardGameState``; never iterate the raw ``contains`` list directly.
+        """
+        return dict(self._contains_map)
 
     @model_validator(mode="after")
     def check_type_specific_fields(self) -> Entity:

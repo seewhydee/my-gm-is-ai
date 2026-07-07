@@ -24,6 +24,19 @@ from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 
 
+def _is_stackable(item_id: str, corpus: ModuleCorpus | None) -> bool:
+    """Return True if *item_id* is tagged stackable in the corpus.
+
+    Unknown items are treated as non-stackable.
+    """
+    if corpus is None:
+        return False
+    entity = corpus.entities.get(item_id)
+    if entity is None:
+        return False
+    return "stackable" in entity.tags
+
+
 def is_exit_visible(
     exit_obj: object,
     hard: HardGameState,
@@ -105,7 +118,7 @@ def build_contains(
     corpus: ModuleCorpus,
     entity_id: str = "",
 ) -> list[BriefingContainsEntry]:
-    """Build BriefingContainsEntry list from an entity's contains,
+    """Build BriefingContainsEntry list from the runtime entity_contains map,
     filtering out hidden entities and items already in player inventory.
 
     When the entity has the ``container`` tag and ``open`` is declared in
@@ -120,23 +133,28 @@ def build_contains(
         if estate.get("open") is not True:
             return []
 
+    contained_map = hard.entity_contains.get(entity_id, {})
     contained: list[BriefingContainsEntry] = []
-    for cid in entity.contains:
+    for cid, count in contained_map.items():
+        if count <= 0:
+            continue
         contained_entity = corpus.entities.get(cid)
         if contained_entity is None:
             continue
         cstate = hard.entity_states.get(cid, {})
         if cstate.get("hidden", False):
             continue
-        if contained_entity.type == "item" and (
-            cid in hard.player.inventory
-            or cid in hard.player.equipped
-        ):
-            continue
+        # Hide equipped items; hide inventory items only when non-stackable.
+        if contained_entity.type == "item":
+            if cid in hard.player.equipped:
+                continue
+            if cid in hard.player.inventory and not _is_stackable(cid, corpus):
+                continue
         contained.append(BriefingContainsEntry(
             id=cid,
             name=contained_entity.name or cid,
             type=contained_entity.type,
             description=contained_entity.description,
+            count=count,
         ))
     return contained

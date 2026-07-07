@@ -419,25 +419,30 @@ The LLM must output a single structured action, corresponding to the player's in
 - `target` must be an entity ID present in the room, or current room ID.
 - Each item in `given_items` must be in the player's hard inventory
   (entity IDs) or soft inventory (soft item names).
-- Each item in `taken_items` must be obtainable from the target: entity IDs
-  must be listed in the target entity's or room's available inventory;
-  soft item names must appear in the target's `soft_items` or the room's
-  `soft_items`.
+- Each item in `taken_items` must be obtainable from the target in the
+  required quantity.  Hard items are looked up in the runtime containment
+  maps (`room_contains` / `entity_contains`); soft item names must appear
+  in the target's `soft_items` or the room's `soft_items`.
 - `given_counts`/`taken_counts` may be used for stackable items to move
   quantities greater than 1 in a single action. Non-stackable hard items
   reject counts greater than 1.
-- On success, items are moved accordingly between inventories.
-- If the target is a room, `given_items` are removed from the player's inventory
-  and added to the room's available pool; `taken_items` are removed from the
-  room's available pool and added to the player's inventory.
+- On success, hard items are moved between `player.inventory` and the
+  world-side runtime containment maps; soft items are surfaced on the
+  target without a hard-state change.
+- If the target is a room, `given_items` are removed from the player's
+  inventory and added to `room_contains[room_id]`; `taken_items` are
+  removed from `room_contains[room_id]` (or a nested open container) and
+  added to the player's inventory.
+- If the target is an entity, `given_items` are added to
+  `entity_contains[target_id]`; `taken_items` are removed from the target
+  container or from unclaimed room-level items.
 - At least one of `given_items`, `taken_items`, `given_counts`, or
   `taken_counts` should be non-empty.
 
-**Note on room-side stackable depletion:** the engine does not track how
-many of a stackable item remain in a room. `taken_counts` for room items
-is best-effort and trusts the LLM not to overdraw the available quantity.
-For finite room resources such as a coin pile, model them as a granting
-entity whose interaction uses `add_item_count` gated by a flag.
+**Note on finite resources:** the engine now tracks stackable item
+quantities in world containers via the runtime containment maps.  Taking
+more of a stackable item than remains in the available pool fails with
+an "not available" error.
 
 ---
 

@@ -41,7 +41,13 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.conditions import evaluate
-from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs, build_contains, is_exit_visible
+from mgmai.engine.utils import (
+    get_following_npc_ids,
+    inject_following_npcs,
+    build_contains,
+    is_exit_visible,
+    _is_stackable,
+)
 
 
 def assemble(corpus: ModuleCorpus,
@@ -83,7 +89,10 @@ def _build_room(room_id: str,
     assert isinstance(room, CorpusRoom)
 
     entities_visible: list[BriefingEntity] = []
-    for eid in room.contains:
+    room_contains = hard.room_contains.get(room_id, {})
+    for eid, count in room_contains.items():
+        if count <= 0:
+            continue
         entity = corpus.entities.get(eid)
         if entity is None:
             continue
@@ -91,8 +100,12 @@ def _build_room(room_id: str,
         entity_state = hard.entity_states.get(eid, {})
         if entity_state.get("hidden", False):
             continue
-        if entity.type == "item" and (eid in hard.player.inventory or eid in hard.player.equipped):
-            continue
+        # Hide equipped items; hide inventory items only when non-stackable.
+        if entity.type == "item":
+            if eid in hard.player.equipped:
+                continue
+            if eid in hard.player.inventory and not _is_stackable(eid, corpus):
+                continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
         entity_soft = soft.surfaced_soft_items.get(eid, [])
@@ -119,7 +132,8 @@ def _build_room(room_id: str,
                 soft_items=list(entity_soft),
                 contains=build_contains(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
-                combat_block=combat_block_dict))
+                combat_block=combat_block_dict,
+                count=count))
 
     inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
 
@@ -141,7 +155,7 @@ def _build_room(room_id: str,
             BriefingInteraction(id=inter.id,
                                 description=inter.description))
 
-    entity_ids: set[str] = set(room.contains)
+    entity_ids: set[str] = set(hard.room_contains.get(room_id, {}))
     for eid in get_following_npc_ids(hard, corpus):
         entity_ids.add(eid)
 

@@ -260,13 +260,11 @@ Notes:
   - `{ "STR": { "value": -4 } }` decreases strength by 4
   - `{ "INT": { "mode": "set", "value": 3 } }` sets intelligence to 3
 
-- `add_item` adds one of each listed item. Repeats are allowed and
-  increment the count independently, so `["potion", "potion"]` adds 2
-  potions. Stackable items aggregate; non-stackable items are
-  disallowed if a duplicate would be created.
-
-- `add_item_count` adds specific quantities, e.g. `{ "coins": 50 }`.
-  If combined with `add_item` for the same item, counts are summed.
+- `add_item` adds one of each listed item, while `add_item_count` adds
+  specific amounts, e.g. `{ "coins": 50 }`.  For stackable items (see
+  [Entity](#entity)), repeats are allowed and the total count is
+  added.  Adding any non-stackable (i.e., unique) item automatically
+  removes it from its previous location, if any.
 
 - Similarly, `remove_item` removes one of each listed item, with
   repeats removing multiple counts, and `remove_item_count` removes
@@ -530,7 +528,7 @@ world graph keyed by a globally-unique `room_id`.
   "<room_id>": {
     "name": "string",
     "description": "string (shown when player enters or examines room)",
-    "contains": ["<entity_id>", ...],
+    "contains": ["<entity_id>", {"<entity_id>": <count>}, ...],
     "soft_items": ["string", ...],
     "exits": [ { /* exit */ } ],
     "interactions": [ { /* interaction */ } ],
@@ -546,7 +544,7 @@ world graph keyed by a globally-unique `room_id`.
 |---------------------|--------------|---------------------------------|
 | `name`              | string       | Short display name              |
 | `description`       | string       | Prose description (for GM)      |
-| `contains`(*)       | string[]     | Entities present at start       |
+| `contains`(*) | string/object[] | IDs/counts of entities in room at start |
 | `exits` (*)         | Exit[]       | All exits out of the room       |
 | `state_fields` (*)  | object       | `{ "<field>": <spec>, ...  }`   |
 | `interactions` (*)  | Resolvable[] | Special interactions (see below)|
@@ -562,12 +560,18 @@ Notes:
   `description` briefs the GM on the characteristics of the room (but
   is not necessarily used verbatim in narration).
 
-- The `contains` field lists the IDs of entities *directly* present in
-  the room at game start.  Note that if entity A is in room R, and
-  entity B is in entity A (see `contains`, [Entity](#entity)), only A
-  is directly present; room R's `contains` lists A but not B.
+- The `contains` field lists the entities *directly* present in the
+  room initially.  "Directly" means that if room R contains entity A,
+  and A contains another entity B (see [Entity](#entity)), R's
+  `contains` should list A but not B.  As an exception, the player
+  entity must be omitted, even if this is the starting room.
 
-  The player must not be included (even for the starting room).
+  Each list entry is either an object `{ "<entity_id>": <count> }`, or
+  an entity ID (count = 1).  Each count must be positive, and a
+  non-item entity or non-stackable item must have total count 1.
+
+  When the game loads, the engine uses this to initialize the
+  containment maps used for subsequent game state mutations.
 
 - The `exits` field stores an array of [Exit](#exit) objects, one for
   every possible exit regardless of initial availability / visibility.
@@ -888,7 +892,7 @@ Entities are objects that appear in rooms or inventory.
     "name": "string (required for item, optional otherwise)",
     "description": "string",
     "soft_items": ["string", ...],
-    "contains": ["<entity_id>", ...],
+    "contains": ["<entity_id>", {"<entity_id>": <count>}, ...],
     "tags": ["<tag>", ...],
     "take_check": { /* Gated Check (optional) */ },
     "equip_block": { /* equip_block */ },
@@ -911,7 +915,7 @@ The following fields are meaningful for all entity types:
 | `type`             | enum     | `player|feature|npc|item`            |
 | `description`      | string   | Canonical prose description          |
 | `tags` (*)         | string[] | Array of semantic tags               |
-| `contains`(*)      | string[] | IDs of entities inside this entity   |
+| `contains`(*) | string/object[] | IDs/counts of entities in this entity at start |
 | `interactions` (*) | Resolvable[] | Special interactions (see below) |
 | `on_examine` (*)   | array    | See [Examination](#examination)      |
 | `reactions` (*)    | array    | See [Reaction](#reaction)            |
@@ -933,6 +937,15 @@ Notes:
 
   The special `"stackable"` tag may be placed on item entities to let
   their inventory count exceed 1.  See [Item](#item).
+
+- The `contains` field lists the entities *directly* contained in this
+  entity at game start.  "Directly" means that if A contains B and B
+  contains C, the `contains` field for A should list B but not C.  An
+  entity cannot contain itself.
+
+  Each list entry must be an object `{ "<entity_id>": <count> }`, or
+  an entity ID string (count = 1).  Each count must be positive, and a
+  non-item entity or non-stackable item must have total count 1.
 
 - State fields describe various mutable aspects of the entity's state.
   They are labeled by entity-unique IDs.  There are several reserved
@@ -966,7 +979,7 @@ Notes:
   - TYPE is one of `"boolean"`, `"number"`, or `"string"`
   - DESC is a string describing the nature of the state field
   - INIT is the value at game start, matching the declared type.
-  
+
 - `interactions` is an array of [Resolvables](#resolvable) listing
   non-generic operations performable on the entity.  Each must have an
   entity-unique `id`.  The rest of the spec is the same as for
@@ -1002,10 +1015,10 @@ Containers should be assigned the following properties:
   the player can perform direct open/close actions (as opposed to
   indirect methods, like pressing a button elsewhere).
 
-A container's contents are listed in its `contains` and `soft_items`
-fields.  (These fields can also be used for non-container entities,
-like a rubbish pile, which is not a container in the present sense
-ince it lacks open/close functionality.)
+A container's initial contents are declared in its `contains` and
+`soft_items` fields.  (These fields can also be used for non-container
+entities, like a rubbish pile, which is not a container in the present
+sense ince it lacks open/close functionality.)
 
 When the container is open, the engine automatically surfaces its
 contents to the GM and player; when the container is closed, the

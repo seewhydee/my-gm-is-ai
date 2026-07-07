@@ -60,5 +60,6 @@ def state_manager(sample_corpus, sample_hard_state, sample_soft_state):
     manager.hard_state = copy.deepcopy(sample_hard_state)
     manager.soft_state = copy.deepcopy(sample_soft_state)
     manager._adventure_dir = FIXTURES_DIR
+    manager._init_contains_from_corpus()
     reset_disabled_once()
     return manager

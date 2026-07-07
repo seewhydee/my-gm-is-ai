@@ -37,6 +37,7 @@ class BriefingContainsEntry(BaseModel):
     name: str
     type: str = "item"
     description: str
+    count: int = 1
 
 
 class BriefingEntity(BaseModel):
@@ -50,6 +51,7 @@ class BriefingEntity(BaseModel):
     contains: List[BriefingContainsEntry] = Field(default_factory=list)
     dialogue_paths: Dict[str, str] = Field(default_factory=dict)
     combat_block: Optional[dict[str, Any]] = None
+    count: int = 1
 
 
 class BriefingExit(BaseModel):

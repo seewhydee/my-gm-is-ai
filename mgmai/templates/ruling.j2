@@ -121,7 +121,7 @@ Items the player already carries appear in `player_state.hard_inventory` (IDs) o
 
 Remember: entity `id`/`name` are snake_case identifiers — use them verbatim in `target`, `using`, and item lists. Match the player's words against each entity's `description` to find the right ID.
 
-Example — briefing shows `rubbish_pile.contains = [{"id":"toenail_sword", ...}]`:
+Example — briefing shows `rubbish_pile.contains = [{"id":"toenail_sword", "name":"Toenail Sword", "count":1, ...}]`:
 
 Input: "I pull the toenail sword free from the pile"
 Output: `{"action_type": "transfer", "target": "rubbish_pile", "taken_items": ["toenail_sword"], "detail": "Player pulls the toenail sword free from the rubbish pile", "follow_up": null, "proposed_soft_state_patches": []}`

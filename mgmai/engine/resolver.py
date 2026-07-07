@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import random
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from mgmai.models.actions import (
     CombatAction,
@@ -58,7 +58,7 @@ from mgmai.engine.dialogue import (
     enter_dialogue,
     exit_dialogue,
 )
-from mgmai.engine.utils import get_following_npc_ids
+from mgmai.engine.utils import get_following_npc_ids, _is_stackable
 from mgmai.engine.systems import get_system_for_corpus
 
 MAX_THEN_CHECK_DEPTH = 3
@@ -79,19 +79,6 @@ def _merge_item_counts(
         for item_id, count in counts.items():
             result[item_id] = result.get(item_id, 0) + count
     return result
-
-
-def _is_stackable(item_id: str, corpus: ModuleCorpus | None) -> bool:
-    """Return True if *item_id* is tagged stackable in the corpus.
-
-    Unknown items are treated as non-stackable.
-    """
-    if corpus is None:
-        return False
-    entity = corpus.entities.get(item_id)
-    if entity is None:
-        return False
-    return "stackable" in entity.tags
 
 
 def _emit_event(
@@ -245,7 +232,7 @@ def resolve_examine(
         result.rolls = surface_result["rolls"]
         return result
 
-    entity = _find_entity_in_room_followers(target, room_id, room, hard, corpus)
+    entity = _find_entity_in_room_followers(target, room_id, hard, corpus)
     if entity is not None:
         changes = HardStateChanges()
         if entity.type == "npc":
@@ -274,7 +261,7 @@ def resolve_examine(
         return result
 
     all_soft = set(room.soft_items or [])
-    for eid in room.contains:
+    for eid in hard.room_contains.get(room_id, {}):
         ent = corpus.entities.get(eid)
         if ent and ent.soft_items:
             all_soft.update(ent.soft_items)
@@ -284,7 +271,7 @@ def resolve_examine(
         if room.soft_items and target in room.soft_items:
             surfaced[room_id] = [target]
         else:
-            for eid in room.contains:
+            for eid in hard.room_contains.get(room_id, {}):
                 ent = corpus.entities.get(eid)
                 if ent and ent.soft_items and target in ent.soft_items:
                     surfaced[eid] = [target]
@@ -483,7 +470,8 @@ def resolve_talk(
         return ResolutionResult(success=False, error=f"Room '{room_id}' not found")
 
     follower_ids = get_following_npc_ids(hard, corpus)
-    if target_npc not in room.contains and target_npc not in follower_ids:
+    if (target_npc not in hard.room_contains.get(room_id, {})
+            and target_npc not in follower_ids):
         return ResolutionResult(
             success=False,
             error=f"NPC '{target_npc}' is not present in room '{room_id}'",
@@ -597,6 +585,30 @@ def _container_is_open(entity_id: str, hard: HardGameState, corpus: ModuleCorpus
     return hard.entity_states.get(entity_id, {}).get("open") is True
 
 
+def _locate_world_item(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    room_id: str,
+    item: str,
+    preferred_container: str | None = None,
+) -> tuple[Literal["room", "entity"], str] | None:
+    """Return where *item* lives in the current room world state.
+
+    If *preferred_container* is provided and contains the item, prefer it.
+    Otherwise prefer room-level placement, then any open container in the
+    room. Returns ("room", room_id) or ("entity", container_id), or None.
+    """
+    if preferred_container is not None:
+        if item in hard.entity_contains.get(preferred_container, {}):
+            return ("entity", preferred_container)
+    if item in hard.room_contains.get(room_id, {}):
+        return ("room", room_id)
+    for container_id in hard.room_contains.get(room_id, {}):
+        if item in hard.entity_contains.get(container_id, {}):
+            return ("entity", container_id)
+    return None
+
+
 def resolve_transfer(
     action: TransferAction,
     hard: HardGameState,
@@ -610,9 +622,10 @@ def resolve_transfer(
     if room is None:
         return ResolutionResult(success=False, error=f"Room '{room_id}' not found")
 
+    room_contains = hard.room_contains.get(room_id, {})
     target_is_room = target_id == room_id
     follower_ids = get_following_npc_ids(hard, corpus)
-    target_is_entity = target_id in room.contains or target_id in follower_ids
+    target_is_entity = target_id in room_contains or target_id in follower_ids
 
     if not target_is_room and not target_is_entity:
         return ResolutionResult(
@@ -647,6 +660,11 @@ def resolve_transfer(
                 return result
             changes.inventory_removed[item] = count
             changes.inventory_removed_reasons[item] = "transfer"
+            # Place given hard item into the world-side container.
+            if target_is_room:
+                changes.room_contains_added.setdefault(room_id, {})[item] = count
+            else:
+                changes.entity_contains_added.setdefault(target_id, {})[item] = count
         elif item in soft.soft_inventory:
             if count > 1:
                 result.success = False
@@ -664,48 +682,52 @@ def resolve_transfer(
             result.error = f"Item '{item}' is not in your inventory"
             return result
 
-    available_pool: set[str] = set()
+    # Build available pool with quantities from the runtime maps.
+    available_pool: dict[str, int] = {}
     if target_is_room:
-        for eid in room.contains:
+        for eid, ecount in room_contains.items():
             ent = corpus.entities.get(eid)
             if ent and ent.type == "item":
-                available_pool.add(eid)
-            if ent and ent.contains:
+                available_pool[eid] = available_pool.get(eid, 0) + ecount
+            if ent and hard.entity_contains.get(eid):
                 if _container_is_open(eid, hard, corpus):
-                    for cid in ent.contains:
+                    for cid, ccount in hard.entity_contains[eid].items():
                         cstate = hard.entity_states.get(cid, {})
-                        if not cstate.get("hidden", False):
-                            available_pool.add(cid)
+                        if cstate.get("hidden", False):
+                            continue
+                        available_pool[cid] = available_pool.get(cid, 0) + ccount
             if ent and ent.soft_items:
                 if _container_is_open(eid, hard, corpus):
-                    available_pool.update(ent.soft_items)
-        room_soft = room.soft_items or []
-        available_pool.update(room_soft)
+                    for soft_item in ent.soft_items:
+                        available_pool[soft_item] = available_pool.get(soft_item, 0) + 1
+        for soft_item in room.soft_items or []:
+            available_pool[soft_item] = available_pool.get(soft_item, 0) + 1
     elif target_is_entity:
         target_ent = corpus.entities.get(target_id)
         if target_ent:
-            if target_ent.type == "item":
-                available_pool.add(target_id)
+            if target_ent.type == "item" and target_id in room_contains:
+                available_pool[target_id] = (
+                    available_pool.get(target_id, 0) + room_contains[target_id]
+                )
             if _container_is_open(target_id, hard, corpus):
-                if target_ent.soft_items:
-                    available_pool.update(target_ent.soft_items)
-                if target_ent.contains:
-                    available_pool.update(target_ent.contains)
-        # Fallback: add room-level items that are not nested inside any
-        # other entity in the room (via contains).
+                for soft_item in target_ent.soft_items or []:
+                    available_pool[soft_item] = available_pool.get(soft_item, 0) + 1
+                for cid, ccount in hard.entity_contains.get(target_id, {}).items():
+                    available_pool[cid] = available_pool.get(cid, 0) + ccount
+        # Fallback: add room-level items not nested inside another entity.
         claimed_entities: set[str] = set()
-        for eid in room.contains:
+        for eid in room_contains:
             if eid == target_id:
                 continue
             ent = corpus.entities.get(eid)
-            if ent and ent.contains:
-                claimed_entities.update(ent.contains)
-        for eid in room.contains:
+            if ent and hard.entity_contains.get(eid):
+                claimed_entities.update(hard.entity_contains[eid])
+        for eid, ecount in room_contains.items():
             ent = corpus.entities.get(eid)
             if ent and ent.type == "item" and eid not in claimed_entities:
-                available_pool.add(eid)
-        room_soft = room.soft_items or []
-        available_pool.update(room_soft)
+                available_pool[eid] = available_pool.get(eid, 0) + ecount
+        for soft_item in room.soft_items or []:
+            available_pool[soft_item] = available_pool.get(soft_item, 0) + 1
 
     surfaced: dict[str, list[str]] = {}
     triggered_narration: list[str] = []
@@ -713,18 +735,26 @@ def resolve_transfer(
     rolls: list[dict[str, Any]] = []
 
     for item, count in _merge_item_counts(taken_items, taken_counts).items():
-        if item not in available_pool:
+        if not _is_stackable(item, corpus) and count > 1:
+            return ResolutionResult(
+                success=False,
+                error=f"Cannot take {count} of non-stackable item '{item}'",
+            )
+
+        if available_pool.get(item, 0) < count:
             closed_error: str | None = None
             if target_is_entity:
                 target_ent = corpus.entities.get(target_id)
                 if target_ent and not _container_is_open(target_id, hard, corpus):
-                    if item in target_ent.contains or item in target_ent.soft_items:
+                    if (item in hard.entity_contains.get(target_id, {})
+                            or item in target_ent.soft_items):
                         closed_error = f"The {target_ent.name or target_id} is closed."
             else:
-                for eid in room.contains:
+                for eid in room_contains:
                     ent = corpus.entities.get(eid)
                     if ent and not _container_is_open(eid, hard, corpus):
-                        if item in ent.contains or (ent.soft_items and item in ent.soft_items):
+                        if (item in hard.entity_contains.get(eid, {})
+                                or (ent.soft_items and item in ent.soft_items)):
                             closed_error = f"The {ent.name or eid} is closed."
                             break
             if closed_error is not None:
@@ -735,12 +765,6 @@ def resolve_transfer(
             return ResolutionResult(
                 success=False,
                 error=f"Item '{item}' is not available from '{target_id}'",
-            )
-
-        if not _is_stackable(item, corpus) and count > 1:
-            return ResolutionResult(
-                success=False,
-                error=f"Cannot take {count} of non-stackable item '{item}'",
             )
 
         item_entity = corpus.entities.get(item)
@@ -777,12 +801,29 @@ def resolve_transfer(
 
         changes.inventory_added[item] = count
         changes.inventory_added_sources[item] = "transfer"
-        # Surface the soft item on its source
+
+        # Record world-side removal.
+        preferred = target_id if target_is_entity else None
+        location = _locate_world_item(
+            hard, corpus, room_id, item, preferred_container=preferred
+        )
+        if location is not None:
+            kind, container_id = location
+            if kind == "room":
+                changes.room_contains_removed.setdefault(
+                    container_id, {}
+                )[item] = count
+            else:
+                changes.entity_contains_removed.setdefault(
+                    container_id, {}
+                )[item] = count
+
+        # Surface the soft item on its source.
         if target_is_room:
             if room.soft_items and item in room.soft_items:
                 surfaced.setdefault(room_id, []).append(item)
             else:
-                for eid in room.contains:
+                for eid in room_contains:
                     ent = corpus.entities.get(eid)
                     if ent and ent.soft_items and item in ent.soft_items:
                         surfaced.setdefault(eid, []).append(item)
@@ -831,7 +872,7 @@ def resolve_interact(
                 error=f"Item '{action.using}' is not in your inventory",
             )
 
-    target_entity = _find_entity_in_room_followers(target_id, room_id, room, hard, corpus)
+    target_entity = _find_entity_in_room_followers(target_id, room_id, hard, corpus)
 
     if target_entity is None:
         return ResolutionResult(
@@ -1260,6 +1301,26 @@ def _apply_result(
                 continue
             changes.inventory_added[item_id] = changes.inventory_added.get(item_id, 0) + count
             changes.inventory_added_sources[item_id] = item_origin
+            # For non-stackable items, if the item exists in a world
+            # container, remove it to prevent duplication.  Stackable
+            # items are left alone: add_item_count on a stackable is a
+            # materialization grant (quest reward, reaction effect, etc.),
+            # not a "move from world" operation.
+            if (hard is not None and corpus is not None
+                    and not _is_stackable(item_id, corpus)):
+                room_id = hard.player.location
+                if room_id:
+                    loc = _locate_world_item(hard, corpus, room_id, item_id)
+                    if loc is not None:
+                        kind, container_id = loc
+                        if kind == "room":
+                            changes.room_contains_removed.setdefault(
+                                container_id, {}
+                            )[item_id] = count
+                        else:
+                            changes.entity_contains_removed.setdefault(
+                                container_id, {}
+                            )[item_id] = count
     if result.remove_item or result.remove_item_count:
         removed = _merge_item_counts(result.remove_item, result.remove_item_count)
         for item_id, count in removed.items():
@@ -1518,10 +1579,11 @@ def _resolve_checkable(
 
 def _find_entity_in_room(
     entity_id: str,
-    room: Any,
+    room_id: str,
+    hard: HardGameState,
     corpus: ModuleCorpus,
 ) -> Any | None:
-    if entity_id in room.contains:
+    if entity_id in hard.room_contains.get(room_id, {}):
         return corpus.entities.get(entity_id)
     return None
 
@@ -1529,12 +1591,11 @@ def _find_entity_in_room(
 def _find_entity_in_room_followers(
     entity_id: str,
     room_id: str,
-    room: Any,
     hard: HardGameState,
     corpus: ModuleCorpus,
 ) -> Any | None:
     """Like _find_entity_in_room but also matches following NPCs."""
-    result = _find_entity_in_room(entity_id, room, corpus)
+    result = _find_entity_in_room(entity_id, room_id, hard, corpus)
     if result is not None:
         return result
     follower_ids = get_following_npc_ids(hard, corpus)

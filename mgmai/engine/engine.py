@@ -47,7 +47,12 @@ from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEn
 from mgmai.state.manager import StateManager
 from mgmai.engine.conditions import evaluate, get_condition_detail
 from mgmai.engine.resolver import resolve_action, ResolutionResult
-from mgmai.engine.utils import inject_following_npcs, get_following_npc_ids, is_exit_visible
+from mgmai.engine.utils import (
+    inject_following_npcs,
+    get_following_npc_ids,
+    is_exit_visible,
+    _is_stackable,
+)
 from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
 from mgmai.engine.encounters import resolve_encounter
 from mgmai.engine.dialogue import (
@@ -607,7 +612,7 @@ def _validate_soft_patches(
                 reason = f"Invalid room: {room_id}"
             else:
                 all_soft = set(room.soft_items or [])
-                for eid in room.contains:
+                for eid in hard.room_contains.get(room_id, {}):
                     ent = corpus.entities.get(eid)
                     if ent and ent.soft_items:
                         all_soft.update(ent.soft_items)
@@ -645,7 +650,7 @@ def _check_note_contradiction(
     for ent_id, state in hard.entity_states.items():
         if room_id is not None:
             room = corpus.rooms.get(room_id)
-            if room is None or ent_id not in room.contains:
+            if room is None or ent_id not in hard.room_contains.get(room_id, {}):
                 continue
         ent = corpus.entities.get(ent_id)
         if ent is None:
@@ -676,7 +681,10 @@ def _build_room_after(
         )
 
     entities_visible: list[BriefingEntity] = []
-    for eid in room.contains:
+    room_contains = hard.room_contains.get(room_id, {})
+    for eid, count in room_contains.items():
+        if count <= 0:
+            continue
         entity = corpus.entities.get(eid)
         if entity is None:
             continue
@@ -684,8 +692,12 @@ def _build_room_after(
         entity_state = hard.entity_states.get(eid, {})
         if entity_state.get("hidden", False):
             continue
-        if entity.type == "item" and (eid in hard.player.inventory or eid in hard.player.equipped):
-            continue
+        # Hide equipped items; hide inventory items only when non-stackable.
+        if entity.type == "item":
+            if eid in hard.player.equipped:
+                continue
+            if eid in hard.player.inventory and not _is_stackable(eid, corpus):
+                continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
         entity_soft = soft.surfaced_soft_items.get(eid, [])
@@ -707,6 +719,7 @@ def _build_room_after(
                 entity_notes=notes,
                 soft_items=list(entity_soft),
                 dialogue_paths=path_descriptions,
+                count=count,
             )
         )
 
@@ -762,9 +775,7 @@ def _build_will_reveal_readiness(
     if room is None:
         return result
 
-    npc_ids: set[str] = set()
-    for eid in room.contains:
-        npc_ids.add(eid)
+    npc_ids: set[str] = set(hard.room_contains.get(room_id, {}))
     for eid in get_following_npc_ids(hard, corpus):
         npc_ids.add(eid)
 
@@ -813,9 +824,7 @@ def _build_npc_attitude_limits(
     if room is None:
         return result
 
-    npc_ids: set[str] = set()
-    for eid in room.contains:
-        npc_ids.add(eid)
+    npc_ids: set[str] = set(hard.room_contains.get(room_id, {}))
     for eid in get_following_npc_ids(hard, corpus):
         npc_ids.add(eid)
 

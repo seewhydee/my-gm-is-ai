@@ -895,9 +895,10 @@ class TestBuildContainedEntities:
         hard.player.location = "bag_floor"
         # Add a contained entity relationship to rubbish_pile
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": False}
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus,
+            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 1
         assert result[0].id == "toenail_sword"
@@ -908,9 +909,10 @@ class TestBuildContainedEntities:
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": True}
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus,
+            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 0
 
@@ -919,10 +921,11 @@ class TestBuildContainedEntities:
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": False}
         hard.player.inventory = {"toenail_sword": 1}
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus,
+            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 0
 
@@ -931,13 +934,14 @@ class TestBuildContainedEntities:
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": False}
         # Equipped items are no longer in inventory but must still be
         # filtered out so they don't reappear inside their container.
         hard.player.inventory = {}
         hard.player.equipped = ["toenail_sword"]
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus,
+            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 0
 
@@ -946,8 +950,9 @@ class TestBuildContainedEntities:
         hard = state_manager.hard_state
         hard.player.location = "axe_head"
         corpus.entities["battleaxe"].contains = []
+        hard.entity_contains["battleaxe"] = {}
         result = build_contains(
-            corpus.entities["battleaxe"], hard, corpus,
+            corpus.entities["battleaxe"], hard, corpus, entity_id="battleaxe",
         )
         assert result == []
 
@@ -956,8 +961,9 @@ class TestBuildContainedEntities:
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["nonexistent"]
+        hard.entity_contains["rubbish_pile"] = {"nonexistent": 1}
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus,
+            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 0
 
@@ -970,6 +976,7 @@ class TestContainedEntitiesSurfacing:
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": False}
         result = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish = _find_entity(result, "rubbish_pile")
@@ -982,6 +989,7 @@ class TestContainedEntitiesSurfacing:
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": True}
         result = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish = _find_entity(result, "rubbish_pile")
@@ -993,6 +1001,7 @@ class TestContainedEntitiesSurfacing:
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": True}
         result1 = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish1 = _find_entity(result1, "rubbish_pile")
@@ -1019,12 +1028,96 @@ class TestContainedEntitiesSurfacing:
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": False}
         hard.player.inventory = {"toenail_sword": 1}
         result = assemble(corpus, hard, state_manager.soft_state, "look")
         rubbish = _find_entity(result, "rubbish_pile")
         assert rubbish is not None
         assert len(rubbish.contains) == 0
+
+
+class TestStackableItemVisibility:
+    """Stackable items remain visible with their remaining world count."""
+
+    def test_stackable_room_item_shows_remaining_count(self, state_manager):
+        corpus = state_manager.corpus
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.rooms["bag_floor"].contains.append("gold_coin")
+        hard.room_contains.setdefault("bag_floor", {})["gold_coin"] = 50
+
+        result = assemble(corpus, hard, state_manager.soft_state, "look")
+        coin = _find_entity(result, "gold_coin")
+        assert coin is not None
+        assert coin.count == 50
+
+    def test_partial_stack_visibility(self, state_manager):
+        corpus = state_manager.corpus
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.rooms["bag_floor"].contains.append("gold_coin")
+        hard.room_contains.setdefault("bag_floor", {})["gold_coin"] = 50
+        hard.player.inventory["gold_coin"] = 30
+
+        result = assemble(corpus, hard, state_manager.soft_state, "look")
+        coin = _find_entity(result, "gold_coin")
+        assert coin is not None
+        assert coin.count == 50
+
+    def test_depleted_stackable_item_hidden(self, state_manager):
+        corpus = state_manager.corpus
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.rooms["bag_floor"].contains.append("gold_coin")
+        hard.room_contains.setdefault("bag_floor", {})["gold_coin"] = 0
+
+        result = assemble(corpus, hard, state_manager.soft_state, "look")
+        coin = _find_entity(result, "gold_coin")
+        assert coin is None
+
+    def test_non_stackable_inventory_item_hidden(self, state_manager):
+        corpus = state_manager.corpus
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        corpus.entities["rubbish_pile"].contains = ["toenail_sword"]
+        hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
+        hard.player.inventory = {"toenail_sword": 1}
+
+        result = assemble(corpus, hard, state_manager.soft_state, "look")
+        rubbish = _find_entity(result, "rubbish_pile")
+        assert rubbish is not None
+        assert len(rubbish.contains) == 0
+
+    def test_stackable_contained_item_shows_count(self, state_manager):
+        corpus = state_manager.corpus
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.entities["rubbish_pile"].contains = ["gold_coin"]
+        hard.entity_contains["rubbish_pile"] = {"gold_coin": 42}
+
+        result = assemble(corpus, hard, state_manager.soft_state, "look")
+        rubbish = _find_entity(result, "rubbish_pile")
+        assert rubbish is not None
+        assert len(rubbish.contains) == 1
+        assert rubbish.contains[0].id == "gold_coin"
+        assert rubbish.contains[0].count == 42
 
 
 def _find_entity(briefing: GMBriefing, entity_id: str) -> BriefingEntity | None:

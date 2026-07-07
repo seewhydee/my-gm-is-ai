@@ -32,6 +32,7 @@ from mgmai.engine.resolver import (
     resolve_transfer,
 )
 from mgmai.engine.dialogue import check_room_change_exit
+from mgmai.state.manager import StateManager
 from mgmai.models.actions import (
     ExamineAction,
     InteractAction,
@@ -50,7 +51,15 @@ def _load_hard(**overrides):
     data = json.loads((FIXTURES_DIR / "hard-state.json").read_text())
     for eid, fields in overrides.items():
         data.setdefault("entity_states", {}).setdefault(eid, {}).update(fields)
-    return HardGameState.model_validate(data)
+    hard = HardGameState.model_validate(data)
+    # Initialise runtime containment from corpus so tests that bypass
+    # StateManager.load_all still see room contents.
+    corpus = ModuleCorpus.model_validate(json.loads((FIXTURES_DIR / "corpus.json").read_text()))
+    sm = StateManager()
+    sm.corpus = corpus
+    sm.hard_state = hard
+    sm._init_contains_from_corpus()
+    return hard
 
 
 def _load_soft():
@@ -132,25 +141,28 @@ class TestFindEntityInRoomFollowers:
     def _setup(self, sample_corpus_dict):
         corpus = _load_corpus(sample_corpus_dict)
         hard = _load_hard(korbar={"following": True})
+        # Initialise runtime containment maps from corpus.
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = hard
+        sm._init_contains_from_corpus()
         return hard, corpus
 
     def test_finds_follower_not_in_contains(self, _setup):
         hard, corpus = _setup
         room = corpus.rooms["axe_head"]
-        result = _find_entity_in_room_followers("korbar", "axe_head", room, hard, corpus)
+        result = _find_entity_in_room_followers("korbar", "axe_head", hard, corpus)
         assert result is not None
         assert result.type == "npc"
 
     def test_still_finds_static_entity(self, _setup):
         hard, corpus = _setup
-        room = corpus.rooms["bag_floor"]
-        result = _find_entity_in_room_followers("korbar", "bag_floor", room, hard, corpus)
+        result = _find_entity_in_room_followers("korbar", "bag_floor", hard, corpus)
         assert result is not None
 
     def test_nonexistent_entity(self, _setup):
         hard, corpus = _setup
-        room = corpus.rooms["axe_head"]
-        result = _find_entity_in_room_followers("nonexistent", "axe_head", room, hard, corpus)
+        result = _find_entity_in_room_followers("nonexistent", "axe_head", hard, corpus)
         assert result is None
 
 

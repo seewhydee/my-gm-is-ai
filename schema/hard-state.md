@@ -13,6 +13,8 @@ state; it only submits actions for the engine to validate and resolve.
   "flags":        { "<flag_id>": true | false, ... },
   "room_states":  { "<room_id>": { "<field>": <value>, ... } },
   "entity_states":{ "<entity_id>": { "<field>": <value>, ... } },
+  "room_contains": { "<room_id>": { "<entity_id>": <count>, ... } },
+  "entity_contains": { "<container_id>": { "<entity_id>": <count>, ... } },
   "turn_count":   0,
   "game_over":    null,
   "combat":       null
@@ -241,10 +243,58 @@ uses the corpus `initial` as the default.  A value supplied in
 ### State filtering for GMBriefing
 
 When the Context Assembler builds the GMBriefing, it:
-1. Lists entities in `contains` for the current room.
+1. Lists entities in `hard.room_contains` for the current room.
 2. Filters to entities where `state.alive == true` (or the entity has no
    `alive` field — static features are always visible).
 3. Includes a brief description and current state summary for each visible entity.
+
+---
+
+## Runtime containment (`room_contains`, `entity_contains`)
+
+```json
+{
+  "room_contains": {
+    "<room_id>": { "<entity_id>": <count> }
+  },
+  "entity_contains": {
+    "<container_id>": { "<entity_id>": <count> }
+  }
+}
+```
+
+These maps track the mutable location of every entity in the world.
+`room_contains` holds entities placed directly in rooms;
+`entity_contains` holds entities nested inside container entities.
+
+### Initialisation
+
+- On `load_all`, the engine always rebuilds both maps from the corpus
+  `Room.contains_map` / `Entity.contains_map`.
+- On `load_save`, if the save already contains `room_contains`, the saved
+  maps are used as-is.  Legacy saves that lack the keys are backfilled
+  from the corpus once.
+
+### Mutation rules
+
+- Player `take` actions decrement the source container/room and add to
+  `player.inventory`.
+- Player `give` actions decrement `player.inventory` and increment the
+  target room or entity container.
+- `Result.add_item` for a non-stackable item that exists in a world
+  container in the current room removes it from that container (prevents
+  duplication of unique items).  Stackable `add_item`/`add_item_count`
+  does not touch world containers (the grant is a materialization, not a
+  transfer from a specific location).
+- `Result.remove_item` removes from `player.inventory` only; the item
+  vanishes (no world-side deposit).
+- Counts are summed on add; keys are deleted when the count reaches `0`.
+- Non-stackable items may never exceed count `1` in a location.
+- Stackable items respect `max_stack`.
+
+### Persistence
+
+Both maps are serialised as part of the hard state in save files.
 
 ---
 
@@ -362,6 +412,10 @@ The engine mutates hard state through these operations:
 | `set_player_location`  | `player.location`              |
 | `add_item`             | `player.inventory`             |
 | `remove_item`          | `player.inventory`             |
+| `add_room_contains`    | `room_contains.<room_id>`      |
+| `remove_room_contains` | `room_contains.<room_id>`      |
+| `add_entity_contains`  | `entity_contains.<entity_id>`  |
+| `remove_entity_contains`| `entity_contains.<entity_id>` |
 | `set_flag`             | `flags.<name>`                 |
 | `clear_flag`           | `flags.<name>`                 |
 | `set_room_state`       | `room_states.<id>.<field>`     |

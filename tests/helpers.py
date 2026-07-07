@@ -601,4 +601,6 @@ def build_state_manager(
     sm._adventure_dir = None
     # Initialise combat defaults (HP, AC) from corpus stats if present.
     sm._init_player_combat_defaults()
+    # Initialise runtime containment maps from corpus.
+    sm._init_contains_from_corpus()
     return sm

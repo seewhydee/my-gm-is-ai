@@ -76,7 +76,7 @@ def find_matching_reactions(
 
     # --- Entity-scoped reactions ---
     if room is not None:
-        entity_ids: set[str] = set(room.contains)
+        entity_ids: set[str] = set(hard.room_contains.get(room_id, {}))
         for eid in get_following_npc_ids(hard, corpus):
             entity_ids.add(eid)
 

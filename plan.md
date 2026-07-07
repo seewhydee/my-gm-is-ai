@@ -1,330 +1,408 @@
-# Plan: Quantity-aware inventory with real stacking
+# Plan: World-side containment with quantity tracking
 
 ## Problem statement
 
-Entity IDs in the corpus are **dict keys** — unique by definition. For NPCs
-and rooms this maps cleanly; items do not. Items are a **confused hybrid**:
-their IDs serve as both type definitions (the corpus `entities` entry) and
-instance references (entries in player `inventory` / `equipped` / room
-`contains`). This creates concrete gaps:
+Commit `2b93aa3` converted player `inventory` from `list[str]` to `Dict[str, int]`,
+enabling stackable items with quantities. Two gaps remain on the world side.
 
-1. **No duplicate prevention.** `inventory_added` (`manager.py:514`) is a
-   bare `list.append()` with no tag check or dedup. A sword can appear
-   twice in inventory — meaningless for a unique artifact.
-2. **Removal is ambiguous.** `list.remove()` (`manager.py:519`) deletes
-   only the first occurrence. Given two potions and one `remove_item`,
-   the engine can't know which was "the one used."
-3. **No counting.** The `inventory` domain condition (`conditions.py:80`)
-   is a binary `key in list` — you can't write `inventory:potion >= 3`.
-4. **No per-instance state.** Two swords share a single
-   `entity_states["sword"]` entry — you can't have one rusty and one sharp.
-5. **Equipped *does* guard against duplicates** (`manager.py:523`) but
-   inventory does not — an inconsistent split.
-6. **The `stackable` tag is documented but unimplemented.** `hard-state.md`
-   claims "Duplicates are allowed only if the module explicitly supports it
-   (tag: `stackable`)." The tag does not exist anywhere in the code.
-7. **Room `contains` duplicates are silently collapsed.** The transfer
-   resolver builds `available_pool` as a `set[str]` (`resolver.py:624`) —
-   if the corpus defines two potions in a room, the player can only pick
-   up one.
+### Problem 1: `contains` lacks quantity support
 
-### Why the original "stackable = discrete duplicates" plan is insufficient
+`Room.contains` and `Entity.contains` are still `List[str]` — a flat list of entity IDs.
+There is no way to express "this chest contains 50 gold coins." The player inventory
+format already solved this with a dict; the world side hasn't caught up.
 
-The earlier draft proposed `stackable` as a tag permitting duplicate list
-entries, with quantity tracking deferred. That deferral does not hold:
+### Problem 2: `contains` is a static corpus field, not runtime world state
 
-- **Money is unrepresentable.** "50 coins + 30 coins = 80 coins" cannot be
-  modelled. The `list[str]` representation permits discrete duplicates
-  (3 separate `potion` entries) but not fungible quantity, and `list.remove()`
-  is silently lossy for fungibles.
-- **The deferral is not independent of the representation.** Committing to
-  `list[str]` with duplicates is *exactly* what blocks counting and money
-  later. Shipping `stackable` as discrete-dupes locks in a representation
-  the deferred features require us to undo.
-- **The name `stackable` promises quantity semantics it doesn't deliver.**
-  In RPG convention "stackable" means quantity aggregation (a stack of 80
-  gold); using it for "discrete dupes allowed" misleads module authors.
+The corpus is read-only after load. Containment is currently a static declaration.
+This creates concrete bugs:
 
-### Design decision: model quantity now
+- **No depletion tracking.** `available_pool` in the transfer resolver is a `set[str]`
+  built from the static `room.contains`. There is **no quantity limit**: you can take
+  1000 coins from a room that only declares 50.
 
-Migrate `player.inventory` from `list[str]` to `Dict[str, int]`
-(item_id → count), implement real stacking with counts, and make
-`stackable` mean what it says. This resolves gaps 1–3, 6, and 7 in one
-coherent design. Per-instance state (gap 4) remains out of scope.
+- **Invisible stacks.** Once the player holds ANY of a stackable item, the filtering
+  code (`eid in hard.player.inventory`) hides the entire item from room visibility —
+  the remaining coins in the room vanish from both the GM briefing and the available pool.
+  This filter currently appears in three places: `context/assembler.py:94`,
+  `engine/utils.py:131-135` (`build_contains`), and `engine/engine.py:687`
+  (`_build_room_after`).
 
-| Item type                | Tagged?       | Count?            | Behavior                                       |
-|--------------------------|---------------|-------------------|------------------------------------------------|
-| Unique (sword, artifact) | No `stackable`| Always 1          | Adding when present raises; count never > 1    |
-| Consumable (potion, coin)| `stackable`   | 1..`max_stack`    | Adds increment; removes decrement; countable   |
+- **Giving items makes them disappear.** Hard items given to a room or NPC are
+  removed from player inventory but only surface as soft_items — they are never
+  placed back into a mutable world-side container. They become narrative-only fluff.
 
-### Confirmed design choices
+### Root cause: static `contains`
 
-- **Representation:** `player.inventory: Dict[str, int]`. Old saves are
-  **not** supported — fixtures and the sample adventure are migrated to
-  dict form. Python dicts support `in` and key iteration, so the ~16
-  read sites (`eid in hard.player.inventory`, `for item_id in ...`,
-  `list(...)`) keep working unchanged; only the two mutation sites and
-  serialization change.
-- **`stackable` tag + optional `max_stack` field.** `stackable` is a tag
-  on item entities (consistent with the existing `container` tag). `max_stack`
-  is an optional `Entity` field (default unlimited), gated to `type=="item"`.
-- **Quantity in results:** `Result.add_item`/`remove_item` stay as
-  `List[str]` (each entry +1; repeats allowed for stackables); add
-  `add_item_count`/`remove_item_count: Dict[str,int]` for bulk grants
-  (`{"coins": 30}`). Backward compatible.
-- **Quantity in transfers:** `TransferAction` gains `given_counts`/
-  `taken_counts: Dict[str,int]` alongside the existing lists, so the LLM
-  can express "take 300 coins" without repeating an ID 300 times.
-- **Conditions:** `inventory:coins >= 30` works (operator on `inventory`
-  domain).
-- **Deltas:** `HardStateChanges.inventory_added`/`_removed` →
-  `Dict[str,int]` (item→count).
-- **Equip-one-from-stack:** equipping a stackable item decrements the
-  stack by 1; unequipping increments. Equipped stays `list[str]` (unique).
-- **Remove shortfall:** hard `ValueError` in `apply_hard_changes`
-  (deterministic path); resolver path silently skips + debug-logs
-  (fuzzy LLM output). Mirrors the add-dedup split.
+The current design conflates two concerns:
+1. Initial placement of entities (a corpus concern)
+2. Runtime tracking of where entities are (a state concern)
 
-### What this does NOT address (out of scope)
-
-- **Room-side stackable depletion.** The engine does not track how many of
-  a stackable item remain in a room; `available_pool` is a presence set
-  rebuilt each turn from the corpus, never depleted. Bulk room money must
-  be modelled as a granting entity (e.g. `coin_pile`) whose take
-  interaction uses `add_item_count: {"coins": 300}` gated by a flag, so it
-  fires once. Direct `taken_counts` from a room is best-effort and trusts
-  the LLM. Documented in `actions.md`.
-- **Per-instance state.** Two distinct magic swords must still be defined
-  as separate corpus entities (`flame_blade`, `frost_blade`).
-- **Soft inventory quantities.** `soft_inventory` stays `list[str]`.
+By squashing both into the read-only corpus `contains`, the engine has no place to
+persist mutations like "the player took 30 coins, 20 remain" or "the player gave the
+sword to the goblin."
 
 ---
 
-## Work items
+## Design decisions
 
-### Phase 1 — Models
+### 1. Mixed-type `contains` is the *authoring* format only
 
-**1. `mgmai/models/hard_state.py:23-33` — `PlayerState.inventory`**
-Change `inventory: list[str]` → `Dict[str, int] = Field(default_factory=dict)`.
+Module authors should not be forced to write `{"goblin": 1, "chest": 1, "gold_coin": 50}`
+for every entity. The corpus JSON accepts a list of either plain strings (count=1) or
+single-key count-objects for stacked items:
 
-**2. `mgmai/models/corpus.py:415-455` — `Entity` fields**
-Add `max_stack: Optional[int] = None`. Gate to `type=="item"` in
-`check_type_specific_fields` (`:433`): raise if `max_stack` set on a
-non-item, and if set, `max_stack` must be ≥ 1.
+```json
+"contains": ["goblin", "chest", {"gold_coin": 50}]
+```
 
-**3. `mgmai/models/corpus.py:126-151` — `Result` fields**
-Add `add_item_count: Optional[Dict[str, int]] = None` and
-`remove_item_count: Optional[Dict[str, int]] = None`.
+The Python model normalises this at validation time. `Room.contains` and
+`Entity.contains` keep their declared type `List[Union[str, Dict[str, int]]]` (so the
+raw input round-trips and authors see what they wrote), but a
+`@model_validator(mode="after")` builds a **private** `_contains_map: Dict[str, int]`
+and exposes it via a read-only `.contains_map` property.
 
-**4. `mgmai/models/actions.py:62-76` — `TransferAction` fields**
-Add `given_counts: Optional[Dict[str, int]] = None` and
-`taken_counts: Optional[Dict[str, int]] = None`. Update
-`check_non_empty_transfer` to treat a non-empty count dict as satisfying
-the non-empty requirement. Validate counts are ≥ 1.
+**Hard rule: no runtime code iterates the raw `contains` list.** Every corpus-side
+read uses `.contains_map` (initial placement only); every runtime read uses the
+runtime maps in `HardGameState` (see §2). The raw `contains` list is for JSON I/O
+and corpus validation only. This is what makes the mixed-type list safe: a dict
+element in the list would crash any `.get(dict)` call, so the rule is enforced by
+auditing that *no* consumer touches `room.contains` / `entity.contains` directly.
 
-**5. `mgmai/models/actions.py:176-253` — `HardStateChanges`**
-Change `inventory_added`/`inventory_removed` from `List[str]` to
-`Dict[str, int]`. Update `merge()` (`:196-236`) to sum counts. Update
-`has_changes()` (`:238-253`) to check `bool(dict)`. Keep
-`inventory_added_sources`/`inventory_removed_reasons` keyed by item_id
-(one source per distinct item).
+### 2. Runtime containment in `HardGameState`, initialised from corpus
 
-**6. `mgmai/models/briefing.py:92-102` — `PlayerStateBriefing.hard_inventory`**
-Change type to `Dict[str, int]`.
+Two new top-level fields in `HardGameState`:
 
-### Phase 2 — State manager
+```python
+# {room_id: {entity_id: count}}
+room_contains: dict[str, dict[str, int]] = Field(default_factory=dict)
 
-**7. `mgmai/state/manager.py:514-519` — `apply_hard_changes` inventory mutation**
-Replace `append`/`remove` with increment/decrement:
-- **Add** (per item, count `n` from the delta):
-  - Look up entity in `self.corpus.entities`.
-  - Unknown item (not in corpus) → treat as non-stackable unique.
-  - Non-stackable + already present (`n` ≥ 1 while key exists) → `ValueError`.
-  - Non-stackable + `n > 1` → `ValueError`.
-  - Stackable → `inventory[key] += n`; if `max_stack` set and
-    `inventory[key] > max_stack` → `ValueError`.
-- **Remove** (per item, count `n`):
-  - `current = inventory.get(key, 0)`. If `n > current` → `ValueError`
-    (shortfall).
-  - `inventory[key] -= n`; if `<= 0`, `del inventory[key]`.
+# {container_entity_id: {entity_id: count}}
+entity_contains: dict[str, dict[str, int]] = Field(default_factory=dict)
+```
 
-**8. `mgmai/state/manager.py:251` — cross-ref validation**
-Verify `_check_ids` iterates the collection generically; if it indexes,
-adjust to iterate `inventory.keys()`.
+At game start these are initialised from the corpus `Room.contains_map` /
+`Entity.contains_map`. Thereafter **every consumer reads exclusively from the
+runtime maps** — the corpus `contains` fields are never consulted again at runtime.
+Mutations (taking, giving) flow through `HardStateChanges` → `apply_hard_changes`
+(see §3), which writes to `room_contains` / `entity_contains`.
 
-**9. `mgmai/state/manager.py:142-191` — `_apply_char_sheet_data`**
-Char-sheet `inventory` override must now be a dict. Document; the existing
-`model_fields` setattr path will reject a list via pydantic.
+This makes `contains` in the corpus purely declarative: "here are the initial
+conditions." The corpus schema docs will state this explicitly.
 
-### Phase 3 — Resolver
+#### Initialisation rules (critical — this is what makes existing adventures work)
 
-**10. `mgmai/engine/resolver.py:595-622` — transfer give**
-Merge `given_items` (list, each +1) + `given_counts` (dict) into a combined
-per-item count. For each `(item, n)`:
-- If in `hard.player.inventory`: validate `inventory[item] >= n`; on
-  shortfall → `result.success = False, error = "not enough"`. Record
-  `inventory_removed[item] += n`.
-- Non-stackable with `n > 1` is automatically a shortfall (count capped at
-  1 by the manager dedup invariant) — surface the same error.
-- Soft-item branch (`elif item in soft.soft_inventory`) stays list-only
-  (soft items have no counts); `n > 1` on a soft item → error.
+There is no `new_game()` method; the two real entry points are `StateManager.load_all`
+(fresh adventure load) and `StateManager.load_save` (restore a save). A new private
+helper `StateManager._init_contains_from_corpus()` rebuilds the maps from the corpus
+`contains_map`. It is called as follows:
 
-**11. `mgmai/engine/resolver.py:672-744` — transfer take**
-Merge `taken_items` + `taken_counts` into a combined per-item count. For
-each `(item, n)`:
-- Gate on `item in available_pool` (presence only — room depletion is out
-  of scope).
-- If item is non-stackable and `n > 1` → `result.success = False` (only
-  one exists).
-- `take_check` (`:697-727`) runs once per distinct item ID regardless of
-  count.
-- On pass: `inventory_added[item] += n`.
+| Entry point | Behaviour |
+|-------------|-----------|
+| `load_all` | **Always rebuild** `room_contains` / `entity_contains` from the corpus. The shipped `hard-state.json` is the initial state; the corpus is the authoritative source of initial placement, so its `contains_map` wins. This means existing adventure `hard-state.json` files need **zero migration** — they simply don't carry these keys. |
+| `load_save` | Inspect the **raw** save dict before pydantic defaults apply. If `"room_contains"` is present, trust the saved maps (a save written by the new engine always has them, including mutated counts). If absent (legacy save predating this feature), call `_init_contains_from_corpus()` once. Because the feature is new, no legacy save can have *mutated* containment, so backfill == initial state, which is correct. |
+| `apply_char_sheet` | No change — char sheets only override player fields; containment is untouched. |
 
-**12. `mgmai/engine/resolver.py:1196-1203` — `_apply_result`**
-Merge `add_item` (each +1) + `add_item_count` into `inventory_added` dict;
-same for `remove_item`/`remove_item_count`. Silently skip + debug-log:
-- Non-stackable duplicate adds (item already in inventory).
-- Remove shortfalls (insufficient count).
-This is the fuzzy-LLM-output path; a hard error would be too severe.
+Because `load_all` always rebuilds, mutation code is free to delete keys when a count
+reaches 0 (natural); `load_save` only backfills on *absence*, never on emptiness, so an
+emptied room in a real save is preserved.
 
-**13. `mgmai/engine/resolver.py:1720-1763` — equip / unequip**
-- **Equip:** validate at least 1 in inventory. Decrement inventory by 1
-  (delete key at 0). Append to `equipped`. Works for both unique and
-  stackable (equip-one-from-stack). Equipped's existing duplicate guard
-  (`manager.py:523`) stays.
-- **Unequip:** remove from `equipped`, increment inventory by 1.
+### 3. Mutations flow through `HardStateChanges` (the missing piece)
 
-**14. `mgmai/engine/resolver.py:624-665` — `available_pool` (no code change)**
-Document that room-side stackable quantity is not depleted. No behavioural
-change for v1.
+The codebase pattern is: resolvers build a `HardStateChanges`, the engine applies it
+via `StateManager.apply_hard_changes`. Resolvers do not mutate `hard.*` directly
+(the rare exceptions are `hard.game_over` and the follower-`following` flag). To move
+containment mutations through the same pipe, `HardStateChanges` gains four fields:
 
-### Phase 4 — Conditions
+```python
+room_contains_added:   Dict[str, Dict[str, int]] = Field(default_factory=dict)  # {room_id: {eid: count}}
+room_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+entity_contains_added:   Dict[str, Dict[str, int]] = Field(default_factory=dict)  # {container_eid: {eid: count}}
+entity_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+```
 
-**15. `mgmai/engine/conditions.py:77-80` — `inventory` domain**
-Allow operator. When present: `count = hard_state.player.inventory.get(key, 0)`;
-`return _compare(count, op, value)`. Without operator: `return count > 0`.
+- `merge()` sums counts for matching keys (like `inventory_added`).
+- `has_changes()` returns True if any of the four is non-empty.
+- `apply_hard_changes()` applies them with the validation in §4 and records the
+  resulting state-change events alongside the existing item-acquired/lost events.
 
-**16. `mgmai/engine/conditions.py:314-316` — `get_condition_detail`**
-Mirror the count-aware branch for the inventory domain.
+The transfer resolver records:
+- **Take** of a hard item: `inventory_added[item]=count` plus
+  `room_contains_removed[room_id][item]=count` *or*
+  `entity_contains_removed[container_id][item]=count`, depending on where the item
+  lives. A new helper `_locate_world_item(hard, room_id, item) -> ("room", room_id) |
+  ("entity", container_id) | None` determines the source. Soft items record no
+  containment delta (they are not in the runtime maps).
+- **Give** of a hard item: `inventory_removed[item]=count` plus
+  `room_contains_added[room_id][item]=count` (when `target_is_room`) or
+  `entity_contains_added[target_id][item]=count` (when `target_is_entity`).
 
-**17. `tag:` / `equipped:` domains (`conditions.py:82-95, 149-160`)**
-Unchanged — iterate keys (works with dict). Stay presence-only.
+### 4. Non-stackable constraints (safety), enforced at three layers
 
-### Phase 5 — Engine, briefing, CLI, templates
+The normalised `Dict[str, int]` form makes stacking universal. Safety invariants are
+enforced at the point of change:
 
-**18. `mgmai/engine/engine.py:944-958` — event derivation**
-Emit one `item.acquired`/`item.lost` event per distinct item with a `count`
-field (read from the dict delta), instead of N events for N stacked.
+| Rule | Where enforced |
+|------|----------------|
+| Non-item entities (NPCs, features) → count must be 1 | Corpus validation (`validate_cross_references`) |
+| Non-stackable item → count must be 1 in every location | Corpus validation (initial) **and** `apply_hard_changes` (runtime add) **and** transfer resolver pre-check |
+| Stackable item → resulting count bounded by `max_stack` if set | `apply_hard_changes` (runtime add) |
+| Self-referencing `entity_contains` (an entity whose `contains` includes itself) → forbidden | Corpus validation |
+| Player entity must never appear as a contained key | Corpus validation |
 
-**19. Membership checks** — `engine.py:687`, `assembler.py:94`,
-`engine/utils.py:132`: `eid in hard.player.inventory` works unchanged with
-a dict.
+`apply_hard_changes` validates each containment delta: the target room/container and
+item entity must exist in the corpus; non-stackable items may not exceed count 1 in the
+resulting location; stackable items respect `max_stack`. Failures raise `ValueError`
+and abort the whole batch (matching the atomic style of the existing pre-validation).
 
-**20. `mgmai/context/assembler.py:221` — briefing build**
-`hard_inventory=dict(hard.player.inventory)`.
+These constraints are **minimalist**: they prevent nonsense while leaving authors free
+to nest non-stackable entities arbitrarily (a chest containing a sword, a sword with no
+stacking semantics, etc.).
 
-**21. `mgmai/game/commands.py:395-402` — `/inv` rendering**
-Render `name (xN)` when count > 1.
+### 5. Scope boundary: reactions do NOT spawn world items (yet)
 
-**22. `mgmai/engine/systems/five_e.py:208` — weapon tag scan**
-Iterates keys; works unchanged.
-
-**23. `mgmai/logging.py:88` — state snapshot**
-Now a dict; works unchanged.
-
-**24. Template renderer** — locate the template consuming `hard_inventory`
-and update it to render counts (`xN` when count > 1).
-
-### Phase 6 — Schema docs
-
-**25. `schema/hard-state.md:42,51,63-72,394`**
-Change `inventory` type to `object` (item_id → count). Rewrite add/remove
-rules: stackable increments, non-stackable raises on duplicate, `max_stack`
-cap, remove shortfall raises. Update example to `"inventory": {}`.
-
-**26. `schema/corpus.md:201-214` — Result**
-Document `add_item_count`/`remove_item_count`. Note `add_item` repeats are
-allowed for stackables (each +1).
-
-**27. `schema/corpus.md:879-918` — Entity**
-Add `stackable` tag and `max_stack` field to the entity docs.
-
-**28. `schema/corpus.md:81-116` — condition strings**
-`inventory` domain now supports operators (`inventory:coins >= 30`).
-
-**29. `schema/actions.md`**
-- Update `TransferAction` (`:418-427`): document `given_counts`/
-  `taken_counts`; non-stackable items reject count > 1.
-- Update `hard_inventory`/`inventory_added`/`inventory_removed` (`:118-119,
-  648-649, 711`) to dict form.
-- Document the room-side depletion limitation for `taken_counts`.
-
-**30. `schema/events.md:60-61`**
-Add `count` to `item.acquired`/`item.lost` payloads.
-
-### Phase 7 — Tests
-
-**31. Migrate list-form inventory fixtures to dict form:**
-`tests/fixtures/hard-state.json`, `tests/fixtures/mini_adventure/hard-state.json`,
-the sample adventure's `hard-state.json`, `autosave.json` (if retained),
-and shared fixtures in `tests/helpers.py`.
-
-**32. `tests/test_conditions.py:180`**
-Rewrite `test_inventory_with_operator_raises` → count-operator tests; add
-`inventory:coins >= 30` true/false cases and presence (`count > 0`).
-
-**33. `tests/test_state_manager.py:225,229,235,659,698`**
-Update for dict inventory. Add: quantity add/remove, non-stackable dedup
-raises, `max_stack` cap raises, remove-shortfall raises.
-
-**34. `tests/test_actions.py:92`**
-Update `test_transfer`; add `given_counts`/`taken_counts` validation cases
-(non-empty check, count ≥ 1).
-
-**35. `tests/test_resolver.py`**
-Update give/take/equip for dict deltas. Add: take 300 coins (stackable,
-increments by 300), give 300 coins (validates sufficient, shortfall
-fails), take 2 of a non-stackable sword (rejected), non-stackable
-duplicate add skipped, remove-shortfall skipped, equip-one-from-stack.
-
-**36. `tests/test_event_bus.py:520`**
-Update provenance test for the `count` field on `item.acquired`/`item.lost`.
-
-**37. `tests/test_equip_gear.py`**
-Add equip-one-from-stack; verify non-stackable equip unchanged.
-
-**38. `tests/test_assembler.py:478`, `tests/test_commands.py:223`**
-Dict briefing; `/inv` `xN` rendering.
-
-**39. New money-scenario test**
-- Start: `inventory = {"coins": 50}`.
-- Grant 30 via `add_item_count` → 80.
-- `inventory:coins >= 30` true; `>= 51` false; `>= 80` true.
-- Pick up 300 via `taken_counts` in one transfer → 380.
-- Spend 30 via `remove_item_count` → 350.
-- Spend 1000 → manager raises (shortfall); resolver path skips + logs.
-- `max_stack` cap: add past cap raises.
+The `Result` model only supports inventory mutation (`add_item` / `remove_item`); it
+has no field for "spawn item N into room R." Adding world-side spawn/remove reactions
+is **out of scope** for this change and is left for future work. The runtime maps are
+mutated only by (a) initialisation from corpus and (b) take/give transfers. Any plan
+prose implying otherwise is aspirational, not part of this change.
 
 ---
 
-## Rollback risk
+## Detailed consumer migration
 
-Non-zero (unlike the original discrete-dupes plan). The sample adventure's
-`hard-state.json` and all inventory fixtures must be migrated to dict form,
-and ~7 test files need updates. No behaviour change for unique items
-(count stays 1). The migration is mechanical because `in`/iteration are
-dict-compatible.
+Every code site that reads `room.contains` / `entity.contains` from the corpus must
+switch to the runtime maps (or, for corpus-validation-only sites, to `.contains_map`).
+Line numbers are accurate against the current `main`; they will drift during
+implementation but are kept here as anchors. **This is the complete inventory** — it
+was verified by grepping for `.contains` across `mgmai/`.
 
-## Implementation order
+### Assembler + briefing
 
-1. Phases 1–2 (models + manager) — establish the new representation and
-   mutation semantics.
-2. Phase 3 (resolver) — feed quantities through transfers, results, equip.
-3. Phase 4 (conditions) — enable `inventory:id >= N`.
-4. Phase 5 (engine/briefing/CLI/templates) — surface counts to LLM and
-   player.
-5. Phase 6 (docs) — update all schema references.
-6. Phase 7 (tests) — migrate fixtures, rewrite the operator test, add the
-   money scenario.
+| File | Line(s) | Current | Replacement |
+|------|---------|---------|-------------|
+| `context/assembler.py` | 86 | `for eid in room.contains:` | `for eid in hard.room_contains.get(room_id, {}):` |
+| `context/assembler.py` | 94 | `if entity.type=="item" and (eid in hard.player.inventory or eid in hard.player.equipped): continue` | **Fix invisible-stacks:** hide if `eid in equipped`; hide if `eid in inventory and not _is_stackable(eid, corpus)`; otherwise show with remaining count. Set `count=` on the `BriefingEntity` (see below). |
+| `context/assembler.py` | 111-122 | `BriefingEntity(...)` no count | add `count=hard.room_contains.get(room_id, {}).get(eid, 1)` |
+| `context/assembler.py` | 120 | `build_contains(entity, hard, corpus, entity_id=eid)` | unchanged signature (it reads runtime map internally) |
+| `context/assembler.py` | 144 | `set(room.contains)` | `set(hard.room_contains.get(room_id, {}))` |
+| `engine/utils.py` | 102-142 | `build_contains(entity, ...)` iterates `entity.contains` | iterate `hard.entity_contains.get(entity_id, {})` |
+| `engine/utils.py` | 124 | `for cid in entity.contains:` | `for cid in hard.entity_contains.get(entity_id, {}):` |
+| `engine/utils.py` | 131-135 | hide item if `cid in inventory or cid in equipped` | **Fix invisible-stacks** (same rule as assembler.py:94); set `count=` on each `BriefingContainsEntry` from `hard.entity_contains[entity_id][cid]` |
+| `engine/utils.py` | 136-141 | `BriefingContainsEntry(...)` no count | add `count=...` |
+| `models/briefing.py` | 34-39 | `BriefingContainsEntry` | add `count: int = 1` |
+| `models/briefing.py` | 42-52 | `BriefingEntity` | add `count: int = 1` (so room-level stackable items show their remaining count) |
+| `engine/engine.py` | 679 | `_build_room_after()` `for eid in room.contains:` | `for eid in hard.room_contains.get(room_id, {}):` |
+| `engine/engine.py` | 687 | hide item if `eid in inventory or eid in equipped` | **Fix invisible-stacks** (same rule); set `count=` on the `BriefingEntity` |
 
-Run `pytest` and the lint/typecheck commands after each phase.
+Note: `_is_stackable` currently lives as a private in `engine/resolver.py`. Promote it
+to `engine/utils.py` so the assembler and engine can import it.
+
+### Transfer resolver (take / give)
+
+| File | Line(s) | Current | Replacement |
+|------|---------|---------|-------------|
+| `engine/resolver.py` | 69-81 | `_merge_item_counts` | unchanged |
+| `engine/resolver.py` | 84-94 | `_is_stackable` | unchanged (but see promotion note above) |
+| `engine/resolver.py` | 277 | `for eid in room.contains:` (examine soft-item search) | `for eid in hard.room_contains.get(room_id, {}):` — **previously omitted; crashes on dict elements if not migrated** |
+| `engine/resolver.py` | 287 | `for eid in room.contains:` (locate soft-item source) | `for eid in hard.room_contains.get(room_id, {}):` — **previously omitted; same crash** |
+| `engine/resolver.py` | 486 | `target_npc not in room.contains` (talk target check) | `target_npc not in hard.room_contains.get(room_id, {})` — **previously omitted** |
+| `engine/resolver.py` | 615 | `target_id in room.contains` | `target_id in hard.room_contains.get(room_id, {})` |
+| `engine/resolver.py` | 667-708 | `available_pool: set[str]` from `room.contains` + `ent.contains` | `available_pool: dict[str, int]` from `hard.room_contains[room_id]` + `hard.entity_contains`; nested container contents counted; soft items added with count 1 |
+| `engine/resolver.py` | 715-778 | take: `item in available_pool` (set membership) | take: `available_pool.get(item, 0) >= count`; on success record `inventory_added` + `room_contains_removed`/`entity_contains_removed` via `_locate_world_item` |
+| `engine/resolver.py` | 637-665 | give: removes from inventory only | give: also record `room_contains_added` (target_is_room) or `entity_contains_added` (target_is_entity) |
+| `engine/resolver.py` | 697,703 | `claimed_entities` from `ent.contains` | from `hard.entity_contains.get(eid, {})` |
+| `engine/resolver.py` | 721,727 | closed-container check reads `ent.contains` | reads `hard.entity_contains.get(eid, {})` |
+| `engine/resolver.py` | 785 | surfacing soft items iterates `room.contains` | iterates `hard.room_contains.get(room_id, {})` |
+| `engine/resolver.py` | 1519-1526 | `_find_entity_in_room(entity_id, room, corpus)` checks `entity_id in room.contains` | **Change signature** to `_find_entity_in_room(entity_id, room_id, hard, corpus)`; checks `entity_id in hard.room_contains.get(room_id, {})` |
+| `engine/resolver.py` | 1529-1539 | `_find_entity_in_room_followers` calls `_find_entity_in_room` | update call to new signature |
+
+### Engine
+
+| File | Line(s) | Current | Replacement |
+|------|---------|---------|-------------|
+| `engine/engine.py` | 610 | `for eid in room.contains:` (soft_item validation) | `for eid in hard.room_contains.get(room_id, {}):` |
+| `engine/engine.py` | 648 | `ent_id not in room.contains` (contradiction check) | `ent_id not in hard.room_contains.get(room_id, {})` |
+| `engine/engine.py` | 766,817 | will_reveal / attitude iterate `room.contains` for NPC ids | iterate `hard.room_contains.get(room_id, {})` |
+
+### Event bus
+
+| File | Line(s) | Current | Replacement |
+|------|---------|---------|-------------|
+| `engine/event_bus.py` | 79 | `set(room.contains)` | `set(hard.room_contains.get(room_id, {}))` |
+
+### Dialogue
+
+| File | Line(s) | Current | Replacement |
+|------|---------|---------|-------------|
+| `engine/dialogue.py` | 128 | `npc_id in new_room_data.contains` (room-change exit check) | `npc_id in hard.room_contains.get(new_room, {})` — **previously omitted** |
+
+### State manager
+
+| File | Line(s) | Current | Replacement |
+|------|---------|---------|-------------|
+| `state/manager.py` | 254 | `_check_ids(room.contains, self.corpus.entities, "entity")` | `_check_ids(room.contains_map.keys(), self.corpus.entities, "entity")` (corpus validation — uses `.contains_map`, not the raw list) |
+| `state/manager.py` | 197-307 | `validate_cross_references` | add count-constraint checks from §4 (non-item count==1, non-stackable count==1, self-reference) over each room/entity `.contains_map` |
+| `state/manager.py` | 87-113 | `load_all` | after loading, call `_init_contains_from_corpus()` (always rebuild) |
+| `state/manager.py` | 427-459 | `load_save` | inspect raw `data["hard"]`; if `"room_contains"` absent, call `_init_contains_from_corpus()` |
+| `state/manager.py` | 524-619 | `apply_hard_changes` | apply the four new containment-delta fields with §4 validation |
+| `state/manager.py` | new | — | add `_init_contains_from_corpus()` helper |
+
+### Models
+
+| File | Change |
+|------|--------|
+| `models/corpus.py` | `Room.contains` → `List[Union[str, Dict[str, int]]]` + normalising `@model_validator(mode="after")` → private `_contains_map` + `.contains_map` property |
+| `models/corpus.py` | `Entity.contains` → same |
+| `models/hard_state.py` | Add `room_contains: dict[str, dict[str, int]]` and `entity_contains: dict[str, dict[str, int]]` (both `default_factory=dict`) |
+| `models/briefing.py` | `BriefingContainsEntry` gains `count: int = 1` |
+| `models/briefing.py` | `BriefingEntity` gains `count: int = 1` |
+| `models/actions.py` | `HardStateChanges` gains the four containment-delta fields; `merge()` and `has_changes()` updated |
+
+### Templates (cosmetic)
+
+| File | Change |
+|------|--------|
+| `templates/ruling.j2` | Line ~124 references `rubbish_pile.contains = [{"id":"toenail_sword", ...}]` in an example string; update to include `count` now that `BriefingContainsEntry` carries it. Non-blocking. |
+
+---
+
+## Work items (implementation order)
+
+### Phase A — Models
+
+**A1.** `mgmai/models/corpus.py` — `Room.contains` and `Entity.contains`
+Change declared type to `List[Union[str, Dict[str, int]]]`. Add
+`@model_validator(mode="after")` that builds a private `_contains_map: dict[str, int]`
+(summing counts if an id appears more than once) and exposes a read-only
+`.contains_map` property. Keep the raw `contains` list as-is for JSON round-trip. Add
+a docstring stating the hard rule: runtime code must use `.contains_map` or the
+runtime maps, never the raw list.
+
+**A2.** `mgmai/models/hard_state.py`
+Add `room_contains` and `entity_contains` with `default_factory=dict`.
+
+**A3.** `mgmai/models/briefing.py`
+Add `count: int = 1` to **both** `BriefingContainsEntry` and `BriefingEntity`.
+
+**A4.** `mgmai/models/actions.py`
+Add the four containment-delta fields to `HardStateChanges`. Update `merge()` to sum
+matching keys (nested dict sum). Update `has_changes()` to consider them.
+
+### Phase B — State manager
+
+**B1.** `mgmai/state/manager.py` — corpus validation
+Migrate `_check_ids(room.contains, ...)` to `room.contains_map.keys()`. Add the §4
+corpus-side checks over each room/entity `.contains_map`:
+- Non-item entity with count > 1 → error.
+- Non-stackable item with count > 1 → error.
+- Self-referencing `entity_contains` cycle → error.
+- Player entity appearing as a contained key → error.
+
+**B2.** `mgmai/state/manager.py` — initialisation
+Add `_init_contains_from_corpus()`: iterate all corpus rooms and entities, populate
+`hard.room_contains` / `hard.entity_contains` from each `.contains_map`. Call it
+unconditionally at the end of `load_all`. In `load_save`, inspect the raw save dict
+and call it only when `"room_contains"` is absent.
+
+**B3.** `mgmai/state/manager.py` — apply containment deltas
+Extend `apply_hard_changes` to apply the four new `HardStateChanges` fields:
+- `room_contains_added` / `entity_contains_added`: increment the target map,
+  enforcing non-stackable ≤ 1 and `max_stack` on the resulting count.
+- `room_contains_removed` / `entity_contains_removed`: decrement; delete the key when
+  the count reaches 0 (safe because `load_save` only backfills on absence, and
+  `load_all` always rebuilds).
+- Pre-validate all deltas up front (entity/room existence, item type) and raise
+  atomically, matching the existing style.
+
+### Phase C — Consumer migration
+
+**C1.** `mgmai/context/assembler.py` + `mgmai/engine/utils.py` + `mgmai/engine/engine.py`
+Switch all `room.contains` / `entity.contains` reads to the runtime maps. `build_contains()`
+reads from `hard.entity_contains` and includes counts in `BriefingContainsEntry`.
+Room-level entities get `count` on `BriefingEntity` from `hard.room_contains`. Apply the
+invisible-stacks fix at all three filter sites (assembler.py:94, utils.py:131-135,
+engine.py:687): hide equipped items; hide inventory items only when non-stackable; show
+partially-held stackable items with their remaining world count. Promote `_is_stackable`
+to `engine/utils.py` and import it where needed.
+
+**C2.** `mgmai/engine/resolver.py` — `resolve_transfer()`
+- `available_pool` becomes `dict[str, int]` (hard items from runtime maps with counts;
+  soft items with count 1).
+- Take path: validate `count <= available_pool.get(item, 0)`; on success record
+  `inventory_added` + the matching `*_contains_removed` delta via `_locate_world_item`.
+- Give path: record `inventory_removed` + `room_contains_added` or `entity_contains_added`.
+- Add `_locate_world_item(hard, room_id, item) -> ("room", room_id) | ("entity", container_id) | None`.
+- Update `_find_entity_in_room` signature to `(entity_id, room_id, hard, corpus)`;
+  update `_find_entity_in_room_followers` and its callers (`resolve_examine`,
+  `resolve_interact`).
+- Migrate the previously-omitted examine/talk sites (lines 277, 287, 486).
+
+**C3.** `mgmai/engine/event_bus.py`
+Build `entity_ids` from `hard.room_contains.get(room_id, {})`.
+
+**C4.** `mgmai/engine/dialogue.py`
+Migrate line 128 to `hard.room_contains.get(new_room, {})`.
+
+### Phase D — Schema docs
+
+**D1.** `schema/corpus.md`
+- Document `contains` as accepting mixed strings and `{id: count}` objects.
+- Clarify: `contains` describes initial placement only; runtime containment lives in
+  hard state.
+- Document the §4 non-stackable constraints.
+
+**D2.** `schema/hard-state.md`
+- Document `room_contains` and `entity_contains` in the top-level structure and add a
+  dedicated section (initialisation rules from §2, mutation rules from §3, the
+  delete-on-zero convention).
+- Add the two new write operations to the "Engine write operations" table
+  (`add_room_contains`, `remove_room_contains`, `add_entity_contains`,
+  `remove_entity_contains`).
+
+**D3.** `schema/actions.md`
+- Update the transfer section: available pool now has quantities; taking decrements the
+  runtime map; giving places items back into a mutable world-side container.
+
+**D4.** `templates/ruling.j2`
+- Update the `contains` example to include `count`.
+
+### Phase E — Tests
+
+**E1.** Corpus fixtures: the existing list format stays valid; add mixed-format fixtures
+(`["goblin", {"gold_coin": 50}]`) and assert `.contains_map` normalises correctly.
+
+**E2.** Transfer tests: take 50 gold coins from a room → verify 50 removed from
+`hard.room_contains`; take 50 more → "not enough" error. Give 10 coins → verify
+`hard.room_contains` (or `entity_contains`) incremented.
+
+**E3.** Assembler/briefing tests: verify `BriefingEntity.count` and
+`BriefingContainsEntry.count` carry the remaining world count; verify partial-stack
+visibility (room has 50 coins, player holds 30, briefing shows 20 remaining in room);
+verify a fully-depleted stackable item (0 remaining) is hidden.
+
+**E4.** State manager tests:
+- `load_all` rebuilds the maps from corpus (existing adventure `hard-state.json`
+  without the keys loads cleanly and rooms are populated).
+- `load_save` with a save that has the keys preserves mutated counts; `load_save`
+  with a legacy save (no keys) backfills from corpus.
+- `apply_hard_changes` rejects non-stackable > 1 and `max_stack` overflow on world
+  containers.
+- Save/load round-trip preserves mutated counts.
+
+**E5.** Regression tests: examine a soft item in a room that also contains a stacked
+item (covers the previously-crashing resolver.py:277/287 path); talk to an NPC in a
+room with a stacked item (covers 486); room-change dialogue exit check (covers
+dialogue.py:128).
+
+---
+
+## Open questions for review
+
+- **Container nesting depth.** `entity_contains` is a flat map keyed by container id,
+  so arbitrary nesting works in principle, but `build_contains` and `available_pool`
+  only look one level deep (room → entity → contains). Deeper nesting remains
+  unsupported as today. Acceptable? (Pre-existing limitation, not a regression.)
+- **Giving to a non-container NPC.** Putting a given item into `entity_contains[npc]`
+  makes it surface via `build_contains`. Is that the desired visibility, or should
+  given-to-NPC items be hidden until the NPC is examined/killed? Current plan: surface
+  them (matches "the goblin is now holding your sword").

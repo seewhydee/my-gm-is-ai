@@ -1167,6 +1167,7 @@ class TestResolveTransferCounts:
             "gold_coin", description="A shiny coin.", tags=["stackable"]
         )
         corpus.rooms["bag_floor"].contains.append("gold_coin")
+        hard.room_contains.setdefault("bag_floor", {})["gold_coin"] = 300
         action = TransferAction(
             action_type="transfer", target="bag_floor",
             taken_counts={"gold_coin": 300},
@@ -1175,6 +1176,7 @@ class TestResolveTransferCounts:
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
         assert result.hard_changes.inventory_added.get("gold_coin") == 300
+        assert result.hard_changes.room_contains_removed.get("bag_floor", {}).get("gold_coin") == 300
 
     def test_give_300_coins_shortfall(self, state_manager):
         """Giving more than available fails without removing anything."""
@@ -1266,6 +1268,7 @@ class TestMoneyScenario:
             "gold_coin", description="A shiny gold coin.", tags=["stackable"]
         )
         corpus.rooms["axe_head"].contains.append("gold_coin")
+        hard.room_contains.setdefault("axe_head", {})["gold_coin"] = 300
 
         # Step 1: Start with 50 coins
         hard.player.inventory["gold_coin"] = 50
@@ -1320,4 +1323,182 @@ class TestMoneyScenario:
         changes = HardStateChanges(inventory_added={"gold_coin": 200})
         with pytest.raises(ValueError, match="max_stack"):
             state_manager.apply_hard_changes(changes)
+
+
+class TestResolveTransferContainment:
+    """Take/give mutations update the runtime world containment maps."""
+
+    def test_take_removes_from_room_contains(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.rooms["bag_floor"].contains.append("gold_coin")
+        hard.room_contains.setdefault("bag_floor", {})["gold_coin"] = 50
+
+        action = TransferAction(
+            action_type="transfer", target="bag_floor",
+            taken_counts={"gold_coin": 30},
+            detail="Taking coins",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_added.get("gold_coin") == 30
+        assert result.hard_changes.room_contains_removed.get("bag_floor", {}).get("gold_coin") == 30
+
+    def test_take_more_than_available_fails(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.rooms["bag_floor"].contains.append("gold_coin")
+        hard.room_contains.setdefault("bag_floor", {})["gold_coin"] = 50
+
+        action = TransferAction(
+            action_type="transfer", target="bag_floor",
+            taken_counts={"gold_coin": 60},
+            detail="Taking too many coins",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "not available" in (result.error or "").lower()
+
+    def test_give_adds_to_room_contains(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        hard.player.inventory["gold_coin"] = 100
+
+        action = TransferAction(
+            action_type="transfer", target="bag_floor",
+            given_counts={"gold_coin": 40},
+            detail="Dropping coins",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_removed.get("gold_coin") == 40
+        assert result.hard_changes.room_contains_added.get("bag_floor", {}).get("gold_coin") == 40
+
+    def test_give_to_entity_adds_to_entity_contains(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        hard.player.inventory["gold_coin"] = 100
+
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_counts={"gold_coin": 25},
+            detail="Giving coins to Korbar",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_removed.get("gold_coin") == 25
+        assert result.hard_changes.entity_contains_added.get("korbar", {}).get("gold_coin") == 25
+
+    def test_take_from_nested_container(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.entities["rubbish_pile"].contains = ["gold_coin"]
+        hard.entity_contains["rubbish_pile"] = {"gold_coin": 15}
+
+        action = TransferAction(
+            action_type="transfer", target="bag_floor",
+            taken_counts={"gold_coin": 10},
+            detail="Taking coins from rubbish pile",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_added.get("gold_coin") == 10
+        assert result.hard_changes.entity_contains_removed.get("rubbish_pile", {}).get("gold_coin") == 10
+
+
+class TestResolveExamineWithStackedItems:
+    """Regression: examine soft item in room that also has stacked items."""
+
+    def test_examine_soft_item_with_stacked_room_item(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_head"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.rooms["axe_head"].contains.append("gold_coin")
+        hard.room_contains.setdefault("axe_head", {})["gold_coin"] = 50
+
+        action = ExamineAction(
+            action_type="examine", target="loose stone", detail="Looking at stone"
+        )
+        result = resolve_examine(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.surfaced_soft_items.get("axe_head") == ["loose stone"]
+
+
+class TestResolveTalkWithStackedItems:
+    """Regression: talk to NPC in room with stacked items."""
+
+    def test_talk_npc_with_stacked_room_item(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.rooms["bag_floor"].contains.append("gold_coin")
+        hard.room_contains.setdefault("bag_floor", {})["gold_coin"] = 100
+
+        action = TalkAction(
+            action_type="talk", target="korbar", detail="Talking to Korbar"
+        )
+        result = resolve_talk(action, hard, soft, corpus)
+        assert result.success is True
+
+
+class TestResolveRoomChangeDialogueExit:
+    """Regression: room-change dialogue exit with stacked items."""
+
+    def test_room_change_exit_with_stacked_item(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        soft.dialogue_state.active_npc = "korbar"
+        from tests.helpers import _mk_item_entity
+        corpus.entities["gold_coin"] = _mk_item_entity(
+            "gold_coin", description="A coin.", tags=["stackable"]
+        )
+        corpus.rooms["axe_head"].contains.append("gold_coin")
+        hard.room_contains.setdefault("axe_head", {})["gold_coin"] = 50
+
+        from mgmai.engine.dialogue import check_room_change_exit
+        result = check_room_change_exit(soft, "bag_floor", "axe_head", corpus, hard)
+        # Korbar is not in axe_head, so dialogue should exit.
+        assert result is not None
+        assert result["npc_id"] == "korbar"
 

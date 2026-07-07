@@ -110,6 +110,7 @@ class StateManager:
         self._validate_stats_system()
         self._validate_player_stats()
         self._init_player_combat_defaults()
+        self._init_contains_from_corpus()
 
     def apply_char_sheet(self, path: str | Path) -> None:
         """Load and apply a custom player character sheet.
@@ -251,7 +252,14 @@ class StateManager:
         _check_ids(self.hard_state.player.inventory, self.corpus.entities, "entity")
         _check_ids(self.hard_state.player.equipped, self.corpus.entities, "entity")
         for room_id, room in self.corpus.rooms.items():
-            _check_ids(room.contains, self.corpus.entities, "entity")
+            _check_ids(room.contains_map.keys(), self.corpus.entities, "entity")
+
+        # Validate corpus containment constraints (non-item count == 1,
+        # non-stackable item count == 1, no self-reference, player excluded).
+        for room_id, room in self.corpus.rooms.items():
+            self._validate_contains_map(room_id, room.contains_map, "room")
+        for entity_id, entity in self.corpus.entities.items():
+            self._validate_contains_map(entity_id, entity.contains_map, "entity")
 
         # Validate soft state
         _check_ids(self.soft_state.room_notes,   self.corpus.rooms,    "room")
@@ -368,6 +376,60 @@ class StateManager:
         if hard.player.proficiency_bonus is None:
             hard.player.proficiency_bonus = 2
 
+    def _validate_contains_map(
+        self,
+        owner_id: str,
+        contains_map: dict[str, int],
+        owner_kind: str,
+    ) -> None:
+        """Validate a normalised contains map against corpus constraints."""
+        errors: list[str] = []
+        for eid, count in contains_map.items():
+            entity = self.corpus.entities.get(eid)
+            if entity is None:
+                continue  # Already reported by _check_ids
+            if entity.type == "player":
+                errors.append(
+                    f"{owner_kind.capitalize()} '{owner_id}' contains the player entity"
+                )
+                continue
+            if entity.type != "item" and count != 1:
+                errors.append(
+                    f"{owner_kind.capitalize()} '{owner_id}' contains non-item entity "
+                    f"'{eid}' with count {count}; only items may stack"
+                )
+                continue
+            if entity.type == "item" and "stackable" not in entity.tags and count != 1:
+                errors.append(
+                    f"{owner_kind.capitalize()} '{owner_id}' contains "
+                    f"non-stackable item '{eid}' with count {count}; "
+                    f"must be exactly 1"
+                )
+                continue
+            if owner_kind == "entity" and eid == owner_id:
+                errors.append(
+                    f"Entity '{owner_id}' contains itself"
+                )
+        if errors:
+            raise ValueError("\n".join(errors))
+
+    def _init_contains_from_corpus(self) -> None:
+        """Rebuild runtime containment maps from the corpus.
+
+        Called once at load_all and for legacy saves in load_save.
+        """
+        if self.corpus is None or self.hard_state is None:
+            return
+        self.hard_state.room_contains = {
+            room_id: dict(room.contains_map)
+            for room_id, room in self.corpus.rooms.items()
+        }
+        self.hard_state.entity_contains = {
+            entity_id: dict(entity.contains_map)
+            for entity_id, entity in self.corpus.entities.items()
+            if entity.contains_map
+        }
+
     # ------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------
@@ -441,7 +503,8 @@ class StateManager:
         data = json.loads(path.read_text(encoding="utf-8"))
         adv_path = data.get("adventure_path")
         save_adventure_id = data.get("adventure_id")
-        self.hard_state = HardGameState.model_validate(data["hard"])
+        raw_hard = data.get("hard", {})
+        self.hard_state = HardGameState.model_validate(raw_hard)
         self.soft_state = SoftGameState.model_validate(data["soft"])
 
         if adv_path:
@@ -456,11 +519,127 @@ class StateManager:
                             f"Save file adventure_id '{save_adventure_id}' does not match "
                             f"corpus adventure_id '{corpus_id}'.")
 
+        # Legacy saves predating runtime containment maps are backfilled from
+        # the corpus once. Saves written by the new engine always carry these
+        # keys, so we only init when absent (not when empty).
+        if "room_contains" not in raw_hard:
+            self._init_contains_from_corpus()
+
         return adv_path or ""
 
     # ------------------------------------------------------------------
     # Inventory mutation helpers
     # ------------------------------------------------------------------
+
+    def _validate_contains_delta(
+        self,
+        container_kind: str,
+        container_id: str,
+        entries: dict[str, int],
+        is_add: bool,
+    ) -> list[str]:
+        """Validate a world containment delta and return collected errors."""
+        errors: list[str] = []
+        corpus = self.corpus
+        if corpus is None:
+            return errors
+
+        if container_kind == "room":
+            if container_id not in corpus.rooms:
+                errors.append(f"No matching room: {container_id}")
+                return errors
+        else:
+            if container_id not in corpus.entities:
+                errors.append(f"No matching entity: {container_id}")
+                return errors
+
+        # Determine current counts in the target container.
+        if container_kind == "room":
+            current = self.hard_state.room_contains.get(container_id, {})
+        else:
+            current = self.hard_state.entity_contains.get(container_id, {})
+
+        for item_id, count in entries.items():
+            if count < 1:
+                errors.append(
+                    f"Containment delta count for '{item_id}' must be >= 1, got {count}"
+                )
+                continue
+            entity = corpus.entities.get(item_id)
+            if entity is None:
+                errors.append(f"No matching entity: {item_id}")
+                continue
+            if entity.type != "item":
+                errors.append(
+                    f"Only item entities may be placed in containers; '{item_id}' is "
+                    f"type '{entity.type}'"
+                )
+                continue
+
+            stackable = "stackable" in entity.tags
+            max_stack = entity.max_stack
+            existing = current.get(item_id, 0)
+
+            if is_add:
+                new_count = existing + count
+                if not stackable and new_count > 1:
+                    errors.append(
+                        f"Cannot add {count} of non-stackable item '{item_id}' to "
+                        f"{container_kind} '{container_id}'"
+                    )
+                    continue
+                if stackable and max_stack is not None and new_count > max_stack:
+                    errors.append(
+                        f"Cannot add {count} of stackable item '{item_id}' to "
+                        f"{container_kind} '{container_id}': would exceed max_stack "
+                        f"of {max_stack} (current {existing})"
+                    )
+                    continue
+            else:
+                if existing < count:
+                    errors.append(
+                        f"Cannot remove {count} of '{item_id}' from {container_kind} "
+                        f"'{container_id}': only {existing} present"
+                    )
+                    continue
+
+        return errors
+
+    def _apply_contains_deltas(self, changes: HardStateChanges) -> None:
+        """Apply the four containment-delta fields to hard state."""
+        for room_id, entries in changes.room_contains_added.items():
+            target = self.hard_state.room_contains.setdefault(room_id, {})
+            for item_id, count in entries.items():
+                target[item_id] = target.get(item_id, 0) + count
+
+        for room_id, entries in changes.room_contains_removed.items():
+            target = self.hard_state.room_contains.setdefault(room_id, {})
+            for item_id, count in entries.items():
+                current = target.get(item_id, 0)
+                new_count = current - count
+                if new_count <= 0:
+                    target.pop(item_id, None)
+                else:
+                    target[item_id] = new_count
+            if not target:
+                self.hard_state.room_contains.pop(room_id, None)
+
+        for entity_id, entries in changes.entity_contains_added.items():
+            target = self.hard_state.entity_contains.setdefault(entity_id, {})
+            for item_id, count in entries.items():
+                target[item_id] = target.get(item_id, 0) + count
+
+        for entity_id, entries in changes.entity_contains_removed.items():
+            target = self.hard_state.entity_contains.setdefault(entity_id, {})
+            for item_id, count in entries.items():
+                current = target.get(item_id, 0)
+                new_count = current - count
+                if new_count <= 0:
+                    target.pop(item_id, None)
+                else:
+                    target[item_id] = new_count
+            if not target:
+                self.hard_state.entity_contains.pop(entity_id, None)
 
     def _entity_stackable_info(self, item_id: str) -> tuple[bool, int | None]:
         """Return (is_stackable, max_stack) for an item id.
@@ -564,6 +743,32 @@ class StateManager:
             if corpus is None or changes.player_location not in corpus.rooms:
                 errors.append(f"No matching room for player_location: {changes.player_location}")
 
+        # Validate world containment deltas.
+        for room_id, entries in changes.room_contains_added.items():
+            errors.extend(
+                self._validate_contains_delta(
+                    "room", room_id, entries, is_add=True
+                )
+            )
+        for room_id, entries in changes.room_contains_removed.items():
+            errors.extend(
+                self._validate_contains_delta(
+                    "room", room_id, entries, is_add=False
+                )
+            )
+        for entity_id, entries in changes.entity_contains_added.items():
+            errors.extend(
+                self._validate_contains_delta(
+                    "entity", entity_id, entries, is_add=True
+                )
+            )
+        for entity_id, entries in changes.entity_contains_removed.items():
+            errors.extend(
+                self._validate_contains_delta(
+                    "entity", entity_id, entries, is_add=False
+                )
+            )
+
         if errors:
             raise ValueError("\n".join(errors))
 
@@ -617,6 +822,8 @@ class StateManager:
                         self.hard_state.player.stats[stat_key] = mod.value
                     else:
                         self.hard_state.player.stats[stat_key] += mod.value
+
+        self._apply_contains_deltas(changes)
 
     def apply_soft_patches(self, patches: list[SoftStatePatch | dict[str, Any]]) -> None:
         """Apply a list of validated ``SoftStatePatch`` objects to soft state."""

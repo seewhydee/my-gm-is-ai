@@ -207,6 +207,25 @@ class HardStateChanges(BaseModel):
     stat_modifiers: Dict[str, StatModifier] = Field(default_factory=dict)
     old_stat_values: Dict[str, int] = Field(default_factory=dict)
     player_hp_delta: Optional[int] = None
+    # World-side containment deltas. Keys are room/container IDs; values are
+    # {entity_id: count} maps. Added counts are summed on merge.
+    room_contains_added: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    room_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    entity_contains_added: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    entity_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+
+    @staticmethod
+    def _merge_nested_counts(
+        target: Dict[str, Dict[str, int]],
+        source: Dict[str, Dict[str, int]],
+    ) -> None:
+        """Sum nested {container_id: {entity_id: count}} maps into *target*."""
+        for container_id, entries in source.items():
+            target.setdefault(container_id, {})
+            for entity_id, count in entries.items():
+                target[container_id][entity_id] = (
+                    target[container_id].get(entity_id, 0) + count
+                )
 
     def merge(self, other: "HardStateChanges") -> "HardStateChanges":
         """Merge another HardStateChanges into this one in-place."""
@@ -245,6 +264,18 @@ class HardStateChanges(BaseModel):
         for stat_key, old_val in other.old_stat_values.items():
             if stat_key not in self.old_stat_values:
                 self.old_stat_values[stat_key] = old_val
+        self._merge_nested_counts(
+            self.room_contains_added, other.room_contains_added
+        )
+        self._merge_nested_counts(
+            self.room_contains_removed, other.room_contains_removed
+        )
+        self._merge_nested_counts(
+            self.entity_contains_added, other.entity_contains_added
+        )
+        self._merge_nested_counts(
+            self.entity_contains_removed, other.entity_contains_removed
+        )
         if other.player_hp_delta is not None:
             if self.player_hp_delta is not None:
                 self.player_hp_delta += other.player_hp_delta
@@ -267,6 +298,10 @@ class HardStateChanges(BaseModel):
             or bool(self.entity_state_changes)
             or bool(self.stat_modifiers)
             or self.player_hp_delta is not None
+            or bool(self.room_contains_added)
+            or bool(self.room_contains_removed)
+            or bool(self.entity_contains_added)
+            or bool(self.entity_contains_removed)
         )
 
 
