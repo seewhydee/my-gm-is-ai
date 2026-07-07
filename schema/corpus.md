@@ -1018,20 +1018,20 @@ Containers should be assigned the following properties:
 A container's initial contents are declared in its `contains` and
 `soft_items` fields.  (These fields can also be used for non-container
 entities, like a rubbish pile, which is not a container in the present
-sense ince it lacks open/close functionality.)
+sense as it lacks open/close functionality.)
 
 When the container is open, the engine automatically surfaces its
-contents to the GM and player; when the container is closed, the
-contents are inaccessible.  This is distinct from the `hidden` state.
+contents to the GM and player; when closed, the contents are
+inaccessible.  This is distinct from the `hidden` state.
 
 ### Item
 
 Items are entities that can potentially be picked up by the player.
 The player cannot talk to or attack items.
 
-Items with the special `"stackable"` tag can have multiple instances
-tied to the same entity ID.  These instances are indistinguishable and
-can occur, individually or in multiple copies, within the player's
+Items with the `"stackable"` tag can have multiple instances tied to
+the same entity ID.  These instances are indistinguishable and can
+occur, individually or in multiple copies, within the player's
 inventory, rooms, or other entities.  Stackable items support
 multi-copy transfers in [Results](#result) and player actions, and
 quantity comparisons in conditions (e.g. `inventory:coins >= 30`).
@@ -1061,8 +1061,6 @@ Notes:
 
 - For a stackable item, `max_stack`, if supplied, should be >= 1 and
   sets the inventory count; if omitted, there is no cap.
-
-- 
 
 #### Equipment
 

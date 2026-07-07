@@ -342,6 +342,38 @@ class TestStateManagerEquipment:
         assert "toenail_sword" in hard.player.inventory
         assert "toenail_sword" not in hard.player.equipped
 
+    def test_equip_unequip_stackable_roundtrip(self, state_manager):
+        """Equip one from a stack of 2, then unequip back to 2."""
+        from tests.helpers import _mk_item_entity
+        from mgmai.models.corpus import EquipBlock
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        corpus.entities["magic_sword"] = _mk_item_entity(
+            "magic_sword", description="A magic sword.", tags=["stackable"]
+        )
+        corpus.entities["magic_sword"].equip_block = EquipBlock(
+            equip_tags=["weapon"], damage_expr="1d8",
+        )
+        hard.player.inventory["magic_sword"] = 2
+
+        equip_result = resolve_equip(
+            EquipAction(action_type="equip", target="magic_sword", detail="Equip one"),
+            hard, state_manager.soft_state, corpus,
+        )
+        assert equip_result.success is True
+        state_manager.apply_hard_changes(equip_result.hard_changes)
+        assert hard.player.inventory.get("magic_sword") == 1
+        assert "magic_sword" in hard.player.equipped
+
+        unequip_result = resolve_unequip(
+            UnequipAction(action_type="unequip", target="magic_sword", detail="Unequip"),
+            hard, state_manager.soft_state, corpus,
+        )
+        assert unequip_result.success is True
+        state_manager.apply_hard_changes(unequip_result.hard_changes)
+        assert hard.player.inventory.get("magic_sword") == 2
+        assert "magic_sword" not in hard.player.equipped
+
     def test_equipped_defaults_to_empty(self):
         """Old save files without `equipped` should default to empty list."""
         player_data = {"location": "room1", "inventory": {}}
