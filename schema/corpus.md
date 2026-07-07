@@ -40,10 +40,10 @@ Here we define types used in multiple parts of the corpus schema.
 
 ### Condition
 
-A condition object describes a predicate clause gating availability:
-whether an exit is shown, a mechanic can be triggered, etc.  They are
-formed from condition strings and, optionally, condition objects
-(allowing for nested logic).  There are several forms:
+A Condition object describes a predicate gating availability: whether
+an exit is shown, a mechanic can be triggered, etc.  They are formed
+from condition strings and, optionally, other Conditions (allowing for
+nested logic).  There are several forms:
 
 **`require`** — availability requires condition string to be true.
 
@@ -58,7 +58,7 @@ formed from condition strings and, optionally, condition objects
 ```
 
 **`any`** — availability requires at least one sub-condition to be
-true; each sub-condition is a condition string or nested condition.
+true; each sub-condition is a condition string or nested Condition.
 
 ```json
 { "any": [ "flag:volcano_erupting == true",
@@ -67,7 +67,7 @@ true; each sub-condition is a condition string or nested condition.
 ```
 
 **`all`** — availability requires all sub-conditions to be true; each
-sub-condition is a condition string or nested condition.
+sub-condition is a condition string or nested Condition.
 
 ```json
 { "all": [ "flag:volcano_erupting == true",
@@ -79,36 +79,39 @@ sub-condition is a condition string or nested condition.
 Condition strings have one of two forms:
 
 - `<domain>:<key>` — presence-only check (allowed for `equipped`,
-  `tag`, and `topic` domains). For `inventory`, omitting the operator
-  checks that the count is greater than 0.
+  `tag`, `topic`, and `inventory` domains).
 
 - `<domain>:<key> <op> <value>` — compare to `<value>`. Supported:
   `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`,
-  `<= <number>`, `< <number>`. `inventory` supports operators for
-  quantity comparisons.
-
-| Domain       | Key                                                 |
-|--------------|-----------------------------------------------------|
-| `flag`       | Global flag ID                                      |
-| `inventory`  | Item entity ID in player's inventory; operators compare quantity |
-| `equipped`   | Item entity ID in player's equipped gear.           |
-| `tag`        | Item with this tag in inventory/equipment           |
-| `entity`     | Entity with named state field (e.g. `spider.alive`) |
-| `room`       | Room with named state field (e.g. `parlor.visited`) |
-| `topic`      | Topic ID of a topic discussed in current dialogue   |
-| `stat`       | Stat name; value is the value of that player stat   |
-| `event`      | Value in current event dispatch context (see below).|
+  `<= <number>`, `< <number>`.
+  
+| Domain      | Key                                                 |
+|-------------|-----------------------------------------------------|
+| `flag`      | Global flag ID                                      |
+| `inventory` | Item entity ID in inventory; operators compare quantity |
+| `equipped`  | Item entity ID in player's equipped gear.           |
+| `tag`       | Item with this tag in inventory/equipment           |
+| `entity`    | Entity with named state field (e.g. `spider.alive`) |
+| `room`      | Room with named state field (e.g. `parlor.visited`) |
+| `topic`     | Topic ID of a topic discussed in current dialogue   |
+| `stat`      | Stat name; value is the value of that player stat   |
+| `event`     | Value in current event dispatch context (see below).|
 
 Notes:
 
+- For `inventory`, omitting the operator checks that the count is
+  greater than 0; operators for quantity comparisons.
+
 - The `equipped` domain also accepts tag names: `equipped:weapon`
   holds if any equipped item has tag `"weapon"`.
+
 - An NPC's attitude is stored in `entity_states[<npc_id>].attitude` and
   accessed via `entity:<npc_id>.attitude` conditions, e.g.
   `entity:frodo.attitude >= 4`.  If the NPC has dialogue,
   `attitude_limits.initial` provides the default at game start; the
   corpus author should initialize all dialogue-NPC attitudes to this
   value in the hard-state JSON.
+
 - The `event` domain is used in [Reaction dispatch](#reaction).
   It evaluates to `false` outside event dispatch.
 
@@ -126,11 +129,9 @@ Notes:
 
 ### Check
 
-A Check resolves the success or failure of an event or action:
-interaction, traversal, encounter, etc.  There are two Check types:
-`roll` (flat probability) and `stat_check` (stat-based resolution).
-Either type of Check can be repeatable or not; if `repeatable` is
-`false`, the engine tracks attempts and rejects repeats.
+A Check object resolves the success or failure of an event or action:
+interaction, traversal, encounter, etc.  There are two types: `roll`
+(flat probability) and `stat_check` (stat-based resolution).
 
 #### Roll Check
 
@@ -151,6 +152,9 @@ A roll Check succeeds if `random() < threshold`.
 | `repeatable` | boolean | Whether check can be retried      |
 | `note` (*)   | string  | Author note (not shown to player) |
 > (*) optional
+
+Note: `repeatable` is required; if `true`, the Check can be retried,
+and if `false`, the engine tracks attempts and rejects repeats.
 
 #### Stat Check
 
@@ -176,12 +180,9 @@ Stat Checks are [resolution system](#resolution-system) dependent.
 | `note` (*)     | string  | Author note (not shown to player) |
 > (*) optional
 
-Aside from the above fields, system-specific fields are accepted as
-extra top-level keys.  Various systems can implement their own checks
-and define their own extra fields.
-
-The `5e` system uses roll(1d20) + (stat-10)//2 + modifier >= target as
-the success formula, and supports these additional optional fields:
+Aside from the above, different RPG systems can define extra fields as
+needed.  `5e` uses roll(1d20) + (stat-10)//2 + modifier >= target as
+its success formula, and supports these additional optional fields:
 
 | Field          | Type    | Description                       |
 |----------------|---------|-----------------------------------|
@@ -194,10 +195,10 @@ If both fields are `true`, they cancel out and a single d20 is rolled.
 
 ### Result
 
-A Result describes the consequences of an action — narrative, state
+A Result describes the consequences of an action: narrative, state
 mutations, stat adjustments, inventory changes, and optional follow-up
-checks. Results can appear either deterministically, or in `success`
-and `failure` branches of non-deterministic game mechanics.
+checks. Results can appear deterministically, or in non-deterministic
+`success` and `failure` branches.
 
 ```json
 {
@@ -219,13 +220,13 @@ ALL fields in a Result object are optional.
 | `add_item_count`    | object   | Item IDs → integer counts to add    |
 | `remove_item`       | string[] | Item IDs to remove from inventory (each -1) |
 | `remove_item_count` | object   | Item IDs → integer counts to remove |
-| `set_flag`          | object   | `{ "<flag_id>": <value>, ... } `    |
-| `set_room_state`    | object   | `{ "<room_id>": { "<field>": <value>, ...}, ...}`   |
-| `set_entity_state`  | object   | `{ "<entity_id>": { "<field>": <value>, ... }, ...}`|
-| `alter_stat`        | object   | `{ "<STAT>": { "mode": "delta"\|"set", "value": <int> }, ... }` |
-| `set_player_location`| string | Room ID to relocate the player to    |
+| `set_flag`          | object   | Flag IDs → values to set            |
+| `set_room_state`    | object   | Room IDs → { fields → values }      |
+| `set_entity_state`  | object   | Entity IDs → { fields → values }    |
+| `alter_stat`        | object   | Stat IDs → `{ "mode": "delta"\|"set", "value": <int> }` |
+| `set_player_location`| string  | Room ID to relocate the player to   |
 | `player_damage`     | string   | Damage dealt to player, e.g. `"1d4"`|
-| `adjust_attitude`   | object   | NPC attitude delta — `{ "<npc_id>": <int> }` |
+| `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Player knowledge update (see below) |
 | `then_check`        | FollowUpCheck | See [Follow-Up](#follow-up)    |
 | `trigger_combat`    | boolean  | Enter combat mode (default `false`) |
@@ -233,20 +234,19 @@ ALL fields in a Result object are optional.
 
 Notes:
 
+- `narrative` briefs the GM but might not be used verbatim.
+
 - All supplied fields are applied together; thus, a single Result can
   deal damage, set multiple flags, alter multiple state fields across
-  several entities and rooms, add/drop multiple items, etc.
-
-- `narrative` briefs the GM but might not be used verbatim.
+  several entities and rooms, add/drop items, etc.  Action-result
+  changes and immediate-reaction changes are merged and applied
+  atomically.  Deferred reactions (`room.entered`, `turn.end`, etc.)
+  fire after and see the new state.
 
 - During a check, `check.passed`/`check.failed` events (and their
   immediate reactions) fire before applying success/failure results.
   The effects are accumulated into a batch, and processed before any
   [FollowUpCheck](#follow-up) resolves.  See [Reaction](#reaction).
-
-- At engine level, action-result changes and immediate-reaction
-  changes are merged and applied atomically.  Deferred reactions
-  (`room.entered`, `turn.end`, etc.) fire after and see the new state.
 
 - `set_flag` sets global boolean flags.  A `false` value clears the
   flag; any truthy value sets it.
@@ -255,28 +255,25 @@ Notes:
   `set_entity_state` sets [Entity](#entity) state fields.  Each value
   must match the type declared in the corresponding `state_field`.
 
-- `alter_stat` keys are stat labels (e.g. `"STR"`); mode, if omitted,
-  defaults to `"delta"`.  Examples:
+- `alter_stat` keys are stat labels (e.g. `"STR"`); the mode, if
+  omitted, defaults to `"delta"`.  Examples:
   - `{ "STR": { "value": -4 } }` decreases strength by 4
   - `{ "INT": { "mode": "set", "value": 3 } }` sets intelligence to 3
 
 - `add_item` adds one of each listed item. Repeats are allowed and
   increment the count independently, so `["potion", "potion"]` adds 2
-  potions. Stackable items aggregate; non-stackable items raise an error
-  if a duplicate would be created.
+  potions. Stackable items aggregate; non-stackable items are
+  disallowed if a duplicate would be created.
 
-- `add_item_count` adds explicit quantities (e.g.
-  `{ "gold_coins": 50 }`). It may be combined with `add_item` for the
-  same item; counts are summed.
+- `add_item_count` adds specific quantities, e.g. `{ "coins": 50 }`.
+  If combined with `add_item` for the same item, counts are summed.
 
-- `remove_item` removes one of each listed item. Repeats remove multiple
-  counts.
+- Similarly, `remove_item` removes one of each listed item, with
+  repeats removing multiple counts, and `remove_item_count` removes
+  specific quantities.  The engine prevents removing more than exist.
 
-- `remove_item_count` removes explicit quantities. If the inventory has
-  fewer than requested, the deterministic path raises an error; when the
-  values come from fuzzy LLM output, the engine silently skips the
-  shortfall.
-  respects `step_per_turn`.  See [NPC attitude](#npc-attitude).
+- `adjust_attitude` is capped by the affected NPCs' `step_per_turn`
+  for attitude changes.  See [NPC attitude](#npc-attitude).
 
 - `reveals` appends to `soft_state.revealed_hints` (deduplicated) to
   guide the GM; see the [Soft State schema](soft-state.md).
@@ -287,10 +284,9 @@ Notes:
 
 ### Follow-Up
 
-A FollowUpCheck object can be put in a Result's `then_check` field.
-This implements multi-stage resolutions for actions and effects,
-firing right after the parent result with its own success/failure
-branches.
+A FollowUpCheck object can be put in a Result's `then_check` field,
+and implements multi-stage resolutions for actions and effects, firing
+right after the parent.
 
 **Example**: player makes a STR check to jump across a pit, and on
 failure makes a DEX check to grab the ledge.
@@ -324,7 +320,7 @@ failure makes a DEX check to grab the ledge.
 | `failure` (*)     | Result    | Result if follow-up fails        |
 > (*) optional
 
-Nested follow-ups are supported — a follow-up check's success/failure
+Nested follow-ups are supported: a follow-up check's success/failure
 results may contain other follow-ups, to a maximum depth of 3.
 
 ---
@@ -435,18 +431,17 @@ an optional bypass condition, and success/failure [Results](#result).
 
 Notes:
 
-- If `gating` is supplied and evaluates to false, the check is
-  inactive: the action proceeds normally, ignoring the check entirely
-  (including `success` and `failure`).
+- If `gating` is supplied and evaluates to false, the check is ignored
+  (including `success`/`failure`), and the action proceeds normally.
 
 - If the check is active and `skip_check_if` evaluates to true, the
   check automatically succeeds without rolling; in this case `success`
   (if present) *is* applied.
 
 - If the check succeeds or fails, the original action automatically
-  proceeds normally (e.g., a sword is taken from the stone), or fails
-  (e.g., the sword remains stuck), *in addition* to any other effects
-  specified by the optional `success` and `failure` fields.
+  proceeds (e.g., a sword is taken from the stone), or fails (e.g.,
+  the sword remains stuck), *in addition* to the effects of `success`
+  and `failure`.
 
 - `using_results`, if present, describes alternative resolutions when
   doing the action using items: see [Usage Override](#usage-override).
@@ -455,17 +450,16 @@ Notes:
 
 ### Usage Override
 
-A UsageOverride object can be placed in the optional `using_results`
-field of a GatedCheck or Resolvable.  It accommodates player commands
-of the form "[ACTION] using [ITEM]".  It should be an object mapping
-item [entity IDs](#entity) to one of the following resolution paths:
+A UsageOverride object, if placed in the optional `using_results`
+field of a GatedCheck or Resolvable, handles player commands of the
+form "[ACTION] using [ITEM]" for special items.  It maps each special
+item's [entity ID](#entity) to a resolution that overrides the usual
+GatedCheck or Resolvable.  Each resolution comprises either:
 
 - an object with `"result"` keyed to a fixed [Result](#result); OR
 
 - an object with `check`, `success`, and `failure` (optional),
-  defining an alternative [Check](#check),
-
-This overrides the usual resolution when using the specified item.
+  defining an alternative [Check](#check).
 
 ---
 
@@ -473,15 +467,15 @@ This overrides the usual resolution when using the specified item.
 
 **Encounters** are game events that can unfold in different ways,
 depending on an ordered list of conditions.  Encounters occur when
-NPCs [attack or are attacked](#aggro), and can also be attached to
-global [Mechanics](#mechanic).  An encounter is defined by an ordered
-array of EncounterRule objects, each having the following form:
+NPCs [attack or are attacked](#aggro), or when triggered by global
+[Mechanics](#mechanic).  An encounter is defined by an ordered array
+of EncounterRule objects, each having the following form:
 
 ```json
   {
     "condition": { "require": "tag:weapon" },
-    "check": { "type": "stat_check",
-               "stat": "STR", "target": 10, "repeatable": true },
+    "check": { "type": "stat_check", "stat": "STR",
+			   "target": 10, "repeatable": true },
     "skip_check_if": { "require": "stat:CHA >= 14" },
     "success": { "narrative": "Brandishing your weapon, you hold the orc at bay." },
     "failure": { "narrative": "The orc overpowers you.",
@@ -500,10 +494,8 @@ array of EncounterRule objects, each having the following form:
 > (*) optional
 
 When an encounter is triggered, its rules are evaluated in order. The
-first rule whose `condition` holds (if any) is applied, and the rest
-are ignored.
-
-Once triggered, the EncounterRule is resolved using the `result`,
+first rule whose `condition` holds (if any) is applied; the rest are
+ignored.  The applied EncounterRule is resolved via its `result`,
 `check`, `success`, and/or `failure` fields, which have the same
 meanings as in [Resolvable](#resolvable).  Each Result may trigger
 combat via `trigger_combat`, or game-over via `game_over`.
@@ -524,7 +516,7 @@ A GameOver object specifies a win or loss outcome.
 | `trigger_id` | string | Descriptor for the game-over outcome |
 
 In the final copy of the hard game state, the `trigger_id` is saved to
-`game_over.trigger` for debugging, player review, etc.
+`game_over.trigger` for debugging and player review.
 
 ---
 
@@ -566,14 +558,14 @@ world graph keyed by a globally-unique `room_id`.
 
 Notes:
 
-- The `name` string is used as the in-game UI label for the room,
-  whereas `description` briefs the GM on the characteristics of the
-  room (NOT necessarily used verbatim in narration).
+- The `name` string is used as the room's in-game UI label, whereas
+  `description` briefs the GM on the characteristics of the room (but
+  is not necessarily used verbatim in narration).
 
 - The `contains` field lists the IDs of entities *directly* present in
-  the room at game start.  Note: if entity A is in room R, and entity
-  B is in entity A (see `contains`, [Entity](#entity)), only A is
-  directly present; room R's `contains` lists A but not B.
+  the room at game start.  Note that if entity A is in room R, and
+  entity B is in entity A (see `contains`, [Entity](#entity)), only A
+  is directly present; room R's `contains` lists A but not B.
 
   The player must not be included (even for the starting room).
 
@@ -588,11 +580,11 @@ Notes:
   - `visited` is set to `true` when the player enters a room.
 
   - `is_current` is true only for the player's current room.  This is
-    auto-computed, so do not move the player by trying to change this;
-    use `set_player_location` in a Result instead.
+    auto-computed, so do not move the player by trying to change it;
+    use `set_player_location` in a [Result](#result) instead.
 
   Any other state field needed by the adventure should be declared in
-  `state_fields`, keyed by its ID and having values of the form
+  `state_fields`, keyed by its ID and with values of the form
 
     `{ "type": TYPE, "description": DESC, "initial": INIT }`
 
@@ -600,7 +592,7 @@ Notes:
 
   - TYPE is one of `"boolean"`, `"number"`, or `"string"`
   - DESC is a string describing the nature of the state field
-  - INIT is the value at game start, matching the declared type.
+  - INIT is the value at game start, matching the declared type
 
 - `interactions` is an array of [Resolvables](#resolvable) describing
   operations performable on the room.  For each Resolvable,
@@ -665,16 +657,16 @@ Notes:
 ## Examination
 
 Each Room and Entity has an optional `on_examine` field that takes an
-**array** of [Resolvables](#resolvable), describing possible
-examination outcomes.  When the player performs an examine action, all
-eligible Resolvables run in array order.
+array of [Resolvables](#resolvable) describing possible examination
+outcomes.  When the player performs an examination, all eligible
+Resolvables run in array order.
 
 The player can opt between ordinary (cursory) examination, which does
 not consume a turn, and rigorous examination, which costs a turn.  To
-account for this, the Resolvables in `on_examine` add an extra field,
+support this, the Resolvables in `on_examine` allow an extra field,
 `rigorous_only` (boolean, default `false`).  Resolvables with
-`rigorous_only` *only* activate under rigorous examination; rigorous
-examinations *can* activate cursory-examination Resolvables.
+`rigorous_only` *only* activate under rigorous examination, whereas
+rigorous examinations *can* activate cursory-examination Resolvables.
 
 ```json
 {
@@ -887,7 +879,7 @@ to the owning entity's ID (for entity-scoped reactions).
 
 ## Entity
 
-Entities are unique objects that appear in rooms or inventory.
+Entities are objects that appear in rooms or inventory.
 
 ```json
 {
@@ -939,12 +931,8 @@ Notes:
   The special `"container"` tag should be placed on entities that act
   as [containers](#container) with open/close functionality.
 
-  The special `"stackable"` tag may be placed on item entities to allow
-  their inventory count to exceed 1. Stackable items support quantity
-  comparisons in conditions (e.g. `inventory:coins >= 30`).
-
-- `max_stack` (items only, optional) caps the inventory count for a
-  stackable item. Must be ≥ 1 if set.
+  The special `"stackable"` tag may be placed on item entities to let
+  their inventory count exceed 1.  See [Item](#item).
 
 - State fields describe various mutable aspects of the entity's state.
   They are labeled by entity-unique IDs.  There are several reserved
@@ -1026,14 +1014,22 @@ contents are inaccessible.  This is distinct from the `hidden` state.
 ### Item
 
 Items are entities that can potentially be picked up by the player.
-The player cannot talk to or attack items.  The following fields have
-special meanings for items:
+The player cannot talk to or attack items.
 
-| Field              | Type       | Description                 |
-|--------------------|------------|-----------------------------|
-| `name`             | string     | Display name (required!)    |
-| `take_check` (*)   | GatedCheck | Obstacle to taking the item |
-| `equip_block` (*)  | object     | For equipment (see below)   |
+Items with the special `"stackable"` tag can have multiple instances
+tied to the same entity ID.  These instances are indistinguishable and
+can occur, individually or in multiple copies, within the player's
+inventory, rooms, or other entities.  Stackable items support
+multi-copy transfers in [Results](#result) and player actions, and
+quantity comparisons in conditions (e.g. `inventory:coins >= 30`).
+
+| Field            | Type       | Description                  |
+|------------------|------------|------------------------------|
+| `name`           | string     | Display name (required!)     |
+| `take_check` (*) | GatedCheck | Obstacle to taking the item  |
+| `equip_block` (*)| object     | For equipment (see below)    |
+| `max_stack` (*)  | interger   | Stack cap for stackable item |
+
 > (*) optional
 
 Notes:
@@ -1049,6 +1045,11 @@ Notes:
   The gated check is *not* automatically disabled after a successful
   take.  For a one-time success gate (pass once, then freely take
   thereafter), use `gating` with a flag on `success`.
+
+- For a stackable item, `max_stack`, if supplied, should be >= 1 and
+  sets the inventory count; if omitted, there is no cap.
+
+- 
 
 #### Equipment
 
