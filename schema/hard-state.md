@@ -63,39 +63,35 @@ Notes:
   corpus (see [corpus.md](corpus.md#player-stats)) must be present.
 
 - `inventory` is an object mapping item entity IDs to their integer
-  counts, such that:
-  - Each key must match an item entity ID defined in the corpus.
-  - Items without the `stackable` tag are unique: their count is always
-    1, and adding another raises an error.
-  - Items with the `stackable` tag may have counts ≥ 1. If the item
-    defines `max_stack`, the count may never exceed it.
-  - Removing an item decrements the count; the key is deleted when the
-    count reaches 0.
-  Note that items in `equipped` are NOT in `inventory`.  Equipping
-  decrements the inventory count by 1 (and may delete the key). Defaults
-  to `{}`.
+  counts (default `{}`).
 
-### Equipment rules
+  Each key must match an item entity ID defined in the corpus.  Items
+  with the `stackable` tag may have counts >= 1, up to their
+  corpus-defined `max_stack` field (if any).  Items without
+  `stackable` are unique, and must have count 1 (engine-enforced).
+  Removing an item decrements the count, and the key is deleted when
+  the count reaches 0.
 
-Parallel to `inventory`, `equipped` tracks items the player is actively wearing
-or wielding:
+  Note that items in `equipped` are NOT in `inventory`.  The act of
+  equipping decrements the inventory count by 1.
 
-1. Items in `equipped` are referenced by entity ID, matching `inventory`.
-2. Equipping an item: the engine decrements the item's count in `inventory`
-   by 1 and appends the ID to `equipped`. The tag conflict resolver runs first
-   (see `corpus.md` § `equip_block`).
-3. Unequipping an item: the engine removes the ID from `equipped` and
-   increments the item's count in `inventory` by 1.
-4. Equipment stat modifiers are computed on-the-fly — `hard.player.stats` remains
-   the permanent baseline and is never modified by equipment.
-5. `equipped` defaults to `[]` for backward compatibility with old save files
-   that do not contain the field.
+- `equipped` lists the entity IDs for all items the player is wearing
+  or wielding (default `[]`).  Upon equipping an item, the engine
+  decrements the count in `inventory` by 1 and appends the ID to
+  `equipped`, and vice versa for unequipping.  When equipping, the
+  engine also enforces any constraints specified in the item's
+  `equip_block`; see the [Corpus schema](corpus.md#equipment).
+
+  Equipped items can modify the player's stats.  This is computed
+  on-the-fly by starting from the `hard.player.stats` baseline (which
+  is never modified by equipment) and layering on the `stat_effects`
+  in the item's `equip_block`.
 
 ### 5e system fields
 
-When `corpus.stats.system` is `"5e"`, the following additional fields are
-accepted in the player state. Other systems may define their own set of
-system-specific fields.
+When `corpus.stats.system` is `"5e"`, the following additional fields
+are accepted in the player state. Other systems may define their own
+set of system-specific fields.
 
 ```json
 {
@@ -114,7 +110,7 @@ system-specific fields.
 | `current_hp` (*)     | integer  | Current hit points                  |
 | `max_hp` (*)         | integer  | Maximum hit points                  |
 | `ac`                 | integer  | Explicit AC, if not computed        |
-| `proficiency_bonus` (*) | integer| Proficiency bonus (5e standard)   |
+| `proficiency_bonus` (*) | integer | Proficiency bonus                 |
 | `save_proficiencies` | string[] | Stat IDs for saving throw proficiencies |
 
 When `ac` is `null`, AC is computed from base (10 + DEX mod) plus
@@ -133,9 +129,8 @@ progression for the player's `level`.
 }
 ```
 
-Flags represent binary world state: conditions discovered, events triggered,
-doors opened, NPCs met, etc. The engine uses flags to evaluate conditions on
-exits, interactions, encounters, and game-over conditions.
+Flags represent binary world state: conditions discovered, events
+triggered, doors opened, NPCs met, etc.
 
 ### Flag lifecycle
 
