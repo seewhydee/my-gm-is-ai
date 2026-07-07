@@ -1,18 +1,26 @@
 # Hard Game State Schema
 
 Hard game state records the mutable aspects of the adventure.  It is
-initialised from a file (e.g., `hard-state.json`) at game start, and
 **only** mutated by the engine.  The LLM never writes directly to hard
 state; it only submits actions for the engine to validate and resolve.
+
+When the game starts, the engine initializes the hard state from
+`hard-state.json`, and performs validatation of its contents against
+the `corpus.md`.  Between turns, hard state is held in memory. On each
+turn, the engine applies changes based on the player's actions and its
+side-effects.  When the game is saved, the full hard state is
+serialised to disk.  Between turns, a copy is also saved, along with
+soft state (except during chained actions where control does not
+return to the player).
 
 ## Top-Level Structure
 
 ```json
 {
-  "player":       { /* player state */ },
-  "flags":        { "<flag_id>": true | false, ... },
-  "room_states":  { "<room_id>": { "<field>": <value>, ... } },
-  "entity_states":{ "<entity_id>": { "<field>": <value>, ... } },
+  "flags":         { "<flag_id>": true | false, ... },
+  "player":        { /* player state */ },
+  "room_states":   { "<room_id>": { "<field>": <value>, ... } },
+  "entity_states": { "<entity_id>": { "<field>": <value>, ... } },
   "room_contains": { "<room_id>": { "<entity_id>": <count>, ... } },
   "entity_contains": { "<container_id>": { "<entity_id>": <count>, ... } },
   "turn_count":   0,
@@ -23,6 +31,22 @@ state; it only submits actions for the engine to validate and resolve.
 
 These fields are documented below.  See the [Corpus](corpus.md) schema
 for the (immutable) definitions of rooms, entities, mechanics, etc.
+
+---
+
+## Global Boolean Flags
+
+```json
+{
+  "<flag_id>": true | false
+}
+```
+
+The `flags` field represent binary world state: conditions discovered,
+events triggered, doors opened, NPCs met, etc.  They can be read by
+Condition objects, and set/cleared by Result resolutions and NPC
+revelations; setting/clearing flags can also act as Event triggers for
+reactions.
 
 ---
 
@@ -121,131 +145,35 @@ progression for the player's `level`.
 
 ---
 
-## `flags` — Global boolean flags
+## Per-Room and Per-Entity Mutable States
 
 ```json
 {
-  "<flag_id>": true | false
-}
-```
-
-Flags represent binary world state: conditions discovered, events
-triggered, doors opened, NPCs met, etc.
-
-### Flag lifecycle
-
-1. **Initialised** from `hard-state.json` at game start.
-2. **Set/cleared** by the engine during:
-   - Interaction resolution (`result.set_flag`, `success.set_flag`)
-   - Reaction `result.set_flag` effects
-   - Encounter outcomes (`set_flag`)
-3. **Read** by the engine to evaluate:
-   - Exit conditions
-   - Interaction conditions
-   - On-enter event conditions
-   - Encounter rule conditions
-   - Game-over conditions
-
-### Special flags
-
-Module authors may define flags that have special meanings for game state.
-For instance, the sample adventure "Trapped In A Bag of Holding" uses these flags:
-
-| Flag               | Meaning |
-|--------------------|---------|
-| `spider_fled`      | Set when the spider flees after being wounded. Prevents re-triggering the spider encounter. |
-| `injured`          | Player is injured. Affects encounter outcomes and blocks certain interactions. |
-| `stunned`          | Player is briefly stunned. Transient narrative flag. |
-
----
-
-## `room_states` — Per-room mutable state
-
-```json
-{
-  "<room_id>": {
-    "<field_name>": <value>
+  "room_states": {
+	"<room_id>": { "<field_name>": <value> }
+  },
+  "entity_states": {
+	"<entity_id>": { "<field_name>": <value> }
   }
 }
 ```
 
-Tracks per-room mutable properties. The primary initial field is `visited`
-(boolean), which the engine sets to `true` the first time the player enters
-a room. Additional per-room fields must be declared in the room's
-`state_fields` in the corpus and evaluated in condition strings as
-`room:<room_id>.<field> <op> <value>`.
+The `room_states` and `entity_states` fields track per-room and
+per-entity mutable properties.  They map room/entity IDs to objects
+mapping state fields (strings) to their present values (each matching
+the type declared in the Corpus – boolean, number, or string).  If an
+initial value is not specified by the Corpus, it defaults to `false`
+(boolean), `0` (number), or `""` (string).
 
-### State field types
-
-| Type      | Default | Description |
-|-----------|---------|-------------|
-| `boolean` | `false` | Used for `visited`, room-specific toggles. |
-| `number`  | `0`     | Used for counters (future). |
-| `string`  | `""`    | Used for short text state (future). |
-
-### Initialisation
-
-Room state entries are initialised from `hard-state.json`. The engine validates
-at startup that every `room_id` in `room_states` exists in the module corpus,
-and that every field (except `visited` and `is_current`) matches a declared `state_fields` entry
-in that room's corpus definition.
-
-If a field's `state_fields` declaration in the corpus includes an `initial`
-value and no explicit value is supplied in `hard-state.json`, the engine uses
-the corpus `initial` as the default.  A value supplied in `hard-state.json`
-always overrides the corpus default.
+Every room/entity defined in the Corpus must be present in these
+blocks.  Every Corpus-defined state field must be present.  In
+addition, each room entry must include the reserved state field
+`visited` (boolean), which the engine sets to `true` the first time
+the player enters a room.
 
 ---
 
-## `entity_states` — Per-entity mutable state
-
-```json
-{
-  "<entity_id>": {
-    "<field_name>": <value>
-  }
-}
-```
-
-Tracks per-entity mutable properties (e.g., `alive`, `told_secret`, `fled`).
-Each key is an entity ID from the module corpus. The value is an object
-containing the current values for that entity's declared `state_fields`.
-
-Only entities that have declared `state_fields` in the corpus need an entry here.
-
-### State field types
-
-| Type      | Default | Description |
-|-----------|---------|-------------|
-| `boolean` | `false` | Used for alive/dead, discovered, activated, etc. |
-| `number`  | `0`     | Used for HP, counter variables (future). |
-| `string`  | `""`    | Used for short text state (future). |
-
-### Initialisation
-
-The entity state block in `hard-state.json` must include an entry for every
-entity with non-empty `state_fields`, with an initial value for each field.
-The engine validates at startup that:
-- Every entity_id in `entity_states` exists in the module corpus.
-- Every field name matches a declared `state_field` for that entity.
-- Values are of the correct type.
-
-If a field's `state_fields` declaration in the corpus includes an `initial`
-value and no explicit value is supplied in `hard-state.json`, the engine
-uses the corpus `initial` as the default.  A value supplied in
-`hard-state.json` always overrides the corpus default.
-
-### State filtering for GMBriefing
-
-When the Context Assembler builds the GMBriefing, it:
-1. Lists entities in `hard.room_contains` for the current room.
-2. Filters to entities where `state.alive == true` (or the entity has no
-   `alive` field — static features are always visible).
-3. Includes a brief description and current state summary for each visible entity.
-
----
-
-## Runtime containment (`room_contains`, `entity_contains`)
+## Containment Lists
 
 ```json
 {
@@ -258,17 +186,11 @@ When the Context Assembler builds the GMBriefing, it:
 }
 ```
 
-These maps track the mutable location of every entity in the world.
-`room_contains` holds entities placed directly in rooms;
-`entity_contains` holds entities nested inside container entities.
-
-### Initialisation
-
-- On `load_all`, the engine always rebuilds both maps from the corpus
-  `Room.contains_map` / `Entity.contains_map`.
-- On `load_save`, if the save already contains `room_contains`, the saved
-  maps are used as-is.  Legacy saves that lack the keys are backfilled
-  from the corpus once.
+These maps track the mutable location of every entity in the world:
+`room_contains` records entities placed directly in rooms, while
+`entity_contains` records entities nested inside other entities.  The
+initial values are determined by the `contains` fields of the Room and
+Entity objects in the Corpus.
 
 ### Mutation rules
 
@@ -286,10 +208,6 @@ These maps track the mutable location of every entity in the world.
 - Counts are summed on add; keys are deleted when the count reaches `0`.
 - Non-stackable items may never exceed count `1` in a location.
 - Stackable items respect `max_stack`.
-
-### Persistence
-
-Both maps are serialised as part of the hard state in save files.
 
 ---
 
@@ -319,22 +237,22 @@ or
 { "type": "lose", "trigger": "death_spider" }
 ```
 
-When non-null, the game has ended. No further player input is processed. The
-engine includes the game-over state in EngineResult, and LLM Call 2 narrates
-the ending without soliciting further input.
+When non-null, the game has ended. No further player input is
+processed. The engine includes the game-over state in EngineResult,
+and the GM narrates the ending without soliciting further input.
 
 | Field     | Type   | Description |
 |-----------|--------|-------------|
-| `type`    | string | Describes the outcome (typically `"win"` or `"lose"`). Unrestricted to accommodate tabletop games with non-binary endings. |
-| `trigger` | string | The `trigger_id` of the game-over that fired — from an inline `Result.game_over` or a top-level `game_over_conditions` entry (matches module corpus). |
+| `type`    | string | Type of outcome: `"win"`, `"lose"`, or something else |
+| `trigger` | string | The `trigger_id` of the game-over that fired — from an inline `Result.game_over` or a top-level `game_over_conditions` entry in Corpus. |
 
 --
 
 ## `combat` — Combat state
 
-When non-null, the game is in combat mode. The field holds a `CombatState` object
-managing initiative, turn order, and a combat log. When `null`, standard
-exploration/resolution is active.
+When non-null, the game is in combat mode. The field holds a
+`CombatState` object managing initiative, turn order, and a combat
+log. When `null`, standard exploration/resolution is active.
 
 ```json
 {
@@ -392,10 +310,6 @@ exploration/resolution is active.
 | `remaining_hp`   | int?     | Target's HP after damage. |
 | `on_hit_effects` | object[] | On-hit save effects that triggered (see `combat` in corpus.md). |
 
-## NPC attitude
-
-NPC attitude is tracked as an integer in `hard_state.entity_states[<npc_id>].attitude`. Positive values indicate friendly disposition; negative values indicate hostility.
-
 ---
 
 ## Engine write operations
@@ -423,53 +337,6 @@ The engine mutates hard state through these operations:
 All of these are reflected in the `hard_state_changes` block of EngineResult.
 
 ---
-
-## Startup and persistence
-
-1. **Startup**: The engine loads `hard-state.json` and the module corpus. It
-   validates that entity_states match declared state_fields and that room_states
-   reference valid room IDs.
-2. **Between turns**: Hard state is held in memory. On each turn, the engine
-   applies changes and produces `hard_state_changes` for the EngineResult.
-3. **Save/load**: The full hard state is serialised to disk for save files.
-   Between turns, a copy is saved along with soft state (except during chained
-   actions where control does not return to the player).
-
----
-
-## Example (initial state for test adventure)
-
-```json
-{
-  "player": {
-    "location": "axe_head",
-    "inventory": {}
-    // "stats": { "STR": 14, "DEX": 12, ... } — optional ability scores
-  },
-  "flags": {
-    "injured": false,
-    "stunned": false,
-    "handkerchief_noticed": false,
-    "handkerchief_moved": false,
-    "padlock_unlocked": false
-  },
-  "room_states": {
-    "axe_head": { "visited": false },
-    "axe_handle_upper": { "visited": false },
-    "axe_handle_lower": { "visited": false },
-    "bag_floor": { "visited": false }
-  },
-  "entity_states": {
-    "stuck_fly": { "alive": true },
-    "spider": { "alive": true, "fled": false },
-    "korbar": { "alive": true, "told_secret": false }
-  },
-  "turn_count": 0,
-  "game_over": null,
-  "combat": null
-}
-```
-
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
 > This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).
