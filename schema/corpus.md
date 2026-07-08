@@ -3,44 +3,92 @@
 The Module Corpus is the read-only canonical adventure content — the
 equivalent of a printed D&D adventure module, containing descriptions
 of game logic, rooms, entities, encounters, win/loss conditions, etc.
-
-The Context Assembler reads from it to build the GMBriefing. The
-Engine reads from it to validate actions and apply game mechanics.
+Its contents are used to brief the GM, and by the engine to validate
+actions and apply game mechanics.
 
 ## Top-Level Structure
 
 ```json
 {
   "adventure":    { /* metadata */ },
+  "flags_declared": [ "<flag_id>", { "<flag_id>": <boolean> }, ... ]
   "rooms":        { "<room_id>": { /* room */ } },
   "entities":     { "<entity_id>": { /* entity */ } },
   "mechanics":    { "<mechanic_id>": { /* mechanic */ } },
   "game_over_conditions": [ { /* global game-over condition */ } ],
   "stats":        { /* stat definitions (optional) */ },
-  "flags_declared": [ "<flag_id>", { "<flag_id>": <boolean> }, ... ]
 }
 ```
 
-Top-level `flags_declared` entries are either plain strings (starting
-`false`) or single-key objects mapping a flag id to its initial boolean
-value.
+Certain parts of the game (rooms, items, NPCs, named mechanics, etc.)
+are denoted by ID strings, often used in object keys (as in the above
+example).  By convention, IDs are in snake_case.  Different ID types
+have different uniqueness requirements, as explained in the following
+documentation.
 
-### `adventure` — Metadata block
+All objects in the schema permit undocumented fields with no
+rejection.  By convention, a `note` field may be added to any object
+to record author notes that have no gameplay effects.
 
-| Field            | Type   | Description                        |
-|------------------|--------|------------------------------------|
-| `id` (*)         | string | snake_case id for save/load check. |
-| `title`          | string | Display title of the adventure.    |
-| `credits` (*)    | object | `{ author, source, license }`.     |
-| `introduction`   | string | Opening narration read to player.  |
-| `atmosphere` (*) | object | `{ setting, tone }` of adventure.  |
-> (*) optional
+## Adventure Metadata
+
+```json
+{
+  "id": "dungeon_of_despair",
+  "title": "Descent into the Dungeon of Despair!",
+  "credits": {
+    "author": "Foo Bar",
+    "source": "Adapted from a story at http://www.example.com",
+    "license": "CC-BY-SA 4.0"
+  },
+  "introduction": "After weeks of trekking through an uninhabited wilderness, you stand before a stone door carved into a cliff wall: the entrance to the fabled Dungeon of Despair.  What treasures lie in its depths?",
+  "atmosphere": {
+    "setting": "A dungeon crawling adventure, set in a medieval low fantasy world. <More setting details here>",
+    "tone": "Serious, with a sense of threat around every corner"
+  }
+}
+```
+
+| Field          | Type   | Description                               |
+|----------------|--------|-------------------------------------------|
+| `id`¹          | string | The adventure's id, for save/load check   |
+| `title`        | string | Display title of the adventure            |
+| `credits`¹     | object | `{ author, source, license }`             |
+| `introduction` | string | Opening narration read to player at start |
+| `atmosphere`¹  | object | `{ setting, tone }` (to guide GM)         |
+> ¹ optional
+
+---
+
+## Global Flags
+
+The top-level `flags_declared` field specifies a set of boolean flags.
+
+```json
+"flags_declared": [
+  "spider_fled",
+  { "injured": false },
+  { "handkerchief_moved": true }
+]
+```
+
+Each flag must have a unique ID (i.e., unique among all other flag
+IDs), and, optionally, a boolean value (defaulting `false`).  This
+value is the flag's initial value at the start of the adventure;
+during gameplay, the flag is tracked as part of the hard game state
+and can be freely mutated.
+
+This field is typically generated during cross-validation, after all
+corpus sections are complete.  It is optional at the schema level; if
+it is omitted, the engine skips validation and assumes all global
+boolean flags are initially `false`.
 
 ---
 
 ## Common Primitives
 
-Here we define types used in multiple parts of the corpus schema.
+In this section, we define several common types which are used
+throughout subsequent parts of the schema.
 
 ### Condition
 
@@ -92,7 +140,7 @@ Condition strings have one of two forms:
 | Domain      | Key                                                 |
 |-------------|-----------------------------------------------------|
 | `flag`      | Global flag ID                                      |
-| `inventory` | Item entity ID in inventory; operators compare quantity |
+| `inventory` | Item entity ID in inventory; operators compare qty  |
 | `equipped`  | Item entity ID in player's equipped gear.           |
 | `tag`       | Item with this tag in inventory/equipment           |
 | `entity`    | Entity with named state field (e.g. `spider.alive`) |
@@ -104,27 +152,22 @@ Condition strings have one of two forms:
 Notes:
 
 - For `inventory`, omitting the operator checks that the count is
-  greater than 0; operators for quantity comparisons.
+  greater than 0; operators perform quantity comparisons.
 
 - The `equipped` domain also accepts tag names: `equipped:weapon`
   holds if any equipped item has tag `"weapon"`.
-
-- An NPC's attitude is stored in `entity_states[<npc_id>].attitude` and
-  accessed via `entity:<npc_id>.attitude` conditions, e.g.
-  `entity:frodo.attitude >= 4`.  If the NPC has dialogue,
-  `attitude_limits.initial` provides the default at game start; the
-  corpus author should initialize all dialogue-NPC attitudes to this
-  value in the hard-state JSON.
 
 - The `event` domain is used in [Reaction dispatch](#reaction).
   It evaluates to `false` outside event dispatch.
 
 **Examples**:
 - `flag:daytime == true` holds iff the `daytime` flag is true.
-- `inventory:rusty_key` holds iff item with entity ID `rusty_key` is
-  in inventory (count > 0); not satisfied if the item exists outside inventory.
-- `inventory:gold_coins >= 30` holds iff the player has at least 30 of the
-  stackable item `gold_coins`.
+- `inventory:rusty_key` holds iff the item `rusty_key` is in inventory
+  (count > 0); not satisfied if that item exists outside inventory.
+- `inventory:gold_piece >= 30` holds iff the player has at least 30 of
+  the stackable item `gold_piece`.
+- `entity:frodo.attitude >= 4` holds iff the NPC `frodo` has attitude
+  score >= 4.  See [Entity](#entity).
 - `topic:abandonment` holds iff the topic has been discussed in the
   current dialogue (`soft_state.dialogue_state.topics_discussed`)
 - `stat:STR >= 5` holds iff player's current STR stat is >= 5.
@@ -154,8 +197,6 @@ A roll Check succeeds if `random() < threshold`.
 | `type`       | string  | `"roll"` — flat probability check |
 | `threshold`  | number  | Probability threshold (0.0–1.0)   |
 | `repeatable` | boolean | Whether check can be retried      |
-| `note` (*)   | string  | Author note (not shown to player) |
-> (*) optional
 
 Note: `repeatable` is required; if `true`, the Check can be retried,
 and if `false`, the engine tracks attempts and rejects repeats.
@@ -174,15 +215,14 @@ Stat Checks are [resolution system](#resolution-system) dependent.
 }
 ```
 
-| Field          | Type    | Description                       |
-|----------------|---------|-----------------------------------|
-| `type`         | string  | `"stat_check"` — stat-based check |
-| `stat`         | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
-| `target`       | integer | Check target or difficulty class  |
-| `modifier` (*) | integer | Situational modifier (default 0)  |
-| `repeatable`   | boolean | Whether check can be retried      |
-| `note` (*)     | string  | Author note (not shown to player) |
-> (*) optional
+| Field        | Type    | Description                       |
+|--------------|---------|-----------------------------------|
+| `type`       | string  | `"stat_check"` — stat-based check |
+| `stat`       | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
+| `target`     | integer | Check target or difficulty class  |
+| `modifier`¹  | integer | Situational modifier (default 0)  |
+| `repeatable` | boolean | Whether check can be retried      |
+> ¹ optional
 
 Aside from the above, different RPG systems can define extra fields as
 needed.  `5e` uses roll(1d20) + (stat-10)//2 + modifier >= target as
@@ -255,7 +295,7 @@ Notes:
 - `set_flag` sets global boolean flags.  A `false` value clears the
   flag; any truthy value sets it.
 
-- `set_room_state` sets [Room](#room) state fields, and similarly
+- `set_room_state` sets [Room](#room) state fields, and likewise
   `set_entity_state` sets [Entity](#entity) state fields.  Each value
   must match the type declared in the corresponding `state_field`.
 
@@ -265,14 +305,14 @@ Notes:
   - `{ "INT": { "mode": "set", "value": 3 } }` sets intelligence to 3
 
 - `add_item` adds one of each listed item, while `add_item_count` adds
-  specific amounts, e.g. `{ "coins": 50 }`.  For stackable items (see
+  specified amounts, e.g. `{ "coins": 50 }`.  For stackable items (see
   [Entity](#entity)), repeats are allowed and the total count is
   added.  Adding any non-stackable (i.e., unique) item automatically
   removes it from its previous location, if any.
 
-- Similarly, `remove_item` removes one of each listed item, with
+- Likewise, `remove_item` removes one of each listed item, with
   repeats removing multiple counts, and `remove_item_count` removes
-  specific quantities.  The engine prevents removing more than exist.
+  specified quantities.  The engine prevents removing more than exist.
 
 - `adjust_attitude` is capped by the affected NPCs' `step_per_turn`
   for attitude changes.  See [NPC attitude](#npc-attitude).
@@ -314,13 +354,13 @@ failure makes a DEX check to grab the ledge.
 }
 ```
 
-| Field             | Type      | Description                      |
-|-------------------|-----------|----------------------------------|
-| `check`           | Check     | Follow-up check to resolve       |
-| `skip_check_if`(*)| Condition | If present and true, skip check  |
-| `success`         | Result    | Result if follow-up succeeds     |
-| `failure` (*)     | Result    | Result if follow-up fails        |
-> (*) optional
+| Field            | Type      | Description                     |
+|------------------|-----------|---------------------------------|
+| `check`          | Check     | Follow-up check to resolve      |
+| `skip_check_if`¹ | Condition | If present and true, skip check |
+| `success`        | Result    | Result if follow-up succeeds    |
+| `failure`¹       | Result    | Result if follow-up fails       |
+> ¹ optional
 
 Nested follow-ups are supported: a follow-up check's success/failure
 results may contain other follow-ups, to a maximum depth of 3.
@@ -349,18 +389,18 @@ Condition-gated action resolving to a Result.
 }
 ```
 
-| Field             | Type      | Description                          |
-|-------------------|-----------|--------------------------------------|
-| `id` (*)          | string    | ID (depends on context)              |
-| `description` (*) | string    | Human-readable description of action |
-| `condition` (*)   | Condition | Availability gate for the action     |
-| `skip_check_if`(*)| Condition | Whether to bypass check and succeed  |
-| `result` (*)      | Result    | Fixed result (excl. with `check`)    |
-| `check` (*)       | Check     | Resolving check (excl. with `result`)|
-| `success` (*)     | Result    | Result when check succeeds/bypassed  |
-| `failure` (*)     | Result    | Result when check fails              |
-| `using_results`(*)| UsageOverride | See [Usage Override](#usage-override)|
-> (*) optional by default (may be required in some contexts)
+| Field            | Type      | Description                          |
+|------------------|-----------|--------------------------------------|
+| `id`¹            | string    | ID (depends on context)              |
+| `description`¹   | string    | Human-readable description of action |
+| `condition`¹     | Condition | Availability gate for the action     |
+| `skip_check_if`¹ | Condition | Whether to bypass check and succeed  |
+| `result`¹        | Result    | Fixed result (excl. with `check`)    |
+| `check`¹         | Check     | Resolving check (excl. with `result`)|
+| `success`¹       | Result    | Result when check succeeds/bypassed  |
+| `failure`¹       | Result    | Result when check fails              |
+| `using_results`¹ | UsageOverride | See [Usage Override](#usage-override)|
+> ¹ optional by default (may be required in some contexts)
 
 Notes:
 
@@ -421,15 +461,15 @@ an optional bypass condition, and success/failure [Results](#result).
 }
 ```
 
-| Field             | Type      | Description                          |
-|-------------------|-----------|--------------------------------------|
-| `gating` (*)      | Condition | Whether the check is active          |
-| `check`           | Check     | The Check to resolve (required)      |
-| `skip_check_if`(*)| Condition | If present and true, bypass check    |
-| `success` (*)     | Result    | Result if check succeeds or bypassed |
-| `failure` (*)     | Result    | Result if check fails                |
-| `using_results`(*)| UsageOverride | See [Usage Override](#usage-override)|
-> (*) optional
+| Field            | Type      | Description                          |
+|------------------|-----------|--------------------------------------|
+| `gating`¹        | Condition | Whether the check is active          |
+| `check`          | Check     | The Check to resolve (required)      |
+| `skip_check_if`¹ | Condition | If present and true, bypass check    |
+| `success`¹       | Result    | Result if check succeeds or bypassed |
+| `failure`¹       | Result    | Result if check fails                |
+| `using_results`¹ | UsageOverride | See [Usage Override](#usage-override)|
+> ¹ optional
 
 Notes:
 
@@ -441,9 +481,8 @@ Notes:
   (if present) *is* applied.
 
 - If the check succeeds or fails, the original action automatically
-  proceeds (e.g., a sword is taken from the stone), or fails (e.g.,
-  the sword remains stuck), *in addition* to the effects of `success`
-  and `failure`.
+  proceeds (e.g., sword taken from the stone), or fails (e.g., sword
+  remains stuck), *in addition* to `success` and `failure`.
 
 - `using_results`, if present, describes alternative resolutions when
   doing the action using items: see [Usage Override](#usage-override).
@@ -485,15 +524,15 @@ of EncounterRule objects, each having the following form:
   }
 ```
 
-| Field             | Type      | Description                          |
-|-------------------|-----------|--------------------------------------|
-| `condition`       | Condition | Condition for the rule to fire       |
-| `result` (*)      | Result    | Direct result (excl. with `check`)   |
-| `check` (*)       | Check     | Resolving check (excl. with `result`)|
-| `skip_check_if`(*)| Condition | Whether to bypass `check` and succeed|
-| `success` (*)     | Result    | Result when Check succeeds           |
-| `failure` (*)     | Result    | Result when Check fails              |
-> (*) optional
+| Field            | Type      | Description                           |
+|------------------|-----------|---------------------------------------|
+| `condition`      | Condition | Condition for the rule to fire        |
+| `result`¹        | Result    | Direct result (excl. with `check`)    |
+| `check`¹         | Check     | Resolving check (excl. with `result`) |
+| `skip_check_if`¹ | Condition | Whether to bypass `check` and succeed |
+| `success`¹       | Result    | Result when Check succeeds            |
+| `failure`¹       | Result    | Result when Check fails               |
+> ¹ optional
 
 When an encounter is triggered, its rules are evaluated in order. The
 first rule whose `condition` holds (if any) is applied; the rest are
@@ -544,19 +583,19 @@ world graph keyed by a globally-unique `room_id`.
 }
 ```
 
-| Field               | Type         | Description                     |
-|---------------------|--------------|---------------------------------|
-| `name`              | string       | Short display name              |
-| `description`       | string       | Prose description (for GM)      |
-| `contains`(*) | string/object[] | IDs/counts of entities in room at start |
-| `exits` (*)         | Exit[]       | All exits out of the room       |
-| `state_fields` (*)  | object       | `{ "<field>": <spec>, ...  }`   |
-| `interactions` (*)  | Resolvable[] | Special interactions (see below)|
-| `on_examine` (*)    | array        | See [Examination](#examination) |
-| `reactions` (*)     | Reaction[]   | See [Reaction](#reaction)       |
-| `soft_items` (*)    | string[]     | Plausible generic items in room |
-| `is_start_room` (*) | boolean      |`true` for starting room only    |
-> (*) optional
+| Field            | Type         | Description                     |
+|------------------|--------------|---------------------------------|
+| `name`           | string       | Short display name              |
+| `description`    | string       | Prose description (for GM)      |
+| `contains`¹ | string/object[] | IDs/counts of entities in room at start |
+| `exits`¹         | Exit[]       | All exits out of the room       |
+| `state_fields`¹  | object       | `{ "<field>": <spec>, ...  }`   |
+| `interactions`¹  | Resolvable[] | Special interactions (see below)|
+| `on_examine`¹    | array        | See [Examination](#examination) |
+| `reactions`¹     | Reaction[]   | See [Reaction](#reaction)       |
+| `soft_items`¹    | string[]     | Plausible generic items in room |
+| `is_start_room`¹ | boolean      |`true` for starting room only    |
+> ¹ optional
 
 Notes:
 
@@ -646,15 +685,15 @@ Notes:
 }
 ```
 
-| Field               | Type       | Description                      |
-|---------------------|------------|----------------------------------|
-| `id`                | string     | Exit ID (room-unique)            |
-| `direction`         | string     | Human-readable exit label        |
-| `target_room`       | string     | Room ID of destination           |
-| `condition` (*)     | Condition  | Gating condition (see below)     |
-| `traversal_check`(*)| GatedCheck | See [Gated Check](#gated-check)  |
-| `one_way` (*)       | boolean    | Indicates if exit is one-way     |
-> (*) optional
+| Field              | Type       | Description                      |
+|--------------------|------------|----------------------------------|
+| `id`               | string     | Exit ID (room-unique)            |
+| `direction`        | string     | Human-readable exit label        |
+| `target_room`      | string     | Room ID of destination           |
+| `condition`¹       | Condition  | Gating condition (see below)     |
+| `traversal_check`¹ | GatedCheck | See [Gated Check](#gated-check)  |
+| `one_way`¹         | boolean    | Indicates if exit is one-way     |
+> ¹ optional
 
 Notes:
 
@@ -714,9 +753,9 @@ rigorous examinations *can* activate cursory-examination Resolvables.
 
 Extra field for Resolvables in `on_examine`:
 
-| Field             | Type      | Description                          |
-|-------------------|-----------|--------------------------------------|
-| `rigorous_only`   | boolean   | Whether rigorous search is needed    |
+| Field           | Type      | Description                       |
+|-----------------|-----------|-----------------------------------|
+| `rigorous_only` | boolean   | Whether rigorous search is needed |
 
 Notes:
 
@@ -753,16 +792,16 @@ reactions are always active.
 }
 ```
 
-| Field         | Type         | Description                           |
-|---------------|--------------|---------------------------------------|
-| `id`          | string       | Reaction ID, unique in scope          |
-| `on`          | string       | The [reaction trigger](#event)        |
-| `condition`(*)| Condition    | Activation condition for reaction     |
-| `effect`      | ReactionEffect | What it does when triggered         |
-| `once` (*)    | boolean      | Whether it is one-off; default false  |
-| `phase`(*)    | string       | `"deferred"` (default) / `"immediate"`|
-| `priority`(*) | integer      | Lower = fires earlier; default `0`    |
-> (*) optional
+| Field        | Type          | Description                           |
+|--------------|---------------|---------------------------------------|
+| `id`         | string        | Reaction ID, unique in scope          |
+| `on`         | string        | The [reaction trigger](#event)        |
+| `condition`¹ | Condition     | Activation condition for reaction     |
+| `effect`     | ReactionEffect|  What it does when triggered          |
+| `once`¹      | boolean       | Whether it is one-off; default false  |
+| `phase`¹     | string        | `"deferred"` (default) / `"immediate"`|
+| `priority`¹  | integer       | Lower = fires earlier; default `0`    |
+> ¹ optional
 
 Notes:
 
@@ -865,11 +904,11 @@ describes what the reaction does if successfully triggered:
 The Reaction Effect must contain at least one of the following fields
 (if more than one is supplied, they all apply):
 
-| Field               | Type      | Description                        |
-|---------------------|-----------|------------------------------------|
-| `result`            | Result    | A [Result](#result) to run         |
-| `trigger_encounter` | string    | Mechanic or entity ID              |
-| `trigger_dialogue`  | string    | NPC entity ID to start dialogue    |
+| Field               | Type   | Description                     |
+|---------------------|--------|---------------------------------|
+| `result`            | Result | A [Result](#result) to run      |
+| `trigger_encounter` | string | Mechanic or entity ID           |
+| `trigger_dialogue`  | string | NPC entity ID to start dialogue |
 
 Note: For `trigger_[encounter|dialogue]`, the `"self"` value resolves
 to the owning entity's ID (for entity-scoped reactions).
@@ -927,18 +966,18 @@ Entities are objects that appear in rooms or inventory.
 
 The following fields are meaningful for all entity types:
 
-| Field              | Type     | Description                          |
-|--------------------|----------|--------------------------------------|
-| `type`             | enum     | `player|feature|npc|item`            |
-| `description`      | string   | Canonical prose description          |
-| `tags` (*)         | string[] | Array of semantic tags               |
-| `contains`(*) | string/object[] | IDs/counts of entities in this entity at start |
-| `interactions` (*) | Resolvable[] | Special interactions (see below) |
-| `on_examine` (*)   | array    | See [Examination](#examination)      |
-| `reactions` (*)    | array    | See [Reaction](#reaction)            |
-| `state_fields` (*) | object   | `{ "<field>": <spec>, ...  }`        |
-| `soft_items` (*)   | array    | Plausible soft items on/in entity    |
-> (*) optional
+| Field           | Type     | Description                          |
+|-----------------|----------|--------------------------------------|
+| `type`          | enum     | `player|feature|npc|item`            |
+| `description`   | string   | Canonical prose description          |
+| `tags`¹         | string[] | Array of semantic tags               |
+| `contains`¹ | string/object[] | IDs/counts of entities in this entity at start |
+| `interactions`¹ | Resolvable[] | Special interactions (see below) |
+| `on_examine`¹   | array    | See [Examination](#examination)      |
+| `reactions`¹    | array    | See [Reaction](#reaction)            |
+| `state_fields`¹ | object   | `{ "<field>": <spec>, ...  }`        |
+| `soft_items`¹   | array    | Plausible soft items on/in entity    |
+> ¹ optional
 
 Notes:
 
@@ -968,15 +1007,15 @@ Notes:
   They are labeled by entity-unique IDs.  There are several reserved
   state fields, which need not be declared in `state_fields`:
 
-  | Reserved Field | Type    | Initial value | Purpose                                 |
-  |----------------|---------|---------------|-----------------------------------------|
-  | `alive`        | boolean | `true`        | NPC active? (false => reactions off)    |
-  | `fled`         | boolean | `false`       | NPC fled? (false => reactions off)      |
-  | `attitude`     | integer | `dialogue.attitude_limits.initial` | NPC disposition (higher == friendlier)  |
-  | `hidden`       | boolean | `false`       | Explicit concealment (see below)        |
-  | `following`    | boolean | `false`       | NPC follows player between rooms        |
-  | `current_hp`   | number  | `combat.hp`   | Current hit points (for combat)         |
-  | `open`         | boolean | `true`        | Container open/closed state             |
+| Res. Field  | Type    | Init Value | Purpose                             |
+|-------------|---------|------------|-------------------------------------|
+| `alive`     | boolean | `true`     | NPC active? (false => reactions off)|
+| `fled`      | boolean | `false`    | NPC fled? (false => reactions off)  |
+| `attitude`  | integer | `0`        | NPC disposition (higher == friendlier)  |
+| `hidden`    | boolean | `false`    | Explicit concealment (see below)    |
+| `following` | boolean | `false`    | NPC follows player between rooms    |
+| `current_hp`| number  | `combat.hp`| Current hit points (for combat)     |
+| `open`      | boolean | `true`     | Container open/closed state         |
 
   Authors may override any reserved-field initial value by supplying an
   explicit `initial` in the field declaration.
@@ -1064,11 +1103,11 @@ quantity comparisons in conditions (e.g. `inventory:coins >= 30`).
 | Field            | Type       | Description                  |
 |------------------|------------|------------------------------|
 | `name`           | string     | Display name (required!)     |
-| `take_check` (*) | GatedCheck | Obstacle to taking the item  |
-| `equip_block` (*)| object     | For equipment (see below)    |
-| `max_stack` (*)  | interger   | Stack cap for stackable item |
+| `take_check`¹ | GatedCheck | Obstacle to taking the item  |
+| `equip_block`¹| object     | For equipment (see below)    |
+| `max_stack`¹  | interger   | Stack cap for stackable item |
 
-> (*) optional
+> ¹ optional
 
 Notes:
 
@@ -1108,10 +1147,10 @@ Block object, which specifies the parameters of the equipment:
 |-----------------------|----------|-----------------------------------|
 | `equip_tags`          | string[] | Category tags (see below)         |
 | `incompatible_with`(*)| string[] | Conflicting tags (see below)      |
-| `stat_effects` (*)    | object   | Stat modifiers while equipped     |
-| `max_equipped` (*)    | integer  | How many such items can stack     |
-| `damage_expr` (*)     | string   | Weapon damage, e.g. `"1d8+1"`     |
-| `hit_bonus` (*)       | integer  | Weapon attack bonus               |
+| `stat_effects`¹    | object   | Stat modifiers while equipped     |
+| `max_equipped`¹    | integer  | How many such items can stack     |
+| `damage_expr`¹     | string   | Weapon damage, e.g. `"1d8+1"`     |
+| `hit_bonus`¹       | integer  | Weapon attack bonus               |
 
 Notes:
 
@@ -1162,10 +1201,10 @@ blocks support the following additional fields:
 | Field           | Type   | Description                          |
 |-----------------|--------|--------------------------------------|
 | `dialogue`(*)   | object | NPC's [dialogue settings](#dialogue) |
-| `aggro` (*)     | array  | NPC's [aggro rules](#aggro)          |
-| `follower` (*)  | object | NPC's [follower rules](#follower)    |
-| `combat` (*)    | object | Combat stats (hp, ac, atk, etc.)     |
-> (*) optional
+| `aggro`¹     | array  | NPC's [aggro rules](#aggro)          |
+| `follower`¹  | object | NPC's [follower rules](#follower)    |
+| `combat`¹    | object | Combat stats (hp, ac, atk, etc.)     |
+> ¹ optional
 
 #### Dialogue
 
@@ -1196,9 +1235,9 @@ The Dialogue object specifies how the NPC engages in conversation.
 | `guidelines`       | string   | Tone, demeanor, constraints, etc.    |
 | `attitude_limits`(*)| object  | NPC's attitude bounds (see below)    |
 | `on_encounter`(*)  | string   | Describes behavior on first meeting  |
-| `will_reveal` (*)  | object   | See [NPC Knowledge](#npc-knowledge)  |
+| `will_reveal`¹  | object   | See [NPC Knowledge](#npc-knowledge)  |
 | `dialogue_paths`(*)| Resolvable[] | See [Dialogue Path](#dialogue-path) |
-> (*) optional
+> ¹ optional
 
 Notes:
 
@@ -1260,9 +1299,9 @@ can share with the player.  It should be an object keyed by topic IDs
 |----------------|----------|------------------------------------------|
 | `description`  | string   | What the topic reveals; surfaced to GM   |
 | `conditions`   | string[] | Revelation conditions (all must be true) |
-| `set_flag` (*) | object   | `{ "<flag_id>": <value>, ... } `         |
-| `set_entity_state` (*) | object| `{ "<entity_id>": { "<field>": <value>, ...}, ...}` |
-> (*) optional
+| `set_flag`¹ | object   | `{ "<flag_id>": <value>, ... } `         |
+| `set_entity_state`¹ | object| `{ "<entity_id>": { "<field>": <value>, ...}, ...}` |
+> ¹ optional
 
 When a topic's conditions are met, the engine marks it as available
 and surfaces it to the GM, which can decide to narrate the revelation
@@ -1385,10 +1424,10 @@ All fields supported by Mechanic objects are listed here:
 
 | Field           | Type            | Description                   |
 |-----------------|-----------------|-------------------------------|
-| `condition` (*) | Condition       | An encounter-gating condition |
-| `rules` (*)     | EncounterRule[] | A triggerable encounter       |
-| `reactions` (*) | Reaction[]      | A set of global reactions     |
-> (*) optional (subject to constraints below)
+| `condition`¹ | Condition       | An encounter-gating condition |
+| `rules`¹     | EncounterRule[] | A triggerable encounter       |
+| `reactions`¹ | Reaction[]      | A set of global reactions     |
+> ¹ optional (subject to constraints below)
 
 Conceptually, there are two kinds of mechanic, distinguished by which
 field is present:
@@ -1436,9 +1475,8 @@ objects with these fields:
 | `condition`      | Condition | Predicate polled each turn        |
 | `type`           | string    | `"win"` or `"lose"`               |
 | `trigger_id`     | string    | Copied into `game_over.trigger`   |
-| `narrative` (*)  | string    | Canonical ending narration        |
-| `note` (*)       | string    | Author note (not shown to player) |
-> (*) optional
+| `narrative`¹  | string    | Canonical ending narration        |
+> ¹ optional
 
 The engine polls `condition` once per turn, after all reactions have
 settled.  The first entry with `condition` evaluating to `true` ends
@@ -1514,35 +1552,7 @@ The engine uses the `stats` field to validate that the corpus and hard
 state are consistent in their use of stats (e.g., every stat key in
 the player state has a matching definition in the corpus).
 
----
-
-## `flags_declared` — Flag name registry (optional)
-
-```json
-"flags_declared": [
-  "spider_fled",
-  { "injured": false },
-  { "handkerchief_moved": true }
-]
-```
-
-An optional top-level array of all flag names used in the adventure's
-conditions and `set_flag` results.  Each entry is either a plain string
-(meaning the flag starts `false`) or a single-key object mapping the
-flag id to its initial boolean value.
-
-The engine uses this field to verify that every flag referenced in the
-corpus has been declared and to seed the initial `hard_state.flags`
-when the world state is generated from the corpus.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `flags_declared` | (string \| object)[] | no | List of all flag names used in the adventure. Each name must appear as a key in `hard_state.flags` or in `flags_declared`. |
-
-This field is typically generated during cross-validation, after all
-corpus sections are complete. It is optional at the schema level — the
-engine treats it as `Optional[List[str]]` and skips validation when
-absent.
+--
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
 > This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

@@ -200,7 +200,6 @@ class RollCheck(BaseModel):
     type: Literal["roll"] = "roll"
     threshold: float = Field(ge=0.0, le=1.0)
     repeatable: bool
-    note: Optional[str] = None
 
 
 class StatCheck(BaseModel):
@@ -210,7 +209,6 @@ class StatCheck(BaseModel):
     target: int
     modifier: int = 0
     repeatable: bool
-    note: Optional[str] = None
 
 
 CheckType = RollCheck | StatCheck
@@ -340,7 +338,6 @@ class GameOverCondition(BaseModel):
     condition: ConditionExpression
     trigger_id: str
     narrative: Optional[str] = None
-    note: Optional[str] = None
 
 
 class ReactionEffects(BaseModel):
@@ -438,7 +435,6 @@ class AttitudeLimits(BaseModel):
     min: int = 0
     max: int = 0
     step_per_turn: int = 1
-    initial: int = 0
 
 
 class WillRevealEntry(BaseModel):

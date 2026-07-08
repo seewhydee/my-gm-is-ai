@@ -1379,7 +1379,7 @@ def _apply_result(
                 entity_state = hard.entity_states.get(npc_id, {})
                 current = entity_state.get("attitude")
                 if current is None:
-                    current = limits.initial
+                    current = 0
             current = int(current)
             new_value = current + delta
             # Clamp to [min, max]

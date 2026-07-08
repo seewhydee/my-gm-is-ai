@@ -334,7 +334,7 @@ def _build_dialogue_context(soft: SoftGameState,
 
     attitude_val = entity_state.get("attitude")
     if attitude_val is None:
-        attitude = guidelines.attitude_limits.initial
+        attitude = 0
     else:
         attitude = int(attitude_val)
 

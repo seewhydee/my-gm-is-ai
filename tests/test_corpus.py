@@ -448,13 +448,11 @@ class TestGameOverCondition:
             "condition": {"require": "flag:escaped == true"},
             "trigger_id": "escape",
             "narrative": "You are free!",
-            "note": "The player escapes the bag.",
         })
         assert c.type == "win"
         assert c.condition is not None
         assert c.trigger_id == "escape"
         assert c.narrative == "You are free!"
-        assert c.note == "The player escapes the bag."
 
     def test_lose_condition_valid(self) -> None:
         c = GameOverCondition.model_validate({
@@ -464,7 +462,6 @@ class TestGameOverCondition:
         })
         assert c.type == "lose"
         assert c.narrative is None
-        assert c.note is None
 
     def test_missing_condition_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -773,34 +770,13 @@ class TestRollCheck:
         c = RollCheck.model_validate({"threshold": 0.5, "repeatable": True})
         assert c.type == "roll"
 
-    def test_with_note(self) -> None:
-        c = RollCheck.model_validate({
-            "threshold": 0.75,
-            "repeatable": False,
-            "note": "This is an optional designer note explaining the check.",
-        })
-        assert c.note == "This is an optional designer note explaining the check."
-        assert c.threshold == 0.75
-        assert c.repeatable is False
-
-    def test_note_is_optional(self) -> None:
-        c = RollCheck.model_validate({
-            "threshold": 0.3,
-            "repeatable": True,
-        })
-        assert c.note is None
-
 
 class TestAttitudeLimits:
     def test_defaults(self) -> None:
         a = AttitudeLimits.model_validate({"min": -5, "max": 10, "step_per_turn": 3})
-        assert a.initial == 0
-
-    def test_custom_initial(self) -> None:
-        a = AttitudeLimits.model_validate({
-            "min": -5, "max": 10, "step_per_turn": 3, "initial": 2
-        })
-        assert a.initial == 2
+        assert a.min == -5
+        assert a.max == 10
+        assert a.step_per_turn == 3
 
     def test_step_per_turn_defaults_to_one(self) -> None:
         a = AttitudeLimits.model_validate({"min": -5, "max": 10})
@@ -1160,7 +1136,6 @@ class TestStatCheck:
             "modifier": 2,
             "advantage": True,
             "repeatable": True,
-            "note": "A strength check",
         })
         assert sc.modifier == 2
         assert sc.model_extra == {"advantage": True}

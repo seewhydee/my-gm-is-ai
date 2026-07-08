@@ -164,8 +164,7 @@ and post-validated by the engine in step 4.5:
 3. If an NPC's hard state says `alive == false`, all attitude changes for that
    NPC are rejected.
 4. The engine initialises each NPC's attitude from the corpus
-   `dialogue.attitude_limits.initial` (default 0) if no explicit value
-   is provided in the hard state startup file.
+   `state_fields.attitude.initial` (default 0).
 
 ### Relationship to `dialogue`
 

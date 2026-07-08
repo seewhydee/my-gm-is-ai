@@ -69,19 +69,19 @@ class TestWorldStateGeneration:
         del generated_entities["spider"]["hidden"]
         assert generated_entities == expected["entity_states"]
 
-    def test_attitude_from_dialogue_limits(self, tmp_path: Path) -> None:
+    def test_attitude_initial_from_state_field(self, tmp_path: Path) -> None:
         from mgmai.models.corpus import DialogueGuidelines
 
         corpus = _build_corpus()
         npc = _mk_npc_entity(
             "npc",
             state_fields={
-                "attitude": {"type": "number", "description": "Disposition."},
+                "attitude": {"type": "number", "description": "Disposition.", "initial": 3},
             },
         )
         npc.dialogue = DialogueGuidelines(
             guidelines="A test NPC.",
-            attitude_limits={"min": -5, "max": 5, "initial": 3},
+            attitude_limits={"min": -5, "max": 5},
         )
         corpus.entities["npc"] = npc
 

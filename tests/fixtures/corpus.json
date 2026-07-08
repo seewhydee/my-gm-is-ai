@@ -305,7 +305,8 @@
         },
         "attitude": {
           "type": "number",
-          "description": "The fly's disposition toward the player. Positive is friendly."
+          "description": "The fly's disposition toward the player. Positive is friendly.",
+          "initial": 0
         }
       },
       "dialogue": {
@@ -370,7 +371,8 @@
         },
         "attitude": {
           "type": "number",
-          "description": "The spider's disposition toward the player. Positive is friendly."
+          "description": "The spider's disposition toward the player. Positive is friendly.",
+          "initial": -5
         },
         "hidden": {
           "type": "boolean",
@@ -579,7 +581,8 @@
         },
         "attitude": {
           "type": "number",
-          "description": "Korbar's disposition toward the player. Positive is friendly."
+          "description": "Korbar's disposition toward the player. Positive is friendly.",
+          "initial": 0
         }
       },
       "dialogue": {

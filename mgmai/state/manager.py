@@ -254,7 +254,7 @@ class StateManager:
                 state[field_name] = self._resolve_initial_value(decl, field_name, entity)
                 if (
                     decl.initial is None
-                    and field_name not in ("attitude", "current_hp", "hidden")
+                    and field_name not in ("current_hp", "hidden")
                     and field_name not in RESERVED_STATE_FIELD_DEFAULTS
                 ):
                     log.warning(
@@ -286,10 +286,6 @@ class StateManager:
             return decl.initial
 
         # Context-sensitive reserved fields.
-        if field_name == "attitude":
-            if entity is not None and entity.dialogue is not None:
-                return entity.dialogue.attitude_limits.initial
-            return 0
         if field_name == "current_hp":
             if entity is not None and entity.combat is not None:
                 return entity.combat.hp

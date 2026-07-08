@@ -688,10 +688,11 @@ Example:
 Notes:
 
 - `initial` is optional.  When omitted, the engine uses the reserved-field
-  default if one exists (e.g., `alive` defaults to `true`, `attitude`
-  defaults to `dialogue.attitude_limits.initial`, `current_hp` defaults to
-  `combat.hp`); otherwise it falls back to the type default (`false` for
-  boolean, `0` for number, `""` for string).
+  default if one exists (e.g., `alive` defaults to `true`, `current_hp`
+  defaults to `combat.hp`); otherwise it falls back to the type default
+  (`false` for boolean, `0` for number, `""` for string).  Attitude has
+  no special default — set `initial` explicitly when the NPC's starting
+  disposition differs from 0.
 
 - Fields whose starting value matches the default do not need an
   `initial` key, though including it explicitly is harmless and
@@ -2006,9 +2007,10 @@ All IDs must be **snake_case, lowercase ASCII**:
    `{ "all": [...] }`). Bare strings are not accepted outside `any`/`all`
    arrays.
 
-9. **Attitude initialisation**: Each NPC's initial attitude must be in both
-   `state_fields` (declaration) and `entity_states` (value), and match the
-   NPC's `attitude_limits.initial`.
+9. **Attitude initialisation**: Each NPC's initial attitude must be declared
+   in `state_fields` with an explicit `initial` value when it differs from
+   0.  The `attitude_limits` block only defines the static bounds
+   (`min`, `max`, `step_per_turn`).
 
 10. **Item placement**: Items that start in a specific location appear in
     that room's `contains`. Items the player starts carrying are in

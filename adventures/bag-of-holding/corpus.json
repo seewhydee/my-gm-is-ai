@@ -16,7 +16,7 @@
   "entities": {
     "player": {
       "type": "player",
-      "description": "You are a fourth-level Human Rogue. You remember a night out on the town, and now you're here — wherever here is. Your pack and gear are missing.",
+      "description": "You are an adventurer. You remember a night out on the town, and now you're here — wherever here is. Your pack and gear are missing.",
       "state_fields": {
         "alive": {
           "type": "boolean",
@@ -98,7 +98,8 @@
         },
         "attitude": {
           "type": "number",
-          "description": "Attitude toward the player, -10 to 0."
+          "description": "Attitude toward the player, -10 to 0.",
+          "initial": -2
         },
         "current_hp": {
           "type": "number",
