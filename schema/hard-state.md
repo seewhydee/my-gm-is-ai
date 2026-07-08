@@ -165,14 +165,14 @@ set of system-specific fields.
 }
 ```
 
-| Field                | Type     | Description                         |
-|----------------------|----------|-------------------------------------|
-| `level`              | integer  | Player level (default 1)            |
-| `current_hp` (*)     | integer  | Current hit points                  |
-| `max_hp` (*)         | integer  | Maximum hit points                  |
-| `ac`                 | integer  | Explicit AC, if not computed        |
-| `proficiency_bonus` (*) | integer | Proficiency bonus                 |
-| `save_proficiencies` | string[] | Stat IDs for saving throw proficiencies |
+| Field                | Type     | Description                    |
+|----------------------|----------|--------------------------------|
+| `level`              | integer  | Player level (default 1)       |
+| `current_hp`         | integer  | Current hit points             |
+| `max_hp`             | integer  | Maximum hit points             |
+| `ac`                 | integer  | Explicit AC, if not computed   |
+| `proficiency_bonus`¹ | integer  | Proficiency bonus              |
+| `save_proficiencies` | string[] | Saving throw proficiency stats |
 
 When `ac` is `null`, AC is computed from base (10 + DEX mod) plus
 equipment bonuses. Set an explicit value to override the computation.
@@ -279,7 +279,8 @@ combat log:
 
 ### Combat Log Entries
 
-CombatLogEntry objects have the following format:
+For `5e` combat (the only one currently implemented), CombatLogEntry
+objects have the following format:
 
 ```json
 {

@@ -397,7 +397,6 @@ def resolve_move(
                     {
                         "exit_id": target_exit_id,
                         "from_room": room_id,
-                        "fail_reason": "check_failed",
                     },
                     hard, soft, corpus, state_manager, result,
                 )

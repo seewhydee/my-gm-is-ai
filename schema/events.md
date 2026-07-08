@@ -3,10 +3,8 @@
 This document is the authoritative reference for:
 
 - Which events the engine emits
-- What context keys each event carries
-- When each event is emitted
-- Which events support `phase: "immediate"` reactions
-- Known gaps in event emission
+- What context keys each event carries, and their meanings
+- When events are emitted and reactions are triggered
 
 For how to write reactions, see the [Corpus schema](corpus.md).
 
@@ -16,10 +14,8 @@ For how to write reactions, see the [Corpus schema](corpus.md).
 
 Each event has:
 
-- **`type`** — a dot-separated string identifier such as `room.entered` or
-  `flag.set`.
-- **`context`** — a flat dict of details about the specific occurrence. Context
-  values are strings, integers, or booleans.
+- **`type`** — a dot-separated string identifier, e.g. `room.entered`
+- **`context`** — a flat dict of details about the specific event
 
 During reaction dispatch, context values are available via the `event:`
 condition domain:
@@ -34,92 +30,129 @@ The `event:` domain is **only valid during reaction dispatch**.
 Outside dispatch (e.g., in interaction conditions, exit conditions, or
 game-over condition predicates), it always evaluates to `false`.
 
+---
+
+## Action-Induced Events
+
+These events are emitted when the engine resolves a player action or
+an encounter:
+
+### Passing/failing checks
+
+- `check.passed` – passed a Check
+- `check.failed` – failed a Check
+
+For both these events, the context keys are:
+
+| Key           | Type   | Value                                  |
+|---------------|--------|----------------------------------------|
+| `check_type`  | string | `"stat_check"` or `"roll"`             |
+| `stat`¹       | string | Stat key for `stat_check` checks       |
+| `target`¹     | int    | Target number / DC for stat check      |
+| `threshold`¹  | float  | Probability threshold for `roll` check |
+| `source_type` | string | Source of the check (see below)        |
+| `source_id`   | string | ID of the source (see below)           |
+> ¹ optional
+
+`source_type` should specify the action/event leading to the check –
+one of `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`,
+`"take"`, or `"reaction"`.  For example, a `then_check` inside a
+reaction result emits `source_type: "reaction"`.  The `source_id`
+field holds the corresponding interaction, exit, dialogue path, or
+reaction ID.
+
+### Entering/Exiting Rooms, and Traversing Exits
+
+- `room.entered` – Player arrives in a room
+- `room.exited`  – Player leaves a room
+
+For these events, the context key is `room_id`, whose value is the
+Room ID for the room in question.
+
+- `traversal.attempted` – tried using an exit (before any traversal check)
+- `traversal.succeeded` – succeeded in an exit traversal check
+
+For these events, the context keys are `exit_id` (the exit ID),
+`from_room` (origin room ID), and `to_room` (destination room ID).
+
+- `traversal.failed` – failed in an exit traversal check.  The context
+  keys are `exit_id` (the exit ID) and `from_room` (origin room ID).
+
+### Interactions
+
+- `interaction.used` – player tries an interaction with a room/entity.
+  The event fires *before* any check is rolled.  The context keys are
+  `interaction_id` (the interaction ID), `target_id` (the target room
+  or entity ID), and `using_item` (the item ID used, if any).
+
+### Dialogue
+
+- `dialogue.started` – player beings dialogue with an NPC.  The
+  context key is `npc_id` (the NPC's entity ID).
+  
+- `dialogue.ended` – dialogue mode ends.  The context keys are
+  `npc_id` (the dialogue NPC's entity ID), and `reason`, which is one
+  of the following:
+
+| Reason          | Meaning                                        |
+|-----------------|------------------------------------------------|
+| `player_left`   | Player moved to another room                   |
+| `ends_dialogue` | Player explicitly ended dialogue               |
+| `switched_npc`  | Dialogue switched to a different NPC           |
+| `stall`         | Conversation stalled and timed out             |
+| `room_change`   | NPC could not follow the player into new room  |
+| `combat`        | Dialogue ended by start of combat              |
+| `triggered`     | A reaction triggered dialogue with another NPC |
+
+### Combat and Encounters
+
+- `combat.started` – Combat begins.  No context keys.
+
+- `combat.ended` – Combat ends.  Context key is `reason`, which should
+  be one of the following: `"victory"`, `"defeat"`, or `"fled"`.
+
+- `encounter.branched` – An Encounter Rule selects a success or
+  failure branch (not emitted for `result`-only rules).  The context
+  keys are `branch` (`"success"` or `"failure"`), and `encounter_id`
+  (the source ID of the encounter: the NPC's entity ID for `aggro`
+  encounters, or the mechanic ID for encounter mechanics).
+
+### Inventory
+
+- `item.acquired` – An item enters the player's inventory
+- `item.lost` – An item leaves the player's inventory
+
+The context keys are `item_id` (the item's entity ID), `count` (item
+counts), `source` (for `item.acquired` only; one of `"transfer"`,
+`"interaction"`, `"examine"`, or `"unequip"`), and `reason` (for
+`item.lost` only; one of `"transfer"`, `"interaction"`, `"destroyed"`,
+or `"equip"`).
 
 ---
 
-## Action-level events
+## State-change Events
 
-These events are emitted while the engine resolves a player action or an
-encounter.
+| Event              | Context keys         | Emitted when             |
+|--------------------|----------------------|--------------------------|
+| `flag.set`         | `flag_id`            | A flag becomes `true`    |
+| `flag.cleared`     | `flag_id`            | A flag becomes `false`   |
+| `entity_state.changed`| `entity_id`, `field`, `new_value` | An entity state field changes    |
+| `room_state.changed`  | `room_id`, `field`, `new_value`   | A room state field changes       |
+| `attitude.changed`    | `npc_id`, `old_value`, `new_value`, `delta` | An NPC's attitude changes |
+| `stat.changed`     | `stat_name`, `old_value`, `new_value`, `delta` | A player stat changes  |
+| `equipment.changed`| `added?`, `removed?` | Equipped gear changes    |
+| `player.damaged`   | `amount`, `new_hp`   | Player HP decreases      |
+| `player.healed`    | `amount`, `new_hp`   | Player HP increases      |
 
-| Event | Context keys | Emitted when |
-|---|---|---|
-| `room.entered` | `room_id` | Player arrives in a room, including at game start. |
-| `room.exited` | `room_id` | Player leaves a room. |
-| `traversal.attempted` | `exit_id`, `from_room`, `to_room` | Player attempts to traverse an exit **before** the traversal check is rolled. |
-| `traversal.succeeded` | `exit_id`, `from_room`, `to_room` | Exit traversal succeeds. |
-| `traversal.failed` | `exit_id`, `from_room`, `fail_reason` | A `traversal_check` fails and the player stays in the current room. |
-| `check.passed` | `check_type`, `stat?`, `target?`, `threshold?`, `source_id`, `source_type` | Any roll or stat_check succeeds. |
-| `check.failed` | same as `check.passed` | Any roll or stat_check fails. |
-| `interaction.used` | `interaction_id`, `target_id`, `using_item?` | An interaction is attempted **before** its check is rolled. |
-| `dialogue.started` | `npc_id` | Dialogue mode begins with an NPC. |
-| `dialogue.ended` | `npc_id`, `reason` | Dialogue mode ends. `reason` is one of `player_left`, `ends_dialogue`, `switched_npc`, `stall`, `room_change`, `combat`, or `triggered`. |
-| `combat.started` | `combatant_ids` | Combat begins. |
-| `combat.ended` | `reason` (`victory`\|`defeat`\|`fled`) | Combat ends. |
-| `encounter.branched` | `encounter_id`, `branch` (`success`\|`failure`) | A `stat_check` or `roll` encounter rule selects its `success`/`failure` branch. Not emitted for `result`-only rules or when no branch is defined. |
-| `item.acquired` | `item_id`, `count`, `source` (`transfer`\|`interaction`\|`examine`\|`unequip`) | An item enters the player's inventory. |
-| `item.lost` | `item_id`, `count`, `reason` (`transfer`\|`interaction`\|`destroyed`\|`equip`) | An item leaves the player's inventory. |
+These events are **derived once at the end of the turn**, after all
+action and reaction effects have been applied. They are dispatched in
+a single pass.
 
-### `check.passed` / `check.failed` context keys
-
-| Key | Type | Description |
-|---|---|---|
-| `check_type` | string | `"stat_check"` or `"roll"`. |
-| `stat` | string\|absent | The stat key for `stat_check` checks. |
-| `target` | int\|absent | The target number / difficulty class for `stat_check` checks. |
-| `threshold` | float\|absent | The probability threshold for `roll` checks. |
-| `source_id` | string | The interaction, exit, dialogue path, or reaction ID that originated the check. |
-| `source_type` | string | `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`, `"take"`, or `"reaction"`. |
-
-`source_type` is inherited from the parent resolution context. A `then_check`
-inside a reaction result emits `source_type: "reaction"`; inside an
-interaction failure branch it emits `source_type: "interaction"`.
-
-### `dialogue.ended` reasons
-
-| Reason | Meaning |
-|---|---|
-| `player_left` | The player moved to another room while in dialogue. |
-| `ends_dialogue` | The player explicitly ended dialogue (e.g., via a `talk` action with `ends_dialogue: true`). |
-| `switched_npc` | Dialogue switched to a different NPC. |
-| `stall` | The conversation stalled and the engine timed it out. |
-| `room_change` | The NPC could not follow the player into a new room. |
-| `combat` | Dialogue ended because combat started. |
-| `triggered` | A reaction triggered dialogue with a different NPC. |
-
----
-
-## State-change events
-
-These events are **derived once at the end of the turn** from the merged
-`HardStateChanges` diff, after all action and reaction effects have been
-applied. They are dispatched in a single final pass.
-
-| Event | Context keys | Emitted when |
-|---|---|---|
-| `flag.set` | `flag_id` | A flag transitions to `true`. |
-| `flag.cleared` | `flag_id` | A flag transitions to `false`. |
-| `entity_state.changed` | `entity_id`, `field`, `new_value` | Any entity state field changes. |
-| `room_state.changed` | `room_id`, `field`, `new_value` | Any room state field changes. |
-| `attitude.changed` | `npc_id`, `old_value`, `new_value`, `delta` | An NPC's attitude changes. |
-| `stat.changed` | `stat_name`, `old_value`, `new_value`, `delta` | A player stat changes. |
-| `equipment.changed` | `added?`, `removed?` | Equipped gear changes. |
-| `player.damaged` | `amount`, `new_hp` | Player HP decreases. |
-| `player.healed` | `amount`, `new_hp` | Player HP increases. |
-
-### No cascading state-change events
-
-However, reaction effects that mutate state do not emit state-change
-events *during* dispatch.  State-change events are derived once at the
-end of the turn.  Reaction state mutations do eventually produce
+As an exception, reaction effects that mutate state do not emit
+state-change events *during* dispatch.  They do eventually produce
 state-change events, but only after all reactions have finished
-dispatching.  This prevents cascading chains where reaction A sets a
-flag, which triggers reaction B, which sets another flag...
-
-Reaction effects *can* emit events (`check.passed`/`check.failed` from
-`then_check`, `dialogue.started`/`ended`, `combat.started`/`ended`).
-These are dispatched at the next recursion level, enabling patterns
-like "on dialogue ended, trigger an encounter".
+dispatching.  This enables patterns like "on dialogue ended, trigger
+an encounter".
 
 ---
 
@@ -133,7 +166,7 @@ like "on dialogue ended, trigger an encounter".
 
 ---
 
-## Immediate vs deferred reactions
+## Reaction timing
 
 Reactions default to `phase: "deferred"`, meaning they fire at the end of the
 turn during the event-dispatch pass. `phase: "immediate"` reactions fire
@@ -149,43 +182,12 @@ Immediate reactions are only allowed for these events:
 
 For all other events, `phase: "immediate"` is rejected by the model validator.
 
---
-
-## Ordering and loop prevention
+Ordering and loop prevention:
 
 1. Reactions are sorted by `priority` (lower first), then by scope (entity before room before mechanic), then by definition order.
 2. State-change events are derived once at the end of the turn from the complete state diff, after all action and reaction effects have been applied. They are dispatched in a single final pass; reactions triggered by that pass may mutate state, but no further state-change events are derived from those mutations.
 3. Maximum reaction dispatch recursion depth is 5. Exceeding this stops dispatch with a warning.
 4. Only one encounter can fire per turn (from the resolver or from reactions). Subsequent `trigger_encounter` effects are silently ignored.
-
----
-
-## Known gaps and partial implementation
-
-The following events are defined in the model but not yet fully emitted:
-
-- **`combat.started`** — emitted when a reaction-triggered encounter resolves to
-  combat, but not yet from the main encounter path or direct combat entry.
-- **`combat.ended`** — not yet emitted.
-- **Encounter stat checks** — `check.passed`/`check.failed` events are not yet
-  emitted from `_resolve_encounter_stat_check`.
-
-Scenario authors should not rely on reactions to these events until the gaps are
-closed.
-
----
-
-## Where reactions are defined
-
-Reactions can be attached to three existing models:
-
-- **`Room.reactions`** — scoped to when the player is in that room.
-- **`Entity.reactions`** — scoped to when the entity is present in the current
-  room and `alive` is not `false` and `fled` is not `true`.
-- **`Mechanic.reactions`** — globally scoped; use for adventure-wide triggers.
-
-See [`corpus.md`](corpus.md) for the full `Reaction` schema, effect fields, and
-examples.
 
 ---
 

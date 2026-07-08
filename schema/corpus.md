@@ -866,26 +866,26 @@ Below is an abridged list of commonly-used Trigger Strings, and their
 associated Event Context keys.  Keys marked with `?` are optional (may
 be omitted if the event lacks that particular detail).
 
-| Trigger                | Context                                     |
-|------------------------|---------------------------------------------|
+| Trigger                 | Context                                    |
+|-------------------------|--------------------------------------------|
 | `room.[entered\|exited]`| `room_id`                                  |
 | `traversal.[attempted\|succeeded]`| `exit_id`, `from_room`, `to_room`|
-| `traversal.failed`     | `exit_id`, `from_room`, `fail_reason`       |
-| `interaction.used`     | `interaction_id`, `target_id`, `using_item?`|
-| `flag.[set\|cleared]`  | `flag_id`                                   |
-| `entity_state.changed` | `entity_id`, `field`, `new_value`           |
-| `room_state.changed`   | `room_id`, `field`, `new_value`             |
+| `traversal.failed`      | `exit_id`, `from_room`                     |
+| `interaction.used`      | `interaction_id`,`target_id`, `using_item?`|
+| `flag.[set\|cleared]`   | `flag_id`                                  |
+| `entity_state.changed`  | `entity_id`, `field`, `new_value`          |
+| `room_state.changed`    | `room_id`, `field`, `new_value`            |
 | `dialogue.[started\|ended]` | `npc_id`, `reason?`                    |
-| `combat.started`       | `combatant_ids`                             |
-| `combat.ended`         | `reason` (`victory\|defeat\|fled`)          |
-| `item.acquired`        | `item_id`, `source`                         |
-| `item.lost`            | `item_id`, `reason`                         |
-| `equipment.changed`    | `added?`, `removed?`                        |
-| `attitude.changed`     | `npc_id`, `old_value`, `new_value`, `delta` |
-| `stat.changed`         | `stat_name`,`old_value`,`new_value`,`delta` |
+| `combat.started`        | (none)                                     |
+| `combat.ended`          | `reason` (`victory\|defeat\|fled`)         |
+| `item.acquired`         | `item_id`, `source`                        |
+| `item.lost`             | `item_id`, `reason`                        |
+| `equipment.changed`     | `added?`, `removed?`                       |
+| `attitude.changed`      | `npc_id`, `old_value`, `new_value`, `delta`|
+| `stat.changed`          | `stat_name`,`old_value`,`new_value`,`delta`|
 | `player.[damaged\|healed]` | `amount`, `new_hp`                      |
-| `encounter.branched`   | `encounter_id`, `branch`                    |
-| `turn.[start\|end]`    | `turn_number`                               |
+| `encounter.branched`    | `encounter_id`, `branch`                   |
+| `turn.[start\|end]`     | `turn_number`                              |
 
 For the full list, and full documentation of the context keys, see the
 [Events schema doc](events.md).
