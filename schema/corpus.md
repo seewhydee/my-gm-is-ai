@@ -520,7 +520,7 @@ of EncounterRule objects, each having the following form:
     "skip_check_if": { "require": "stat:CHA >= 14" },
     "success": { "narrative": "Brandishing your weapon, you hold the orc at bay." },
     "failure": { "narrative": "The orc overpowers you.",
-                 "game_over": { "type": "lose", "trigger_id": "orc" } }
+                 "game_over": { "type": "lose", "trigger": "orc" } }
   }
 ```
 
@@ -548,15 +548,15 @@ combat via `trigger_combat`, or game-over via `game_over`.
 A GameOver object specifies a win or loss outcome.
 
 ```json
-{ "type": "lose", "trigger_id": "" }
+{ "type": "lose", "trigger": "fell_into_pit" }
 ```
 
-| Field        | Type   | Description                          |
-|--------------|--------|--------------------------------------|
-| `type`       | string | `"win"` or `"lose"`                  |
-| `trigger_id` | string | Descriptor for the game-over outcome |
+| Field     | Type   | Description                     |
+|-----------|--------|---------------------------------|
+| `type`    | string | `"win"` or `"lose"`             |
+| `trigger` | string | Descriptor of game-over trigger |
 
-In the final copy of the hard game state, the `trigger_id` is saved to
+In the final copy of the hard game state, `trigger` is saved to
 `game_over.trigger` for debugging and player review.
 
 ---
@@ -1345,7 +1345,7 @@ hostile encounters (player attack, or combat triggered by a reaction).
     "success": { "narrative": "Putting up your fists, you start to fight!",
 				 "trigger_combat": true },
     "failure": { "narrative": "Without a weapon, the orc overpowers you.",
-                 "game_over": { "type": "lose", "trigger_id": "orc" } }
+                 "game_over": { "type": "lose", "trigger": "orc" } }
   }
 ]
 ```
@@ -1477,13 +1477,13 @@ objects with these fields:
 |---------------|-----------|-----------------------------------|
 | `condition`   | Condition | Predicate polled each turn        |
 | `type`        | string    | `"win"` or `"lose"`               |
-| `trigger_id`  | string    | Copied into `game_over.trigger`   |
+| `trigger`     | string    | Descriptor for game-over trigger  |
 | `narrative`¹  | string    | Canonical ending narration        |
 > ¹ optional
 
 The engine polls `condition` once per turn, after all reactions have
 settled.  The first entry with `condition` evaluating to `true` ends
-the game using `type` and `trigger_id` as the [GameOver](#game-over)
+the game using `type` and `trigger` as the [GameOver](#game-over)
 parameters, and with `narrative` (optional) as the ending narration.
 
 Example:
@@ -1493,7 +1493,7 @@ Example:
   {
     "type": "win",
     "condition": { "require": "entity:dragon.alive == false" },
-    "trigger_id": "killed_dragon",
+    "trigger": "killed_dragon",
     "narrative": "The dragon is dead. You have defeated the boss!"
   }
 ]

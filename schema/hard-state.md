@@ -1,7 +1,7 @@
 # Hard Game State Schema
 
 Hard game state records the mutable aspects of the adventure.  It is
-**only** mutated by the engine.  The LLM never writes directly to hard
+*only* mutated by the engine.  The LLM never writes directly to hard
 state; it only submits actions for the engine to validate and resolve.
 
 When the game starts, the engine generates the initial world state
@@ -23,14 +23,14 @@ during chained actions where control does not return to the player).
 ```json
 {
   "flags":         { "<flag_id>": true | false, ... },
+  "turn_count":    0,
+  "game_over":     null,
   "player":        { /* player state — optional in hard-state.json override */ },
   "room_states":   { "<room_id>": { "<field>": <value>, ... } },
   "entity_states": { "<entity_id>": { "<field>": <value>, ... } },
   "room_contains": { "<room_id>": { "<entity_id>": <count>, ... } },
   "entity_contains": { "<container_id>": { "<entity_id>": <count>, ... } },
-  "turn_count":   0,
-  "game_over":    null,
-  "combat":       null
+  "combat":        null
 }
 ```
 
@@ -59,9 +59,37 @@ reactions.
 
 ---
 
+## Turn Counter
+
+The top-level `turn_count` field must be an integer, and is
+initialized as '0' at the start of the game.  The turn counter is
+incremented by the engine after each successful action resolution,
+except for cursory examinations and OOC discussion.
+
+---
+
+## Game-Over State
+
+If the top-level `game_over` field is non-null, the game has ended and
+no further player input is processed.
+
+```json
+{ "type": "win", "trigger": "escaped_castle" }
+```
+
+| Field     | Type   | Description                                     |
+|-----------|--------|-------------------------------------------------|
+| `type`    | string | Outcome type: `"win"`, `"lose"`, etc.           |
+| `trigger` | string | Descriptor for the triggering game-over outcome |
+
+Both fields have no actual gameplay effects.  The `trigger` is
+intended for debugging and player review of the final save file.
+
+---
+
 ## Player State
 
-The `player` block describes the player's state.
+The top-level `player` field is used to describe the player's state.
 
 ### Core fields
 
@@ -201,67 +229,33 @@ These maps track the mutable location of every entity in the world:
 initial values are determined by the `contains` fields of the Room and
 Entity objects in the Corpus.
 
-### Mutation rules
+Notes:
+
+- Counts are summed on add; keys are deleted when counts reach `0`.
+  Non-stackable items may never exceed count `1` in a location;
+  stackable items respect their `max_stack` field.
 
 - Player `take` actions decrement the source container/room and add to
-  `player.inventory`.
-- Player `give` actions decrement `player.inventory` and increment the
-  target room or entity container.
+  `player.inventory`.  Similarly, `give` actions decrement
+  `player.inventory` and increment the target room/entity container.
+
 - `Result.add_item` for a non-stackable item that exists in a world
-  container in the current room removes it from that container (prevents
-  duplication of unique items).  Stackable `add_item`/`add_item_count`
-  does not touch world containers (the grant is a materialization, not a
-  transfer from a specific location).
+  container in the current room removes it from that container
+  (prevents duplication of unique items).  However, stackable
+  `add_item`/`add_item_count` does not touch world containers (the
+  grant is a materialization, not a transfer from a specific
+  location).
+
 - `Result.remove_item` removes from `player.inventory` only; the item
   vanishes (no world-side deposit).
-- Counts are summed on add; keys are deleted when the count reaches `0`.
-- Non-stackable items may never exceed count `1` in a location.
-- Stackable items respect `max_stack`.
 
 ---
 
-## `turn_count` — Turn counter
+## Combat State
 
-An integer starting at `0`. Incremented by the engine after successful action
-resolution (except for `ooc_discussion`, which does not advance the counter).
-Used for display and for capping `turn_history` entries in soft state.
-
----
-
-## `game_over` — Terminal state
-
-```json
-null
-```
-
-or
-
-```json
-{ "type": "win", "trigger": "escape_bag" }
-```
-
-or
-
-```json
-{ "type": "lose", "trigger": "death_spider" }
-```
-
-When non-null, the game has ended. No further player input is
-processed. The engine includes the game-over state in EngineResult,
-and the GM narrates the ending without soliciting further input.
-
-| Field     | Type   | Description |
-|-----------|--------|-------------|
-| `type`    | string | Type of outcome: `"win"`, `"lose"`, or something else |
-| `trigger` | string | The `trigger_id` of the game-over that fired — from an inline `Result.game_over` or a top-level `game_over_conditions` entry in Corpus. |
-
---
-
-## `combat` — Combat state
-
-When non-null, the game is in combat mode. The field holds a
-`CombatState` object managing initiative, turn order, and a combat
-log. When `null`, standard exploration/resolution is active.
+When the top-level `combat` field is non-null, the game is in combat
+mode. The field holds an object managing initiative, turn order, and a
+combat log:
 
 ```json
 {
@@ -274,16 +268,18 @@ log. When `null`, standard exploration/resolution is active.
 }
 ```
 
-| Field               | Type     | Description |
-|---------------------|----------|-------------|
-| `active`            | bool     | Whether combat is currently in progress. |
-| `combatants`        | string[] | List of participant IDs — `"player"` plus NPC entity IDs. |
-| `initiative_order`  | string[] | Sorted turn order of combatants. |
-| `current_index`     | int      | Index into `initiative_order` for the actor whose turn it is. |
-| `round_number`      | int      | Current combat round (starts at 1). |
-| `log`               | object[] | List of `CombatLogEntry` objects recording each action taken. |
+| Field              | Type     | Description                        |
+|--------------------|----------|------------------------------------|
+| `active`           | bool     | Whether combat is in progress      |
+| `combatants`       | string[] | Participants: `"player"`, NPC IDs  |
+| `initiative_order` | string[] | Sorted turn order of combatants    |
+| `current_index`    | int      | Initiative index for current actor |
+| `round_number`     | int      | Current combat round (starts at 1) |
+| `log`              | CombatLogEntry[] | See below                  |
 
-### Combat log entry
+### Combat Log Entries
+
+CombatLogEntry objects have the following format:
 
 ```json
 {
@@ -303,47 +299,21 @@ log. When `null`, standard exploration/resolution is active.
 }
 ```
 
-| Field            | Type     | Description |
-|------------------|----------|-------------|
-| `round`          | int      | The round number this entry belongs to. |
-| `actor`          | string   | Who took the action (`"player"` or an NPC entity ID). |
-| `action`         | string   | Action type: `"attack"`, `"flee"`, `"death"`, etc. |
-| `target`         | string?  | Target of the action (if applicable). |
-| `attack_roll`    | int?     | Raw d20 roll. |
-| `attack_total`   | int?     | Total after modifiers. |
-| `ac`             | int?     | Target's AC at time of attack. |
-| `hit`            | bool?    | Whether the attack landed. |
-| `critical`       | bool?    | Whether the attack was a critical hit. |
-| `damage_roll`    | string?  | Damage dice expression rolled. |
-| `damage`         | int?     | Final damage dealt. |
-| `remaining_hp`   | int?     | Target's HP after damage. |
-| `on_hit_effects` | object[] | On-hit save effects that triggered (see `combat` in corpus.md). |
-
----
-
-## Engine write operations
-
-The engine mutates hard state through these operations:
-
-| Operation              | Affects                        |
-|------------------------|--------------------------------|
-| `set_player_location`  | `player.location`              |
-| `add_item`             | `player.inventory`             |
-| `remove_item`          | `player.inventory`             |
-| `add_room_contains`    | `room_contains.<room_id>`      |
-| `remove_room_contains` | `room_contains.<room_id>`      |
-| `add_entity_contains`  | `entity_contains.<entity_id>`  |
-| `remove_entity_contains`| `entity_contains.<entity_id>` |
-| `set_flag`             | `flags.<name>`                 |
-| `clear_flag`           | `flags.<name>`                 |
-| `set_room_state`       | `room_states.<id>.<field>`     |
-| `set_entity_state`     | `entity_states.<id>.<field>`   |
-| `equip_item`           | `player.equipped`              |
-| `unequip_item`         | `player.equipped`              |
-| `increment_turn`       | `turn_count`                   |
-| `set_game_over`        | `game_over`                    |
-
-All of these are reflected in the `hard_state_changes` block of EngineResult.
+| Field           | Type    | Description                           |
+|-----------------|---------|---------------------------------------|
+| `round`         | int     | This entry's round number             |
+| `actor`         | string  | Who acts: `"player"` or NPC ID        |
+| `action`        | string  | `"attack"`, `"flee"`, `"death"`, etc. |
+| `target`        | string? | Target of the action (if applicable)  |
+| `attack_roll`   | int?    | Raw d20 roll                          |
+| `attack_total`  | int?    | Total after modifiers                 |
+| `ac`            | int?    | Target's AC at time of attack         |
+| `hit`           | bool?   | Whether the attack landed             |
+| `critical`      | bool?   | Whether the attack was a critical hit |
+| `damage_roll`   | string? | Damage dice expression rolled         |
+| `damage`        | int?    | Final damage dealt                    |
+| `remaining_hp`  | int?    | Target's HP after damage              |
+| `on_hit_effects`| object[]| Any on-hit save effects triggered     |
 
 ---
 

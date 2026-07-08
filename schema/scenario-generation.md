@@ -1000,14 +1000,14 @@ Here is an example of a mechanical (one-turn) encounter:
     },
     "failure": {
       "narrative": "The goblin strikes back! Its cleaver goes through your neck.",
-      "game_over": { "type": "lose", "trigger_id": "goblin" }
+      "game_over": { "type": "lose", "trigger": "goblin" }
     }
   },
   {
     "condition": { "unless": "tag:weapon" },
     "result": {
       "narrative": "Bare-handed, you cannot fend off the goblin's attack. It quickly overcomes you.",
-      "game_over": { "type": "lose", "trigger_id": "goblin" }
+      "game_over": { "type": "lose", "trigger": "goblin" }
     }
   }
 ]
@@ -1381,7 +1381,7 @@ There are two idioms; pick per-case:
     "condition": { "require": "flag:rip_squeeze_possible == true" },
     "result": {
       "narrative": "You tumble into the endless gray of the Astral Plane.",
-      "game_over": { "type": "lose", "trigger_id": "astral_plane" }
+      "game_over": { "type": "lose", "trigger": "astral_plane" }
     }
   }
   ```
@@ -1389,7 +1389,7 @@ There are two idioms; pick per-case:
 - **Top-level `game_over_conditions` (for cross-cutting states):** a
   win/loss predicate reachable from several paths, with no single owning
   result, goes in the top-level `game_over_conditions` array.  Each entry
-  has `type` (`"win"`/`"lose"`), `condition`, `trigger_id`, and
+  has `type` (`"win"`/`"lose"`), `condition`, `trigger`, and
   optional `narrative`/`note`.  These are polled once at end of
   turn.
 
@@ -1405,14 +1405,14 @@ There are two idioms; pick per-case:
         ]
       },
       "narrative": "You emerge into the morning light, the ancient artifact clutched to your chest. Your quest is complete.",
-      "trigger_id": "quest_complete"
+      "trigger": "quest_complete"
     },
     {
       "type": "lose",
       "note": "Player falls into the chasm.",
       "condition": { "require": "flag:fallen_into_chasm == true" },
       "narrative": "You lose your footing and tumble into the darkness below. The fall is long, and then there is nothing.",
-      "trigger_id": "chasm_fall"
+      "trigger": "chasm_fall"
     }
   ]
 ```
@@ -1566,9 +1566,9 @@ Rules:
 ### Step 4 validation checklist
 
 - [ ] Every mechanic referenced by a `trigger_encounter` exists in the block
-- [ ] Every `trigger_id` is unique across all mechanics
-- [ ] Game-over mechanics have `condition`, `narrative`, and `trigger_id`
-- [ ] Encounter mechanics have `rules` (not `condition`/`type`/`trigger_id`)
+- [ ] Every `trigger` is unique across all mechanics
+- [ ] Game-over mechanics have `condition`, `narrative`, and `trigger`
+- [ ] Encounter mechanics have `rules` (not `condition`/`type`/`trigger`)
 - [ ] Mechanics with `reactions` but no `type` or `rules` are valid
       (adventure-wide event watchers)
 - [ ] If stats block present: only stats actually used are defined
@@ -1942,7 +1942,7 @@ a top-level `game_over_conditions` entry:
     "note": "Player falls into the chasm.",
     "condition": { "require": "flag:fallen_into_chasm == true" },
     "narrative": "You lose your footing and tumble into the darkness below.",
-    "trigger_id": "chasm_fall"
+    "trigger": "chasm_fall"
   }
 ]
 ```
