@@ -57,10 +57,10 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
     corpus_path = adventure_dir / "corpus.json"
     hard_path = adventure_dir / "hard-state.json"
     soft_path = adventure_dir / "soft-state.json"
+    default_player_path = adventure_dir / "default-player.json"
 
     for required, label in (
         (corpus_path, "corpus.json"),
-        (hard_path, "hard-state.json"),
         (soft_path, "soft-state.json"),
     ):
         if not required.is_file():
@@ -69,7 +69,9 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
     if errors:
         return errors
 
-    # 2. Load and validate via StateManager
+    # 2. Load and validate via StateManager.
+    #    hard-state.json is optional (world-state override); default-player.json
+    #    is required iff the corpus declares a stat system.
     state_manager = StateManager()
     try:
         state_manager.load_all(adventure_dir)
@@ -85,6 +87,12 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
     if corpus is None or hard is None:
         errors.append("State loaded but corpus or hard state is None")
         return errors
+
+    if corpus.stats is not None and not default_player_path.is_file() and not hard_path.is_file():
+        errors.append(
+            "Adventure has a stat system but neither default-player.json nor "
+            "hard-state.json was found"
+        )
 
     # 3. Adventure metadata checks
     adv = corpus.adventure
@@ -230,13 +238,6 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
                 f"Entity '{entity_id}' has CombatBlock but no 'current_hp' "
                 f"declared in state_fields"
             )
-        # Check current_hp is initialized in hard state
-        if entity_id in hard.entity_states:
-            if "current_hp" not in hard.entity_states[entity_id]:
-                errors.append(
-                    f"Entity '{entity_id}' has CombatBlock but 'current_hp' is "
-                    f"not set in hard-state.json"
-                )
 
     return errors
 
@@ -265,7 +266,7 @@ def main() -> None:
     )
     parser.add_argument(
         "adventure",
-        help="Path to adventure directory (must contain corpus.json, hard-state.json, soft-state.json)",
+        help="Path to adventure directory (must contain corpus.json and soft-state.json; hard-state.json is optional)",
     )
     args = parser.parse_args()
 

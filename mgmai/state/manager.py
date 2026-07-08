@@ -25,7 +25,13 @@ from pydantic import ValidationError
 
 log = logging.getLogger(__name__)
 
-from mgmai.models.corpus import ModuleCorpus, RESERVED_ROOM_STATE_FIELDS
+from mgmai.models.corpus import (
+    Entity,
+    ModuleCorpus,
+    RESERVED_ROOM_STATE_FIELDS,
+    RESERVED_STATE_FIELD_DEFAULTS,
+    StateFieldDecl,
+)
 from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from mgmai.models.actions import HardStateChanges
@@ -85,9 +91,15 @@ class StateManager:
         return SoftGameState.model_validate(data)
 
     def load_all(self, adventure_dir: str | Path) -> None:
-        """Load corpus, hard state, and soft state from an adventure directory.
+        """Load corpus and soft state; generate or load hard state.
 
-        Validates cross-references after all three files are loaded.
+        If ``hard-state.json`` exists it is used as a world-state override;
+        otherwise the initial world state is generated from the corpus.  The
+        player block is resolved from ``default-player.json``, the optional
+        ``hard-state.json`` player block, and finally ``--char-sheet`` (applied
+        externally after ``load_all``).
+
+        Validates cross-references after all files are loaded.
         """
         adventure_dir = Path(adventure_dir)
         self._adventure_dir = adventure_dir
@@ -97,8 +109,18 @@ class StateManager:
         soft_path = adventure_dir / "soft-state.json"
 
         self.corpus = self.load_corpus(corpus_path)
-        self.hard_state = self.load_hard_state(hard_path)
         self.soft_state = self.load_soft_state(soft_path)
+
+        start_room = self._find_start_room()
+        player = self._resolve_player_block(start_room)
+
+        if hard_path.is_file():
+            self.hard_state = self.load_hard_state(hard_path)
+            # Inject the cascaded player block into the override.
+            self.hard_state.player = player
+        else:
+            self.hard_state = self._init_world_state_from_corpus(start_room)
+            self.hard_state.player = player
 
         # Reset in-memory once-reaction tracking on every reload so that
         # once-reactions are not carried over between saves or tests.
@@ -111,6 +133,177 @@ class StateManager:
         self._validate_player_stats()
         self._init_player_combat_defaults()
         self._init_contains_from_corpus()
+
+    def _find_start_room(self) -> str:
+        """Return the id of the unique room marked as the start room."""
+        assert self.corpus is not None
+        start_rooms = [
+            rid for rid, room in self.corpus.rooms.items() if room.is_start_room
+        ]
+        if len(start_rooms) == 0:
+            raise ValueError("No room is marked as is_start_room")
+        if len(start_rooms) > 1:
+            raise ValueError(f"Multiple rooms marked as start: {start_rooms}")
+        return start_rooms[0]
+
+    def _resolve_player_block(self, start_room: str) -> PlayerState:
+        """Resolve the player block from default/hard-state sources.
+
+        The cascade (lowest priority first) is:
+        1. Base: location = start room; all other fields default/None.
+        2. ``default-player.json`` (if present).
+        3. ``hard-state.json``'s ``player`` block (if present).
+
+        ``--char-sheet`` is applied afterwards by ``apply_char_sheet()``.
+        """
+        assert self.corpus is not None
+        assert self._adventure_dir is not None
+
+        corpus = self.corpus
+        player = PlayerState(location=start_room)
+
+        default_player_path = self._adventure_dir / "default-player.json"
+        if default_player_path.is_file():
+            try:
+                data = json.loads(default_player_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in default-player.json: {e}") from e
+            if not isinstance(data, dict):
+                raise ValueError("default-player.json must be a JSON object")
+
+            sheet_system = data.get("system")
+            if corpus.stats is not None:
+                if sheet_system is None:
+                    raise ValueError(
+                        "default-player.json must specify 'system' matching the "
+                        "adventure's RPG system"
+                    )
+                expected = corpus.stats.system
+                if sheet_system != expected:
+                    raise ValueError(
+                        f"default-player.json system '{sheet_system}' does not match "
+                        f"adventure system '{expected}'"
+                    )
+            else:
+                if sheet_system is not None:
+                    raise ValueError(
+                        "Adventure has no stat system; default-player.json must not "
+                        "specify 'system'"
+                    )
+
+            if "player" not in data:
+                raise ValueError("default-player.json must contain a 'player' object")
+            player_overrides = data["player"]
+            if not isinstance(player_overrides, dict):
+                raise ValueError("'player' must be an object")
+
+            if corpus.stats is None and player_overrides.get("stats") is not None:
+                raise ValueError(
+                    "Adventure has no stat system; default-player.json must not "
+                    "specify 'player.stats'"
+                )
+
+            self._merge_player_overrides(player, player_overrides)
+
+        hard_path = self._adventure_dir / "hard-state.json"
+        if hard_path.is_file():
+            try:
+                data = json.loads(hard_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in hard-state.json: {e}") from e
+            if isinstance(data, dict):
+                player_override = data.get("player")
+                if isinstance(player_override, dict):
+                    self._merge_player_overrides(player, player_override)
+
+        if corpus.stats is not None and player.stats is None:
+            raise ValueError(
+                "Scenario requires player data but none was provided "
+                "(need default-player.json, hard-state.json player block, or --char-sheet)"
+            )
+
+        return player
+
+    def _init_world_state_from_corpus(self, start_room: str) -> HardGameState:
+        """Generate the world (non-player) portion of hard state from the corpus."""
+        assert self.corpus is not None
+        corpus = self.corpus
+
+        room_states: dict[str, dict[str, Any]] = {}
+        for rid, room in corpus.rooms.items():
+            state: dict[str, Any] = {"visited": False}
+            for field_name, decl in room.state_fields.items():
+                if field_name in RESERVED_ROOM_STATE_FIELDS:
+                    continue
+                state[field_name] = self._resolve_initial_value(decl, field_name, None)
+                if decl.initial is None and field_name not in RESERVED_STATE_FIELD_DEFAULTS:
+                    log.warning(
+                        "Room '%s' state field '%s' has no explicit initial; "
+                        "using type default",
+                        rid,
+                        field_name,
+                    )
+            room_states[rid] = state
+
+        entity_states: dict[str, dict[str, Any]] = {}
+        for eid, entity in corpus.entities.items():
+            if not entity.state_fields:
+                continue
+            state = {}
+            for field_name, decl in entity.state_fields.items():
+                state[field_name] = self._resolve_initial_value(decl, field_name, entity)
+                if (
+                    decl.initial is None
+                    and field_name not in ("attitude", "current_hp", "hidden")
+                    and field_name not in RESERVED_STATE_FIELD_DEFAULTS
+                ):
+                    log.warning(
+                        "Entity '%s' state field '%s' has no explicit initial; "
+                        "using type default",
+                        eid,
+                        field_name,
+                    )
+            entity_states[eid] = state
+
+        return HardGameState(
+            player=PlayerState(location=start_room),
+            flags=dict(corpus.flags_initial),
+            room_states=room_states,
+            entity_states=entity_states,
+            turn_count=0,
+            game_over=None,
+            combat=None,
+        )
+
+    def _resolve_initial_value(
+        self,
+        decl: StateFieldDecl,
+        field_name: str,
+        entity: Entity | None,
+    ) -> Any:
+        """Resolve the initial value for a single declared state field."""
+        if decl.initial is not None:
+            return decl.initial
+
+        # Context-sensitive reserved fields.
+        if field_name == "attitude":
+            if entity is not None and entity.dialogue is not None:
+                return entity.dialogue.attitude_limits.initial
+            return 0
+        if field_name == "current_hp":
+            if entity is not None and entity.combat is not None:
+                return entity.combat.hp
+            return 0
+        if field_name == "hidden":
+            return False
+
+        # Reserved fields with constant defaults.
+        if field_name in RESERVED_STATE_FIELD_DEFAULTS:
+            return RESERVED_STATE_FIELD_DEFAULTS[field_name]
+
+        # Type defaults.
+        type_defaults = {"boolean": False, "number": 0, "string": ""}
+        return type_defaults[decl.type]
 
     def apply_char_sheet(self, path: str | Path) -> None:
         """Load and apply a custom player character sheet.
@@ -178,22 +371,190 @@ class StateManager:
                 "Adventure has no stat system; character sheet must not "
                 "specify 'player.stats'")
 
-        for field, value in player_overrides.items():
-            if field not in PlayerState.model_fields:
-                continue  # forward compatibility: ignore unknown fields
-            try:
-                setattr(self.hard_state.player, field, value)
-            except ValidationError as e:
-                raise ValueError(f"Invalid value for '{field}': {e}") from e
+        self._merge_player_overrides(self.hard_state.player, player_overrides)
 
         self.validate_cross_references()
         self._validate_stats_system()
         self._validate_player_stats()
         self._init_player_combat_defaults()
 
+    @staticmethod
+    def _merge_player_overrides(player: PlayerState, overrides: dict[str, Any]) -> None:
+        """Overlay *overrides* onto *player*, ignoring unknown fields."""
+        for field, value in overrides.items():
+            if field not in PlayerState.model_fields:
+                continue  # forward compatibility: ignore unknown fields
+            try:
+                setattr(player, field, value)
+            except ValidationError as e:
+                raise ValueError(f"Invalid value for '{field}': {e}") from e
+
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
+
+    def _collect_corpus_flag_references(self) -> set[str]:
+        """Collect every flag id referenced by the corpus."""
+        assert self.corpus is not None
+        refs: set[str] = set()
+        from mgmai.engine.conditions import parse_condition_string
+        from mgmai.models.corpus import (
+            Checkable,
+            ConditionExpression,
+            EncounterRule,
+            Entity,
+            Exit,
+            GatedCheck,
+            Interaction,
+            Mechanic,
+            OnExamineEvent,
+            Reaction,
+            ReactionEffects,
+            Result,
+            Room,
+            UsingResultOverride,
+            WillRevealEntry,
+        )
+
+        def _from_condition(expr: ConditionExpression | None) -> None:
+            if expr is None:
+                return
+            if expr.require is not None:
+                _from_string(expr.require)
+            if expr.unless is not None:
+                _from_string(expr.unless)
+            for field_name in ("any_of", "all_of"):
+                items = getattr(expr, field_name)
+                if items is not None:
+                    for item in items:
+                        if isinstance(item, ConditionExpression):
+                            _from_condition(item)
+                        elif isinstance(item, str):
+                            _from_string(item)
+
+        def _from_string(raw: str) -> None:
+            try:
+                domain, key, _, _ = parse_condition_string(raw)
+            except ValueError:
+                return
+            if domain == "flag":
+                refs.add(key)
+
+        def _from_result(result: Result | None) -> None:
+            if result is None:
+                return
+            if result.set_flag:
+                refs.update(result.set_flag.keys())
+            if result.then_check is not None:
+                _from_checkable(result.then_check)
+
+        def _from_checkable(checkable: Checkable | None) -> None:
+            if checkable is None:
+                return
+            if checkable.skip_check_if is not None:
+                _from_condition(checkable.skip_check_if)
+            if checkable.success is not None:
+                _from_result(checkable.success)
+            if checkable.failure is not None:
+                _from_result(checkable.failure)
+
+        def _from_using_override(override: UsingResultOverride | None) -> None:
+            if override is None:
+                return
+            if override.success is not None:
+                _from_result(override.success)
+            if override.failure is not None:
+                _from_result(override.failure)
+            if override.result is not None:
+                _from_result(override.result)
+
+        def _from_reaction(reaction: Reaction) -> None:
+            _from_condition(reaction.condition)
+            if reaction.effect.result is not None:
+                _from_result(reaction.effect.result)
+
+        def _from_interaction(interaction: Interaction | OnExamineEvent) -> None:
+            _from_condition(interaction.condition)
+            if interaction.using_results is not None:
+                for override in interaction.using_results.values():
+                    _from_using_override(override)
+            if interaction.check is not None:
+                _from_checkable(interaction)
+            elif interaction.result is not None:
+                _from_result(interaction.result)
+
+        def _from_encounter_rule(rule: EncounterRule) -> None:
+            _from_condition(rule.condition)
+            if rule.check is not None:
+                _from_checkable(rule)
+            elif rule.result is not None:
+                _from_result(rule.result)
+
+        def _from_gated_check(gc: GatedCheck | None) -> None:
+            if gc is None:
+                return
+            _from_condition(gc.gating)
+            if gc.using_results is not None:
+                for override in gc.using_results.values():
+                    _from_using_override(override)
+
+        def _from_will_reveal(entry: WillRevealEntry) -> None:
+            for raw in entry.conditions:
+                _from_string(raw)
+            if entry.set_flag:
+                refs.update(entry.set_flag.keys())
+
+        def _from_exit(exit: Exit) -> None:
+            _from_condition(exit.condition)
+            if exit.traversal_check is not None:
+                _from_gated_check(exit.traversal_check)
+
+        def _from_room(room: Room) -> None:
+            for exit in room.exits:
+                _from_exit(exit)
+            for interaction in room.interactions:
+                _from_interaction(interaction)
+            for event in room.on_examine:
+                _from_interaction(event)
+            for reaction in room.reactions:
+                _from_reaction(reaction)
+
+        def _from_entity(entity: Entity) -> None:
+            for interaction in entity.interactions:
+                _from_interaction(interaction)
+            for event in entity.on_examine:
+                _from_interaction(event)
+            if entity.dialogue is not None:
+                for path in entity.dialogue.dialogue_paths.values():
+                    _from_interaction(path)
+                for entry in entity.dialogue.will_reveal.values():
+                    _from_will_reveal(entry)
+            if entity.aggro is not None:
+                for rule in entity.aggro:
+                    _from_encounter_rule(rule)
+            if entity.take_check is not None:
+                _from_gated_check(entity.take_check)
+            for reaction in entity.reactions:
+                _from_reaction(reaction)
+
+        def _from_mechanic(mechanic: Mechanic) -> None:
+            _from_condition(mechanic.condition)
+            if mechanic.rules is not None:
+                for rule in mechanic.rules:
+                    _from_encounter_rule(rule)
+            for reaction in mechanic.reactions:
+                _from_reaction(reaction)
+
+        for room in self.corpus.rooms.values():
+            _from_room(room)
+        for entity in self.corpus.entities.values():
+            _from_entity(entity)
+        for mechanic in self.corpus.mechanics.values():
+            _from_mechanic(mechanic)
+        for goc in self.corpus.game_over_conditions:
+            _from_condition(goc.condition)
+
+        return refs
 
     def validate_cross_references(self) -> None:
         """Run cross-reference checks between corpus and state files."""
@@ -291,10 +652,17 @@ class StateManager:
 
         # Validate flags against corpus declaration if provided
         if self.corpus.flags_declared is not None:
-            declared_set = set(self.corpus.flags_declared)
+            declared_set = set(self.corpus.flags_initial.keys())
             for flag in self.hard_state.flags:
                 if flag not in declared_set:
                     errors.append(f"Hard state has undeclared flag {flag}")
+
+        # Cross-check: every flag referenced by the corpus must be declared.
+        declared_flags = set(self.corpus.flags_initial.keys())
+        declared_flags.update(self.hard_state.flags.keys())
+        referenced_flags = self._collect_corpus_flag_references()
+        for flag in sorted(referenced_flags - declared_flags):
+            errors.append(f"Flag '{flag}' is referenced but not declared")
 
         # Soft state: player_knowledge entries must reference valid entities/sources
         for entry in self.soft_state.player_knowledge:

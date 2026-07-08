@@ -9,18 +9,19 @@
     },
     "introduction": "You wake up. The last thing you remember is a night out on the town. Now you seem to be in a giant cave made of... canvas?",
     "atmosphere": {
-      "setting": "Inside a magical Bag of Holding \u2014 a pocket dimension full of giant-sized rubbish and dangers, where a lost dwarf has been trapped for years.",
-      "tone": "Whimsical and slightly dark. The world is absurd but coherent. Danger is real but the tone is more Pratchett than Lovecraft. The player should piece together their situation through exploration \u2014 no spoilers in room descriptions."
+      "setting": "Inside a magical Bag of Holding — a pocket dimension full of giant-sized rubbish and dangers, where a lost dwarf has been trapped for years.",
+      "tone": "Whimsical and slightly dark. The world is absurd but coherent. Danger is real but the tone is more Pratchett than Lovecraft. The player should piece together their situation through exploration — no spoilers in room descriptions."
     }
   },
   "entities": {
     "player": {
       "type": "player",
-      "description": "You are a fourth-level Human Rogue. You remember a night out on the town, and now you're here \u2014 wherever here is. Your pack and gear are missing.",
+      "description": "You are a fourth-level Human Rogue. You remember a night out on the town, and now you're here — wherever here is. Your pack and gear are missing.",
       "state_fields": {
         "alive": {
           "type": "boolean",
-          "description": "Whether the player is still alive."
+          "description": "Whether the player is still alive.",
+          "initial": true
         }
       }
     },
@@ -30,11 +31,13 @@
       "state_fields": {
         "alive": {
           "type": "boolean",
-          "description": "Whether the fly is alive."
+          "description": "Whether the fly is alive.",
+          "initial": true
         },
         "hidden": {
           "type": "boolean",
-          "description": "Whether the fly is hidden in the webs."
+          "description": "Whether the fly is hidden in the webs.",
+          "initial": true
         },
         "attitude": {
           "type": "number",
@@ -76,19 +79,22 @@
     },
     "spider": {
       "type": "npc",
-      "description": "A massive spider \u2014 eight glittering eyes, eight hairy legs, mandibles slick with venom. It lurks in the shadows above the webbing.",
+      "description": "A massive spider — eight glittering eyes, eight hairy legs, mandibles slick with venom. It lurks in the shadows above the webbing.",
       "state_fields": {
         "alive": {
           "type": "boolean",
-          "description": "Whether the spider is alive."
+          "description": "Whether the spider is alive.",
+          "initial": true
         },
         "fled": {
           "type": "boolean",
-          "description": "Whether the spider has fled."
+          "description": "Whether the spider has fled.",
+          "initial": false
         },
         "hidden": {
           "type": "boolean",
-          "description": "Whether the spider is hidden in the shadows."
+          "description": "Whether the spider is hidden in the shadows.",
+          "initial": true
         },
         "attitude": {
           "type": "number",
@@ -96,7 +102,8 @@
         },
         "current_hp": {
           "type": "number",
-          "description": "Current hit points."
+          "description": "Current hit points.",
+          "initial": 14
         }
       },
       "dialogue": {
@@ -153,7 +160,7 @@
               }
             },
             "failure": {
-              "narrative": "The spider clicks its mandibles in what might be agreement. 'Yesss... passs,' it hisses. But its eyes gleam with malice \u2014 it's lying.",
+              "narrative": "The spider clicks its mandibles in what might be agreement. 'Yesss... passs,' it hisses. But its eyes gleam with malice — it's lying.",
               "set_flag": {
                 "spider_lies": true
               }
@@ -282,7 +289,7 @@
           },
           "effect": {
             "result": {
-              "narrative": "With a final screech, the spider curls up and goes still \u2014 dead.",
+              "narrative": "With a final screech, the spider curls up and goes still — dead.",
               "set_flag": {
                 "spider_fled": true
               },
@@ -302,7 +309,8 @@
       "state_fields": {
         "alive": {
           "type": "boolean",
-          "description": "Whether Korbar is alive or conscious."
+          "description": "Whether Korbar is alive or conscious.",
+          "initial": true
         },
         "attitude": {
           "type": "number",
@@ -310,15 +318,18 @@
         },
         "following": {
           "type": "boolean",
-          "description": "Whether Korbar is following the player."
+          "description": "Whether Korbar is following the player.",
+          "initial": false
         },
         "convinced_spider_dead": {
           "type": "boolean",
-          "description": "Whether Korbar believes the spider is dead."
+          "description": "Whether Korbar believes the spider is dead.",
+          "initial": false
         },
         "current_hp": {
           "type": "number",
-          "description": "Current hit points."
+          "description": "Current hit points.",
+          "initial": 29
         }
       },
       "follower": {
@@ -478,7 +489,8 @@
       "state_fields": {
         "hidden": {
           "type": "boolean",
-          "description": "Whether the padlock is visible from inside the bag."
+          "description": "Whether the padlock is visible from inside the bag.",
+          "initial": true
         }
       }
     },
@@ -488,7 +500,8 @@
       "state_fields": {
         "examined": {
           "type": "boolean",
-          "description": "Whether the player has looked through the rip."
+          "description": "Whether the player has looked through the rip.",
+          "initial": false
         }
       },
       "on_examine": [
@@ -532,7 +545,7 @@
           },
           "rigorous_only": false,
           "result": {
-            "narrative": "As you examine the sticky strands, one of the masses twitches. It's a FLY \u2014 about the size of a dog, tightly wrapped in webbing. Its multifaceted eyes swivel weakly toward you.",
+            "narrative": "As you examine the sticky strands, one of the masses twitches. It's a FLY — about the size of a dog, tightly wrapped in webbing. Its multifaceted eyes swivel weakly toward you.",
             "set_entity_state": {
               "stuck_fly": {
                 "hidden": false
@@ -572,7 +585,7 @@
             "target": 13
           },
           "success": {
-            "narrative": "Your eyes catch movement in the shadows above. Eight glittering eyes stare back at you. A huge spider \u2014 massive and hungry \u2014 lurks in the webbing, poised to strike.",
+            "narrative": "Your eyes catch movement in the shadows above. Eight glittering eyes stare back at you. A huge spider — massive and hungry — lurks in the webbing, poised to strike.",
             "set_entity_state": {
               "spider": {
                 "hidden": false
@@ -608,7 +621,7 @@
           },
           "rigorous_only": false,
           "result": {
-            "narrative": "Among the rubbish, you spot a giant toenail clipping \u2014 curved and razor-edged. It's disgusting, but it looks like it could work as a shortsword if you could pull it free from the pile.",
+            "narrative": "Among the rubbish, you spot a giant toenail clipping — curved and razor-edged. It's disgusting, but it looks like it could work as a shortsword if you could pull it free from the pile.",
             "set_flag": {
               "toenail_noticed": true
             },
@@ -627,21 +640,24 @@
       "state_fields": {
         "hidden": {
           "type": "boolean",
-          "description": "Whether the handkerchief is hidden from view."
+          "description": "Whether the handkerchief is hidden from view.",
+          "initial": true
         },
         "moved": {
           "type": "boolean",
-          "description": "Whether the handkerchief has been moved aside."
+          "description": "Whether the handkerchief has been moved aside.",
+          "initial": false
         }
       }
     },
     "secret_flap": {
       "type": "feature",
-      "description": "A small flap in the canvas floor, previously concealed beneath the giant handkerchief. It leads down into darkness \u2014 a hidden compartment within the Bag.",
+      "description": "A small flap in the canvas floor, previously concealed beneath the giant handkerchief. It leads down into darkness — a hidden compartment within the Bag.",
       "state_fields": {
         "hidden": {
           "type": "boolean",
-          "description": "Whether the secret flap is hidden from view."
+          "description": "Whether the secret flap is hidden from view.",
+          "initial": true
         }
       }
     },
@@ -655,7 +671,8 @@
       "state_fields": {
         "hidden": {
           "type": "boolean",
-          "description": "Whether the toenail sword is visible in the room."
+          "description": "Whether the toenail sword is visible in the room.",
+          "initial": true
         }
       },
       "take_check": {
@@ -666,7 +683,7 @@
           "target": 8
         },
         "success": {
-          "narrative": "You work the toenail clipping free from the pile of rubbish. It's curved and razor-sharp \u2014 a perfect makeshift shortsword.",
+          "narrative": "You work the toenail clipping free from the pile of rubbish. It's curved and razor-sharp — a perfect makeshift shortsword.",
           "set_flag": {
             "toenail_sword_found": true
           }
@@ -686,7 +703,7 @@
     "giant_key": {
       "type": "item",
       "name": "Giant Key",
-      "description": "A massive iron key, heavy and cold. Far too large for a normal door \u2014 this must be for something enormous.",
+      "description": "A massive iron key, heavy and cold. Far too large for a normal door — this must be for something enormous.",
       "tags": [
         "key_item"
       ]
@@ -695,7 +712,7 @@
   "rooms": {
     "axe_head": {
       "name": "Axe Head",
-      "description": "You are standing on the head of a giant battleaxe, its blade the size of a small plaza. The axe head leans at an angle against the wall of this vast cave. The handle \u2014 about the width of a narrow sidewalk \u2014 slopes downward into the murk. The walls give off a faint luminescence, just enough to see by. Above, just above head height, the canvas walls converge into a low dome, scrunching shut in the center. You notice a small rip in the fabric near the tip of the blade, with a dull gray light winking through it.",
+      "description": "You are standing on the head of a giant battleaxe, its blade the size of a small plaza. The axe head leans at an angle against the wall of this vast cave. The handle — about the width of a narrow sidewalk — slopes downward into the murk. The walls give off a faint luminescence, just enough to see by. Above, just above head height, the canvas walls converge into a low dome, scrunching shut in the center. You notice a small rip in the fabric near the tip of the blade, with a dull gray light winking through it.",
       "contains": [
         "giant_axe",
         "canvas_walls",
@@ -747,7 +764,7 @@
             "target": 12
           },
           "success": {
-            "narrative": "You realize you could actually fit through the rip \u2014 but the gray void outside is the Astral Plane. Squeezing through would mean floating there, directionless, for eternity. Are you absolutely sure you want to do this?",
+            "narrative": "You realize you could actually fit through the rip — but the gray void outside is the Astral Plane. Squeezing through would mean floating there, directionless, for eternity. Are you absolutely sure you want to do this?",
             "set_flag": {
               "rip_squeeze_possible": true
             }
@@ -796,7 +813,7 @@
             "target": 14
           },
           "success": {
-            "narrative": "The key turns with a satisfying CLUNK. The padlock springs open! You push open the neck of the Bag, and daylight \u2014 real daylight \u2014 floods in from above.",
+            "narrative": "The key turns with a satisfying CLUNK. The padlock springs open! You push open the neck of the Bag, and daylight — real daylight — floods in from above.",
             "set_flag": {
               "padlock_unlocked": true
             }
@@ -830,7 +847,7 @@
                 "target": 10
               },
               "success": {
-                "narrative": "With Korbar's help, the key turns with a satisfying CLUNK. The padlock springs open! You push open the neck of the Bag, and daylight \u2014 real daylight \u2014 floods in from above.",
+                "narrative": "With Korbar's help, the key turns with a satisfying CLUNK. The padlock springs open! You push open the neck of the Bag, and daylight — real daylight — floods in from above.",
                 "set_flag": {
                   "padlock_unlocked": true
                 }
@@ -872,8 +889,10 @@
             ]
           },
           "result": {
-            "narrative": "You release the key through the rip. It drifts away into the gray void, shrinking until it disappears entirely. The key is gone forever \u2014 and with it, your only hope of escape.",
-            "remove_item": ["giant_key"],
+            "narrative": "You release the key through the rip. It drifts away into the gray void, shrinking until it disappears entirely. The key is gone forever — and with it, your only hope of escape.",
+            "remove_item": [
+              "giant_key"
+            ],
             "set_flag": {
               "key_lost_to_astral": true
             }
@@ -893,7 +912,7 @@
             "target": 12
           },
           "success": {
-            "narrative": "You study the luminescence more closely. The light doesn't seem to come from any single source \u2014 it's as if the canvas itself radiates a magical energy. This is no natural phenomenon.",
+            "narrative": "You study the luminescence more closely. The light doesn't seem to come from any single source — it's as if the canvas itself radiates a magical energy. This is no natural phenomenon.",
             "set_flag": {
               "glow_noticed": true
             },
@@ -919,7 +938,7 @@
                   "target": 12
                 },
                 "success": {
-                  "narrative": "The gray void outside... you've read about this. It's the Astral Plane \u2014 the space between worlds, where thoughts take form and mortal minds can wander for an eternity.",
+                  "narrative": "The gray void outside... you've read about this. It's the Astral Plane — the space between worlds, where thoughts take form and mortal minds can wander for an eternity.",
                   "set_flag": {
                     "astral_plane_recognized": true
                   },
@@ -946,11 +965,11 @@
                   "target": 17
                 },
                 "success": {
-                  "narrative": "A Bag of Holding! The realization hits you. This legendary magical item works by existing in both the prime and astral planes simultaneously. You're inside one \u2014 shrunk down to a fraction of your normal size. Which means everything around you, the axe, the bottles... it's all just normal-sized items from outside.",
+                  "narrative": "A Bag of Holding! The realization hits you. This legendary magical item works by existing in both the prime and astral planes simultaneously. You're inside one — shrunk down to a fraction of your normal size. Which means everything around you, the axe, the bottles... it's all just normal-sized items from outside.",
                   "set_flag": {
                     "realized_bag_of_holding": true
                   },
-                  "reveals": "This is a Bag of Holding \u2014 a legendary magical storage item that exists simultaneously in the prime and astral planes."
+                  "reveals": "This is a Bag of Holding — a legendary magical storage item that exists simultaneously in the prime and astral planes."
                 },
                 "failure": null
               }
@@ -972,7 +991,7 @@
     },
     "axe_handle_upper": {
       "name": "Axe Handle (Upper)",
-      "description": "You balance carefully on the giant axe handle, which slopes both upward and downward into the gloom. A mass of sticky webs encrusts this section of the handle, dimming the faint glow from the canvas walls. You can barely make out your footing. The webs are denser on the lower side, but there are strange masses of various sizes suspended in the strands \u2014 like cocoons, or captured prey. It's also possible to drop into the darkness below, though it's too dark to see where you'd land.",
+      "description": "You balance carefully on the giant axe handle, which slopes both upward and downward into the gloom. A mass of sticky webs encrusts this section of the handle, dimming the faint glow from the canvas walls. You can barely make out your footing. The webs are denser on the lower side, but there are strange masses of various sizes suspended in the strands — like cocoons, or captured prey. It's also possible to drop into the darkness below, though it's too dark to see where you'd land.",
       "contains": [
         "giant_axe",
         "canvas_walls",
@@ -1094,7 +1113,7 @@
     },
     "axe_handle_lower": {
       "name": "Axe Handle (Lower)",
-      "description": "The webs surrounding the giant axe handle are incredibly dense here, forming what looks like a solid barrier across the path downward. The shadows above seem to shift and stir. Peering over the side of the handle, you can make out numerous irregularly-shaped objects below \u2014 it looks like you could drop down safely from this height. If you strain your ears, you might hear a faint clanking and muttering from below.",
+      "description": "The webs surrounding the giant axe handle are incredibly dense here, forming what looks like a solid barrier across the path downward. The shadows above seem to shift and stir. Peering over the side of the handle, you can make out numerous irregularly-shaped objects below — it looks like you could drop down safely from this height. If you strain your ears, you might hear a faint clanking and muttering from below.",
       "contains": [
         "giant_axe",
         "canvas_walls",
@@ -1263,7 +1282,7 @@
                   "target": 13
                 },
                 "success": {
-                  "narrative": "As you arrive, your eyes catch movement in the shadows above. Eight glittering eyes stare back at you. A huge spider \u2014 massive and hungry \u2014 lurks in the webbing, poised to strike.",
+                  "narrative": "As you arrive, your eyes catch movement in the shadows above. Eight glittering eyes stare back at you. A huge spider — massive and hungry — lurks in the webbing, poised to strike.",
                   "set_entity_state": {
                     "spider": {
                       "hidden": false
@@ -1458,7 +1477,7 @@
             "target": 10
           },
           "success": {
-            "narrative": "You heave the heavy handkerchief aside. Beneath it, a small flap is set into the canvas floor \u2014 a concealed pocket leading down into darkness.",
+            "narrative": "You heave the heavy handkerchief aside. Beneath it, a small flap is set into the canvas floor — a concealed pocket leading down into darkness.",
             "set_flag": {
               "handkerchief_moved": true
             },
@@ -1486,7 +1505,7 @@
           },
           "rigorous_only": false,
           "result": {
-            "narrative": "As you survey the room, your eye catches a giant toenail clipping nestled amid the rubbish pile \u2014 curved and razor-edged. It's disgusting, but it looks like it could work as a shortsword if you could pull it free.",
+            "narrative": "As you survey the room, your eye catches a giant toenail clipping nestled amid the rubbish pile — curved and razor-edged. It's disgusting, but it looks like it could work as a shortsword if you could pull it free.",
             "set_flag": {
               "toenail_noticed": true
             },
@@ -1510,7 +1529,7 @@
             "target": 8
           },
           "success": {
-            "narrative": "As you look over the rubbish, something clicks. This isn't a random pile \u2014 it's adventuring gear. Copper pieces, potions, rations... your own pack contained much the same assortment. This must be someone's supplies, shrunk and scattered inside the Bag.",
+            "narrative": "As you look over the rubbish, something clicks. This isn't a random pile — it's adventuring gear. Copper pieces, potions, rations... your own pack contained much the same assortment. This must be someone's supplies, shrunk and scattered inside the Bag.",
             "set_flag": {
               "realized_supplies": true
             },
@@ -1537,7 +1556,7 @@
             "target": 14
           },
           "success": {
-            "narrative": "The pieces fall into place. The canvas walls, the giant-sized mundane objects, the magical glow... you're inside a Bag of Holding \u2014 a legendary magical storage item! The Bag's magic shrinks items by different amounts to get them to fit together. Which means you've been shrunk too.",
+            "narrative": "The pieces fall into place. The canvas walls, the giant-sized mundane objects, the magical glow... you're inside a Bag of Holding — a legendary magical storage item! The Bag's magic shrinks items by different amounts to get them to fit together. Which means you've been shrunk too.",
             "set_flag": {
               "realized_bag_of_holding": true
             },
@@ -1599,7 +1618,7 @@
     },
     "secret_pocket": {
       "name": "Secret Pocket",
-      "description": "You've squeezed into a space about the size of a small closet. The walls are the same faintly-glowing canvas as the rest of the cave, but even stickier and smellier \u2014 the air is close and stale. The only thing of note is a large iron key, heavy and cold, resting on the canvas floor.",
+      "description": "You've squeezed into a space about the size of a small closet. The walls are the same faintly-glowing canvas as the rest of the cave, but even stickier and smellier — the air is close and stale. The only thing of note is a large iron key, heavy and cold, resting on the canvas floor.",
       "contains": [
         "canvas_walls",
         "giant_key"
@@ -1743,7 +1762,7 @@
           },
           "effect": {
             "result": {
-              "narrative": "Korbar collapses in a heap of clattering iron. Her breathing is shallow but steady \u2014 she's unconscious but alive."
+              "narrative": "Korbar collapses in a heap of clattering iron. Her breathing is shallow but steady — she's unconscious but alive."
             }
           }
         }
@@ -1757,16 +1776,16 @@
       "condition": {
         "require": "flag:padlock_unlocked == true"
       },
-      "narrative": "With the padlock open, the neck of the Bag yawns wide. You scramble upward, pulling yourself out into the world beyond. Fresh air hits your face \u2014 real air, not the stale atmosphere of the Bag. You're out. You're free. What happens next is up to you.",
+      "narrative": "With the padlock open, the neck of the Bag yawns wide. You scramble upward, pulling yourself out into the world beyond. Fresh air hits your face — real air, not the stale atmosphere of the Bag. You're out. You're free. What happens next is up to you.",
       "trigger_id": "escape_bag"
     },
     {
       "type": "lose",
-      "note": "The key fell through the rip into the Astral Plane \u2014 the player is trapped forever.",
+      "note": "The key fell through the rip into the Astral Plane — the player is trapped forever.",
       "condition": {
         "require": "flag:key_lost_to_astral == true"
       },
-      "narrative": "The key is gone \u2014 swallowed by the Astral Plane. With no other way to unlock the padlock, you are trapped inside the Bag of Holding forever. Perhaps Korbar will share her soup ladle shelter.",
+      "narrative": "The key is gone — swallowed by the Astral Plane. With no other way to unlock the padlock, you are trapped inside the Bag of Holding forever. Perhaps Korbar will share her soup ladle shelter.",
       "trigger_id": "key_lost"
     }
   ],

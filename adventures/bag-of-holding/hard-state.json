@@ -1,21 +1,6 @@
 {
   "player": {
-    "location": "axe_head",
-    "inventory": {},
-    "equipped": [],
-    "stats": {
-      "STR": 10,
-      "DEX": 13,
-      "CON": 12,
-      "INT": 11,
-      "WIS": 10,
-      "CHA": 10
-    },
-    "level": 4,
-    "current_hp": 27,
-    "max_hp": 27,
-    "ac": 11,
-    "proficiency_bonus": 2
+    "location": "axe_head"
   },
   "flags": {
     "glow_noticed": false,
@@ -70,7 +55,7 @@
       "fled": false,
       "hidden": true,
       "attitude": -2,
-      "current_hp": 15
+      "current_hp": 14
     },
     "korbar": {
       "alive": true,

@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> None:
     ## Adventure settings
     parser.add_argument(
         "adventure", nargs="?",
-        help="Path to adventure directory (must contain corpus.json, hard-state.json, soft-state.json)")
+        help="Path to adventure directory (must contain corpus.json and soft-state.json; hard-state.json is optional)")
 
     parser.add_argument(
         "--load", dest="load_file", default=None, metavar="FILE",

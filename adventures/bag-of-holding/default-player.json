@@ -1,0 +1,19 @@
+{
+  "system": "5e",
+  "player": {
+    "stats": {
+      "STR": 10,
+      "DEX": 13,
+      "CON": 12,
+      "INT": 11,
+      "WIS": 10,
+      "CHA": 10
+    },
+    "level": 4,
+    "max_hp": 27,
+    "current_hp": 27,
+    "ac": 11,
+    "proficiency_bonus": 2,
+    "save_proficiencies": ["DEX", "INT"]
+  }
+}

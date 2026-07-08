@@ -1,408 +1,568 @@
-# Plan: World-side containment with quantity tracking
+# Plan: Programmatic hard state generation from the corpus
 
-## Problem statement
+## Background and motivation
 
-Commit `2b93aa3` converted player `inventory` from `list[str]` to `Dict[str, int]`,
-enabling stackable items with quantities. Two gaps remain on the world side.
+The project currently requires three JSON files to define an adventure:
+`corpus.json` (immutable adventure content), `hard-state.json` (initial
+mutable state), and `soft-state.json` (initial narrative state). The
+corpus and hard-state files are both LLM-authored, using the workflow
+described in `schema/scenario-generation.md`.
 
-### Problem 1: `contains` lacks quantity support
+This is redundant *for the world state*. The corpus already carries all
+the information needed to derive the initial world state:
 
-`Room.contains` and `Entity.contains` are still `List[str]` — a flat list of entity IDs.
-There is no way to express "this chest contains 50 gold coins." The player inventory
-format already solved this with a dict; the world side hasn't caught up.
+- **Room / entity state fields** are declared in the corpus with their
+  type, description, and — per the corpus schema docs — an `initial`
+  value (though the Pydantic model `StateFieldDecl` doesn't yet expose
+  this field).
 
-### Problem 2: `contains` is a static corpus field, not runtime world state
+- **Flags** are enumerated in `flags_declared` and universally start
+  `false`.
 
-The corpus is read-only after load. Containment is currently a static declaration.
-This creates concrete bugs:
+- **Containment** (`room_contains`, `entity_contains`) is already
+  initialised programmatically from the corpus `contains` fields by
+  `StateManager._init_contains_from_corpus()`.
 
-- **No depletion tracking.** `available_pool` in the transfer resolver is a `set[str]`
-  built from the static `room.contains`. There is **no quantity limit**: you can take
-  1000 coins from a room that only declares 50.
+- **Player location** is determined by the room with `is_start_room: true`.
 
-- **Invisible stacks.** Once the player holds ANY of a stackable item, the filtering
-  code (`eid in hard.player.inventory`) hides the entire item from room visibility —
-  the remaining coins in the room vanish from both the GM briefing and the available pool.
-  This filter currently appears in three places: `context/assembler.py:94`,
-  `engine/utils.py:131-135` (`build_contains`), and `engine/engine.py:687`
-  (`_build_room_after`).
+Requiring the LLM to duplicate this information into a separate file
+creates a synchronisation problem with no benefit.
 
-- **Giving items makes them disappear.** Hard items given to a room or NPC are
-  removed from player inventory but only surface as soft_items — they are never
-  placed back into a mutable world-side container. They become narrative-only fluff.
+**However, the player block is a different concern.** `hard_state.player`
+(ability scores, level, HP, AC, saves) is *not* derivable from the
+corpus: the corpus declares stat *definitions* and the resolution
+*system*, but not a specific character's values. The earlier draft of
+this plan assumed `_init_player_combat_defaults()` could produce these.
+That is wrong — that function only derives HP/AC/proficiency *from
+already-populated stats and level* (`manager.py:342-377`), and its HP
+formula is **level-1 only** (`base_max_hp = 8 + CON mod`,
+`five_e.py:455-456`). It cannot reproduce, say, a level-4 rogue's 27 HP.
+So the player block needs its own home.
 
-### Root cause: static `contains`
+The design therefore splits the initial state along this seam:
 
-The current design conflates two concerns:
-1. Initial placement of entities (a corpus concern)
-2. Runtime tracking of where entities are (a state concern)
+- **World state** (rooms, entities, flags, containment) → *generated*
+  from the corpus.
+- **Player character** (stats, level, HP, AC, saves) → a new
+  `default-player.json`, reusing the existing character-sheet format.
 
-By squashing both into the read-only corpus `contains`, the engine has no place to
-persist mutations like "the player took 30 coins, 20 remain" or "the player gave the
-sword to the goblin."
-
----
+This follows the D&D boxed-set model: the booklet (corpus) describes the
+world and its initial conditions; a separate pre-generated character
+sheet (`default-player.json`) supplies the bundled default hero; the
+player may instead bring their own character sheet (`--char-sheet`).
 
 ## Design decisions
 
-### 1. Mixed-type `contains` is the *authoring* format only
+### 1. State sources and the role of each file
 
-Module authors should not be forced to write `{"goblin": 1, "chest": 1, "gold_coin": 50}`
-for every entity. The corpus JSON accepts a list of either plain strings (count=1) or
-single-key count-objects for stacked items:
+| File                | Required?                  | Role                                                          |
+|---------------------|----------------------------|---------------------------------------------------------------|
+| `corpus.json`       | always                     | Immutable world content + stat/system definitions             |
+| `soft-state.json`   | always                     | Initial narrative state (trivially empty today)              |
+| `default-player.json` | iff `corpus.stats` present | Default player character (char-sheet format)                  |
+| `hard-state.json`   | optional override          | World-state overrides + optional player-block override        |
+
+`hard-state.json` becomes an **optional override**. If present, it is
+loaded and validated as today (minus the changes below); if absent, the
+`StateManager` generates the initial world state from the corpus. The
+override is useful for post-publication tweaks (e.g. a harder mode with
+different room/entity starting values) without editing the canonical
+corpus.
+
+### 2. `default-player.json` and the player-block cascade
+
+`default-player.json` carries the adventure's default player character.
+It **reuses the character-sheet schema** — `{"system": "5e", "player": {...}}`
+— so there is exactly one player-data format and one field-merge path
+(the existing per-field `setattr` merge in `manager.py:181-187`).
+
+At new-game init, the player block is resolved as a **field-by-field
+overlay** (lowest priority first):
+
+1. **Base**: `location` seeded from the start room; all other `PlayerState`
+   fields `None`.
+2. **`default-player.json`** (if present) — the adventure's default hero.
+3. **`hard-state.json`'s `player` block** (if present) — the author's
+   tweak (e.g. hard-mode starting HP).
+4. **`--char-sheet`** (if supplied) — the player's own character,
+   applied via the existing `apply_char_sheet()`.
+
+This is an *overlay*, not an either/or: a partial `--char-sheet` that
+sets only `inventory` composes on top of `default-player.json`'s stats,
+preserving the current partial-sheet behaviour (`manager.py:181-187`).
+
+**"The scenario needs player data"** ⟺ `corpus.stats is not None` (this
+is already how `_validate_player_stats` decides, `manager.py:330-333`).
+If player data is needed and none of the three sources supplies it, the
+game does not start (load error). Stat-less adventures need no
+`default-player.json` and behave exactly as today.
+
+**HP is not derivable for multi-level characters.** Because
+`_init_player_combat_defaults` only computes the level-1 base HP,
+`default-player.json` MUST carry the full combat block explicitly —
+`stats`, `level`, `max_hp`, `current_hp`, `ac`, `proficiency_bonus`,
+`save_proficiencies` — for any character above level 1. The init helper
+fills only fields left `None` after the cascade.
+
+`default-player.json` is consulted **only at new-game init**. Saves
+already serialise the full player block (`manager.py:466-469`), so
+`load_save()` is unchanged and never reads `default-player.json`.
+
+### 3. World state generation from the corpus
+
+When `hard-state.json` is absent, `StateManager` generates the initial
+world state from the corpus:
+
+- **Room states**: for every room `rid` — seed `{"visited": false}`, then
+  for each `(field, decl)` in `room.state_fields`: `decl.initial` if set,
+  else the reserved-field default (e.g. `visited → false`), else the type
+  default.
+- **Entity states**: for every entity with at least one declared state
+  field — for each `(field, decl)`: `decl.initial` if set; else special
+  rules for `attitude` (← `dialogue.attitude_limits.initial`) and
+  `current_hp` (← `combat.hp`); else `RESERVED_STATE_FIELD_DEFAULTS`;
+  else the type default.
+- **Flags**: `corpus.flags_initial` (see §6).
+- **Containment** (`room_contains`, `entity_contains`): left to the
+  existing `_init_contains_from_corpus()`.
+- **Player location**: the room with `is_start_room: true` (error if
+  none or multiple).
+- **Constants**: `turn_count: 0`, `game_over: null`, `combat: null`.
+
+The player block is *not* generated here; it is resolved by the cascade
+in §2 and attached to the generated `HardGameState`.
+
+### 4. Adding `initial` to `StateFieldDecl`
+
+The corpus schema already documents `initial` (`schema/corpus.md` lines
+538, 593, 975), but the Pydantic model only has `type` and `description`.
+The model gains:
+
+```python
+class StateFieldDecl(BaseModel):
+    type: Literal["boolean", "number", "string"]
+    description: str
+    initial: Any = None  # validated against 'type' at model-validate time
+```
+
+Validation: if `initial` is not `None`, it must match `type`:
+- `boolean` → `isinstance(value, bool)`
+- `number` → `isinstance(value, (int, float)) and not isinstance(value, bool)`
+  (bool subclasses int in Python, so `True` must not be accepted as the
+  number `1`)
+- `string` → `isinstance(value, str)`
+
+The sentinel `None` means "no explicit initial" — the generator uses the
+fallback (reserved-field default or type default).
+
+### 5. Reserved state fields: special initial values
+
+Reserved fields with well-known initial semantics are handled specially
+by the generator. These default rules are documented in `corpus.md`:
+
+| Reserved field  | Initial value                          |
+|-----------------|----------------------------------------|
+| `alive`         | `true`                                 |
+| `hidden`        | declared `initial`, otherwise `false`  |
+| `attitude`      | `dialogue.attitude_limits.initial`     |
+| `current_hp`    | `combat.hp` (if entity has combat)     |
+| `fled`          | `false`                                |
+| `following`     | `false`                                |
+| `open`          | declared `initial`, otherwise `true`   |
+| `visited`       | `false` (room reserved field)          |
+| `is_current`    | auto-computed, never in initial state  |
+
+Authors may set an explicit `initial` on any reserved field; the
+generator prefers the explicit value. If the field lacks both an explicit
+`initial` and a special rule, it falls back to the type default.
+
+### 6. Non-reserved (author-defined) state fields: type defaults
+
+If an author-defined state field omits `initial`, the generator uses:
+
+| Type      | Default |
+|-----------|---------|
+| `boolean` | `false` |
+| `number`  | `0`     |
+| `string`  | `""`    |
+
+This is documented in `corpus.md` alongside the state field spec.
+
+### 7. Flags: default false, with optional non-false initial
+
+`flags_declared` changes from `List[str]` to accept entries with an
+optional initial value. The new corpus format is:
 
 ```json
-"contains": ["goblin", "chest", {"gold_coin": 50}]
+"flags_declared": [
+  "spider_fled",
+  { "injured": false },
+  { "quest_started": true }
+]
 ```
 
-The Python model normalises this at validation time. `Room.contains` and
-`Entity.contains` keep their declared type `List[Union[str, Dict[str, int]]]` (so the
-raw input round-trips and authors see what they wrote), but a
-`@model_validator(mode="after")` builds a **private** `_contains_map: Dict[str, int]`
-and exposes it via a read-only `.contains_map` property.
-
-**Hard rule: no runtime code iterates the raw `contains` list.** Every corpus-side
-read uses `.contains_map` (initial placement only); every runtime read uses the
-runtime maps in `HardGameState` (see §2). The raw `contains` list is for JSON I/O
-and corpus validation only. This is what makes the mixed-type list safe: a dict
-element in the list would crash any `.get(dict)` call, so the rule is enforced by
-auditing that *no* consumer touches `room.contains` / `entity.contains` directly.
-
-### 2. Runtime containment in `HardGameState`, initialised from corpus
-
-Two new top-level fields in `HardGameState`:
+Plain strings mean "start false" (the common case). Dict entries
+specify a non-false initial value. The Pydantic model changes:
 
 ```python
-# {room_id: {entity_id: count}}
-room_contains: dict[str, dict[str, int]] = Field(default_factory=dict)
-
-# {container_entity_id: {entity_id: count}}
-entity_contains: dict[str, dict[str, int]] = Field(default_factory=dict)
+flags_declared: Optional[List[Union[str, Dict[str, bool]]]] = None
 ```
 
-At game start these are initialised from the corpus `Room.contains_map` /
-`Entity.contains_map`. Thereafter **every consumer reads exclusively from the
-runtime maps** — the corpus `contains` fields are never consulted again at runtime.
-Mutations (taking, giving) flow through `HardStateChanges` → `apply_hard_changes`
-(see §3), which writes to `room_contains` / `entity_contains`.
+with a normalising validator and a `flags_initial: Dict[str, bool]`
+property:
+- Plain strings → `{"flag_id": false}`
+- Dict entries → extracted directly
+- The raw list is preserved for JSON round-trip; the property is the
+  canonical runtime view.
 
-This makes `contains` in the corpus purely declarative: "here are the initial
-conditions." The corpus schema docs will state this explicitly.
+Flags not listed in `flags_declared` but referenced in corpus conditions
+are a corpus authoring error, caught by cross-validation (see B4).
 
-#### Initialisation rules (critical — this is what makes existing adventures work)
+All other hard state fields (`turn_count: 0`, `game_over: null`,
+`combat: null`) are constant at game start and require no corpus change.
 
-There is no `new_game()` method; the two real entry points are `StateManager.load_all`
-(fresh adventure load) and `StateManager.load_save` (restore a save). A new private
-helper `StateManager._init_contains_from_corpus()` rebuilds the maps from the corpus
-`contains_map`. It is called as follows:
+---
 
-| Entry point | Behaviour |
-|-------------|-----------|
-| `load_all` | **Always rebuild** `room_contains` / `entity_contains` from the corpus. The shipped `hard-state.json` is the initial state; the corpus is the authoritative source of initial placement, so its `contains_map` wins. This means existing adventure `hard-state.json` files need **zero migration** — they simply don't carry these keys. |
-| `load_save` | Inspect the **raw** save dict before pydantic defaults apply. If `"room_contains"` is present, trust the saved maps (a save written by the new engine always has them, including mutated counts). If absent (legacy save predating this feature), call `_init_contains_from_corpus()` once. Because the feature is new, no legacy save can have *mutated* containment, so backfill == initial state, which is correct. |
-| `apply_char_sheet` | No change — char sheets only override player fields; containment is untouched. |
+## Implementation phases
 
-Because `load_all` always rebuilds, mutation code is free to delete keys when a count
-reaches 0 (natural); `load_save` only backfills on *absence*, never on emptiness, so an
-emptied room in a real save is preserved.
+### Phase A: Model changes (`mgmai/models/`)
 
-### 3. Mutations flow through `HardStateChanges` (the missing piece)
+**A1. `corpus.py` — `StateFieldDecl.initial`**
 
-The codebase pattern is: resolvers build a `HardStateChanges`, the engine applies it
-via `StateManager.apply_hard_changes`. Resolvers do not mutate `hard.*` directly
-(the rare exceptions are `hard.game_over` and the follower-`following` flag). To move
-containment mutations through the same pipe, `HardStateChanges` gains four fields:
+Add `initial: Any = None`. Add a `@model_validator(mode="after")` that
+validates `initial` against `type` when not `None`, per §4 (including
+the `not isinstance(value, bool)` guard for `number`).
+
+**A2. `corpus.py` — `ModuleCorpus.flags_declared`**
+
+Change type from `Optional[List[str]]` to
+`Optional[List[Union[str, Dict[str, bool]]]]`. Add a normalising validator
+and a `flags_initial: Dict[str, bool]` property (plain strings →
+`{"flag_id": false}`; dict entries extracted directly). The raw list is
+preserved for JSON round-trip.
+
+**A3. `corpus.py` — Reserved state field constants**
+
+Add a module-level dict mapping reserved field names to their default
+initial-value rules, for use by the generator in Phase B:
 
 ```python
-room_contains_added:   Dict[str, Dict[str, int]] = Field(default_factory=dict)  # {room_id: {eid: count}}
-room_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-entity_contains_added:   Dict[str, Dict[str, int]] = Field(default_factory=dict)  # {container_eid: {eid: count}}
-entity_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+RESERVED_STATE_FIELD_DEFAULTS: dict[str, Any] = {
+    "alive": True,
+    "fled": False,
+    "following": False,
+    "open": True,
+    "visited": False,
+}
 ```
 
-- `merge()` sums counts for matching keys (like `inventory_added`).
-- `has_changes()` returns True if any of the four is non-empty.
-- `apply_hard_changes()` applies them with the validation in §4 and records the
-  resulting state-change events alongside the existing item-acquired/lost events.
+Fields needing context (`attitude`, `current_hp`, `hidden`) are handled
+by the generator inline; `hidden` defaults to `false`, `attitude` to
+`attitude_limits.initial`, `current_hp` to `combat.hp`.
 
-The transfer resolver records:
-- **Take** of a hard item: `inventory_added[item]=count` plus
-  `room_contains_removed[room_id][item]=count` *or*
-  `entity_contains_removed[container_id][item]=count`, depending on where the item
-  lives. A new helper `_locate_world_item(hard, room_id, item) -> ("room", room_id) |
-  ("entity", container_id) | None` determines the source. Soft items record no
-  containment delta (they are not in the runtime maps).
-- **Give** of a hard item: `inventory_removed[item]=count` plus
-  `room_contains_added[room_id][item]=count` (when `target_is_room`) or
-  `entity_contains_added[target_id][item]=count` (when `target_is_entity`).
+No changes to `actions.py`, `hard_state.py`, or `soft_state.py`.
+`PlayerState` / `HardGameState` stay strict: `player` remains required in
+the in-memory model. Optionality of the player block lives at the
+loader/override layer (see B3), not in the model.
 
-### 4. Non-stackable constraints (safety), enforced at three layers
+### Phase B: State generation (`mgmai/state/manager.py`)
 
-The normalised `Dict[str, int]` form makes stacking universal. Safety invariants are
-enforced at the point of change:
+**B1. `_init_world_state_from_corpus()` — new method**
 
-| Rule | Where enforced |
-|------|----------------|
-| Non-item entities (NPCs, features) → count must be 1 | Corpus validation (`validate_cross_references`) |
-| Non-stackable item → count must be 1 in every location | Corpus validation (initial) **and** `apply_hard_changes` (runtime add) **and** transfer resolver pre-check |
-| Stackable item → resulting count bounded by `max_stack` if set | `apply_hard_changes` (runtime add) |
-| Self-referencing `entity_contains` (an entity whose `contains` includes itself) → forbidden | Corpus validation |
-| Player entity must never appear as a contained key | Corpus validation |
+Builds and returns the *world* portion of a `HardGameState` from the
+corpus: `room_states`, `entity_states`, `flags`, `turn_count`,
+`game_over`, `combat`. Algorithm per §3:
 
-`apply_hard_changes` validates each containment delta: the target room/container and
-item entity must exist in the corpus; non-stackable items may not exceed count 1 in the
-resulting location; stackable items respect `max_stack`. Failures raise `ValueError`
-and abort the whole batch (matching the atomic style of the existing pre-validation).
+1. **Player location**: find the room with `is_start_room: true`. Error
+   if none or multiple. (`validate_adventure.py` already checks this;
+   the generator checks too so `load_all` fails fast without the script.)
+2. **Room states**: seed `{"visited": false}`; then for each declared
+   `(field, decl)`: `decl.initial` → reserved default → type default.
+3. **Entity states**: for every entity with ≥1 declared state field, for
+   each `(field, decl)`: `decl.initial` → `attitude`/`current_hp` special
+   rule → `RESERVED_STATE_FIELD_DEFAULTS` → type default.
+4. **Flags**: `corpus.flags_initial` if `flags_declared` is set, else `{}`.
+5. **Containment**: not set here; `_init_contains_from_corpus()` handles it.
+6. **Constants**: `turn_count=0`, `game_over=None`, `combat=None`.
 
-These constraints are **minimalist**: they prevent nonsense while leaving authors free
-to nest non-stackable entities arbitrarily (a chest containing a sword, a sword with no
-stacking semantics, etc.).
+**B2. `_resolve_player_block()` — new method**
 
-### 5. Scope boundary: reactions do NOT spawn world items (yet)
+Returns a `PlayerState` by overlaying (lowest priority first):
+1. Base: `location` = start room; all other fields `None`.
+2. `default-player.json` (if present) — loaded and merged field-by-field
+   via the same logic as `apply_char_sheet` (`manager.py:181-187`); the
+   `system` field is validated against `corpus.stats.system`.
+3. `hard-state.json`'s `player` block (if the override is present and
+   contains one) — overlaid field-by-field on top of the default.
 
-The `Result` model only supports inventory mutation (`add_item` / `remove_item`); it
-has no field for "spawn item N into room R." Adding world-side spawn/remove reactions
-is **out of scope** for this change and is left for future work. The runtime maps are
-mutated only by (a) initialisation from corpus and (b) take/give transfers. Any plan
-prose implying otherwise is aspirational, not part of this change.
+The `--char-sheet` is *not* applied here; it is applied afterwards by
+the existing `apply_char_sheet()`, which overlays on top of whatever
+`load_all` produced.
 
----
+If `corpus.stats is not None` and none of the sources supplies a player
+block, raise `ValueError` ("scenario requires player data but none was
+provided"). If `corpus.stats is None`, no player data is required and a
+minimal `PlayerState` (location only) is returned.
 
-## Detailed consumer migration
+**B3. `load_all()` — orchestrate generation, override, and the cascade**
 
-Every code site that reads `room.contains` / `entity.contains` from the corpus must
-switch to the runtime maps (or, for corpus-validation-only sites, to `.contains_map`).
-Line numbers are accurate against the current `main`; they will drift during
-implementation but are kept here as anchors. **This is the complete inventory** — it
-was verified by grepping for `.contains` across `mgmai/`.
+Rewrite to:
+1. Always load `corpus.json` and `soft-state.json`.
+2. Resolve the player block via `_resolve_player_block()` (which itself
+   reads `default-player.json` and any `hard-state.json` player block).
+3. World state:
+   - If `hard-state.json` exists: load it as the override; inject the
+     resolved player block into it (replacing/merging its `player`) so
+     the resulting `HardGameState` has the cascaded player.
+   - If absent: call `_init_world_state_from_corpus()` and attach the
+     resolved player block.
+4. Reset once-reaction tracking (`reset_disabled_once()`).
+5. Run the existing validation pipeline: `validate_cross_references()`,
+   `_validate_stats_system()`, `_validate_player_stats()`,
+   `_init_player_combat_defaults()`, `_init_contains_from_corpus()`.
 
-### Assembler + briefing
+`apply_char_sheet()` is unchanged; called externally (from the CLI) after
+`load_all`, it overlays the supplied sheet on top of the already-resolved
+player and re-validates.
 
-| File | Line(s) | Current | Replacement |
-|------|---------|---------|-------------|
-| `context/assembler.py` | 86 | `for eid in room.contains:` | `for eid in hard.room_contains.get(room_id, {}):` |
-| `context/assembler.py` | 94 | `if entity.type=="item" and (eid in hard.player.inventory or eid in hard.player.equipped): continue` | **Fix invisible-stacks:** hide if `eid in equipped`; hide if `eid in inventory and not _is_stackable(eid, corpus)`; otherwise show with remaining count. Set `count=` on the `BriefingEntity` (see below). |
-| `context/assembler.py` | 111-122 | `BriefingEntity(...)` no count | add `count=hard.room_contains.get(room_id, {}).get(eid, 1)` |
-| `context/assembler.py` | 120 | `build_contains(entity, hard, corpus, entity_id=eid)` | unchanged signature (it reads runtime map internally) |
-| `context/assembler.py` | 144 | `set(room.contains)` | `set(hard.room_contains.get(room_id, {}))` |
-| `engine/utils.py` | 102-142 | `build_contains(entity, ...)` iterates `entity.contains` | iterate `hard.entity_contains.get(entity_id, {})` |
-| `engine/utils.py` | 124 | `for cid in entity.contains:` | `for cid in hard.entity_contains.get(entity_id, {}):` |
-| `engine/utils.py` | 131-135 | hide item if `cid in inventory or cid in equipped` | **Fix invisible-stacks** (same rule as assembler.py:94); set `count=` on each `BriefingContainsEntry` from `hard.entity_contains[entity_id][cid]` |
-| `engine/utils.py` | 136-141 | `BriefingContainsEntry(...)` no count | add `count=...` |
-| `models/briefing.py` | 34-39 | `BriefingContainsEntry` | add `count: int = 1` |
-| `models/briefing.py` | 42-52 | `BriefingEntity` | add `count: int = 1` (so room-level stackable items show their remaining count) |
-| `engine/engine.py` | 679 | `_build_room_after()` `for eid in room.contains:` | `for eid in hard.room_contains.get(room_id, {}):` |
-| `engine/engine.py` | 687 | hide item if `eid in inventory or eid in equipped` | **Fix invisible-stacks** (same rule); set `count=` on the `BriefingEntity` |
+**B4. Strengthen and migrate validation**
 
-Note: `_is_stackable` currently lives as a private in `engine/resolver.py`. Promote it
-to `engine/utils.py` so the assembler and engine can import it.
+- **Migrate the flags check.** `validate_cross_references()` currently
+  does `set(self.corpus.flags_declared)` (`manager.py:293-294`), which
+  will raise `TypeError: unhashable type: 'dict'` once `flags_declared`
+  is the mixed str/dict list. Change it to use the new property:
+  `declared_set = set(self.corpus.flags_initial.keys())`.
 
-### Transfer resolver (take / give)
+- **Missing-`initial` warning.** When the world state is generated, emit
+  `logging.warning()` for any state field that lacks an explicit
+  `initial` and has no reserved-field default (it falls back to the type
+  default, which may not be the author's intent). During initial
+  development this may be promoted to an error in strict mode.
 
-| File | Line(s) | Current | Replacement |
-|------|---------|---------|-------------|
-| `engine/resolver.py` | 69-81 | `_merge_item_counts` | unchanged |
-| `engine/resolver.py` | 84-94 | `_is_stackable` | unchanged (but see promotion note above) |
-| `engine/resolver.py` | 277 | `for eid in room.contains:` (examine soft-item search) | `for eid in hard.room_contains.get(room_id, {}):` — **previously omitted; crashes on dict elements if not migrated** |
-| `engine/resolver.py` | 287 | `for eid in room.contains:` (locate soft-item source) | `for eid in hard.room_contains.get(room_id, {}):` — **previously omitted; same crash** |
-| `engine/resolver.py` | 486 | `target_npc not in room.contains` (talk target check) | `target_npc not in hard.room_contains.get(room_id, {})` — **previously omitted** |
-| `engine/resolver.py` | 615 | `target_id in room.contains` | `target_id in hard.room_contains.get(room_id, {})` |
-| `engine/resolver.py` | 667-708 | `available_pool: set[str]` from `room.contains` + `ent.contains` | `available_pool: dict[str, int]` from `hard.room_contains[room_id]` + `hard.entity_contains`; nested container contents counted; soft items added with count 1 |
-| `engine/resolver.py` | 715-778 | take: `item in available_pool` (set membership) | take: `available_pool.get(item, 0) >= count`; on success record `inventory_added` + `room_contains_removed`/`entity_contains_removed` via `_locate_world_item` |
-| `engine/resolver.py` | 637-665 | give: removes from inventory only | give: also record `room_contains_added` (target_is_room) or `entity_contains_added` (target_is_entity) |
-| `engine/resolver.py` | 697,703 | `claimed_entities` from `ent.contains` | from `hard.entity_contains.get(eid, {})` |
-| `engine/resolver.py` | 721,727 | closed-container check reads `ent.contains` | reads `hard.entity_contains.get(eid, {})` |
-| `engine/resolver.py` | 785 | surfacing soft items iterates `room.contains` | iterates `hard.room_contains.get(room_id, {})` |
-| `engine/resolver.py` | 1519-1526 | `_find_entity_in_room(entity_id, room, corpus)` checks `entity_id in room.contains` | **Change signature** to `_find_entity_in_room(entity_id, room_id, hard, corpus)`; checks `entity_id in hard.room_contains.get(room_id, {})` |
-| `engine/resolver.py` | 1529-1539 | `_find_entity_in_room_followers` calls `_find_entity_in_room` | update call to new signature |
+- **Flag cross-validation.** After `flags_initial` is populated, verify
+  every flag referenced in any corpus condition string or `set_flag`
+  result appears in `flags_initial` (or in the loaded override). Catches
+  corpus authoring mistakes.
 
-### Engine
+### Phase C: Schema and documentation
 
-| File | Line(s) | Current | Replacement |
-|------|---------|---------|-------------|
-| `engine/engine.py` | 610 | `for eid in room.contains:` (soft_item validation) | `for eid in hard.room_contains.get(room_id, {}):` |
-| `engine/engine.py` | 648 | `ent_id not in room.contains` (contradiction check) | `ent_id not in hard.room_contains.get(room_id, {})` |
-| `engine/engine.py` | 766,817 | will_reveal / attitude iterate `room.contains` for NPC ids | iterate `hard.room_contains.get(room_id, {})` |
+**C1. `schema/corpus.md`**
 
-### Event bus
+- Note that `initial` on `StateFieldSpec` (lines 593, 975) is now
+  enforced by the Pydantic model.
+- Document the fallback: "If `initial` is omitted, the field defaults to
+  `false` (boolean), `0` (number), or `""` (string)."
+- Update the reserved state fields table with default initial values
+  (alive → true, fled → false, etc.).
+- Document the new `flags_declared` mixed string/dict format.
 
-| File | Line(s) | Current | Replacement |
-|------|---------|---------|-------------|
-| `engine/event_bus.py` | 79 | `set(room.contains)` | `set(hard.room_contains.get(room_id, {}))` |
+**C2. `schema/hard-state.md`**
 
-### Dialogue
+- Update the opening paragraph (lines 7-9): world state is generated
+  from the corpus; `hard-state.json` is an optional override; the player
+  block comes from `default-player.json` (or `--char-sheet`), not from
+  generation.
+- Mark the `player` block as **optional** in `hard-state.json` (present
+  only when overriding the default player).
+- Remove/update the line (165-166) about "If an initial value is not
+  specified by the Corpus, it defaults to…" — this is now a corpus-spec
+  concern, documented there.
 
-| File | Line(s) | Current | Replacement |
-|------|---------|---------|-------------|
-| `engine/dialogue.py` | 128 | `npc_id in new_room_data.contains` (room-change exit check) | `npc_id in hard.room_contains.get(new_room, {})` — **previously omitted** |
+**C3. `default-player.json` schema (new doc, or a section in `doc/player-stats.md`)**
 
-### State manager
+- Document the format: identical to the character-sheet schema
+  (`{"system": ..., "player": {...}}`).
+- When it is required (iff `corpus.stats` present).
+- The resolution cascade and overlay semantics (§2).
+- That multi-level characters must carry explicit `max_hp`/`current_hp`/
+  `ac`/`proficiency_bonus`/`save_proficiencies`.
 
-| File | Line(s) | Current | Replacement |
-|------|---------|---------|-------------|
-| `state/manager.py` | 254 | `_check_ids(room.contains, self.corpus.entities, "entity")` | `_check_ids(room.contains_map.keys(), self.corpus.entities, "entity")` (corpus validation — uses `.contains_map`, not the raw list) |
-| `state/manager.py` | 197-307 | `validate_cross_references` | add count-constraint checks from §4 (non-item count==1, non-stackable count==1, self-reference) over each room/entity `.contains_map` |
-| `state/manager.py` | 87-113 | `load_all` | after loading, call `_init_contains_from_corpus()` (always rebuild) |
-| `state/manager.py` | 427-459 | `load_save` | inspect raw `data["hard"]`; if `"room_contains"` absent, call `_init_contains_from_corpus()` |
-| `state/manager.py` | 524-619 | `apply_hard_changes` | apply the four new containment-delta fields with §4 validation |
-| `state/manager.py` | new | — | add `_init_contains_from_corpus()` helper |
+**C4. `schema/scenario-generation.md`**
 
-### Models
+- **Step 5 (Build hard-state.json):** replace with **"Build
+  `default-player.json`"**. The LLM extracts the player-character section
+  from `scenario.md` (e.g. the "RPG Mechanics" block at
+  `adventures/bag-of-holding/scenario.md:13-29`) into the char-sheet
+  format. The LLM no longer produces a separate world-state file.
+- Update Steps 2-4 to emphasise that `initial` on state fields directly
+  determines starting world state, and should be set explicitly.
+- Update the cross-validation checklist: remove hard-state.json-specific
+  world-state checks (now generation guarantees); add a check that
+  `default-player.json` is present when `corpus.stats` is set, and that
+  its `system` matches.
 
-| File | Change |
-|------|--------|
-| `models/corpus.py` | `Room.contains` → `List[Union[str, Dict[str, int]]]` + normalising `@model_validator(mode="after")` → private `_contains_map` + `.contains_map` property |
-| `models/corpus.py` | `Entity.contains` → same |
-| `models/hard_state.py` | Add `room_contains: dict[str, dict[str, int]]` and `entity_contains: dict[str, dict[str, int]]` (both `default_factory=dict`) |
-| `models/briefing.py` | `BriefingContainsEntry` gains `count: int = 1` |
-| `models/briefing.py` | `BriefingEntity` gains `count: int = 1` |
-| `models/actions.py` | `HardStateChanges` gains the four containment-delta fields; `merge()` and `has_changes()` updated |
+**C5. `scripts/validate_adventure.py`**
 
-### Templates (cosmetic)
+- Do not require `hard-state.json` (lines 57-58, 62-63). Instead: load
+  corpus + soft-state, generate world state, resolve the player block,
+  then run all existing checks.
+- Require `default-player.json` iff `corpus.stats` is present.
+- Remove the `current_hp`-in-hard-state check (lines 234-239) — it is now
+  a generation guarantee (`current_hp ← combat.hp`).
+- Keep the orphaned-entity check (section 6).
 
-| File | Change |
-|------|--------|
-| `templates/ruling.j2` | Line ~124 references `rubbish_pile.contains = [{"id":"toenail_sword", ...}]` in an example string; update to include `count` now that `BriefingContainsEntry` carries it. Non-blocking. |
+**C6. `doc/player-stats.md`**
 
----
+- Update "Player stats in hard state" (lines 53-55) to state that the
+  default source of player stats at game start is `default-player.json`,
+  overridable by `--char-sheet`, and that `hard_state.player.stats` is
+  the runtime (engine-authoritative) copy.
 
-## Work items (implementation order)
+### Phase D: Existing adventure migration
 
-### Phase A — Models
+**D1. `adventures/bag-of-holding/default-player.json` (new)**
 
-**A1.** `mgmai/models/corpus.py` — `Room.contains` and `Entity.contains`
-Change declared type to `List[Union[str, Dict[str, int]]]`. Add
-`@model_validator(mode="after")` that builds a private `_contains_map: dict[str, int]`
-(summing counts if an id appears more than once) and exposes a read-only
-`.contains_map` property. Keep the raw `contains` list as-is for JSON round-trip. Add
-a docstring stating the hard rule: runtime code must use `.contains_map` or the
-runtime maps, never the raw list.
+Create from the player block currently in `hard-state.json:2-19`,
+carrying the **full** combat block (HP is not derivable for this level-4
+character):
 
-**A2.** `mgmai/models/hard_state.py`
-Add `room_contains` and `entity_contains` with `default_factory=dict`.
+```json
+{
+  "system": "5e",
+  "player": {
+    "stats":       { "STR": 10, "DEX": 13, "CON": 12, "INT": 11, "WIS": 10, "CHA": 10 },
+    "level":       4,
+    "max_hp":      27,
+    "current_hp":  27,
+    "ac":          11,
+    "proficiency_bonus": 2,
+    "save_proficiencies": ["DEX", "INT"]
+  }
+}
+```
 
-**A3.** `mgmai/models/briefing.py`
-Add `count: int = 1` to **both** `BriefingContainsEntry` and `BriefingEntity`.
+**D2. Fix the `spider.current_hp` bug**
 
-**A4.** `mgmai/models/actions.py`
-Add the four containment-delta fields to `HardStateChanges`. Update `merge()` to sum
-matching keys (nested dict sum). Update `has_changes()` to consider them.
+`corpus.json:176` has `spider.combat.hp = 14` and `scenario.md:348`
+says "HP 14", but `hard-state.json:73` has `current_hp = 15`. The
+hard-state value is wrong. With generation, `current_hp` is derived from
+`combat.hp` (14) automatically. If `hard-state.json` is kept as an
+override, correct the `15` → `14` there as well.
 
-### Phase B — State manager
+**D3. `adventures/bag-of-holding/corpus.json`**
 
-**B1.** `mgmai/state/manager.py` — corpus validation
-Migrate `_check_ids(room.contains, ...)` to `room.contains_map.keys()`. Add the §4
-corpus-side checks over each room/entity `.contains_map`:
-- Non-item entity with count > 1 → error.
-- Non-stackable item with count > 1 → error.
-- Self-referencing `entity_contains` cycle → error.
-- Player entity appearing as a contained key → error.
+Add `"initial": <value>` to every state field declaration that currently
+lacks it:
+- `"initial": true` — `alive` on player/stuck_fly/spider/korbar; `hidden`
+  on stuck_fly/spider/padlock/giant_handkerchief/toenail_sword/secret_flap.
+- `"initial": false` — `fled`, `following`, `convinced_spider_dead`,
+  `examined`, `moved`.
+- `"initial": 14` on `spider.current_hp` and `"initial": 29` on
+  `korbar.current_hp` (matching their `combat.hp` values — the generator
+  picks these up automatically, but explicit is better). Note: spider is
+  **14**, not 15.
+- `attitude` fields need no explicit `initial`; the generator derives them
+  from `attitude_limits.initial` (spider −2, korbar 0, stuck_fly 0).
 
-**B2.** `mgmai/state/manager.py` — initialisation
-Add `_init_contains_from_corpus()`: iterate all corpus rooms and entities, populate
-`hard.room_contains` / `hard.entity_contains` from each `.contains_map`. Call it
-unconditionally at the end of `load_all`. In `load_save`, inspect the raw save dict
-and call it only when `"room_contains"` is absent.
+**D4. `adventures/bag-of-holding/hard-state.json`**
 
-**B3.** `mgmai/state/manager.py` — apply containment deltas
-Extend `apply_hard_changes` to apply the four new `HardStateChanges` fields:
-- `room_contains_added` / `entity_contains_added`: increment the target map,
-  enforcing non-stackable ≤ 1 and `max_stack` on the resulting count.
-- `room_contains_removed` / `entity_contains_removed`: decrement; delete the key when
-  the count reaches 0 (safe because `load_save` only backfills on absence, and
-  `load_all` always rebuilds).
-- Pre-validate all deltas up front (entity/room existence, item type) and raise
-  atomically, matching the existing style.
+Strip the `player` block (now in `default-player.json`). The remaining
+world-state entries become an optional override; once Phase B is stable,
+the generated world state matches them, so the file can be deleted.
 
-### Phase C — Consumer migration
+**D5. `adventures/bag-of-holding/soft-state.json`**
 
-**C1.** `mgmai/context/assembler.py` + `mgmai/engine/utils.py` + `mgmai/engine/engine.py`
-Switch all `room.contains` / `entity.contains` reads to the runtime maps. `build_contains()`
-reads from `hard.entity_contains` and includes counts in `BriefingContainsEntry`.
-Room-level entities get `count` on `BriefingEntity` from `hard.room_contains`. Apply the
-invisible-stacks fix at all three filter sites (assembler.py:94, utils.py:131-135,
-engine.py:687): hide equipped items; hide inventory items only when non-stackable; show
-partially-held stackable items with their remaining world count. Promote `_is_stackable`
-to `engine/utils.py` and import it where needed.
+No changes (already starts empty).
 
-**C2.** `mgmai/engine/resolver.py` — `resolve_transfer()`
-- `available_pool` becomes `dict[str, int]` (hard items from runtime maps with counts;
-  soft items with count 1).
-- Take path: validate `count <= available_pool.get(item, 0)`; on success record
-  `inventory_added` + the matching `*_contains_removed` delta via `_locate_world_item`.
-- Give path: record `inventory_removed` + `room_contains_added` or `entity_contains_added`.
-- Add `_locate_world_item(hard, room_id, item) -> ("room", room_id) | ("entity", container_id) | None`.
-- Update `_find_entity_in_room` signature to `(entity_id, room_id, hard, corpus)`;
-  update `_find_entity_in_room_followers` and its callers (`resolve_examine`,
-  `resolve_interact`).
-- Migrate the previously-omitted examine/talk sites (lines 277, 287, 486).
+### Phase E: Tests
 
-**C3.** `mgmai/engine/event_bus.py`
-Build `entity_ids` from `hard.room_contains.get(room_id, {})`.
+**E1. New tests — `test_hard_state_generation.py`**
 
-**C4.** `mgmai/engine/dialogue.py`
-Migrate line 128 to `hard.room_contains.get(new_room, {})`.
+- Generated **world state** (`room_states`, `entity_states`, `flags`)
+  matches the existing `hard-state.json` world state (modulo ordering).
+  This is the acceptance test for generation. (The player block is *not*
+  compared here — it comes from `default-player.json`.)
+- Generated **player block** matches `default-player.json` after the
+  cascade (no `--char-sheet`).
+- Reserved-field defaults: alive → true, fled → false, etc.
+- `attitude` picks up `attitude_limits.initial` when no explicit `initial`.
+- `current_hp` picks up `combat.hp` (spider → 14).
+- Type-default fallback for fields without `initial`.
+- `flags_declared` with mixed strings and dicts; verify `flags_initial`.
 
-### Phase D — Schema docs
+**E2. New tests — `test_default_player.py`**
 
-**D1.** `schema/corpus.md`
-- Document `contains` as accepting mixed strings and `{id: count}` objects.
-- Clarify: `contains` describes initial placement only; runtime containment lives in
-  hard state.
-- Document the §4 non-stackable constraints.
+- Cascade: `default-player.json` base → `hard-state.json` player overlay
+  → `--char-sheet` overlay (field-by-field, not replacement).
+- A partial `--char-sheet` (e.g. only `inventory`) overlays
+  `default-player.json` without wiping stats.
+- Error when `corpus.stats` is present but no `default-player.json`,
+  `hard-state.json` player block, or `--char-sheet` supplies player data.
+- Stat-less adventure (`corpus.stats is None`): no `default-player.json`
+  needed; game starts with a minimal player.
 
-**D2.** `schema/hard-state.md`
-- Document `room_contains` and `entity_contains` in the top-level structure and add a
-  dedicated section (initialisation rules from §2, mutation rules from §3, the
-  delete-on-zero convention).
-- Add the two new write operations to the "Engine write operations" table
-  (`add_room_contains`, `remove_room_contains`, `add_entity_contains`,
-  `remove_entity_contains`).
+**E3. Existing test updates**
 
-**D3.** `schema/actions.md`
-- Update the transfer section: available pool now has quantities; taking decrements the
-  runtime map; giving places items back into a mutable world-side container.
+- `conftest.py` (line 45): keep the `fixtures/hard-state.json` fixture;
+  add a fixture that generates world state from `fixtures/corpus.json`
+  plus a `fixtures/default-player.json`.
+- `test_state_manager.py`: add tests for `load_all()` with and without
+  `hard-state.json`, and with and without `default-player.json`.
+- `test_hard_state.py`: add model tests for `StateFieldDecl.initial`
+  validation, including rejecting `bool` as a `number`.
+- `test_encounters.py`, `test_resolver.py`, `test_followers.py`,
+  `test_post_validate.py`, `test_equip_gear.py`: these load
+  `fixtures/hard-state.json` directly. No changes — the fixture still
+  works, and the generated state is tested separately.
+- `validate_adventure.py` tests: verify the script works with corpus +
+  soft-state + default-player only (no `hard-state.json`).
 
-**D4.** `templates/ruling.j2`
-- Update the `contains` example to include `count`.
+### Phase F: Cleanup (future)
 
-### Phase E — Tests
-
-**E1.** Corpus fixtures: the existing list format stays valid; add mixed-format fixtures
-(`["goblin", {"gold_coin": 50}]`) and assert `.contains_map` normalises correctly.
-
-**E2.** Transfer tests: take 50 gold coins from a room → verify 50 removed from
-`hard.room_contains`; take 50 more → "not enough" error. Give 10 coins → verify
-`hard.room_contains` (or `entity_contains`) incremented.
-
-**E3.** Assembler/briefing tests: verify `BriefingEntity.count` and
-`BriefingContainsEntry.count` carry the remaining world count; verify partial-stack
-visibility (room has 50 coins, player holds 30, briefing shows 20 remaining in room);
-verify a fully-depleted stackable item (0 remaining) is hidden.
-
-**E4.** State manager tests:
-- `load_all` rebuilds the maps from corpus (existing adventure `hard-state.json`
-  without the keys loads cleanly and rooms are populated).
-- `load_save` with a save that has the keys preserves mutated counts; `load_save`
-  with a legacy save (no keys) backfills from corpus.
-- `apply_hard_changes` rejects non-stackable > 1 and `max_stack` overflow on world
-  containers.
-- Save/load round-trip preserves mutated counts.
-
-**E5.** Regression tests: examine a soft item in a room that also contains a stacked
-item (covers the previously-crashing resolver.py:277/287 path); talk to an NPC in a
-room with a stacked item (covers 486); room-change dialogue exit check (covers
-dialogue.py:128).
+- Once stable, delete `hard-state.json` from all adventures. Scaffolding
+  for new adventures should produce `corpus.json` + `soft-state.json` +
+  `default-player.json`, not `hard-state.json`.
+- `schema/scenario-generation.md` Step 5 should instruct the LLM to
+  verify `initial` values in the corpus and to produce
+  `default-player.json`, not a world-state file.
+- Now that file count holds at three, the soft-state open question
+  (generate the trivially-empty `soft-state.json` too) becomes more
+  attractive.
 
 ---
 
-## Open questions for review
+## Files touched
 
-- **Container nesting depth.** `entity_contains` is a flat map keyed by container id,
-  so arbitrary nesting works in principle, but `build_contains` and `available_pool`
-  only look one level deep (room → entity → contains). Deeper nesting remains
-  unsupported as today. Acceptable? (Pre-existing limitation, not a regression.)
-- **Giving to a non-container NPC.** Putting a given item into `entity_contains[npc]`
-  makes it surface via `build_contains`. Is that the desired visibility, or should
-  given-to-NPC items be hidden until the NPC is examined/killed? Current plan: surface
-  them (matches "the goblin is now holding your sword").
+| File | Phase | Nature of change |
+|------|-------|------------------|
+| `mgmai/models/corpus.py` | A1-A3 | Add `StateFieldDecl.initial` (with bool/number guard), change `flags_declared` type + `flags_initial` property, add reserved-field constants |
+| `mgmai/state/manager.py` | B1-B4 | Add `_init_world_state_from_corpus()` and `_resolve_player_block()`, rewrite `load_all()` for generation + cascade, migrate flags validation |
+| `schema/corpus.md` | C1 | Document `initial`, fallbacks, reserved defaults, new `flags_declared` format |
+| `schema/hard-state.md` | C2 | Update opening paragraph, mark `player` optional in override, remove stale default-typing line |
+| `doc/player-stats.md` | C3/C6 | Document `default-player.json` format, cascade, and source-of-truth change |
+| `schema/scenario-generation.md` | C4 | Replace Step 5 with `default-player.json` authoring; update cross-validation |
+| `scripts/validate_adventure.py` | C5 | Don't require `hard-state.json`; require `default-player.json` iff stats present |
+| `adventures/bag-of-holding/default-player.json` | D1 | New file: default player character |
+| `adventures/bag-of-holding/corpus.json` | D3 | Add explicit `initial` to state_fields |
+| `adventures/bag-of-holding/hard-state.json` | D2/D4 | Fix spider HP 15→14; strip player block (optional override) |
+| `tests/test_hard_state_generation.py` | E1 | New test file |
+| `tests/test_default_player.py` | E2 | New test file |
+| `tests/test_hard_state.py` | E3 | Add `StateFieldDecl.initial` validation tests |
+| `tests/test_state_manager.py` | E3 | Add generation / cascade load tests |
+| `tests/conftest.py` | E3 | Add generation fixture |
+| `plan.md` | — | This document |
+
+## Open questions
+
+- **Should the generator warn or error when a state field lacks an
+  explicit `initial`?** A warning (via `logging`) is appropriate — the
+  type-default fallback is always safe, but the author probably forgot.
+  During initial development, make it an error in strict validation mode
+  to catch gaps; demote to warning later.
+
+- **Should `flags_declared` entries default to `false` or to an explicit
+  value of `false`?** Both are equivalent. The mixed-list format where a
+  plain string means `false` is more ergonomic for authors, since the
+  vast majority of flags start `false`.
+
+- **Should `default-player.json` declare `system`?** Yes — reusing the
+  char-sheet schema means declaring `system` (validated against
+  `corpus.stats.system`) for format uniformity and to share the loader/
+  validator path. The alternative (inferring `system` from the corpus)
+  saves one field but forks the format; not recommended.
+
+- **Should we also programmatically generate `soft-state.json`?** Not in
+  this plan. The initial soft state is trivially empty (all `{}`, `[]`,
+  `null`). It could be eliminated in a follow-up; now that the required
+  file count holds at three, the benefit is larger and this is the
+  natural next step.

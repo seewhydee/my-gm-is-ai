@@ -20,6 +20,43 @@ The character sheet JSON must declare the RPG `system` (e.g. `"5e"`) and may
 override any field under `player`, such as `stats`, `location`, or `inventory`.
 `--char-sheet` cannot be combined with `--load`.
 
+### Default player character
+
+Adventures with a `corpus.stats` block should ship a `default-player.json`
+file in the adventure directory.  This file uses the same character-sheet
+format as `--char-sheet`:
+
+```json
+{
+  "system": "5e",
+  "player": {
+    "stats": { "STR": 10, "DEX": 13, "CON": 12, "INT": 11, "WIS": 10, "CHA": 10 },
+    "level": 4,
+    "max_hp": 27,
+    "current_hp": 27,
+    "ac": 11,
+    "proficiency_bonus": 2,
+    "save_proficiencies": ["DEX", "INT"]
+  }
+}
+```
+
+At new-game init the player block is resolved as a field-by-field overlay:
+
+1. Base: `location` seeded from the start room; all other fields default.
+2. `default-player.json` (if present) — the adventure's default hero.
+3. `hard-state.json`'s `player` block (if present) — author's tweak.
+4. `--char-sheet` (if supplied) — the player's own character.
+
+Each layer overrides only the fields it specifies, so a partial
+`--char-sheet` that sets only `inventory` composes on top of
+`default-player.json` without wiping its stats.
+
+For characters above level 1, `default-player.json` must carry the full
+combat block explicitly (`max_hp`, `current_hp`, `ac`,
+`proficiency_bonus`, `save_proficiencies`) because the engine cannot
+derive multi-level HP from ability scores alone.
+
 ## Design Overview
 
 ### Stat definitions in the corpus
@@ -52,7 +89,7 @@ An optional `stats` block in `corpus.json` declares which stats the adventure us
 
 ### Player stats in hard state
 
-Player stat values live in `hard_state.player.stats` as an optional dict of stat key → integer value. These are engine-authoritative (hard state), so the LLM cannot mutate them directly. On startup, the system validates that every stat key in the player state has a matching entry in the corpus definitions, and that stats are consistently present or absent in both.
+Player stat values live in `hard_state.player.stats` as an optional dict of stat key → integer value. These are engine-authoritative (hard state), so the LLM cannot mutate them directly. At game start the default source of player stats is `default-player.json`, overridable by `--char-sheet`; an optional `player` block in `hard-state.json` can also tweak the default. The engine validates that every stat key in the player state has a matching entry in the corpus definitions, and that stats are consistently present or absent in both.
 
 ### Condition domain: `stat`
 

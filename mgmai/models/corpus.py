@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 IMMEDIATE_ALLOWED_EVENTS = frozenset({
     "interaction.used",
@@ -26,6 +26,20 @@ IMMEDIATE_ALLOWED_EVENTS = frozenset({
 })
 
 RESERVED_ROOM_STATE_FIELDS = frozenset({"visited", "is_current"})
+
+# Default initial values for reserved state fields used by the world-state
+# generator when a field declaration omits an explicit ``initial``.
+RESERVED_STATE_FIELD_DEFAULTS: dict[str, Any] = {
+    "alive": True,
+    "fled": False,
+    "following": False,
+    "open": True,
+    "visited": False,
+}
+
+# A flags_declared entry is either a plain string (starts false) or a
+# single-key dict mapping a flag id to its initial boolean value.
+FlagDecl = Union[str, Dict[str, bool]]
 
 
 def _normalize_contains(contains: List[Union[str, Dict[str, int]]]) -> Dict[str, int]:
@@ -396,6 +410,28 @@ class Room(BaseModel):
 class StateFieldDecl(BaseModel):
     type: Literal["boolean", "number", "string"]
     description: str
+    initial: Any = None
+
+    @model_validator(mode="after")
+    def validate_initial_type(self) -> "StateFieldDecl":
+        if self.initial is None:
+            return self
+        if self.type == "boolean":
+            if not isinstance(self.initial, bool):
+                raise ValueError(
+                    f"initial must be a boolean for type 'boolean', got {self.initial!r}"
+                )
+        elif self.type == "number":
+            if isinstance(self.initial, bool) or not isinstance(self.initial, (int, float)):
+                raise ValueError(
+                    f"initial must be a number for type 'number', got {self.initial!r}"
+                )
+        elif self.type == "string":
+            if not isinstance(self.initial, str):
+                raise ValueError(
+                    f"initial must be a string for type 'string', got {self.initial!r}"
+                )
+        return self
 
 
 class AttitudeLimits(BaseModel):
@@ -604,5 +640,50 @@ class ModuleCorpus(BaseModel):
     entities: Dict[str, Entity]
     mechanics: Dict[str, Mechanic] = Field(default_factory=dict)
     game_over_conditions: List[GameOverCondition] = Field(default_factory=list)
-    flags_declared: Optional[List[str]] = None
+    flags_declared: Optional[List[FlagDecl]] = None
     stats: Optional[StatsBlock] = None
+
+    @field_validator("flags_declared", mode="before")
+    @classmethod
+    def _validate_flags_declared(cls, v: Any) -> Optional[List[FlagDecl]]:
+        if v is None:
+            return None
+        result: List[FlagDecl] = []
+        for item in v:
+            if isinstance(item, str):
+                result.append(item)
+            elif isinstance(item, dict):
+                if len(item) != 1:
+                    raise ValueError(
+                        "Each flags_declared dict entry must have exactly one key"
+                    )
+                for key, value in item.items():
+                    if not isinstance(key, str):
+                        raise ValueError(
+                            f"flags_declared dict key must be a string, got {key!r}"
+                        )
+                    if not isinstance(value, bool):
+                        raise ValueError(
+                            f"flags_declared value for '{key}' must be a boolean, "
+                            f"got {value!r}"
+                        )
+                result.append(item)
+            else:
+                raise ValueError(
+                    f"flags_declared entries must be strings or single-key dicts, "
+                    f"got {item!r}"
+                )
+        return result
+
+    @property
+    def flags_initial(self) -> Dict[str, bool]:
+        """Canonical {flag_id: initial_value} view of flags_declared."""
+        if self.flags_declared is None:
+            return {}
+        result: Dict[str, bool] = {}
+        for item in self.flags_declared:
+            if isinstance(item, str):
+                result[item] = False
+            else:
+                result.update(item)
+        return result

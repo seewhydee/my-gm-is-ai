@@ -2,11 +2,12 @@
 
 This document is a prompt/checklist for an LLM to convert a
 natural-language adventure scenario (e.g., `scenario.md`) into an
-adventure module consisting of three structured JSON files:
+adventure module consisting of these structured JSON files:
 
 - **`corpus.json`** — read-only adventure content (rooms, entities, mechanics)
-- **`hard-state.json`** — initial authoritative runtime state
 - **`soft-state.json`** — initial narrative-oriented mutable state
+- **`default-player.json`** — default player character (required when `corpus.stats` is present)
+- **`hard-state.json`** — optional world-state override (usually omitted)
 
 The schemas for these files are defined in:
 - [`corpus.md`](corpus.md) for the Module Corpus
@@ -39,8 +40,8 @@ Step 3: Build Rooms
 Step 4: Build Mechanics
      │  Output: draft corpus.mechanics block
      ▼
-Step 5: Build hard-state.json
-     │  Output: complete hard-state.json
+Step 5: Build default-player.json
+     │  Output: complete default-player.json (if corpus has stats)
      ▼
 Step 6: Build soft-state.json
      │  Output: complete soft-state.json
@@ -51,8 +52,8 @@ Cross-file validation
 Each step produces intermediate output in the adventure module folder.
 Step 1 writes the Scenario Map — a document named `scenario-map.md`
 that all subsequent steps read from.  Steps 2–4 produce draft corpus
-blocks; Steps 5–6 produce the final `hard-state.json` and
-`soft-state.json`.  After cross-file validation, assemble the complete
+blocks; Steps 5–6 produce the final `default-player.json` (when needed)
+and `soft-state.json`.  After cross-file validation, assemble the complete
 `corpus.json` from the draft blocks.
 
 At the end of every step, run through the step's validation checklist.
@@ -547,9 +548,10 @@ the Scenario Map: id, title, credits (author, source, license),
 introduction, and atmosphere (setting, tone).
 
 Next, construct `flags_declared` from the list of Global Flags in the
-Scenario Map.  This is just used for validation/debugging.  If, during
-subsequent implementation, you find it necessary to add extra global
-flags, keep `flags_declared` updated.
+Scenario Map.  Plain strings start `false`; use single-key objects to
+start a flag `true`.  This list is used for validation and to seed the
+initial world state.  If, during subsequent implementation, you find it
+necessary to add extra global flags, keep `flags_declared` updated.
 
 ### 2B. Entity Data
 
@@ -667,9 +669,10 @@ Notes:
 Using the state fields planned in the Scenario Map, construct the
 entity's `state_fields`.  Each field must have a `type`, a terse but
 informative `description`, and — wherever the initial value differs
-from the type default — an `initial` value.  Including `initial`
-alongside the declaration keeps the corpus self-documenting and
-avoids context-switching between files.
+from the type default or reserved-field default — an explicit
+`initial` value.  The engine generates the initial world state directly
+from these declarations, so `initial` is the canonical source of truth
+for starting values.
 
 Example:
 
@@ -677,23 +680,26 @@ Example:
 "state_fields": {
   "alive": { "type": "boolean", "initial": true, "description": "Whether the spider is alive." },
   "fled": { "type": "boolean", "description": "Whether the spider has fled." },
-  "attitude": { "type": "number", "initial": -2, "description": "Attitude toward the player, -10 to 10." },
+  "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 10." },
   "hidden": { "type": "boolean", "initial": true, "description": "Whether the entity is hidden from view." }
 }
 ```
 
 Notes:
 
-- `initial` is optional.  When omitted, the engine uses the type
-  default (`false` for boolean, `0` for number, `""` for string).
+- `initial` is optional.  When omitted, the engine uses the reserved-field
+  default if one exists (e.g., `alive` defaults to `true`, `attitude`
+  defaults to `dialogue.attitude_limits.initial`, `current_hp` defaults to
+  `combat.hp`); otherwise it falls back to the type default (`false` for
+  boolean, `0` for number, `""` for string).
 
-- Fields whose starting value IS the type default (e.g., `fled:
-  false`) do not need an `initial` key, though including it
-  explicitly is harmless.
+- Fields whose starting value matches the default do not need an
+  `initial` key, though including it explicitly is harmless and
+  recommended for clarity.
 
-- The `hard-state.json` file (built in Step 5) can override any
-  corpus `initial` value.  Treat the corpus `initial` as the
-  canonical default.
+- If a `hard-state.json` override is supplied, it can override any corpus
+  `initial` value.  In the normal workflow, `hard-state.json` is omitted
+  and the generated world state is used.
 
 If an entity is concealed (initially, or subsequently in the
 adventure), it must have a `hidden` state field: e.g., a lurking
@@ -917,8 +923,8 @@ themself).  If no information is provided by the scenario, write up
 something vague or nondescript.
 
 The player entity can have standard `state_fields` like `alive` (if
-death is possible).  Any state field declared here must also be
-initialized in the hard state file (`entity_states.player`) later.  No
+death is possible).  These fields seed the generated world state; an
+optional `hard-state.json` override can adjust them later.  No
 `dialogue`, `aggro`, `interactions`, or `on_examine`.
 The player usually starts with an empty `equipped` list.
 
@@ -965,9 +971,8 @@ into a `combat` block: e.g.,
 ```
 
 Any NPC with a `combat` block must also declare `current_hp` in
-`state_fields` and initialize it in hard state (Step 5).  The combat
-engine will fall back to `combat.hp` if `current_hp` is absent, but
-the validator requires the field to be present.
+`state_fields`; the engine initializes it to `combat.hp` when generating
+world state.  The validator requires the field to be present.
 
 If an NPC can engage in a combat encounter with the player (by either
 side attacking), such encounters are typically resolved by either
@@ -1573,122 +1578,73 @@ Rules:
 
 ---
 
-## Step 5: Build hard-state.json
+## Step 5: Build default-player.json
 
-**Input:** Everything from Steps 2-4 + flag list from Step 1.
-**Output:** Complete `hard-state.json` file.
+**Input:** Scenario Map from Step 1 + assembled `corpus.json`.
+**Output:** Complete `default-player.json` file (only if the corpus has a `stats` block).
 
+If the adventure has no `corpus.stats` block, skip this step.
 
-
-Follow this exact structure:
+The `default-player.json` file uses the same format as a `--char-sheet`
+file:
 
 ```json
 {
+  "system": "5e",
   "player": {
     "location": "<start_room_id>",
     "inventory": {},
     "equipped": [],
-    "stats": { /* only if corpus has a stats block */ },
-    "level": 1,
-    "current_hp": 10,
-    "max_hp": 10,
-    "ac": 10,
+    "stats": { "STR": 10, "DEX": 13, "CON": 12, "INT": 11, "WIS": 10, "CHA": 10 },
+    "level": 4,
+    "current_hp": 27,
+    "max_hp": 27,
+    "ac": 11,
     "proficiency_bonus": 2,
-    "save_proficiencies": []
-  },
-  "flags": {
-    "<flag_id>": false,
-    ...
-  },
-  "room_states": {
-    "<room_id>": { "visited": false, ... },
-    ...
-  },
-  "entity_states": {
-    "<entity_id>": { "<field>": <initial_value>, ... },
-    ...
-  },
-  "turn_count": 0,
-  "game_over": null
+    "save_proficiencies": ["DEX", "INT"]
+  }
 }
 ```
 
 ### Step-by-step assembly
 
-1. **`player.location`** — set to the room ID with `is_start_room: true`
+1. **`system`** — must match `corpus.stats.system` (e.g., `"5e"`).
 
-2. **`player.inventory`** — always `{}` at start unless the scenario specifies
-   starting items (extremely rare). Even if the player "has" something narratively,
-   it's usually a soft item or entity in the start room.
+2. **`player.location`** — set to the room ID with `is_start_room: true`.
 
-3. **`player.equipped`** — usually `[]` at start.  Starting equipment is rare
+3. **`player.inventory`** — always `{}` at start unless the scenario specifies
+   starting items (extremely rare).
+
+4. **`player.equipped`** — usually `[]` at start.  Starting equipment is rare
    and should be declared explicitly.
 
-4. **`player.stats`** — only if the corpus has a `stats` block. Under 5e,
-   typical values range 3-18 with 10 as average. If the scenario doesn't specify
-   stat values, use 10 across all stats declared in the corpus definitions.
+5. **`player.stats`** — map each stat key declared in `corpus.stats.definitions`
+   to its initial integer value. If the scenario doesn't specify values, use
+   10 across all stats.
 
-5. **Player combat fields** — if the scenario supplies them, set `level`,
+6. **Player combat fields** — if the scenario supplies them, set `level`,
    `current_hp`, `max_hp`, `ac`, `proficiency_bonus`, and `save_proficiencies`.
-   If any are absent, choose reasonable defaults and note the omission.
+   For characters above level 1 these must be explicit, because the engine
+   cannot derive multi-level HP from ability scores alone. If any are absent,
+   choose reasonable defaults and note the omission.
 
-6. **`flags`** — enumerate every flag name used anywhere:
-   - In condition strings (`flag:...`)
-   - In `set_flag` results
-    - In encounter `set_flag`
-   - In `on_examine` events and reaction `result.set_flag` effects
-   Set each to its initial value (almost always `false`). This is a flat dict;
-   all flag values should be booleans.
-
-7. **`room_states`** — for every room in the corpus, add `{ "visited": false }`.
-   If a room has additional state fields declared in its `state_fields`, collect
-   those with their initial values.  For each field, use the value from the
-   field's `initial` key if present in the corpus; otherwise use the type
-   default (`false`, `0`, or `""`).
-
-8. **`entity_states`** — for every entity that declared `state_fields` in the
-   corpus, add an entry with initial values for every declared field.  For each
-   field, use the value from the field's `initial` key if present in the corpus;
-   otherwise use the type default:
-   - Boolean fields: `false`
-   - Number fields: `0` (except `attitude`, which defaults to
-     `attitude_limits.initial`, and `current_hp`, which defaults to `combat.hp`)
-   - String fields: `""`
-   **Do not skip any entity that has state_fields.** Every field declared in
-   the entity's `state_fields` must have a value here.
-
-9. **`turn_count`** — always `0`.
-
-10. **`game_over`** — always `null`.
+Only fields that differ from the engine defaults need to be supplied;
+unknown fields are ignored for forward compatibility.
 
 ---
 
 ### Step 5 validation checklist
 
-- [ ] Every room in corpus has a `room_states` entry with `visited: false`
-- [ ] Every entity with `state_fields` in corpus has an `entity_states`
-      entry with every field initialised
-- [ ] Every state field with an `initial` in the corpus has a matching
-      value in `room_states`/`entity_states` (or a deliberate override)
-- [ ] Every entity with `hidden` in `state_fields` has `hidden` initialised
-      in `entity_states`
-- [ ] Every flag name used anywhere in the corpus appears in `flags`
+- [ ] File exists iff `corpus.stats` is present
+- [ ] `system` matches `corpus.stats.system`
 - [ ] `player.location` references the room with `is_start_room: true`
+- [ ] `player.stats` is present iff `corpus.stats` is present
+- [ ] Every key in `player.stats` exists in `corpus.stats.definitions`
+- [ ] Every stat in `corpus.stats.definitions` has a key in `player.stats`
+- [ ] For multi-level characters, `max_hp`, `current_hp`, `ac`,
+      `proficiency_bonus`, and `save_proficiencies` are explicit
 - [ ] No entity in `player.inventory` also appears in a room's
       `contains` at start
-- [ ] If corpus has `stats`: `player.stats` is present, and every key matches
-      a key in `stats.definitions`
-- [ ] If corpus has no `stats`: `player.stats` is absent
-- [ ] Every NPC with `dialogue` has `attitude` set to the value
-      from the NPC's `attitude_limits.initial` (default 0) in `entity_states`
-- [ ] Every NPC with `dialogue` has `attitude` in both
-      `state_fields` and `entity_states`
-- [ ] Every NPC with a `combat` block has `current_hp` in both
-      `state_fields` and `entity_states`, initialized to `combat.hp`
-- [ ] Every state field declared for the player entity has a matching entry
-      in `entity_states.player`
-- [ ] `turn_count` is `0`
-- [ ] `game_over` is `null`
 
 ---
 
@@ -1765,13 +1721,15 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 
 ## Cross-File Validation (Final)
 
-Run this checklist after all three JSON files are generated. This catches
-cross-file consistency issues.
+Run this checklist after `corpus.json`, `soft-state.json`, and
+`default-player.json` (when applicable) are generated. This catches
+cross-file consistency issues.  If `hard-state.json` is provided as an
+optional world-state override, include it in the checks below.
 
 ### Universal checks
 
 - [ ] Every flag name used in any condition string, `set_flag`, or
-  `set_entity_state` appears in `hard_state.flags`
+  `will_reveal.set_flag` appears in `flags_declared`
 - [ ] Every room ID referenced in any exit `target_room`,
       `follower.blacklist`, etc. exists in `corpus.rooms`
 - [ ] Every entity ID referenced in any `contains`, `add_item`,
@@ -1792,21 +1750,24 @@ cross-file consistency issues.
 ### Corpus self-consistency
 
 - [ ] `flags_declared` is present as a top-level list of all flag names used
-  in conditions and set_flag results
-- [ ] Every flag in `flags_declared` exists in `hard_state.flags`
+  in conditions and `set_flag` results.  Entries may be plain strings
+  (start `false`) or single-key objects mapping a flag id to its initial
+  boolean value.
 - [ ] No duplicate IDs across all rooms, exits, entities, interactions,
   mechanics, reactions, flags, and topics
 - [ ] Every `will_reveal.conditions` string references entities, flags,
-  attitudes, topics, or tags that exist in the corpus/hard state
+  attitudes, topics, or tags that exist in the corpus
 - [ ] Every `on_examine` event with a condition references an existing flag
 - [ ] Every `using_results` key is either an entity ID in corpus or `"*"`
-- [ ] Every stat check (stat_check type) references a stat key in
+- [ ] Every stat check (`stat_check` type) references a stat key in
   `corpus.stats.definitions` (if stats block exists; otherwise, no stat_check
   should appear)
 - [ ] Every `alter_stat` result references a stat key in `stats.definitions`
   (if stats block exists; otherwise, no alter_stat should appear)
+- [ ] If `corpus.stats` is present, `default-player.json` exists and its
+  `system` matches `corpus.stats.system`
 
-### Hard-state checks
+### Hard-state checks (only if `hard-state.json` is used as an override)
 
 - [ ] `hard_state.player.location` matches the room with `is_start_room: true`
 - [ ] Every entity with `state_fields` has a complete `entity_states` entry
@@ -1823,12 +1784,16 @@ cross-file consistency issues.
 
 ### Soft-state checks
 
-- [ ] Every NPC with `dialogue` has `attitude` initialised in `entity_states`
+- [ ] `soft_inventory` is `[]`
+- [ ] `surfaced_soft_items` is `{}`
+- [ ] `checks_attempted` is `{}`
+- [ ] `revealed_hints` is `[]`
 - [ ] `dialogue_state` has the standard null structure
+- [ ] `turn_history` is `[]`
 - [ ] `player_knowledge` is `[]`
 
-After completing all three JSON files and this checklist, run the
-engine's validator to catch mechanical errors you might have missed:
+After completing the JSON files and this checklist, run the engine's
+validator to catch mechanical errors you might have missed:
 
 ```
 python scripts/validate_adventure.py <adventure_dir>
@@ -2013,7 +1978,7 @@ All IDs must be **snake_case, lowercase ASCII**:
 
 2. **Forgetting to declare flags**: Every flag referenced in any `set_flag`,
    condition string, or `require`/`unless` block must appear in
-   `hard_state.flags` with an initial value.
+   `flags_declared` with an initial value.
 
 3. **Missing state_fields declarations**: Every mutable property of an entity
    that changes during play must be declared in `state_fields`. The engine

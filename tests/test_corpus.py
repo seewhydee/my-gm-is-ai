@@ -829,6 +829,93 @@ class TestStateFieldDecl:
         with pytest.raises(ValidationError):
             StateFieldDecl.model_validate({"type": "boolean"})
 
+    def test_boolean_initial(self) -> None:
+        s = StateFieldDecl.model_validate({
+            "type": "boolean", "description": "Hidden?", "initial": True
+        })
+        assert s.initial is True
+
+    def test_number_initial(self) -> None:
+        s = StateFieldDecl.model_validate({
+            "type": "number", "description": "HP.", "initial": 14
+        })
+        assert s.initial == 14
+
+    def test_string_initial(self) -> None:
+        s = StateFieldDecl.model_validate({
+            "type": "string", "description": "Title.", "initial": "Novice"
+        })
+        assert s.initial == "Novice"
+
+    def test_initial_defaults_to_none(self) -> None:
+        s = StateFieldDecl.model_validate({"type": "boolean", "description": "X."})
+        assert s.initial is None
+
+    def test_boolean_initial_rejects_number(self) -> None:
+        with pytest.raises(ValidationError, match="must be a boolean"):
+            StateFieldDecl.model_validate({
+                "type": "boolean", "description": "X.", "initial": 1
+            })
+
+    def test_number_initial_rejects_boolean(self) -> None:
+        with pytest.raises(ValidationError, match="must be a number"):
+            StateFieldDecl.model_validate({
+                "type": "number", "description": "X.", "initial": True
+            })
+
+    def test_string_initial_rejects_number(self) -> None:
+        with pytest.raises(ValidationError, match="must be a string"):
+            StateFieldDecl.model_validate({
+                "type": "string", "description": "X.", "initial": 42
+            })
+
+
+class TestFlagsDeclared:
+    def test_plain_strings(self) -> None:
+        c = ModuleCorpus.model_validate({
+            "adventure": {"title": "T", "introduction": "I."},
+            "rooms": {},
+            "entities": {},
+            "flags_declared": ["a", "b"],
+        })
+        assert c.flags_initial == {"a": False, "b": False}
+
+    def test_single_key_dicts(self) -> None:
+        c = ModuleCorpus.model_validate({
+            "adventure": {"title": "T", "introduction": "I."},
+            "rooms": {},
+            "entities": {},
+            "flags_declared": [{"a": True}, {"b": False}],
+        })
+        assert c.flags_initial == {"a": True, "b": False}
+
+    def test_mixed_entries(self) -> None:
+        c = ModuleCorpus.model_validate({
+            "adventure": {"title": "T", "introduction": "I."},
+            "rooms": {},
+            "entities": {},
+            "flags_declared": ["plain", {"true_flag": True}],
+        })
+        assert c.flags_initial == {"plain": False, "true_flag": True}
+
+    def test_multi_key_dict_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="exactly one key"):
+            ModuleCorpus.model_validate({
+                "adventure": {"title": "T", "introduction": "I."},
+                "rooms": {},
+                "entities": {},
+                "flags_declared": [{"a": True, "b": False}],
+            })
+
+    def test_non_boolean_value_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be a boolean"):
+            ModuleCorpus.model_validate({
+                "adventure": {"title": "T", "introduction": "I."},
+                "rooms": {},
+                "entities": {},
+                "flags_declared": [{"a": "yes"}],
+            })
+
 
 class TestCredits:
     def test_all_fields(self) -> None:

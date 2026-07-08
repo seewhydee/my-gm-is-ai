@@ -17,9 +17,13 @@ Engine reads from it to validate actions and apply game mechanics.
   "mechanics":    { "<mechanic_id>": { /* mechanic */ } },
   "game_over_conditions": [ { /* global game-over condition */ } ],
   "stats":        { /* stat definitions (optional) */ },
-  "flags_declared": [ "<flag_id>", ... ]
+  "flags_declared": [ "<flag_id>", { "<flag_id>": <boolean> }, ... ]
 }
 ```
+
+Top-level `flags_declared` entries are either plain strings (starting
+`false`) or single-key objects mapping a flag id to its initial boolean
+value.
 
 ### `adventure` — Metadata block
 
@@ -596,7 +600,20 @@ Notes:
 
   - TYPE is one of `"boolean"`, `"number"`, or `"string"`
   - DESC is a string describing the nature of the state field
-  - INIT is the value at game start, matching the declared type
+  - INIT is optional and, when present, is the value at game start. It
+    must match the declared type. (Note that `boolean` and `number` are
+    distinct: `true` is not accepted as the number `1`.)
+
+  If `initial` is omitted, the engine fills in a default based on the
+  field name and type:
+
+  - Reserved fields use their documented default initial value (see
+    below).
+  - Author-defined fields fall back to the type default: `false` for
+    booleans, `0` for numbers, `""` for strings.
+
+  Because omitted `initial` values silently fall back to a safe default,
+  authors are encouraged to set them explicitly.
 
 - `interactions` is an array of [Resolvables](#resolvable) describing
   operations performable on the room.  For each Resolvable,
@@ -951,15 +968,18 @@ Notes:
   They are labeled by entity-unique IDs.  There are several reserved
   state fields, which need not be declared in `state_fields`:
 
-  | Reserved Field | Type    | Purpose                                 |
-  |----------------|---------|-----------------------------------------|
-  | `alive`        | boolean | NPC active? (false => reactions off)    |
-  | `fled`         | boolean | NPC fled? (false => reactions off)      |
-  | `attitude`     | integer | NPC disposition (higher == friendlier)  |
-  | `hidden`       | boolean | Explicit concealment (see below)        |
-  | `following`    | boolean | NPC follows player between rooms        |
-  | `current_hp`   | number  | Current hit points (for combat)         |
-  | `open`         | boolean | Container open/closed state             |
+  | Reserved Field | Type    | Initial value | Purpose                                 |
+  |----------------|---------|---------------|-----------------------------------------|
+  | `alive`        | boolean | `true`        | NPC active? (false => reactions off)    |
+  | `fled`         | boolean | `false`       | NPC fled? (false => reactions off)      |
+  | `attitude`     | integer | `dialogue.attitude_limits.initial` | NPC disposition (higher == friendlier)  |
+  | `hidden`       | boolean | `false`       | Explicit concealment (see below)        |
+  | `following`    | boolean | `false`       | NPC follows player between rooms        |
+  | `current_hp`   | number  | `combat.hp`   | Current hit points (for combat)         |
+  | `open`         | boolean | `true`        | Container open/closed state             |
+
+  Authors may override any reserved-field initial value by supplying an
+  explicit `initial` in the field declaration.
 
   The `hidden` state field declares explicit concealment (e.g., a
   lurking enemy, or a sword buried in rubble). When `true`, the engine
@@ -978,7 +998,12 @@ Notes:
 
   - TYPE is one of `"boolean"`, `"number"`, or `"string"`
   - DESC is a string describing the nature of the state field
-  - INIT is the value at game start, matching the declared type.
+  - INIT is optional and, when present, is the value at game start.
+    It must match the declared type.
+
+  If `initial` is omitted, the engine uses the reserved-field default
+  above when applicable; otherwise it falls back to the type default
+  (`false`, `0`, or `""`).
 
 - `interactions` is an array of [Resolvables](#resolvable) listing
   non-generic operations performable on the entity.  Each must have an
@@ -1494,18 +1519,25 @@ the player state has a matching definition in the corpus).
 ## `flags_declared` — Flag name registry (optional)
 
 ```json
-"flags_declared": ["spider_fled", "injured", "handkerchief_moved"]
+"flags_declared": [
+  "spider_fled",
+  { "injured": false },
+  { "handkerchief_moved": true }
+]
 ```
 
 An optional top-level array of all flag names used in the adventure's
-conditions, `set_flag` results, and encounter `set_flag`. This is a
-convenience field for validation and debugging — the engine uses it to
-verify that every flag referenced in the corpus has a corresponding
-entry in `hard_state.flags`.
+conditions and `set_flag` results.  Each entry is either a plain string
+(meaning the flag starts `false`) or a single-key object mapping the
+flag id to its initial boolean value.
+
+The engine uses this field to verify that every flag referenced in the
+corpus has been declared and to seed the initial `hard_state.flags`
+when the world state is generated from the corpus.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `flags_declared` | string[] | no | List of all flag names used in the adventure. Each name must appear as a key in `hard_state.flags`. |
+| `flags_declared` | (string \| object)[] | no | List of all flag names used in the adventure. Each name must appear as a key in `hard_state.flags` or in `flags_declared`. |
 
 This field is typically generated during cross-validation, after all
 corpus sections are complete. It is optional at the schema level — the

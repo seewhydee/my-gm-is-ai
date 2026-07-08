@@ -4,21 +4,26 @@ Hard game state records the mutable aspects of the adventure.  It is
 **only** mutated by the engine.  The LLM never writes directly to hard
 state; it only submits actions for the engine to validate and resolve.
 
-When the game starts, the engine initializes the hard state from
-`hard-state.json`, and performs validatation of its contents against
-the `corpus.md`.  Between turns, hard state is held in memory. On each
-turn, the engine applies changes based on the player's actions and its
-side-effects.  When the game is saved, the full hard state is
-serialised to disk.  Between turns, a copy is also saved, along with
-soft state (except during chained actions where control does not
-return to the player).
+When the game starts, the engine generates the initial world state
+(`flags`, `room_states`, `entity_states`, containment, etc.) from the
+corpus.  `hard-state.json`, if present, is an optional override for the
+world state.  The player block is resolved separately from
+`default-player.json` (the boxed-set default hero), an optional player
+block inside `hard-state.json`, and/or `--char-sheet` supplied by the
+player.
+
+Between turns, hard state is held in memory. On each turn, the engine
+applies changes based on the player's actions and its side-effects.
+When the game is saved, the full hard state is serialised to disk.
+Between turns, a copy is also saved, along with soft state (except
+during chained actions where control does not return to the player).
 
 ## Top-Level Structure
 
 ```json
 {
   "flags":         { "<flag_id>": true | false, ... },
-  "player":        { /* player state */ },
+  "player":        { /* player state — optional in hard-state.json override */ },
   "room_states":   { "<room_id>": { "<field>": <value>, ... } },
   "entity_states": { "<entity_id>": { "<field>": <value>, ... } },
   "room_contains": { "<room_id>": { "<entity_id>": <count>, ... } },
@@ -29,8 +34,12 @@ return to the player).
 }
 ```
 
-These fields are documented below.  See the [Corpus](corpus.md) schema
-for the (immutable) definitions of rooms, entities, mechanics, etc.
+`player` is required in the in-memory runtime model, but it may be
+omitted from `hard-state.json` when that file is used only as a
+world-state override; the engine injects the cascaded player block
+before validation.  These fields are documented below.  See the
+[Corpus](corpus.md) schema for the (immutable) definitions of rooms,
+entities, mechanics, etc.
 
 ---
 
@@ -161,9 +170,9 @@ progression for the player's `level`.
 The `room_states` and `entity_states` fields track per-room and
 per-entity mutable properties.  They map room/entity IDs to objects
 mapping state fields (strings) to their present values (each matching
-the type declared in the Corpus – boolean, number, or string).  If an
-initial value is not specified by the Corpus, it defaults to `false`
-(boolean), `0` (number), or `""` (string).
+the type declared in the Corpus – boolean, number, or string).  Initial
+values are determined by the corpus field declaration; see
+[Corpus.md](corpus.md#room) for details.
 
 Every room/entity defined in the Corpus must be present in these
 blocks.  Every Corpus-defined state field must be present.  In
