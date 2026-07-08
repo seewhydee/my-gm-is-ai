@@ -92,9 +92,9 @@ throughout subsequent parts of the schema.
 
 ### Condition
 
-A Condition object describes a predicate gating availability: whether
-an exit is shown, a mechanic can be triggered, etc.  They are formed
-from condition strings and, optionally, other Conditions (allowing for
+A **Condition** describes a predicate gating availability: whether an
+exit is shown, a mechanic can be triggered, etc.  They are formed from
+condition strings and, optionally, other Conditions (allowing for
 nested logic).  There are several forms:
 
 **`require`** — availability requires condition string to be true.
@@ -176,13 +176,13 @@ Notes:
 
 ### Check
 
-A Check object resolves the success or failure of an event or action:
+A **Check** resolves success or failure for an event or action:
 interaction, traversal, encounter, etc.  There are two types: `roll`
 (flat probability) and `stat_check` (stat-based resolution).
 
 #### Roll Check
 
-A roll Check succeeds if `random() < threshold`.
+A Roll Check succeeds if `random() < threshold`.
 
 ```json
 {
@@ -239,7 +239,7 @@ If both fields are `true`, they cancel out and a single d20 is rolled.
 
 ### Result
 
-A Result describes the consequences of an action: narrative, state
+A **Result** describes the consequences of an action: narrative, state
 mutations, stat adjustments, inventory changes, and optional follow-up
 checks. Results can appear deterministically, or in non-deterministic
 `success` and `failure` branches.
@@ -248,7 +248,7 @@ checks. Results can appear deterministically, or in non-deterministic
 {
   "narrative": "Looting the troll, you find a helmet and a dagger, probably taken from some hapless adventurer",
   "add_item": [ "helmet", "enchanted_dagger" ],
-  "add_item_count": { "gold_coins": 50 },
+  "add_item_count": { "gold_coin": 50 },
   "set_flag": { "old_gear_found" : true },
   "set_entity_state": { "troll": { "looted" : true } },
   "reveals": "Found gear belonging to another adventurer on a troll.",
@@ -305,7 +305,7 @@ Notes:
   - `{ "INT": { "mode": "set", "value": 3 } }` sets intelligence to 3
 
 - `add_item` adds one of each listed item, while `add_item_count` adds
-  specified amounts, e.g. `{ "coins": 50 }`.  For stackable items (see
+  specified amounts, e.g. `{ "coin": 50 }`.  For stackable items (see
   [Entity](#entity)), repeats are allowed and the total count is
   added.  Adding any non-stackable (i.e., unique) item automatically
   removes it from its previous location, if any.
@@ -330,8 +330,8 @@ A FollowUpCheck object can be put in a Result's `then_check` field,
 and implements multi-stage resolutions for actions and effects, firing
 right after the parent.
 
-**Example**: player makes a STR check to jump across a pit, and on
-failure makes a DEX check to grab the ledge.
+Example: player makes a STR check to jump across a pit, and on failure
+makes a DEX check to grab the ledge.
 
 ```json
 {
@@ -369,7 +369,7 @@ results may contain other follow-ups, to a maximum depth of 3.
 
 ### Resolvable
 
-A Resolvable object describes a player-initiated action that leads to
+A **Resolvable** describes a player-initiated action that leads to
 custom effects: e.g., special interactions with [Rooms](#room) and
 [Entities](#entity), [examination actions](#examination), and engaging
 in [dialogue paths with NPCs](#dialogue-path).  It is modeled as a
@@ -430,11 +430,11 @@ Notes:
 
 ### Gated Check
 
-A **gated check** describes situations where a player action meets an
-obstacle: specifically, `take_check` for items and `traversal_check`
-for room exits.  It is modeled as a [Check](#check) wrapped with a
-[Condition](#condition) that determines whether the check is active,
-an optional bypass condition, and success/failure [Results](#result).
+A GatedCheck object describes a situation where a player action meets
+an obstacle: a `take_check` for an item, or `traversal_check` for a
+room exit.  It is modeled as a [Check](#check) along with a
+[Condition](#condition) determining whether the check is active, an
+optional bypass condition, and success/failure [Results](#result).
 
 ```json
 {
@@ -563,8 +563,8 @@ In the final copy of the hard game state, the `trigger_id` is saved to
 
 ## Room
 
-A room is a location in the adventure module, modeled as a node in a
-world graph keyed by a globally-unique `room_id`.
+A **Room** is a location in the adventure module, modeled as a node in
+a world graph keyed by a globally-unique `room_id`.
 
 ```json
 {
@@ -674,6 +674,8 @@ Notes:
 
 ### Exit
 
+**Exit** objects are modelled as follows:
+
 ```json
 {
   "id": "string (unique across all exits in the room)",
@@ -769,10 +771,10 @@ Notes:
 
 ## Reaction
 
-Reactions are a flexible mechanism to change game state in response to
-specified events.  They can be placed in the `reactions` array of a
-[Room](#room), [Entity](#entity), or [Mechanic](#mechanic) – the
-**scope** of the reaction.
+**Reactions** are a flexible mechanism to change game state in
+response to specified events.  They can be placed in the `reactions`
+array of a [Room](#room), [Entity](#entity), or [Mechanic](#mechanic)
+– the **scope** of the reaction.
 
 The scope determines when the reaction is active (i.e., can be
 triggered).  Room-scoped reactions are active when the player is in
@@ -890,7 +892,7 @@ For the full list, and full documentation of the context keys, see the
 
 ### Reaction Effect
 
-A Reaction Effect object is stored in a reaction's `effect` field, and
+A ReactionEffect object is stored in a reaction's `effect` field, and
 describes what the reaction does if successfully triggered:
 
 ```json
@@ -901,8 +903,8 @@ describes what the reaction does if successfully triggered:
 }
 ```
 
-The Reaction Effect must contain at least one of the following fields
-(if more than one is supplied, they all apply):
+It must contain at least one of the following fields (if more than one
+is supplied, they all apply):
 
 | Field               | Type   | Description                     |
 |---------------------|--------|---------------------------------|
@@ -913,7 +915,7 @@ The Reaction Effect must contain at least one of the following fields
 Note: For `trigger_[encounter|dialogue]`, the `"self"` value resolves
 to the owning entity's ID (for entity-scoped reactions).
 
-**Example**: trap fires if it's armed when the player enters the room.
+Example: trap fires if it's armed when the player enters the room.
 
 ```json
 {
@@ -939,7 +941,7 @@ to the owning entity's ID (for entity-scoped reactions).
 
 ## Entity
 
-Entities are objects that appear in rooms or inventory.
+**Entities** are objects that appear in rooms or inventory.
 
 ```json
 {
@@ -1007,23 +1009,23 @@ Notes:
   They are labeled by entity-unique IDs.  There are several reserved
   state fields, which need not be declared in `state_fields`:
 
-| Res. Field  | Type    | Init Value | Purpose                             |
-|-------------|---------|------------|-------------------------------------|
-| `alive`     | boolean | `true`     | NPC active? (false => reactions off)|
-| `fled`      | boolean | `false`    | NPC fled? (false => reactions off)  |
-| `attitude`  | integer | `0`        | NPC disposition (higher == friendlier)  |
-| `hidden`    | boolean | `false`    | Explicit concealment (see below)    |
-| `following` | boolean | `false`    | NPC follows player between rooms    |
-| `current_hp`| number  | `combat.hp`| Current hit points (for combat)     |
-| `open`      | boolean | `true`     | Container open/closed state         |
+| Res. Field  | Type    | Init Value | Purpose                            |
+|-------------|---------|------------|------------------------------------|
+| `alive`     | boolean | `true`     | NPC active? false => reactions off |
+| `fled`      | boolean | `false`    | NPC fled? false => reactions off   |
+| `attitude`  | integer | `0`        | NPC disposition, higher == friendlier|
+| `hidden`    | boolean | `false`    | Explicit concealment (see below)   |
+| `following` | boolean | `false`    | NPC follows player between rooms   |
+| `current_hp`| number  | `combat.hp`| Current hit points (for combat)    |
+| `open`      | boolean | `false`    | Container open/closed state        |
 
-  Authors may override any reserved-field initial value by supplying an
-  explicit `initial` in the field declaration.
+  Authors may override any reserved-field initial value by supplying
+  an explicit `initial` in the field declaration.
 
   The `hidden` state field declares explicit concealment (e.g., a
   lurking enemy, or a sword buried in rubble). When `true`, the engine
   omits the entity (even from the GM, to avoid leakage).  DO NOT use
-  `hidden` for entities that are merely inside a closed
+  `hidden` for entities that are simply inside a closed
   [container](#container); that kind of concealment is controlled by
   the container's `open` state.
 
@@ -1051,7 +1053,7 @@ Notes:
 
 ### Feature
 
-Features describe immovable environmental objects.  The player cannot
+**Features** are immovable environmental objects.  The player cannot
 pick up, talk to, or attack features.
 
 Features, unlike NPC and item entities, may span multiple rooms: e.g.,
@@ -1064,25 +1066,26 @@ where it appears.
 **Containers** are entities such as chests or wardrobes, which store
 other entities and can be opened and/or closed.  We document
 containers here since they are commonly implemented as features, but
-items (or even NPCs) are also allowed to be containers.
+items or even NPCs are also allowed to be containers.
 
 Containers should be assigned the following properties:
 
 - `container` tag — A container must have `"container"` in its `tag`
   array.  This informs the engine to handle them specially.
 
-- `open` state field — A container must have `open` as a boolean state
-  field, initialized to `true` (open) or `false` (closed).  For
-  entities without the `container` tag, `open` has no special meaning.
+- `open` state field — A container must have the boolean state field
+  `open`, initialized to `true` (open) or `false` (closed, default).
+  For entities without the `container` tag, `open` has no special
+  meaning.
 
 - `open` and `close` interactions (optional) — should be defined if
   the player can perform direct open/close actions (as opposed to
   indirect methods, like pressing a button elsewhere).
 
 A container's initial contents are declared in its `contains` and
-`soft_items` fields.  (These fields can also be used for non-container
-entities, like a rubbish pile, which is not a container in the present
-sense as it lacks open/close functionality.)
+`soft_items` fields.  Note that these fields can also be used for
+non-container entities, like a rubbish pile, which is not a container
+in the present sense as it lacks open/close functionality.
 
 When the container is open, the engine automatically surfaces its
 contents to the GM and player; when closed, the contents are
@@ -1090,22 +1093,22 @@ inaccessible.  This is distinct from the `hidden` state.
 
 ### Item
 
-Items are entities that can potentially be picked up by the player.
-The player cannot talk to or attack items.
+**Items** are entities that can potentially be picked up by the
+player.  The player cannot talk to or attack items.
 
 Items with the `"stackable"` tag can have multiple instances tied to
 the same entity ID.  These instances are indistinguishable and can
 occur, individually or in multiple copies, within the player's
 inventory, rooms, or other entities.  Stackable items support
 multi-copy transfers in [Results](#result) and player actions, and
-quantity comparisons in conditions (e.g. `inventory:coins >= 30`).
+quantity comparisons in conditions (e.g. `inventory:coin >= 30`).
 
-| Field            | Type       | Description                  |
-|------------------|------------|------------------------------|
-| `name`           | string     | Display name (required!)     |
-| `take_check`¹ | GatedCheck | Obstacle to taking the item  |
-| `equip_block`¹| object     | For equipment (see below)    |
-| `max_stack`¹  | interger   | Stack cap for stackable item |
+| Field          | Type       | Description                  |
+|----------------|------------|------------------------------|
+| `name`         | string     | Display name (required!)     |
+| `take_check`¹  | GatedCheck | Obstacle to taking the item  |
+| `equip_block`¹ | object     | For equipment (see below)    |
+| `max_stack`¹   | interger   | Stack cap for stackable item |
 
 > ¹ optional
 
@@ -1143,14 +1146,14 @@ Block object, which specifies the parameters of the equipment:
 }
 ```
 
-| Field                 | Type     | Description                       |
-|-----------------------|----------|-----------------------------------|
-| `equip_tags`          | string[] | Category tags (see below)         |
-| `incompatible_with`(*)| string[] | Conflicting tags (see below)      |
-| `stat_effects`¹    | object   | Stat modifiers while equipped     |
-| `max_equipped`¹    | integer  | How many such items can stack     |
-| `damage_expr`¹     | string   | Weapon damage, e.g. `"1d8+1"`     |
-| `hit_bonus`¹       | integer  | Weapon attack bonus               |
+| Field                | Type     | Description                   |
+|----------------------|----------|-------------------------------|
+| `equip_tags`         | string[] | Category tags (see below)     |
+| `incompatible_with`¹ | string[] | Conflicting tags (see below)  |
+| `stat_effects`¹      | object   | Stat modifiers while equipped |
+| `max_equipped`¹      | integer  | How many such items can stack |
+| `damage_expr`¹       | string   | Weapon damage, e.g. `"1d8+1"` |
+| `hit_bonus`¹         | integer  | Weapon attack bonus           |
 
 Notes:
 
@@ -1190,20 +1193,20 @@ The `5e` system uses these additional fields, both optional:
 
 | Field         | Type    | Description                                |
 |---------------|---------|--------------------------------------------|
-| `ac_override` | integer | Sets AC to this value; highest takes effect|
+| `ac_override` | integer | Set AC to this value; highest takes effect |
 | `ac_bonus`    | integer | Added to base AC (default 0); stacks       |
 
 ### NPC
 
-NPCs are entities the player can fight or socialize with.  NPC entity
-blocks support the following additional fields:
+**NPCs** (non-player characters) are entities the player can fight or
+socialize with.  NPC entity blocks support these additional fields:
 
-| Field           | Type   | Description                          |
-|-----------------|--------|--------------------------------------|
-| `dialogue`(*)   | object | NPC's [dialogue settings](#dialogue) |
-| `aggro`¹     | array  | NPC's [aggro rules](#aggro)          |
-| `follower`¹  | object | NPC's [follower rules](#follower)    |
-| `combat`¹    | object | Combat stats (hp, ac, atk, etc.)     |
+| Field       | Type   | Description                          |
+|-------------|--------|--------------------------------------|
+| `dialogue`¹ | object | NPC's [dialogue settings](#dialogue) |
+| `aggro`¹    | array  | NPC's [aggro rules](#aggro)          |
+| `follower`¹ | object | NPC's [follower rules](#follower)    |
+| `combat`¹   | object | Combat stats (hp, ac, atk, etc.)     |
 > ¹ optional
 
 #### Dialogue
@@ -1230,13 +1233,13 @@ The Dialogue object specifies how the NPC engages in conversation.
 }
 ```
 
-| Field              | Type     | Description                          |
-|--------------------|----------|--------------------------------------|
-| `guidelines`       | string   | Tone, demeanor, constraints, etc.    |
-| `attitude_limits`(*)| object  | NPC's attitude bounds (see below)    |
-| `on_encounter`(*)  | string   | Describes behavior on first meeting  |
-| `will_reveal`¹  | object   | See [NPC Knowledge](#npc-knowledge)  |
-| `dialogue_paths`(*)| Resolvable[] | See [Dialogue Path](#dialogue-path) |
+| Field             | Type     | Description                          |
+|-------------------|----------|--------------------------------------|
+| `guidelines`      | string   | Tone, demeanor, constraints, etc.    |
+| `attitude_limits`¹| object   | NPC's attitude bounds (see below)    |
+| `on_encounter`¹   | string   | Describes behavior on first meeting  |
+| `will_reveal`¹    | object   | See [NPC Knowledge](#npc-knowledge)  |
+| `dialogue_paths`¹ | Resolvable[] | See [Dialogue Path](#dialogue-path) |
 > ¹ optional
 
 Notes:
@@ -1259,7 +1262,7 @@ Notes:
 
 #### Dialogue Path
 
-A Dialogue Path is any special line of conversation that can trigger
+A **Dialogue Path** is a special line of conversation that may trigger
 mechanical effects.  It is modeled as a [Resolvable](#resolvable) with
 a required `description` field.  The `id` should be entity-unique.
 
@@ -1299,7 +1302,7 @@ can share with the player.  It should be an object keyed by topic IDs
 |----------------|----------|------------------------------------------|
 | `description`  | string   | What the topic reveals; surfaced to GM   |
 | `conditions`   | string[] | Revelation conditions (all must be true) |
-| `set_flag`¹ | object   | `{ "<flag_id>": <value>, ... } `         |
+| `set_flag`¹    | object   | `{ "<flag_id>": <value>, ... } `         |
 | `set_entity_state`¹ | object| `{ "<entity_id>": { "<field>": <value>, ...}, ...}` |
 > ¹ optional
 
@@ -1377,8 +1380,8 @@ following, the engine clears the `following` state field.
 
 ## Mechanic
 
-Mechanics are named bundles of game logic not tied to a specific room
-or entity.  They live in an object in the Corpus' top-level
+**Mechanics** are named bundles of game logic not tied to a specific
+room or entity.  They live in an object in the Corpus' top-level
 `"mechanics"` field (see [Top-Level Structure](#top-level-structure):
 
 ```json
@@ -1422,8 +1425,8 @@ or entity.  They live in an object in the Corpus' top-level
 
 All fields supported by Mechanic objects are listed here:
 
-| Field           | Type            | Description                   |
-|-----------------|-----------------|-------------------------------|
+| Field        | Type            | Description                   |
+|--------------|-----------------|-------------------------------|
 | `condition`¹ | Condition       | An encounter-gating condition |
 | `rules`¹     | EncounterRule[] | A triggerable encounter       |
 | `reactions`¹ | Reaction[]      | A set of global reactions     |
@@ -1470,11 +1473,11 @@ into a specific pit), set `game_over` in a [Result](#result).
 If `game_over_conditions` is supplied, it should be an array of
 objects with these fields:
 
-| Field            | Type      | Description                       |
-|------------------|-----------|-----------------------------------|
-| `condition`      | Condition | Predicate polled each turn        |
-| `type`           | string    | `"win"` or `"lose"`               |
-| `trigger_id`     | string    | Copied into `game_over.trigger`   |
+| Field         | Type      | Description                       |
+|---------------|-----------|-----------------------------------|
+| `condition`   | Condition | Predicate polled each turn        |
+| `type`        | string    | `"win"` or `"lose"`               |
+| `trigger_id`  | string    | Copied into `game_over.trigger`   |
 | `narrative`¹  | string    | Canonical ending narration        |
 > ¹ optional
 
@@ -1500,9 +1503,9 @@ Example:
 
 ## Player Stats
 
-RPG systems often track a large set of player data (level, armor
-class, etc.).  We store this data in `hard_state.player` in the game's
-[Hard State](hard-state.md), and use it during combat.
+RPG systems track a large set of player data (level, AC, hit points,
+etc.).  We store this in the game's [Hard State](hard-state.md), and
+use it during combat.
 
 In the Corpus, we focus on a core subset of player data that directly
 affects out-of-combat game mechanics, referred to as **Player Stats**.

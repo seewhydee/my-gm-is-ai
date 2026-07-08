@@ -33,7 +33,7 @@ RESERVED_STATE_FIELD_DEFAULTS: dict[str, Any] = {
     "alive": True,
     "fled": False,
     "following": False,
-    "open": True,
+    "open": False,
     "visited": False,
 }
 
