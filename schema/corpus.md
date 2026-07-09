@@ -273,7 +273,7 @@ ALL fields in a Result object are optional.
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Player knowledge update (see below) |
 | `then_check`        | FollowUpCheck | See [Follow-Up](#follow-up)    |
-| `start_combat`      | string[] | Enter combat (encounter rules only); list of extra enemy IDs added to the encounter source. `[]` fights the source alone; omitted means no combat |
+| `start_combat`      | string[] | Enter combat (see below)            |
 | `game_over`         | GameOver | End the game (see below)            |
 
 Notes:
@@ -320,16 +320,10 @@ Notes:
 - `reveals` appends to `soft_state.revealed_hints` (deduplicated) to
   guide the GM; see the [Soft State schema](soft-state.md).
 
-- `start_combat` is only valid on Results inside an
-  [Encounter Rule](#encounter-rule); using it elsewhere (interaction,
-  reaction, `on_examine`, dialogue path, or a `then_check` branch) is a
-  load-time validation error.  When present, the game enters combat
-  mode with the encounter source (the attacked NPC, or the host NPC of
-  an `aggro` rule) plus every entity ID listed in `start_combat`.  An
-  empty list (`[]`) fights the source alone; omitting the field means
-  no combat.  Every listed ID must reference an NPC with a valid
-  `combat` block (see [NPC](#npc)).  See [Encounter Rule](#encounter-rule)
-  for how the final enemy set is expanded and filtered.
+- `start_combat` is only allowed on Results that are inside an
+  [EncounterRule](#encounter-rule).  If present, it triggers combat;
+  the value specifies a list of entity IDs for additional combatants.
+  For details, see [Aggro](#aggro) and [Mechanic](#mechanic).
 
 - `game_over`, if present, [ends the game](#game-over).
 
@@ -524,15 +518,15 @@ or as part of a global [Mechanic](#mechanic).  An encounter consists
 of an ordered array of EncounterRule objects of this form:
 
 ```json
-  {
-    "condition": { "require": "tag:weapon" },
-    "check": { "type": "stat_check", "stat": "STR",
-			   "target": 10, "repeatable": true },
-    "skip_check_if": { "require": "stat:CHA >= 14" },
-    "success": { "narrative": "Brandishing your weapon, you hold the orc at bay." },
-    "failure": { "narrative": "The orc overpowers you.",
-                 "game_over": { "type": "lose", "trigger": "orc" } }
-  }
+{
+  "condition": { "require": "tag:weapon" },
+  "check": { "type": "stat_check", "stat": "STR",
+			 "target": 10, "repeatable": true },
+  "skip_check_if": { "require": "stat:CHA >= 14" },
+  "success": { "narrative": "Brandishing your weapon, you hold the orc at bay." },
+  "failure": { "narrative": "The orc overpowers you.",
+               "game_over": { "type": "lose", "trigger": "orc" } }
+}
 ```
 
 | Field            | Type      | Description                           |
@@ -546,12 +540,11 @@ of an ordered array of EncounterRule objects of this form:
 > ¹ optional
 
 When an encounter is triggered, its rules are evaluated in order. The
-first rule whose `condition` holds (if any) is applied; the rest are
-ignored.  The applied EncounterRule is resolved via its `result`,
-`check`, `success`, and/or `failure` fields, which have the same
-  meanings as in [Resolvable](#resolvable).  The [Result](#result) in
-  each of these fields may trigger combat via `start_combat`, or
-  game-over via `game_over`.
+first rule with matching `condition` (if any) runs; the rest are
+ignored.  This EncounterRule is resolved via its `result`, `check`,
+`skip_check_if`, `success`, and/or `failure` fields, in the same way
+as a [Resolvable](#resolvable).  The resolved [Result](#result) may
+trigger combat via `start_combat`, or game-over via `game_over`.
 
 ---
 
@@ -845,7 +838,7 @@ Notes:
 
 The event that fires a reaction is determined by two objects:
 
-- The **Trigger String** (the `on` field) – this, together with the
+- The **trigger string** (the `on` field) – this, together with the
   Reaction's scope (room/entity/mechanic) sets the initial trigger.
 
   For example, suppose a Reaction K has `"on": "room.entered"`.  If K
@@ -853,7 +846,7 @@ The event that fires a reaction is determined by two objects:
   entity E, the trigger is the player entering any room where E is
   directly present (see [Room](#room)).
 
-- The **Event Context** – a flat map of details about the event.  For
+- The **event context** – a flat map of details about the event.  For
   example, a `"room.entered"` trigger provides the context key
   `room_id`: the ID of the room entered.
 
@@ -862,7 +855,7 @@ The event that fires a reaction is determined by two objects:
   domain (this domain is only valid during reaction dispatch).  This
   allows (say) a `condition` to narrow down when the reaction fires.
 
-**Example**: a goblin NPC attacks on sight, but only in a given room.
+Example: a goblin NPC attacks on sight, but only in a given room.
 
 ```json
 {
@@ -1021,15 +1014,15 @@ Notes:
   They are labeled by entity-unique IDs.  There are several reserved
   state fields, which need not be declared in `state_fields`:
 
-| Res. Field  | Type    | Init Value | Purpose                            |
-|-------------|---------|------------|------------------------------------|
-| `alive`     | boolean | `true`     | NPC active? false => reactions off |
-| `fled`      | boolean | `false`    | NPC fled? false => reactions off   |
-| `attitude`  | integer | `0`        | NPC disposition, higher == friendlier|
-| `hidden`    | boolean | `false`    | Explicit concealment (see below)   |
-| `following` | boolean | `false`    | NPC follows player between rooms   |
-| `current_hp`| number  | `combat.hp`| Current hit points (for combat)    |
-| `open`      | boolean | `false`    | Container open/closed state        |
+|Res. Field  |Type   | Init Value | Purpose                            |
+|------------|-------|------------|------------------------------------|
+|`alive`     |boolean| `true`     | NPC active? false => reactions off |
+|`fled`      |boolean| `false`    | NPC fled? false => reactions off   |
+|`attitude`  |integer| `0`        | NPC disposition; higher=friendlier |
+|`hidden`    |boolean| `false`    | Explicit concealment (see below)   |
+|`following` |boolean| `false`    | NPC follows player between rooms   |
+|`current_hp`|number | `combat.hp`| Current hit points (for combat)    |
+|`open`      |boolean| `false`    | Container open/closed state        |
 
   Authors may override any reserved-field initial value by supplying
   an explicit `initial` in the field declaration.
@@ -1275,7 +1268,7 @@ Notes:
 
 #### Dialogue Path
 
-A **Dialogue Path** is a special line of conversation that may trigger
+A **dialogue path** is a special line of conversation that may trigger
 mechanical effects.  It is modeled as a [Resolvable](#resolvable) with
 a required `description` field.  The `id` should be entity-unique.
 
@@ -1302,7 +1295,7 @@ a required `description` field.  The `id` should be entity-unique.
 
 When the player converses with the NPC, the GM uses the Resolvable's
 `description` to decide if the player's dialogue should trigger the
-Dialogue Path.  The other fields specify the mechanics: gating
+dialogue path.  The other fields specify the mechanics: gating
 condition, check, and/or branching outcomes.
 
 #### NPC Knowledge
@@ -1340,13 +1333,12 @@ records the topic as already revealed, so it doesn't get repeated.
 
 ### Aggro
 
-The `aggro` field on an NPC entity stores an Encounter – an ordered
-list of [encounter rules](#encounter-rule) – specifying how an NPC
-reacts in hostile confrontations.
-
-This encounter runs automatically when the player attacks the NPC, or
-when triggered by any [Reaction Effect](#reaction-effect) with a
-`trigger_encounter` specifying the host NPC's entity ID.
+The `aggro` field on an NPC entity specifies how an NPC reacts in
+hostile confrontations.  It stores an Encounter – an ordered list of
+[EncounterRules](#encounter-rule) – that is triggered automatically
+when the player attacks the NPC, or triggered explicitly by a
+[reaction effect](#reaction-effect) with `trigger_encounter`
+specifying the host NPC's entity ID.
 
 Example: confronting an orc, if the player is unarmed and fails a STR
 check (DC 10), the orc kills the player; otherwise, combat begins.
@@ -1369,24 +1361,18 @@ check (DC 10), the orc kills the player; otherwise, combat begins.
 ]
 ```
 
-If no rule matches, the encounter silently does nothing (no narrative,
-no effects, no combat, no game-over).  To avoid this, put a rule with
-no `condition` (or `"condition": { "require": "true" }`) as the last
-entry.
+If no EncounterRule matches, the encounter is a no-op (no narrative,
+effects, combat, or game-over).  To avoid this, put a rule with no
+`condition` (or `"condition": {"require": "true"}`) as the last entry.
 
-An encounter result enters combat by carrying a `start_combat` array.
-The listed entity IDs are combined with the encounter source (the host
-NPC of an `aggro` rule, or the directly-attacked target) and expanded
-by `combat_group`.  An empty array (`start_combat: []`) fights the
-source alone — the common single-NPC case, as in the orc example
-above.  The final enemy set is filtered to living, present,
-stat-blocked NPCs; if the filtered set is empty, no combat is entered
-and the encounter's narrative/state changes still apply.
-
-For a **mechanic** encounter, the source id is the mechanic itself, which
-is not a combatant.  Such an encounter must therefore list its enemies
-in `start_combat` or give them a shared `combat_group`; otherwise
-`start_combat: []` resolves to no combatants (a no-op).
+If the encounter resolves to a Result with non-null `start_combat`,
+that launches combat against the following NPCs:
+- the host NPC of the `aggro` rule, PLUS
+- any additional NPCs with entity IDs listed in `start_combat`
+  (none if `start_combat` is `[]`), PLUS
+- NPCs in the same `combat_group` as any of the preceding ones
+The set of combatants is then filtered to living and present NPCs with
+defined `combat` blocks.
 
 ##### Combat groups
 
@@ -1482,10 +1468,10 @@ All fields supported by Mechanic objects are listed here:
 Conceptually, there are two kinds of mechanic, distinguished by which
 field is present:
 
-- An **Encounter Mechanic** describes a set-piece confrontation or
+- An **encounter mechanic** describes a set-piece confrontation or
   action sequence.  It must have `rules`, storing an ordered list of
-  [Encounter Rules](#encounter-rule).  It must be triggered by
-  `trigger_encounter` in a [Reaction Effect](#reaction-effect).  Once
+  [EncounterRule objects](#encounter-rule).  It must be triggered by
+  `trigger_encounter` in a [reaction effect](#reaction-effect).  Once
   triggered, `rules` is evaluated top-to-bottom, and the first
   matching rule is run; if no rule matches, none is run.
 
@@ -1498,13 +1484,20 @@ field is present:
   ignored.  However, encounters can trigger *other* encounters, up to
   a depth-5 limit.
 
-  An Encounter Mechanic may also carry `reactions`, handled in the
-  same way as a Reaction-Only Mechanic, below.  This lets an Encounter
-  Mechanic store its own global trigger reaction, which fires
-  `trigger_encounter` with its own mechanic ID.  Typically, however,
-  Encounter Mechanics are triggered by room or entity reactions.
+  An EncounterRule's Result can trigger combat by specifying
+  `start_combat` with an array of hostile combatants (NPC entity IDs).
+  This list is expanded to add any other NPCs in the same
+  `combat_group`(s), then filtered to living and present NPCs with
+  `combat` blocks.  If the final list is empty, combat is cancelled.
 
-- A **Reaction-Only Mechanic** carries only `reactions`: a list of
+  An encounter mechanic may also carry `reactions`, handled in the
+  same way as a Reaction-Only Mechanic (see below).  This lets an
+  encounter mechanic store its own global trigger: a reaction that
+  fires `trigger_encounter` with the mechanic ID.  More often,
+  however, encounter mechanics omit `reactions` and are triggered by
+  separately-defined room or entity reactions.
+
+- A **reaction-only mechanic** carries only `reactions`: a list of
   [Reactions](#reaction) that are always active, reacting to
   adventure-wide triggers not tied to a specific room or entity.
 
@@ -1558,7 +1551,7 @@ etc.).  We store this in the game's [Hard State](hard-state.md), and
 use it during combat.
 
 In the Corpus, we focus on a core subset of player data that directly
-affects out-of-combat game mechanics, referred to as **Player Stats**.
+affects out-of-combat game mechanics, referred to as **player stats**.
 These numerical fields perform the following roles:
 
 - They are used in [Stat Checks](#stat-checks).
