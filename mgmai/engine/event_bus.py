@@ -426,10 +426,10 @@ def _resolve_reaction_encounter(
         hard.game_over = GameOverState(type=go["type"], trigger=go["trigger"])
 
     # Combat entry via encounter outcome
-    if enc_result["trigger_combat"]:
+    if enc_result["start_combat"] is not None:
         from mgmai.engine.combat import enter_combat, resolve_combat_enemies
         enemies = resolve_combat_enemies(
-            [source_id], enc_result.get("combatants"), hard, corpus
+            [source_id], enc_result["start_combat"], hard, corpus
         )
         if enemies:
             combat_entry = enter_combat(enemies, hard, corpus)
@@ -454,7 +454,7 @@ def _resolve_reaction_encounter(
             events.append(("combat.started", {"combatant_ids": enemies}))
         else:
             log.warning(
-                "trigger_combat produced no eligible combatants for %s",
+                "start_combat produced no eligible combatants for %s",
                 source_id,
             )
 

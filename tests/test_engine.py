@@ -606,7 +606,7 @@ class TestEngineRoomAfter:
 class TestMultiCombatantEncounters:
     """Multi-enemy combat entry and empty-set reconciliation."""
 
-    def test_encounter_combatants_start_multi_enemy_combat(self):
+    def test_encounter_start_combat_multi_enemy_combat(self):
         from tests.helpers import _mk_npc_entity, CombatBlock
         corpus = make_encounter_trigger_corpus(
             mechanic_id="ambush",
@@ -625,7 +625,7 @@ class TestMultiCombatantEncounters:
             combat=CombatBlock(hp=10, ac=12, atk=3, dmg="1d6"),
         )
         corpus.rooms["start"].contains = ["thug_1", "thug_2"]
-        corpus.mechanics["ambush"].rules[0].result.combatants = ["thug_1", "thug_2"]
+        corpus.mechanics["ambush"].rules[0].result.start_combat = ["thug_1", "thug_2"]
 
         manager = build_state_manager(corpus)
         hard = manager.hard_state
@@ -656,7 +656,7 @@ class TestMultiCombatantEncounters:
         assert hard.combat is not None
         assert set(hard.combat.combatants) == {"player", "thug_1", "thug_2"}
 
-    def test_mechanic_trigger_combat_without_combatants_does_not_enter_combat(self):
+    def test_mechanic_start_combat_without_combatants_does_not_enter_combat(self):
         corpus = make_encounter_trigger_corpus(
             mechanic_id="empty_combat",
             encounter_outcome="combat",
@@ -725,8 +725,7 @@ class TestMultiCombatantEncounters:
                 "condition": {"require": "entity:cultist.alive == true"},
                 "result": {
                     "narrative": "The cultist chants and zombie rises!",
-                    "trigger_combat": True,
-                    "combatants": ["zombie"],
+                    "start_combat": ["zombie"],
                     "set_entity_state": {
                         "zombie": {"alive": True, "current_hp": 10},
                     },

@@ -830,7 +830,7 @@ class TestReactionCombatLogPropagation:
                 _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="combat",
-                    combatants=["spider"],
+                    start_combat=["spider"],
                 )
             ],
         )
@@ -1315,12 +1315,12 @@ class TestEncounterBranchedEvent:
 
 class TestReactionResultDispatchFields:
     """A reaction Result's ``game_over`` now takes effect (ends the game) via
-    ``_apply_result``.  ``trigger_combat`` on a reaction Result is ignored at
+    ``_apply_result``.  ``start_combat`` on a reaction Result is ignored at
     runtime and is a load-time validation error when the corpus is loaded
     through StateManager; this test mutates the corpus after load, so it only
     verifies the runtime no-op."""
 
-    def test_result_with_trigger_combat_does_not_crash(self, fresh_state_manager):
+    def test_result_with_start_combat_does_not_crash(self, fresh_state_manager):
         state_manager = fresh_state_manager
         hard = state_manager.hard_state
         corpus = state_manager.corpus
@@ -1332,7 +1332,7 @@ class TestReactionResultDispatchFields:
             on="turn.start",
             effect=ReactionEffects(result=Result(
                 narrative="It grows dark.",
-                trigger_combat=True,
+                start_combat=[],
             )),
         ))
 
@@ -1382,7 +1382,7 @@ class TestReactionResultDispatchFields:
             on="turn.start",
             effect=ReactionEffects(result=Result(
                 narrative="Chaos!",
-                trigger_combat=True,
+                start_combat=[],
                 game_over=GameOverTrigger(type="win", trigger_id="test_win"),
                 set_flag={"dispatch_test": True},
             )),
@@ -1400,9 +1400,9 @@ class TestReactionResultDispatchFields:
         assert hard.flags.get("dispatch_test") is True
 
 class TestReactionEncounterMultiEnemy:
-    """Reaction-fired encounters support combatants and combat_group expansion."""
+    """Reaction-fired encounters support start_combat and combat_group expansion."""
 
-    def test_reaction_encounter_combatants_multi_enemy(self, fresh_state_manager):
+    def test_reaction_encounter_start_combat_multi_enemy(self, fresh_state_manager):
         from mgmai.models.corpus import Mechanic, CombatBlock
         from tests.helpers import _mk_encounter_rule
         state_manager = fresh_state_manager
@@ -1423,7 +1423,7 @@ class TestReactionEncounterMultiEnemy:
                 _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="combat",
-                    combatants=["spider", "korbar"],
+                    start_combat=["spider", "korbar"],
                 )
             ],
         )
@@ -1443,7 +1443,7 @@ class TestReactionEncounterMultiEnemy:
         assert hard.combat is not None
         assert set(hard.combat.combatants) == {"player", "spider", "korbar"}
 
-    def test_reaction_encounter_empty_combatants_no_combat_started_event(
+    def test_reaction_encounter_empty_start_combat_no_combat_started_event(
         self, fresh_state_manager, caplog
     ):
         from mgmai.models.corpus import Mechanic
@@ -1476,4 +1476,4 @@ class TestReactionEncounterMultiEnemy:
         engine_result = resolve(action, state_manager)
         assert engine_result.combat_triggered is False
         assert hard.combat is None
-        assert "trigger_combat produced no eligible combatants" in caplog.text
+        assert "start_combat produced no eligible combatants" in caplog.text

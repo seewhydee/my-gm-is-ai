@@ -357,8 +357,8 @@ class TestResult:
         r = Result()
         assert r.has_any_effect() is False
 
-    def test_has_any_effect_with_trigger_combat_true(self) -> None:
-        r = Result(trigger_combat=True)
+    def test_has_any_effect_with_start_combat_true(self) -> None:
+        r = Result(start_combat=[])
         assert r.has_any_effect() is True
 
     def test_has_any_effect_with_game_over(self) -> None:
@@ -367,7 +367,7 @@ class TestResult:
 
     def test_has_any_effect_with_both_dispatch_fields(self) -> None:
         r = Result(
-            trigger_combat=True,
+            start_combat=[],
             game_over=GameOverTrigger(type="win", trigger_id="test"),
         )
         assert r.has_any_effect() is True
@@ -376,12 +376,12 @@ class TestResult:
         r = Result(narrative="Hello")
         assert r.has_any_effect() is True
 
-    def test_trigger_combat_defaults_to_false(self) -> None:
+    def test_start_combat_defaults_to_none(self) -> None:
         r = Result()
-        assert r.trigger_combat is False
+        assert r.start_combat is None
 
-    def test_trigger_combat_false_does_not_count_as_effect(self) -> None:
-        r = Result(trigger_combat=False)
+    def test_start_combat_none_does_not_count_as_effect(self) -> None:
+        r = Result(start_combat=None)
         assert r.has_any_effect() is False
 
     def test_game_over_defaults_to_none(self) -> None:
@@ -402,21 +402,21 @@ class TestResult:
         with pytest.raises(ValidationError):
             Result.model_validate({"game_over": {"type": "lose"}})
 
-    def test_trigger_combat_rejects_non_bool(self) -> None:
+    def test_start_combat_rejects_non_list(self) -> None:
         with pytest.raises(ValidationError):
-            Result.model_validate({"trigger_combat": "not-a-bool"})
+            Result.model_validate({"start_combat": "not-a-list"})
 
     def test_result_with_all_dispatch_fields_serializes_roundtrip(self) -> None:
         r = Result(
             narrative="You die.",
-            trigger_combat=True,
+            start_combat=[],
             game_over=GameOverTrigger(type="lose", trigger_id="spider"),
             set_flag={"spider_fled": True},
         )
         data = r.model_dump()
         r2 = Result.model_validate(data)
         assert r2.narrative == "You die."
-        assert r2.trigger_combat is True
+        assert r2.start_combat == []
         assert r2.game_over == GameOverTrigger(type="lose", trigger_id="spider")
         assert r2.set_flag == {"spider_fled": True}
 
@@ -991,11 +991,11 @@ class TestEncounterRule:
             "condition": {"require": "entity:spider.alive == true"},
             "result": {
                 "narrative": "It attacks!",
-                "trigger_combat": True,
+                "start_combat": [],
             },
         })
         assert r.result is not None
-        assert r.result.trigger_combat is True
+        assert r.result.start_combat == []
 
     def test_check_roll_with_success_and_failure(self) -> None:
         r = EncounterRule.model_validate({
@@ -1045,29 +1045,29 @@ class TestEncounterRule:
                 "condition": {"require": "flag:x == true"},
             })
 
-    def test_stat_check_branch_with_trigger_combat(self) -> None:
+    def test_stat_check_branch_with_start_combat(self) -> None:
         r = EncounterRule.model_validate({
             "condition": {"require": "entity:spider.alive == true"},
             "check": {"type": "stat_check", "stat": "DEX", "target": 10, "repeatable": True},
             "success": {
                 "narrative": "It attacks!",
-                "trigger_combat": True,
+                "start_combat": [],
             },
             "failure": {"narrative": "It flees."},
         })
         assert r.success is not None
-        assert r.success.trigger_combat is True
+        assert r.success.start_combat == []
         assert r.failure is not None
-        assert r.failure.trigger_combat is False
+        assert r.failure.start_combat is None
 
-    def test_result_with_trigger_combat_only(self) -> None:
+    def test_result_with_start_combat_only(self) -> None:
         r = EncounterRule.model_validate({
             "condition": {"require": "entity:npc.alive == true"},
-            "result": {"trigger_combat": True},
+            "result": {"start_combat": []},
         })
         assert r.check is None
         assert r.result is not None
-        assert r.result.trigger_combat is True
+        assert r.result.start_combat == []
         assert r.result.narrative is None
 
     def test_check_branch_with_game_over_on_failure(self) -> None:
@@ -1210,7 +1210,7 @@ class TestModuleCorpusWithStats:
 
 
 class TestCombatGroupModel:
-    """Entity.combat_group is npc-only; Result.combatants serializes correctly."""
+    """Entity.combat_group is npc-only; Result.start_combat serializes correctly."""
 
     def test_combat_group_on_npc_ok(self) -> None:
         e = Entity.model_validate({
@@ -1229,13 +1229,11 @@ class TestCombatGroupModel:
                 "combat_group": "bad_features",
             })
 
-    def test_result_combatants_roundtrip(self) -> None:
+    def test_result_start_combat_roundtrip(self) -> None:
         r = Result(
-            trigger_combat=True,
-            combatants=["goblin_1", "goblin_2"],
+            start_combat=["goblin_1", "goblin_2"],
             narrative="The ambush springs!",
         )
         data = r.model_dump()
         r2 = Result.model_validate(data)
-        assert r2.combatants == ["goblin_1", "goblin_2"]
-        assert r2.trigger_combat is True
+        assert r2.start_combat == ["goblin_1", "goblin_2"]

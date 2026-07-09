@@ -182,8 +182,7 @@ def _mk_encounter_rule(
     success: Result | None = None,
     failure: Result | None = None,
     stat_check: dict | None = None,
-    trigger_combat: bool = False,
-    combatants: list[str] | None = None,
+    start_combat: list[str] | None = None,
     game_over_type: str | None = None,
     game_over_trigger: str | None = None,
 ) -> EncounterRule:
@@ -217,10 +216,10 @@ def _mk_encounter_rule(
         result_data["alter_stat"] = alter_stat
     if player_damage is not None:
         result_data["player_damage"] = player_damage
-    if trigger_combat or outcome == "combat":
-        result_data["trigger_combat"] = True
-    if combatants is not None:
-        result_data["combatants"] = combatants
+    if start_combat is not None:
+        result_data["start_combat"] = start_combat
+    elif outcome == "combat":
+        result_data["start_combat"] = []
     if outcome == "death" or game_over_type is not None:
         result_data["game_over"] = {
             "type": game_over_type or "lose",
@@ -469,7 +468,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
                     _mk_encounter_rule(
                         outcome="combat",
                         narrative="The spider attacks!",
-                        combatants=["spider"],
+                        start_combat=["spider"],
                         condition=_mk_cond(require="entity:spider.alive == true"),
                     )
                 ],

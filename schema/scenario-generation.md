@@ -424,9 +424,10 @@ For NPCs, also add descriptions for the following:
     member pulls the rest of the band into combat.  Followers (NPCs with
     a `dialogue` block whose state says `following: true`) are treated as
     allies and are never auto-pulled, even if they share the tag.
-  - **`combatants`** — on an encounter result with `trigger_combat: true`,
-    list explicit entity IDs to fight (e.g., the captain and two archers).
-    This expands by `combat_group` too, so listing one band member will
+  - **`start_combat`** — on an encounter result, a list of extra enemy
+    entity IDs to fight alongside the source (e.g., the captain and two
+    archers).  Use `[]` to fight the encounter source alone.  The list
+    expands by `combat_group` too, so listing one band member will
     pull the whole present band; to select a subset, omit `combat_group`.
 
   Also note any effects of NPC fleeing (e.g., setting a flag, or
@@ -520,12 +521,12 @@ catching gaps here avoids rework downstream.
       `attitude` state field (§1G).
 - [ ] Every NPC with `behavior` encounter rules specifying multi-turn
       combat should have combat stats (§1G)
-- [ ] `trigger_combat` and `combatants` are only used inside encounter
+- [ ] `start_combat` is only used inside encounter
       rules (`entity.aggro` or `mechanic.rules`)
-- [ ] Every id in a `combatants` list belongs to an NPC with combat stats
+- [ ] Every id in a `start_combat` list belongs to an NPC with combat stats
 - [ ] Every NPC sharing a `combat_group` value has combat stats and is an NPC
-- [ ] Mechanic encounters that use `trigger_combat` list enemies via
-      `combatants` or `combat_group` (the mechanic id is not a combatant)
+- [ ] Mechanic encounters that enter combat list enemies via
+      `start_combat` or `combat_group` (the mechanic id is not a combatant)
 
 #### Flags, state, and tags
 
@@ -1503,14 +1504,15 @@ based on which room triggered them (e.g., different fall damage by room).
 | `failure` | Result | Branch when check/roll fails |
 | `skip_check_if` | condition object | Bypass the check, apply `success` directly |
 
-> **`trigger_combat` on Result:** `trigger_combat: true` is only
-> honoured on results inside an encounter rule (`entity.aggro` or
+> **`start_combat` on Result:** `start_combat` is only honoured on
+> results inside an encounter rule (`entity.aggro` or
 > `mechanic.rules`).  When such a result fires, the engine starts
-> multi-round combat.  The encounter may also list explicit
-> `combatants` and/or expand the source's `combat_group`.  Every enemy
-> must be a stat-blocked NPC; if the filtered enemy set is empty, no
-> combat is entered.  Using `trigger_combat`/`combatants` outside
-> encounter results is a load-time validation error.
+> multi-round combat with the encounter source plus every id listed in
+> `start_combat`, expanding each id's `combat_group`.  Use `[]` to
+> fight the source alone.  Every enemy must be a stat-blocked NPC; if
+> the filtered enemy set is empty, no combat is entered.  Using
+> `start_combat` outside encounter results is a load-time validation
+> error.
 
 `player_damage` is available at both the rule level (applies unconditionally
 when the rule fires) and the branch level (overrides the rule-level value).

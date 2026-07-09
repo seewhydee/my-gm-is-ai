@@ -169,12 +169,12 @@ Combat starts in one of two ways:
    `combat_group`.  If the NPC has an `interaction.used` reaction that
    triggers an encounter, the encounter rules run first.
 2. **Encounter outcome** — An NPC's `aggro.encounter_rules` or a
-   `mechanics` encounter returns `result.trigger_combat: true`.  The
-   encounter may also list explicit `combatants` and/or expand the
-   source's `combat_group`.
+   `mechanics` encounter returns a `result.start_combat` list.  The
+   listed entity IDs are added to the source, and each id's
+   `combat_group` is expanded.
 
 In both cases the enemy set is the filtered union of the source,
-its `combat_group`, and any explicit `combatants`.  Enemies must be
+its `combat_group`, and any ids listed in `start_combat`.  Enemies must be
 present in the current room and alive; dead, fled, absent, or
 non-stat-blocked ids are silently dropped.  If the filtered set is empty,
 no combat is entered.
@@ -302,7 +302,7 @@ authoritative dice results.
         {
           "condition": { "require": "spider_fled" },
           "result": {
-            "trigger_combat": true,
+            "start_combat": [],
             "narrative": "The spider, cornered, skitters forward to attack!"
           }
         }

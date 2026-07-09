@@ -129,7 +129,7 @@ class StateManager:
         reset_disabled_once()
 
         self.validate_cross_references()
-        self._validate_trigger_combat_scope()
+        self._validate_start_combat_scope()
         self._validate_stats_system()
         self._validate_player_stats()
         self._init_player_combat_defaults()
@@ -371,7 +371,7 @@ class StateManager:
         self._merge_player_overrides(self.hard_state.player, player_overrides)
 
         self.validate_cross_references()
-        self._validate_trigger_combat_scope()
+        self._validate_start_combat_scope()
         self._validate_stats_system()
         self._validate_player_stats()
         self._init_player_combat_defaults()
@@ -680,8 +680,8 @@ class StateManager:
         if errors:
             raise ValueError("\n".join(errors))
 
-    def _validate_trigger_combat_scope(self) -> None:
-        """Validate that trigger_combat/combatants only appear on encounter results.
+    def _validate_start_combat_scope(self) -> None:
+        """Validate that start_combat only appears on encounter results.
 
         Also validates referential integrity of explicit combatants and the
         combat_group membership rule (all members must be stat-blocked npcs).
@@ -717,28 +717,24 @@ class StateManager:
         def _check_result(result: Result | None, carrier: str, *, allowed: bool) -> None:
             if result is None:
                 return
-            has_combat = result.trigger_combat or result.combatants is not None
+            has_combat = result.start_combat is not None
             if has_combat:
-                if result.combatants is not None and not result.trigger_combat:
-                    errors.append(
-                        f"{carrier}: 'combatants' requires 'trigger_combat: true'"
-                    )
                 if not allowed:
                     errors.append(
-                        f"{carrier}: 'trigger_combat'/'combatants' is only "
+                        f"{carrier}: 'start_combat' is only "
                         f"allowed on encounter-rule results"
                     )
-            if result.combatants is not None:
-                for cid in result.combatants:
+            if result.start_combat is not None:
+                for cid in result.start_combat:
                     ent = self.corpus.entities.get(cid)
                     if ent is None:
                         errors.append(
-                            f"{carrier}: combatants entry '{cid}' is not a "
+                            f"{carrier}: start_combat entry '{cid}' is not a "
                             f"known entity"
                         )
                     elif ent.combat is None:
                         errors.append(
-                            f"{carrier}: combatants entry '{cid}' "
+                            f"{carrier}: start_combat entry '{cid}' "
                             f"does not have a combat block"
                         )
             if result.then_check is not None:

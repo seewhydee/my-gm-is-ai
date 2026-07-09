@@ -843,13 +843,13 @@ class TestApplyResult:
         assert changes.player_location == "bag_floor"
         assert hard.player.location == "bag_floor"
 
-    def test_apply_result_with_trigger_combat_no_crash(self, state_manager):
-        """A Result with trigger_combat=True flows through _apply_result safely."""
+    def test_apply_result_with_start_combat_no_crash(self, state_manager):
+        """A Result with start_combat set flows through _apply_result safely."""
         hard = state_manager.hard_state
         corpus = state_manager.corpus
         from mgmai.models.actions import HardStateChanges
 
-        result = Result(narrative="Hello", trigger_combat=True)
+        result = Result(narrative="Hello", start_combat=[])
         changes = HardStateChanges()
         narrative: list[str] = []
         _apply_result(result, changes, narrative, [], hard, corpus)
@@ -877,14 +877,14 @@ class TestApplyResult:
         assert hard.game_over.trigger == "test"
 
     def test_apply_result_with_both_dispatch_fields_no_crash(self, state_manager):
-        """A Result with both trigger_combat and game_over combined with effects."""
+        """A Result with both start_combat and game_over combined with effects."""
         hard = state_manager.hard_state
         corpus = state_manager.corpus
         from mgmai.models.actions import HardStateChanges
 
         result = Result(
             narrative="Combat and death!",
-            trigger_combat=True,
+            start_combat=[],
             game_over=GameOverTrigger(type="lose", trigger_id="boss"),
             set_flag={"boss_defeated": True},
         )
@@ -899,14 +899,14 @@ class TestApplyResult:
         assert hard.game_over.type == "lose"
         assert hard.game_over.trigger == "boss"
 
-    def test_apply_result_with_check_with_trigger_combat_no_crash(self, state_manager):
-        """_apply_result_with_check handles Result with trigger_combat=True."""
+    def test_apply_result_with_check_with_start_combat_no_crash(self, state_manager):
+        """_apply_result_with_check handles Result with start_combat set."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         from mgmai.models.actions import HardStateChanges
 
-        result = Result(narrative="Done.", trigger_combat=True)
+        result = Result(narrative="Done.", start_combat=[])
         changes = HardStateChanges()
         narrative: list[str] = []
         rolls: list[dict] = []

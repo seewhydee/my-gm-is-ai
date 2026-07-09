@@ -42,8 +42,8 @@ def resolve_encounter(
     Returns a dict with keys:
         narrative: str | None
         changes: HardStateChanges  -- applied effects (flags, stats, damage, items, etc.)
-        trigger_combat: bool
-        combatants: list[str] | None  -- explicit combatants from the firing Result
+        start_combat: list[str] | None  -- extra combatants from the firing Result;
+            None means no combat, [] means combat with the encounter source only
         game_over: dict | None  -- {type: str, trigger: str}
         rolls: list[dict]
         branch_taken: str | None
@@ -59,8 +59,7 @@ def _empty_result(rolls: list[dict] | None = None) -> dict[str, Any]:
     return {
         "narrative": None,
         "changes": HardStateChanges(),
-        "trigger_combat": False,
-        "combatants": None,
+        "start_combat": None,
         "game_over": None,
         "rolls": rolls or [],
         "branch_taken": None,
@@ -121,8 +120,7 @@ def _apply_encounter_rule(
     return {
         "narrative": narrative_text,
         "changes": changes,
-        "trigger_combat": firing_result.trigger_combat if firing_result else False,
-        "combatants": firing_result.combatants if firing_result else None,
+        "start_combat": firing_result.start_combat if firing_result else None,
         "game_over": _game_over_dict(firing_result.game_over) if firing_result else None,
         "rolls": rolls,
         "branch_taken": branch_taken,

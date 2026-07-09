@@ -176,7 +176,7 @@
           },
           "result": {
             "narrative": "The spider drops from the shadows above, mandibles bared and venom glistening!",
-            "trigger_combat": true
+            "start_combat": []
           }
         }
       ],

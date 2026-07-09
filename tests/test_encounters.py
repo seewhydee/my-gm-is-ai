@@ -231,8 +231,8 @@ class TestResolveEncounter:
         assert result["narrative"] is not None
         assert result["changes"].stat_modifiers == {"CON": StatModifier(value=-4), "STR": StatModifier(value=-4)}
 
-    def test_rule_level_trigger_combat(self, sample_corpus):
-        """Result with trigger_combat=True (no check) propagates."""
+    def test_rule_level_start_combat(self, sample_corpus):
+        """Result with start_combat set (no check) propagates."""
         hard = _load_hard()
         soft = _load_soft()
         rules = [
@@ -243,7 +243,7 @@ class TestResolveEncounter:
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["trigger_combat"] is True
+        assert result["start_combat"] == []
         assert result["game_over"] is None
         assert result["branch_taken"] is None
         assert result["narrative"] == "The spider drops from the shadows!"
@@ -267,7 +267,7 @@ class TestResolveEncounter:
         assert result["game_over"]["trigger"] == "test_npc"
 
     def test_flee_rule_triggers_no_combat_no_game_over(self, sample_corpus):
-        """A flee rule should have trigger_combat=False and game_over=None."""
+        """A flee rule should have start_combat=None and game_over=None."""
         hard = _load_hard()
         soft = _load_soft()
         rules = [
@@ -279,12 +279,12 @@ class TestResolveEncounter:
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["trigger_combat"] is False
+        assert result["start_combat"] is None
         assert result["game_over"] is None
         assert result["changes"].flags_set["creature_fled"] is True
 
     def test_no_rules_match_returns_safe_defaults(self, sample_corpus):
-        """When no rules match, result has trigger_combat=False, game_over=None."""
+        """When no rules match, result has start_combat=None, game_over=None."""
         hard = _load_hard()
         soft = _load_soft()
         rules = [
@@ -295,13 +295,13 @@ class TestResolveEncounter:
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus)
-        assert result["trigger_combat"] is False
+        assert result["start_combat"] is None
         assert result["game_over"] is None
         assert result["branch_taken"] is None
         assert result["narrative"] is None
 
-    def test_branch_with_trigger_combat_roll_fails_no_combat(self, sample_corpus, monkeypatch):
-        """When a roll check fails and failure has no trigger_combat, it stays False."""
+    def test_branch_with_start_combat_roll_fails_no_combat(self, sample_corpus, monkeypatch):
+        """When a roll check fails and failure has no start_combat, it stays None."""
         hard = _load_hard()
         soft = _load_soft()
         monkeypatch.setattr("random.random", lambda: 0.9)
@@ -310,17 +310,17 @@ class TestResolveEncounter:
                 outcome="roll",
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 threshold=0.5,
-                success={"trigger_combat": True, "narrative": "It attacks!"},
+                success={"start_combat": [], "narrative": "It attacks!"},
                 failure={"narrative": "It flees."},
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["trigger_combat"] is False
+        assert result["start_combat"] is None
         assert result["branch_taken"] == "failure"
         assert result["narrative"] == "It flees."
 
-    def test_result_with_player_damage_and_trigger_combat(self, sample_corpus):
-        """A rule-level result can carry both player_damage and trigger_combat."""
+    def test_result_with_player_damage_and_start_combat(self, sample_corpus):
+        """A rule-level result can carry both player_damage and start_combat."""
         hard = _load_hard()
         soft = _load_soft()
         rules = [
@@ -328,12 +328,12 @@ class TestResolveEncounter:
                 outcome="combat",
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 narrative="The spider bites you!",
-                trigger_combat=True,
+                start_combat=[],
                 player_damage="2d6",
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["trigger_combat"] is True
+        assert result["start_combat"] == []
         assert result["changes"].player_hp_delta is not None
         assert result["changes"].player_hp_delta < 0
         assert result["narrative"] == "The spider bites you!"
@@ -480,12 +480,12 @@ class TestEncounterBranchCombat:
                 outcome="stat_check",
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 stat_check={"type": "stat_check", "stat": "DEX", "target": 10, "repeatable": True},
-                success={"trigger_combat": True, "narrative": "It attacks!"},
+                success={"start_combat": [], "narrative": "It attacks!"},
                 failure={"narrative": "It flees."}
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["trigger_combat"] is True
+        assert result["start_combat"] == []
         assert result["game_over"] is None
         assert result["branch_taken"] == "success"
 
@@ -498,12 +498,12 @@ class TestEncounterBranchCombat:
                 outcome="roll",
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 threshold=0.5,
-                success={"trigger_combat": True, "narrative": "It attacks!"},
+                success={"start_combat": [], "narrative": "It attacks!"},
                 failure={"narrative": "It flees."}
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["trigger_combat"] is True
+        assert result["start_combat"] == []
         assert result["game_over"] is None
         assert result["branch_taken"] == "success"
 
@@ -523,10 +523,10 @@ class TestGameOverDict:
         assert _game_over_dict(None) is None
 
 
-class TestCombatantsThreading:
-    """resolve_encounter threads explicit combatants from the firing Result."""
+class TestStartCombatThreading:
+    """resolve_encounter threads start_combat from the firing Result."""
 
-    def test_rule_level_combatants_returned(self, sample_corpus):
+    def test_rule_level_start_combat_returned(self, sample_corpus):
         hard = _load_hard()
         soft = _load_soft()
         rules = [
@@ -534,14 +534,13 @@ class TestCombatantsThreading:
                 outcome="combat",
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 narrative="The ambush springs!",
-                combatants=["spider"],
+                start_combat=["spider"],
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["trigger_combat"] is True
-        assert result["combatants"] == ["spider"]
+        assert result["start_combat"] == ["spider"]
 
-    def test_empty_result_has_none_combatants(self, sample_corpus):
+    def test_empty_result_has_none_start_combat(self, sample_corpus):
         hard = _load_hard()
         soft = _load_soft()
         rules = [
@@ -552,19 +551,17 @@ class TestCombatantsThreading:
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["combatants"] is None
-        assert result["trigger_combat"] is False
+        assert result["start_combat"] is None
 
-    def test_no_rules_match_has_none_combatants(self, sample_corpus):
+    def test_no_rules_match_has_none_start_combat(self, sample_corpus):
         hard = _load_hard()
         soft = _load_soft()
         rules = [
             _mk_encounter_rule(
                 outcome="combat",
                 condition=ConditionExpression(require="flag:nonexistent == true"),
-                combatants=["spider"],
+                start_combat=["spider"],
             )
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus)
-        assert result["combatants"] is None
-        assert result["trigger_combat"] is False
+        assert result["start_combat"] is None

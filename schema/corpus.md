@@ -273,8 +273,7 @@ ALL fields in a Result object are optional.
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Player knowledge update (see below) |
 | `then_check`        | FollowUpCheck | See [Follow-Up](#follow-up)    |
-| `trigger_combat`    | boolean  | Enter combat mode (encounter rules only; default `false`) |
-| `combatants`        | string[] | Explicit enemy entity IDs for this encounter (requires `trigger_combat: true`; filtered for presence/aliveness) |
+| `start_combat`      | string[] | Enter combat (encounter rules only); list of extra enemy IDs added to the encounter source. `[]` fights the source alone; omitted means no combat |
 | `game_over`         | GameOver | End the game (see below)            |
 
 Notes:
@@ -295,12 +294,6 @@ Notes:
 
 - `set_flag` sets global boolean flags.  A `false` value clears the
   flag; any truthy value sets it.
-
-- `trigger_combat` and `combatants` are only honoured on results inside
-  an encounter rule (`entity.aggro` or `mechanic.rules`).  Using them on
-  an interaction, reaction, `on_examine`, or dialogue path result is a
-  load-time validation error.  `combatants` requires `trigger_combat: true`
-  and every id must reference an NPC with a `combat` block.
 
 - `set_room_state` sets [Room](#room) state fields, and likewise
   `set_entity_state` sets [Entity](#entity) state fields.  Each value
@@ -326,6 +319,17 @@ Notes:
 
 - `reveals` appends to `soft_state.revealed_hints` (deduplicated) to
   guide the GM; see the [Soft State schema](soft-state.md).
+
+- `start_combat` is only valid on Results inside an
+  [Encounter Rule](#encounter-rule); using it elsewhere (interaction,
+  reaction, `on_examine`, dialogue path, or a `then_check` branch) is a
+  load-time validation error.  When present, the game enters combat
+  mode with the encounter source (the attacked NPC, or the host NPC of
+  an `aggro` rule) plus every entity ID listed in `start_combat`.  An
+  empty list (`[]`) fights the source alone; omitting the field means
+  no combat.  Every listed ID must reference an NPC with a valid
+  `combat` block (see [NPC](#npc)).  See [Encounter Rule](#encounter-rule)
+  for how the final enemy set is expanded and filtered.
 
 - `game_over`, if present, [ends the game](#game-over).
 
@@ -545,8 +549,9 @@ When an encounter is triggered, its rules are evaluated in order. The
 first rule whose `condition` holds (if any) is applied; the rest are
 ignored.  The applied EncounterRule is resolved via its `result`,
 `check`, `success`, and/or `failure` fields, which have the same
-meanings as in [Resolvable](#resolvable).  Each Result may trigger
-combat via `trigger_combat`, or game-over via `game_over`.
+  meanings as in [Resolvable](#resolvable).  The [Result](#result) in
+  each of these fields may trigger combat via `start_combat`, or
+  game-over via `game_over`.
 
 ---
 
@@ -1351,14 +1356,13 @@ check (DC 10), the orc kills the player; otherwise, combat begins.
   {
     "condition": { "require": "tag:weapon" },
     "result": { "narrative": "Brandishing your weapon, you fight the orc.",
-				"trigger_combat": true },
+				"start_combat": [] },
   },
   {
-    "condition": { "require": "true" },
     "check": { "type": "stat_check",
                "stat": "STR", "target": 10, "repeatable": true },
     "success": { "narrative": "Putting up your fists, you start to fight!",
-				 "trigger_combat": true },
+				 "start_combat": [] },
     "failure": { "narrative": "Without a weapon, the orc overpowers you.",
                  "game_over": { "type": "lose", "trigger": "orc" } }
   }
@@ -1367,19 +1371,22 @@ check (DC 10), the orc kills the player; otherwise, combat begins.
 
 If no rule matches, the encounter silently does nothing (no narrative,
 no effects, no combat, no game-over).  To avoid this, put a rule with
-`"require": "true"` as the last entry.
+no `condition` (or `"condition": { "require": "true" }`) as the last
+entry.
 
-An encounter result with `trigger_combat: true` may also carry a
-`combatants` array of explicit entity IDs.  These ids are combined with
-the encounter source (or the directly-attacked target) and expanded by
-`combat_group`.  The final enemy set is filtered to living, present,
+An encounter result enters combat by carrying a `start_combat` array.
+The listed entity IDs are combined with the encounter source (the host
+NPC of an `aggro` rule, or the directly-attacked target) and expanded
+by `combat_group`.  An empty array (`start_combat: []`) fights the
+source alone — the common single-NPC case, as in the orc example
+above.  The final enemy set is filtered to living, present,
 stat-blocked NPCs; if the filtered set is empty, no combat is entered
 and the encounter's narrative/state changes still apply.
 
 For a **mechanic** encounter, the source id is the mechanic itself, which
 is not a combatant.  Such an encounter must therefore list its enemies
-in `combatants` or give them a shared `combat_group`; otherwise the
-`trigger_combat` resolves to no combatants.
+in `start_combat` or give them a shared `combat_group`; otherwise
+`start_combat: []` resolves to no combatants (a no-op).
 
 ##### Combat groups
 
@@ -1392,7 +1399,7 @@ auto-pulled via group expansion, even if they share the tag.  A follower
 may only enter combat by being attacked directly.
 
 To fight a subset of a group without pulling the rest, omit
-`combat_group` from those NPCs and list them explicitly in `combatants`.
+`combat_group` from those NPCs and list them explicitly in `start_combat`.
 
 #### Follower
 

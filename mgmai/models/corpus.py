@@ -181,8 +181,7 @@ class Result(BaseModel):
     player_damage: Optional[str] = None
     set_player_location: Optional[str] = None
     game_over: Optional[GameOverTrigger] = None
-    trigger_combat: bool = False
-    combatants: Optional[List[str]] = None
+    start_combat: Optional[List[str]] = None
 
     def has_any_effect(self) -> bool:
         return any(
@@ -194,7 +193,7 @@ class Result(BaseModel):
                 "adjust_attitude", "reveals", "then_check",
                 "player_damage", "set_player_location",
             )
-        ) or self.game_over is not None or self.trigger_combat
+        ) or self.game_over is not None or self.start_combat is not None
 
 
 class RollCheck(BaseModel):
@@ -466,7 +465,7 @@ class EncounterRule(Checkable):
     - If ``check`` is set, resolve it (roll or stat check) and apply the
       chosen branch's Result (success/failure).
     - Otherwise apply ``result`` directly.
-    Either branch Result or the rule's ``result`` may carry ``trigger_combat``
+    Either branch Result or the rule's ``result`` may carry ``start_combat``
     or ``game_over`` to dispatch combat / game-over to the engine.
     """
     condition: Optional[ConditionExpression] = None

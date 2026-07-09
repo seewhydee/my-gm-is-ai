@@ -267,11 +267,11 @@ def resolve(
             rolls.extend(enc_rolls)
 
             combat_started = False
-            if enc_result["trigger_combat"]:
+            if enc_result["start_combat"] is not None:
                 from mgmai.engine.combat import enter_combat, resolve_combat_enemies
                 enemies = resolve_combat_enemies(
                     [encounter_source_id],
-                    enc_result.get("combatants"),
+                    enc_result["start_combat"],
                     hard,
                     corpus,
                 )
@@ -289,7 +289,7 @@ def resolve(
                         resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
                 else:
                     log.warning(
-                        "trigger_combat produced no eligible combatants for %s",
+                        "start_combat produced no eligible combatants for %s",
                         encounter_source_id,
                     )
 

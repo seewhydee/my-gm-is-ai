@@ -192,7 +192,7 @@ def resolve_combat_enemies(
     """Resolve the set of enemies to enter combat with.
 
     Combines *seed_ids* (the encounter source or directly-attacked target)
-    with an optional explicit *combatants* list, then expands every
+    with an optional explicit *start_combat* list, then expands every
     ``combat_group`` referenced by those ids.  The result is deduplicated,
     filtered to present/living/stat-blocked entities, and returned in order.
 

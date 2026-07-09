@@ -1014,8 +1014,8 @@ class TestSaveLoadRoundtrip:
         assert "A note" in sm2.soft_state.room_notes["axe_head"]
 
 
-class TestTriggerCombatScopeValidation:
-    """Load-time validation for trigger_combat/combatants/combat_group."""
+class TestStartCombatScopeValidation:
+    """Load-time validation for start_combat/combat_group."""
 
     def _build_sm(self, corpus_dict):
         sm = StateManager()
@@ -1070,46 +1070,36 @@ class TestTriggerCombatScopeValidation:
             },
         }
 
-    def test_trigger_combat_on_interaction_result_rejected(self):
+    def test_start_combat_on_interaction_result_rejected(self):
         data = self._base_corpus()
         data["entities"]["goblin"]["interactions"] = [{
             "id": "provoke",
             "description": "Provoke",
-            "result": {"narrative": "It attacks!", "trigger_combat": True},
+            "result": {"narrative": "It attacks!", "start_combat": []},
         }]
         sm = self._build_sm(data)
         with pytest.raises(ValueError, match="only allowed on encounter-rule"):
-            sm._validate_trigger_combat_scope()
+            sm._validate_start_combat_scope()
 
-    def test_combatants_without_trigger_combat_rejected(self):
+    def test_start_combat_unknown_entity_rejected(self):
         data = self._base_corpus()
         data["entities"]["goblin"]["aggro"] = [{
             "condition": {"require": "entity:goblin.alive == true"},
-            "result": {"narrative": "Ambush!", "combatants": ["orc"]},
+            "result": {"narrative": "Ambush!", "start_combat": ["dragon"]},
         }]
         sm = self._build_sm(data)
-        with pytest.raises(ValueError, match="'combatants' requires 'trigger_combat: true'"):
-            sm._validate_trigger_combat_scope()
+        with pytest.raises(ValueError, match="start_combat entry 'dragon' is not a known entity"):
+            sm._validate_start_combat_scope()
 
-    def test_combatants_unknown_entity_rejected(self):
+    def test_start_combat_non_stat_blocked_rejected(self):
         data = self._base_corpus()
         data["entities"]["goblin"]["aggro"] = [{
             "condition": {"require": "entity:goblin.alive == true"},
-            "result": {"narrative": "Ambush!", "trigger_combat": True, "combatants": ["dragon"]},
+            "result": {"narrative": "Ambush!", "start_combat": ["scroll"]},
         }]
         sm = self._build_sm(data)
-        with pytest.raises(ValueError, match="combatants entry 'dragon' is not a known entity"):
-            sm._validate_trigger_combat_scope()
-
-    def test_combatants_non_stat_blocked_rejected(self):
-        data = self._base_corpus()
-        data["entities"]["goblin"]["aggro"] = [{
-            "condition": {"require": "entity:goblin.alive == true"},
-            "result": {"narrative": "Ambush!", "trigger_combat": True, "combatants": ["scroll"]},
-        }]
-        sm = self._build_sm(data)
-        with pytest.raises(ValueError, match="combatants entry 'scroll' does not have a combat block"):
-            sm._validate_trigger_combat_scope()
+        with pytest.raises(ValueError, match="start_combat entry 'scroll' does not have a combat block"):
+            sm._validate_start_combat_scope()
 
     def test_combat_group_member_without_combat_rejected(self):
         data = self._base_corpus()
@@ -1119,18 +1109,27 @@ class TestTriggerCombatScopeValidation:
         del data["entities"]["orc"]["combat"]
         sm = self._build_sm(data)
         with pytest.raises(ValueError, match="combat_group 'band': member 'orc' lacks a combat block"):
-            sm._validate_trigger_combat_scope()
+            sm._validate_start_combat_scope()
 
-    def test_valid_encounter_combatants_passes(self):
+    def test_valid_encounter_start_combat_passes(self):
         data = self._base_corpus()
         data["entities"]["goblin"]["aggro"] = [{
             "condition": {"require": "entity:goblin.alive == true"},
-            "result": {"narrative": "Ambush!", "trigger_combat": True, "combatants": ["orc"]},
+            "result": {"narrative": "Ambush!", "start_combat": ["orc"]},
         }]
         sm = self._build_sm(data)
-        sm._validate_trigger_combat_scope()  # should not raise
+        sm._validate_start_combat_scope()  # should not raise
 
-    def test_trigger_combat_in_then_check_outside_encounter_rejected(self):
+    def test_start_combat_source_only_passes(self):
+        data = self._base_corpus()
+        data["entities"]["goblin"]["aggro"] = [{
+            "condition": {"require": "entity:goblin.alive == true"},
+            "result": {"narrative": "It lunges!", "start_combat": []},
+        }]
+        sm = self._build_sm(data)
+        sm._validate_start_combat_scope()  # should not raise
+
+    def test_start_combat_in_then_check_outside_encounter_rejected(self):
         data = self._base_corpus()
         data["entities"]["goblin"]["interactions"] = [{
             "id": "provoke",
@@ -1139,10 +1138,10 @@ class TestTriggerCombatScopeValidation:
                 "narrative": "It hesitates.",
                 "then_check": {
                     "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
-                    "success": {"narrative": "It attacks!", "trigger_combat": True},
+                    "success": {"narrative": "It attacks!", "start_combat": []},
                 },
             },
         }]
         sm = self._build_sm(data)
         with pytest.raises(ValueError, match="only allowed on encounter-rule"):
-            sm._validate_trigger_combat_scope()
+            sm._validate_start_combat_scope()
