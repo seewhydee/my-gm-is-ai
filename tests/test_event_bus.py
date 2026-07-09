@@ -814,10 +814,15 @@ class TestReactionCombatLogPropagation:
                 "game_over": False,
             }
 
-        # Patch enter_combat in its source module so the import inside
-        # _resolve_reaction_encounter picks up the fake version.
+        # Patch combat entry helpers so the test focuses on log propagation,
+        # not on enemy resolution.
         import mgmai.engine.combat as combat_module
         monkeypatch.setattr(combat_module, "enter_combat", fake_enter_combat)
+        monkeypatch.setattr(
+            combat_module,
+            "resolve_combat_enemies",
+            lambda seed_ids, explicit, hard, corpus: list(explicit or seed_ids),
+        )
 
         corpus.mechanics["test_combat"] = Mechanic(
             id="test_combat",
@@ -825,6 +830,7 @@ class TestReactionCombatLogPropagation:
                 _mk_encounter_rule(
                     condition=ConditionExpression(require="entity:player.alive == true"),
                     outcome="combat",
+                    combatants=["spider"],
                 )
             ],
         )
@@ -1309,8 +1315,10 @@ class TestEncounterBranchedEvent:
 
 class TestReactionResultDispatchFields:
     """A reaction Result's ``game_over`` now takes effect (ends the game) via
-    ``_apply_result``, while ``trigger_combat`` on a reaction Result is still
-    not acted upon (only encounters/inline combat start combat)."""
+    ``_apply_result``.  ``trigger_combat`` on a reaction Result is ignored at
+    runtime and is a load-time validation error when the corpus is loaded
+    through StateManager; this test mutates the corpus after load, so it only
+    verifies the runtime no-op."""
 
     def test_result_with_trigger_combat_does_not_crash(self, fresh_state_manager):
         state_manager = fresh_state_manager
@@ -1390,3 +1398,82 @@ class TestReactionResultDispatchFields:
         assert engine_result.game_over.trigger == "test_win"
         assert "Chaos!" in engine_result.triggered_narration
         assert hard.flags.get("dispatch_test") is True
+
+class TestReactionEncounterMultiEnemy:
+    """Reaction-fired encounters support combatants and combat_group expansion."""
+
+    def test_reaction_encounter_combatants_multi_enemy(self, fresh_state_manager):
+        from mgmai.models.corpus import Mechanic, CombatBlock
+        from tests.helpers import _mk_encounter_rule
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        # Give korbar and spider combat blocks for this encounter.
+        corpus.entities["korbar"].combat = CombatBlock(hp=10, ac=10, atk=2, dmg="1d6")
+        corpus.entities["spider"].combat = CombatBlock(hp=15, ac=14, atk=5, dmg="1d4+3")
+        hard.entity_states["korbar"]["current_hp"] = 10
+        hard.entity_states["spider"]["current_hp"] = 15
+        hard.room_contains["bag_floor"]["spider"] = 1
+
+        corpus.mechanics["band_attack"] = Mechanic(
+            id="band_attack",
+            rules=[
+                _mk_encounter_rule(
+                    condition=ConditionExpression(require="entity:player.alive == true"),
+                    outcome="combat",
+                    combatants=["spider", "korbar"],
+                )
+            ],
+        )
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="band_attack_reaction",
+            on="turn.start",
+            effect=ReactionEffects(trigger_encounter="band_attack"),
+        ))
+
+        from mgmai.engine.event_bus import reset_disabled_once
+        reset_disabled_once()
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+        assert engine_result.combat_triggered is True
+        assert hard.combat is not None
+        assert set(hard.combat.combatants) == {"player", "spider", "korbar"}
+
+    def test_reaction_encounter_empty_combatants_no_combat_started_event(
+        self, fresh_state_manager, caplog
+    ):
+        from mgmai.models.corpus import Mechanic
+        from tests.helpers import _mk_encounter_rule
+        state_manager = fresh_state_manager
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        corpus.mechanics["empty_attack"] = Mechanic(
+            id="empty_attack",
+            rules=[
+                _mk_encounter_rule(
+                    condition=ConditionExpression(require="entity:player.alive == true"),
+                    outcome="combat",
+                )
+            ],
+        )
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="empty_attack_reaction",
+            on="turn.start",
+            effect=ReactionEffects(trigger_encounter="empty_attack"),
+        ))
+
+        from mgmai.engine.event_bus import reset_disabled_once
+        reset_disabled_once()
+        from mgmai.models.actions import WaitAction
+        action = WaitAction(action_type="wait", detail="wait")
+        engine_result = resolve(action, state_manager)
+        assert engine_result.combat_triggered is False
+        assert hard.combat is None
+        assert "trigger_combat produced no eligible combatants" in caplog.text

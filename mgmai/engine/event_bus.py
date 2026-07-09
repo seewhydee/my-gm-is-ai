@@ -427,27 +427,36 @@ def _resolve_reaction_encounter(
 
     # Combat entry via encounter outcome
     if enc_result["trigger_combat"]:
-        from mgmai.engine.combat import enter_combat
-        combat_entry = enter_combat([source_id], hard, corpus)
-        if combat_entry.get("hard_changes"):
-            if changes is not None:
-                changes.merge(combat_entry["hard_changes"])
-            else:
-                state_manager.apply_hard_changes(combat_entry["hard_changes"])
-        if combat_entry.get("game_over"):
-            hard.game_over = GameOverState(type="lose", trigger="player_death")
-        if combat_entry.get("combat_log") and combat_log is not None:
-            combat_log.extend(combat_entry["combat_log"])
-        # Exit dialogue if active — combat and dialogue are mutually exclusive
-        if soft.dialogue_state.active_npc is not None:
-            from mgmai.engine.dialogue import exit_dialogue
-            active_npc = soft.dialogue_state.active_npc
-            exit_dialogue(soft, corpus, hard)
-            events.append(("dialogue.ended", {
-                "npc_id": active_npc,
-                "reason": "combat_started",
-            }))
-        events.append(("combat.started", {"combatant_ids": [source_id]}))
+        from mgmai.engine.combat import enter_combat, resolve_combat_enemies
+        enemies = resolve_combat_enemies(
+            [source_id], enc_result.get("combatants"), hard, corpus
+        )
+        if enemies:
+            combat_entry = enter_combat(enemies, hard, corpus)
+            if combat_entry.get("hard_changes"):
+                if changes is not None:
+                    changes.merge(combat_entry["hard_changes"])
+                else:
+                    state_manager.apply_hard_changes(combat_entry["hard_changes"])
+            if combat_entry.get("game_over"):
+                hard.game_over = GameOverState(type="lose", trigger="player_death")
+            if combat_entry.get("combat_log") and combat_log is not None:
+                combat_log.extend(combat_entry["combat_log"])
+            # Exit dialogue if active — combat and dialogue are mutually exclusive
+            if soft.dialogue_state.active_npc is not None:
+                from mgmai.engine.dialogue import exit_dialogue
+                active_npc = soft.dialogue_state.active_npc
+                exit_dialogue(soft, corpus, hard)
+                events.append(("dialogue.ended", {
+                    "npc_id": active_npc,
+                    "reason": "combat_started",
+                }))
+            events.append(("combat.started", {"combatant_ids": enemies}))
+        else:
+            log.warning(
+                "trigger_combat produced no eligible combatants for %s",
+                source_id,
+            )
 
     branch_taken = enc_result.get("branch_taken")
     if branch_taken is not None:

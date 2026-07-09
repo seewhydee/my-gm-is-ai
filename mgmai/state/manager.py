@@ -129,6 +129,7 @@ class StateManager:
         reset_disabled_once()
 
         self.validate_cross_references()
+        self._validate_trigger_combat_scope()
         self._validate_stats_system()
         self._validate_player_stats()
         self._init_player_combat_defaults()
@@ -370,6 +371,7 @@ class StateManager:
         self._merge_player_overrides(self.hard_state.player, player_overrides)
 
         self.validate_cross_references()
+        self._validate_trigger_combat_scope()
         self._validate_stats_system()
         self._validate_player_stats()
         self._init_player_combat_defaults()
@@ -674,6 +676,172 @@ class StateManager:
                         errors.append(
                             f"NPC '{entry.source_id}' knowledge topic_id "
                             f"'{entry.topic_id}' is not in will_reveal")
+
+        if errors:
+            raise ValueError("\n".join(errors))
+
+    def _validate_trigger_combat_scope(self) -> None:
+        """Validate that trigger_combat/combatants only appear on encounter results.
+
+        Also validates referential integrity of explicit combatants and the
+        combat_group membership rule (all members must be stat-blocked npcs).
+        """
+        if self.corpus is None:
+            return
+
+        from mgmai.models.corpus import (
+            Checkable,
+            EncounterRule,
+            Entity,
+            GatedCheck,
+            Interaction,
+            Mechanic,
+            OnExamineEvent,
+            Reaction,
+            Resolvable,
+            Result,
+            Room,
+            UsingResultOverride,
+        )
+
+        errors: list[str] = []
+
+        def _check_checkable(checkable: Checkable | None, carrier: str, *, allowed: bool) -> None:
+            if checkable is None:
+                return
+            if checkable.success is not None:
+                _check_result(checkable.success, carrier, allowed=allowed)
+            if checkable.failure is not None:
+                _check_result(checkable.failure, carrier, allowed=allowed)
+
+        def _check_result(result: Result | None, carrier: str, *, allowed: bool) -> None:
+            if result is None:
+                return
+            has_combat = result.trigger_combat or result.combatants is not None
+            if has_combat:
+                if result.combatants is not None and not result.trigger_combat:
+                    errors.append(
+                        f"{carrier}: 'combatants' requires 'trigger_combat: true'"
+                    )
+                if not allowed:
+                    errors.append(
+                        f"{carrier}: 'trigger_combat'/'combatants' is only "
+                        f"allowed on encounter-rule results"
+                    )
+            if result.combatants is not None:
+                for cid in result.combatants:
+                    ent = self.corpus.entities.get(cid)
+                    if ent is None:
+                        errors.append(
+                            f"{carrier}: combatants entry '{cid}' is not a "
+                            f"known entity"
+                        )
+                    elif ent.combat is None:
+                        errors.append(
+                            f"{carrier}: combatants entry '{cid}' "
+                            f"does not have a combat block"
+                        )
+            if result.then_check is not None:
+                _check_checkable(result.then_check, carrier, allowed=allowed)
+
+        def _check_using_override(override: UsingResultOverride | None, carrier: str, *, allowed: bool) -> None:
+            if override is None:
+                return
+            _check_result(override.result, carrier, allowed=allowed)
+            _check_result(override.success, carrier, allowed=allowed)
+            _check_result(override.failure, carrier, allowed=allowed)
+
+        def _check_interaction(interaction: Interaction | OnExamineEvent | Resolvable | None, carrier: str) -> None:
+            if interaction is None:
+                return
+            inter_id = getattr(interaction, "id", None) or "?"
+            carrier = f"{carrier} interaction '{inter_id}'"
+            if interaction.check is not None:
+                _check_checkable(interaction, carrier, allowed=False)
+            elif interaction.result is not None:
+                _check_result(interaction.result, carrier, allowed=False)
+            if getattr(interaction, "using_results", None) is not None:
+                for override in interaction.using_results.values():
+                    _check_using_override(override, carrier, allowed=False)
+
+        def _check_reaction(reaction: Reaction, carrier: str) -> None:
+            effect = reaction.effect
+            if effect.result is not None:
+                _check_result(
+                    effect.result,
+                    f"{carrier} reaction '{reaction.id}'",
+                    allowed=False,
+                )
+
+        def _check_encounter_rule(rule: EncounterRule, encounter_id: str) -> None:
+            carrier = f"encounter rule in '{encounter_id}'"
+            if rule.check is not None:
+                _check_checkable(rule, carrier, allowed=True)
+            elif rule.result is not None:
+                _check_result(rule.result, carrier, allowed=True)
+
+        def _check_gated_check(gc: GatedCheck | None, carrier: str) -> None:
+            if gc is None:
+                return
+            if gc.using_results is not None:
+                for override in gc.using_results.values():
+                    _check_using_override(override, carrier, allowed=False)
+
+        def _check_entity(entity: Entity, entity_id: str) -> None:
+            for interaction in entity.interactions:
+                _check_interaction(interaction, f"entity '{entity_id}'")
+            for event in entity.on_examine:
+                _check_interaction(event, f"entity '{entity_id}' on_examine")
+            if entity.dialogue is not None:
+                for path_id, path in entity.dialogue.dialogue_paths.items():
+                    _check_interaction(path, f"entity '{entity_id}' dialogue path '{path_id}'")
+            if entity.aggro is not None:
+                for rule in entity.aggro:
+                    _check_encounter_rule(rule, f"entity '{entity_id}' aggro")
+            if entity.take_check is not None:
+                _check_gated_check(entity.take_check, f"entity '{entity_id}' take_check")
+            for reaction in entity.reactions:
+                _check_reaction(reaction, f"entity '{entity_id}'")
+
+        def _check_room(room: Room, room_id: str) -> None:
+            for interaction in room.interactions:
+                _check_interaction(interaction, f"room '{room_id}'")
+            for event in room.on_examine:
+                _check_interaction(event, f"room '{room_id}' on_examine")
+            for reaction in room.reactions:
+                _check_reaction(reaction, f"room '{room_id}'")
+
+        def _check_mechanic(mechanic: Mechanic, mechanic_id: str) -> None:
+            if mechanic.rules is not None:
+                for rule in mechanic.rules:
+                    _check_encounter_rule(rule, f"mechanic '{mechanic_id}'")
+            for reaction in mechanic.reactions:
+                _check_reaction(reaction, f"mechanic '{mechanic_id}'")
+
+        for entity_id, entity in self.corpus.entities.items():
+            _check_entity(entity, entity_id)
+        for room_id, room in self.corpus.rooms.items():
+            _check_room(room, room_id)
+        for mechanic_id, mechanic in self.corpus.mechanics.items():
+            _check_mechanic(mechanic, mechanic_id)
+
+        # combat_group membership: every member must be an npc with a combat block.
+        groups: dict[str, list[str]] = {}
+        for eid, entity in self.corpus.entities.items():
+            if entity.combat_group is not None:
+                groups.setdefault(entity.combat_group, []).append(eid)
+        for grp, members in groups.items():
+            for eid in members:
+                entity = self.corpus.entities[eid]
+                if entity.type != "npc":
+                    errors.append(
+                        f"combat_group '{grp}': member '{eid}' has type "
+                        f"'{entity.type}', only 'npc' entities may belong to a combat_group"
+                    )
+                if entity.combat is None:
+                    errors.append(
+                        f"combat_group '{grp}': member '{eid}' lacks a combat block"
+                    )
 
         if errors:
             raise ValueError("\n".join(errors))

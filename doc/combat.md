@@ -164,12 +164,20 @@ engine computes defaults at combat-start time:
 Combat starts in one of two ways:
 
 1. **Direct attack** — The player uses `interact` + `interaction_id: "attack"`
-   on an NPC that has a `CombatBlock`. If the NPC has an `interaction.used`
-   reaction that triggers an encounter, the encounter rules run first; an
-   encounter `trigger_combat` on result (or a direct attack on an NPC without such
-   a reaction) starts combat.
-2. **Encounter outcome `"combat"`** — An NPC's `aggro.encounter_rules` or a
-   `mechanics` encounter returns `result.trigger_combat: true`.
+   on an NPC that has a `CombatBlock`. A direct attack immediately enters
+   combat with that NPC plus any present, living members of its
+   `combat_group`.  If the NPC has an `interaction.used` reaction that
+   triggers an encounter, the encounter rules run first.
+2. **Encounter outcome** — An NPC's `aggro.encounter_rules` or a
+   `mechanics` encounter returns `result.trigger_combat: true`.  The
+   encounter may also list explicit `combatants` and/or expand the
+   source's `combat_group`.
+
+In both cases the enemy set is the filtered union of the source,
+its `combat_group`, and any explicit `combatants`.  Enemies must be
+present in the current room and alive; dead, fled, absent, or
+non-stat-blocked ids are silently dropped.  If the filtered set is empty,
+no combat is entered.
 
 On entry:
 - Player HP is initialised from CON if not already set.

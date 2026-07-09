@@ -1207,3 +1207,35 @@ class TestModuleCorpusWithStats:
         })
         assert mc.stats is not None
         assert mc.stats.definitions["STR"].name == "Strength"
+
+
+class TestCombatGroupModel:
+    """Entity.combat_group is npc-only; Result.combatants serializes correctly."""
+
+    def test_combat_group_on_npc_ok(self) -> None:
+        e = Entity.model_validate({
+            "type": "npc",
+            "description": "A goblin.",
+            "state_fields": {"alive": {"type": "boolean", "description": "Alive?"}},
+            "combat_group": "goblin_band",
+        })
+        assert e.combat_group == "goblin_band"
+
+    def test_combat_group_on_non_npc_raises(self) -> None:
+        with pytest.raises(ValidationError, match="combat_group"):
+            Entity.model_validate({
+                "type": "feature",
+                "description": "A feature.",
+                "combat_group": "bad_features",
+            })
+
+    def test_result_combatants_roundtrip(self) -> None:
+        r = Result(
+            trigger_combat=True,
+            combatants=["goblin_1", "goblin_2"],
+            narrative="The ambush springs!",
+        )
+        data = r.model_dump()
+        r2 = Result.model_validate(data)
+        assert r2.combatants == ["goblin_1", "goblin_2"]
+        assert r2.trigger_combat is True

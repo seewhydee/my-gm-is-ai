@@ -521,3 +521,50 @@ class TestGameOverDict:
 
     def test_none_returns_none(self) -> None:
         assert _game_over_dict(None) is None
+
+
+class TestCombatantsThreading:
+    """resolve_encounter threads explicit combatants from the firing Result."""
+
+    def test_rule_level_combatants_returned(self, sample_corpus):
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            _mk_encounter_rule(
+                outcome="combat",
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                narrative="The ambush springs!",
+                combatants=["spider"],
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["trigger_combat"] is True
+        assert result["combatants"] == ["spider"]
+
+    def test_empty_result_has_none_combatants(self, sample_corpus):
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            _mk_encounter_rule(
+                outcome="flee",
+                condition=ConditionExpression(require="entity:player.alive == true"),
+                narrative="It runs.",
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
+        assert result["combatants"] is None
+        assert result["trigger_combat"] is False
+
+    def test_no_rules_match_has_none_combatants(self, sample_corpus):
+        hard = _load_hard()
+        soft = _load_soft()
+        rules = [
+            _mk_encounter_rule(
+                outcome="combat",
+                condition=ConditionExpression(require="flag:nonexistent == true"),
+                combatants=["spider"],
+            )
+        ]
+        result = resolve_encounter(rules, hard, soft, sample_corpus)
+        assert result["combatants"] is None
+        assert result["trigger_combat"] is False

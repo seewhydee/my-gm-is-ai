@@ -418,6 +418,17 @@ For NPCs, also add descriptions for the following:
   - NPC flee or auto-death
   - stat check with success/failure branches (flee, auto-death)
 
+  For multi-enemy fights, use one of these idioms:
+  - **`combat_group`** — give every member of a homogeneous band (e.g.,
+    three goblins) the same string tag.  Attacking any present, living
+    member pulls the rest of the band into combat.  Followers (NPCs with
+    a `dialogue` block whose state says `following: true`) are treated as
+    allies and are never auto-pulled, even if they share the tag.
+  - **`combatants`** — on an encounter result with `trigger_combat: true`,
+    list explicit entity IDs to fight (e.g., the captain and two archers).
+    This expands by `combat_group` too, so listing one band member will
+    pull the whole present band; to select a subset, omit `combat_group`.
+
   Also note any effects of NPC fleeing (e.g., setting a flag, or
   moving the NPC to another room).
 
@@ -509,6 +520,12 @@ catching gaps here avoids rework downstream.
       `attitude` state field (§1G).
 - [ ] Every NPC with `behavior` encounter rules specifying multi-turn
       combat should have combat stats (§1G)
+- [ ] `trigger_combat` and `combatants` are only used inside encounter
+      rules (`entity.aggro` or `mechanic.rules`)
+- [ ] Every id in a `combatants` list belongs to an NPC with combat stats
+- [ ] Every NPC sharing a `combat_group` value has combat stats and is an NPC
+- [ ] Mechanic encounters that use `trigger_combat` list enemies via
+      `combatants` or `combat_group` (the mechanic id is not a combatant)
 
 #### Flags, state, and tags
 
@@ -1486,11 +1503,14 @@ based on which room triggered them (e.g., different fall damage by room).
 | `failure` | Result | Branch when check/roll fails |
 | `skip_check_if` | condition object | Bypass the check, apply `success` directly |
 
-> **`trigger_combat` on Result:** When a firing `Result` has
-> `trigger_combat: true`, the engine starts multi-round combat.
-> The NPC must have a `combat` block with HP, AC, attack bonus, initiative,
-> etc. — see §2B and [`doc/combat.md`](../doc/combat.md).  Without it, the
-> engine will error.
+> **`trigger_combat` on Result:** `trigger_combat: true` is only
+> honoured on results inside an encounter rule (`entity.aggro` or
+> `mechanic.rules`).  When such a result fires, the engine starts
+> multi-round combat.  The encounter may also list explicit
+> `combatants` and/or expand the source's `combat_group`.  Every enemy
+> must be a stat-blocked NPC; if the filtered enemy set is empty, no
+> combat is entered.  Using `trigger_combat`/`combatants` outside
+> encounter results is a load-time validation error.
 
 `player_damage` is available at both the rule level (applies unconditionally
 when the rule fires) and the branch level (overrides the rule-level value).

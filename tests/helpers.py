@@ -183,6 +183,7 @@ def _mk_encounter_rule(
     failure: Result | None = None,
     stat_check: dict | None = None,
     trigger_combat: bool = False,
+    combatants: list[str] | None = None,
     game_over_type: str | None = None,
     game_over_trigger: str | None = None,
 ) -> EncounterRule:
@@ -218,6 +219,8 @@ def _mk_encounter_rule(
         result_data["player_damage"] = player_damage
     if trigger_combat or outcome == "combat":
         result_data["trigger_combat"] = True
+    if combatants is not None:
+        result_data["combatants"] = combatants
     if outcome == "death" or game_over_type is not None:
         result_data["game_over"] = {
             "type": game_over_type or "lose",
@@ -466,6 +469,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
                     _mk_encounter_rule(
                         outcome="combat",
                         narrative="The spider attacks!",
+                        combatants=["spider"],
                         condition=_mk_cond(require="entity:spider.alive == true"),
                     )
                 ],
@@ -584,7 +588,7 @@ def build_state_manager(
             for fname, fdecl in ent.state_fields.items():
                 if fdecl.type == "boolean":
                     states[fname] = True
-                elif fdecl.get("type") == "number":  # type: ignore[union-attr]
+                elif fdecl.type == "number":
                     states[fname] = 0
                 else:
                     states[fname] = ""

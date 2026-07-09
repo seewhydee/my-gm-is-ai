@@ -250,12 +250,10 @@ def resolve(
                     narrative=enc_result.get("narrative"),
                 )
 
-            encounter_outcome = EncounterOutcome(
-                encounter_id=encounter_source_id,
-                combat=enc_result["trigger_combat"],
-                narrative_brief=enc_result.get("narrative"),
-                branch_taken=enc_result.get("branch_taken"),
-            )
+            # Apply encounter state changes before combat resolution so that
+            # mutations to presence/alive are visible to enemy filtering.
+            _apply_and_merge(encounter_changes)
+
             branch_taken = enc_result.get("branch_taken")
             if branch_taken is not None:
                 resolution.events.append((
@@ -268,20 +266,39 @@ def resolve(
             enc_rolls = enc_result.get("rolls") or []
             rolls.extend(enc_rolls)
 
+            combat_started = False
             if enc_result["trigger_combat"]:
-                from mgmai.engine.combat import enter_combat
-                combat_entry = enter_combat([encounter_source_id], hard, corpus)
-                combat_triggered = True
-                combat_log = combat_entry["combat_log"]
-                if combat_entry.get("hard_changes"):
-                    encounter_changes.merge(combat_entry["hard_changes"])
-                if combat_entry.get("game_over"):
-                    hard.game_over = GameOverState(type="lose", trigger="player_death")
-                    game_over = GameOverResult(type="lose", trigger="player_death")
-                if soft.dialogue_state.active_npc is not None:
-                    resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+                from mgmai.engine.combat import enter_combat, resolve_combat_enemies
+                enemies = resolve_combat_enemies(
+                    [encounter_source_id],
+                    enc_result.get("combatants"),
+                    hard,
+                    corpus,
+                )
+                if enemies:
+                    combat_entry = enter_combat(enemies, hard, corpus)
+                    combat_started = True
+                    combat_triggered = True
+                    combat_log = combat_entry["combat_log"]
+                    if combat_entry.get("hard_changes"):
+                        _apply_and_merge(combat_entry["hard_changes"])
+                    if combat_entry.get("game_over"):
+                        hard.game_over = GameOverState(type="lose", trigger="player_death")
+                        game_over = GameOverResult(type="lose", trigger="player_death")
+                    if soft.dialogue_state.active_npc is not None:
+                        resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+                else:
+                    log.warning(
+                        "trigger_combat produced no eligible combatants for %s",
+                        encounter_source_id,
+                    )
 
-            _apply_and_merge(encounter_changes)
+            encounter_outcome = EncounterOutcome(
+                encounter_id=encounter_source_id,
+                combat=combat_started,
+                narrative_brief=enc_result.get("narrative"),
+                branch_taken=enc_result.get("branch_taken"),
+            )
         else:
             # No encounter rules defined — apply default outcome.
             # Attacking an NPC with no combat stats or encounter rules

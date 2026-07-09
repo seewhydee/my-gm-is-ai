@@ -1012,3 +1012,137 @@ class TestSaveLoadRoundtrip:
 
         assert "rock" in sm2.soft_state.soft_inventory
         assert "A note" in sm2.soft_state.room_notes["axe_head"]
+
+
+class TestTriggerCombatScopeValidation:
+    """Load-time validation for trigger_combat/combatants/combat_group."""
+
+    def _build_sm(self, corpus_dict):
+        sm = StateManager()
+        sm.corpus = ModuleCorpus.model_validate(corpus_dict)
+        sm.hard_state = HardGameState.model_validate({
+            "player": {"location": "room1"},
+            "flags": {},
+            "room_states": {"room1": {"visited": False}},
+            "entity_states": {
+                "goblin": {"alive": True, "current_hp": 7},
+                "orc": {"alive": True, "current_hp": 15},
+            },
+            "turn_count": 0,
+        })
+        sm.soft_state = SoftGameState()
+        return sm
+
+    def _base_corpus(self):
+        return {
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1",
+                    "description": "A room.",
+                    "contains": ["goblin", "orc"],
+                },
+            },
+            "entities": {
+                "goblin": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6"},
+                },
+                "orc": {
+                    "type": "npc",
+                    "description": "An orc.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 15, "ac": 13, "atk": 5, "dmg": "1d8"},
+                },
+                "scroll": {
+                    "type": "item",
+                    "name": "Scroll",
+                    "description": "A scroll.",
+                },
+            },
+        }
+
+    def test_trigger_combat_on_interaction_result_rejected(self):
+        data = self._base_corpus()
+        data["entities"]["goblin"]["interactions"] = [{
+            "id": "provoke",
+            "description": "Provoke",
+            "result": {"narrative": "It attacks!", "trigger_combat": True},
+        }]
+        sm = self._build_sm(data)
+        with pytest.raises(ValueError, match="only allowed on encounter-rule"):
+            sm._validate_trigger_combat_scope()
+
+    def test_combatants_without_trigger_combat_rejected(self):
+        data = self._base_corpus()
+        data["entities"]["goblin"]["aggro"] = [{
+            "condition": {"require": "entity:goblin.alive == true"},
+            "result": {"narrative": "Ambush!", "combatants": ["orc"]},
+        }]
+        sm = self._build_sm(data)
+        with pytest.raises(ValueError, match="'combatants' requires 'trigger_combat: true'"):
+            sm._validate_trigger_combat_scope()
+
+    def test_combatants_unknown_entity_rejected(self):
+        data = self._base_corpus()
+        data["entities"]["goblin"]["aggro"] = [{
+            "condition": {"require": "entity:goblin.alive == true"},
+            "result": {"narrative": "Ambush!", "trigger_combat": True, "combatants": ["dragon"]},
+        }]
+        sm = self._build_sm(data)
+        with pytest.raises(ValueError, match="combatants entry 'dragon' is not a known entity"):
+            sm._validate_trigger_combat_scope()
+
+    def test_combatants_non_stat_blocked_rejected(self):
+        data = self._base_corpus()
+        data["entities"]["goblin"]["aggro"] = [{
+            "condition": {"require": "entity:goblin.alive == true"},
+            "result": {"narrative": "Ambush!", "trigger_combat": True, "combatants": ["scroll"]},
+        }]
+        sm = self._build_sm(data)
+        with pytest.raises(ValueError, match="combatants entry 'scroll' does not have a combat block"):
+            sm._validate_trigger_combat_scope()
+
+    def test_combat_group_member_without_combat_rejected(self):
+        data = self._base_corpus()
+        data["entities"]["goblin"]["combat_group"] = "band"
+        data["entities"]["orc"]["combat_group"] = "band"
+        # Remove orc's combat block.
+        del data["entities"]["orc"]["combat"]
+        sm = self._build_sm(data)
+        with pytest.raises(ValueError, match="combat_group 'band': member 'orc' lacks a combat block"):
+            sm._validate_trigger_combat_scope()
+
+    def test_valid_encounter_combatants_passes(self):
+        data = self._base_corpus()
+        data["entities"]["goblin"]["aggro"] = [{
+            "condition": {"require": "entity:goblin.alive == true"},
+            "result": {"narrative": "Ambush!", "trigger_combat": True, "combatants": ["orc"]},
+        }]
+        sm = self._build_sm(data)
+        sm._validate_trigger_combat_scope()  # should not raise
+
+    def test_trigger_combat_in_then_check_outside_encounter_rejected(self):
+        data = self._base_corpus()
+        data["entities"]["goblin"]["interactions"] = [{
+            "id": "provoke",
+            "description": "Provoke",
+            "result": {
+                "narrative": "It hesitates.",
+                "then_check": {
+                    "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
+                    "success": {"narrative": "It attacks!", "trigger_combat": True},
+                },
+            },
+        }]
+        sm = self._build_sm(data)
+        with pytest.raises(ValueError, match="only allowed on encounter-rule"):
+            sm._validate_trigger_combat_scope()

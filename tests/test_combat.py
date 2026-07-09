@@ -42,6 +42,7 @@ from mgmai.engine.combat import (
     enter_combat,
     get_player_ac,
     get_player_max_hp,
+    resolve_combat_enemies,
     resolve_combat_turn,
     roll_damage,
     roll_initiative,
@@ -817,3 +818,184 @@ class TestCombatEndStates:
         assert result["success"]
         assert result["game_over"] is True
         assert hard.combat is None
+
+
+# ------------------------------------------------------------------
+# 13. Enemy resolution (resolve_combat_enemies)
+# ------------------------------------------------------------------
+
+class TestResolveCombatEnemies:
+    """Combatant set expansion, filtering, and follower handling."""
+
+    @pytest.fixture
+    def band_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Band Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1",
+                    "description": "A room.",
+                    "contains": ["goblin_1", "goblin_2", "goblin_3"],
+                },
+                "room2": {
+                    "name": "Room 2",
+                    "description": "Another room.",
+                    "contains": ["goblin_4"],
+                },
+            },
+            "entities": {
+                "goblin_1": {
+                    "type": "npc",
+                    "description": "Goblin 1.",
+                    "state_fields": {"alive": {"type": "boolean", "description": "Alive?"}},
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6"},
+                    "combat_group": "goblin_band",
+                },
+                "goblin_2": {
+                    "type": "npc",
+                    "description": "Goblin 2.",
+                    "state_fields": {"alive": {"type": "boolean", "description": "Alive?"}},
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6"},
+                    "combat_group": "goblin_band",
+                },
+                "goblin_3": {
+                    "type": "npc",
+                    "description": "Goblin 3.",
+                    "state_fields": {"alive": {"type": "boolean", "description": "Alive?"}},
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6"},
+                    "combat_group": "goblin_band",
+                },
+                "goblin_4": {
+                    "type": "npc",
+                    "description": "Goblin 4 in another room.",
+                    "state_fields": {"alive": {"type": "boolean", "description": "Alive?"}},
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6"},
+                    "combat_group": "goblin_band",
+                },
+                "noncombat_goblin": {
+                    "type": "npc",
+                    "description": "No combat block.",
+                    "state_fields": {"alive": {"type": "boolean", "description": "Alive?"}},
+                    "combat_group": "goblin_band",
+                },
+            },
+        })
+
+    @pytest.fixture
+    def band_hard_state(self) -> HardGameState:
+        return HardGameState.model_validate({
+            "player": {"location": "room1"},
+            "flags": {},
+            "room_states": {},
+            "entity_states": {
+                "goblin_1": {"alive": True},
+                "goblin_2": {"alive": True},
+                "goblin_3": {"alive": True},
+                "goblin_4": {"alive": True},
+                "noncombat_goblin": {"alive": True},
+            },
+            "room_contains": {
+                "room1": {"goblin_1": 1, "goblin_2": 1, "goblin_3": 1},
+                "room2": {"goblin_4": 1},
+            },
+        })
+
+    def test_seed_expands_to_present_band(self, band_hard_state, band_corpus):
+        enemies = resolve_combat_enemies(
+            ["goblin_1"], None, band_hard_state, band_corpus
+        )
+        assert set(enemies) == {"goblin_1", "goblin_2", "goblin_3"}
+
+    def test_absent_seed_band_expands_to_present(self, band_hard_state, band_corpus):
+        # goblin_4 is in room2 (player is in room1).  It is dropped as a seed,
+        # but its combat_group still expands to the present band in room1.
+        enemies = resolve_combat_enemies(
+            ["goblin_4"], None, band_hard_state, band_corpus
+        )
+        assert set(enemies) == {"goblin_1", "goblin_2", "goblin_3"}
+        assert "goblin_4" not in enemies
+
+    def test_dead_and_fled_dropped(self, band_hard_state, band_corpus):
+        band_hard_state.entity_states["goblin_2"]["alive"] = False
+        band_hard_state.entity_states["goblin_3"]["fled"] = True
+        enemies = resolve_combat_enemies(
+            ["goblin_1"], None, band_hard_state, band_corpus
+        )
+        assert enemies == ["goblin_1"]
+
+    def test_noncombat_band_member_dropped(self, band_hard_state, band_corpus):
+        enemies = resolve_combat_enemies(
+            ["goblin_1"], None, band_hard_state, band_corpus
+        )
+        assert "noncombat_goblin" not in enemies
+
+    def test_explicit_combatants_expand_group(self, band_hard_state, band_corpus):
+        enemies = resolve_combat_enemies(
+            ["goblin_1"], ["goblin_2"], band_hard_state, band_corpus
+        )
+        assert set(enemies) == {"goblin_1", "goblin_2", "goblin_3"}
+
+    def test_unknown_seed_dropped(self, band_hard_state, band_corpus):
+        enemies = resolve_combat_enemies(
+            ["unknown_id"], None, band_hard_state, band_corpus
+        )
+        assert enemies == []
+
+    def test_follower_not_auto_pulled(self, band_hard_state, band_corpus):
+        # Make goblin_2 a follower: it has dialogue and following=true.
+        from mgmai.models.corpus import DialogueGuidelines
+        ent = band_corpus.entities["goblin_2"]
+        ent.dialogue = DialogueGuidelines(guidelines="A goblin follower.")
+        band_hard_state.entity_states["goblin_2"]["following"] = True
+        enemies = resolve_combat_enemies(
+            ["goblin_1"], None, band_hard_state, band_corpus
+        )
+        assert "goblin_2" not in enemies
+        assert set(enemies) == {"goblin_1", "goblin_3"}
+
+    def test_attacked_follower_seed_is_included(self, band_hard_state, band_corpus):
+        from mgmai.models.corpus import DialogueGuidelines
+        ent = band_corpus.entities["goblin_2"]
+        ent.dialogue = DialogueGuidelines(guidelines="A goblin follower.")
+        band_hard_state.entity_states["goblin_2"]["following"] = True
+        enemies = resolve_combat_enemies(
+            ["goblin_2"], None, band_hard_state, band_corpus
+        )
+        assert "goblin_2" in enemies
+
+    def test_empty_result(self, band_hard_state, band_corpus):
+        band_hard_state.entity_states["goblin_1"]["alive"] = False
+        band_hard_state.entity_states["goblin_2"]["alive"] = False
+        band_hard_state.entity_states["goblin_3"]["fled"] = True
+        enemies = resolve_combat_enemies(
+            ["goblin_1"], None, band_hard_state, band_corpus
+        )
+        assert enemies == []
+
+
+class TestBriefingMultiEnemy:
+    """A multi-enemy CombatState yields one briefing entry per living enemy."""
+
+    def test_briefing_lists_all_enemies(self, combat_hard_state, combat_npc_corpus):
+        from mgmai.context.assembler import _build_combat_state
+        hard = combat_hard_state.model_copy(deep=True)
+        # Add a second goblin to the room.
+        hard.room_contains["room1"]["goblin2"] = 1
+        combat_npc_corpus.entities["goblin2"] = Entity(
+            type="npc",
+            description="Another goblin.",
+            state_fields={"alive": {"type": "boolean", "description": "Alive?"}, "current_hp": {"type": "number", "description": "HP"}},
+            combat=CombatBlock(hp=5, ac=10, atk=2, dmg="1d4"),
+        )
+        hard.entity_states["goblin2"] = {"alive": True, "current_hp": 5}
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin", "goblin2"],
+            initiative_order=["player", "goblin", "goblin2"],
+            current_index=0,
+            round_number=1,
+        )
+        briefing = _build_combat_state(hard, combat_npc_corpus)
+        assert briefing is not None
+        enemy_ids = {c["id"] for c in briefing.combatants if c["id"] != "player"}
+        assert enemy_ids == {"goblin", "goblin2"}

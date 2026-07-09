@@ -601,3 +601,158 @@ class TestEngineRoomAfter:
         assert limits.min == -5
         assert limits.max == 10
         assert limits.step_per_turn == 3
+
+
+class TestMultiCombatantEncounters:
+    """Multi-enemy combat entry and empty-set reconciliation."""
+
+    def test_encounter_combatants_start_multi_enemy_combat(self):
+        from tests.helpers import _mk_npc_entity, CombatBlock
+        corpus = make_encounter_trigger_corpus(
+            mechanic_id="ambush",
+            encounter_outcome="combat",
+            encounter_narrative="The ambush springs!",
+        )
+        # Add two combat-capable NPCs in the start room.
+        corpus.entities["thug_1"] = _mk_npc_entity(
+            "thug_1",
+            state_fields={"alive": {"type": "boolean", "description": "Alive?"}, "current_hp": {"type": "number", "description": "HP"}},
+            combat=CombatBlock(hp=10, ac=12, atk=3, dmg="1d6"),
+        )
+        corpus.entities["thug_2"] = _mk_npc_entity(
+            "thug_2",
+            state_fields={"alive": {"type": "boolean", "description": "Alive?"}, "current_hp": {"type": "number", "description": "HP"}},
+            combat=CombatBlock(hp=10, ac=12, atk=3, dmg="1d6"),
+        )
+        corpus.rooms["start"].contains = ["thug_1", "thug_2"]
+        corpus.mechanics["ambush"].rules[0].result.combatants = ["thug_1", "thug_2"]
+
+        manager = build_state_manager(corpus)
+        hard = manager.hard_state
+        hard.room_contains["start"] = {"thug_1": 1, "thug_2": 1}
+        hard.entity_states["thug_1"] = {"alive": True, "current_hp": 10}
+        hard.entity_states["thug_2"] = {"alive": True, "current_hp": 10}
+
+        from mgmai.engine.event_bus import reset_disabled_once
+        reset_disabled_once()
+        action = InteractAction(
+            action_type="interact",
+            target="thug_1",
+            interaction_id="attack",
+            detail="Attack thug_1",
+        )
+        # No explicit attack interaction -> encounter trigger on thug_1.
+        # The NPC has no aggro, so it falls through to mechanic lookup (none).
+        # Actually this won't trigger the mechanic.  Use a reaction instead.
+        # Simpler: set the encounter trigger via a turn.start reaction.
+        corpus.rooms["start"].reactions.append(_mk_reaction(
+            "ambush_reaction",
+            on="turn.start",
+            effect=ReactionEffects(trigger_encounter="ambush"),
+        ))
+        action = WaitAction(action_type="wait", detail="Wait")
+        result = resolve(action, manager)
+        assert result.combat_triggered is True
+        assert hard.combat is not None
+        assert set(hard.combat.combatants) == {"player", "thug_1", "thug_2"}
+
+    def test_mechanic_trigger_combat_without_combatants_does_not_enter_combat(self):
+        corpus = make_encounter_trigger_corpus(
+            mechanic_id="empty_combat",
+            encounter_outcome="combat",
+            encounter_narrative="Nothing happens.",
+        )
+        corpus.rooms["start"].reactions.append(_mk_reaction(
+            "empty_combat_reaction",
+            on="turn.start",
+            effect=ReactionEffects(trigger_encounter="empty_combat"),
+        ))
+        manager = build_state_manager(corpus)
+        from mgmai.engine.event_bus import reset_disabled_once
+        reset_disabled_once()
+
+        action = WaitAction(action_type="wait", detail="Wait")
+        result = resolve(action, manager)
+        assert result.combat_triggered is False
+        assert manager.hard_state.combat is None
+        assert "Nothing happens." in result.triggered_narration
+
+    def test_empty_combat_does_not_block_room_transition(self):
+        corpus = make_encounter_trigger_corpus(
+            mechanic_id="empty_combat",
+            encounter_outcome="combat",
+            encounter_narrative="A hollow threat.",
+        )
+        # Give the mechanic a result that also moves the player.
+        corpus.mechanics["empty_combat"].rules[0].result.set_player_location = "target"
+        corpus.rooms["start"].reactions.append(_mk_reaction(
+            "empty_combat_reaction",
+            on="turn.start",
+            effect=ReactionEffects(trigger_encounter="empty_combat"),
+        ))
+        manager = build_state_manager(corpus)
+        from mgmai.engine.event_bus import reset_disabled_once
+        reset_disabled_once()
+
+        action = WaitAction(action_type="wait", detail="Wait")
+        result = resolve(action, manager)
+        assert result.combat_triggered is False
+        assert manager.hard_state.player.location == "target"
+
+    def test_encounter_state_change_visible_to_enemy_resolution(self):
+        from tests.helpers import _mk_npc_entity, CombatBlock
+        corpus = make_encounter_trigger_corpus(
+            mechanic_id="unused",
+            encounter_outcome="combat",
+            encounter_narrative="A dead foe stirs!",
+        )
+        # Cultist has no combat block, so attacking it routes through aggro.
+        corpus.entities["cultist"] = _mk_npc_entity(
+            "cultist",
+            state_fields={"alive": {"type": "boolean", "description": "Alive?"}},
+            reactions=[],
+        )
+        corpus.entities["zombie"] = _mk_npc_entity(
+            "zombie",
+            state_fields={"alive": {"type": "boolean", "description": "Alive?"}, "current_hp": {"type": "number", "description": "HP"}},
+            combat=CombatBlock(hp=10, ac=10, atk=2, dmg="1d6"),
+            reactions=[],
+        )
+        # Give cultist aggro that revives zombie and triggers combat.
+        from mgmai.models.corpus import EncounterRule
+        corpus.entities["cultist"].aggro = [
+            EncounterRule.model_validate({
+                "condition": {"require": "entity:cultist.alive == true"},
+                "result": {
+                    "narrative": "The cultist chants and zombie rises!",
+                    "trigger_combat": True,
+                    "combatants": ["zombie"],
+                    "set_entity_state": {
+                        "zombie": {"alive": True, "current_hp": 10},
+                    },
+                },
+            })
+        ]
+        corpus.rooms["start"].contains = ["cultist", "zombie"]
+
+        manager = build_state_manager(corpus)
+        hard = manager.hard_state
+        hard.room_contains["start"] = {"cultist": 1, "zombie": 1}
+        hard.entity_states["cultist"] = {"alive": True}
+        hard.entity_states["zombie"] = {"alive": False, "current_hp": 0}
+
+        from mgmai.engine.event_bus import reset_disabled_once
+        reset_disabled_once()
+        action = InteractAction(
+            action_type="interact",
+            target="cultist",
+            interaction_id="attack",
+            detail="Attack cultist",
+        )
+        result = resolve(action, manager)
+        assert result.combat_triggered is True
+        assert result.encounter_outcome is not None
+        assert result.encounter_outcome.combat is True
+        assert hard.combat is not None
+        assert "zombie" in hard.combat.combatants
+        assert hard.entity_states["zombie"]["alive"] is True

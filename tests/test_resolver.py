@@ -635,6 +635,49 @@ class TestResolveInteract:
         result = resolve_interact(action, hard, soft, corpus)
         assert result.success is False
 
+    def test_attack_dead_npc_without_aggro_returns_error(self, state_manager):
+        """A dead stat-blocked NPC without aggro is rejected before combat entry."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "axe_handle_lower"
+        hard.entity_states["spider"]["alive"] = False
+        action = InteractAction(
+            action_type="interact", target="spider",
+            interaction_id="attack",
+            detail="Attacking dead spider",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is False
+        assert "dead" in result.error.lower()
+
+    def test_attack_on_combat_group_member_pulls_band(self, state_manager):
+        """Direct attack on a combat_group member enters combat with the band."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        # Give korbar and spider combat blocks and a shared combat_group.
+        from mgmai.models.corpus import CombatBlock
+        corpus.entities["korbar"].combat = CombatBlock(hp=10, ac=10, atk=2, dmg="1d6")
+        corpus.entities["korbar"].combat_group = "bad_guys"
+        corpus.entities["spider"].combat = CombatBlock(hp=15, ac=14, atk=5, dmg="1d4+3")
+        corpus.entities["spider"].combat_group = "bad_guys"
+        # Move spider to bag_floor for the test.
+        hard.room_contains["bag_floor"]["spider"] = 1
+        hard.entity_states["spider"] = {"alive": True, "current_hp": 15, "fled": False, "attitude": -5}
+        hard.entity_states["korbar"]["current_hp"] = 10
+        action = InteractAction(
+            action_type="interact", target="korbar",
+            interaction_id="attack",
+            detail="Attacking Korbar",
+        )
+        result = resolve_interact(action, hard, soft, corpus, state_manager)
+        assert result.combat_triggered is True
+        assert hard.combat is not None
+        assert "korbar" in hard.combat.combatants
+        assert "spider" in hard.combat.combatants
+
     def test_using_in_inventory(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
@@ -923,7 +966,7 @@ class TestResolveTalkPaths:
     def test_dialogue_path_condition_not_met(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
-        corpus = state_manager.corpus
+        corpus = state_manager.corpus.model_copy(deep=True)
         hard.player.location = "bag_floor"
         from mgmai.models.corpus import Resolvable, ConditionExpression
 
@@ -932,6 +975,7 @@ class TestResolveTalkPaths:
             condition=ConditionExpression.model_validate({"require": "flag:impossible_flag == true"}),
             result=Result(narrative="Should not happen."),
         )
+        path.id = "test_path"
         corpus.entities["korbar"].dialogue.dialogue_paths["test_path"] = path
         action = TalkAction(
             action_type="talk",

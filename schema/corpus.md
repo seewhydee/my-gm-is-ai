@@ -273,7 +273,8 @@ ALL fields in a Result object are optional.
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Player knowledge update (see below) |
 | `then_check`        | FollowUpCheck | See [Follow-Up](#follow-up)    |
-| `trigger_combat`    | boolean  | Enter combat mode (default `false`) |
+| `trigger_combat`    | boolean  | Enter combat mode (encounter rules only; default `false`) |
+| `combatants`        | string[] | Explicit enemy entity IDs for this encounter (requires `trigger_combat: true`; filtered for presence/aliveness) |
 | `game_over`         | GameOver | End the game (see below)            |
 
 Notes:
@@ -294,6 +295,12 @@ Notes:
 
 - `set_flag` sets global boolean flags.  A `false` value clears the
   flag; any truthy value sets it.
+
+- `trigger_combat` and `combatants` are only honoured on results inside
+  an encounter rule (`entity.aggro` or `mechanic.rules`).  Using them on
+  an interaction, reaction, `on_examine`, or dialogue path result is a
+  load-time validation error.  `combatants` requires `trigger_combat: true`
+  and every id must reference an NPC with a `combat` block.
 
 - `set_room_state` sets [Room](#room) state fields, and likewise
   `set_entity_state` sets [Entity](#entity) state fields.  Each value
@@ -1207,6 +1214,7 @@ socialize with.  NPC entity blocks support these additional fields:
 | `aggro`¹    | array  | NPC's [aggro rules](#aggro)          |
 | `follower`¹ | object | NPC's [follower rules](#follower)    |
 | `combat`¹   | object | Combat stats (hp, ac, atk, etc.)     |
+| `combat_group`¹ | string | Tag that links NPCs into a hostile band; attacking any present member pulls the rest |
 > ¹ optional
 
 #### Dialogue
@@ -1360,6 +1368,31 @@ check (DC 10), the orc kills the player; otherwise, combat begins.
 If no rule matches, the encounter silently does nothing (no narrative,
 no effects, no combat, no game-over).  To avoid this, put a rule with
 `"require": "true"` as the last entry.
+
+An encounter result with `trigger_combat: true` may also carry a
+`combatants` array of explicit entity IDs.  These ids are combined with
+the encounter source (or the directly-attacked target) and expanded by
+`combat_group`.  The final enemy set is filtered to living, present,
+stat-blocked NPCs; if the filtered set is empty, no combat is entered
+and the encounter's narrative/state changes still apply.
+
+For a **mechanic** encounter, the source id is the mechanic itself, which
+is not a combatant.  Such an encounter must therefore list its enemies
+in `combatants` or give them a shared `combat_group`; otherwise the
+`trigger_combat` resolves to no combatants.
+
+##### Combat groups
+
+NPCs with the same `combat_group` value behave as a single hostile band:
+attacking any present, living member (or starting combat with any member
+via an encounter rule) pulls every other present, living member of that
+group into the fight.  Followers — NPCs with a `dialogue` block whose
+hard state says `following: true` — are treated as allies and are *not*
+auto-pulled via group expansion, even if they share the tag.  A follower
+may only enter combat by being attacked directly.
+
+To fight a subset of a group without pulling the rest, omit
+`combat_group` from those NPCs and list them explicitly in `combatants`.
 
 #### Follower
 

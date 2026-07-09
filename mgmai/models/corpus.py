@@ -182,6 +182,7 @@ class Result(BaseModel):
     set_player_location: Optional[str] = None
     game_over: Optional[GameOverTrigger] = None
     trigger_combat: bool = False
+    combatants: Optional[List[str]] = None
 
     def has_any_effect(self) -> bool:
         return any(
@@ -505,6 +506,7 @@ class Entity(BaseModel):
     state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
     follower: Optional[FollowerConfig] = None
     combat: Optional[CombatBlock] = None
+    combat_group: Optional[str] = None
     equip_block: Optional[EquipBlock] = None
     max_stack: Optional[int] = None
     reactions: List[Reaction] = Field(default_factory=list)
@@ -538,6 +540,10 @@ class Entity(BaseModel):
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'combat'. "
                 f"Only 'npc' entities may carry combat.")
+        if self.type != "npc" and self.combat_group is not None:
+            raise ValueError(
+                f"Entity type '{self.type}' must not have 'combat_group'. "
+                f"Only 'npc' entities may carry combat_group.")
         if self.type != "item" and self.equip_block is not None:
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'equip_block'. "

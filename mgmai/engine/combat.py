@@ -34,6 +34,7 @@ from mgmai.models.actions import (
 from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
+from mgmai.engine.utils import get_following_npc_ids
 from mgmai.engine.systems import get_system, get_system_for_corpus
 from mgmai.engine.systems.dice import parse_damage_dice
 
@@ -181,6 +182,69 @@ def roll_initiative(
 # ------------------------------------------------------------------
 # Combat entry
 # ------------------------------------------------------------------
+
+def resolve_combat_enemies(
+    seed_ids: list[str],
+    explicit: list[str] | None,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> list[str]:
+    """Resolve the set of enemies to enter combat with.
+
+    Combines *seed_ids* (the encounter source or directly-attacked target)
+    with an optional explicit *combatants* list, then expands every
+    ``combat_group`` referenced by those ids.  The result is deduplicated,
+    filtered to present/living/stat-blocked entities, and returned in order.
+
+    Followers (NPCs with dialogue whose hard state says ``following``) are
+    treated as allies: they are never pulled in via group expansion, though
+    a follower may still become a combatant if it is itself a seed (i.e. the
+    player attacked it directly).
+    """
+    room_id = hard.player.location
+    room_present = set(hard.room_contains.get(room_id, {}))
+    follower_ids = set(get_following_npc_ids(hard, corpus))
+    seed_set = set(seed_ids) | set(explicit or [])
+
+    # 1. Expand combat_group membership for every seed/explicit id.
+    #    Followers are allies: they are never pulled in via group
+    #    expansion. A follower can only become a combatant by being a
+    #    seed itself (i.e. the player attacked it directly).
+    expanded: list[str] = []
+    seen_groups: set[str] = set()
+    for cid in list(seed_ids) + list(explicit or []):
+        ent = corpus.entities.get(cid)
+        grp = ent.combat_group if ent else None
+        if grp and grp not in seen_groups:
+            seen_groups.add(grp)
+            for eid, e in corpus.entities.items():
+                if e.combat_group == grp and (eid == cid or eid not in follower_ids):
+                    expanded.append(eid)
+        else:
+            expanded.append(cid)
+
+    # 2. Dedup (preserve order), then filter to eligible enemies.
+    out: list[str] = []
+    for cid in dict.fromkeys(expanded):
+        ent = corpus.entities.get(cid)
+        if ent is None or ent.combat is None:
+            # Unknown ids and non-stat-blocked entities cannot be combatants.
+            continue
+        # Presence: a seed is eligible if it is in the room or a follower
+        # (you may attack a follower). Group-expanded members must be in
+        # the current room; followers are excluded by the expansion step.
+        if cid in seed_set:
+            if cid not in room_present and cid not in follower_ids:
+                continue
+        else:
+            if cid not in room_present:
+                continue
+        st = hard.entity_states.get(cid, {})
+        if st.get("alive") is False or st.get("fled") is True:
+            continue
+        out.append(cid)
+    return out
+
 
 def enter_combat(
     enemy_ids: list[str],

@@ -882,7 +882,8 @@ def resolve_interact(
     matches: list[tuple[Interaction, str]] = []
 
     if target_entity:
-        if target_entity.type == "npc" and target_entity.aggro:
+        # Reject interactions with dead NPCs.
+        if target_entity.type == "npc":
             entity_state = hard.entity_states.get(target_id, {})
             if entity_state.get("alive") is False:
                 return ResolutionResult(
@@ -891,10 +892,20 @@ def resolve_interact(
                 )
 
         # If NPC has a CombatBlock and the interaction is an attack, start
-        # combat directly.
+        # combat directly (pulling in any present members of its combat_group).
         if interaction_id == "attack" and target_entity.combat is not None:
-            from mgmai.engine.combat import enter_combat
-            entry = enter_combat([target_id], hard, corpus)
+            from mgmai.engine.combat import enter_combat, resolve_combat_enemies
+            enemies = resolve_combat_enemies([target_id], None, hard, corpus)
+            if not enemies:
+                return ResolutionResult(
+                    success=False,
+                    error=(
+                        f"Cannot start combat with '{target_id}' "
+                        f"(not present or not a valid combatant)"
+                    ),
+                    room_after_id=room_id,
+                )
+            entry = enter_combat(enemies, hard, corpus)
             return ResolutionResult(
                 success=True,
                 hard_changes=entry["hard_changes"],
