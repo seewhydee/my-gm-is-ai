@@ -507,10 +507,10 @@ GatedCheck or Resolvable.  Each resolution comprises either:
 ### Encounter Rule
 
 **Encounters** are game events that can unfold in different ways,
-usually describing confrontations (possibly leading to combat) or
-action sequences.  They are triggered when an NPC [aggros](#aggro), or
-as part of a global [Mechanic](#mechanic).  An encounter consists of
-an ordered array of EncounterRule objects of this form:
+usually describing action sequences or confrontations (possibly
+leading to combat).  They are triggered when an NPC [aggros](#aggro),
+or as part of a global [Mechanic](#mechanic).  An encounter consists
+of an ordered array of EncounterRule objects of this form:
 
 ```json
   {
@@ -1327,9 +1327,16 @@ records the topic as already revealed, so it doesn't get repeated.
 
 ### Aggro
 
-The `aggro` field on an NPC entity stores an ordered list of
-[encounter rules](#encounter-rule) defining how an NPC reacts in
-hostile encounters (player attack, or combat triggered by a reaction).
+The `aggro` field on an NPC entity stores an Encounter – an ordered
+list of [encounter rules](#encounter-rule) – specifying how an NPC
+reacts in hostile confrontations.
+
+This encounter runs automatically when the player attacks the NPC, or
+when triggered by any [Reaction Effect](#reaction-effect) with a
+`trigger_encounter` specifying the host NPC's entity ID.
+
+Example: confronting an orc, if the player is unarmed and fails a STR
+check (DC 10), the orc kills the player; otherwise, combat begins.
 
 ```json
 "aggro": [
@@ -1435,24 +1442,27 @@ All fields supported by Mechanic objects are listed here:
 Conceptually, there are two kinds of mechanic, distinguished by which
 field is present:
 
-- An **Encounter Mechanic** is used to describe a triggerable
-  confrontation or action sequence.  It must have `rules`, storing an
-  ordered list of [Encounter Rules](#encounter-rule).  When the
-  mechanic is triggered (usually via `trigger_encounter`), `rules` is
-  evaluated top-to-bottom, and the first valid Encounter Rule is run;
-  if no rule matches, none is run.
+- An **Encounter Mechanic** describes a set-piece confrontation or
+  action sequence.  It must have `rules`, storing an ordered list of
+  [Encounter Rules](#encounter-rule).  It must be triggered by
+  `trigger_encounter` in a [Reaction Effect](#reaction-effect).  Once
+  triggered, `rules` is evaluated top-to-bottom, and the first
+  matching rule is run; if no rule matches, none is run.
 
   `condition`, if supplied, is a gating condition: when the mechanic
   is triggered, `condition` is evaluated first, and if it is `false`
   the encounter is cancelled (i.e., `rules` is ignored).
 
-  An Encounter Mechanic can only resolve once per turn.  If a reaction
-  triggers an Encounter Mechanic that has already been triggered this
-  turn, the second trigger is ignored.  However, reactions can trigger
-  *other* encounters, etc., up to a depth-5 limit.
+  An encounter can only resolve once per turn.  If a reaction triggers
+  an encounter already triggered this turn, the second trigger is
+  ignored.  However, encounters can trigger *other* encounters, up to
+  a depth-5 limit.
 
-  An Encounter Mechanic is also allowed to carry `reactions`; this is
-  handled in the same way as a Reaction-Only Mechanic, below.
+  An Encounter Mechanic may also carry `reactions`, handled in the
+  same way as a Reaction-Only Mechanic, below.  This lets an Encounter
+  Mechanic store its own global trigger reaction, which fires
+  `trigger_encounter` with its own mechanic ID.  Typically, however,
+  Encounter Mechanics are triggered by room or entity reactions.
 
 - A **Reaction-Only Mechanic** carries only `reactions`: a list of
   [Reactions](#reaction) that are always active, reacting to
