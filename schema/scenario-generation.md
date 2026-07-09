@@ -74,15 +74,18 @@ Read README.md and doc/intro.md, followed by the supplied scenario
 Then follow the specs below to write a Scenario Map (a text document,
 not JSON), and save it to `scenario-map.md` in the adventure module
 folder.  This will be the working plan for all subsequent steps.
-Follow steps 1A to 1H carefully, and in order.
 
 To avoid context pressure, it is strongly recommended NOT to read the
 schema docs in Step 1.  The schema will be read in Step 2, when we
 write the actual JSON.
 
+Follow Steps 1A–1H in order.  Each describes a top-level markdown
+section for `scenario-map.md`.  You may also add implementation notes
+anywhere in the document, as you deem appropriate.
+
 ### 1A. Adventure metadata
 
-Write down, at the top of the Scenario Map:
+Write down, in a section at the top of the Scenario Map:
 
 - *Title* — The title of the adventure.
 
@@ -108,29 +111,28 @@ If the scenario uses player stats, note:
 
 ### 1B. Rooms (Pass 1)
 
-Now we will construct a list of rooms based on the scenario.  Every
-distinct location that can be visited should be a room.  Avoid
-creating extra rooms not in the scenario, *unless* necessary for
-gameplay (in which case note this in your report).
-
-For each room, write out:
+This section lists the rooms in the adventure.  Every visitable
+location in the scenario should be a room.  Don't create rooms not in
+the scenario, *unless* needed for gameplay; note deviations in your
+report.  For each room, write out:
 
 - **Room ID** — assign a globally-unique ID.
 
-- **Room name** — a short identifying phrase (e.g., for traversal).
-  Avoid giving consecutive rooms the same name, except under special
+- **Room name** — a short identifying phrase for traversal.  Don't
+  give consecutive rooms the same name, except under special
   circumstances (e.g., rooms in a featureless maze).
 
-- **Description** — a note saying what the room is, its key
+- **Description** — a prose description of what the room is, its key
   characteristics, and how it is connected to other rooms.  Keep it
   factual and succinct; this is for scenario mapping, not narration.
 
-- **Start room?** — note the room where the player begins.
+- **Start room?** — indicate the room where the player begins.
   There must be exactly one.
 
 ### 1C. Entities (Pass 1)
 
-List out every distinct entity mentioned in the scenario, specifying:
+In this section, list out every gameplay-relevant entity (the player,
+immobile features, NPCs, and items), specifying:
 
 - **Entity ID** — assign a globally-unique ID.
 
@@ -148,17 +150,17 @@ List out every distinct entity mentioned in the scenario, specifying:
   - `feature` — immovable environmental object
   - `item` — object that can be picked up
 
-- **Description** — a note about what this entity is, its location at
-  game start (room, container entity, or player inventory), and any
-  narratively important details.  Keep it factual and succinct.  We
+- **Description** — a prose description of what this entity is, its
+  location at game start (room, container, player inventory, etc.),
+  and any other notable details.  Keep it factual and succinct.  We
   will fill in mechanical details later (§1G).  If the entity is a
   feature visible from multiple rooms, note which rooms it spans.
 
 ### 1D. Global Flags
 
-Make a list of global flags: boolean conditions tracking elements of
-world state not tied to any specific room or entity.  In particular,
-global flags should be assigned for:
+Make a list of global flags: boolean conditions tracking world state
+not tied to any specific room or entity.  In particular, consider
+assigning global flags for:
 
 - each major secret or piece of information the player can learn
   during the adventure ("the vizier is a lich", "password is foo").
@@ -169,51 +171,64 @@ global flags should be assigned for:
 For each flag, specify:
 
 - **Flag Name** — a globally-unique ID.
-- **Description** — an explanation of the flag condition.
+- **Description** — a prose explanation of the flag condition.
 - **Initial Value** — the value at game start.
 
 ### 1E. Mechanics
 
-Now list the mechanics — bundles of module-level (global) rules that
-are not tied to a specific room or entity.  (Room- and entity-scoped
-effects are covered later.)  There are two types:
+Now list out mechanics — module-level (global) rules that are not
+bound to a single room or entity.  For each mechanic, specify:
 
-1. **Game-over condition** — a `win` or `lose` trigger for the game.
-   Every adventure should have at least one win condition; many also
-   have loss conditions (death, time runs out, etc.).
+- **Mechanic ID** — assign a globally-unique ID
+- **Kind** — one of these two:
+  - **Game-over condition** — a rule leading to a game-over
+  - **Mechanic** — state changes or encounter triggered by an event
+- **Description** — how the mechanic works, and its effects
 
-   Example: player wins on reaching exit with artifact in inventory.
+When writing the description, don't worry about the schema-following
+implementation; the schema can accommodate many triggers and outcomes,
+including branching outcomes.  Focus on crafting a precise *prose*
+description, specifying flag IDs (§1D), room exit IDs (§1F), entity
+tags (§1G), etc.  Backfill if necessary.
 
-2. **Mechanic** — a named bundle of rules that can contain reactions,
-   encounter rules, or both.  These reactions fire on game events
-   regardless of which room the player is in.  Encounter rules set
-   conditional outcomes (death, flee, stat check, combat).
+How to decide if an effect should be a mechanic, rather than a room-
+or entity-scoped interaction or reaction (described below)?  Some
+examples follow.
 
-   Examples:
-   - dropping into another room and taking fall damage
-   - a life ward fires if HP drops to ≤ 3
-   - a chained-encounter orchestrator watches a flag set by a first
-     encounter, and triggers a second
+- **Encounters** (set-piece confrontations or action sequences, with
+  branching outcomes and/or leading to combat) are usually mechanics.
 
-   For effects occurring *only* when the player is in a given room,
-   use a room reaction instead (§1F).  For effects occurring only when
-   an entity is present, use an entity reaction (§1G).
-
-For each mechanic, specify:
-
-- **Mechanic ID** — assign a globally-unique ID.
-- **Kind** — either game-over condition or mechanic.
-- **Description** — how the mechanic works, and its effects.
+  Example: a confrontation with three goblins, who ambush an unaware
+  player, or flee if the player looks strong, or just start combat.
+  If the encounter starts when the player arrives in the room, the
+  trigger can be supplied by a separate room-scoped reaction (§1F).
   
-In writing the description, do not worry about the schema-following
-implementation of the mechanic; focus on giving a precise *textual*
-writeup.  The triggers and effects of mechanics are very flexible, and
-can involve almost any aspect of any entity or room in the adventure
-module, including branching outcomes.  Your main goal is to provide
-specificity about the rooms, entities, and other game pieces involved:
-name specific flag IDs (§1D), room exit IDs (§1F), entity tags (§1G),
-etc.  The same goes when writing all other descriptions in the
-Scenario Map.
+  However, an encounter involving a single NPC (e.g., the NPC aggros
+  when the player attacks) should be NPC-scoped.
+   
+- For an outcome arising directly from doing a special action (e.g.,
+  pulling a lever), use a room/entity interaction instead (§1F,1G).
+
+- For state changes that are a **reaction** to an event, if the
+  reaction occurs only in a given room, use a room reaction (§1F); if
+  it requires a given entity's presence, use an entity reaction (§1G).
+  
+  If the reaction doesn't fit such scoping, use a mechanic.  Examples:
+  - player's HP dropping to ≤ 3 fires off a life ward
+  - starting combat anywhere in a town makes all guards hostile
+  - a zombie spawns at the start of each turn during nighttime
+
+  Exception: an entity reaction cannot react to *its own* entity's
+  death, so a consequence of an NPC dying must live elsewhere: a room
+  reaction if it is location-bound, otherwise a mechanic.
+
+- If a **game-over condition** is plot-significant and/or reachable in
+  many different ways, use a mechanic.  Examples:
+  - player wins on leaving the castle with the artifact
+  - player loses if HP drops to ≤ 0.
+
+  A game-over condition reached by a specific route (e.g., falling
+  into *this* pit) should be room- or entity-scoped.
 
 ### 1F. Rooms (Pass 2)
 
@@ -257,8 +272,10 @@ Revisit the room list, and add the following info to each room:
   the player is in the room.
 
   Examples:
-  - a group of enemies attack when the player enters the room
-  - force-field blocks an exit traversal
+  - once a turn, the poison gas in the room damages the player.
+  - when the player enters the room, three goblins attack.  The
+    reaction can start combat directly, or, for a complex set-piece
+    confrontation, trigger an encounter mechanic (1E).
 
   Assign each reaction an ID (globally-unique if it's a one-off
   reaction, room-unique otherwise).  Then write up a precise

@@ -507,10 +507,10 @@ GatedCheck or Resolvable.  Each resolution comprises either:
 ### Encounter Rule
 
 **Encounters** are game events that can unfold in different ways,
-depending on an ordered list of conditions.  Encounters occur when
-NPCs [attack or are attacked](#aggro), or when triggered by global
-[Mechanics](#mechanic).  An encounter is defined by an ordered array
-of EncounterRule objects, each having the following form:
+usually describing confrontations (possibly leading to combat) or
+action sequences.  They are triggered when an NPC [aggros](#aggro), or
+as part of a global [Mechanic](#mechanic).  An encounter consists of
+an ordered array of EncounterRule objects of this form:
 
 ```json
   {
@@ -1435,16 +1435,16 @@ All fields supported by Mechanic objects are listed here:
 Conceptually, there are two kinds of mechanic, distinguished by which
 field is present:
 
-- An **Encounter Mechanic** must have `rules`, and describes an
-  Encounter (a set of possibilities that can unfold in various ways).
-  When the mechanic is triggered (usually via `trigger_encounter`),
-  the ordered list of [Encounter Rules](#encounter-rule) stored in
-  `rules` is evaluated top-to-bottom .  The first valid Encounter Rule
-  is run; if no rule matches, the encounter silently does nothing.
+- An **Encounter Mechanic** is used to describe a triggerable
+  confrontation or action sequence.  It must have `rules`, storing an
+  ordered list of [Encounter Rules](#encounter-rule).  When the
+  mechanic is triggered (usually via `trigger_encounter`), `rules` is
+  evaluated top-to-bottom, and the first valid Encounter Rule is run;
+  if no rule matches, none is run.
 
   `condition`, if supplied, is a gating condition: when the mechanic
   is triggered, `condition` is evaluated first, and if it is `false`
-  the encounter is cancelled (without checking `rules`).
+  the encounter is cancelled (i.e., `rules` is ignored).
 
   An Encounter Mechanic can only resolve once per turn.  If a reaction
   triggers an Encounter Mechanic that has already been triggered this

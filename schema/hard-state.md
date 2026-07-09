@@ -279,8 +279,8 @@ combat log:
 
 ### Combat Log Entries
 
-For `5e` combat (the only one currently implemented), CombatLogEntry
-objects have the following format:
+The format of CombatLogEntry entries depends on the RPG system.  For
+`5e` combat (the only one implemented), they have the following form:
 
 ```json
 {
