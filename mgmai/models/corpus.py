@@ -469,7 +469,7 @@ class EncounterRule(Checkable):
     Either branch Result or the rule's ``result`` may carry ``trigger_combat``
     or ``game_over`` to dispatch combat / game-over to the engine.
     """
-    condition: ConditionExpression
+    condition: Optional[ConditionExpression] = None
     result: Optional[Result] = None
     # Inherited from Checkable:
     #   skip_check_if, check (CheckType), success (Result), failure (Result)

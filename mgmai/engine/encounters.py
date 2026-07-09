@@ -49,7 +49,7 @@ def resolve_encounter(
         branch_taken: str | None
     """
     for rule in encounter_rules:
-        if evaluate(rule.condition, hard, soft, corpus):
+        if rule.condition is None or evaluate(rule.condition, hard, soft, corpus):
             return _apply_encounter_rule(rule, hard, soft, corpus, npc_id)
 
     return _empty_result()

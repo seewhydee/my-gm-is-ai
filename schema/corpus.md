@@ -533,7 +533,7 @@ of an ordered array of EncounterRule objects of this form:
 
 | Field            | Type      | Description                           |
 |------------------|-----------|---------------------------------------|
-| `condition`      | Condition | Condition for the rule to fire        |
+| `condition`¹     | Condition | Condition for the rule to fire        |
 | `result`¹        | Result    | Direct result (excl. with `check`)    |
 | `check`¹         | Check     | Resolving check (excl. with `result`) |
 | `skip_check_if`¹ | Condition | Whether to bypass `check` and succeed |
