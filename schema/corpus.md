@@ -133,7 +133,7 @@ Condition strings have one of two forms:
   `== true`, `== false`, `!= true`, `!= false`, `== <string>`,
   `!= <string>`, `>= <number>`, `> <number>`, `<= <number>`,
   `< <number>`.
-  
+
 | Domain      | Key                                                   |
 |-------------|-------------------------------------------------------|
 | `flag`      | Global flag ID                                        |
@@ -301,9 +301,9 @@ Notes:
   declared in the room or entity's `state_field`.
 
 - In `set_entity_state`, the special state field `location` denotes
-  the locations of singleton entities (NPCs, features, non-stackable
-  items); values can be `"room:<room_id>"`, `"entity:<container_id>"`,
-  or `null`.  See [Entity](#entity).
+  the locations of NPCs, features, and non-stackable items; values can
+  be `"room:<room_id>"`, `"entity:<container_id>"`, or `null`.  See
+  [Entity](#entity).  To move the player, use `set_player_location`.
 
 - `alter_stat` keys are stat labels (e.g. `"STR"`); the mode, if
   omitted, defaults to `"delta"`.  Examples:
@@ -1019,17 +1019,16 @@ Notes:
   Authors may override any reserved-field initial value by supplying
   an explicit field declaration with `initial`.
 
-  The `location` state field is special: it is only valid for
-  singleton entities (NPCs, features, and non-stackable items), and is
-  managed by the engine based on the containment relationships in the
-  game's hard state.  It should NOT be declared in `state_fields`;
-  initial values are automatically derived from the `contains` fields
-  on rooms and entities.  Like other state fields, `location` can be
-  queried (e.g., `entity:spider.location == room:cellar` in a
-  [condition string](#condition-string)), and changed (e.g.,
-  `"set_entity_state": { "sword": {"location": "entity:old_chest"}}`
+  The `location` state field is special: it is only valid for NPCs,
+  features, and non-stackable items, and is managed by the engine via
+  the containment relationships in the game state.  It should NOT be
+  declared in `state_fields`; initial values are derived from the
+  `contains` fields on rooms and entities.  Like other state fields,
+  `location` can be queried (e.g., `entity:bob.location == room:parlor`
+  in a [condition string](#condition-string)) and mutated
+  (e.g., `"set_entity_state": { "gem": {"location": "entity:chest"}}`
   in a [Result](#result)).  The special location `null` means the
-  entity is not currently accessible (e.g., an NPC that's fled).
+  entity is currently inaccessible (e.g., an NPC that's fled).
 
   The `hidden` state field declares concealment (e.g., a lurking
   enemy, or a sword buried in rubble).  When `true`, the engine omits
