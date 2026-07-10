@@ -1055,7 +1055,7 @@ Here is an example of a mechanical (one-turn) encounter:
 #### NPC dialogue
 
 For every conversational NPC, write a `dialogue` block.
-Its contents – `personality`, `on_encounter`, `can`/`cannot` arrays,
+Its contents – `personality`, `on_meeting`, `can`/`cannot` arrays,
 `knows`, etc. – guide the GM on how the NPC talks, behaves, and
 responds to the player.  Each string should be concise, informative,
 and factual.  No embellishment: the GM handles injecting color.

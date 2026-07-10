@@ -46,7 +46,7 @@
       },
       "dialogue": {
         "guidelines": "A talking fly on the verge of death. Speaks in a weak, nasally whine. Knows only one thing of value and is desperate to impart it before expiring. Can warn about the giant spider and groan pitifully. Cannot survive after speaking, provide information beyond the spider warning, or explain where this place is or how to escape. Knows that a giant spider lurks in the webbing, hungry for blood.",
-        "on_encounter": "The fly groans weakly as you disturb the web.",
+        "on_meeting": "The fly groans weakly as you disturb the web.",
         "attitude_limits": {
           "min": 0,
           "max": 0,
@@ -104,7 +104,7 @@
       },
       "dialogue": {
         "guidelines": "Vain, stupid, suspicious, and malicious. Speaks in a sibilant hiss. Can be flattered but is fundamentally a predator that sees the player as prey. Grudgingly replies if addressed, but does not initiate conversation. Can be flattered into improving its attitude, grudgingly converse if attitude >= -2, and lie about letting the player pass. Cannot become friendly (attitude max 0), refrain from attacking if the player forces through the web, or provide useful information about escape. Knows Korbar is a 'delicious two-legs' it hasn't managed to catch yet.",
-        "on_encounter": "The spider watches you with hungry eyes, mandibles twitching.",
+        "on_meeting": "The spider watches you with hungry eyes, mandibles twitching.",
         "attitude_limits": {
           "min": -10,
           "max": 0,
@@ -335,7 +335,7 @@
       },
       "dialogue": {
         "guidelines": "Cynical, tired, and deeply lonely after being abandoned by her adventuring party. Wears ludicrously noisy platemail that prevents stealth. Drinks to forget. Despite her bitterness, she craves companionship and can warm up to respectful treatment. Can commiserate about being trapped, share her story of abandonment, agree to follow the player, help haul heavy objects, and point out the handkerchief. Cannot fight the spider (too afraid), enter the secret compartment (armor too bulky), remove her armor (fears the spider), or know what is inside the secret compartment. Knows that her adventuring party stuck her in this Bag of Holding during a stealth mission then forgot about her; the battleaxe was her weapon when she was full-sized outside the Bag; time and space function strangely inside the Bag; this cave is a Bag of Holding, a legendary magical storage item that exists simultaneously in the prime and astral planes; and that there is a handkerchief covering a hidden flap in the bag floor, but she has never been able to see what is underneath.",
-        "on_encounter": "Korbar looks up blearily as you approach, reaching instinctively for a weapon that isn't there. 'Who in the nine hells are you?' she slurs.",
+        "on_meeting": "Korbar looks up blearily as you approach, reaching instinctively for a weapon that isn't there. 'Who in the nine hells are you?' she slurs.",
         "attitude_limits": {
           "min": -10,
           "max": 10,

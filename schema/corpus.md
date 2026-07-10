@@ -1207,23 +1207,23 @@ The `5e` system uses these additional fields, both optional:
 **NPCs** (non-player characters) are entities the player can fight or
 socialize with.  NPC entity blocks support these additional fields:
 
-| Field       | Type   | Description                          |
-|-------------|--------|--------------------------------------|
-| `dialogue`¹ | object | NPC's [dialogue settings](#dialogue) |
-| `aggro`¹    | array  | NPC's [aggro rules](#aggro)          |
-| `follower`¹ | object | NPC's [follower rules](#follower)    |
-| `combat`¹   | object | Combat stats (hp, ac, atk, etc.)     |
-| `combat_group`¹ | string | Tag that links NPCs into a hostile band; attacking any present member pulls the rest |
+| Field           | Type   | Description                              |
+|-----------------|--------|------------------------------------------|
+| `dialogue`¹     | object | NPC's [dialogue settings](#dialogue)     |
+| `aggro`¹        | array  | NPC's [aggro rules](#aggro)              |
+| `follower`¹     | object | NPC's [follower rules](#follower)        |
+| `combat`¹       | object | Combat stats (hp, ac, atk, etc.)         |
+| `combat_group`¹ | string | ID for an NPC group that fights together |
 > ¹ optional
 
 #### Dialogue
 
-The Dialogue object specifies how the NPC engages in conversation.
+The `dialogue` field on an NPC entity specifies how the NPC converses.
 
 ```json
 {
   "guidelines": "The Jester speaks in riddles, puns, and jibes. He gamely offers himself as the butt of jokes. Yet he's smarter than he looks, and knows much about the goings-on at court. He is fundamentally loyal to the King and will never agree to betray him.",
-  "on_encounter": "The Jester hoots when he sees the player, waving and laughing hysterically",
+  "on_meeting": "The Jester hoots when he sees the player, waving and laughing hysterically",
   "attitude_limits": {
     "min": -5,
     "max": 10,
@@ -1240,29 +1240,30 @@ The Dialogue object specifies how the NPC engages in conversation.
 }
 ```
 
-| Field             | Type     | Description                          |
-|-------------------|----------|--------------------------------------|
-| `guidelines`      | string   | Tone, demeanor, constraints, etc.    |
-| `attitude_limits`¹| object   | NPC's attitude bounds (see below)    |
-| `on_encounter`¹   | string   | Describes behavior on first meeting  |
-| `will_reveal`¹    | object   | See [NPC Knowledge](#npc-knowledge)  |
+| Field             | Type   | Description                         |
+|-------------------|--------|-------------------------------------|
+| `guidelines`      | string | Tone, demeanor, constraints, etc.   |
+| `attitude_limits`¹| object | NPC's attitude bounds (see below)   |
+| `on_meeting`¹     | string | Describes behavior on first meeting |
+| `will_reveal`¹    | object | See [NPC Knowledge](#npc-knowledge) |
 | `dialogue_paths`¹ | Resolvable[] | See [Dialogue Path](#dialogue-path) |
 > ¹ optional
 
 Notes:
 
-- `guidelines` is a freeform prose string used to inform the GM on how
-  the NPC should act in conversation: tone, demeanor, what they know,
-  what they will and will not agree to, what bits of knowledge they do
-  and do not know, etc.
+- `guidelines` is a static freeform prose string that briefs the GM on
+  how the NPC should act in conversation throughout the adventure:
+  tone, demeanor, what they know, what they will and will not agree
+  to, what bits of knowledge they do and do not know, etc.
 
-- `on_encounter`, if present, describes the NPC's canonical reaction
-  when first encountered.  The GM should not contradict this, but
-  might not use it verbatim.
+- `on_meeting`, if present, describes the NPC's canonical reaction
+  when first encountered.  The GM may not use this verbatim, but will
+  not contradict it.
 
 - `attitude_limits`, if present, sets the NPC's engine-enforced
-  attitude limits.  All fields are optional.  Defaults: `min: 0`,
-  `max: 0`, `initial: 0`, `step_per_turn: 1`.
+  numerical attitude limits.  This should be an object with supported
+  fields `min` (default 0), `max` (default 0), `initial` (default 0),
+  and `step_per_turn` (default 1).  All fields are optional.
 
   Example: a troll whose hostility can vary, but never turns friendly:
   `"attitude_limits": { "min": -10, "max": -1 }`.
@@ -1375,18 +1376,16 @@ that launches combat against the following NPCs:
 The set of combatants is then filtered to living and present NPCs with
 defined `combat` blocks.
 
-##### Combat groups
+### Combat groups
 
-NPCs with the same `combat_group` value behave as a single hostile band:
-attacking any present, living member (or starting combat with any member
-via an encounter rule) pulls every other present, living member of that
-group into the fight.  Followers — NPCs with a `dialogue` block whose
-hard state says `following: true` — are treated as allies and are *not*
-auto-pulled via group expansion, even if they share the tag.  A follower
-may only enter combat by being attacked directly.
+NPCs with the same `combat_group` value behave as a single band in
+combat.  If the player attacks any present living member (or combat is
+triggered with any member via an encounter), that pulls in every other
+present living member of that group as a hostile combatant.
 
-To fight a subset of a group without pulling the rest, omit
-`combat_group` from those NPCs and list them explicitly in `start_combat`.
+Followers (see below) are treated as allies, and excluded from
+auto-inclusion as a hostile combatant even if they share the tag.
+However, a follower may still enter combat by being attacked directly.
 
 #### Follower
 

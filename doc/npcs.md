@@ -42,7 +42,7 @@ The `dialogue` block defines an NPC's conversational personality, attitude dynam
 {
   "dialogue": {
     "personality": "Gruff, miserable, but secretly lonely. Speaks in short, clipped sentences.",
-    "on_encounter": "Korbar looks up from her bottle. 'Another one, eh? How'd you get here?'",
+    "on_meeting": "Korbar looks up from her bottle. 'Another one, eh? How'd you get here?'",
     "can": [
       "Talk about the bag's interior and its dangers",
       "Discuss the spider"
@@ -84,7 +84,7 @@ The `dialogue` block defines an NPC's conversational personality, attitude dynam
 | Field | Description |
 |-------|-------------|
 | `personality` | Natural-language description of the NPC's personality and speech patterns. Sent to both LLM calls for character-consistent dialogue. |
-| `on_encounter` | Optional text describing the NPC's initial behaviour when the player first sees them (not yet used mechanically). |
+| `on_meeting` | Optional text describing the NPC's initial behaviour when the player first sees them (not yet used mechanically). |
 | `can` | Topics and actions the NPC is allowed to discuss or perform. Advisory for the LLM. |
 | `cannot` | Topics and actions the NPC must never discuss or perform. Advisory for the LLM. |
 | `knows` | Knowledge the NPC possesses (which may or may not be revealed depending on conditions). Advisory for the LLM. |
