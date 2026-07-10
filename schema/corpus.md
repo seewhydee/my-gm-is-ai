@@ -260,18 +260,18 @@ ALL fields in a Result object are optional.
 | Field               | Type     | Description                         |
 |---------------------|----------|-------------------------------------|
 | `narrative`         | string   | Narrative description of the result |
-| `add_item`          | string[] | Item IDs to add to inventory (each +1) |
-| `add_item_count`    | object   | Item IDs → integer counts to add    |
-| `remove_item`       | string[] | Item IDs to remove from inventory (each -1) |
-| `remove_item_count` | object   | Item IDs → integer counts to remove |
-| `set_flag`          | object   | Flag IDs → values to set            |
+| `add_item`          | string[] | Add 1 of each item ID to inventory  |
+| `add_item_count`    | object   | Item IDs → no. to add to inventory  |
+| `remove_item`       | string[] | Remove 1 of each item ID from inv   |
+| `remove_item_count` | object   | Item IDs → no. to remove from inv   |
+| `set_flag`          | object   | Set flag IDs → values               |
 | `set_room_state`    | object   | Room IDs → { fields → values }      |
 | `set_entity_state`  | object   | Entity IDs → { fields → values }    |
 | `alter_stat`        | object   | Stat IDs → `{ "mode": "delta"\|"set", "value": <int> }` |
-| `set_player_location`| string  | Room ID to relocate the player to   |
-| `player_damage`     | string   | Damage dealt to player, e.g. `"1d4"`|
+| `set_player_location`| string  | Relocate player to given Room ID    |
+| `player_damage`     | string   | Deal damage to player, e.g. `"1d4"` |
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
-| `reveals`           | string   | Player knowledge update (see below) |
+| `reveals`           | string   | Update player knowledge (see below) |
 | `then_check`        | FollowUpCheck | See [Follow-Up](#follow-up)    |
 | `start_combat`      | string[] | Enter combat (see below)            |
 | `game_over`         | GameOver | End the game (see below)            |
@@ -285,19 +285,19 @@ Notes:
   several entities and rooms, add/drop items, etc.  Action-result
   changes and immediate-reaction changes are merged and applied
   atomically.  Deferred reactions (`room.entered`, `turn.end`, etc.)
-  fire after and see the new state.
+  fire afterward and see the new state.
 
-- During a check, `check.passed`/`check.failed` events (and their
-  immediate reactions) fire before applying success/failure results.
-  The effects are accumulated into a batch, and processed before any
-  [FollowUpCheck](#follow-up) resolves.  See [Reaction](#reaction).
+- During a check, `check.passed`/`check.failed` events and their
+  immediate [Reactions](#reaction) fire before success/failure results
+  are run.  These effects are then batched and processed before
+  resolving any [FollowUpCheck](#follow-up).
 
 - `set_flag` sets global boolean flags.  A `false` value clears the
   flag; any truthy value sets it.
 
-- `set_room_state` sets [Room](#room) state fields, and likewise
-  `set_entity_state` sets [Entity](#entity) state fields.  Each value
-  must match the type declared in the corresponding `state_field`.
+- `set_room_state` sets [Room](#room) state fields; `set_entity_state`
+  sets [Entity](#entity) state fields.  Values must match the types
+  declared in the room or entity's `state_field`.
 
 - `alter_stat` keys are stat labels (e.g. `"STR"`); the mode, if
   omitted, defaults to `"delta"`.  Examples:
@@ -307,12 +307,12 @@ Notes:
 - `add_item` adds one of each listed item, while `add_item_count` adds
   specified amounts, e.g. `{ "coin": 50 }`.  For stackable items (see
   [Entity](#entity)), repeats are allowed and the total count is
-  added.  Adding any non-stackable (i.e., unique) item automatically
-  removes it from its previous location, if any.
+  added.  Adding a non-stackable (i.e., unique) item automatically
+  removes it from any previous location.
 
-- Likewise, `remove_item` removes one of each listed item, with
-  repeats removing multiple counts, and `remove_item_count` removes
-  specified quantities.  The engine prevents removing more than exist.
+- `remove_item` removes one of each listed item, with repeats removing
+  multiple counts; `remove_item_count` removes specified quantities.
+  The engine prevents removing more than exist.
 
 - `adjust_attitude` is capped by the affected NPCs' `step_per_turn`
   for attitude changes.  See [NPC attitude](#npc-attitude).
@@ -320,7 +320,7 @@ Notes:
 - `reveals` appends to `soft_state.revealed_hints` (deduplicated) to
   guide the GM; see the [Soft State schema](soft-state.md).
 
-- `start_combat` is only allowed on Results that are inside an
+- `start_combat` is only allowed on a Result inside an
   [EncounterRule](#encounter-rule).  If present, it triggers combat;
   the value specifies a list of entity IDs for additional combatants.
   For details, see [Aggro](#aggro) and [Mechanic](#mechanic).
@@ -331,9 +331,9 @@ Notes:
 
 ### Follow-Up
 
-A FollowUpCheck object can be put in a Result's `then_check` field,
-and implements multi-stage resolutions for actions and effects, firing
-right after the parent.
+A FollowUpCheck object can be put in a Result's `then_check` field.
+It implements multi-stage resolutions, firing right after the parent
+action or effect.
 
 Example: player makes a STR check to jump across a pit, and on failure
 makes a DEX check to grab the ledge.
@@ -374,10 +374,10 @@ results may contain other follow-ups, to a maximum depth of 3.
 
 ### Resolvable
 
-A **Resolvable** describes a player-initiated action that leads to
-custom effects: e.g., special interactions with [Rooms](#room) and
-[Entities](#entity), [examination actions](#examination), and engaging
-in [dialogue paths with NPCs](#dialogue-path).  It is modeled as a
+A **Resolvable** describes a player-initiated action that can yield
+custom effects: a special interaction with [Rooms](#room) and
+[Entities](#entity), [examination](#examination), or engaging in an
+[NPC dialogue path](#dialogue-path).  It is modeled as a
 Condition-gated action resolving to a Result.
 
 ```json
@@ -410,8 +410,8 @@ Condition-gated action resolving to a Result.
 Notes:
 
 - The meaning of `id` depends on where the Resolvable is used.  For
-  room and entity interactions, it must be a room-unique or
-  entity-unique ID.  In other contexts, it need not be specified.
+  room and entity interactions, the ID must be room-unique or
+  entity-unique.  In other contexts, it need not be specified.
 
 - `description` is used to brief the GM on the semantic meaning of the
   action.  It may be omitted for Examination Effects.
@@ -435,11 +435,11 @@ Notes:
 
 ### Gated Check
 
-A GatedCheck object describes a situation where a player action meets
-an obstacle: a `take_check` for an item, or `traversal_check` for a
-room exit.  It is modeled as a [Check](#check) along with a
-[Condition](#condition) determining whether the check is active, an
-optional bypass condition, and success/failure [Results](#result).
+A GatedCheck object describes a player action meeting an obstacle: a
+`take_check` for an item, or `traversal_check` for a room exit.  It is
+modeled as a [Check](#check) along with a [Condition](#condition)
+determining whether the check is active, an optional bypass condition,
+and success/failure [Results](#result).
 
 ```json
 {
@@ -511,11 +511,11 @@ GatedCheck or Resolvable.  Each resolution comprises either:
 
 ### Encounter Rule
 
-**Encounters** are game events that can unfold in different ways,
-usually describing action sequences or confrontations (possibly
-leading to combat).  They are triggered when an NPC [aggros](#aggro),
-or as part of a global [Mechanic](#mechanic).  An encounter consists
-of an ordered array of EncounterRule objects of this form:
+**Encounters** are set-piece game events like action sequences or
+confrontations, which can unfold in different ways and possibly
+culminate in combat or game-over.  They are triggered when an NPC
+[aggros](#aggro), or as a [Mechanic](#mechanic).  An encounter
+consists of an ordered array of EncounterRule objects of this form:
 
 ```json
 {
@@ -540,11 +540,11 @@ of an ordered array of EncounterRule objects of this form:
 > ¹ optional
 
 When an encounter is triggered, its rules are evaluated in order. The
-first rule with matching `condition` (if any) runs; the rest are
+first rule with matching `condition` (if any) runs, with the rest
 ignored.  This EncounterRule is resolved via its `result`, `check`,
-`skip_check_if`, `success`, and/or `failure` fields, in the same way
-as a [Resolvable](#resolvable).  The resolved [Result](#result) may
-trigger combat via `start_combat`, or game-over via `game_over`.
+`skip_check_if`, `success`, and/or `failure` fields, just like a
+[Resolvable](#resolvable).  The resolved [Result](#result) may trigger
+combat via `start_combat`, or game-over via `game_over`.
 
 ---
 
@@ -609,17 +609,14 @@ Notes:
   is not necessarily used verbatim in narration).
 
 - The `contains` field lists the entities *directly* present in the
-  room initially.  "Directly" means that if room R contains entity A,
-  and A contains another entity B (see [Entity](#entity)), R's
+  room at game start.  "Directly" means that if room R contains entity
+  A, and A contains another entity B (see [Entity](#entity)), R's
   `contains` should list A but not B.  As an exception, the player
   entity must be omitted, even if this is the starting room.
 
   Each list entry is either an object `{ "<entity_id>": <count> }`, or
   an entity ID (count = 1).  Each count must be positive, and a
   non-item entity or non-stackable item must have total count 1.
-
-  When the game loads, the engine uses this to initialize the
-  containment maps used for subsequent game state mutations.
 
 - The `exits` field stores an array of [Exit](#exit) objects, one for
   every possible exit regardless of initial availability / visibility.
@@ -644,20 +641,9 @@ Notes:
 
   - TYPE is one of `"boolean"`, `"number"`, or `"string"`
   - DESC is a string describing the nature of the state field
-  - INIT is optional and, when present, is the value at game start. It
-    must match the declared type. (Note that `boolean` and `number` are
-    distinct: `true` is not accepted as the number `1`.)
-
-  If `initial` is omitted, the engine fills in a default based on the
-  field name and type:
-
-  - Reserved fields use their documented default initial value (see
-    below).
-  - Author-defined fields fall back to the type default: `false` for
-    booleans, `0` for numbers, `""` for strings.
-
-  Because omitted `initial` values silently fall back to a safe default,
-  authors are encouraged to set them explicitly.
+  - INIT (optional) is the value at game start, which must match the
+    declared type.  If omitted, the default is `false` (boolean), `0`
+    (number), or `""` (string).
 
 - `interactions` is an array of [Resolvables](#resolvable) describing
   operations performable on the room.  For each Resolvable,
@@ -1025,18 +1011,16 @@ Notes:
 |`open`      |boolean| `false`    | Container open/closed state        |
 
   Authors may override any reserved-field initial value by supplying
-  an explicit `initial` in the field declaration.
+  an explicit field declaration with `initial`.
 
-  The `hidden` state field declares explicit concealment (e.g., a
-  lurking enemy, or a sword buried in rubble). When `true`, the engine
-  omits the entity (even from the GM, to avoid leakage).  DO NOT use
-  `hidden` for entities that are simply inside a closed
-  [container](#container); that kind of concealment is controlled by
-  the container's `open` state.
+  The `hidden` state field declares concealment (e.g., a lurking
+  enemy, or a sword buried in rubble).  When `true`, the engine omits
+  the entity from the scene.  DO NOT apply `hidden` to an entity just
+  because it is inside a closed [container](#container); that should
+  be controlled by the container's `open` state.
 
-  Any other state field needed by the adventure (`looted`, `cursed`,
-  etc.) should be declared in `state_fields`, keyed by its ID and
-  having values of the form
+  Any other state field needed by the adventure (`cursed`, etc.)
+  should be listed in `state_fields`, keyed by an ID and with value
 
     `{ "type": TYPE, "description": DESC, "initial": INIT }`
 
@@ -1044,17 +1028,14 @@ Notes:
 
   - TYPE is one of `"boolean"`, `"number"`, or `"string"`
   - DESC is a string describing the nature of the state field
-  - INIT is optional and, when present, is the value at game start.
-    It must match the declared type.
-
-  If `initial` is omitted, the engine uses the reserved-field default
-  above when applicable; otherwise it falls back to the type default
-  (`false`, `0`, or `""`).
+  - INIT (optional) is the value at game start, which must match TYPE.
+    If omitted, a reserved field uses its aforementioned default,
+    while a custom field defaults to `false` (boolean), `0` (number),
+    or `""` (string).
 
 - `interactions` is an array of [Resolvables](#resolvable) listing
-  non-generic operations performable on the entity.  Each must have an
-  entity-unique `id`.  The rest of the spec is the same as for
-  [Room](#room) interactions.
+  non-generic actions on the entity.  Each must have an entity-unique
+  `id`.  The spec is the same as for [Room](#room) interactions.
 
 ### Feature
 
@@ -1465,8 +1446,7 @@ All fields supported by Mechanic objects are listed here:
 | `reactions`¹ | Reaction[]      | A set of global reactions     |
 > ¹ optional (subject to constraints below)
 
-Conceptually, there are two kinds of mechanic, distinguished by which
-field is present:
+There are two kinds of mechanics:
 
 - An **encounter mechanic** describes a set-piece confrontation or
   action sequence.  It must have `rules`, storing an ordered list of
@@ -1479,16 +1459,17 @@ field is present:
   is triggered, `condition` is evaluated first, and if it is `false`
   the encounter is cancelled (i.e., `rules` is ignored).
 
-  An encounter can only resolve once per turn.  If a reaction triggers
-  an encounter already triggered this turn, the second trigger is
-  ignored.  However, encounters can trigger *other* encounters, up to
-  a depth-5 limit.
+  Each encounter can only run once per turn.  If a reaction triggers
+  an encounter that already ran this turn, the second trigger is
+  ignored.  However, encounters can trigger other encounters, up to a
+  depth-5 limit.
 
-  An EncounterRule's Result can trigger combat by specifying
+  Each EncounterRule's Result can trigger combat by specifying
   `start_combat` with an array of hostile combatants (NPC entity IDs).
-  This list is expanded to add any other NPCs in the same
-  `combat_group`(s), then filtered to living and present NPCs with
-  `combat` blocks.  If the final list is empty, combat is cancelled.
+  Note: unlike in an NPC [aggro block](#aggro), there is no default
+  combatant.  The initial list is expanded to add any other NPCs in
+  the same `combat_group`(s), then filtered to living and present NPCs
+  with `combat` blocks.  If the final list is empty, no combat occurs.
 
   An encounter mechanic may also carry `reactions`, handled in the
   same way as a Reaction-Only Mechanic (see below).  This lets an
