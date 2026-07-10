@@ -940,6 +940,9 @@ Example: trap fires if it's armed when the player enters the room.
 
 **Entities** are objects that appear in rooms or inventory.
 
+The entity ID `"player"` is **reserved** for the player character.
+No other entity may use this ID.
+
 ```json
 {
   "<entity_id>": {

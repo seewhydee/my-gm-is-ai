@@ -134,7 +134,8 @@ report.  For each room, write out:
 In this section, list out every gameplay-relevant entity (the player,
 immobile features, NPCs, and items), specifying:
 
-- **Entity ID** — assign a globally-unique ID.
+- **Entity ID** — assign a globally-unique ID.  The player entity
+  must use the reserved ID `"player"`.
 
 - **Name** — a short identifying phrase (e.g., for player commands).
   For NPCs, capitalize both proper names ("Aragon") and generic names
