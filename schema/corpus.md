@@ -66,22 +66,18 @@ The top-level `flags_declared` field specifies a set of boolean flags.
 
 ```json
 "flags_declared": [
-  "spider_fled",
-  { "injured": false },
-  { "handkerchief_moved": true }
+  "knows_vizier_secret",
+  { "fairy_blessing": false },
+  { "daytime": true }
 ]
 ```
 
-Each flag must have a unique ID (i.e., unique among all other flag
-IDs), and, optionally, a boolean value (defaulting `false`).  This
-value is the flag's initial value at the start of the adventure;
-during gameplay, the flag is tracked as part of the hard game state
-and can be freely mutated.
+Each flag must have a unique ID (i.e., unique among all flag IDs),
+and, optionally, a boolean value (defaulting `false`) specifying the
+initial value at game start.
 
-This field is typically generated during cross-validation, after all
-corpus sections are complete.  It is optional at the schema level; if
-it is omitted, the engine skips validation and assumes all global
-boolean flags are initially `false`.
+If `flags_declared` is omitted, the engine assumes all global flags
+are initially `false`.
 
 ---
 
@@ -134,20 +130,21 @@ Condition strings have one of two forms:
   `tag`, `topic`, and `inventory` domains).
 
 - `<domain>:<key> <op> <value>` — compare to `<value>`. Supported:
-  `== true`, `== false`, `== <string>`, `>= <number>`, `> <number>`,
-  `<= <number>`, `< <number>`.
+  `== true`, `== false`, `!= true`, `!= false`, `== <string>`,
+  `!= <string>`, `>= <number>`, `> <number>`, `<= <number>`,
+  `< <number>`.
   
-| Domain      | Key                                                 |
-|-------------|-----------------------------------------------------|
-| `flag`      | Global flag ID                                      |
-| `inventory` | Item entity ID in inventory; operators compare qty  |
-| `equipped`  | Item entity ID in player's equipped gear.           |
-| `tag`       | Item with this tag in inventory/equipment           |
-| `entity`    | Entity with named state field (e.g. `spider.alive`) |
-| `room`      | Room with named state field (e.g. `parlor.visited`) |
-| `topic`     | Topic ID of a topic discussed in current dialogue   |
-| `stat`      | Stat name; value is the value of that player stat   |
-| `event`     | Value in current event dispatch context (see below).|
+| Domain      | Key                                                   |
+|-------------|-------------------------------------------------------|
+| `flag`      | Global flag ID                                        |
+| `inventory` | Item entity ID in inventory; operators compare qty    |
+| `equipped`  | Item entity ID in player's equipped gear              |
+| `tag`       | Item with this tag in inventory/equipment             |
+| `entity`    | Entity state field, e.g. `king.alive`, `bob.location` |
+| `room`      | Room state field, e.g. `parlor.visited`               |
+| `topic`     | Topic ID of a topic discussed in current dialogue     |
+| `stat`      | Stat name; value is the value of that player stat     |
+| `event`     | Value in current event dispatch context (see below)   |
 
 Notes:
 
@@ -160,16 +157,20 @@ Notes:
 - The `event` domain is used in [Reaction dispatch](#reaction).
   It evaluates to `false` outside event dispatch.
 
-**Examples**:
+Examples:
 - `flag:daytime == true` holds iff the `daytime` flag is true.
-- `inventory:rusty_key` holds iff the item `rusty_key` is in inventory
-  (count > 0); not satisfied if that item exists outside inventory.
+- `inventory:rusty_key` holds iff `rusty_key` is in inventory; not
+  satisfied if that item exists outside inventory.
 - `inventory:gold_piece >= 30` holds iff the player has at least 30 of
   the stackable item `gold_piece`.
-- `entity:frodo.attitude >= 4` holds iff the NPC `frodo` has attitude
-  score >= 4.  See [Entity](#entity).
-- `topic:abandonment` holds iff the topic has been discussed in the
-  current dialogue (`soft_state.dialogue_state.topics_discussed`)
+- `entity:frodo.attitude >= 4` holds iff `frodo` has attitude >= 4.
+- `entity:shimrod.location == room:parlor` holds iff the `shimrod`
+  entity is in the room `parlor`.  Note that the `location` field only
+  holds for singleton (non-stackable) entities.
+- `entity:spider.location == null` holds iff `spider` is not located
+  anywhere (i.e., has left the scene).
+- `topic:abandonment` holds iff `abandonment` has been discussed in
+  the current dialogue.
 - `stat:STR >= 5` holds iff player's current STR stat is >= 5.
 
 ---
@@ -299,6 +300,11 @@ Notes:
   sets [Entity](#entity) state fields.  Values must match the types
   declared in the room or entity's `state_field`.
 
+- In `set_entity_state`, the special state field `location` denotes
+  the locations of singleton entities (NPCs, features, non-stackable
+  items); values can be `"room:<room_id>"`, `"entity:<container_id>"`,
+  or `null`.  See [Entity](#entity).
+
 - `alter_stat` keys are stat labels (e.g. `"STR"`); the mode, if
   omitted, defaults to `"delta"`.  Examples:
   - `{ "STR": { "value": -4 } }` decreases strength by 4
@@ -307,7 +313,7 @@ Notes:
 - `add_item` adds one of each listed item, while `add_item_count` adds
   specified amounts, e.g. `{ "coin": 50 }`.  For stackable items (see
   [Entity](#entity)), repeats are allowed and the total count is
-  added.  Adding a non-stackable (i.e., unique) item automatically
+  added.  Adding a non-stackable (i.e., singleton) item automatically
   removes it from any previous location.
 
 - `remove_item` removes one of each listed item, with repeats removing
@@ -770,7 +776,7 @@ array of a [Room](#room), [Entity](#entity), or [Mechanic](#mechanic)
 The scope determines when the reaction is active (i.e., can be
 triggered).  Room-scoped reactions are active when the player is in
 the room; entity-scoped reactions are active when the entity is in the
-present room *and* (for NPCs) alive and not fled; mechanic-scope
+present room *and* (for NPCs) alive; mechanic-scope
 reactions are always active.
 
 ```json
@@ -1000,18 +1006,30 @@ Notes:
   They are labeled by entity-unique IDs.  There are several reserved
   state fields, which need not be declared in `state_fields`:
 
-|Res. Field  |Type   | Init Value | Purpose                            |
-|------------|-------|------------|------------------------------------|
-|`alive`     |boolean| `true`     | NPC active? false => reactions off |
-|`fled`      |boolean| `false`    | NPC fled? false => reactions off   |
-|`attitude`  |integer| `0`        | NPC disposition; higher=friendlier |
-|`hidden`    |boolean| `false`    | Explicit concealment (see below)   |
-|`following` |boolean| `false`    | NPC follows player between rooms   |
-|`current_hp`|number | `combat.hp`| Current hit points (for combat)    |
-|`open`      |boolean| `false`    | Container open/closed state        |
+|Res. Field  |Type        | Init Value | Description                        |
+|------------|------------|------------|------------------------------------|
+|`alive`     |boolean     | `true`     | Entity active? false => reactions off for NPCs |
+|`location`  |string\|null| derived    | `room:x`, `entity:y`, or `null`    |
+|`attitude`  |integer     | `0`        | NPC disposition; higher=friendlier |
+|`hidden`    |boolean     | `false`    | Explicit concealment (see below)   |
+|`following` |boolean     | `false`    | NPC follows player between rooms   |
+|`current_hp`|number      | `combat.hp`| Current hit points (for combat)    |
+|`open`      |boolean     | `false`    | Container open/closed state        |
 
   Authors may override any reserved-field initial value by supplying
   an explicit field declaration with `initial`.
+
+  The `location` state field is special: it is only valid for
+  singleton entities (NPCs, features, and non-stackable items), and is
+  managed by the engine based on the containment relationships in the
+  game's hard state.  It should NOT be declared in `state_fields`;
+  initial values are automatically derived from the `contains` fields
+  on rooms and entities.  Like other state fields, `location` can be
+  queried (e.g., `entity:spider.location == room:cellar` in a
+  [condition string](#condition-string)), and changed (e.g.,
+  `"set_entity_state": { "sword": {"location": "entity:old_chest"}}`
+  in a [Result](#result)).  The special location `null` means the
+  entity is not currently accessible (e.g., an NPC that's fled).
 
   The `hidden` state field declares concealment (e.g., a lurking
   enemy, or a sword buried in rubble).  When `true`, the engine omits
@@ -1082,12 +1100,12 @@ inaccessible.  This is distinct from the `hidden` state.
 **Items** are entities that can potentially be picked up by the
 player.  The player cannot talk to or attack items.
 
-Items with the `"stackable"` tag can have multiple instances tied to
-the same entity ID.  These instances are indistinguishable and can
-occur, individually or in multiple copies, within the player's
-inventory, rooms, or other entities.  Stackable items support
-multi-copy transfers in [Results](#result) and player actions, and
-quantity comparisons in conditions (e.g. `inventory:coin >= 30`).
+Items with the `"stackable"` tag are non-singleton entities; they can
+have multiple indistinguishable instances tied to the same entity ID,
+which may exist (either individually or in multiples) in the player's
+inventory, rooms, or other entities.  Such items support multi-copy
+transfers in [Results](#result) and player actions, and quantity
+comparisons in conditions (e.g. `inventory:coin >= 30`).
 
 | Field          | Type       | Description                  |
 |----------------|------------|------------------------------|

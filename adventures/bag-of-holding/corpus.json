@@ -86,11 +86,6 @@
           "description": "Whether the spider is alive.",
           "initial": true
         },
-        "fled": {
-          "type": "boolean",
-          "description": "Whether the spider has fled.",
-          "initial": false
-        },
         "hidden": {
           "type": "boolean",
           "description": "Whether the spider is hidden in the shadows.",
@@ -153,7 +148,7 @@
               "narrative": "The spider sizes you up. For a long moment, it considers. Then, with a grudging hiss, it slinks away into the shadows, leaving the path clear.",
               "set_entity_state": {
                 "spider": {
-                  "fled": true
+                  "location": null
                 }
               },
               "set_flag": {
@@ -209,7 +204,7 @@
                 "require": "entity:spider.alive == true"
               },
               {
-                "unless": "entity:spider.fled == true"
+                "unless": "entity:spider.location == null"
               },
               {
                 "unless": "flag:webs_cleared == true"
@@ -260,7 +255,7 @@
                 "unless": "entity:spider.hidden == true"
               },
               {
-                "unless": "entity:spider.fled == true"
+                "unless": "entity:spider.location == null"
               },
               {
                 "unless": "flag:spider_fled == true"
@@ -296,7 +291,7 @@
               },
               "set_entity_state": {
                 "spider": {
-                  "fled": true
+                  "location": null
                 }
               }
             }

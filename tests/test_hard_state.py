@@ -91,7 +91,7 @@ class TestHardGameState:
                 "bag_floor": {"visited": True},
             },
             "entity_states": {
-                "spider": {"alive": True, "fled": True},
+                "spider": {"alive": True, "wounded": True},
                 "korbar": {"alive": True, "told_secret": False},
             },
             "turn_count": 5,
@@ -100,7 +100,7 @@ class TestHardGameState:
         assert h.player.inventory == {"rusty_key": 1}
         assert h.flags["spider_fled"] is True
         assert h.room_states["axe_head"]["visited"] is True
-        assert h.entity_states["spider"]["fled"] is True
+        assert h.entity_states["spider"]["wounded"] is True
         assert h.turn_count == 5
         assert h.game_over is None
 
@@ -133,7 +133,7 @@ class TestHardGameState:
         assert "stuck_fly" in h.entity_states
         assert h.entity_states["stuck_fly"]["alive"] is True
         assert "spider" in h.entity_states
-        assert h.entity_states["spider"]["fled"] is False
+        assert h.entity_states["spider"]["alive"] is True
 
 
 class TestPlayerStats:

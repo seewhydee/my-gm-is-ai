@@ -31,7 +31,7 @@ NPCs declare their mutable hard-state fields in `state_fields`.  Two fields are 
 - **`alive`** (`boolean`): If `false`, the NPC is dead.  Dead NPCs cannot participate in dialogue, have their attitude changed, or reveal knowledge.
 - **`attitude`** (`number`): The NPC's disposition toward the player.  Stored in hard game state (`entity_states.<npc_id>.attitude`).  Validated and mutated exclusively by the engine.
 
-Additional fields like `hidden`, `injured`, `following`, etc. can be declared as needed by adventure authors.
+Additional fields like `hidden`, `injured`, `following`, etc. can be declared as needed by adventure authors.  To model an NPC leaving the scene (fleeing, despawning, etc.), set the reserved pseudo-field `location` to `null` via `set_entity_state`; this removes the NPC from containment and excludes it from combat and reactions.
 
 
 ## Dialogue Guidelines
@@ -385,8 +385,7 @@ NPCs with an `aggro` block can trigger **encounters** — combat or other struct
     ],
     "on_flee": {
       "set_flag": { "spider_fled": true },
-      "set_entity_state": { "spider": { "alive": false } },
-      "effect": "remove_entity"
+      "set_entity_state": { "spider": { "location": null } }
     }
   }
 }

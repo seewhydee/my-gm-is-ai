@@ -21,7 +21,7 @@
   "entity_states": {
     "player": { "alive": true },
     "stuck_fly": { "alive": true, "attitude": 0 },
-    "spider": { "alive": true, "fled": false, "attitude": -5 },
+    "spider": { "alive": true, "attitude": -5 },
     "korbar": { "alive": true, "told_secret": false, "attitude": 0 }
   },
   "turn_count": 0,

@@ -144,7 +144,7 @@ class TestEntityVisibility:
             e for e in result.current_room.entities_visible if e.id == "spider"
         )
         assert spider.state["alive"] is True
-        assert spider.state["fled"] is False
+        assert spider.state["attitude"] == -5
 
     def test_entity_notes_included(self, state_manager):
         state_manager.soft_state.entity_notes["padlock"] = [

@@ -213,6 +213,10 @@ class HardStateChanges(BaseModel):
     room_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     entity_contains_added: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     entity_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    # Author-facing entity placements derived from set_entity_state "location".
+    # {entity_id: "room:<id>" | "entity:<id>" | None}.  Merged by dict-overwrite
+    # (last wins), unlike the count-summed containment deltas above.
+    entity_placements: Dict[str, Optional[str]] = Field(default_factory=dict)
 
     @staticmethod
     def _merge_nested_counts(
@@ -276,6 +280,7 @@ class HardStateChanges(BaseModel):
         self._merge_nested_counts(
             self.entity_contains_removed, other.entity_contains_removed
         )
+        self.entity_placements.update(other.entity_placements)
         if other.player_hp_delta is not None:
             if self.player_hp_delta is not None:
                 self.player_hp_delta += other.player_hp_delta
@@ -302,6 +307,7 @@ class HardStateChanges(BaseModel):
             or bool(self.room_contains_removed)
             or bool(self.entity_contains_added)
             or bool(self.entity_contains_removed)
+            or bool(self.entity_placements)
         )
 
 

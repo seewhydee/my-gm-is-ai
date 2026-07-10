@@ -446,7 +446,7 @@ class TestEngineResult:
                     "bag_floor": {"visited": True, "searched": True},
                 },
                 "entity_state_changes": {
-                    "spider": {"alive": False, "fled": True},
+                    "spider": {"alive": False, "wounded": True},
                     "korbar": {"told_secret": True},
                 },
             },
@@ -456,7 +456,7 @@ class TestEngineResult:
         assert r.hard_state_changes.inventory_removed == {"iron_sword": 1}
         assert r.hard_state_changes.flags_cleared == ["stunned"]
         assert r.hard_state_changes.room_state_changes["bag_floor"]["visited"] is True
-        assert r.hard_state_changes.entity_state_changes["spider"]["fled"] is True
+        assert r.hard_state_changes.entity_state_changes["spider"]["wounded"] is True
 
     def test_rolls_with_actual_data(self) -> None:
         r = EngineResult.model_validate({

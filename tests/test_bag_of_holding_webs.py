@@ -31,15 +31,19 @@ class TestAxeHandleLowerWebbing:
     def _exit_ids(self, result):
         return {e.id for e in result.room_after.exits_available}
 
-    def _suppress_spider(self, hard):
+    def _suppress_spider(self, sm):
         """Suppress spider encounters so we can test traversal in isolation."""
+        from mgmai.models.actions import HardStateChanges
+        hard = sm.hard_state
         hard.entity_states["spider"]["hidden"] = True
-        hard.entity_states["spider"]["fled"] = True
+        sm.apply_hard_changes(
+            HardStateChanges(entity_state_changes={"spider": {"location": None}})
+        )
 
     def test_enter_from_upper_shows_back_up_and_force_down(self):
         hard = make_webs_hard_state(location="axe_handle_upper")
-        self._suppress_spider(hard)
         sm = build_state_manager(make_webs_test_corpus(), hard_state=hard)
+        self._suppress_spider(sm)
 
         action = MoveAction(
             action_type="move",
@@ -59,8 +63,8 @@ class TestAxeHandleLowerWebbing:
         hard = make_webs_hard_state(
             location="bag_floor", korbar_following=True
         )
-        self._suppress_spider(hard)
         sm = build_state_manager(make_webs_test_corpus(), hard_state=hard)
+        self._suppress_spider(sm)
 
         action = MoveAction(
             action_type="move",
@@ -81,8 +85,8 @@ class TestAxeHandleLowerWebbing:
             location="axe_handle_lower",
             flags={"webs_cleared": True},
         )
-        self._suppress_spider(hard)
         sm = build_state_manager(make_webs_test_corpus(), hard_state=hard)
+        self._suppress_spider(sm)
 
         # Move down with cleared webs — traversal succeeds without check.
         action = MoveAction(
@@ -117,8 +121,8 @@ class TestAxeHandleLowerWebbing:
             location="axe_handle_lower",
             inventory={"toenail_sword": 1},
         )
-        self._suppress_spider(hard)
         sm = build_state_manager(make_webs_test_corpus(), hard_state=hard)
+        self._suppress_spider(sm)
 
         # STR 10 + roll 12 = 22, beats DC 10 (weapon override).
         monkeypatch.setattr(
@@ -137,8 +141,8 @@ class TestAxeHandleLowerWebbing:
 
     def test_force_through_web_barehanded_higher_dc(self, monkeypatch):
         hard = make_webs_hard_state(location="axe_handle_lower")
-        self._suppress_spider(hard)
         sm = build_state_manager(make_webs_test_corpus(), hard_state=hard)
+        self._suppress_spider(sm)
 
         # STR 10 + roll 3 = 13, fails DC 14 (bare-handed).
         monkeypatch.setattr(
@@ -160,7 +164,6 @@ class TestAxeHandleLowerWebbing:
             location="axe_handle_lower",
             inventory={"toenail_sword": 1},
             spider_hidden=False,
-            spider_fled=False,
         )
         sm = build_state_manager(make_webs_test_corpus(), hard_state=hard)
 

@@ -904,6 +904,30 @@ class StateManager:
         if hard.player.proficiency_bonus is None:
             hard.player.proficiency_bonus = 2
 
+    def _validate_singleton_target(
+        self,
+        eid: str,
+        container_kind: str,
+        container_id: str,
+    ) -> list[str]:
+        """Validate shared existence/player/self-containment constraints.
+
+        Called by both corpus containment validation and runtime placement
+        validation so the two paths cannot drift on the core rules.
+        """
+        errors: list[str] = []
+        if self.corpus is None:
+            return errors
+        entity = self.corpus.entities.get(eid)
+        if entity is None:
+            errors.append(f"No matching entity: {eid}")
+            return errors
+        if entity.type == "player":
+            errors.append(f"Cannot place player entity '{eid}'")
+        if container_kind == "entity" and eid == container_id:
+            errors.append(f"Entity '{eid}' cannot contain itself")
+        return errors
+
     def _validate_contains_map(
         self,
         owner_id: str,
@@ -913,13 +937,11 @@ class StateManager:
         """Validate a normalised contains map against corpus constraints."""
         errors: list[str] = []
         for eid, count in contains_map.items():
+            errors.extend(
+                self._validate_singleton_target(eid, owner_kind, owner_id)
+            )
             entity = self.corpus.entities.get(eid)
-            if entity is None:
-                continue  # Already reported by _check_ids
-            if entity.type == "player":
-                errors.append(
-                    f"{owner_kind.capitalize()} '{owner_id}' contains the player entity"
-                )
+            if entity is None or entity.type == "player":
                 continue
             if entity.type != "item" and count != 1:
                 errors.append(
@@ -934,10 +956,6 @@ class StateManager:
                     f"must be exactly 1"
                 )
                 continue
-            if owner_kind == "entity" and eid == owner_id:
-                errors.append(
-                    f"Entity '{owner_id}' contains itself"
-                )
         if errors:
             raise ValueError("\n".join(errors))
 
@@ -1053,6 +1071,19 @@ class StateManager:
         if "room_contains" not in raw_hard:
             self._init_contains_from_corpus()
 
+        # Migrate legacy ``fled`` entity state: remove the ghost from all
+        # containment, then drop the key.  Without this migration the removed
+        # fled checks would let old ``fled: true`` entities become present.
+        for eid, st in self.hard_state.entity_states.items():
+            if "fled" not in st:
+                continue
+            if st.get("fled") is True:
+                for contents in self.hard_state.room_contains.values():
+                    contents.pop(eid, None)
+                for contents in self.hard_state.entity_contains.values():
+                    contents.pop(eid, None)
+            del st["fled"]
+
         return adv_path or ""
 
     # ------------------------------------------------------------------
@@ -1132,6 +1163,72 @@ class StateManager:
                     continue
 
         return errors
+
+    def _validate_placements(
+        self,
+        placements: dict[str, str | None],
+    ) -> list[str]:
+        """Validate direct entity placements derived from ``set_entity_state``.
+
+        Placement is singleton-only (NPCs, features, non-stackable items).
+        Values use the qualified prefix ``room:<id>`` or ``entity:<id>``;
+        ``None`` means "remove from all containment".
+        """
+        errors: list[str] = []
+        if self.corpus is None:
+            return errors
+
+        for eid, loc in placements.items():
+            errors.extend(
+                self._validate_singleton_target(eid, "room", "")
+            )
+            entity = self.corpus.entities.get(eid)
+            if entity is None or entity.type == "player":
+                continue
+            if entity.type == "item" and "stackable" in entity.tags:
+                errors.append(
+                    f"'location' is for singleton entities; '{eid}' is stackable"
+                )
+                continue
+            if loc is None:
+                continue
+            prefix, _, target = loc.partition(":")
+            if prefix == "room":
+                if target not in self.corpus.rooms:
+                    errors.append(f"No matching room: {target}")
+            elif prefix == "entity":
+                if target not in self.corpus.entities:
+                    errors.append(f"No matching entity: {target}")
+                else:
+                    errors.extend(
+                        self._validate_singleton_target(eid, "entity", target)
+                    )
+            else:
+                errors.append(f"Invalid location value: {loc}")
+        return errors
+
+    def _apply_placements(
+        self,
+        placements: dict[str, str | None],
+    ) -> None:
+        """Apply direct entity placements to runtime containment maps.
+
+        Set-semantics: remove the entity from all current containers, then
+        place it in the target at count 1.  ``None`` simply removes.
+        """
+        hard = self.hard_state
+        for eid, loc in placements.items():
+            for contents in hard.room_contains.values():
+                contents.pop(eid, None)
+            for contents in hard.entity_contains.values():
+                contents.pop(eid, None)
+            if loc is None:
+                continue
+            prefix, _, target = loc.partition(":")
+            if prefix == "room":
+                hard.room_contains.setdefault(target, {})[eid] = 1
+            elif prefix == "entity":
+                hard.entity_contains.setdefault(target, {})[eid] = 1
 
     def _apply_contains_deltas(self, changes: HardStateChanges) -> None:
         """Apply the four containment-delta fields to hard state."""
@@ -1240,6 +1337,24 @@ class StateManager:
         # problem at once, matching the style of ``_validate_cross_references``.
         errors: list[str] = []
         corpus = self.corpus
+
+        # ------------------------------------------------------------------
+        # Intercept reserved ``location`` in set_entity_state before declared-
+        # field validation (location is derived, not declared).  Translate it
+        # into direct placements and strip it from the merge dict.  Setting a
+        # location on a following entity stops the follow so the derived read
+        # matches author intent.
+        # ------------------------------------------------------------------
+        for entity_id, entity_changes in changes.entity_state_changes.items():
+            if "location" not in entity_changes:
+                continue
+            loc = entity_changes.pop("location")
+            changes.entity_placements[entity_id] = loc
+            cur = self.hard_state.entity_states.get(entity_id, {})
+            if cur.get("following") is True or entity_changes.get("following") is True:
+                entity_changes["following"] = False
+
+        # --- room state field validation ---
         for room_id, room_changes in changes.room_state_changes.items():
             if corpus is None or room_id not in corpus.rooms:
                 errors.append(f"No matching room: {room_id}")
@@ -1297,6 +1412,27 @@ class StateManager:
                 )
             )
 
+        # Validate direct placements derived from set_entity_state "location".
+        errors.extend(self._validate_placements(changes.entity_placements))
+
+        # Reject changes that target the same entity via both placement and
+        # count-delta paths in one call.
+        delta_targets: set[str] = set()
+        for mapping in (
+            changes.room_contains_added,
+            changes.room_contains_removed,
+            changes.entity_contains_added,
+            changes.entity_contains_removed,
+        ):
+            for entries in mapping.values():
+                delta_targets.update(entries)
+        for eid in changes.entity_placements:
+            if eid in delta_targets:
+                errors.append(
+                    f"Entity '{eid}' is moved by both 'location' and a "
+                    f"containment delta in the same change; use one path"
+                )
+
         if errors:
             raise ValueError("\n".join(errors))
 
@@ -1352,6 +1488,7 @@ class StateManager:
                         self.hard_state.player.stats[stat_key] += mod.value
 
         self._apply_contains_deltas(changes)
+        self._apply_placements(changes.entity_placements)
 
     def apply_soft_patches(self, patches: list[SoftStatePatch | dict[str, Any]]) -> None:
         """Apply a list of validated ``SoftStatePatch`` objects to soft state."""

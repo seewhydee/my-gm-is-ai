@@ -240,7 +240,7 @@ def resolve_combat_enemies(
             if cid not in room_present:
                 continue
         st = hard.entity_states.get(cid, {})
-        if st.get("alive") is False or st.get("fled") is True:
+        if st.get("alive") is False:
             continue
         out.append(cid)
     return out

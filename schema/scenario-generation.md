@@ -348,12 +348,16 @@ Revisit the entity list, and add the following to each entity:
 
   NPC state fields:
   - `alive` (boolean) is required
-  - `fled` (boolean) if able to flee
   - `attitude` (number) if able to change attitude to the player
   - `hidden` (boolean) if concealable; see below
   - `following` (boolean) if a possible companion
   - `current_hp` (number) if able to engage in combat
   - custom state fields (e.g., `charmed`)
+
+  To model an NPC leaving the scene, set its `location` to `null` via a
+  result or reaction (e.g., `"set_entity_state": { "spider": { "location":
+  null } }`).  This removes the NPC from `room_contains`, which in turn
+  excludes it from combat and entity-scoped reactions.
 
   Non-NPC state fields:
   - `hidden` (boolean) if concealable; see below
@@ -714,7 +718,6 @@ Example:
 ```json
 "state_fields": {
   "alive": { "type": "boolean", "initial": true, "description": "Whether the spider is alive." },
-  "fled": { "type": "boolean", "description": "Whether the spider has fled." },
   "attitude": { "type": "number", "description": "Attitude toward the player, -10 to 10." },
   "hidden": { "type": "boolean", "initial": true, "description": "Whether the entity is hidden from view." }
 }
@@ -758,7 +761,7 @@ the scenario requires the reveal to be deferred.
 The `reactions` field is used for event-driven entity behavior.  To
 help translate the Scenario Map's reaction descriptions into JSON, see
 `events.md` for the specs on trigger events.  Entity reactions only
-trigger if the entity is in the current room, alive, and not-fled.
+trigger if the entity is in the current room, alive, and present.
 
 Reaction `result` objects support the same fields as interaction
 results: `narrative`, `set_flag`, `set_entity_state`, etc.  Use
@@ -1031,7 +1034,7 @@ Here is an example of a mechanical (one-turn) encounter:
     "check": { "type": "stat_check", "stat": "STR", "target": 10, "repeatable": true },
     "success": {
       "narrative": "You land a solid blow. The goblin hisses and flees.",
-      "set_flag": { "goblin_fled": true }
+	  "set_entity_state": { "goblin": { "location": null } }
     },
     "failure": {
       "narrative": "The goblin strikes back! Its cleaver goes through your neck.",
@@ -1852,8 +1855,8 @@ strings.  Condition objects enable compound AND/OR logic with nesting.
 ### Simple condition (object-based)
 
 ```json
-{ "require": "flag:spider_fled == true" }
-{ "unless": "flag:injured == true" }
+{ "require": "flag:daytime == true" }
+{ "unless": "flag:cursed == true" }
 ```
 
 ### Compound condition (AND/OR with nesting)

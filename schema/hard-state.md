@@ -229,6 +229,12 @@ These maps track the mutable location of every entity in the world:
 initial values are determined by the `contains` fields of the Room and
 Entity objects in the Corpus.
 
+The reserved entity pseudo-field `location` is derived from these maps
+at query time: it reads as `"room:<room_id>` or `"entity:<container_id>"`
+when the entity is contained, and `null` when it is not contained
+anywhere.  See the [Corpus schema](corpus.md#entity) for how authors set
+`location` via `set_entity_state`.
+
 Notes:
 
 - Counts are summed on add; keys are deleted when counts reach `0`.

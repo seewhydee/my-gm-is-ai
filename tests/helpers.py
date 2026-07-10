@@ -331,7 +331,6 @@ def make_webs_test_corpus() -> ModuleCorpus:
         "spider",
         description="A hairy spider.",
         state_fields={
-            "fled": {"type": "boolean", "description": "Fled?"},
             "hidden": {"type": "boolean", "description": "Hidden?"},
             "attitude": {"type": "number", "description": "Attitude"},
             "current_hp": {"type": "number", "description": "HP"},
@@ -345,7 +344,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
                     "all": [
                         {"require": "event:exit_id == exit_force_through_web"},
                         {"require": "entity:spider.alive == true"},
-                        {"unless": "entity:spider.fled == true"},
+                        {"unless": "entity:spider.location == null"},
                     ]
                 }),
                 effect=ReactionEffects(trigger_encounter="spider_attack"),
@@ -365,7 +364,7 @@ def make_webs_test_corpus() -> ModuleCorpus:
                     result=Result(
                         narrative="The spider dies.",
                         set_flag={"spider_fled": True},
-                        set_entity_state={"spider": {"fled": True}},
+                        set_entity_state={"spider": {"location": None}},
                     )
                 ),
             ),
@@ -483,7 +482,6 @@ def make_webs_hard_state(
     location: str = "axe_handle_lower",
     flags: dict[str, bool] | None = None,
     spider_alive: bool = True,
-    spider_fled: bool = False,
     spider_hidden: bool = True,
     inventory: dict[str, int] | None = None,
     korbar_following: bool = False,
@@ -492,7 +490,6 @@ def make_webs_hard_state(
     entity_states: dict[str, dict[str, Any]] = {
         "spider": {
             "alive": spider_alive,
-            "fled": spider_fled,
             "hidden": spider_hidden,
             "attitude": -2,
             "current_hp": 15,

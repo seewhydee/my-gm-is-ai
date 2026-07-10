@@ -23,7 +23,7 @@ condition domain:
 ```json
 { "require": "event:exit_id == exit_climb_down" }
 { "require": "event:interaction_id == attack" }
-{ "require": "event:flag_id == spider_fled" }
+{ "require": "event:flag_id == daytime" }
 ```
 
 The `event:` domain is **only valid during reaction dispatch**.

@@ -65,7 +65,7 @@ class TestBriefingEntity:
             "name": "Huge Spider",
             "type": "npc",
             "description": "A huge, hungry spider.",
-            "state": {"alive": True, "fled": False},
+            "state": {"alive": True},
             "entity_notes": [],
             "soft_items": [],
         })

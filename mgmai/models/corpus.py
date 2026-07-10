@@ -31,7 +31,6 @@ RESERVED_ROOM_STATE_FIELDS = frozenset({"visited", "is_current"})
 # generator when a field declaration omits an explicit ``initial``.
 RESERVED_STATE_FIELD_DEFAULTS: dict[str, Any] = {
     "alive": True,
-    "fled": False,
     "following": False,
     "open": False,
     "visited": False,

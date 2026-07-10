@@ -244,7 +244,7 @@ class TestFindMatchingReactions:
         entity.reactions.clear()
         entity.reactions.extend(saved_reactions)
 
-    def test_entity_not_active_when_fled(self, state_manager):
+    def test_fled_field_no_longer_suppresses_reactions(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
@@ -259,6 +259,30 @@ class TestFindMatchingReactions:
             effect=ReactionEffects(result=Result(narrative="gone")),
         ))
         hard.entity_states.setdefault("korbar", {})["fled"] = True
+
+        matches = find_matching_reactions(
+            "room.entered", {"room_id": "bag_floor"}, hard, soft, corpus,
+        )
+        ids = [r.id for r, _ in matches]
+        assert "fled_react" in ids
+        entity.reactions.clear()
+        entity.reactions.extend(saved_reactions)
+
+    def test_entity_not_active_when_location_null(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        entity = corpus.entities["korbar"]
+        saved_reactions = list(entity.reactions)
+        entity.reactions.clear()
+        entity.reactions.append(Reaction(
+            id="fled_react",
+            on="room.entered",
+            effect=ReactionEffects(result=Result(narrative="gone")),
+        ))
+        hard.room_contains["bag_floor"].pop("korbar", None)
 
         matches = find_matching_reactions(
             "room.entered", {"room_id": "bag_floor"}, hard, soft, corpus,

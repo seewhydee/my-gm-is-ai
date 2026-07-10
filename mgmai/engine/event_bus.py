@@ -85,10 +85,8 @@ def find_matching_reactions(
             if entity is None:
                 continue
             entity_state = hard.entity_states.get(eid, {})
-            # Active only when alive and not fled
+            # Active only when alive
             if entity_state.get("alive") is False:
-                continue
-            if entity_state.get("fled") is True:
                 continue
             for idx, reaction in enumerate(entity.reactions):
                 if _reaction_matches(reaction, event_type, context,

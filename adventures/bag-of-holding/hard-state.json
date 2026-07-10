@@ -52,7 +52,6 @@
     },
     "spider": {
       "alive": true,
-      "fled": false,
       "hidden": true,
       "attitude": -2,
       "current_hp": 14

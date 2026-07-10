@@ -1,494 +1,731 @@
-# Plan: Multi-combatant encounters (`combatants` + `combat_group`)
+# Plan: `entity.location` — engine-managed placement as a derived state field
 
 ## Background and motivation
 
-The combat engine is fully multi-combatant, but nothing can *populate*
-more than one enemy. `enter_combat(enemy_ids, ...)` accepts a list and
-threads it through initiative (`combat.py:167`), pre-player NPC turns
-(`combat.py:232`), the victory check (`combat.py:324-331`), and the flee
-DC (`combat.py:336-345`). Yet every call site passes a **single-element**
-list:
+Entities have several reserved boolean state fields that control engine
+behaviour: `alive`, `fled`, `following`, `hidden`. Each makes the engine
+treat the entity as "not really present" for some purpose.
 
-- `resolver.py:897` — direct attack: `enter_combat([target_id])`
-- `engine.py:273` — encounter outcome: `enter_combat([encounter_source_id])`
-- `event_bus.py:431` — reaction-fired encounter: `enter_combat([source_id])`
+Of these, `fled` is the most questionable. It means "this entity has left
+the scene," but the entity **stays in `room_contains`** — it is a ghost in
+the room, ignored by combat and reactions via two hard-coded checks
+(`combat.py:243`, `event_bus.py:91`). This is a half-measure: the entity
+is conceptually gone but structurally still there. Worse, there is no way
+for a `Result` to actually move an entity between rooms; the containment
+deltas `room_contains_added` / `room_contains_removed` /
+`entity_contains_added` / `entity_contains_removed` exist on
+`HardStateChanges` (`actions.py:212-215`) but are not exposed through
+`Result`, and the runtime validator `_validate_contains_delta`
+(`manager.py:1100`) rejects every non-`item` entity unconditionally — so
+even an engine-internal delta cannot move an NPC or feature at runtime.
 
-Three problems follow:
+Meanwhile, `set_player_location` on `Result` (`corpus.py:182`) lets
+authors move the player. There is no equivalent for any other entity.
 
-1. **"Three goblins attack" is inexpressible.** Combat is always 1-v-1;
-   there is no channel from a `Result` to the combatant set.
-2. **Mechanic-sourced combat is broken.** For a `mechanics` encounter,
-   `source_id` is the *mechanic id*, which is not an entity.
-   `enter_combat` leaves it in `combatants` (`combat.py:217`) but
-   `roll_initiative` drops it (`combat.py:169`) — a phantom combatant not
-   in the initiative order, i.e. a degenerate fight the player can only
-   leave by fleeing.
-3. **`trigger_combat` is a no-op off the encounter path.** The generic
-   Result-application path `_apply_result` (`resolver.py:1270`) handles
-   every field *including* `game_over` (`resolver.py:1404`) **but not
-   `trigger_combat`**. The field is only consumed by encounter resolution
-   (`encounters.py:122` → `engine.py:271` / `event_bus.py:429`). So
-   `trigger_combat: true` on an interaction result, a reaction
-   `effect.result`, an `on_examine` result, or a `then_check` branch does
-   nothing. This contradicts the docs (`scenario-generation.md:1489-1490`,
-   `corpus.md:276`), which state it generally. (The runtime no-op is in
-   fact already locked in by `test_event_bus.py:1311-1313`; the fix below
-   makes the corpus validation and docs match that intended scope rather
-   than changing runtime behaviour.)
+This plan introduces `location` as a reserved, **engine-managed, derived**
+entity state field. It applies to **any singleton entity** — NPCs,
+features, and non-stackable items — not just NPCs. Authors set it through
+the existing `set_entity_state` mechanism; the engine intercepts it and
+applies a **direct placement** (set-semantics: remove from all current
+containers, place in the target). The value is derived from the
+containment maps at query time, so there is a single source of truth. This
+subsumes `fled`, enables runtime entity movement for the first time, and
+requires no new fields on `Result`.
 
-This plan closes all three with two composable, declarative features and
-a validation/documentation fix. It does **not** change the combat loop,
-the GM briefing, or targeting — those already handle N enemies (verified:
-`assembler.py:375-393`, `ruling.j2` combat-targeting rule, `combat.py:294`).
+## Design
 
-## Design overview
+### The `location` state field
 
-Two ways to seed a multi-enemy fight, both funnelled through one resolver
-helper that filters for presence and combat-capability:
+`location` is a reserved string-or-null state field on entities. Unlike
+`alive`, `fled`, `following`, `hidden`, and `current_hp` — which are
+*declared* in an entity's `state_fields` (and merely receive engine-supplied
+defaults via `RESERVED_STATE_FIELD_DEFAULTS` or special-casing in
+`manager.py:290-295`) — `location` is **not declared and not stored** in
+`entity_states`. It is always derived from `room_contains` and
+`entity_contains`. This makes it unique among reserved fields: a pure
+projection of containment, never a stored value.
 
-- **`Result.combatants`** — an explicit list on an encounter-rule result,
-  for scripted / heterogeneous set-pieces ("the captain and two
-  archers"). Only meaningful alongside `trigger_combat: true`.
-- **`Entity.combat_group`** — a tag on NPC entities. Attacking (or
-  aggroing) *any* member pulls in every present, living member of the
-  same group. Ideal for homogeneous bands ("a band of identical
-  goblins") and, crucially, it works on the **direct-attack** path that
-  bypasses aggro/encounter rules entirely (`resolver.py:895-905`).
+The value uses a qualified prefix to distinguish container types:
 
-Both are expanded and filtered by a single function so the three
-`enter_combat` call sites behave identically.
+| Value | Meaning |
+|-------|---------|
+| `"room:<room_id>"` | Entity is in the given room |
+| `"entity:<entity_id>"` | Entity is inside the given container entity |
+| `null` | Entity is not contained anywhere (outside the adventure) |
 
-The `trigger_combat` no-op is closed by **locking the field (and
-`combatants`) to encounter results** (load-time validation error if they
-appear elsewhere) and fixing the docs, rather than spreading combat-entry
-side effects into the generic Result-application layer.
+`null` is the "nowhere" sentinel, preferred over `""` because it aligns
+with JSON-patch semantics: in `set_entity_state`, a field set to `null`
+means "set to null," while an absent field means "don't change."
 
-### Combatant resolution helper (single source of truth)
+### Scope: singleton entities only
 
-New `mgmai/engine/combat.py::resolve_combat_enemies`:
+`location` models **"this entity is here"** — a set-semantics that assumes
+one entity, one container. That holds for singleton entities: NPCs,
+features, and non-stackable items (each present at count 1 in at most one
+container).
 
-```python
-def resolve_combat_enemies(
-    seed_ids: list[str],          # encounter source(s): [source_id] or [target_id]
-    explicit: list[str] | None,   # Result.combatants (encounter path only)
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-) -> list[str]:
-    room_id = hard.player.location
-    room_present = set(hard.room_contains.get(room_id, {}))
-    follower_ids = set(get_following_npc_ids(hard, corpus))
-    seed_set = set(seed_ids) | set(explicit or [])
+It does **not** hold for stackable items, whose quantities may be split
+across many containers. The count-delta mechanism (`room_contains_added`
+etc.) is the correct model for stackable quantity moves ("take 3 of 10
+coins," split/merge stacks, `max_stack` enforcement) and is retained
+unchanged for that purpose. `location` rejects stackable items at
+validation time; a future, separate API may expose stackable quantity
+moves through `Result` (out of scope here).
 
-    # 1. Expand combat_group membership for every seed/explicit id.
-    #    Followers are allies: they are never pulled in via group
-    #    expansion. A follower can only become a combatant by being a
-    #    seed itself (i.e. the player attacked it directly).
-    expanded: list[str] = []
-    seen_groups: set[str] = set()
-    for cid in list(seed_ids) + list(explicit or []):
-        ent = corpus.entities.get(cid)
-        grp = ent.combat_group if ent else None
-        if grp and grp not in seen_groups:
-            seen_groups.add(grp)
-            for eid, e in corpus.entities.items():
-                if e.combat_group == grp and (eid == cid or eid not in follower_ids):
-                    expanded.append(eid)
-        else:
-            expanded.append(cid)
+Non-stackable items sit in an overlap: they are singletons (so `location`
+covers them) but they are also `item`-typed, so the count-delta validator
+(`manager.py:1113`) accepts them too. For non-stackable items, `location`
+is the **preferred** author-facing path; the count-delta fields for
+non-stackable items are legacy/engine-internal. The overlap is not left
+ambiguous — a single change may not use both paths on the same entity (see
+"Validation of placements").
 
-    # 2. Dedup (preserve order), then filter to eligible enemies.
-    out: list[str] = []
-    for cid in dict.fromkeys(expanded):
-        ent = corpus.entities.get(cid)
-        if ent is None or ent.combat is None:        # must be a stat-blocked entity
-            continue
-        # Presence: a seed is eligible if it is in the room or a follower
-        # (you may attack a follower). Group-expanded members must be in
-        # the current room; followers are excluded by the expansion step.
-        if cid in seed_set:
-            if cid not in room_present and cid not in follower_ids:
-                continue
-        else:
-            if cid not in room_present:
-                continue
-        st = hard.entity_states.get(cid, {})
-        if st.get("alive") is False or st.get("fled") is True:
-            continue
-        out.append(cid)
-    return out
+This still covers the motivating use cases: an NPC leaving the scene, a
+treasure chest (feature) appearing in a room, a unique quest item
+relocating from a pedestal to a container, a goblin hiding inside a
+barrel.
+
+### Reading `location`
+
+Conditions can test entity location:
+
+```
+entity:spider.location == "room:cellar"
+entity:spider.location != null
 ```
 
-Properties this gives us:
+The engine resolves `location` via a helper that derives the value from
+containment at query time (no separate storage):
 
-- A **mechanic** source id (not an entity) is filtered out at the
-  `ent is None` gate, so mechanic encounters draw enemies purely from
-  `combatants`/`combat_group` — fixing the phantom-combatant bug.
-- **Absent, dead, or fled** listed members are silently dropped, so
-  authoring `[goblin_1, goblin_2, goblin_3]` degrades gracefully when one
-  goblin is already dead or in another room.
-- The **aggressor is auto-included** because it is always a seed.
-- **Followers are not auto-pulled** into combat against the player. A
-  follower is only a combatant if it is the directly-attacked seed. (See
-  "Design decisions" below.)
+```python
+def get_entity_location(entity_id, hard, corpus):
+    # Following NPCs are dynamically injected wherever the player is; they
+    # are not tracked in room_contains.  Synthesize their location so
+    # conditions see them with the player.
+    st = hard.entity_states.get(entity_id, {})
+    if st.get("following") is True:
+        return f"room:{hard.player.location}"
+    for room_id, contents in hard.room_contains.items():
+        if entity_id in contents:
+            return f"room:{room_id}"
+    for cont_id, contents in hard.entity_contains.items():
+        if entity_id in contents:
+            return f"entity:{cont_id}"
+    return None
+```
 
-If `resolve_combat_enemies` returns an empty list, the caller **does not
-enter combat**: it logs a warning, leaves the encounter's narrative/state
-changes intact, and — importantly — does *not* report the encounter as
-having started combat (see B3 for the `EncounterOutcome.combat` /
-move-block reconciliation).
+The `following` short-circuit is required because following NPCs live
+**outside** `room_contains` at runtime (see "Interaction with `following`"
+below); without it their `location` would read as `null` even though they
+are visibly with the player.
 
----
+### Setting `location`
 
-## Design decisions (resolved)
+Authors set location via the existing `set_entity_state` mechanism:
 
-- **Followers are allies, not auto-enemies.** `combat_group` expansion
-  excludes following NPCs. The only way a follower enters combat is by
-  being the directly-attacked seed. Rationale: a following NPC is
-  conventionally an ally; auto-pulling it into a fight against the player
-  would be surprising. (Note: `get_following_npc_ids` only returns NPCs
-  that have a `dialogue` block — `utils.py:69` — so "follower" already
-  carries that unstated precondition; the docs should state it.)
-- **`combat_group` implies mutual hostility.** Authors must not place an
-  allied follower in an enemy band. This is enforced structurally by the
-  expansion-exclusion above (presence can't be checked statically because
-  `following` is runtime state).
-- **Empty post-filter set ⇒ no combat, and no "combat started" signal.**
-  Every call site guards on a non-empty result and refrains from setting
-  `combat_triggered`, emitting `combat.started`, or blocking movement.
-- **Encounter state changes are applied *before* enemy resolution** on the
-  engine path, so a firing result that mutates presence/alive (e.g.
-  reviving or relocating a combatant via `set_entity_state`) is visible to
-  the filter.
-- **Hard error for scope violations.** `trigger_combat`/`combatants`
-  outside encounter results is a load-time error (fail fast). No in-repo
-  corpus relies on the (non-functional) field; the only in-repo use of
-  `trigger_combat` is on an aggro encounter result
-  (`adventures/bag-of-holding/corpus.json:179`).
+```json
+"set_entity_state": { "spider": { "location": "room:tunnel" } }
+```
 
----
+Or to remove the entity from containment entirely:
+
+```json
+"set_entity_state": { "spider": { "location": null } }
+```
+
+Internally, `location` is **not** translated into the four count-delta
+fields. Instead it is intercepted early in `apply_hard_changes` and
+recorded on a new **direct-placement** field, `entity_placements`, with
+set-semantics. The `location` key is stripped from the dict before the
+`entity_states` merge (it is never stored there). The placement is then
+applied by removing the entity from all current containers and placing it
+in the target (count 1).
+
+#### Why placement, not deltas
+
+Routing `location` through `room_contains_added` / `_removed` would be
+wrong for three reasons:
+
+1. **Merge idempotency.** `HardStateChanges.merge` *sums* containment
+   counts (`_merge_nested_counts`, `actions.py:267-278`). Two co-occurring
+   reactions both placing `spider → room:B` would merge to
+   `room_contains_added[B][spider] = 2` and a removal of 2, hitting
+   `_validate_contains_delta`'s "only 1 present" guard (`manager.py:1127`)
+   or leaving a count-2 ghost. `entity_placements` merges by
+   **dict-overwrite** (last wins) — idempotent, which is the correct
+   set-semantics.
+2. **Set vs. count semantics.** `location` is declarative ("the entity is
+   here"); deltas are imperative count arithmetic. The engine must
+   discover the entity's current container to emit the right removal
+   anyway, so the delta is a needless, error-prone indirection.
+3. **The "one entity, one container" invariant is not globally enforced.**
+   Nothing in `_validate_contains_map` (`manager.py:907`) or
+   `_apply_contains_deltas` prevents an entity_id from appearing in
+   multiple containers. Placement *enforces* the invariant by
+   construction (remove from all, place in one); deltas inherit the
+   divergence.
+
+The count-delta fields are retained for stackable item operations, where
+they are fit for purpose. Placement writes to the **same**
+`room_contains` / `entity_contains` maps via a dedicated apply method, so
+the maps remain the single source of truth and reads (already map-based)
+stay consistent with writes.
+
+### Initialisation from corpus
+
+`_init_contains_from_corpus` (`manager.py:944`) already builds
+`room_contains` and `entity_contains` from the corpus. `location` needs no
+separate initialisation — it is derived from containment. The corpus
+validator `_validate_contains_map` already permits any non-`player` entity
+at count 1 in both room and entity containers (`manager.py:924`), so NPCs,
+features, and items may all be pre-placed. `location` simply makes them
+movable at runtime.
+
+### Deprecation of `fled`
+
+`fled: true` is replaced by `location: null` (or, more generally,
+`location: "room:<dest>"` to flee *to* somewhere — a capability `fled`
+never had). The two engine checks that currently test `fled` are removed,
+because a `null`-location entity is already excluded by the presence
+checks that derive from containment:
+
+- `combat.py:243` — `st.get("fled") is True` in `resolve_combat_enemies`.
+  With `location: null`, the entity is not in `room_contains` for the
+  current room, so it is already excluded by the presence check at
+  `combat.py:236-241`.
+- `event_bus.py:91` — `entity_state.get("fled") is True` in
+  `find_matching_reactions`. The entity is not in `entity_ids` (populated
+  from `room_contains` at `event_bus.py:76-79`) when it has no location.
+
+This is **more correct** than `fled`: `fled` left a ghost skipped only in
+the player's current room, whereas `location: null` actually removes the
+entity, so it is gone when the player later returns.
+
+`fled` is removed from `RESERVED_STATE_FIELD_DEFAULTS` (`corpus.py:34`).
+This is largely cosmetic — a declared `fled` without an explicit `initial`
+still resolves to `False` via the boolean type-default (`manager.py:302`)
+— but it produces a "no explicit initial" warning for adventures still
+declaring `fled`, acting as a deprecation nudge, and it removes the field
+from the documented reserved set.
+
+Authors who previously wrote:
+
+```json
+"set_entity_state": { "spider": { "fled": true } }
+```
+
+now write:
+
+```json
+"set_entity_state": { "spider": { "location": null } }
+```
+
+and instead of `entity:spider.fled == true` they check
+`entity:spider.location == null`.
+
+> **Migration scope.** Many `fled` strings in the codebase are unrelated
+> *flags* (`spider_fled`, `creature_fled`, `ambush_fled`) or narrative
+> text, not the entity-state field. All deprecation edits must be scoped
+> to the entity-state field `fled` only; flag and narrative references
+> are left untouched.
+
+### Interaction with other reserved fields
+
+- **`alive`** — orthogonal. A dead entity has a location (its corpse is
+  in the room). `alive: false` does not change containment.
+- **`hidden`** — orthogonal. A hidden entity is in the room but
+  invisible. `hidden: true` does not change containment; the engine
+  omits hidden entities from scene descriptions but they remain in
+  `room_contains`.
+- **`following`** — interacts, and the interaction is defined to match
+  the existing following architecture (see below).
+
+#### Interaction with `following`
+
+Following NPCs are **not** tracked in `room_contains`. They are
+dynamically injected wherever the player is, via `get_following_npc_ids` /
+`inject_following_npcs` (`utils.py:60-112`), consumed by display
+(`engine.py:770`), combat (`combat.py:206`), reactions (`event_bus.py:80`),
+and dialogue (`dialogue.py:132`). Consequently:
+
+- **Read side:** `get_entity_location` synthesizes
+  `room:<player.location>` for following NPCs (see the helper above).
+  Without this, a following NPC's `location` would read as `null` (or as
+  a stale `room:<origin>` if it was pre-placed in a room's `contains`).
+- **Write side — setting `location`:** placing a following entity (to any
+  value, including `null`) **clears `following`**. Pinning an entity to a
+  location is incompatible with dynamic following; forcing `following`
+  false ensures the derived read matches author intent (otherwise
+  `location: null` would still read as `room:<player>` via the following
+  short-circuit).
+- **Write side — setting `following`:** no containment side-effect.
+  Setting `following: true` does not move the entity; injection handles
+  its presence, and any stale `room_contains` entry is harmless (display,
+  combat, and reactions all union `follower_ids` with `room_contains` and
+  deduplicate). It is corrected on the next explicit placement, whose
+  remove-from-all step clears the stale entry.
+- **Precedence:** if both `location` and `following: true` are set in the
+  same change, `location` wins — the entity is placed and `following` is
+  forced false.
+
+This drops the original draft's "setting `following` on a null-location
+NPC brings it to the player's room" rule: that would have placed the NPC
+into `room_contains[player_room]`, conflicting with the injection
+architecture, and is unnecessary since injection already makes the NPC
+present.
+
+### Containment model
+
+The existing two-level containment model is unchanged:
+
+- `room_contains: {room_id: {entity_id: count}}` — top-level room membership
+- `entity_contains: {container_id: {entity_id: count}}` — nested containment
+
+`location` maps to whichever level the entity is currently in. Placement
+writes count 1 into the appropriate map and removes the entity from all
+others. The count-delta mechanism continues to serve stackable item
+quantity moves. The two apply paths write the same maps; within one
+`apply_hard_changes`, deltas are applied first and placements last.
+
+The two paths **overlap** for non-stackable items, which the count-delta
+validator also accepts (`manager.py:1113`). Rather than leave the outcome
+to apply-order and merely discourage it, a single `apply_hard_changes`
+that targets the **same entity** via both `entity_placements` and any of
+the four containment-delta fields is **rejected at validation time** (see
+"Validation of placements"). This removes the undefined-conflict seam by
+construction; there is never a "which path wins" question to reason about.
+
+The qualified prefix (`"room:x"` / `"entity:y"`) is required when
+*setting* location. When *reading* location, the engine resolves the
+prefix automatically from the containment maps.
+
+### Validation of placements
+
+Placement validation mirrors `_validate_contains_map` (the corpus
+validator), **not** `_validate_contains_delta` (the runtime delta
+validator). This is what resolves the showstopper: `_validate_contains_delta`
+rejects all non-items (`manager.py:1100`), which would block the primary
+use case (moving NPCs/features). Placement has its own validator that
+permits any non-`player` singleton in both room and entity containers,
+matching what the corpus already allows:
+
+- entity exists and is not the `player`;
+- entity is not a stackable item (singleton restriction);
+- target room or container entity exists;
+- no self-containment (`entity:x` cannot contain `x`).
+
+This also closes an existing inconsistency: the corpus permitted non-items
+in entity containers (e.g. a goblin in a barrel) but the runtime delta
+validator did not. Placement makes runtime behaviour match the corpus.
+
+The singleton/existence/self-containment predicates shared with the corpus
+validator (`_validate_contains_map`, `manager.py:907`) are factored into a
+single helper (`_validate_singleton_target`) so the corpus and placement
+validators cannot drift. `_validate_placements` and `_validate_contains_map`
+both call it; only their count/quantity rules differ.
+
+#### Cross-path conflict rejection
+
+Because placement and count-deltas write the same maps and overlap for
+non-stackable items, `apply_hard_changes` also rejects any change that
+targets the **same entity** through both mechanisms in one call:
+
+- for each `eid` in `entity_placements`, if `eid` appears in any of
+  `room_contains_added` / `room_contains_removed` /
+  `entity_contains_added` / `entity_contains_removed`, emit an error.
+
+This is a validation error (raised alongside the others at
+`manager.py:1300`), so the overlap can never resolve by apply-order. There
+is exactly one path per entity per change.
+
+## Qualms and caveats
+
+### Layering: `set_entity_state` and `following` gain containment side effects
+
+Today, applying `set_entity_state` is a pure dict merge into
+`entity_states` (`manager.py:1333-1336`). After this change, the reserved
+`location` key triggers containment mutations, and setting `location` on a
+following entity also forces `following: false`. This is a layering
+violation: entity state and containment are currently separate concerns in
+`HardGameState`.
+
+The mitigation is to intercept `location` (and the `following` override)
+early in `apply_hard_changes`, before the declared-field validation loop
+and before the dict merge, translating `location` into a placement entry
+and stripping it from the merge dict. The interception is a small,
+well-documented special case. Authors and future maintainers should be
+aware that `set_entity_state` is no longer a pure merge for the reserved
+`location` key.
+
+### `following` read synthesis is a special case
+
+`get_entity_location` special-cases following NPCs to synthesize
+`room:<player.location>`. This is necessary because following NPCs live
+outside containment, but it means `location` is not a pure containment
+projection for them. The rule is simple and documented, but it must be
+kept in sync if the following mechanism changes.
+
+### `entity_contains` authoring is new ground
+
+Currently `entity_contains` is populated only from the corpus at load time
+and (internally) via count-deltas for items. `location: "entity:chest_1"`
+is the first author-facing path to move an entity into another entity's
+containment at runtime, and the first path to place non-items (NPCs,
+features) into entity containers at runtime. The corpus validator already
+permits this; placement validation mirrors it. Display gating (a
+`container`-tagged entity whose `open` is not true hides its contents —
+`utils.py:131-134`) is a display concern and is unaffected.
+
+### Qualified prefix is verbose
+
+`"room:cellar"` is more typing than `"cellar"`. The alternative — looking
+up the ID in both `corpus.rooms` and `corpus.entities` — is ambiguous if
+an ID exists in both namespaces. The prefix is the safe choice; authors
+who find it verbose can use short room IDs.
+
+### Save compatibility (required, not deferred)
+
+A save file from a `fled`-era version may have `fled: true` in
+`entity_states` while the entity is still in `room_contains`. Once the
+`fled` checks are removed, such an entity would become a present ghost
+with no check to skip it. Migration on load is therefore **required**: for
+each entity with a `fled` key, if it is `true`, remove the entity from all
+containment maps; then delete the `fled` key from `entity_states` in all
+cases. This runs in `load_save` after the hard state is loaded.
 
 ## Implementation phases
 
-### Phase A: Model changes (`mgmai/models/corpus.py`)
+### Phase A: Model and schema changes
 
-**A1. `Result.combatants`**
+**A1. `RESERVED_STATE_FIELD_DEFAULTS` (`corpus.py:32-38`)**
 
-Add `combatants: Optional[List[str]] = None` (`corpus.py:168`). Leave
-`has_any_effect` unchanged — `combatants` is inert without
-`trigger_combat`, which already counts as an effect (`corpus.py:196`). Do
-**not** add a validator on `Result` itself (it is shared by interactions,
-reactions, and encounters; a field-level validator would wrongly reject
-the legitimate encounter case and break existing unit tests that
-construct `Result(trigger_combat=True)` directly — `test_resolver.py:803`,
-`test_event_bus.py:1315`). Scope enforcement lives in cross-validation
-(B4), not on the model.
+Remove `"fled": False`. Do not add a `location` entry — it is derived, not
+stored.
 
-**A2. `Entity.combat_group`**
+**A2. `HardStateChanges.entity_placements` (`actions.py`)**
 
-Add `combat_group: Optional[str] = None` to `Entity` (`corpus.py:493`).
-Extend the entity `@model_validator` (`corpus.py:533-548`, where `aggro`
-and `combat` are already gated) so a non-`npc` entity carrying
-`combat_group` raises, mirroring the `aggro`/`combat` restrictions.
+Add a new field with set-semantics:
 
-### Phase B: Engine wiring
+```python
+# Author-facing entity placements derived from set_entity_state "location".
+# {entity_id: "room:<id>" | "entity:<id>" | None}.  Merged by dict-overwrite
+# (last wins), unlike the count-summed containment deltas below.
+entity_placements: Dict[str, Optional[str]] = Field(default_factory=dict)
+```
 
-**B1. `combat.py::resolve_combat_enemies`** — new helper as specified
-above (imports `get_following_npc_ids` from `mgmai/engine/utils.py`; no
-circular-import risk — `utils` does not import `combat`).
+- In `merge`: `self.entity_placements.update(other.entity_placements)`.
+- In `has_changes`: add `or bool(self.entity_placements)`.
 
-**B2. Encounter result → combatants (`encounters.py`)**
+**A3. Schema documentation (`schema/corpus.md`, `schema/hard-state.md`)**
 
-In `_apply_encounter_rule` (`encounters.py:119-126`), add
-`"combatants": firing_result.combatants if firing_result else None` to the
-returned dict, and default it to `None` in `_empty_result`
-(`encounters.py:57-65`). `firing_result` is already the local for both
-the result-bearing and check-bearing branches (`encounters.py:95,108`),
-mirroring the existing `trigger_combat` threading (`encounters.py:122`).
+- Add `location` to the reserved state fields table, with type
+  `string|null`, value derived from containment, the qualified syntax,
+  and the singleton-only scope (NPCs, features, non-stackable items).
+- Remove `fled` from the table.
+- Document `null` as the "not contained anywhere" sentinel.
+- Note that `location` is derived from `room_contains` /
+  `entity_contains`, not stored in `entity_states`, and is the only
+  reserved field that is undeclared.
 
-**B3. Route all three entry points through the helper**
+**A4. Events documentation (`schema/events.md`)**
 
-- **`engine.py` (encounter outcome).** Restructure the encounter block
-  (`engine.py:235-284`) so that:
+- `combat.ended` reason `"fled"` — note this is emitted when the player
+  successfully flees combat (documented but not implemented; separate
+  issue).
+- Remove references to `fled` as an entity state field.
 
-  1. `encounter_changes` are applied **before** combat resolution (move
-     the `_apply_and_merge(encounter_changes)` call ahead of the combat
-     block; drop the later duplicate application at `engine.py:284`).
-  2. Combat enemies are resolved and `enter_combat` is called only when
-     non-empty.
-  3. `EncounterOutcome.combat` reflects **actual combat entry**, not
-     `trigger_combat`.
+**A5. Scenario generation documentation (`schema/scenario-generation.md`)**
 
-  ```python
-  _apply_and_merge(encounter_changes)          # presence/alive mutations visible
+- Update examples that use `set_entity_state: {"spider": {"fled": true}}`
+  to `{"spider": {"location": null}}` (and show `location: "room:..."`
+  for flee-to-somewhere).
+- Update condition examples from `entity:spider.fled == true` to
+  `entity:spider.location == null`.
 
-  combat_started = False
-  if enc_result["trigger_combat"]:
-      enemies = resolve_combat_enemies(
-          [encounter_source_id], enc_result.get("combatants"), hard, corpus)
-      if enemies:
-          combat_entry = enter_combat(enemies, hard, corpus)
-          combat_started = True
-          combat_triggered = True
-          combat_log = combat_entry["combat_log"]
-          if combat_entry.get("hard_changes"):
-              _apply_and_merge(combat_entry["hard_changes"])
-          if combat_entry.get("game_over"):
-              hard.game_over = GameOverState(type="lose", trigger="player_death")
-              game_over = GameOverResult(type="lose", trigger="player_death")
-          if soft.dialogue_state.active_npc is not None:
-              resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
-      else:
-          log.warning("trigger_combat produced no eligible combatants for %s",
-                      encounter_source_id)
+### Phase B: Engine changes
 
-  encounter_outcome = EncounterOutcome(
-      encounter_id=encounter_source_id,
-      combat=combat_started,                   # actual entry, not trigger_combat
-      narrative_brief=enc_result.get("narrative"),
-      branch_taken=enc_result.get("branch_taken"),
-  )
-  ```
+**B1. `location` interception in `apply_hard_changes`
+(`state/manager.py:1231-1354`)**
 
-  Construct `encounter_outcome` after the combat block (it currently
-  precedes it at `engine.py:253`). The room-transition block at
-  `engine.py:332-340` keys off `encounter_outcome.combat`, so with
-  `combat=combat_started` a `trigger_combat` that resolves to no enemies
-  no longer strands the player in the old room — the move proceeds and
-  `EngineResult.encounter_outcome.combat` is `False`.
+Add a pre-processing step that runs **before** the declared-field
+validation loop (`manager.py:1255-1262`). This ordering is essential:
+`location` is a reserved, undeclared field, so the declared-field check
+would otherwise reject it. The interception pops `location` out of the
+change dict (so validation and the merge never see it) and records a
+placement:
 
-- **`event_bus.py` (reaction-fired encounter, `_resolve_reaction_encounter`
-  `event_bus.py:429-450`).** `enc_result`'s state changes are already
-  applied before the combat block (`event_bus.py:417-422`), so only the
-  guard is needed:
+```python
+for entity_id, entity_changes in changes.entity_state_changes.items():
+    if "location" not in entity_changes:
+        continue
+    loc = entity_changes.pop("location")          # strip before merge
+    changes.entity_placements[entity_id] = loc
+    # Setting location (any value, incl. null) on a following entity
+    # stops the follow, so the derived read matches author intent.
+    cur = self.hard_state.entity_states.get(entity_id, {})
+    if cur.get("following") is True or entity_changes.get("following") is True:
+        entity_changes["following"] = False       # location wins
+```
 
-  ```python
-  if enc_result["trigger_combat"]:
-      enemies = resolve_combat_enemies(
-          [source_id], enc_result.get("combatants"), hard, corpus)
-      if enemies:
-          combat_entry = enter_combat(enemies, hard, corpus)
-          # ... existing hard_changes / game_over / combat_log / dialogue-exit
-          #     / "combat.started" event handling, all inside this branch ...
-      else:
-          log.warning("trigger_combat produced no eligible combatants for %s",
-                      source_id)
-  ```
+**B2. Placement validation (`state/manager.py`)**
 
-  Because the `combat.started` event and dialogue-exit are emitted inside
-  the same branch, an empty result emits neither.
+Add `_validate_placements`, called in the pre-validation block alongside
+the existing validators. Factor the singleton/existence/self-containment
+predicates shared with `_validate_contains_map` into a helper
+`_validate_singleton_target(eid, loc)` that both validators call; only the
+count-vs-set rules stay path-specific. `_validate_placements` mirrors
+`_validate_contains_map`:
 
-- **`resolver.py` (direct attack on a stat-blocked NPC, `resolver.py:884-905`).**
-  Two changes:
+```python
+def _validate_placements(self, placements):
+    errors = []
+    for eid, loc in placements.items():
+        ent = self.corpus.entities.get(eid)
+        if ent is None:
+            errors.append(f"No matching entity: {eid}"); continue
+        if ent.type == "player":
+            errors.append(f"Cannot set location on player entity '{eid}'"); continue
+        if ent.type == "item" and "stackable" in ent.tags:
+            errors.append(f"'location' is for singleton entities; "
+                          f"'{eid}' is stackable"); continue
+        if loc is None:
+            continue                                # removal is always valid
+        prefix, _, target = loc.partition(":")
+        if prefix == "room":
+            if target not in self.corpus.rooms:
+                errors.append(f"No matching room: {target}")
+        elif prefix == "entity":
+            if target not in self.corpus.entities:
+                errors.append(f"No matching entity: {target}")
+            elif target == eid:
+                errors.append(f"Entity '{eid}' cannot contain itself")
+        else:
+            errors.append(f"Invalid location value: {loc}")
+    return errors
+```
 
-  1. **Fix the dead-NPC guard.** The alive check at `resolver.py:885` is
-     currently gated on `target_entity.aggro`, so a stat-blocked NPC
-     *without* aggro that is already dead still reaches the attack branch.
-     Broaden it to all NPCs:
-     ```python
-     if target_entity.type == "npc":
-         entity_state = hard.entity_states.get(target_id, {})
-         if entity_state.get("alive") is False:
-             return ResolutionResult(success=False,
-                 error=f"NPC '{target_id}' is dead")
-     ```
-  2. **Resolve enemies and guard on non-empty.**
-     ```python
-     if interaction_id == "attack" and target_entity.combat is not None:
-         from mgmai.engine.combat import enter_combat, resolve_combat_enemies
-         enemies = resolve_combat_enemies([target_id], None, hard, corpus)
-         if not enemies:
-             return ResolutionResult(success=False,
-                 error=f"Cannot start combat with '{target_id}' "
-                       f"(not present or not a valid combatant)",
-                 room_after_id=room_id)
-         entry = enter_combat(enemies, hard, corpus)
-         return ResolutionResult(success=True, ...)
-     ```
-     In the normal case `target_id` is present (found via
-     `_find_entity_in_room_followers`, `resolver.py:874`) and stat-blocked,
-     so the result is non-empty and `combat_group` expansion pulls in the
-     rest of the band. The guard is a safety net for the degenerate case
-     rather than a reliance on "never empty".
+**B2a. Cross-path conflict rejection (`state/manager.py`)**
 
-**B4. Lock `trigger_combat`/`combatants` to encounter results**
+In the same pre-validation block, reject a change that targets the same
+entity via both placement and any containment delta:
 
-Add `_validate_trigger_combat_scope()` to the load-time pipeline in
-`state/manager.py` (call it in `load_all` and `_apply_char_sheet_data`,
-alongside `validate_cross_references`). Mirror the per-carrier walker
-structure already used by `_collect_corpus_flag_references`
-(`manager.py:392-553`), recursing into `then_check` with carrier context.
+```python
+delta_targets = set()
+for m in (changes.room_contains_added, changes.room_contains_removed,
+          changes.entity_contains_added, changes.entity_contains_removed):
+    for entries in m.values():
+        delta_targets.update(entries)
+for eid in changes.entity_placements:
+    if eid in delta_targets:
+        errors.append(f"Entity '{eid}' is moved by both 'location' and a "
+                      f"containment delta in the same change; use one path")
+```
 
-Raise `ValueError` if any of the following hold:
+**B3. Placement application (`state/manager.py`)**
 
-- **Scope:** `trigger_combat` or `combatants` is set on a `Result`
-  outside an encounter rule.
-  - **Allowed carriers:** `entity.aggro[*].result` / `.success` /
-    `.failure`; `mechanic.rules[*].result` / `.success` / `.failure`; and
-    any `then_check` reachable from those.
-  - **Forbidden carriers:** `interaction.result` / `.success` /
-    `.failure` (entity, room, and dialogue-path `Resolvable`s);
-    `on_examine[*].result` / `.success` / `.failure`; `reaction.effect.result`
-    (entity, room, mechanic scopes); `using_results[*].result` / `.success`
-    / `.failure` (traversal and take overrides); and any `then_check`
-    reachable from those.
-- **`combatants` requires `trigger_combat`:** a `Result` carrying
-  `combatants` must also have `trigger_combat: true` (otherwise it is
-  silently inert).
-- **`combatants` referential integrity:** every id in a `combatants` list
-  references a known entity.
-- **`combat_group` membership:** every entity sharing a `combat_group`
-  value is an `npc` with a `combat` block. (All members must be
-  stat-blocked — not just ≥1 — so a group reliably denotes a fightable
-  band. Members without a `combat` block would be silently dropped by the
-  runtime filter; fail fast instead.)
+Add `_apply_placements`, called after `_apply_contains_deltas`
+(`manager.py:1354`). Same-entity conflicts are now rejected in
+pre-validation (B2a), so apply-order no longer resolves any conflict;
+placements-last is retained only for deterministic, self-consistent
+output:
 
-Presence (in-room / follower / alive) cannot be checked statically — that
-is the runtime filter's job.
+```python
+def _apply_placements(self, placements):
+    hard = self.hard_state
+    for eid, loc in placements.items():
+        # Set-semantics: remove from all current containers first.
+        for contents in hard.room_contains.values():
+            contents.pop(eid, None)
+        for contents in hard.entity_contains.values():
+            contents.pop(eid, None)
+        if loc is None:
+            continue
+        prefix, _, target = loc.partition(":")
+        if prefix == "room":
+            hard.room_contains.setdefault(target, {})[eid] = 1
+        elif prefix == "entity":
+            hard.entity_contains.setdefault(target, {})[eid] = 1
+```
 
-### Phase C: Documentation
+> A reverse index (`entity_id → container_id`) would make the
+> remove-from-all step O(1) instead of scanning every container. This is
+> a future optimisation; the scan is fine for current container counts.
 
-**C1. `schema/corpus.md`**
+**B4. Location derivation for conditions (`engine/conditions.py`,
+`engine/utils.py`)**
 
-- Result field table (`corpus.md:276`): clarify `trigger_combat` is
-  **only** honoured in encounter-rule results; add the `combatants` row
-  (list of entity ids; requires `trigger_combat`; filtered for presence).
-- Aggro / encounter-rule section (around `corpus.md:1338-1355`): document
-  `combatants` and the presence/alive/combat-capable filtering, and that
-  an empty post-filter set means no combat.
-- Entity field table / NPC section (`corpus.md:1204-1210`): add
-  `combat_group`, npc-only, with the "attack one → the band joins"
-  semantics, the direct-attack note, and the statement that followers are
-  allies (not auto-pulled) and that "follower" requires a `dialogue` block.
-- State the phantom-fix: a mechanic encounter with `trigger_combat` must
-  supply `combatants` (or the members must share a `combat_group`),
-  because the mechanic id is not itself a combatant.
+Add `get_entity_location` (see "Reading `location`" above) to
+`engine/utils.py` alongside `get_following_npc_ids`.
 
-**C2. `doc/combat.md`**
+Wire it into **both** condition-evaluation paths for the `entity:` domain:
 
-- "Entering Combat" (`combat.md:162-182`): document that the enemy set is
-  the filtered union of the source, its `combat_group`, and any
-  `combatants` list; enemies must be present and living; an empty set
-  means no combat is entered.
-- Fix the framing at `combat.md:166-172` to match the new resolution
-  (note that a direct attack on a stat-blocked NPC enters combat
-  immediately via the helper, pulling its band).
+1. `evaluate_condition_string` (`conditions.py:102-116`). The `location`
+   field must be special-cased **before** the `if field_val is None: return
+   False` short-circuit at `conditions.py:114`, otherwise
+   `entity:x.location == null` would always evaluate False. Mirror the
+   existing `is_current` special-case at `conditions.py:126-127`. Handle
+   `null` comparisons explicitly: `== null` is true iff the derived
+   location is `None`; `!= null` is true iff it is not `None`; other
+   values use the normal string `_compare`.
+2. The explain/detail path (`conditions.py:341-348`) should use
+   `get_entity_location` for the `location` field so detail strings are
+   accurate.
 
-**C3. `schema/scenario-generation.md`**
+**B5. `following` interaction**
 
-- Fix the overclaim at `scenario-generation.md:1489-1490` ("When a firing
-  `Result` has `trigger_combat: true`, the engine starts multi-round
-  combat") → scope it to encounter-rule results.
-- Document the "band of goblins" idiom (`combat_group`) and the scripted
-  idiom (`combatants`) in Step 4 (Build Mechanics) and the NPC/aggro
-  guidance. Note that listing one band member in `combatants` expands the
-  whole present band — to select a subset, omit `combat_group`.
-- Validation checklist additions: `trigger_combat`/`combatants` only in
-  encounter results; `combatants` requires `trigger_combat`; `combatants`
-  ids reference stat-blocked entities; `combat_group` members are all
-  stat-blocked npcs.
+Implemented within B1's interception (clearing `following` when `location`
+is set) and B4's `get_entity_location` (synthesizing `room:<player>`
+for following NPCs). No separate containment side-effect is needed when
+setting `following: true`.
 
-### Phase D: Tests
+**B6. Remove `fled` checks**
 
-**D1. `tests/test_combat.py` — `resolve_combat_enemies`**
+- `combat.py:243` — remove `st.get("fled") is True` from the filter. The
+  presence check at `combat.py:236-241` already excludes entities not in
+  `room_contains`.
+- `event_bus.py:88-92` — remove the `entity_state.get("fled") is True`
+  guard.
+- Search for any other `get("fled")` in `mgmai/` and remove engine uses.
 
-- Present + alive + stat-blocked members are kept; absent / dead / fled /
-  non-combat / unknown ids are dropped.
-- `combat_group` expansion from a single seed (attack `goblin_1` →
-  `{goblin_1, goblin_2, goblin_3}` when all present; a fourth goblin in
-  another room is excluded).
-- **Followers are not auto-pulled:** a following NPC sharing a group with
-  an attacked enemy is excluded; but attacking a follower seed directly
-  still starts combat with that follower (plus any in-room group members).
-- Empty result → caller enters no combat (assert `hard.combat is None`
-  and a warning is logged).
+**B7. Save migration (`state/manager.py`, `load_save`)**
 
-**D2. `tests/test_encounters.py` / `tests/test_event_bus.py` / `tests/test_resolver.py`**
+After loading a hard state, scan `entity_states`:
 
-- Encounter rule with explicit `combatants` → multi-enemy `CombatState`.
-- Mechanic encounter with `trigger_combat` + `combatants` (previously
-  broken) → correct combatants, no phantom mechanic id.
-- Mechanic encounter with `trigger_combat` and **no** combatants/group →
-  no combat, warning, encounter narrative/state still applied.
-- **`engine.py` empty-reconciliation:** a `trigger_combat` encounter that
-  resolves to no enemies sets `encounter_outcome.combat=False`,
-  `combat_triggered=False`, and does **not** block a pending room
-  transition (`action_changes.player_location` survives).
-- **`engine.py` encounter-change timing:** an encounter result that
-  `set_entity_state` revives an otherwise-dead listed combatant before
-  `trigger_combat` includes that combatant (state change applied before
-  enemy resolution).
-- **Direct-attack guard:** attacking a dead stat-blocked NPC with no
-  aggro returns an error (not a degenerate player-only combat); attacking
-  a `combat_group` member pulls the whole present band (via
-  `resolver.py:895`).
-- **`event_bus.py` empty:** a reaction-fired `trigger_combat` that
-  resolves to no enemies emits no `combat.started` event and leaves
-  `hard.combat` unset.
+```python
+for eid, st in hard.entity_states.items():
+    if "fled" not in st:
+        continue
+    if st.get("fled") is True:
+        # Remove the ghost from all containment (no fled check will skip
+        # it after this migration).
+        for contents in hard.room_contains.values():
+            contents.pop(eid, None)
+        for contents in hard.entity_contains.values():
+            contents.pop(eid, None)
+    del st["fled"]
+```
 
-**D3. Validation (`tests/test_corpus.py` / `tests/test_state_manager.py`)**
+**B8. `_init_contains_from_corpus` — no change needed**
 
-- `combat_group` on a non-npc entity → model error.
-- `trigger_combat` / `combatants` on an interaction, reaction,
-  `on_examine` (`.result`, `.success`, `.failure`), or `using_results`
-  result → load-time `ValueError` from `_validate_trigger_combat_scope`.
-- `combatants` without `trigger_combat` on an encounter result → error.
-- `combatants` referencing an unknown / non-stat-blocked entity → error.
-- A `combat_group` where any member lacks a `combat` block (or is not an
-  npc) → error.
-- The existing engine-level unit tests that call `_apply_result` /
-  reaction dispatch with `Result(trigger_combat=True)` directly
-  (`test_resolver.py:803-866`, `test_event_bus.py:1315-1377`) still pass
-  (they bypass corpus validation); update their docstrings to reference
-  the new "encounter-only" rule.
+Containment is already initialised from the corpus. `location` is
+derived, not stored.
 
-**D4. Briefing coverage (`tests/` for `context/assembler.py`)**
+### Phase C: Tests
 
-- A multi-enemy `CombatState` yields one briefing entry per living enemy
-  with correct name/hp (guards `assembler.py:375-393`).
+**C1. Placement read/write**
 
-### Phase E: Example content (optional, illustrative)
+- Set `location: "room:x"` via `set_entity_state` → entity appears in
+  `room_contains[x]` at count 1, removed from its old container.
+- Set `location: "entity:y"` → entity appears in `entity_contains[y]`.
+- Set `location: null` → entity removed from all containment.
+- Condition `entity:spider.location == "room:cellar"` resolves correctly.
+- Condition `entity:spider.location == null` resolves True for a
+  non-contained entity, and `!= null` resolves True for a contained one
+  (verifies the None short-circuit fix).
+- Placing a feature (appearing chest) and a non-stackable item works.
+- Placing a stackable item is rejected.
+- Placing into a non-existent room/entity is rejected.
+- Self-containment (`entity:x` into `x`) is rejected.
+- Merge idempotency: two changes placing the same entity to the same
+  target merge to a single placement (not count 2).
+- Cross-path conflict: a single change that moves the same entity via both
+  `location` and a containment delta is rejected at validation time.
+- The shared `_validate_singleton_target` helper accepts/rejects the same
+  targets whether reached via the corpus or the placement validator.
 
-Add a small `combat_group` band and/or a `combatants` set-piece to
-`tests/fixtures/corpus.json` (and optionally `bag-of-holding`) so the new
-idioms have a worked reference and an integration surface.
+**C2. `fled` replacement (entity-state field only)**
 
----
+- Existing tests that set the entity-state `fled: true`
+  (e.g. `test_state_manager.py:323`, `test_actions.py:449`) → update to
+  `location: null`. (Do **not** touch `spider_fled` / `creature_fled` /
+  `ambush_fled` flags or narrative text — verify each reference is the
+  entity-state field before editing.)
+- Combat eligibility: an entity with `location: null` is excluded from
+  `resolve_combat_enemies`.
+- Reaction matching: an entity with `location: null` has its reactions
+  skipped (not in the room's entity set).
+
+**C3. `following` interaction**
+
+- `get_entity_location` returns `room:<player.location>` for a following
+  NPC.
+- Setting `location` on a following NPC clears `following` and places it.
+- Setting `location: null` on a following NPC clears `following` and
+  removes it from containment.
+- Setting `following: true` on an entity with a stale `room_contains`
+  entry does not raise; `get_entity_location` still reports
+  `room:<player.location>`.
+- Setting both `location` and `following: true` → `location` wins,
+  `following` ends false.
+
+**C4. Save migration**
+
+- Load a save with `fled: true` and the entity in `room_contains` →
+  entity is removed from containment; `fled` key is gone.
+- Load a save with `fled: false` → `fled` key is gone; containment
+  unchanged.
+
+**C5. Deprecation**
+
+- `fled` is no longer in `RESERVED_STATE_FIELD_DEFAULTS`.
+- A corpus declaring `fled` without an explicit `initial` emits the "no
+  explicit initial" warning (deprecation nudge) and resolves to `False`.
+
+### Phase D: Documentation
+
+**D1. `doc/npcs.md`** — update encounter examples to `location: null`;
+document the `location` field, its qualified syntax, and singleton scope.
+
+**D2. `doc/combat.md`** — update "fled" references to `location: null`;
+document that entities outside containment are excluded from combat.
+
+**D3. `doc/intro.md`** — update any entity-state `fled` references only.
+
+**D4. `schema/scenario-generation.md`** — update all entity-state `fled`
+examples.
 
 ## Files touched
 
 | File | Phase | Nature of change |
 |------|-------|------------------|
-| `mgmai/models/corpus.py` | A1-A2 | Add `Result.combatants`; add `Entity.combat_group` + npc-only guard |
-| `mgmai/engine/combat.py` | B1 | New `resolve_combat_enemies` helper |
-| `mgmai/engine/encounters.py` | B2 | Return `combatants` from encounter results |
-| `mgmai/engine/engine.py` | B3 | Apply encounter changes before enemy resolution; resolve enemy set; guard combat entry on non-empty; `EncounterOutcome.combat` = actual entry |
-| `mgmai/engine/event_bus.py` | B3 | Same guard for reaction-fired encounters |
-| `mgmai/engine/resolver.py` | B3 | Broaden dead-NPC guard to all npcs; direct-attack path uses the helper (`combat_group` expansion) + empty-guard |
-| `mgmai/state/manager.py` | B4 | `_validate_trigger_combat_scope` (scope, `combatants⇒trigger_combat`, referential, `combat_group` membership) |
-| `schema/corpus.md` | C1 | Document `combatants`, `combat_group`, encounter-only `trigger_combat`, mechanic-source rule, follower semantics |
-| `doc/combat.md` | C2 | Multi-combatant entry + filtering + empty-set behaviour |
-| `schema/scenario-generation.md` | C3 | Fix overclaim; document both idioms; checklist items |
-| `tests/test_combat.py` | D1/D4 | Helper + briefing tests |
-| `tests/test_encounters.py` | D2 | `combatants` threading, mechanic-source cases, empty-reconciliation, change-timing |
-| `tests/test_event_bus.py` | D2/D3 | Reaction-fired multi-enemy; empty → no `combat.started`; validation docstrings |
-| `tests/test_resolver.py` | D2/D3 | Direct-attack band; dead-NPC guard; validation docstrings |
-| `tests/test_corpus.py` | D3 | Model + scope validation errors |
-| `tests/test_state_manager.py` | D3 | Load-time scope/cross-validation |
-| `tests/fixtures/corpus.json` | E | Example band / set-piece (optional) |
+| `mgmai/models/corpus.py` | A1 | Remove `fled` from `RESERVED_STATE_FIELD_DEFAULTS` |
+| `mgmai/models/actions.py` | A2 | Add `entity_placements` field; `merge` (dict-overwrite); `has_changes` |
+| `mgmai/state/manager.py` | B1-B3, B7 | Intercept `location` before validation; `_validate_singleton_target` shared helper; `_validate_placements`; cross-path conflict rejection; `_apply_placements`; save migration in `load_save` |
+| `mgmai/engine/utils.py` | B4 | Add `get_entity_location` |
+| `mgmai/engine/conditions.py` | B4 | Wire `location` into both `entity:` eval paths; fix `null` short-circuit |
+| `mgmai/engine/combat.py` | B6 | Remove `fled` check from `resolve_combat_enemies` |
+| `mgmai/engine/event_bus.py` | B6 | Remove `fled` check from `find_matching_reactions` |
+| `schema/corpus.md` | A3 | Document `location`, remove `fled` |
+| `schema/hard-state.md` | A3 | Note `location` is derived from containment |
+| `schema/events.md` | A4 | Update `fled` references |
+| `schema/scenario-generation.md` | A5, D4 | Update examples |
+| `doc/npcs.md` | D1 | Update examples |
+| `doc/combat.md` | D2 | Update flee documentation |
+| `doc/intro.md` | D3 | Update entity-state `fled` references only |
+| `tests/test_state_manager.py` | C1, C2, C4, C5 | Placement read/write; fled→location; migration; deprecation |
+| `tests/test_actions.py` | C1, C2 | `entity_placements` merge; fled→location |
+| `tests/test_combat.py` | C2 | Location-based combat exclusion |
+| `tests/test_conditions.py` | C1, C3 | Location condition eval (incl. `null`); following synthesis |
+| `tests/test_event_bus.py` | C2 | Location-based reaction exclusion |
+| `tests/test_resolver.py` | C2 | Update entity-state fled references only |
+| `tests/test_hard_state.py` | C2 | Update entity-state fled references only |
+| `tests/test_corpus.py` | C5 | Remove fled from reserved defaults |
+| `tests/test_encounters.py` | C2 | Update entity-state fled references only |
+| `tests/test_assembler.py` | C2 | Update entity-state fled references only |
+| `tests/test_bag_of_holding_webs.py` | C2 | Update entity-state fled references only |
+| `tests/test_soft_state.py` | C2 | Verify (flag references; likely no change) |
+| `tests/helpers.py` | C2 | Update the declared `fled` state field + `set_entity_state` usages |
 | `plan.md` | — | This document |
 
 ## Open questions / deferred
 
-- **`"self"` in a `combatants` list.** For entity-scoped encounter
-  results one could allow `"self"` to mean the owning entity, consistent
-  with reaction `self` semantics. Deferred — not needed for the band or
-  set-piece idioms, and encounters don't currently carry an owner id
-  through to result resolution.
-- **Heterogeneous bands via a single tag.** `combat_group` is a flat
-  string; multi-group membership (a goblin in both "camp" and "raiders")
-  is out of scope. A list-valued `combat_group` is a possible future
-  extension.
-- **Per-encounter `combat_group` opt-out.** Today `combat_group` expands
-  on all three call sites uniformly. If an author later wants a single
-  member's aggro/encounter to fight alone, an opt-out flag on the
-  encounter result could be added.
+- **Stackable quantity moves via `Result`.** `location` is singleton-only.
+  Moving N of a stackable item between containers at runtime still has no
+  author-facing path (the count-deltas are engine-internal). A separate
+  `Result` API for quantity moves is a natural follow-up.
+- **`combat.ended` event emission.** The `combat.ended` event with
+  `reason: "fled"` is documented but never emitted. Separate bug; out of
+  scope here but should be tracked.
+- **Reverse containment index.** `_apply_placements`'s remove-from-all
+  step scans every container. A reverse index would make it O(1); defer
+  until container counts motivate it.

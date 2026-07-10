@@ -87,7 +87,7 @@ Soft State, for the ruling LLM (call 1).
         "name": "Huge Spider",
         "type": "npc",
         "description": "A huge, hungry spider lurking in the dense webs.",
-        "state": { "alive": true, "fled": false },
+        "state": { "alive": true },
         "entity_notes": [],
         "soft_items": [],
         "dialogue_paths": {
@@ -670,7 +670,7 @@ everything LLM Call 2 needs to narrate the outcome.
       "bag_floor": { "visited": true }
     },
     "entity_state_changes": {
-      "spider": { "fled": true }
+      "spider": { "location": null }
     }
   },
 

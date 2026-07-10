@@ -72,6 +72,36 @@ def get_following_npc_ids(
     return result
 
 
+def get_entity_location(
+    entity_id: str,
+    hard: HardGameState,
+    corpus: ModuleCorpus | None,
+) -> str | None:
+    """Derive an entity's qualified location from runtime containment maps.
+
+    Returns ``"room:<room_id>"``, ``"entity:<container_id>"``, or ``None``
+    when the entity is not contained anywhere.  Following NPCs are
+    synthesised as being in the player's current room because they live
+    outside the containment maps at runtime.
+    """
+    estate = hard.entity_states.get(entity_id, {})
+    if estate.get("following") is True:
+        # When corpus is unavailable, trust the flag; otherwise only NPCs with
+        # dialogue can legally follow.
+        if corpus is None:
+            return f"room:{hard.player.location}"
+        ent = corpus.entities.get(entity_id)
+        if ent is not None and ent.type == "npc" and ent.dialogue is not None:
+            return f"room:{hard.player.location}"
+    for room_id, contents in hard.room_contains.items():
+        if entity_id in contents:
+            return f"room:{room_id}"
+    for container_id, contents in hard.entity_contains.items():
+        if entity_id in contents:
+            return f"entity:{container_id}"
+    return None
+
+
 def inject_following_npcs(
     entities_visible: list[BriefingEntity],
     room_id: str,

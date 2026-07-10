@@ -665,7 +665,7 @@ class TestResolveInteract:
         corpus.entities["spider"].combat_group = "bad_guys"
         # Move spider to bag_floor for the test.
         hard.room_contains["bag_floor"]["spider"] = 1
-        hard.entity_states["spider"] = {"alive": True, "current_hp": 15, "fled": False, "attitude": -5}
+        hard.entity_states["spider"] = {"alive": True, "current_hp": 15, "attitude": -5}
         hard.entity_states["korbar"]["current_hp"] = 10
         action = InteractAction(
             action_type="interact", target="korbar",

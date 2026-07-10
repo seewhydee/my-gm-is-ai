@@ -45,7 +45,7 @@ def make_hard_state(**overrides) -> HardGameState:
         },
         "entity_states": {
             "player": {"alive": True},
-            "spider": {"alive": True, "fled": False, "attitude": -5},
+            "spider": {"alive": True, "attitude": -5},
             "korbar": {"alive": True, "told_secret": False, "attitude": 5},
             "stuck_fly": {"alive": True, "attitude": 0},
         },
@@ -390,7 +390,7 @@ class TestEvaluateConditionStringAttitude:
         hs = make_hard_state(entity_states={
             "player": {"alive": True},
             "korbar": {"alive": True, "told_secret": False, "attitude": attitude},
-            "spider": {"alive": True, "fled": False, "attitude": -5},
+            "spider": {"alive": True, "attitude": -5},
             "stuck_fly": {"alive": True, "attitude": 0},
         })
         ss = make_soft_state()
@@ -539,7 +539,7 @@ class TestEvaluateConditionExpression:
         assert not evaluate(condition, hs, ss)
 
     def test_any_with_nested_conditions(self) -> None:
-        hs = make_hard_state(flags={"injured": False}, entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 0}, "spider": {"alive": True, "fled": False, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
+        hs = make_hard_state(flags={"injured": False}, entity_states={"player": {"alive": True}, "korbar": {"alive": True, "told_secret": False, "attitude": 0}, "spider": {"alive": True, "attitude": -5}, "stuck_fly": {"alive": True, "attitude": 0}})
         ss = make_soft_state()
         condition = ConditionExpression.model_validate({
             "any": [
@@ -645,7 +645,7 @@ class TestEvaluateWithSampleCorpus:
             "entity_states": {
                 "player": {"alive": True},
                 "stuck_fly": {"alive": True, "attitude": 0},
-                "spider": {"alive": True, "fled": False, "attitude": -5},
+                "spider": {"alive": True, "attitude": -5},
                 "korbar": {"alive": True, "told_secret": False, "attitude": 3},
             },
             "turn_count": 0,
@@ -698,7 +698,7 @@ class TestEvaluateWithSampleCorpus:
             "entity_states": {
                 "player": {"alive": True},
                 "stuck_fly": {"alive": False, "attitude": 0},
-                "spider": {"alive": True, "fled": True, "attitude": -5},
+                "spider": {"alive": True, "attitude": -5},
                 "korbar": {"alive": True, "told_secret": False, "attitude": 6},
             },
             "turn_count": 10,
@@ -731,7 +731,7 @@ class TestEvaluateWithSampleCorpus:
         )
 
         assert evaluate_condition_string(
-            "entity:spider.fled == true", hs, ss, sample_corpus
+            "entity:spider.location == null", hs, ss, sample_corpus
         )
 
         assert evaluate_condition_string(
@@ -952,3 +952,111 @@ class TestEventDomain:
         assert not evaluate_condition_string(
             "event:success == false", hs, ss, None, event_ctx
         )
+
+
+class TestLocationConditions:
+    """Tests for entity:...location derived field evaluation."""
+
+    def test_location_room_matches(self) -> None:
+        hs = HardGameState.model_validate({
+            "player": {"location": "room_a"},
+            "room_contains": {"room_a": {"spider": 1}},
+        })
+        ss = SoftGameState()
+        assert evaluate_condition_string(
+            "entity:spider.location == room:room_a", hs, ss, None
+        )
+        assert not evaluate_condition_string(
+            "entity:spider.location == room:room_b", hs, ss, None
+        )
+
+    def test_location_null_when_not_contained(self) -> None:
+        hs = HardGameState.model_validate({
+            "player": {"location": "room_a"},
+            "room_contains": {"room_a": {}},
+        })
+        ss = SoftGameState()
+        assert evaluate_condition_string(
+            "entity:spider.location == null", hs, ss, None
+        )
+        assert not evaluate_condition_string(
+            "entity:spider.location != null", hs, ss, None
+        )
+
+    def test_location_entity_container(self) -> None:
+        hs = HardGameState.model_validate({
+            "player": {"location": "room_a"},
+            "entity_contains": {"chest": {"sword": 1}},
+        })
+        ss = SoftGameState()
+        assert evaluate_condition_string(
+            "entity:sword.location == entity:chest", hs, ss, None
+        )
+
+    def test_location_works_without_entity_state_dict(self) -> None:
+        hs = HardGameState.model_validate({
+            "player": {"location": "room_a"},
+            "room_contains": {"room_a": {"spider": 1}},
+        })
+        ss = SoftGameState()
+        assert evaluate_condition_string(
+            "entity:spider.location == room:room_a", hs, ss, None
+        )
+
+    def test_following_npc_location_synthesized(self) -> None:
+        corpus = _make_location_corpus()
+        # Add dialogue so the NPC can legally follow.
+        corpus.entities["npc"].dialogue = {
+            "guidelines": "A follower.",
+            "attitude_limits": {"min": 0, "max": 0, "step_per_turn": 1},
+        }
+        hs = HardGameState.model_validate({
+            "player": {"location": "room_a"},
+            "entity_states": {"npc": {"following": True}},
+        })
+        ss = SoftGameState()
+        assert evaluate_condition_string(
+            "entity:npc.location == room:room_a", hs, ss, corpus
+        )
+
+    def test_location_detail_reports_derived_value(self) -> None:
+        hs = HardGameState.model_validate({
+            "player": {"location": "room_a"},
+            "room_contains": {"room_a": {"spider": 1}},
+        })
+        ss = SoftGameState()
+        status = get_condition_detail(
+            "entity:spider.location == room:room_a", hs, ss, None
+        )
+        assert status.met is True
+        assert "room:room_a" in status.detail
+
+    def test_location_null_detail(self) -> None:
+        hs = HardGameState.model_validate({
+            "player": {"location": "room_a"},
+            "room_contains": {"room_a": {}},
+        })
+        ss = SoftGameState()
+        status = get_condition_detail(
+            "entity:spider.location == null", hs, ss, None
+        )
+        assert status.met is True
+        assert "None" in status.detail
+
+
+def _make_location_corpus() -> ModuleCorpus:
+    """Minimal corpus helper for location condition tests."""
+    return ModuleCorpus.model_validate({
+        "adventure": {"title": "Test", "introduction": "Test."},
+        "rooms": {
+            "room_a": {"name": "Room A", "description": "A."},
+            "room_b": {"name": "Room B", "description": "B."},
+        },
+        "entities": {
+            "player": {"type": "player", "description": "Player."},
+            "npc": {"type": "npc", "description": "An NPC."},
+            "spider": {"type": "npc", "description": "A spider."},
+            "chest": {"type": "feature", "description": "A chest."},
+            "sword": {"type": "item", "name": "Sword", "description": "A sword."},
+        },
+    })

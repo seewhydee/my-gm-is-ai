@@ -22,11 +22,12 @@ from mgmai.models.corpus import ConditionExpression, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import ConditionStatus
+from mgmai.engine.utils import get_entity_location
 
 DOMAINS = "flag|inventory|tag|entity|room|topic|stat|equipped|event"
 CONDITION_RE = re.compile(
     rf"^({DOMAINS}):([\w.-]+)"
-    rf"(?:\s*(==|>=|>|<=|<)\s*(.+))?$"
+    rf"(?:\s*(==|!=|>=|>|<=|<)\s*(.+))?$"
 )
 
 TRUE_VALUES = frozenset({"true", "True"})
@@ -107,6 +108,19 @@ def evaluate_condition_string(
                 f"entity condition requires operator and value: {raw!r}"
             )
         entity_id, field = key.split(".", 1)
+        if field == "location":
+            loc = get_entity_location(entity_id, hard_state, corpus)
+            if value.lower() == "null":
+                if op == "==":
+                    return loc is None
+                if op == "!=":
+                    return loc is not None
+                raise ValueError(
+                    f"location 'null' only supports == and !=: {raw!r}"
+                )
+            if loc is None:
+                return False
+            return _compare(loc, op, value)
         entity_state = hard_state.entity_states.get(entity_id)
         if entity_state is None:
             return False
@@ -182,19 +196,9 @@ def evaluate_condition_string(
 def _compare(actual: object, op: str, expected: str) -> bool:
     """Compare an actual value against an expected string using *op*."""
     if op == "==":
-        if expected in TRUE_VALUES:
-            return actual is True or actual == "true"
-        if expected in FALSE_VALUES:
-            return actual is False or actual == "false"
-        # Numeric equality to avoid false mismatches like 10.0 != "10".
-        if not isinstance(actual, bool):
-            try:
-                actual_num = float(actual)
-                expected_num = float(expected)
-                return actual_num == expected_num
-            except (ValueError, TypeError):
-                pass
-        return str(actual) == expected
+        return _equal(actual, expected)
+    if op == "!=":
+        return not _equal(actual, expected)
 
     if expected in TRUE_VALUES or expected in FALSE_VALUES:
         raise ValueError(
@@ -244,6 +248,23 @@ def _compare(actual: object, op: str, expected: str) -> bool:
         return actual_num < expected_num
 
     raise ValueError(f"Unknown operator: {op!r}")
+
+
+def _equal(actual: object, expected: str) -> bool:
+    """Return whether *actual* equals *expected* as a condition value."""
+    if expected in TRUE_VALUES:
+        return actual is True or actual == "true"
+    if expected in FALSE_VALUES:
+        return actual is False or actual == "false"
+    # Numeric equality to avoid false mismatches like 10.0 != "10".
+    if not isinstance(actual, bool):
+        try:
+            actual_num = float(actual)
+            expected_num = float(expected)
+            return actual_num == expected_num
+        except (ValueError, TypeError):
+            pass
+    return str(actual) == expected
 
 
 def evaluate(
@@ -341,7 +362,10 @@ def get_condition_detail(
     elif domain == "entity":
         if "." in key:
             entity_id, field = key.split(".", 1)
-            current_val = hard_state.entity_states.get(entity_id, {}).get(field)
+            if field == "location":
+                current_val = get_entity_location(entity_id, hard_state, corpus)
+            else:
+                current_val = hard_state.entity_states.get(entity_id, {}).get(field)
         else:
             entity_id, field = key, "?"
             current_val = None

@@ -320,9 +320,9 @@ class TestApplyHardChanges:
 
     def test_entity_state_changes(self, manager: StateManager) -> None:
         manager.apply_hard_changes(
-            HardStateChanges(entity_state_changes={"spider": {"fled": True}})
+            HardStateChanges(entity_state_changes={"spider": {"hidden": True}})
         )
-        assert manager.hard_state.entity_states["spider"]["fled"] is True
+        assert manager.hard_state.entity_states["spider"]["hidden"] is True
 
     def test_entity_state_changes_new_entity(self, manager: StateManager) -> None:
         del manager.hard_state.entity_states["korbar"]
@@ -954,7 +954,7 @@ class TestContainmentMaps:
         sm.corpus = corpus
         sm.hard_state = HardGameState.model_validate({"player": {"location": "axe_head"}})
         sm.soft_state = SoftGameState()
-        with pytest.raises(ValueError, match="contains itself"):
+        with pytest.raises(ValueError, match="cannot contain itself"):
             sm.validate_cross_references()
 
     def test_validate_cross_references_rejects_player_in_contains(self) -> None:
@@ -973,7 +973,7 @@ class TestContainmentMaps:
         sm.corpus = corpus
         sm.hard_state = HardGameState.model_validate({"player": {"location": "start"}})
         sm.soft_state = SoftGameState()
-        with pytest.raises(ValueError, match="contains the player entity"):
+        with pytest.raises(ValueError, match="Cannot place player entity"):
             sm.validate_cross_references()
 
 
@@ -1145,3 +1145,203 @@ class TestStartCombatScopeValidation:
         sm = self._build_sm(data)
         with pytest.raises(ValueError, match="only allowed on encounter-rule"):
             sm._validate_start_combat_scope()
+
+
+class TestEntityPlacements:
+    """Tests for location-derived direct entity placements."""
+
+    @pytest.fixture
+    def sm(self) -> StateManager:
+        from tests.helpers import _mk_item_entity, _mk_npc_entity, _mk_room
+        corpus = ModuleCorpus.model_validate({
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "room_a": _mk_room("room_a", "Room A", contains=["npc"]).model_dump(),
+                "room_b": _mk_room("room_b", "Room B").model_dump(),
+            },
+            "entities": {
+                "player": Entity(type="player", description="The player.").model_dump(),
+                "npc": _mk_npc_entity(
+                    "npc",
+                    state_fields={"following": {"type": "boolean", "description": "Following?"}},
+                ).model_dump(),
+                "chest": Entity(type="feature", description="A chest.").model_dump(),
+                "sword": _mk_item_entity("sword", description="A sword.", name="Sword").model_dump(),
+                "coin": _mk_item_entity("coin", description="A coin.", tags=["stackable"]).model_dump(),
+            },
+        })
+        hard = HardGameState.model_validate({
+            "player": {"location": "room_a"},
+            "entity_states": {
+                "npc": {"alive": True},
+            },
+        })
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = hard
+        sm.soft_state = SoftGameState()
+        sm._init_contains_from_corpus()
+        return sm
+
+    def test_location_room_moves_entity(self, sm: StateManager) -> None:
+        sm.apply_hard_changes(HardStateChanges(
+            entity_state_changes={"npc": {"location": "room:room_b"}}
+        ))
+        assert "npc" not in sm.hard_state.room_contains["room_a"]
+        assert sm.hard_state.room_contains["room_b"]["npc"] == 1
+
+    def test_location_null_removes_entity(self, sm: StateManager) -> None:
+        sm.apply_hard_changes(HardStateChanges(
+            entity_state_changes={"npc": {"location": None}}
+        ))
+        assert "npc" not in sm.hard_state.room_contains["room_a"]
+        assert all(
+            "npc" not in contents
+            for contents in sm.hard_state.room_contains.values()
+        )
+        assert all(
+            "npc" not in contents
+            for contents in sm.hard_state.entity_contains.values()
+        )
+
+    def test_location_entity_container(self, sm: StateManager) -> None:
+        sm.apply_hard_changes(HardStateChanges(
+            entity_state_changes={"sword": {"location": "entity:chest"}}
+        ))
+        assert sm.hard_state.entity_contains["chest"]["sword"] == 1
+
+    def test_location_not_stored_in_entity_states(self, sm: StateManager) -> None:
+        sm.apply_hard_changes(HardStateChanges(
+            entity_state_changes={"npc": {"location": "room:room_b"}}
+        ))
+        assert "location" not in sm.hard_state.entity_states["npc"]
+
+    def test_location_rejects_stackable_item(self, sm: StateManager) -> None:
+        with pytest.raises(ValueError, match="stackable"):
+            sm.apply_hard_changes(HardStateChanges(
+                entity_state_changes={"coin": {"location": "room:room_b"}}
+            ))
+
+    def test_location_rejects_player(self, sm: StateManager) -> None:
+        with pytest.raises(ValueError, match="player entity"):
+            sm.apply_hard_changes(HardStateChanges(
+                entity_state_changes={"player": {"location": "room:room_b"}}
+            ))
+
+    def test_location_rejects_unknown_room(self, sm: StateManager) -> None:
+        with pytest.raises(ValueError, match="No matching room"):
+            sm.apply_hard_changes(HardStateChanges(
+                entity_state_changes={"npc": {"location": "room:void"}}
+            ))
+
+    def test_location_rejects_unknown_entity_container(self, sm: StateManager) -> None:
+        with pytest.raises(ValueError, match="No matching entity"):
+            sm.apply_hard_changes(HardStateChanges(
+                entity_state_changes={"npc": {"location": "entity:void"}}
+            ))
+
+    def test_location_rejects_self_containment(self, sm: StateManager) -> None:
+        with pytest.raises(ValueError, match="cannot contain itself"):
+            sm.apply_hard_changes(HardStateChanges(
+                entity_state_changes={"chest": {"location": "entity:chest"}}
+            ))
+
+    def test_location_rejects_invalid_prefix(self, sm: StateManager) -> None:
+        with pytest.raises(ValueError, match="Invalid location value"):
+            sm.apply_hard_changes(HardStateChanges(
+                entity_state_changes={"npc": {"location": "void"}}
+            ))
+
+    def test_location_clears_following(self, sm: StateManager) -> None:
+        sm.hard_state.entity_states["npc"]["following"] = True
+        sm.apply_hard_changes(HardStateChanges(
+            entity_state_changes={"npc": {"location": "room:room_b"}}
+        ))
+        assert sm.hard_state.entity_states["npc"]["following"] is False
+
+    def test_location_wins_over_following_in_same_change(self, sm: StateManager) -> None:
+        sm.hard_state.entity_states["npc"]["following"] = True
+        sm.apply_hard_changes(HardStateChanges(
+            entity_state_changes={"npc": {"location": "room:room_b", "following": True}}
+        ))
+        assert sm.hard_state.entity_states["npc"]["following"] is False
+        assert sm.hard_state.room_contains["room_b"]["npc"] == 1
+
+    def test_cross_path_conflict_rejected(self, sm: StateManager) -> None:
+        with pytest.raises(ValueError, match="both 'location' and a containment delta"):
+            sm.apply_hard_changes(HardStateChanges(
+                entity_state_changes={"sword": {"location": "room:room_b"}},
+                room_contains_added={"room_a": {"sword": 1}},
+            ))
+
+    def test_entity_placements_merge_by_overwrite(self) -> None:
+        a = HardStateChanges(entity_placements={"npc": "room:room_a"})
+        b = HardStateChanges(entity_placements={"npc": "room:room_b"})
+        a.merge(b)
+        assert a.entity_placements == {"npc": "room:room_b"}
+
+    def test_entity_placements_counted_in_has_changes(self) -> None:
+        hc = HardStateChanges(entity_placements={"npc": "room:room_a"})
+        assert hc.has_changes() is True
+
+    def test_entity_placements_field_roundtrips_via_model(self) -> None:
+        hc = HardStateChanges(entity_placements={"npc": "room:room_a", "chest": None})
+        data = hc.model_dump(mode="json")
+        hc2 = HardStateChanges.model_validate(data)
+        assert hc2.entity_placements == {"npc": "room:room_a", "chest": None}
+
+    def test_save_migration_removes_fled_ghost(self, tmp_path: Path) -> None:
+        from tests.helpers import _mk_npc_entity, _mk_room
+        corpus = ModuleCorpus.model_validate({
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "start": _mk_room("start", "Start", contains=["npc"]).model_dump(),
+            },
+            "entities": {
+                "npc": _mk_npc_entity("npc").model_dump(),
+            },
+        })
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = HardGameState.model_validate({
+            "player": {"location": "start"},
+            "entity_states": {"npc": {"alive": True, "fled": True}},
+            "room_contains": {"start": {"npc": 1}},
+            "entity_contains": {},
+        })
+        sm.soft_state = SoftGameState()
+        sm._adventure_dir = tmp_path
+        save_path = sm.save_state(tmp_path)
+
+        sm2 = StateManager()
+        sm2.load_save(save_path)
+        assert "fled" not in sm2.hard_state.entity_states["npc"]
+        assert "npc" not in sm2.hard_state.room_contains.get("start", {})
+
+    def test_save_migration_drops_false_fled(self, tmp_path: Path) -> None:
+        from tests.helpers import _mk_npc_entity, _mk_room
+        corpus = ModuleCorpus.model_validate({
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "start": _mk_room("start", "Start", contains=["npc"]).model_dump(),
+            },
+            "entities": {
+                "npc": _mk_npc_entity("npc").model_dump(),
+            },
+        })
+        sm = StateManager()
+        sm.corpus = corpus
+        sm.hard_state = HardGameState.model_validate({
+            "player": {"location": "start"},
+            "entity_states": {"npc": {"alive": True, "fled": False}},
+            "room_contains": {"start": {"npc": 1}},
+            "entity_contains": {},
+        })
+        sm.soft_state = SoftGameState()
+        sm._adventure_dir = tmp_path
+        save_path = sm.save_state(tmp_path)
+
+        sm2 = StateManager()
+        sm2.load_save(save_path)
+        assert "fled" not in sm2.hard_state.entity_states["npc"]
+        assert sm2.hard_state.room_contains["start"]["npc"] == 1

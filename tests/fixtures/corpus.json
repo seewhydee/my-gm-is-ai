@@ -365,10 +365,6 @@
           "type": "boolean",
           "description": "Whether the spider is alive."
         },
-        "fled": {
-          "type": "boolean",
-          "description": "Whether the spider has fled into the shadows."
-        },
         "attitude": {
           "type": "number",
           "description": "The spider's disposition toward the player. Positive is friendly.",

@@ -175,9 +175,9 @@ Combat starts in one of two ways:
 
 In both cases the enemy set is the filtered union of the source,
 its `combat_group`, and any ids listed in `start_combat`.  Enemies must be
-present in the current room and alive; dead, fled, absent, or
-non-stat-blocked ids are silently dropped.  If the filtered set is empty,
-no combat is entered.
+present in the current room and alive; dead, absent, or non-stat-blocked
+ids are silently dropped.  If the filtered set is empty, no combat is
+entered.
 
 On entry:
 - Player HP is initialised from CON if not already set.
@@ -294,13 +294,12 @@ authoritative dice results.
     "description": "A hairy spider the size of a dog.",
     "state_fields": {
       "alive": { "type": "boolean", "description": "Is the spider alive?" },
-      "fled": { "type": "boolean", "description": "Has the spider fled?" },
       "current_hp": { "type": "number", "description": "Current hit points." }
     },
     "aggro": {
       "encounter_rules": [
         {
-          "condition": { "require": "spider_fled" },
+          "condition": { "require": "flag:spider_fled == true" },
           "result": {
             "start_combat": [],
             "narrative": "The spider, cornered, skitters forward to attack!"

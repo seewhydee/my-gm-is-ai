@@ -917,7 +917,7 @@ class TestResolveCombatEnemies:
 
     def test_dead_and_fled_dropped(self, band_hard_state, band_corpus):
         band_hard_state.entity_states["goblin_2"]["alive"] = False
-        band_hard_state.entity_states["goblin_3"]["fled"] = True
+        band_hard_state.room_contains["room1"].pop("goblin_3", None)
         enemies = resolve_combat_enemies(
             ["goblin_1"], None, band_hard_state, band_corpus
         )
@@ -966,7 +966,7 @@ class TestResolveCombatEnemies:
     def test_empty_result(self, band_hard_state, band_corpus):
         band_hard_state.entity_states["goblin_1"]["alive"] = False
         band_hard_state.entity_states["goblin_2"]["alive"] = False
-        band_hard_state.entity_states["goblin_3"]["fled"] = True
+        band_hard_state.room_contains["room1"].pop("goblin_3", None)
         enemies = resolve_combat_enemies(
             ["goblin_1"], None, band_hard_state, band_corpus
         )
