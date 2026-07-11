@@ -82,25 +82,30 @@ That's it.  When the player uses an `interact` action with
 | `dmg` | str | `"1d6"` | Damage expression, e.g. `"1d6+2"`, `"2d4"`, `"1d8+1"`, or a flat integer like `"3"` |
 | `initiative_mod` | int | `0` | DEX-like modifier for initiative rolls |
 | `flee_dc` | int | `10` | Difficulty class for the player to flee |
-| `on_hit_effects` | list[OnHitEffect] | `[]` | Secondary effects that trigger on a successful hit (saving throws + damage) |
+| `on_hit_effects` | list[CheckResolution] | `[]` | Secondary effects that trigger on a successful hit (saving throws + damage) |
 
 All values are **pre-computed** by the adventure author — the engine does
 not derive them from ability scores for NPCs.
 
-### `OnHitEffect` (on-hit effects)
+### On-hit effects (`CheckResolution`)
 
-When an NPC's attack hits, each `on_hit_effect` triggers a saving throw
-against the player:
+When an NPC's attack hits, each `on_hit_effect` resolves a
+[CheckResolution](../schema/corpus.md#follow-up) against the player.
+The `check` is usually a `stat_check` saving throw, with `success` and
+`failure` [Results](../schema/corpus.md#result) describing what happens.
+Only a combat-safe subset of result fields is allowed: `narrative`,
+`set_flag`, `player_damage`, `game_over`, `reveals`, and nested
+`then_check`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `save.stat` | str | *required* | Ability score for the saving throw (e.g. `"CON"`) |
-| `save.dc` | int | *required* | Difficulty class for the save |
-| `damage` | str | `"1d6"` | Damage expression (dice or flat) |
-| `on_save` | `"half"` \| `"none"` \| `"full"` | `"half"` | How a successful save modifies damage |
-| `type` | str? | `null` | Optional damage type label (e.g. `"poison"`) |
+| `check` | Check | *required* | The check to resolve, e.g. a `stat_check` save |
+| `success` | Result | *required* | Result on a successful save/check |
+| `failure` | Result | — | Result on a failed save/check |
+| `tag` | str? | `null` | Optional damage type label (e.g. `"poison"`) |
 
-Example — a spider bite that deals poison damage on a failed CON save:
+Example — a spider bite that deals poison damage on a failed CON save,
+half damage on a successful save, and applies the `poisoned` flag:
 
 ```json
 "combat": {
@@ -110,14 +115,34 @@ Example — a spider bite that deals poison damage on a failed CON save:
   "dmg": "1d4+3",
   "on_hit_effects": [
     {
-      "save": { "stat": "CON", "dc": 11 },
-      "damage": "1d8",
-      "on_save": "half",
-      "type": "poison"
+      "check": {
+        "type": "stat_check",
+        "stat": "CON",
+        "target": 11,
+        "proficiency": "save",
+        "repeatable": false
+      },
+      "tag": "poison",
+      "success": {
+        "narrative": "You shake off the worst of the venom.",
+        "player_damage": "half(1d8)"
+      },
+      "failure": {
+        "narrative": "The venom courses through you.",
+        "player_damage": "1d8",
+        "set_flag": { "poisoned": true }
+      }
     }
   ]
 }
 ```
+
+If `check.proficiency` is `"save"`, the player's save proficiency for
+that stat is added to the roll.  In 5e this means adding
+`proficiency_bonus` when the stat is listed in `save_proficiencies`.
+
+Damage expressions may use `half(expr)` to deal half of `expr` rounded
+down (minimum 1), typically on a successful save.
 
 ### `PlayerState` extensions
 
@@ -377,6 +402,6 @@ These may be added in future phases.
 > `ResolutionSystem` interface; the limitations above concern combat
 > *features* (gear, conditions, spells, …), not system portability.  Player
 > and NPC attacks are resolved by `ResolutionSystem.resolve_player_attack` and
-> `ResolutionSystem.resolve_npc_attack`, and the saving-throw hook
-> (`ResolutionSystem.resolve_save`) is wired into the on-hit effects phase of
-> NPC attacks — see `OnHitEffect` above.
+> `ResolutionSystem.resolve_npc_attack`.  On-hit effects are resolved as
+> generic `CheckResolution` objects via the active resolution system's
+> `roll_check` and `proficiency_bonus` hooks.

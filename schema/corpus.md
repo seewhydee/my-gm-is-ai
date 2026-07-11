@@ -222,8 +222,14 @@ Stat Checks are [resolution system](#resolution-system) dependent.
 | `stat`       | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
 | `target`     | integer | Check target or difficulty class  |
 | `modifier`¹  | integer | Situational modifier (default 0)  |
+| `proficiency`¹ | string | Proficiency to apply, e.g. `"save"` |
 | `repeatable` | boolean | Whether check can be retried      |
 > ¹ optional
+
+If `proficiency` is `"save"`, the active resolution system adds the
+player's save proficiency bonus for `stat` to the check (for 5e, this is
+the character's `proficiency_bonus` when `stat` is listed in
+`save_proficiencies`).  Other `proficiency` values are system-specific.
 
 Aside from the above, different RPG systems can define extra fields as
 needed.  `5e` uses roll(1d20) + (stat-10)//2 + modifier >= target as
@@ -371,6 +377,7 @@ makes a DEX check to grab the ledge.
 | `skip_check_if`¹ | Condition | If present and true, skip check |
 | `success`        | Result    | Result if follow-up succeeds    |
 | `failure`¹       | Result    | Result if follow-up fails       |
+| `tag`¹           | string    | Optional label (e.g. damage type for combat logs) |
 > ¹ optional
 
 Nested follow-ups are supported: a follow-up check's success/failure
@@ -1353,24 +1360,36 @@ The fields for `5e` are listed below:
   "flee_dc": 12,
   "on_hit_effects": [
     {
-      "save": { "stat": "CON", "dc": 11 },
-      "damage": "1d8",
-      "on_save": "half",
-      "type": "poison"
+      "check": {
+        "type": "stat_check",
+        "stat": "CON",
+        "target": 11,
+        "proficiency": "save",
+        "repeatable": false
+      },
+      "tag": "poison",
+      "success": {
+        "narrative": "You resist the poison.",
+        "player_damage": "half(1d8)"
+      },
+      "failure": {
+        "narrative": "The poison burns in your veins.",
+        "player_damage": "1d8"
+      }
     }
   ]
 }
 ```
 
-| Field             | Type          | Description                       |
-|-------------------|---------------|-----------------------------------|
-| `hp`              | integer       | Maximum hit points (must be >= 1) |
-| `ac`              | integer       | Armor class (must be >= 0)        |
-| `atk`             | integer       | Attack bonus for the NPC's attack |
-| `dmg`¹            | string        | Damage expression; default `"1d6"`|
-| `initiative_mod`¹ | integer       | Initiative modifier; default `0`  |
-| `flee_dc`¹        | integer       | DC for the player to flee; default `10` |
-| `on_hit_effects`¹ | OnHitEffect[] | On-hit effects; default `[]`      |
+| Field             | Type             | Description                       |
+|-------------------|------------------|-----------------------------------|
+| `hp`              | integer          | Maximum hit points (must be >= 1) |
+| `ac`              | integer          | Armor class (must be >= 0)        |
+| `atk`             | integer          | Attack bonus for the NPC's attack |
+| `dmg`¹            | string           | Damage expression; default `"1d6"`|
+| `initiative_mod`¹ | integer          | Initiative modifier; default `0`  |
+| `flee_dc`¹        | integer          | DC for the player to flee; default `10` |
+| `on_hit_effects`¹ | CheckResolution[] | On-hit effects; default `[]`     |
 > ¹ optional
 
 Notes:
@@ -1397,30 +1416,50 @@ details about the turn-based combat subsystem.
 
 #### On-Hit Effect
 
-A OnHitEffect object describes a secondary effect that triggers when
-an NPC lands a successful hit, forcing the player to make a saving
-throw (currently, these only apply to NPC attacks *on* the player).
+An NPC's `on_hit_effects` is a list of [CheckResolution](#follow-up)
+objects.  Each effect resolves immediately after the NPC lands a hit on
+the player.  The `check` is typically a `stat_check` saving throw; the
+`success` and `failure` branches are [Results](#result) restricted to a
+combat-safe subset.
 
-| Field       | Type    | Description                             |
-|-------------|---------|-----------------------------------------|
-| `save`      | object  | Saving throw `{ "stat": <stat>, "dc": <int> }` |
-| `damage`¹   | string  | Extra damage expression; default `"1d6"`|
-| `on_save`¹  | string  | `"half"` (default), `"none"`, or `"full"` |
-| `type`¹     | string  | Damage type label, e.g. `"poison"`      |
+| Field     | Type    | Description                             |
+|-----------|---------|-----------------------------------------|
+| `check`   | Check   | The saving throw or roll to resolve     |
+| `success` | Result  | Result when the check succeeds/save made|
+| `failure` | Result  | Result when the check fails/save failed |
+| `tag`¹    | string  | Optional label, e.g. `"poison"`         |
 > ¹ optional
 
-Notes:
+Combat-safe result fields for `success`/`failure` are:
 
-- `save.stat` is a [player stat](#player-stats) key (e.g. `"CON"`) and
-  `save.dc` is the difficulty class of the save.
+- `narrative`
+- `set_flag`
+- `player_damage`
+- `game_over`
+- `reveals`
+- `then_check` (nested checks, also combat-safe)
 
-- `on_save` controls how a successful save modifies the extra
-  `damage`: `"half"` deals half (rounded down, minimum 1), `"none"`
-  negates it entirely, and `"full"` applies it regardless of the save.
-  A failed save always takes full damage.
+The following fields are **prohibited** in on-hit results:
+`add_item`, `add_item_count`, `remove_item`, `remove_item_count`,
+`set_entity_state`, `set_room_state`, `adjust_attitude`,
+`set_player_location`, and `start_combat`.
 
-- `type` is an optional descriptive label used in narration; it has no
-  mechanical effect.
+The `player_damage` expression supports the normal damage syntax, plus
+`half(expr)` to deal half of `expr` rounded down (minimum 1).  This is
+commonly used on a successful save:
+
+```json
+"success": { "narrative": "You resist the poison.", "player_damage": "half(1d8)" },
+"failure": { "narrative": "The poison burns.", "player_damage": "1d8" }
+```
+
+If `check.proficiency` is `"save"`, the player's save-proficiency bonus
+for that stat is added to the roll (in 5e, this is `proficiency_bonus`
+when the stat is in `save_proficiencies`).
+
+`tag` is an optional descriptive label used in combat logs and
+narration; it has no mechanical effect.  It is surfaced as the
+`damage_type` of the on-hit log entry.
 
 ### Aggro
 

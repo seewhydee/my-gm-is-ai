@@ -276,7 +276,7 @@ def resolve(
                     corpus,
                 )
                 if enemies:
-                    combat_entry = enter_combat(enemies, hard, corpus)
+                    combat_entry = enter_combat(enemies, hard, corpus, soft=soft, state_manager=state_manager)
                     combat_started = True
                     combat_triggered = True
                     combat_log = combat_entry["combat_log"]

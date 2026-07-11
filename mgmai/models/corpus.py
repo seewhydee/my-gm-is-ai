@@ -207,6 +207,7 @@ class StatCheck(BaseModel):
     stat: str
     target: int
     modifier: int = 0
+    proficiency: Optional[str] = None
     repeatable: bool
 
 
@@ -237,6 +238,7 @@ class CheckResolution(Checkable):
     """
     check: CheckType
     success: Result
+    tag: Optional[str] = None
 
     @model_validator(mode="after")
     def require_check_and_success(self) -> "CheckResolution":
@@ -594,26 +596,6 @@ class StatDefinition(BaseModel):
     name: str
 
 
-class OnHitSave(BaseModel):
-    """Saving throw triggered by an on-hit effect."""
-    stat: str
-    dc: int
-
-
-class OnHitEffect(BaseModel):
-    """An effect that triggers on a successful melee hit.
-
-    Currently only resolved for NPC attacks against the player (the
-    target is always the player, whose stats and save proficiencies are
-    known).  NPC-vs-player saves only; NPC ability scores are not
-    modelled yet.
-    """
-    save: OnHitSave
-    damage: str = "1d6"
-    on_save: Literal["half", "none", "full"] = "half"
-    type: Optional[str] = None
-
-
 class CombatBlock(BaseModel):
     """NPC combat stat block (5e-flavoured but corpus-agnostic).
 
@@ -626,7 +608,49 @@ class CombatBlock(BaseModel):
     dmg: str = "1d6"
     initiative_mod: int = 0
     flee_dc: int = 10
-    on_hit_effects: list[OnHitEffect] = Field(default_factory=list)
+    on_hit_effects: list[CheckResolution] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_on_hit_effects(self) -> "CombatBlock":
+        """Restrict on-hit CheckResolution results to combat-safe effects."""
+        prohibited = {
+            "add_item",
+            "add_item_count",
+            "remove_item",
+            "remove_item_count",
+            "set_entity_state",
+            "set_room_state",
+            "adjust_attitude",
+            "set_player_location",
+            "start_combat",
+        }
+
+        def _is_set(value: Any) -> bool:
+            if value is None:
+                return False
+            if isinstance(value, (list, dict)):
+                return len(value) > 0
+            return True
+
+        def _check_result(result: Result | None, path: str) -> None:
+            if result is None:
+                return
+            for field in prohibited:
+                if _is_set(getattr(result, field)):
+                    raise ValueError(
+                        f"Prohibited field '{field}' in on-hit result at {path}"
+                    )
+            if result.then_check is not None:
+                _check_check_resolution(result.then_check, f"{path}.then_check")
+
+        def _check_check_resolution(chk: CheckResolution, path: str) -> None:
+            _check_result(chk.success, f"{path}.success")
+            _check_result(chk.failure, f"{path}.failure")
+
+        for i, effect in enumerate(self.on_hit_effects):
+            _check_check_resolution(effect, f"on_hit_effects[{i}]")
+
+        return self
 
 
 class StatsBlock(BaseModel):

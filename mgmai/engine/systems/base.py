@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mgmai.models.corpus import EquipBlock, ModuleCorpus
+    from mgmai.models.corpus import EquipBlock, ModuleCorpus, StatCheck
     from mgmai.models.hard_state import HardGameState
 
 from mgmai.models.combat import CombatLogEntry
@@ -85,9 +85,10 @@ class CheckResult:
 class SaveResult:
     """Outcome of a saving throw.
 
-    Used by the combat loop for on-hit effects (poison, elemental damage,
-    etc.).  The hook is wired in via
-    :func:`mgmai.engine.combat._resolve_on_hit_effect`.
+    Retained for systems that model explicit saving throws and for the
+    ``to_dict`` roll-shape it produces.  On-hit effects now resolve through
+    the generic ``CheckResolution`` path in the combat manager rather than a
+    dedicated save hook.
     """
 
     stat: str
@@ -325,18 +326,16 @@ class ResolutionSystem(ABC):
         """
 
     # ------------------------------------------------------------------
-    # Saving throws (hook for the on-hit-effects phase)
+    # Saving throw / check proficiency
     # ------------------------------------------------------------------
-    @abstractmethod
-    def resolve_save(
-        self,
-        stat: str,
-        stat_value: int,
-        dc: int,
-        flat_modifier: int = 0,
-        params: dict | None = None,
-    ) -> SaveResult:
-        """Resolve a saving throw against a DC."""
+    def proficiency_bonus(self, check: "StatCheck", player_state: Any) -> int:
+        """Return any extra modifier the system applies to a check for this player.
+
+        Default is 0. Override in subclasses for system-specific rules
+        (e.g. 5e proficiency bonus on proficient saving throws when
+        ``check.proficiency == "save"``).
+        """
+        return 0
 
     def compute_save_modifier(self, stat: str, player_state: Any) -> int:
         """Return any extra modifier the system applies to a save for this player.

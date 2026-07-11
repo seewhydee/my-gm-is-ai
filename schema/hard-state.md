@@ -291,36 +291,61 @@ The format of CombatLogEntry entries depends on the RPG system.  For
 ```json
 {
   "round": 1,
-  "actor": "player",
+  "actor": "spider",
   "action": "attack",
-  "target": "spider",
+  "target": "player",
   "attack_roll": 15,
   "attack_total": 18,
   "ac": 13,
   "hit": true,
   "critical": false,
-  "damage_roll": "1d8+2",
+  "damage_roll": "1d8+3",
   "damage": 7,
   "remaining_hp": 5,
-  "on_hit_effects": []
+  "on_hit_effects": [
+    {
+      "save_stat": "CON",
+      "save_dc": 11,
+      "save_roll": 9,
+      "save_total": 10,
+      "save_success": false,
+      "damage_expr": "1d8",
+      "damage": 5,
+      "damage_type": "poison"
+    }
+  ]
 }
 ```
 
-| Field           | Type    | Description                           |
-|-----------------|---------|---------------------------------------|
-| `round`         | int     | This entry's round number             |
-| `actor`         | string  | Who acts: `"player"` or NPC ID        |
-| `action`        | string  | `"attack"`, `"flee"`, `"death"`, etc. |
-| `target`        | string? | Target of the action (if applicable)  |
-| `attack_roll`   | int?    | Raw d20 roll                          |
-| `attack_total`  | int?    | Total after modifiers                 |
-| `ac`            | int?    | Target's AC at time of attack         |
-| `hit`           | bool?   | Whether the attack landed             |
-| `critical`      | bool?   | Whether the attack was a critical hit |
-| `damage_roll`   | string? | Damage dice expression rolled         |
-| `damage`        | int?    | Final damage dealt                    |
-| `remaining_hp`  | int?    | Target's HP after damage              |
-| `on_hit_effects`| object[]| Any on-hit save effects triggered     |
+| Field            | Type    | Description                           |
+|------------------|---------|---------------------------------------|
+| `round`          | int     | This entry's round number             |
+| `actor`          | string  | Who acts: `"player"` or NPC ID        |
+| `action`         | string  | `"attack"`, `"flee"`, `"death"`, etc. |
+| `target`         | string? | Target of the action (if applicable)  |
+| `attack_roll`    | int?    | Raw d20 roll                          |
+| `attack_total`   | int?    | Total after modifiers                 |
+| `ac`             | int?    | Target's AC at time of attack         |
+| `hit`            | bool?   | Whether the attack landed             |
+| `critical`       | bool?   | Whether the attack was a critical hit |
+| `damage_roll`    | string? | Damage dice expression rolled         |
+| `damage`         | int?    | Final damage dealt                    |
+| `remaining_hp`   | int?    | Target's HP after damage              |
+| `on_hit_effects` | object[]| On-hit `CheckResolution` effects triggered by the attack |
+
+Each object in `on_hit_effects` records the resolved saving throw (or
+roll) and its damage outcome:
+
+| Field          | Type    | Description                          |
+|----------------|---------|--------------------------------------|
+| `save_stat`    | string? | Stat used for the save (if any)      |
+| `save_dc`      | int?    | Save difficulty class (if any)       |
+| `save_roll`    | int?    | Raw d20 roll (if any)                |
+| `save_total`   | int?    | Total after modifiers (if any)       |
+| `save_success` | bool    | Whether the save/check succeeded     |
+| `damage_expr`  | string? | Damage expression that was applied   |
+| `damage`       | int     | Damage actually dealt by the effect  |
+| `damage_type`  | string? | Value of the effect's `tag`, if any  |
 
 ---
 

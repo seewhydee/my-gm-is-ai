@@ -34,6 +34,7 @@ from mgmai.models.actions import (
 from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
+from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.utils import get_following_npc_ids
 from mgmai.engine.systems import get_system, get_system_for_corpus
 from mgmai.engine.systems.dice import parse_damage_dice
@@ -180,6 +181,111 @@ def roll_initiative(
 
 
 # ------------------------------------------------------------------
+# On-hit effect resolution (via generic CheckResolution)
+# ------------------------------------------------------------------
+
+def _resolve_npc_on_hits(
+    npc_id: str,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    state_manager: Any | None,
+    hard_changes: HardStateChanges,
+    narrative: list[str],
+    revealed_hints: list[str],
+    rolls: list[dict[str, Any]],
+    *,
+    round_number: int,
+) -> tuple[list[dict[str, Any]], list[CombatLogEntry], bool]:
+    """Resolve an NPC's on-hit ``CheckResolution`` effects.
+
+    Effects are resolved independently and damage accumulates in
+    *hard_changes.player_hp_delta*. Returns ``(on_hit_log_entries,
+    death_log_entries, game_over)``.
+    """
+    from mgmai.engine.resolver import _resolve_checkable
+
+    entity = corpus.entities.get(npc_id)
+    if entity is None or entity.combat is None:
+        return [], [], False
+
+    on_hit_log: list[dict[str, Any]] = []
+    death_log: list[CombatLogEntry] = []
+    game_over = False
+
+    for effect in entity.combat.on_hit_effects:
+        # Stop if the player is already dead from the base attack or a
+        # previous on-hit effect.
+        effective_hp = (hard.player.current_hp or 0) + (hard_changes.player_hp_delta or 0)
+        if effective_hp <= 0 or game_over or hard.game_over is not None:
+            break
+
+        hp_before = hard_changes.player_hp_delta or 0
+        rolls_before = len(rolls)
+
+        passed = _resolve_checkable(
+            effect,
+            hard=hard,
+            soft=soft,
+            corpus=corpus,
+            room_id=hard.player.location,
+            changes=hard_changes,
+            narrative=narrative,
+            revealed_hints=revealed_hints,
+            rolls=rolls,
+            state_manager=state_manager,
+            resolution=None,
+            source_id=npc_id,
+            source_type="combat",
+        )
+
+        # Identify the primary check roll among any rolls added by the
+        # resolution (nested then_checks may add further rolls).
+        primary_roll: dict[str, Any] | None = None
+        for r in rolls[rolls_before:]:
+            if r.get("check_type") in ("stat_check", "roll"):
+                primary_roll = r
+                break
+
+        save_success = bool(primary_roll.get("success")) if primary_roll else passed
+        branch = effect.success if save_success else effect.failure
+        damage_expr = branch.player_damage if branch is not None else None
+
+        hp_after = hard_changes.player_hp_delta or 0
+        damage = hp_before - hp_after
+
+        on_hit_log.append(
+            {
+                "save_stat": primary_roll.get("stat") if primary_roll else None,
+                "save_dc": primary_roll.get("target") if primary_roll else None,
+                "save_roll": primary_roll.get("raw_roll") if primary_roll else None,
+                "save_total": primary_roll.get("total") if primary_roll else None,
+                "save_success": save_success,
+                "damage_expr": damage_expr,
+                "damage": damage,
+                "damage_type": effect.tag,
+            }
+        )
+
+        if hard.game_over is not None:
+            game_over = True
+
+        effective_hp = (hard.player.current_hp or 0) + (hard_changes.player_hp_delta or 0)
+        if effective_hp <= 0:
+            death_log.append(
+                CombatLogEntry(
+                    round=round_number,
+                    actor="player",
+                    action="death",
+                )
+            )
+            game_over = True
+            break
+
+    return on_hit_log, death_log, game_over
+
+
+# ------------------------------------------------------------------
 # Combat entry
 # ------------------------------------------------------------------
 
@@ -250,6 +356,8 @@ def enter_combat(
     enemy_ids: list[str],
     hard: HardGameState,
     corpus: ModuleCorpus,
+    soft: SoftGameState | None = None,
+    state_manager: Any | None = None,
 ) -> dict[str, Any]:
     """Initialize combat state, roll initiative, resolve pre-player NPC turns.
 
@@ -316,6 +424,27 @@ def enter_combat(
             game_over = True
             break
 
+        # Resolve on-hit effects using the generic CheckResolution path.
+        if npc_result.hit and soft is not None:
+            attack_entry = next(
+                (entry for entry in npc_result.log_entries if entry.action == "attack"),
+                None,
+            )
+            on_hit_narrative: list[str] = []
+            on_hit_hints: list[str] = []
+            on_hit_rolls: list[dict[str, Any]] = []
+            on_hit_entries, death_entries, on_hit_game_over = _resolve_npc_on_hits(
+                actor_id, hard, soft, corpus, state_manager,
+                hard_changes, on_hit_narrative, on_hit_hints, on_hit_rolls,
+                round_number=1,
+            )
+            if attack_entry is not None:
+                attack_entry.on_hit_effects.extend(on_hit_entries)
+            combat_log.extend(death_entries)
+            if on_hit_game_over:
+                game_over = True
+                break
+
     combat.current_index = player_idx
     combat.log.extend(combat_log)
 
@@ -335,6 +464,8 @@ def resolve_combat_turn(
     action: CombatAction | MoveAction,
     hard: HardGameState,
     corpus: ModuleCorpus,
+    soft: SoftGameState | None = None,
+    state_manager: Any | None = None,
 ) -> dict[str, Any]:
     """Resolve the player's combat action and any following NPC turns.
 
@@ -459,6 +590,27 @@ def resolve_combat_turn(
                         if npc_result.game_over:
                             game_over = True
                             break
+
+                        # Resolve on-hit effects using CheckResolution.
+                        if npc_result.hit and soft is not None:
+                            attack_entry = next(
+                                (entry for entry in npc_result.log_entries if entry.action == "attack"),
+                                None,
+                            )
+                            on_hit_narrative: list[str] = []
+                            on_hit_hints: list[str] = []
+                            on_hit_rolls: list[dict[str, Any]] = []
+                            on_hit_entries, death_entries, on_hit_game_over = _resolve_npc_on_hits(
+                                actor_id, hard, soft, corpus, state_manager,
+                                hard_changes, on_hit_narrative, on_hit_hints, on_hit_rolls,
+                                round_number=combat.round_number,
+                            )
+                            if attack_entry is not None:
+                                attack_entry.on_hit_effects.extend(on_hit_entries)
+                            combat_log.extend(death_entries)
+                            if on_hit_game_over:
+                                game_over = True
+                                break
             idx = (idx + 1) % n
 
         # Advance to next round

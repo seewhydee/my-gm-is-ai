@@ -825,7 +825,7 @@ class TestReactionCombatLogPropagation:
 
         fake_log = [CombatLogEntry(round=1, actor="spider", action="surprise")]
 
-        def fake_enter_combat(enemy_ids, hard, corpus):
+        def fake_enter_combat(enemy_ids, hard, corpus, **kwargs):
             hard.combat = CombatState(
                 active=True,
                 combatants=["player"] + list(enemy_ids),

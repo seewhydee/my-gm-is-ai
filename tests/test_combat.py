@@ -47,6 +47,7 @@ from mgmai.engine.combat import (
     roll_damage,
     roll_initiative,
 )
+from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.systems.five_e import FiveESystem
 from mgmai.engine.resolver import ResolutionResult, resolve_action
 from mgmai.engine.stat_checks import format_combat_prefix
@@ -538,6 +539,375 @@ class TestCombatTurn:
         assert not result["success"]
 
 
+class TestOnHitEffects:
+    """On-hit effects now resolve through CheckResolution in the combat manager."""
+
+    def _add_on_hit(self, corpus: ModuleCorpus, effects: list[dict]) -> ModuleCorpus:
+        data = corpus.model_dump()
+        data["stats"] = {
+            "definitions": {
+                "STR": {"name": "Strength"},
+                "DEX": {"name": "Dexterity"},
+                "CON": {"name": "Constitution"},
+                "INT": {"name": "Intelligence"},
+                "WIS": {"name": "Wisdom"},
+                "CHA": {"name": "Charisma"},
+            },
+            "system": "5e",
+        }
+        data["entities"]["goblin"]["combat"]["on_hit_effects"] = effects
+        return ModuleCorpus.model_validate(data)
+
+    def _goblin_first_combat(self, hard: HardGameState) -> None:
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["goblin", "player"],
+            current_index=0,
+            round_number=1,
+        )
+
+    def _player_action(self) -> CombatAction:
+        return CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="Attack!",
+        )
+
+    def _goblin_attack_entry(self, result: dict) -> CombatLogEntry:
+        """Return the goblin's attack entry (NPC turn follows player turn)."""
+        return result["combat_log"][1]
+
+    def test_on_hit_half_save_made(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "tag": "poison",
+            "success": {"narrative": "You resist.", "player_damage": "half(1d8)"},
+            "failure": {"narrative": "You fail.", "player_damage": "1d8"},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses (1), goblin hits (15+4=19) base dmg 1+2=3,
+        # save roll 10 (+1 mod +2 prof =13) success, on-hit roll 5 -> half=2.
+        rand_vals = iter([1, 15, 1, 10, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["success"]
+        assert result["hard_changes"].player_hp_delta == -5  # 3 base + 2 on-hit
+        attack_entry = self._goblin_attack_entry(result)
+        assert len(attack_entry.on_hit_effects) == 1
+        assert attack_entry.on_hit_effects[0]["save_success"] is True
+        assert attack_entry.on_hit_effects[0]["damage"] == 2
+
+    def test_on_hit_half_save_failed(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "tag": "poison",
+            "success": {"narrative": "You resist.", "player_damage": "half(1d8)"},
+            "failure": {"narrative": "You fail.", "player_damage": "1d8"},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, save roll 5 (+3 =8) fail, on-hit roll 5 -> full=5.
+        rand_vals = iter([1, 15, 1, 5, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].player_hp_delta == -8  # 3 base + 5 on-hit
+        attack_entry = self._goblin_attack_entry(result)
+        assert attack_entry.on_hit_effects[0]["save_success"] is False
+        assert attack_entry.on_hit_effects[0]["damage"] == 5
+
+    def test_on_hit_none_save_made(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "tag": "poison",
+            "success": {"narrative": "You resist."},
+            "failure": {"narrative": "You fail.", "player_damage": "1d8"},
+        }])
+        self._goblin_first_combat(hard)
+        rand_vals = iter([1, 15, 1, 10])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].player_hp_delta == -3  # base only
+        assert self._goblin_attack_entry(result).on_hit_effects[0]["damage"] == 0
+
+    def test_on_hit_full_always_damages(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "tag": "poison",
+            "success": {"narrative": "You resist.", "player_damage": "1d8"},
+            "failure": {"narrative": "You fail.", "player_damage": "1d8"},
+        }])
+        self._goblin_first_combat(hard)
+        rand_vals = iter([1, 15, 1, 10, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].player_hp_delta == -7  # 3 + 4
+
+    def test_on_hit_multiple_effects_sum(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        effect = {
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "success": {"player_damage": "half(1d8)"},
+            "failure": {"player_damage": "1d8"},
+        }
+        corpus = self._add_on_hit(combat_npc_corpus, [effect, effect])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, two save successes + half damages
+        rand_vals = iter([1, 15, 1, 10, 5, 10, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].player_hp_delta == -7  # 3 + 2 + 2
+        assert len(self._goblin_attack_entry(result).on_hit_effects) == 2
+
+    def test_on_hit_sets_flag(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "failure": {"set_flag": {"poisoned": True}},
+            "success": {},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, save roll 5 (+1 =6) fail
+        rand_vals = iter([1, 15, 1, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].flags_set.get("poisoned") is True
+
+    def test_on_hit_proficiency_applied(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.save_proficiencies = ["CON"]
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 8,
+                "proficiency": "save", "repeatable": False,
+            },
+            "success": {},
+            "failure": {"player_damage": "1d8"},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, save roll 6 + CON mod +1 + prof +2 = 9 >= 8 success
+        rand_vals = iter([1, 15, 1, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].player_hp_delta == -3  # base only
+        assert self._goblin_attack_entry(result).on_hit_effects[0]["save_success"] is True
+
+    def test_on_hit_death_from_secondary_damage(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.current_hp = 4
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "failure": {"player_damage": "1d8"},
+            "success": {},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, save fail, on-hit dmg 5 -> total 8 -> death
+        rand_vals = iter([1, 15, 1, 5, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["game_over"] is True
+        assert any(entry.action == "death" for entry in result["combat_log"])
+
+    def test_on_hit_log_entry_shape(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "tag": "poison",
+            "success": {"player_damage": "half(1d8)"},
+            "failure": {"player_damage": "1d8"},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, save roll 10 (+1 =11) success, half damage roll 5 -> 2
+        rand_vals = iter([1, 15, 1, 10, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        entry = self._goblin_attack_entry(result).on_hit_effects[0]
+        assert entry["save_stat"] == "CON"
+        assert entry["save_dc"] == 10
+        assert entry["save_roll"] == 10
+        assert entry["save_total"] == 11
+        assert entry["save_success"] is True
+        assert entry["damage_expr"] == "half(1d8)"
+        assert entry["damage"] == 2
+        assert entry["damage_type"] == "poison"
+
+    def test_on_hit_alters_stat(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "failure": {"alter_stat": {"STR": {"value": -2}}},
+            "success": {},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, save roll 5 (+1 =6) fail -> STR drain
+        rand_vals = iter([1, 15, 1, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].stat_modifiers["STR"].value == -2
+
+    def test_on_hit_game_over_result(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """An on-hit failure branch that sets game_over ends the game (save-or-die)."""
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "failure": {
+                "narrative": "The venom stops your heart.",
+                "game_over": {"type": "lose", "trigger_id": "poison_death"},
+            },
+            "success": {},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3 (player survives at 7), save fail -> game_over
+        rand_vals = iter([1, 15, 1, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["game_over"] is True
+        assert hard.game_over is not None
+        assert hard.game_over.type == "lose"
+
+    def test_on_hit_nested_then_check(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A then_check on an on-hit branch resolves and stacks its damage."""
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "success": {},
+            "failure": {
+                "player_damage": "1d8",
+                "then_check": {
+                    "check": {
+                        "type": "stat_check", "stat": "DEX", "target": 10,
+                        "repeatable": False,
+                    },
+                    "success": {},
+                    "failure": {"player_damage": "1d8"},
+                },
+            },
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, CON save 5 (+1=6) fail -> 1d8=2,
+        # then DEX save 5 (+2=7) fail -> 1d8=2. On-hit total 4, grand total 7.
+        rand_vals = iter([1, 15, 1, 5, 2, 5, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].player_hp_delta == -7  # 3 base + 2 + 2 nested
+        entry = self._goblin_attack_entry(result).on_hit_effects[0]
+        assert entry["save_success"] is False
+        assert entry["damage"] == 4  # primary + then_check damage combined
+
+    def test_on_hit_proficiency_stacks_with_modifier(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A save-proficient player gets check.modifier AND the proficiency bonus."""
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.save_proficiencies = ["CON"]
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 14,
+                "modifier": 2, "proficiency": "save", "repeatable": False,
+            },
+            "success": {},
+            "failure": {"player_damage": "1d8"},
+        }])
+        self._goblin_first_combat(hard)
+        # player misses, goblin hits base dmg 3, save roll 9 + CON +1 + modifier +2
+        # + prof +2 = 14 >= 14 success (would be 12 < 14 without both bonuses)
+        rand_vals = iter([1, 15, 1, 9])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].player_hp_delta == -3  # base only, save made
+        assert self._goblin_attack_entry(result).on_hit_effects[0]["save_success"] is True
+
+    def test_enter_combat_resolves_on_hit(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """On-hit effects resolve during the pre-player NPC loop in enter_combat."""
+        hard = combat_hard_state.model_copy(deep=True)
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "tag": "poison",
+            "success": {"narrative": "You resist.", "player_damage": "half(1d8)"},
+            "failure": {"narrative": "You fail.", "player_damage": "1d8"},
+        }])
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+        # player init 1 (+2 =3), goblin init 20 (+2 =22) -> goblin first,
+        # goblin attack 15 (+4=19) hit, base dmg 1 (+2=3), save 5 (+1=6) fail,
+        # on-hit 1d8=4 -> total 7.
+        rand_vals = iter([1, 20, 15, 1, 5, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        result = enter_combat(["goblin"], hard, corpus, soft=SoftGameState())
+        assert result["hard_changes"].player_hp_delta == -7  # 3 base + 4 on-hit
+        attack_entry = next(
+            (e for e in result["combat_log"] if e.action == "attack"), None
+        )
+        assert attack_entry is not None
+        assert len(attack_entry.on_hit_effects) == 1
+        assert attack_entry.on_hit_effects[0]["save_success"] is False
+        assert attack_entry.on_hit_effects[0]["damage"] == 4
+
+    def test_on_hit_format_prefix(self):
+        log = [{
+            "actor": "goblin", "action": "attack", "target": "player",
+            "hit": True, "damage": 3,
+            "on_hit_effects": [
+                {"save_stat": "CON", "save_success": True, "damage": 2,
+                 "damage_type": "poison", "damage_expr": "half(1d8)"},
+            ],
+        }]
+        prefix = format_combat_prefix(log)
+        assert "CON save: success" in prefix
+        assert "half poison damage (2)" in prefix
+
+
 # ------------------------------------------------------------------
 # 8. Fleeing
 # ------------------------------------------------------------------
@@ -663,6 +1033,59 @@ class TestResolverIntegration:
         soft = SoftGameState()
         result = resolve_action(action, hard, soft, combat_npc_corpus)
         assert result.success
+
+    def test_combat_action_on_hit_through_resolver(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """resolve_action passes soft/state_manager so on-hit effects resolve."""
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["goblin", "player"],
+            current_index=0,
+            round_number=1,
+        )
+        data = combat_npc_corpus.model_dump()
+        data["stats"] = {
+            "definitions": {
+                "STR": {"name": "Strength"},
+                "DEX": {"name": "Dexterity"},
+                "CON": {"name": "Constitution"},
+                "INT": {"name": "Intelligence"},
+                "WIS": {"name": "Wisdom"},
+                "CHA": {"name": "Charisma"},
+            },
+            "system": "5e",
+        }
+        data["entities"]["goblin"]["combat"]["on_hit_effects"] = [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "tag": "poison",
+            "success": {"narrative": "You resist.", "player_damage": "half(1d8)"},
+            "failure": {"narrative": "You fail.", "player_damage": "1d8"},
+        }]
+        corpus = ModuleCorpus.model_validate(data)
+        # player misses (1), goblin hits (15+4=19), base dmg 1+2=3,
+        # save fail (5+1=6), on-hit dmg 5 -> total 8
+        rand_vals = iter([1, 15, 1, 5, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        action = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="Attack!",
+        )
+        soft = SoftGameState()
+        result = resolve_action(action, hard, soft, corpus)
+        assert result.success
+        assert result.hard_changes.player_hp_delta == -8
+        goblin_entry = result.combat_log[1]
+        assert goblin_entry.actor == "goblin"
+        assert len(goblin_entry.on_hit_effects) == 1
+        assert goblin_entry.on_hit_effects[0]["save_success"] is False
+        assert goblin_entry.on_hit_effects[0]["damage"] == 5
 
     def test_interact_attack_starts_combat(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         """InteractAction with interaction_id='attack' on NPC with CombatBlock starts combat."""

@@ -15,12 +15,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import pytest
+from typing import Any
 from pydantic import ValidationError
 
 from mgmai.models.corpus import (
     Adventure,
     Atmosphere,
     AttitudeLimits,
+    CombatBlock,
     ConditionExpression,
     Credits,
     DialogueGuidelines,
@@ -1237,3 +1239,91 @@ class TestCombatGroupModel:
         data = r.model_dump()
         r2 = Result.model_validate(data)
         assert r2.start_combat == ["goblin_1", "goblin_2"]
+
+
+class TestCombatBlockOnHit:
+    """CombatBlock.on_hit_effects are CheckResolution objects with a
+    combat-safe subset validator."""
+
+    def _valid_on_hit(self, on_save: str) -> dict[str, Any]:
+        """Return a CheckResolution-shaped on-hit effect for the given on_save style."""
+        if on_save == "half":
+            success = {"narrative": "You resist.", "player_damage": "half(1d8)"}
+        elif on_save == "none":
+            success = {"narrative": "You resist."}
+        else:  # full
+            success = {"narrative": "You resist.", "player_damage": "1d8"}
+        return {
+            "check": {
+                "type": "stat_check",
+                "stat": "CON",
+                "target": 11,
+                "proficiency": "save",
+                "repeatable": False,
+            },
+            "tag": "poison",
+            "success": success,
+            "failure": {"narrative": "You fail.", "player_damage": "1d8"},
+        }
+
+    def test_valid_check_resolution_on_hit(self) -> None:
+        cb = CombatBlock.model_validate({
+            "hp": 10,
+            "ac": 10,
+            "atk": 2,
+            "dmg": "1d6",
+            "on_hit_effects": [self._valid_on_hit("half")],
+        })
+        assert len(cb.on_hit_effects) == 1
+        assert cb.on_hit_effects[0].tag == "poison"
+
+    @pytest.mark.parametrize("style", ["half", "none", "full"])
+    def test_on_save_styles_accepted(self, style: str) -> None:
+        cb = CombatBlock.model_validate({
+            "hp": 10,
+            "ac": 10,
+            "atk": 2,
+            "dmg": "1d6",
+            "on_hit_effects": [self._valid_on_hit(style)],
+        })
+        assert cb.on_hit_effects[0].success is not None
+
+    def test_prohibited_field_on_hit_rejected(self) -> None:
+        data = self._valid_on_hit("half")
+        data["success"]["add_item"] = ["bad_item"]
+        with pytest.raises(ValidationError, match="add_item"):
+            CombatBlock.model_validate({
+                "hp": 10,
+                "ac": 10,
+                "atk": 2,
+                "dmg": "1d6",
+                "on_hit_effects": [data],
+            })
+
+    def test_prohibited_field_in_then_check_rejected(self) -> None:
+        data = self._valid_on_hit("half")
+        data["success"]["then_check"] = {
+            "check": {"type": "stat_check", "stat": "DEX", "target": 10, "repeatable": False},
+            "success": {"set_player_location": "elsewhere"},
+        }
+        with pytest.raises(ValidationError, match="set_player_location"):
+            CombatBlock.model_validate({
+                "hp": 10,
+                "ac": 10,
+                "atk": 2,
+                "dmg": "1d6",
+                "on_hit_effects": [data],
+            })
+
+    def test_allowed_combat_effects_accepted(self) -> None:
+        data = self._valid_on_hit("half")
+        data["success"]["set_flag"] = {"poisoned": True}
+        data["success"]["alter_stat"] = {"STR": {"value": -2}}
+        cb = CombatBlock.model_validate({
+            "hp": 10,
+            "ac": 10,
+            "atk": 2,
+            "dmg": "1d6",
+            "on_hit_effects": [data],
+        })
+        assert cb.on_hit_effects[0].success.set_flag == {"poisoned": True}

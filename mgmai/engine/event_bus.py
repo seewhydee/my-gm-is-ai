@@ -430,7 +430,7 @@ def _resolve_reaction_encounter(
             [source_id], enc_result["start_combat"], hard, corpus
         )
         if enemies:
-            combat_entry = enter_combat(enemies, hard, corpus)
+            combat_entry = enter_combat(enemies, hard, corpus, soft=soft, state_manager=state_manager)
             if combat_entry.get("hard_changes"):
                 if changes is not None:
                     changes.merge(combat_entry["hard_changes"])

@@ -36,7 +36,7 @@ from mgmai.engine.systems import (
 )
 from mgmai.engine.systems.dice import parse_damage_dice
 from mgmai.models.combat import CombatLogEntry
-from mgmai.models.corpus import EquipBlock, ModuleCorpus
+from mgmai.models.corpus import EquipBlock, ModuleCorpus, StatCheck
 from mgmai.models.hard_state import HardGameState
 
 
@@ -95,8 +95,6 @@ class TestRegistry:
                 return 10
             def base_max_hp(self, con_value: int) -> int:
                 return 1
-            def resolve_save(self, stat, stat_value, dc, flat_modifier=0, params=None):
-                return SaveResult(stat, dc, 0, 1, 1, 1 - dc, False, False, False)
             def resolve_player_attack(self, hard, corpus, target_id, target_ac, round_number):
                 return PlayerAttackResult(
                     hit=True,
@@ -227,6 +225,33 @@ class TestFiveECombat:
         assert total == 14
         assert s.startswith("2d6+2")
 
+    def test_roll_damage_half(self, monkeypatch) -> None:
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        total, s = FiveESystem().roll_damage("half(1d8)")
+        assert total == 2  # max(1, 5 // 2)
+        assert "half(" in s
+
+    def test_roll_damage_half_minimum_one(self, monkeypatch) -> None:
+        monkeypatch.setattr(random, "randint", lambda a, b: 1)
+        total, _ = FiveESystem().roll_damage("half(1d8)")
+        assert total == 1  # max(1, 1 // 2)
+
+    def test_roll_damage_half_with_modifier(self, monkeypatch) -> None:
+        monkeypatch.setattr(random, "randint", lambda a, b: 4)
+        # half(2d6+3): total = 4+4+3 = 11 -> half = 5
+        total, _ = FiveESystem().roll_damage("half(2d6+3)")
+        assert total == 5
+
+    def test_roll_damage_half_flat(self) -> None:
+        total, _ = FiveESystem().roll_damage("half(4)")
+        assert total == 2
+
+    def test_roll_damage_nested_half(self, monkeypatch) -> None:
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        # half(half(1d8)) -> 5 -> 2 -> 1
+        total, _ = FiveESystem().roll_damage("half(half(1d8))")
+        assert total == 1
+
     def test_base_ac_and_hp(self) -> None:
         s = FiveESystem()
         assert s.base_ac(16) == 13   # 10 + 3
@@ -237,26 +262,6 @@ class TestFiveECombat:
     def test_base_max_hp_floor(self) -> None:
         # CON 1 -> mod -5 -> 8-5 = 3 (still >= 1)
         assert FiveESystem().base_max_hp(1) == 3
-
-    def test_resolve_save_with_flat_modifier(self, monkeypatch) -> None:
-        monkeypatch.setattr(random, "randint", lambda a, b: 18)
-        sr = FiveESystem().resolve_save("CON", 14, dc=15, flat_modifier=2)
-        assert isinstance(sr, SaveResult)
-        # 18 + 2 (CON) + 2 (flat) = 22 >= 15
-        assert sr.success is True
-        assert sr.modifier == 4
-
-    def test_resolve_save_without_flat_modifier(self, monkeypatch) -> None:
-        monkeypatch.setattr(random, "randint", lambda a, b: 10)
-        sr = FiveESystem().resolve_save("CON", 14, dc=15, flat_modifier=0)
-        # 10 + 2 (CON) = 12 < 15
-        assert sr.success is False
-        assert sr.modifier == 2
-
-    def test_save_to_dict(self) -> None:
-        d = SaveResult("CON", 11, 2, 14, 16, 5, True, False, False).to_dict()
-        assert d["type"] == "saving_throw"
-        assert d["stat"] == "CON"
 
     def test_compute_save_modifier_proficient(self) -> None:
         class FakePlayer:
@@ -281,6 +286,35 @@ class TestFiveECombat:
             proficiency_bonus = 2
 
         assert FiveESystem().compute_save_modifier("CON", FakePlayer()) == 0
+
+    def test_save_to_dict(self) -> None:
+        d = SaveResult("CON", 11, 2, 14, 16, 5, True, False, False).to_dict()
+        assert d["type"] == "saving_throw"
+        assert d["stat"] == "CON"
+
+    def test_proficiency_bonus_applies_to_save_proficiency(self) -> None:
+        class FakePlayer:
+            save_proficiencies = ["CON"]
+            proficiency_bonus = 3
+
+        check = StatCheck(stat="CON", target=10, proficiency="save", repeatable=True)
+        assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 3
+
+    def test_proficiency_bonus_ignored_without_marker(self) -> None:
+        class FakePlayer:
+            save_proficiencies = ["CON"]
+            proficiency_bonus = 3
+
+        check = StatCheck(stat="CON", target=10, repeatable=True)
+        assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 0
+
+    def test_proficiency_bonus_non_proficient_player(self) -> None:
+        class FakePlayer:
+            save_proficiencies = []
+            proficiency_bonus = 3
+
+        check = StatCheck(stat="CON", target=10, proficiency="save", repeatable=True)
+        assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 0
 
     def test_default_damage_exprs(self) -> None:
         s = FiveESystem()

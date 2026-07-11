@@ -144,11 +144,12 @@ def format_combat_prefix(
                     save_success = eh.get("save_success")
                     eh_damage = eh.get("damage", 0)
                     eh_type = eh.get("damage_type", "")
+                    eh_expr = eh.get("damage_expr") or ""
                     type_str = f" {eh_type}" if eh_type else ""
                     if save_success:
-                        if eh.get("on_save") == "none":
+                        if eh_damage == 0:
                             summaries.append(f"**{save_stat} save: success — no{type_str} damage.**")
-                        elif eh.get("on_save") == "half":
+                        elif isinstance(eh_expr, str) and eh_expr.startswith("half("):
                             summaries.append(f"**{save_stat} save: success — half{type_str} damage ({eh_damage}).**")
                         else:
                             summaries.append(f"**{save_stat} save: success — {eh_damage}{type_str} damage.**")

@@ -184,13 +184,22 @@
         "flee_dc": 10,
         "on_hit_effects": [
           {
-            "save": {
+            "check": {
+              "type": "stat_check",
               "stat": "CON",
-              "dc": 11
+              "target": 11,
+              "proficiency": "save",
+              "repeatable": false
             },
-            "damage": "1d8",
-            "on_save": "half",
-            "type": "poison"
+            "tag": "poison",
+            "success": {
+              "narrative": "You resist the poison.",
+              "player_damage": "half(1d8)"
+            },
+            "failure": {
+              "narrative": "The poison courses through your veins.",
+              "player_damage": "1d8"
+            }
           }
         ]
       },

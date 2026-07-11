@@ -34,13 +34,12 @@ from mgmai.engine.systems.base import (
     NPCAttackResult,
     PlayerAttackResult,
     ResolutionSystem,
-    SaveResult,
 )
 from mgmai.engine.systems.dice import parse_damage_dice
 from mgmai.models.combat import CombatLogEntry
 
 if TYPE_CHECKING:
-    from mgmai.models.corpus import EquipBlock, ModuleCorpus, OnHitEffect
+    from mgmai.models.corpus import EquipBlock, ModuleCorpus
     from mgmai.models.hard_state import HardGameState
 
 
@@ -119,6 +118,13 @@ class FiveESystem(ResolutionSystem):
 
     def roll_damage(self, expr: str, critical: bool = False) -> tuple[int, str]:
         # On a critical hit the number of dice is doubled (modifier added once).
+        expr = expr.strip()
+        if expr.startswith("half(") and expr.endswith(")"):
+            inner = expr[5:-1].strip()
+            raw_total, raw_str = self.roll_damage(inner, critical=critical)
+            halved = max(1, raw_total // 2)
+            return halved, f"half({raw_str})={halved}"
+
         num_dice, die_size, modifier = parse_damage_dice(expr)
 
         if num_dice == 0:
@@ -213,55 +219,6 @@ class FiveESystem(ResolutionSystem):
 
         base = self.default_weapon_damage if has_weapon else self.unarmed_damage
         return f"{base}+{str_mod}" if str_mod >= 0 else f"{base}{str_mod}"
-
-    def _resolve_on_hit_effects(
-        self,
-        effects: list[OnHitEffect],
-        hard: HardGameState,
-        round_number: int,
-    ) -> tuple[int, list[dict]]:
-        """Resolve NPC on-hit effects and return extra damage + result dicts."""
-        total_extra = 0
-        results: list[dict] = []
-        for effect in effects:
-            save_stat = effect.save.stat.upper()
-            save_dc = effect.save.dc
-            stat_value = self._player_stat(hard.player.stats, save_stat)
-            flat_mod = self.compute_save_modifier(save_stat, hard.player)
-
-            save_result = self.resolve_save(
-                save_stat, stat_value, save_dc, flat_modifier=flat_mod
-            )
-
-            effect_damage = 0
-            dmg_expr = effect.damage
-            on_save = effect.on_save
-
-            if on_save == "none" and save_result.success:
-                effect_damage = 0
-            else:
-                raw_damage, _ = self.roll_damage(dmg_expr)
-                if on_save == "half" and save_result.success:
-                    effect_damage = max(1, raw_damage // 2)
-                else:
-                    effect_damage = raw_damage
-
-            total_extra += effect_damage
-            results.append(
-                {
-                    "save_stat": save_stat,
-                    "save_dc": save_dc,
-                    "save_roll": save_result.raw_roll,
-                    "save_total": save_result.total,
-                    "save_success": save_result.success,
-                    "damage_expr": dmg_expr,
-                    "damage": effect_damage,
-                    "on_save": on_save,
-                    "damage_type": effect.type,
-                }
-            )
-
-        return total_extra, results
 
     def resolve_player_attack(
         self,
@@ -378,18 +335,9 @@ class FiveESystem(ResolutionSystem):
             )
             log_entry.damage_roll = damage_roll
             log_entry.damage = damage
-            total_damage = damage
-
-            # On-hit effects (saving throws for secondary damage)
-            extra_damage, on_hit_results = self._resolve_on_hit_effects(
-                combat_block.on_hit_effects, hard, round_number
-            )
-            log_entry.on_hit_effects.extend(on_hit_results)
-            total_damage += extra_damage
-
-            player_hp_delta = -total_damage
+            player_hp_delta = -damage
             current_hp = hard.player.current_hp or 0
-            new_hp = current_hp - total_damage
+            new_hp = current_hp - damage
             log_entry.remaining_hp = new_hp
 
             if new_hp <= 0:
@@ -508,47 +456,19 @@ class FiveESystem(ResolutionSystem):
         )
 
     # ------------------------------------------------------------------
-    # Saving throws (hook; invoked by the combat loop on NPC hits)
+    # Saving throw proficiency (for generic CheckResolution saves)
     # ------------------------------------------------------------------
-    def resolve_save(
-        self,
-        stat: str,
-        stat_value: int,
-        dc: int,
-        flat_modifier: int = 0,
-        params: dict | None = None,
-    ) -> SaveResult:
-        computed_mod = self.compute_modifier(stat_value)
-        total_mod = computed_mod + flat_modifier
-
-        # NOTE: This still uses the old per-system-key nesting. It is
-        # inconsistent with roll_check() and should be flattened when saves
-        # grow corpus-driven params.
-        sys_params = (params or {}).get(self.name, {})
-        advantage = sys_params.get("advantage", False)
-        disadvantage = sys_params.get("disadvantage", False)
-
-        raw_roll = self.roll_die(20, advantage=advantage, disadvantage=disadvantage)
-        total = raw_roll + total_mod
-        success = total >= dc
-
-        return SaveResult(
-            stat=stat,
-            dc=dc,
-            modifier=total_mod,
-            raw_roll=raw_roll,
-            total=total,
-            margin=total - dc,
-            success=success,
-            advantage=advantage,
-            disadvantage=disadvantage,
-        )
-
     def compute_save_modifier(self, stat: str, player_state: Any) -> int:
         """5e: proficient saves add the player's proficiency bonus."""
         profs = getattr(player_state, "save_proficiencies", [])
         if stat in profs:
             return getattr(player_state, "proficiency_bonus", None) or 2
+        return 0
+
+    def proficiency_bonus(self, check, player_state: Any) -> int:
+        """5e: apply save proficiency when the check requests it."""
+        if getattr(check, "proficiency", None) == "save":
+            return self.compute_save_modifier(check.stat, player_state)
         return 0
 
     # get_equip_incompatibilities() — inherit default (two_handed is now

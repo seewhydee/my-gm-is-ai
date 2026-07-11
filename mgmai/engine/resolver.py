@@ -905,7 +905,7 @@ def resolve_interact(
                     ),
                     room_after_id=room_id,
                 )
-            entry = enter_combat(enemies, hard, corpus)
+            entry = enter_combat(enemies, hard, corpus, soft=soft, state_manager=state_manager)
             return ResolutionResult(
                 success=True,
                 hard_changes=entry["hard_changes"],
@@ -1087,11 +1087,12 @@ def _resolve_traversal_check(
             return True
 
         system = get_system_for_corpus(corpus)
+        flat_modifier = check.modifier + system.proficiency_bonus(check, hard.player)
         cr = system.roll_check(
             check.stat,
             player_stats[check.stat],
             check.target,
-            flat_modifier=check.modifier,
+            flat_modifier=flat_modifier,
             params=check.model_extra or {},
         )
 
@@ -1521,11 +1522,12 @@ def _resolve_checkable(
                 resolution.error = f"Player has no '{check.stat}' stat"
             return False
         system = get_system_for_corpus(corpus)
+        flat_modifier = check.modifier + system.proficiency_bonus(check, hard.player)
         cr = system.roll_check(
             check.stat,
             player_stats[check.stat],
             check.target,
-            flat_modifier=check.modifier,
+            flat_modifier=flat_modifier,
             params=check.model_extra or {},
         )
         success_flag = cr.success
@@ -1709,11 +1711,13 @@ def _resolve_combat_action(
     action: CombatAction,
     hard: HardGameState,
     corpus: ModuleCorpus,
+    soft: SoftGameState,
+    state_manager: Any | None = None,
 ) -> ResolutionResult:
     """Resolve a CombatAction via the combat module."""
     from mgmai.engine.combat import resolve_combat_turn
 
-    result = resolve_combat_turn(action, hard, corpus)
+    result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
     if not result["success"]:
         return ResolutionResult(
             success=False,
@@ -1733,11 +1737,13 @@ def _resolve_combat_flee(
     action: MoveAction,
     hard: HardGameState,
     corpus: ModuleCorpus,
+    soft: SoftGameState,
+    state_manager: Any | None = None,
 ) -> ResolutionResult:
     """Resolve a flee attempt (move during combat) via the combat module."""
     from mgmai.engine.combat import resolve_combat_turn
 
-    result = resolve_combat_turn(action, hard, corpus)
+    result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
     if not result["success"]:
         return ResolutionResult(
             success=False,
@@ -1930,7 +1936,7 @@ def resolve_action(
 
     # During combat, move actions become flee attempts
     if action_type == "move" and hard.combat is not None and hard.combat.active:
-        return _resolve_combat_flee(action, hard, corpus)
+        return _resolve_combat_flee(action, hard, corpus, soft, state_manager)
 
     if action_type == "move":
         return resolve_move(action, hard, soft, corpus, state_manager)
@@ -1943,7 +1949,7 @@ def resolve_action(
     elif action_type == "transfer":
         return resolve_transfer(action, hard, soft, corpus, state_manager)
     elif action_type == "combat":
-        return _resolve_combat_action(action, hard, corpus)
+        return _resolve_combat_action(action, hard, corpus, soft, state_manager)
     elif action_type == "wait":
         return resolve_wait(action, hard, soft, corpus)
     elif action_type == "equip":

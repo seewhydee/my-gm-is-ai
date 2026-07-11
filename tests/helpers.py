@@ -35,8 +35,6 @@ from mgmai.models.corpus import (
     Interaction,
     Mechanic,
     ModuleCorpus,
-    OnHitEffect,
-    OnHitSave,
     Reaction,
     ReactionEffects,
     Result,
