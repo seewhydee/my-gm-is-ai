@@ -1212,8 +1212,8 @@ socialize with.  NPC entity blocks support these additional fields:
 | `dialogue`¹     | object | NPC's [dialogue settings](#dialogue)     |
 | `aggro`¹        | array  | NPC's [aggro rules](#aggro)              |
 | `follower`¹     | object | NPC's [follower rules](#follower)        |
-| `combat`¹       | object | Combat stats (hp, ac, atk, etc.)         |
-| `combat_group`¹ | string | ID for an NPC group that fights together |
+| `combat`¹       | object | NPC's [combat stat block](#combat)       |
+| `combat_group`¹ | string | See [combat groups](#combat-groups)      |
 > ¹ optional
 
 #### Dialogue
@@ -1332,6 +1332,95 @@ records the topic as already revealed, so it doesn't get repeated.
   }
 }
 ```
+
+### Combat
+
+The `combat` field on an NPC entity holds a stat block used for
+[HP-based, multi-round combat](../doc/combat.md).  An NPC without a
+`combat` block cannot fight this way, though it can still participate
+in encounters that resolve to narrative or game-over results.
+
+The contents of the `combat` block depend on the RPG system in use.
+The fields for `5e` are listed below:
+
+```json
+"combat": {
+  "hp": 18,
+  "ac": 13,
+  "atk": 5,
+  "dmg": "1d8+3",
+  "initiative_mod": 3,
+  "flee_dc": 12,
+  "on_hit_effects": [
+    {
+      "save": { "stat": "CON", "dc": 11 },
+      "damage": "1d8",
+      "on_save": "half",
+      "type": "poison"
+    }
+  ]
+}
+```
+
+| Field             | Type          | Description                       |
+|-------------------|---------------|-----------------------------------|
+| `hp`              | integer       | Maximum hit points (must be >= 1) |
+| `ac`              | integer       | Armor class (must be >= 0)        |
+| `atk`             | integer       | Attack bonus for the NPC's attack |
+| `dmg`¹            | string        | Damage expression; default `"1d6"`|
+| `initiative_mod`¹ | integer       | Initiative modifier; default `0`  |
+| `flee_dc`¹        | integer       | DC for the player to flee; default `10` |
+| `on_hit_effects`¹ | OnHitEffect[] | On-hit effects; default `[]`      |
+> ¹ optional
+
+Notes:
+
+- All values are pre-determined in the corpus; for NPCs, the engine
+  does not derive stats dynamically.
+
+- `dmg` supports dice notation (`"1d8+3"`) or flat values (`"3"`).
+
+- Any NPC carrying a `combat` block MUST also declare the `current_hp`
+  reserved state field in its `state_fields` (see [Entity](#entity)).
+  The engine initializes `current_hp` to the block's `hp` at game
+  start for every combat-capable NPC.  When an NPC's `current_hp`
+  drops to 0, the engine automatically sets the `alive` state field to
+  `false` and drops it out of combat.
+
+- `initiative_mod` is added to the NPC's initiative roll to determine
+  turn order; `flee_dc` is the target the player must beat to flee
+  when this NPC is among those fighting; the highest `flee_dc` among
+  hostile combatants applies.
+
+See the [Combat System documentation](../doc/combat.md) for further
+details about the turn-based combat subsystem.
+
+#### On-Hit Effect
+
+A OnHitEffect object describes a secondary effect that triggers when
+an NPC lands a successful hit, forcing the player to make a saving
+throw (currently, these only apply to NPC attacks *on* the player).
+
+| Field       | Type    | Description                             |
+|-------------|---------|-----------------------------------------|
+| `save`      | object  | Saving throw `{ "stat": <stat>, "dc": <int> }` |
+| `damage`¹   | string  | Extra damage expression; default `"1d6"`|
+| `on_save`¹  | string  | `"half"` (default), `"none"`, or `"full"` |
+| `type`¹     | string  | Damage type label, e.g. `"poison"`      |
+> ¹ optional
+
+Notes:
+
+- `save.stat` is a [player stat](#player-stats) key (e.g. `"CON"`) and
+  `save.dc` is the difficulty class of the save.
+
+- `on_save` controls how a successful save modifies the extra
+  `damage`: `"half"` deals half (rounded down, minimum 1), `"none"`
+  negates it entirely, and `"full"` applies it regardless of the save.
+  A failed save always takes full damage.
+
+- `type` is an optional descriptive label used in narration; it has no
+  mechanical effect.
 
 ### Aggro
 
