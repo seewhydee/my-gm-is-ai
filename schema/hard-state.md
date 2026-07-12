@@ -229,11 +229,9 @@ These maps track the mutable location of every entity in the world:
 initial values are determined by the `contains` fields of the Room and
 Entity objects in the Corpus.
 
-The reserved entity pseudo-field `location` is derived from these maps
-at query time: it reads as `"room:<room_id>` or `"entity:<container_id>"`
-when the entity is contained, and `null` when it is not contained
-anywhere.  See the [Corpus schema](corpus.md#entity) for how authors set
-`location` via `set_entity_state`.
+The special entity state field `location` is derived from these at
+query time.  It reads as `"room:<room_id>`/`"entity:<container_id>"`
+when the entity is in-game, or `null` when it is absent from play.
 
 Notes:
 
@@ -245,23 +243,21 @@ Notes:
   `player.inventory`.  Similarly, `give` actions decrement
   `player.inventory` and increment the target room/entity container.
 
-- `Result.add_item` for a non-stackable item that exists in a world
-  container in the current room removes it from that container
-  (prevents duplication of unique items).  However, stackable
-  `add_item`/`add_item_count` does not touch world containers (the
-  grant is a materialization, not a transfer from a specific
-  location).
+- A successful `Result.add_item` for a non-stackable item removes it
+  any previous location, to prevent duplication of unique items.
+  However, `add_item`/`add_item_count` for stackable items do not
+  trigger auto-removal; the grant is a materialization not a transfer.
 
 - `Result.remove_item` removes from `player.inventory` only; the item
-  vanishes (no world-side deposit).
+  vanishes without any world-side deposit.
 
 ---
 
 ## Combat State
 
 When the top-level `combat` field is non-null, the game is in combat
-mode. The field holds an object managing initiative, turn order, and a
-combat log:
+mode.  The field holds an object managing initiative, turn order, and
+a combat log:
 
 ```json
 {

@@ -177,13 +177,13 @@ For each flag, specify:
 
 ### 1E. Mechanics
 
-Now list out mechanics — module-level (global) rules that are not
-bound to a single room or entity.  For each mechanic, specify:
+Now list out mechanics — set-piece encounters or global rules that are
+not bound to a single room or entity.  For each mechanic, specify:
 
 - **Mechanic ID** — assign a globally-unique ID
 - **Kind** — one of these two:
-  - **Game-over condition** — a rule leading to a game-over
-  - **Mechanic** — state changes or encounter triggered by an event
+  - **Game-over condition** — a mechanic triggering game-over
+  - **Mechanic** — encounter or global reaction mechanic
 - **Description** — how the mechanic works, and its effects
 
 When writing the description, don't worry about the schema-following
@@ -195,6 +195,13 @@ tags (§1G), etc.  Backfill if necessary.
 How to decide if an effect should be a mechanic, rather than a room-
 or entity-scoped interaction or reaction (described below)?  Some
 examples follow.
+
+- If a **game-over condition** is plot-significant and/or reachable in
+  many different ways, use a mechanic.  Examples:
+  - player wins on leaving the castle with the artifact
+  - player loses if HP drops to ≤ 0.
+  However, a game-over condition reached by a specific route (e.g.,
+  falling into *this* pit) should be room- or entity-scoped.
 
 - **Encounters** (set-piece confrontations or action sequences, with
   branching outcomes and/or leading to combat) are usually mechanics.
@@ -222,14 +229,6 @@ examples follow.
   Exception: an entity reaction cannot react to *its own* entity's
   death, so a consequence of an NPC dying must live elsewhere: a room
   reaction if it is location-bound, otherwise a mechanic.
-
-- If a **game-over condition** is plot-significant and/or reachable in
-  many different ways, use a mechanic.  Examples:
-  - player wins on leaving the castle with the artifact
-  - player loses if HP drops to ≤ 0.
-
-  A game-over condition reached by a specific route (e.g., falling
-  into *this* pit) should be room- or entity-scoped.
 
 ### 1F. Rooms (Pass 2)
 
@@ -410,37 +409,20 @@ For NPCs, also add descriptions for the following:
   combat features, such as on-hit effects.  If the scenario doesn't
   give exact numbers, record whatever info is provided.
 
-- **Behavior** — if the NPC can fight, enumerate its encounter rules.
-  Encounter rules specify the ways a combat encounter might unfold,
-  either when the player attacks the NPC, or vice versa.  Each rule
-  specifies a set of conditions (e.g., "player has a weapon and NPC is
-  hostile"), and the outcome (e.g., "launch multi-turn combat").  The
-  first encounter rule with matching conditions is dispatched.
+- **Aggro** — during an encounter with a hostile NPC (including one
+  triggered by the player attacking an initially non-hostile NPC), the
+  default behavior is to launch turn-based combat if the NPC has
+  combat stats, or for the NPC to simply die otherwise.
+  
+  If the aggro encounter should unfold in another way, describe it in
+  terms of a set of branching conditional outcomes.  The encounter
+  rules can include stat checks, auto-death outcomes for either the
+  NPC or the player, etc.  Example: begin combat normally if the
+  player is armed, otherwise auto-kill the player (game-over).
 
-  Common encounter rule outcomes are:
-  - begin multi-round combat (NPC needs combat stats)
-  - player auto-death
-  - NPC flee or auto-death
-  - stat check with success/failure branches (flee, auto-death)
-
-  For multi-enemy fights, use one of these idioms:
-  - **`combat_group`** — give every member of a homogeneous band (e.g.,
-    three goblins) the same string tag.  Attacking any present, living
-    member pulls the rest of the band into combat.  Followers (NPCs with
-    a `dialogue` block whose state says `following: true`) are treated as
-    allies and are never auto-pulled, even if they share the tag.
-  - **`start_combat`** — on an encounter result, a list of extra enemy
-    entity IDs to fight alongside the source (e.g., the captain and two
-    archers).  Use `[]` to fight the encounter source alone.  The list
-    expands by `combat_group` too, so listing one band member will
-    pull the whole present band; to select a subset, omit `combat_group`.
-
-  Also note any effects of NPC fleeing (e.g., setting a flag, or
-  moving the NPC to another room).
-
-  You may omit the aggro specification to accept the default rule:
-  if the NPC has combat stats, begin turn-based multi-round combat;
-  otherwise, the NPC dies.
+- **Combat Group** — If the NPC is intended to fight as part of a
+  band, assign the combat group a globally-unique ID, and report that
+  ID in the entity entry for each member.
 
 - **Dialogue Paths** — for dialogue, if the NPC talks.
   A dialogue path is any special plot/gameplay-relevant line of
@@ -1014,19 +996,10 @@ Any NPC with a `combat` block must also declare `current_hp` in
 `state_fields`; the engine initializes it to `combat.hp` when generating
 world state.  The validator requires the field to be present.
 
-If an NPC can engage in a combat encounter with the player (by either
-side attacking), such encounters are typically resolved by either
-single-turn resolution (e.g., one-shot kills), or multi-round combat.
-Dispatch occurs via `aggro.encounter_rules`; the first matching
-rule takes effect.  Construct these encounter rules from the NPC's
-Aggro description in the Scenario Map, or accept the default rule
-(start combat if NPC has a `combat` block, NPC dies otherwise).
-
-If the Scenario Map noted `on_flee` aggro for the NPC, encode it in
-`aggro.on_flee` with any flags or entity state changes it should
-apply and a short narrative effect description.
-
-Here is an example of a mechanical (one-turn) encounter:
+If the NPC has non-standard aggro rules (i.e., anything other than
+going into combat when the player attacks), write an `aggro` block
+using the info in the Scenario Map.  Here is an example of an
+encounter using immediate resolution rather than multi-turn combat:
 
 ```json
 "encounter_rules": [
@@ -1052,19 +1025,18 @@ Here is an example of a mechanical (one-turn) encounter:
 ]
 ```
 
+If the Scenario Map notes that the NPC is part of a combat group
+(i.e., several NPCs that aggro together), specify the combat group ID
+in `combat_group`.
+
 #### NPC dialogue
 
 For every conversational NPC, write a `dialogue` block.
-Its contents – `personality`, `on_meeting`, `can`/`cannot` arrays,
-`knows`, etc. – guide the GM on how the NPC talks, behaves, and
-responds to the player.  Each string should be concise, informative,
-and factual.  No embellishment: the GM handles injecting color.
 
-Example of a `cannot` array:
-
-```json
-["will never agree to fight the spider; secretly scared of spiders, but reluctant to admit it", "will not follow into the secret compartment (can't fit through flap)"]
-```
+The `guidelines` field briefs the GM on how the NPC should talk and
+behave while in conversation.  Just be concise and informative:
+describe what the NPC will or will not say in conversation, and/or
+what aims they may have.  The GM will handle the narrative flair.
 
 Translate the `dialogue_paths`, `will_reveal`, and `knows` fields from
 the Dialogue Paths, Will-Reveal Topics, and Knowledge descriptors in

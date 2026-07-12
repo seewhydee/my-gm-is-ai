@@ -222,25 +222,26 @@ Stat Checks are [resolution system](#resolution-system) dependent.
 | `stat`       | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
 | `target`     | integer | Check target or difficulty class  |
 | `modifier`¹  | integer | Situational modifier (default 0)  |
-| `proficiency`¹ | string | Proficiency to apply, e.g. `"save"` |
 | `repeatable` | boolean | Whether check can be retried      |
 > ¹ optional
 
-If `proficiency` is `"save"`, the active resolution system adds the
-player's save proficiency bonus for `stat` to the check (for 5e, this is
-the character's `proficiency_bonus` when `stat` is listed in
-`save_proficiencies`).  Other `proficiency` values are system-specific.
-
-Aside from the above, different RPG systems can define extra fields as
-needed.  `5e` uses roll(1d20) + (stat-10)//2 + modifier >= target as
-its success formula, and supports these additional optional fields:
+Aside from the above, different RPG systems can define extra fields.
+`5e` uses roll(1d20) + (stat-10)//2 + modifier >= target as its
+success formula, and supports these additional optional fields:
 
 | Field          | Type    | Description                       |
 |----------------|---------|-----------------------------------|
 | `advantage`    | boolean | Roll 2d20 and keep the higher die |
 | `disadvantage` | boolean | Roll 2d20 and keep the lower die  |
+| `proficiency`  | string  | Proficiency used, e.g. `"save"`   |
 
-If both fields are `true`, they cancel out and a single d20 is rolled.
+If both `advantage` and `disadvantage` are `true`, they cancel out and
+a single d20 is rolled.
+
+If `proficiency` is `"save"`, the player's save proficiency bonus for
+`stat` is added to the check; this is the character's proficiency
+bonus when `stat` is listed in their `save_proficiencies`, as defined
+in the [hard state schema](hard-state.md).
 
 ---
 
@@ -329,6 +330,11 @@ Notes:
 - `player_damage` supports the normal damage syntax, plus `half(expr)`
   to deal half of `expr` rounded down (minimum 1), like `"half(1d8)"`.
 
+```json
+"success": { "narrative": "You resist the poison", "player_damage": "half(1d8)" },
+"failure": { "narrative": "The poison burns", "player_damage": "1d8" }
+```
+
 - `adjust_attitude` is capped by the affected NPCs' `step_per_turn`
   for attitude changes.  See [NPC attitude](#npc-attitude).
 
@@ -350,7 +356,7 @@ A CheckResolution object implements multi-stage resolutions.  It can
 be put in the `then_check` field of a [Result](#result), firing right
 after the parent's other effects are applied.  It can also be used in
 an NPC's combat block to describe the side-effects of hitting the
-player; see [On-Hit Effect](#on-hit-effect).
+player; see [Combat](#combat).
 
 Example: player makes a STR check to jump across a pit, and on failure
 must make a DEX check to grab the ledge.  The `failure` Result in the
@@ -383,14 +389,20 @@ STR check contains the following `then_check`:
 | `skip_check_if`¹ | Condition | If present and true, skip check |
 | `success`        | Result    | Result if follow-up succeeds    |
 | `failure`¹       | Result    | Result if follow-up fails       |
-| `tag`¹           | string    | Optional label (e.g. damage type for combat logs) |
+| `tag`¹           | string    | Optional label (e.g. for logs)  |
 > ¹ optional
 
-Nested follow-ups are supported: a follow-up check's success/failure
-results may contain other follow-ups, to a maximum depth of 3.
+Notes:
 
-In combat, certain fields in the `success` and `failure` Results are
-prohibited.  See [On-Hit Effect](#on-hit-effect) for details.
+- Nested follow-ups are supported: a follow-up check's success/failure
+  results may contain other follow-ups, to a maximum depth of 3.
+
+- In combat, certain fields in the `success` and `failure` Results are
+  prohibited; see [Combat](#combat) for details.
+
+- `tag` is an optional descriptive label used in combat logs and
+  narration; it has no mechanical effect.  It is surfaced as the
+  `damage_type` of the on-hit log entry.
 
 ---
 
@@ -1351,13 +1363,13 @@ records the topic as already revealed, so it doesn't get repeated.
 
 ### Combat
 
-The `combat` field on an NPC entity holds a stat block used for
-[HP-based, multi-round combat](../doc/combat.md).  An NPC without a
-`combat` block cannot fight this way, though it can still participate
-in encounters that resolve to narrative or game-over results.
+The `combat` field on an NPC entity holds a stat block for multi-round
+combat.  Without this block, an NPC can only participate in encounters
+that resolve directly.  The block's contents are system-dependent;
+those for `5e` (the one currently implemented) are documented here.
 
-The contents of the `combat` block depend on the RPG system in use.
-The fields for `5e` are listed below:
+See the [Combat System docs](../doc/combat.md) for more details about
+the turn-based combat subsystem.
 
 ```json
 "combat": {
@@ -1390,86 +1402,52 @@ The fields for `5e` are listed below:
 }
 ```
 
-| Field             | Type             | Description                       |
-|-------------------|------------------|-----------------------------------|
-| `hp`              | integer          | Maximum hit points (must be >= 1) |
-| `ac`              | integer          | Armor class (must be >= 0)        |
-| `atk`             | integer          | Attack bonus for the NPC's attack |
-| `dmg`¹            | string           | Damage expression; default `"1d6"`|
-| `initiative_mod`¹ | integer          | Initiative modifier; default `0`  |
-| `flee_dc`¹        | integer          | DC for the player to flee; default `10` |
-| `on_hit_effects`¹ | CheckResolution[] | On-hit effects; default `[]`     |
+| Field            | Type          | Description                       |
+|------------------|---------------|-----------------------------------|
+| `hp`             | integer       | Maximum hit points (must be >= 1) |
+| `ac`             | integer       | Armor class (must be >= 0)        |
+| `initiative_mod`¹| integer       | Initiative modifier; default `0`  |
+| `flee_dc`¹       | integer       | DC for player flee; default `10`  |
+| `atk`            | integer       | Attack bonus for the NPC's attack |
+| `dmg`¹           | string        | Damage expression; default `"1d6"`|
+| `on_hit_effects`¹| CheckResolution[] | On-hit effects; default `[]`  |
 > ¹ optional
 
 Notes:
 
-- All values are pre-determined in the corpus; for NPCs, the engine
-  does not derive stats dynamically.
+- For NPC, all combat stats are pre-determined in the corpus; the
+  engine does not derive them dynamically.
+
+- Any NPC with a `combat` block MUST also have a `current_hp`
+  declaration in its `state_fields` (see [Entity](#entity)).  The
+  engine initializes `current_hp` to the block's `hp` at game start.
+  When an NPC's `current_hp` drops to 0, the engine automatically sets
+  the `alive` state field to `false` and drops it out of combat.
+
+- `initiative_mod` is added to the NPC's initiative roll to determine
+  turn order.
+
+- `flee_dc` is a check target for player to flee when fighting this
+  NPC; the highest `flee_dc` among hostile combatants applies.
 
 - `dmg` supports dice notation (`"1d8+3"`) or flat values (`"3"`).
 
-- Any NPC carrying a `combat` block MUST also declare the `current_hp`
-  reserved state field in its `state_fields` (see [Entity](#entity)).
-  The engine initializes `current_hp` to the block's `hp` at game
-  start for every combat-capable NPC.  When an NPC's `current_hp`
-  drops to 0, the engine automatically sets the `alive` state field to
-  `false` and drops it out of combat.
+- `on_hit_effects`, if supplied, should be a list of
+  [CheckResolution](#check-resolution) objects.  Each effect resolves
+  immediately after the NPC lands a hit on the player.  The `check` is
+  typically a `stat_check` saving throw; the `success` and `failure`
+  branches are [Results](#result) restricted to a combat-safe subset.
 
-- `initiative_mod` is added to the NPC's initiative roll to determine
-  turn order; `flee_dc` is the target the player must beat to flee
-  when this NPC is among those fighting; the highest `flee_dc` among
-  hostile combatants applies.
-
-See the [Combat System documentation](../doc/combat.md) for further
-details about the turn-based combat subsystem.
-
-#### On-Hit Effect
-
-An NPC's `on_hit_effects` field, if supplied, should be a list of
-[CheckResolution](#check-resolution) objects.  Each effect resolves
-immediately after the NPC lands a hit on the player.  The `check` is
-typically a `stat_check` saving throw; the `success` and `failure`
-branches are [Results](#result) restricted to a combat-safe subset.
-
-| Field     | Type    | Description                             |
-|-----------|---------|-----------------------------------------|
-| `check`   | Check   | The saving throw or roll to resolve     |
-| `success` | Result  | Result when the check succeeds/save made|
-| `failure` | Result  | Result when the check fails/save failed |
-| `tag`¹    | string  | Optional label, e.g. `"poison"`         |
-> ¹ optional
-
-Combat-safe result fields for `success`/`failure` are:
-
-- `narrative`
-- `set_flag`
-- `player_damage`
-- `game_over`
-- `reveals`
-- `then_check` (nested checks, also combat-safe)
-
-The following fields are presently **prohibited** in on-hit results:
-- `add_item`
-- `add_item_count`
-- `remove_item`
-- `remove_item_count`
-- `set_entity_state`
-- `set_room_state`
-- `adjust_attitude`
-- `set_player_location`
-- `start_combat`.
-
-The `player_damage` expression supports `half(expr)` (see the
-[Result](#result) notes), commonly used on a successful save:
-
-```json
-"success": { "narrative": "You resist the poison.", "player_damage": "half(1d8)" },
-"failure": { "narrative": "The poison burns.", "player_damage": "1d8" }
-```
-
-`tag` is an optional descriptive label used in combat logs and
-narration; it has no mechanical effect.  It is surfaced as the
-`damage_type` of the on-hit log entry.
+  The following fields are presently **prohibited** in on-hit results:
+  - `add_item`
+  - `add_item_count`
+  - `remove_item`
+  - `remove_item_count`
+  - `set_entity_state`
+  - `set_room_state`
+  - `adjust_attitude`
+  - `set_player_location`
+  - `start_combat`
 
 ### Aggro
 
