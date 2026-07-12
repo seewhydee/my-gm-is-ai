@@ -247,8 +247,8 @@ If both fields are `true`, they cancel out and a single d20 is rolled.
 ### Result
 
 A **Result** describes the consequences of an action: narrative, state
-mutations, stat adjustments, inventory changes, and optional follow-up
-checks. Results can appear deterministically, or in non-deterministic
+mutations, stat adjustments, inventory changes, and follow-ups.
+Results can appear deterministically, or in non-deterministic
 `success` and `failure` branches.
 
 ```json
@@ -279,7 +279,7 @@ ALL fields in a Result object are optional.
 | `player_damage`     | string   | Deal damage to player, e.g. `"1d4"` |
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Update player knowledge (see below) |
-| `then_check`        | FollowUpCheck | See [Follow-Up](#follow-up)    |
+| `then_check` | CheckResolution | Follow-up check (see below)         |
 | `start_combat`      | string[] | Enter combat (see below)            |
 | `game_over`         | GameOver | End the game (see below)            |
 
@@ -297,7 +297,7 @@ Notes:
 - During a check, `check.passed`/`check.failed` events and their
   immediate [Reactions](#reaction) fire before success/failure results
   are run.  These effects are then batched and processed before
-  resolving any [FollowUpCheck](#follow-up).
+  resolving any [follow-up checks](#check-resolution).
 
 - `set_flag` sets global boolean flags.  A `false` value clears the
   flag; any truthy value sets it.
@@ -326,6 +326,9 @@ Notes:
   multiple counts; `remove_item_count` removes specified quantities.
   The engine prevents removing more than exist.
 
+- `player_damage` supports the normal damage syntax, plus `half(expr)`
+  to deal half of `expr` rounded down (minimum 1), like `"half(1d8)"`.
+
 - `adjust_attitude` is capped by the affected NPCs' `step_per_turn`
   for attitude changes.  See [NPC attitude](#npc-attitude).
 
@@ -341,14 +344,17 @@ Notes:
 
 ---
 
-### Follow-Up
+### Check Resolution
 
-A FollowUpCheck object can be put in a Result's `then_check` field.
-It implements multi-stage resolutions, firing right after the parent
-action or effect.
+A CheckResolution object implements multi-stage resolutions.  It can
+be put in the `then_check` field of a [Result](#result), firing right
+after the parent's other effects are applied.  It can also be used in
+an NPC's combat block to describe the side-effects of hitting the
+player; see [On-Hit Effect](#on-hit-effect).
 
 Example: player makes a STR check to jump across a pit, and on failure
-makes a DEX check to grab the ledge.
+must make a DEX check to grab the ledge.  The `failure` Result in the
+STR check contains the following `then_check`:
 
 ```json
 {
@@ -373,7 +379,7 @@ makes a DEX check to grab the ledge.
 
 | Field            | Type      | Description                     |
 |------------------|-----------|---------------------------------|
-| `check`          | Check     | Follow-up check to resolve      |
+| `check`          | Check     | The check to resolve            |
 | `skip_check_if`¹ | Condition | If present and true, skip check |
 | `success`        | Result    | Result if follow-up succeeds    |
 | `failure`¹       | Result    | Result if follow-up fails       |
@@ -382,6 +388,9 @@ makes a DEX check to grab the ledge.
 
 Nested follow-ups are supported: a follow-up check's success/failure
 results may contain other follow-ups, to a maximum depth of 3.
+
+In combat, certain fields in the `success` and `failure` Results are
+prohibited.  See [On-Hit Effect](#on-hit-effect) for details.
 
 ---
 
@@ -1416,11 +1425,11 @@ details about the turn-based combat subsystem.
 
 #### On-Hit Effect
 
-An NPC's `on_hit_effects` is a list of [CheckResolution](#follow-up)
-objects.  Each effect resolves immediately after the NPC lands a hit on
-the player.  The `check` is typically a `stat_check` saving throw; the
-`success` and `failure` branches are [Results](#result) restricted to a
-combat-safe subset.
+An NPC's `on_hit_effects` field, if supplied, should be a list of
+[CheckResolution](#check-resolution) objects.  Each effect resolves
+immediately after the NPC lands a hit on the player.  The `check` is
+typically a `stat_check` saving throw; the `success` and `failure`
+branches are [Results](#result) restricted to a combat-safe subset.
 
 | Field     | Type    | Description                             |
 |-----------|---------|-----------------------------------------|
@@ -1439,23 +1448,24 @@ Combat-safe result fields for `success`/`failure` are:
 - `reveals`
 - `then_check` (nested checks, also combat-safe)
 
-The following fields are **prohibited** in on-hit results:
-`add_item`, `add_item_count`, `remove_item`, `remove_item_count`,
-`set_entity_state`, `set_room_state`, `adjust_attitude`,
-`set_player_location`, and `start_combat`.
+The following fields are presently **prohibited** in on-hit results:
+- `add_item`
+- `add_item_count`
+- `remove_item`
+- `remove_item_count`
+- `set_entity_state`
+- `set_room_state`
+- `adjust_attitude`
+- `set_player_location`
+- `start_combat`.
 
-The `player_damage` expression supports the normal damage syntax, plus
-`half(expr)` to deal half of `expr` rounded down (minimum 1).  This is
-commonly used on a successful save:
+The `player_damage` expression supports `half(expr)` (see the
+[Result](#result) notes), commonly used on a successful save:
 
 ```json
 "success": { "narrative": "You resist the poison.", "player_damage": "half(1d8)" },
 "failure": { "narrative": "The poison burns.", "player_damage": "1d8" }
 ```
-
-If `check.proficiency` is `"save"`, the player's save-proficiency bonus
-for that stat is added to the roll (in 5e, this is `proficiency_bonus`
-when the stat is in `save_proficiencies`).
 
 `tag` is an optional descriptive label used in combat logs and
 narration; it has no mechanical effect.  It is surfaced as the
