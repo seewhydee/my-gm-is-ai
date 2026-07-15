@@ -40,7 +40,7 @@ class ImprovisedWeapon(BaseModel):
 class SoftStatePatch(BaseModel):
     entity_id: Optional[str] = None
     field: Literal[
-        "room_note", "entity_note", "soft_inventory_add", "soft_inventory_remove",
+        "room_note", "entity_note", "soft_inventory_remove",
         "appearance_note_add", "set_improvised_weapon"
     ]
     target_id: Optional[str] = None
@@ -123,7 +123,7 @@ class SoftGameState(BaseModel):
     player_knowledge: List[KnowledgeEntry] = Field(default_factory=list)
     turn_history: List[TurnHistoryEntry] = Field(default_factory=list)
     dialogue_state: DialogueState = Field(default_factory=DialogueState)
-    surfaced_soft_items: Dict[str, List[str]] = Field(default_factory=dict)
+    surfaced_soft_items: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     checks_attempted: Dict[str, List[str]] = Field(default_factory=dict)
     revealed_hints: List[str] = Field(default_factory=list)
     appearance_notes: List[str] = Field(default_factory=list)

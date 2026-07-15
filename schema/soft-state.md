@@ -23,7 +23,7 @@ continuity (NPC moods, environmental details, conversation memory).
   "entity_notes":      { "<entity_id>": ["string", ...] },
   "player_knowledge":  [ { "topic_id": "...", "description": "...", "source_type": "...", "source_id": "...", "turn_learned": 0 } ],
   "turn_history":      [ { /* turn log entry */ } ],
-  "surfaced_soft_items": { "<room_or_entity_id>": ["string", ...] },
+  "surfaced_soft_items": { "<room_or_entity_id>": { "<item_name>": <count> } },
   "checks_attempted":  { "<check_id>": ["<room_id>", ...] },
   "revealed_hints":    ["string", ...],
   "dialogue_state":    { /* active NPC conversation state */ },
@@ -41,17 +41,17 @@ continuity (NPC moods, environmental details, conversation memory).
 ```
 
 An array of soft item names the player is carrying. These items come from
-room or entity `soft_items` lists in the module corpus. They are identified
-by their general name only — no unique IDs. They can be:
+accepted soft-item takes and are identified by their general name only — no
+unique IDs. They can be:
 
-- Used in `interact` actions (as target or `using` field)
-- Transferred via the `transfer` action
+- Used in `transfer` actions (given to targets)
 - Referenced in LLM narration
 
 ### Validation rules
 
-1. Adding a soft item: the engine checks that the item name appears in the
-   current room's `soft_items` or a present entity's `soft_items`.
+1. Adding a soft item: the engine creates a `SoftItemProposal`; LLM Call 2
+   adjudicates whether the item exists in the scene. Accepted takes are appended
+   to `soft_inventory`.
 2. Removing a soft item: the engine removes the first occurrence from the array.
 3. Duplicate entries are allowed (e.g., multiple "rock" entries).
 4. When a soft item is consumed or destroyed, the engine removes it.
@@ -232,29 +232,30 @@ Call 2's `knowledge_tags`.
 
 ```json
 {
-  "axe_head": ["loose stone"],
-  "rubbish_pile": ["cork"]
+  "axe_head": { "loose stone": 1 },
+  "rubbish_pile": { "cork": 1 }
 }
 ```
 
-A dictionary mapping room IDs and entity IDs to lists of soft item names that the
-player has successfully interacted with. Unlike the implicit soft items in the
-corpus (which enumerate every plausible pebble), surfaced items are those the
-player has examined, taken, or otherwise engaged with.
+A dictionary mapping room IDs and entity IDs to dictionaries of soft item names
+and the number of times the player has successfully interacted with them.
+Unlike the freeform guidance in the corpus (which enumerates every plausible
+pebble), surfaced items are those the player has actually examined, taken, or
+given.
 
 ### Population rules
 
 | Trigger | Action |
 |---------|--------|
-| `examine` targets a soft item | The engine records the item name under the room or entity it belongs to. |
-| `transfer` takes a soft item from a source | The engine records the item name under the source room or entity. |
-| `transfer` gives a soft item to a target | The engine records the item name under the target entity. |
-| Item is already surfaced | No duplicate entry (first occurrence preserved). |
+| `examine` targets a soft item and LLM Call 2 accepts the proposal | The engine records the item name under the current room with count 1. |
+| `transfer` takes a soft item from a source and LLM Call 2 accepts | The engine records the item name under the source room or entity, incrementing its count. |
+| `transfer` gives a soft item to a target and LLM Call 2 accepts | The engine records the item name under the target entity, incrementing its count. |
+| Item already surfaced | Count is incremented rather than deduplicated. |
 
 ### Usage in GMBriefing
 
 The Context Assembler populates `BriefingRoom.soft_items` and
-`BriefingEntity.soft_items` from this field. Implicit (non-surfaced) soft items
+`BriefingEntity.soft_items` from the keys of this field. Non-surfaced soft items
 are omitted, keeping the briefing focused on items the player has observed.
 Carried soft items are surfaced separately via `soft_inventory` in the player
 state block.
@@ -592,7 +593,7 @@ The general soft-state patch format that LLM Call 1 outputs in
 | Field       | Type           | Description |
 |-------------|----------------|-------------|
 | `entity_id` | string\|null   | Target entity ID for `entity_note`. Null for `room_note`. |
-| `field`     | string         | One of `room_note`, `entity_note`, `soft_inventory_add`, `soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon`. Attitude changes are proposed separately by LLM Call 2 — see below. |
+| `field`     | string         | One of `room_note`, `entity_note`, `soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon`. Attitude changes are proposed separately by LLM Call 2 — see below. |
 | `target_id` | string\|null   | For `room_note`, the room ID. Null for entity-level patches. |
 | `old_value` | any\|null      | Expected current value (for validation). Null for add-only patches. |
 | `new_value` | any            | Proposed new value. |
@@ -604,7 +605,6 @@ The general soft-state patch format that LLM Call 1 outputs in
 |---------------------------|----------|-----------------------------|-------|
 | `room_note`               | string   | Non-empty, non-contradictory | Appended to `room_notes[target_id]`. |
 | `entity_note`             | string   | Non-empty, non-contradictory | Appended to `entity_notes[entity_id]`. |
-| `soft_inventory_add`      | string   | Must match a soft item in the current room or a present entity | Appended to `soft_inventory[]`. |
 | `soft_inventory_remove`   | string   | Must exist in `soft_inventory` | Removed from `soft_inventory[]`. |
 | `appearance_note_add`     | string   | Non-empty string               | Appended to `appearance_notes[]`. |
 | `set_improvised_weapon`   | dict\|null | Valid `ImprovisedWeapon` dict or `null` | Sets or clears `improvised_weapon`. |
@@ -618,7 +618,7 @@ The general soft-state patch format that LLM Call 1 outputs in
 | Alive check | Patches for entities with `alive == false` are rejected. |
 | Reason required | `reason` must be non-empty. |
 | No hard-state contradiction | Notes cannot assert facts that contradict hard-state flags or entity states. |
-| Soft inventory source | `soft_inventory_add` must reference a soft item present in the current room or a present entity. |
+| Soft inventory removal | `soft_inventory_remove` must reference an item currently in `soft_inventory`. |
 | Appearance note value | `appearance_note_add.new_value` must be a non-empty string. |
 | Improvised weapon shape | `set_improvised_weapon.new_value` must be a valid `ImprovisedWeapon` object or `null`. |
 

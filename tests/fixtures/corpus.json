@@ -23,10 +23,6 @@
         "rip_in_canvas",
         "padlock"
       ],
-      "soft_items": [
-        "loose stone",
-        "dust"
-      ],
       "exits": [
         {
           "id": "exit_climb_down_handle",
@@ -60,7 +56,8 @@
           "phase": "immediate"
         }
       ],
-      "is_start_room": true
+      "is_start_room": true,
+      "soft_item_guidance": "loose stone, dust"
     },
     "axe_handle_upper": {
       "name": "Axe Handle (Upper)",
@@ -70,9 +67,6 @@
         "canvas_walls",
         "stuck_fly",
         "webs_upper"
-      ],
-      "soft_items": [
-        "sticky webbing"
       ],
       "exits": [
         {
@@ -124,7 +118,8 @@
           "phase": "immediate"
         }
       ],
-      "is_start_room": false
+      "is_start_room": false,
+      "soft_item_guidance": "sticky webbing"
     },
     "axe_handle_lower": {
       "name": "Axe Handle (Lower)",
@@ -134,10 +129,6 @@
         "canvas_walls",
         "webs_dense",
         "spider"
-      ],
-      "soft_items": [
-        "dense webbing",
-        "rock"
       ],
       "exits": [
         {
@@ -178,7 +169,8 @@
           "phase": "immediate"
         }
       ],
-      "is_start_room": false
+      "is_start_room": false,
+      "soft_item_guidance": "dense webbing, rock"
     },
     "bag_floor": {
       "name": "Bag Floor",
@@ -189,11 +181,6 @@
         "rubbish_pile",
         "handkerchief",
         "korbar"
-      ],
-      "soft_items": [
-        "cork",
-        "loose copper",
-        "lint"
       ],
       "exits": [
         {
@@ -213,7 +200,8 @@
         }
       ],
       "interactions": [],
-      "is_start_room": false
+      "is_start_room": false,
+      "soft_item_guidance": "cork, loose copper, lint"
     },
     "secret_compartment": {
       "name": "Secret Compartment",
@@ -221,10 +209,6 @@
       "contains": [
         "canvas_walls",
         "rusty_key"
-      ],
-      "soft_items": [
-        "dust",
-        "debris"
       ],
       "exits": [
         {
@@ -235,14 +219,14 @@
         }
       ],
       "interactions": [],
-      "is_start_room": false
+      "is_start_room": false,
+      "soft_item_guidance": "dust, debris"
     }
   },
   "entities": {
     "player": {
       "type": "player",
       "description": "You are an ordinary person who woke up trapped in a magical Bag of Holding. You have no special equipment, just your wits and whatever you can find.",
-      "soft_items": [],
       "state_fields": {
         "alive": {
           "type": "boolean",
@@ -253,25 +237,21 @@
     "battleaxe": {
       "type": "feature",
       "description": "A truly enormous battleaxe, its head resting against the canvas wall. The shaft is as wide as a sidewalk and slopes downward into the dimness. It belongs to Korbar the Dwarf.",
-      "soft_items": [],
       "state_fields": {}
     },
     "canvas_walls": {
       "type": "feature",
       "description": "The interior walls of the Bag of Holding — vast planes of rough canvas that stretch upward and curve inward to form a ceiling. They emit a faint, magical luminescence that keeps the interior from being pitch black.",
-      "soft_items": [],
       "state_fields": {}
     },
     "rip_in_canvas": {
       "type": "feature",
       "description": "A small rip in the fabric of the bag near the ceiling, made by the tip of the battleaxe. By balancing carefully on the blade tip, you can poke your head through. Beyond is a grey nothing — the Astral Plane. Looking around from this vantage, you can see the exterior of the Bag, including a giant padlock barely within reach, firmly locked shut and attached to the neck of the bag.",
-      "soft_items": [],
       "state_fields": {}
     },
     "padlock": {
       "type": "feature",
       "description": "A giant padlock attached to the neck of the Bag of Holding, barely within reach from the rip in the canvas. It is currently firmly locked shut.",
-      "soft_items": [],
       "interactions": [
         {
           "id": "unlock_padlock",
@@ -287,7 +267,9 @@
             "set_flag": {
               "padlock_unlocked": true
             },
-            "remove_item": ["rusty_key"],
+            "remove_item": [
+              "rusty_key"
+            ],
             "reveals": "With the padlock unlocked, you should be able to squirm free through the rip in the canvas."
           }
         }
@@ -297,7 +279,6 @@
     "stuck_fly": {
       "type": "npc",
       "description": "A large fly caught in the sticky webs. It is barely alive, its wings twitching faintly.",
-      "soft_items": [],
       "state_fields": {
         "alive": {
           "type": "boolean",
@@ -310,7 +291,7 @@
         }
       },
       "dialogue": {
-        "guidelines": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine. Every word is a struggle \u2014 it is clearly at death's door. Can warn about the spider in the webs below, answer simple questions about the spider and the webs, and speak only with great effort. Cannot move from the web, survive much longer, or provide any information beyond the spider and the immediate area. Knows that a huge spider lurks in the dense webs lower down the axe handle, the spider is hungry and aggressive, and the webs get denser the further down you go.",
+        "guidelines": "A trapped fly, dying and desperate to warn others about the spider. It speaks in a nasally, buzzing whine. Every word is a struggle — it is clearly at death's door. Can warn about the spider in the webs below, answer simple questions about the spider and the webs, and speak only with great effort. Cannot move from the web, survive much longer, or provide any information beyond the spider and the immediate area. Knows that a huge spider lurks in the dense webs lower down the axe handle, the spider is hungry and aggressive, and the webs get denser the further down you go.",
         "on_meeting": "The fly, with its dying breath, warns the player about the huge spider lurking in the webs below.",
         "attitude_limits": {
           "min": 0,
@@ -343,23 +324,18 @@
     "webs_upper": {
       "type": "feature",
       "description": "Extremely sticky webs stretching across the axe handle. They are tough and clingy, but not dense enough to block passage.",
-      "soft_items": [
-        "sticky webbing"
-      ],
-      "state_fields": {}
+      "state_fields": {},
+      "soft_item_guidance": "sticky webbing"
     },
     "webs_dense": {
       "type": "feature",
       "description": "Thick, dense webs blocking the path downward along the axe handle. They are strong and sticky — pushing through them will take effort and will certainly alert whatever lurks within.",
-      "soft_items": [
-        "dense webbing"
-      ],
-      "state_fields": {}
+      "state_fields": {},
+      "soft_item_guidance": "dense webbing"
     },
     "spider": {
       "type": "npc",
       "description": "A huge spider, hairy and menacing, with glistening fangs and too many eyes. It hangs in the dense webs, watching you with a predator's patience. It is clearly hungry.",
-      "soft_items": [],
       "state_fields": {
         "alive": {
           "type": "boolean",
@@ -376,7 +352,7 @@
         }
       },
       "dialogue": {
-        "guidelines": "A mindless predator driven by hunger. It does not speak, bargain, or reason \u2014 it only hunts. Can attack anything that disturbs its webs. Cannot speak, reason, bargain, or feel fear until wounded.",
+        "guidelines": "A mindless predator driven by hunger. It does not speak, bargain, or reason — it only hunts. Can attack anything that disturbs its webs. Cannot speak, reason, bargain, or feel fear until wounded.",
         "on_meeting": "",
         "attitude_limits": {
           "min": -5,
@@ -488,13 +464,6 @@
     "rubbish_pile": {
       "type": "feature",
       "description": "Loose piles of giant rubbish litter the bag floor — empty potion bottles the size of barrels, corks as big as your head, stale sandwiches, copper pieces, and lint. Amidst all this junk, there might be something useful.",
-      "soft_items": [
-        "cork",
-        "loose copper",
-        "stale sandwich",
-        "lint",
-        "empty potion bottle"
-      ],
       "interactions": [
         {
           "id": "rummage_for_weapon",
@@ -510,7 +479,9 @@
           },
           "success": {
             "narrative": "After rummaging through the discarded junk, your hand closes around something promising — a giant toenail clipping, curved and sharp. It is disgusting, but it looks like it could be wielded as a sword.",
-            "add_item": ["toenail_sword"],
+            "add_item": [
+              "toenail_sword"
+            ],
             "reveals": "You found a makeshift weapon: a giant toenail clipping that can be wielded as a sword."
           },
           "failure": {
@@ -518,12 +489,12 @@
           }
         }
       ],
-      "state_fields": {}
+      "state_fields": {},
+      "soft_item_guidance": "cork, loose copper, stale sandwich, lint, empty potion bottle"
     },
     "handkerchief": {
       "type": "feature",
       "description": "A disgustingly damp giant handkerchief crumpled in one corner of the bag floor. It looks like it has been here a very long time.",
-      "soft_items": [],
       "interactions": [
         {
           "id": "search_handkerchief",
@@ -565,7 +536,6 @@
     "korbar": {
       "type": "npc",
       "description": "Korbar the Dwarf is drunk and miserable, slouched against a pile of rubbish. She wears ridiculously noisy iron platemail that clanks with every movement, but carries no weapon — the giant battleaxe actually belongs to her. Her eyes are bleary from drink but sharp with the cynicism of someone abandoned for three years.",
-      "soft_items": [],
       "state_fields": {
         "alive": {
           "type": "boolean",
@@ -658,7 +628,6 @@
       "type": "item",
       "name": "Toenail Sword",
       "description": "A giant toenail clipping, curved and wickedly sharp. It is disgusting to think about, but it is roughly the size and shape of a short sword and could serve as a makeshift weapon.",
-      "soft_items": [],
       "tags": [
         "weapon"
       ],
@@ -675,7 +644,6 @@
       "type": "item",
       "name": "Rusty Key",
       "description": "A large iron key, rusted with age but still sturdy. It is far too big for any normal door, but it looks like it would fit the giant padlock on the outside of the bag.",
-      "soft_items": [],
       "tags": [
         "key_item"
       ],

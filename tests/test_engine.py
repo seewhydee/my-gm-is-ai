@@ -534,7 +534,10 @@ class TestEngineRoomAfter:
         assert "korbar" in result.will_reveal_readiness
 
     def test_surfaced_soft_items_persisted_after_examine(self, state_manager):
-        """Examining a soft item persists it into soft.surfaced_soft_items."""
+        """Examining a soft item produces a proposal; accepting it surfaces the item."""
+        from mgmai.engine.post_validate import apply_post_validation
+        from mgmai.models.narration import SoftItemAdjudication
+
         action = ExamineAction(
             action_type="examine",
             target="loose stone",
@@ -542,11 +545,26 @@ class TestEngineRoomAfter:
         )
         result = resolve(action, state_manager)
         assert result.success is True
+        assert len(result.soft_item_proposals) == 1
+
+        adjudication = SoftItemAdjudication(
+            item_name="loose stone",
+            action="examine",
+            accepted=True,
+            source_id="axe_head",
+        )
+        result = apply_post_validation(
+            None, None, state_manager, result, soft_item_adjudications=[adjudication]
+        )
         assert "axe_head" in state_manager.soft_state.surfaced_soft_items
         assert "loose stone" in state_manager.soft_state.surfaced_soft_items["axe_head"]
+        assert state_manager.soft_state.surfaced_soft_items["axe_head"]["loose stone"] == 0
 
     def test_surfaced_soft_items_persisted_after_take(self, state_manager):
-        """Taking a soft item persists it into soft.surfaced_soft_items."""
+        """Taking a soft item produces a proposal; accepting it adds to inventory and surfaces it."""
+        from mgmai.engine.post_validate import apply_post_validation
+        from mgmai.models.narration import SoftItemAdjudication
+
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
         action = TransferAction(
@@ -557,12 +575,24 @@ class TestEngineRoomAfter:
         )
         result = resolve(action, state_manager)
         assert result.success is True
+        assert len(result.soft_item_proposals) == 1
+
+        adjudication = SoftItemAdjudication(
+            item_name="stale sandwich",
+            action="take",
+            accepted=True,
+            source_id="rubbish_pile",
+        )
+        result = apply_post_validation(
+            None, None, state_manager, result, soft_item_adjudications=[adjudication]
+        )
+        assert "stale sandwich" in state_manager.soft_state.soft_inventory
         assert "rubbish_pile" in state_manager.soft_state.surfaced_soft_items
-        assert "stale sandwich" in state_manager.soft_state.surfaced_soft_items["rubbish_pile"]
+        assert state_manager.soft_state.surfaced_soft_items["rubbish_pile"]["stale sandwich"] == 1
 
     def test_surfaced_soft_items_in_room_after(self, state_manager):
         """Surfaced items appear in the EngineResult.room_after briefing."""
-        state_manager.soft_state.surfaced_soft_items["axe_head"] = ["loose stone"]
+        state_manager.soft_state.surfaced_soft_items["axe_head"] = {"loose stone": 0}
         action = WaitAction(
             action_type="wait",
             detail="Looking around",
@@ -575,7 +605,7 @@ class TestEngineRoomAfter:
         """Entity-level surfaced items appear in the entity's soft_items in room_after."""
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        state_manager.soft_state.surfaced_soft_items["rubbish_pile"] = ["lint"]
+        state_manager.soft_state.surfaced_soft_items["rubbish_pile"] = {"lint": 1}
         action = WaitAction(
             action_type="wait",
             detail="Looking around",
@@ -585,7 +615,7 @@ class TestEngineRoomAfter:
             e for e in result.room_after.entities_visible
             if e.id == "rubbish_pile"
         )
-        assert "lint" in rubbish.soft_items
+        assert any("lint" in s for s in rubbish.soft_items)
 
     def test_npc_attitude_limits(self, state_manager):
         hard = state_manager.hard_state

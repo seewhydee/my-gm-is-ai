@@ -381,7 +381,7 @@ class Room(BaseModel):
     name: str
     description: str
     contains: List[Union[str, Dict[str, int]]] = Field(default_factory=list)
-    soft_items: List[str] = Field(default_factory=list)
+    soft_item_guidance: Optional[str] = None
     exits: List[Exit] = Field(default_factory=list)
     interactions: List[Interaction] = Field(default_factory=list)
     on_examine: List[OnExamineEvent] = Field(default_factory=list)
@@ -495,7 +495,7 @@ class Entity(BaseModel):
     type: Literal["player", "feature", "npc", "item"]
     name: Optional[str] = None
     description: str
-    soft_items: List[str] = Field(default_factory=list)
+    soft_item_guidance: Optional[str] = None
     contains: List[Union[str, Dict[str, int]]] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     take_check: Optional[GatedCheck] = None

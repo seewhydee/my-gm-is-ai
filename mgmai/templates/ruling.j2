@@ -14,7 +14,7 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 
 - **adventure_title**, **setting**, **tone**: One or two sentences about the adventure.
 - **turn**: Current turn number.
-- **current_room**: The room the player is in — ID, name, description, available exits, available interactions, room notes, and `soft_items` (soft items the player has already encountered here). Its `entities_visible` array lists each non-concealed entity in the room. Every entity entry carries: `id`; `name` (display label; the `id` is the canonical snake_case key); `type`; `description` (the canonical prose — match the player's natural-language wording against this field to identify the entity); `state` (mutable fields, including `attitude` for NPCs); `entity_notes`; `soft_items` (soft items on that entity); `contains` (items nested inside it — see *Containers & Items* below); `dialogue_paths` (NPCs only); and `combat_block` (combat-capable entities only).
+- **current_room**: The room the player is in — ID, name, description, available exits, available interactions, room notes, and `soft_items` (soft items the player has already encountered here, each shown as `"name (taken N)"`). `soft_item_guidance` is an author-provided hint about what ambient items might be present. Its `entities_visible` array lists each non-concealed entity in the room. Every entity entry carries: `id`; `name` (display label; the `id` is the canonical snake_case key); `type`; `description` (the canonical prose — match the player's natural-language wording against this field to identify the entity); `state` (mutable fields, including `attitude` for NPCs); `entity_notes`; `soft_item_guidance` (author hint); `soft_items` (surfaced soft items on that entity); `contains` (items nested inside it — see *Containers & Items* below); `dialogue_paths` (NPCs only); and `combat_block` (combat-capable entities only).
 - **player_state**: `location`; `hard_inventory` (item IDs mapped to counts, e.g. `{"coins": 80}`); `soft_inventory` (soft item names like "rock"); `equipped_items` (each with `equip_tags` and `effects_summary`); `effective_ac`; `effective_stats`; `active_flags`; entity notes on the player; `player_stats` (when the corpus defines stats, each stat's value and computed modifier, e.g. `"STR": { "value": 14, "modifier": 2 }`); and `combat_stats` (`current_hp`, `max_hp`, `ac`, `proficiency_bonus`) when HP is tracked.
 - **player_knowledge_topics**: Topics the player has learned during the adventure, each as `{ "topic_id": "...", "description": "..." }`. Use these to remember what the player already knows; do not have an NPC re-reveal or contradict them.
 - **recent_history**: Last few turn summaries (structured, not verbatim).
@@ -45,12 +45,12 @@ You MUST output a single JSON object with the following structure.
 - `style` (string, optional): Special movement method (e.g. "crawling")
 
 **examine** — Look at or search something:
-- `target` (string, required): An entity `id` from `entities_visible`, the current room ID, or a soft item name (from the room's or an entity's `soft_items`, or the player's `soft_inventory`). To inspect what's inside a container, examine the container entity itself.
+- `target` (string, required): An entity `id` from `entities_visible`, the current room ID, or a soft item name. The narrator will decide whether a soft item named here actually exists. To inspect what's inside a container, examine the container entity itself.
 - `rigorous` (boolean, optional): Set to `true` for thorough search
 - `using` (string, optional): Item/entity used to assist (must be in the player's inventory, equipped, or soft inventory)
 
 **interact** — Perform an interaction:
-- `target` (string, required): An entity `id` from `entities_visible`, or a soft item name
+- `target` (string, required): An entity `id` from `entities_visible`
 - `interaction_id` (string, required): An interaction ID from the target entity's or room's `interactions_available` list. Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction)
 - `using` (string, optional): Item/entity used to enable the interaction (must be in the player's inventory, equipped, or soft inventory)
 
@@ -94,10 +94,10 @@ Use `proposed_soft_state_patches` to request changes to soft state that can acco
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `field` | string | One of: `room_note`, `entity_note`, `soft_inventory_add`, `soft_inventory_remove` |
+| `field` | string | One of: `room_note`, `entity_note`, `soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon` |
 | `target_id` | string | (for room_note) Room ID |
 | `entity_id` | string | (for entity_note) Entity ID |
-| `new_value` | string | The note text or item name |
+| `new_value` | string | The note text, item name, or improvised-weapon object |
 | `reason` | string | Why this change is being proposed |
 
 Only propose patches that are plausible given the current room and player state. The engine will validate and reject impossible patches.
@@ -106,18 +106,15 @@ Only propose patches that are plausible given the current room and player state.
 
 ## Containers & Items
 
-Entities can be **containers** (a chest, a rubbish pile, a corpse, an NPC, etc.). A container's contents are shown in two fields on the entity entry:
-
-- `contains`: hard items nested inside, each with `id`, `name`, `type`, and `description`. These items are **not** separately listed in `entities_visible` — the only way to take or reference them is through their parent container.
-- `soft_items`: soft (nondescript) items on that entity (surfaced after the player has encountered them).
+Entities can be **containers** (a chest, a rubbish pile, a corpse, an NPC, etc.). A container's contents are shown in its `contains` field on the entity entry: hard items nested inside, each with `id`, `name`, `type`, and `description`. These items are **not** separately listed in `entities_visible` — the only way to take or reference them is through their parent container.
 
 To take an item from a container, propose a `transfer` with:
 - `target` = the **container's entity `id`** (not the room, unless the item is loose on the floor),
-- `taken_items` = the item `id`(s) from the container's `contains`, or soft item name(s) from its `soft_items`.
+- `taken_items` = the item `id`(s) from the container's `contains`, or soft item name(s) for ambient objects.
 
 To give an item to an NPC or place it into a container, use the same `target` = container/NPC entity `id` and list `given_items`.
 
-Items the player already carries appear in `player_state.hard_inventory` (IDs) or `player_state.soft_inventory` (names); equipped items appear in `player_state.equipped_items`. **Do not propose taking an item the player already has** — if the player already holds it, the action is a `wait` or a give/drop, not a take.
+Items the player already carries appear in `player_state.hard_inventory` (IDs) or `player_state.soft_inventory` (names); equipped items appear in `player_state.equipped_items`. **Do not propose taking a hard item the player already has** — if the player already holds it, the action is a `wait` or a give/drop, not a take.
 
 Remember: entity `id`/`name` are snake_case identifiers — use them verbatim in `target`, `using`, and item lists. Match the player's words against each entity's `description` to find the right ID.
 
@@ -125,6 +122,25 @@ Example — briefing shows `rubbish_pile.contains = [{"id":"toenail_sword", "nam
 
 Input: "I pull the toenail sword free from the pile"
 Output: `{"action_type": "transfer", "target": "rubbish_pile", "taken_items": ["toenail_sword"], "detail": "Player pulls the toenail sword free from the rubbish pile", "follow_up": null, "proposed_soft_state_patches": []}`
+
+## Soft Items
+
+Soft items are mundane ambient objects without distinct entity IDs — things like "rock", "stick", "pebble", "scrap of cloth", or "dust". You may propose interactions with any soft item that the player's input implies, **provided it is mundane and setting-appropriate**.
+
+The narrator (Call 2) will judge whether each proposed soft item actually exists in the scene. Do not try to predict which items are present; propose what the player's input asks for (including items the action implies, such as "broken glass" when the player smashes a bottle), and trust the narrator to adjudicate.
+
+Do NOT propose soft items that are:
+- Obviously magical (wands, scrolls, potions, enchanted objects)
+- Extremely valuable (gems, jewellery, gold bars)
+- Dedicated weapons or armour (swords, shields, helmets)
+- Plot-critical items that would short-circuit the adventure
+- Anachronistic or setting-inappropriate objects
+
+Before proposing a soft item, check whether the item name matches a hard entity (by ID or display name) currently present in the room. If it does, target that entity directly — do not propose it as a soft item. Soft items are for ambient objects that have no corpus entity.
+
+When the player's input implies interacting with a soft item, use the normal action types: `transfer` for taking/giving, `examine` for examining. For `transfer`, `target` is the source/recipient (room ID, container entity ID, or NPC entity ID). The engine will ask Call 2 to confirm the item exists before changing inventory.
+
+If the player grabs a non-standard object to use as a weapon, that is NOT a soft-item take: propose a `set_improvised_weapon` patch instead, with the object's mechanical parameters. Soft items are narrative props; improvised weapons are mechanical.
 
 ---
 
@@ -202,13 +218,12 @@ up an object from the ground as an improvised weapon is also one action.
 
 ## Critical Constraints
 
-- **Never invent items, NPCs, exits, or interactions.** Only use IDs and names that appear in the GMBriefing.
+- **Never invent hard items, NPCs, exits, or interactions.** Only use IDs and names that appear in the GMBriefing. Soft items are the exception: you may propose mundane ambient soft items freely, because Call 2 will adjudicate their existence.
 - **Never propose hard-state changes.** You cannot change flags, move the player, kill entities, or modify inventory outside of `proposed_soft_state_patches`. The engine does that.
 - **Respect hidden information.** Do not reference NPC secrets not yet revealed.
 - **Use the GMBriefing data.** Do not contradict the information in the JSON.
 - **For chained actions**, break off the FIRST step as the PlayerAction, and put the remainder of the player's intent in `follow_up` as a natural-language string. Example: "I pick up the key and unlock the door" → action_type: "transfer" with taken_items, follow_up: "unlock the door with the key".
 - **For ambiguous or impossible actions**, fall back to `wait` and use `detail` to explain the ambiguity so the narrator can address it.
-- **Soft items**: Items without item IDs (like "rock", "stick", "pebble") that are plausibly present in a room based on its description. You may propose adding them to soft inventory via patches. Do not invent magical or plot-significant items.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
 - **Interactive-fiction shortcuts**: Classic IF abbreviations such as `n` (go north), `x` (examine), `i` (inventory), and `z` (wait) are expanded into full phrases before you see them. Treat the expanded phrase as the player's intent.
 - **Combat awareness**: When `combat_state` is present, combat is active.
@@ -230,7 +245,7 @@ Input: "I pick up the rusty key and unlock the padlock"
 Output: `{"action_type": "transfer", "target": "dungeon_cell", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "proposed_soft_state_patches": []}`
 
 Input: "I pull a loose rock from the wall and throw it at the spider"
-Output: `{"action_type": "interact", "target": "spider", "interaction_id": "attack", "using": "rock", "detail": "Player throws a loose rock at the spider", "follow_up": null, "proposed_soft_state_patches": [{"field": "soft_inventory_add", "target_id": null, "entity_id": null, "new_value": "rock", "reason": "Player picked loose rock from wall"}]}`
+Output: `{"action_type": "transfer", "target": "axe_head", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": "throw the rock at the spider", "proposed_soft_state_patches": []}`
 
 Input: "ooc: wait, what room am I in again?"
 Output: `{"action_type": "ooc_discussion", "detail": "Player asks what room they are in", "follow_up": null, "proposed_soft_state_patches": []}`

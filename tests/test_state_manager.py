@@ -412,14 +412,14 @@ class TestApplySoftPatches:
         manager.apply_soft_patches([patch])
         assert "Left legs are wounded." in manager.soft_state.entity_notes["spider"]
 
-    def test_soft_inventory_add(self, manager: StateManager) -> None:
+    def test_appearance_note_add(self, manager: StateManager) -> None:
         patch = SoftStatePatch(
-            field="soft_inventory_add",
-            new_value="rock",
-            reason="Player picked it up.",
+            field="appearance_note_add",
+            new_value="A loose rock catches the player's eye.",
+            reason="Player noticed it.",
         )
         manager.apply_soft_patches([patch])
-        assert "rock" in manager.soft_state.soft_inventory
+        assert "A loose rock catches the player's eye." in manager.soft_state.appearance_notes
 
     def test_soft_inventory_remove(self, manager: StateManager) -> None:
         manager.soft_state.soft_inventory = ["rock", "cork"]
@@ -461,12 +461,12 @@ class TestApplySoftPatches:
     def test_apply_from_dict(self, manager: StateManager) -> None:
         manager.apply_soft_patches([
             {
-                "field": "soft_inventory_add",
-                "new_value": "lint",
-                "reason": "Player picked it up.",
+                "field": "appearance_note_add",
+                "new_value": "A wisp of lint drifts by.",
+                "reason": "Player noticed it.",
             }
         ])
-        assert "lint" in manager.soft_state.soft_inventory
+        assert "A wisp of lint drifts by." in manager.soft_state.appearance_notes
 
     def test_apply_before_load_raises(self) -> None:
         sm = StateManager()
@@ -493,14 +493,13 @@ class TestApplySoftPatches:
         with pytest.raises(ValueError, match="has invalid value"):
             manager.apply_soft_patches([patch])
 
-    def test_soft_inventory_add_non_string_raises(self, manager: StateManager) -> None:
-        patch = SoftStatePatch(
-            field="soft_inventory_add",
-            new_value=123,
-            reason="Test.",
-        )
-        with pytest.raises(ValueError, match="has invalid value"):
-            manager.apply_soft_patches([patch])
+    def test_soft_inventory_add_rejected(self, manager: StateManager) -> None:
+        with pytest.raises(ValidationError):
+            SoftStatePatch(
+                field="soft_inventory_add",
+                new_value="rock",
+                reason="Test.",
+            )
 
     def test_soft_inventory_remove_non_string_raises(self, manager: StateManager) -> None:
         patch = SoftStatePatch(

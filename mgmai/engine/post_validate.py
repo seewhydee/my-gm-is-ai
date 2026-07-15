@@ -18,13 +18,162 @@ from __future__ import annotations
 
 from typing import Any
 
-from mgmai.models.actions import EngineResult, HardStateChanges, RevelationApplied
+from mgmai.models.actions import (
+    EngineResult,
+    HardStateChanges,
+    RevelationApplied,
+    SoftItemProposal,
+)
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
-from mgmai.models.narration import AttitudeChange
+from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
 from mgmai.models.soft_state import KnowledgeEntry, SoftGameState
 from mgmai.state.manager import StateManager
 from mgmai.engine.conditions import evaluate
+
+
+def _normalize_item_name(name: str) -> str:
+    """Normalize a soft item name for comparison.
+
+    Lowercase, strip leading articles, collapse whitespace, and map
+    spaces to underscores so that "rusty key" matches "rusty_key".
+    """
+    lower = name.lower()
+    for article in ("the ", "a ", "an "):
+        if lower.startswith(article):
+            lower = lower[len(article):]
+    lower = " ".join(lower.split())
+    return lower.replace(" ", "_")
+
+
+def _is_hard_entity_collision(name: str, corpus: ModuleCorpus) -> bool:
+    """Return True if *name* matches a hard entity ID or display name."""
+    normalized = _normalize_item_name(name)
+    for eid, entity in corpus.entities.items():
+        if _normalize_item_name(eid) == normalized:
+            return True
+        if entity.name and _normalize_item_name(entity.name) == normalized:
+            return True
+    return False
+
+
+def post_validate_soft_items(
+    adjudications: list[SoftItemAdjudication],
+    proposals: list[SoftItemProposal],
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> tuple[list[SoftItemAdjudication], list[dict[str, Any]]]:
+    """Validate and apply soft-item adjudications from Call 2.
+
+    Returns a tuple of (applied_adjudications, rejected_entries).  State is
+    mutated directly: accepted takes append to ``soft_inventory`` and
+    increment counts on ``surfaced_soft_items``; accepted gives remove from
+    ``soft_inventory`` and increment counts on the target; accepted examines
+    surface on the source with count 0.
+    """
+    applied: list[SoftItemAdjudication] = []
+    rejected: list[dict[str, Any]] = []
+
+    valid_source_ids = set(corpus.rooms.keys()) | set(corpus.entities.keys()) | {"player"}
+    pending = list(proposals)
+
+    for adj in adjudications:
+        reason: str | None = None
+
+        if not adj.item_name or not adj.item_name.strip():
+            reason = "item_name is empty"
+        elif adj.action not in ("take", "give", "examine"):
+            reason = f"invalid action: {adj.action}"
+        elif not isinstance(adj.accepted, bool):
+            reason = "accepted must be a boolean"
+        elif not adj.accepted and (not adj.justification or not adj.justification.strip()):
+            reason = "justification required when accepted is false"
+        elif not adj.source_id or adj.source_id not in valid_source_ids:
+            reason = f"invalid source_id: {adj.source_id}"
+        elif adj.action == "give" and (not adj.target_id or adj.target_id not in corpus.entities):
+            reason = f"give action requires valid target_id: {adj.target_id}"
+        else:
+            match_index: int | None = None
+            for i, prop in enumerate(pending):
+                if (
+                    _normalize_item_name(prop.item_name)
+                    == _normalize_item_name(adj.item_name)
+                    and prop.action == adj.action
+                    and prop.source_id == adj.source_id
+                    and prop.target_id == adj.target_id
+                    and prop.count == adj.count
+                ):
+                    match_index = i
+                    break
+            if match_index is None:
+                reason = "no matching soft_item_proposal"
+            elif _is_hard_entity_collision(adj.item_name, corpus):
+                reason = f"item_name '{adj.item_name}' collides with a hard entity"
+            elif adj.accepted and adj.action == "give":
+                available = sum(
+                    1
+                    for x in soft.soft_inventory
+                    if _normalize_item_name(x) == _normalize_item_name(adj.item_name)
+                )
+                if available < adj.count:
+                    reason = f"not enough '{adj.item_name}' in soft inventory to give"
+
+        if reason:
+            rejected.append({
+                "adjudication": adj.model_dump(),
+                "reason": reason,
+            })
+            continue
+
+        # Consume the matched proposal.
+        if match_index is not None:
+            pending.pop(match_index)
+
+        applied.append(adj)
+
+        if not adj.accepted:
+            continue
+
+        if adj.action in ("take", "give"):
+            source = adj.target_id if adj.action == "give" else adj.source_id
+            if source:
+                if source not in soft.surfaced_soft_items:
+                    soft.surfaced_soft_items[source] = {}
+                soft.surfaced_soft_items[source][adj.item_name] = (
+                    soft.surfaced_soft_items[source].get(adj.item_name, 0) + adj.count
+                )
+            if adj.action == "take":
+                for _ in range(adj.count):
+                    soft.soft_inventory.append(adj.item_name)
+            else:  # give
+                removed = 0
+                new_inventory: list[str] = []
+                for item in soft.soft_inventory:
+                    if (
+                        removed < adj.count
+                        and _normalize_item_name(item) == _normalize_item_name(adj.item_name)
+                    ):
+                        removed += 1
+                    else:
+                        new_inventory.append(item)
+                soft.soft_inventory = new_inventory
+        elif adj.action == "examine":
+            source = adj.source_id
+            if source:
+                if source not in soft.surfaced_soft_items:
+                    soft.surfaced_soft_items[source] = {}
+                if adj.item_name not in soft.surfaced_soft_items[source]:
+                    soft.surfaced_soft_items[source][adj.item_name] = 0
+
+    # Any proposals still pending did not receive an adjudication.
+    for prop in pending:
+        rejected.append({
+            "proposal": prop.model_dump(),
+            "reason": "no adjudication received",
+        })
+
+    return applied, rejected
 
 
 def post_validate_knowledge_tags(
@@ -243,6 +392,7 @@ def apply_post_validation(
     attitude_changes: dict[str, AttitudeChange] | None,
     state_manager: StateManager,
     base_result: EngineResult | None = None,
+    soft_item_adjudications: list[SoftItemAdjudication] | None = None,
 ) -> EngineResult:
     """Run full post-validation and produce an updated EngineResult.
 
@@ -287,6 +437,22 @@ def apply_post_validation(
             state_manager.apply_hard_changes(attitude_hard_changes)
             post_hard_changes.merge(attitude_hard_changes)
 
+    soft_items_accepted: list[SoftItemAdjudication] = []
+    soft_items_rejected: list[dict[str, Any]] = []
+
+    proposals: list[SoftItemProposal] = []
+    if base_result is not None:
+        proposals = list(base_result.soft_item_proposals or [])
+
+    if proposals or soft_item_adjudications:
+        soft_items_accepted, soft_items_rejected = post_validate_soft_items(
+            soft_item_adjudications or [],
+            proposals,
+            hard,
+            soft,
+            corpus,
+        )
+
     if base_result is not None:
         result = base_result.model_copy(deep=True)
         if post_hard_changes.has_changes() and result.hard_state_changes is not None:
@@ -296,6 +462,8 @@ def apply_post_validation(
         result.revelations_applied = revelations_applied
         result.attitude_changes_applied = attitude_changes_applied
         result.attitude_changes_rejected = attitude_changes_rejected
+        result.soft_items_accepted = soft_items_accepted
+        result.soft_items_rejected = soft_items_rejected
         return result
 
     return EngineResult(
@@ -305,4 +473,6 @@ def apply_post_validation(
         revelations_applied=revelations_applied,
         attitude_changes_applied=attitude_changes_applied,
         attitude_changes_rejected=attitude_changes_rejected,
+        soft_items_accepted=soft_items_accepted,
+        soft_items_rejected=soft_items_rejected,
     )

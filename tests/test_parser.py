@@ -179,13 +179,13 @@ class TestParsePlayerAction:
     def test_with_soft_patches(self) -> None:
         raw = json.dumps({
             "action_type": "wait",
-            "detail": "Pick up a rock",
+            "detail": "Note the rock",
             "follow_up": None,
             "proposed_soft_state_patches": [
                 {
-                    "field": "soft_inventory_add",
-                    "new_value": "rock",
-                    "reason": "Player picked up loose rock from cavern floor",
+                    "field": "appearance_note_add",
+                    "new_value": "A loose rock catches the eye.",
+                    "reason": "Player noticed a rock",
                 }
             ],
         })

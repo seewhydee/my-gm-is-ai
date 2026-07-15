@@ -1521,9 +1521,10 @@ class StateManager:
                 self.soft_state.entity_notes[target].append(patch.new_value)
 
             elif field == "soft_inventory_add":
-                if not isinstance(patch.new_value, str):
-                    raise ValueError(f"soft_inventory_add has invalid value {type(patch.new_value).__name__}")
-                self.soft_state.soft_inventory.append(patch.new_value)
+                raise ValueError(
+                    "soft_inventory_add is deprecated; soft items are now "
+                    "adjudicated via soft_item_proposals / soft_item_adjudications"
+                )
 
             elif field == "soft_inventory_remove":
                 value = patch.new_value

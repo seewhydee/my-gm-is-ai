@@ -855,9 +855,9 @@ concealed.
 The engine provides special support for this case:
 
 - The container entity should have a `container` tag AND `open` as a
-  state field.  When `open` is false, the engine hides its contents
-  (`contains` and `soft_items`); when `open` is true, the
-  contents are surfaced.
+  state field.  When `open` is false, the engine hides its hard contents
+  (`contains`); when `open` is true, the contents are surfaced.
+  `soft_item_guidance` is always visible as narrative context.
 
 - To let the player open/close the container, give the container
   entity interactions called `open` and `close`, which alter the
@@ -1672,8 +1672,8 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 
 3. **`entity_notes`** — `{}`. Same as room_notes.
 
-4. **`surfaced_soft_items`** — `{}`. Tracks which soft items have been
-   discovered per room/entity. Starts as empty dict.
+4. **`surfaced_soft_items`** — `{}`. Tracks discovered soft items per
+   room/entity as `{ "<id>": { "<item_name>": <count> } }`. Starts as empty dict.
 
 5. **`checks_attempted`** — `{}`. Records which non-repeatable checks have
    been attempted. Starts as empty dict.

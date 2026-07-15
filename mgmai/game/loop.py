@@ -311,11 +311,14 @@ class GameLoop:
             if note:
                 soft.entity_notes.setdefault(npc_id, []).append(note)
 
-        # 5. Post-validate knowledge_tags + attitude_changes
+        # 5. Post-validate knowledge_tags + attitude_changes + soft_items
         kt = prose.knowledge_tags.npc_revealed if prose.knowledge_tags else None
         ac = dict(prose.attitude_changes) if prose.attitude_changes else None
-        if kt or ac:
-            result = apply_post_validation(kt, ac, self._state, result)
+        sia = list(prose.soft_item_adjudications) if prose.soft_item_adjudications else None
+        if kt or ac or result.soft_item_proposals or sia:
+            result = apply_post_validation(
+                kt, ac, self._state, result, soft_item_adjudications=sia
+            )
             self._last_result = result
 
         # LLM Call 2 may narratively terminate an ongoing chained action

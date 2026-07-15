@@ -607,14 +607,6 @@
       "type": "feature",
       "description": "A loose, haphazard pile of giant-sized rubbish covers the floor: copper pieces the size of shields, empty potion bottles you could bathe in, corks like footstools, lint clumps the size of sheep, and moldy sandwiches that look more like compost heaps than food.",
       "state_fields": {},
-      "soft_items": [
-        "copper piece",
-        "empty potion bottle",
-        "cork",
-        "lint clump",
-        "moldy sandwich",
-        "giant toenail"
-      ],
       "contains": [
         "toenail_sword"
       ],
@@ -637,7 +629,8 @@
             }
           }
         }
-      ]
+      ],
+      "soft_item_guidance": "copper piece, empty potion bottle, cork, lint clump, moldy sandwich, giant toenail"
     },
     "giant_handkerchief": {
       "type": "feature",
@@ -724,7 +717,6 @@
         "padlock",
         "the_rip"
       ],
-      "soft_items": [],
       "exits": [
         {
           "id": "exit_climb_down_handle",
@@ -1003,7 +995,6 @@
         "webs_upper",
         "stuck_fly"
       ],
-      "soft_items": [],
       "exits": [
         {
           "id": "exit_up_handle_upper",
@@ -1125,7 +1116,6 @@
         "webs_lower",
         "spider"
       ],
-      "soft_items": [],
       "exits": [
         {
           "id": "exit_walk_down_handle_lower",
@@ -1400,13 +1390,6 @@
         "secret_flap",
         "korbar"
       ],
-      "soft_items": [
-        "copper piece",
-        "empty potion bottle",
-        "cork",
-        "lint clump",
-        "moldy sandwich"
-      ],
       "exits": [
         {
           "id": "exit_climb_up_handle_floor",
@@ -1619,7 +1602,8 @@
             }
           }
         }
-      ]
+      ],
+      "soft_item_guidance": "copper piece, empty potion bottle, cork, lint clump, moldy sandwich"
     },
     "secret_pocket": {
       "name": "Secret Pocket",
@@ -1628,7 +1612,6 @@
         "canvas_walls",
         "giant_key"
       ],
-      "soft_items": [],
       "exits": [
         {
           "id": "exit_leave_secret_pocket",

@@ -1,504 +1,742 @@
-# Plan: Unify on-hit effects into CheckResolution
+# Design: Narrative-Adjudicated Soft Items
 
-## Overview
+## 1. Problem
 
-`OnHitEffect` and `CheckResolution` are two ways to express the same
-shape — "after X happens, roll a check, then apply an effect based on
-the outcome." This plan replaces the combat-specific `OnHitEffect` with
-the general-purpose `CheckResolution`, so the engine maintains one
-resolution path instead of two, and on-hit effects gain the full
-expressiveness of `Result` (flags, stat changes, narrative branching,
-nesting).
+The soft-items subsystem (`doc/soft-items.md`) requires module authors
+to exhaustively pre-list every plausible ambient object on each room
+and entity in the corpus.  A cave room needs `"rock"`, `"pebble"`,
+`"sharp stone"`, `"dust"`, `"cobweb"`, `"bone fragment"`, `"loose
+gravel"`, etc. enumerated in its `soft_items` field, or the engine
+rejects any player attempt to interact with objects not on the list.
 
-Three supporting changes make the merge behaviour-preserving and sound:
+This is fragile: if the corpus author overlooks soft items and leaves
+a cave room with `soft_items: []`, a player who says "I pick up a
+pebble" gets *"You search but find no such thing"* —
+immersion-breaking in a room the prose describes as littered with
+rubble.
 
-1. **`half(expr)` dice notation** — recovers the `on_save: "half"`
-   mechanic that `CheckResolution` cannot otherwise express.
-2. **An optional proficiency marker on `StatCheck`** — preserves the
-   save-proficiency bonus that today's bespoke on-hit path applies, and
-   fixes a pre-existing inconsistency where every *non*-combat save
-   authored as a `StatCheck` silently lost proficiency.
-3. **A combat-safe effect subset** — constrains what an on-hit `Result`
-   may do, so the generic resolution path can run inside the combat loop
-   without producing nonsensical mid-combat outcomes (relocating the
-   player, starting a new combat, etc.).
+The fundamental tension is that the LLM's common sense *can* judge
+whether a rock exists in a cave, but the engine's corpus whitelist is
+the sole authority.  An exhaustive whitelist is the wrong shape for
+the safety problem.
 
-On-hit resolution moves out of the 5e system and into the combat
-manager, where the `HardStateChanges` accumulator already lives.
+## 2. Core Insight: Call 2 Already Adjudicates Narrative Plausibility
 
-## Background and motivation
+LLM Call 2 (Prose) already produces structured, non-narrative output
+that the engine post-validates after Call 2 returns.  The validation
+lives in `mgmai/engine/post_validate.py` and is orchestrated by
+`apply_post_validation()`, which is invoked from the game loop
+(`mgmai/game/loop.py`) after Call 2 completes — *not* from inside the
+engine's `resolve()` step.  The established pattern is:
 
-`OnHitEffect` (`corpus.py:603`) is a four-field shorthand for "NPC hits
-→ player rolls a saving throw → take modified damage." `CheckResolution`
-(`corpus.py:230`) is the general mechanism for "after a result, roll a
-check and branch," carried by `Result.then_check` and resolved by
-`_resolve_checkable` (`resolver.py:1455`).
+- **`knowledge_tags`** — which `will_reveal` topics the NPC disclosed
+  this turn.  The engine validates against corpus conditions
+  (`will_reveal.conditions`) and applies side effects (`set_flag`,
+  `set_entity_state`).  Implemented by `post_validate_knowledge_tags`.
+- **`attitude_changes`** — proposed shifts in NPC disposition.  The
+  engine validates against `attitude_limits` (step per turn, min/max
+  bounds) and the requirement of a non-empty `reason`.  Implemented by
+  `post_validate_attitude_changes`.
+- **`conversation_note`** — a narrative summary of a concluded
+  dialogue, written entirely by Call 2, stored by the engine as an
+  `entity_note`.
+- **`npc_response`** — extracted spoken text, used by the engine to
+  populate `conversation_log`.
 
-The duplication has two costs:
+In all four cases, Call 2 is not merely a narrator but also doubles as
+the *narrative authority* — it decides what the NPC said, how their
+attitude shifted, what was revealed, and how the conversation should
+be remembered.  The engine provides a safety fence (gating conditions,
+bounds checks) but does *not* attempt to predict or whitelist the
+LLM's output.  In every case the engine's post-validation *mutates the
+`EngineResult` in place* (e.g. `revelations_applied`,
+`attitude_changes_applied`) — so adding post-Call-2 soft-item results
+to `EngineResult` follows an established flow.
 
-- **Expressiveness.** `OnHitEffect` cannot set flags, alter stats,
-  branch narratively, or nest. An author who wants a spider bite that
-  also sets `poisoned`, or a paralyzing strike that forces a second
-  save, has no path.
-- **Two codepaths.** The engine keeps `_resolve_on_hit_effects`
-  (`five_e.py:217`) and `_resolve_checkable` (`resolver.py:1455`).
+Soft items are the same category of problem: we want *narrative
+plausibility*, not mechanical truth.  A rock belongs in a cave because
+the fiction says so, not because a corpus entry says so.  The engine
+should gate the mechanical consequences (inventory placement,
+surfacing), not the ontological question of whether the rock exists.
 
-A naive merge loses two things, which the supporting changes recover:
+**The proposal: extend Call 2's structured output to include
+soft-item adjudication, route those adjudications through a new
+`post_validate_soft_items()` in `post_validate.py`, and stop checking
+corpus `soft_items` lists in the resolver.**
 
-- `on_save: "half"` needs a way to halve a rolled damage expression —
-  recovered by `half(expr)`.
-- Today's on-hit saves go through `resolve_save` (`five_e.py:513`),
-  which adds the player's save-proficiency bonus via
-  `compute_save_modifier` (`five_e.py:547`). `CheckResolution` resolves
-  through `roll_check` (`five_e.py:76`), which does **not** apply
-  proficiency. Without a proficiency marker, every proficient saving
-  throw would be silently nerfed. Worse, this gap already exists for
-  *all* non-combat saves authored as `StatCheck` (traps, traversal
-  saves, encounter saves) — they never got proficiency. The marker
-  fixes both.
+## 3. Current Mechanics (what changes)
 
-## Design
+The reader needs the precise current flow, since several details
+matter for the design.
 
-### Mapping OnHitEffect to CheckResolution
+### 3.1 Where corpus `soft_items` is consulted today
 
-With `half(expr)` available, every `OnHitEffect` becomes a
-`CheckResolution` whose `check` is the saving throw (`StatCheck` with
-`proficiency: "save"`) and whose `success`/`failure` branches carry the
-damage:
+Corpus `soft_items` (`Room.soft_items`, `Entity.soft_items` — both
+`List[str]`) are consulted in exactly three places:
 
-| `on_save` | `success` Result (save made) | `failure` Result (save failed) |
-|---|---|---|
-| `"half"` | `player_damage: "half(1d8)"` | `player_damage: "1d8"` |
-| `"none"` | *(no `player_damage`)* | `player_damage: "1d8"` |
-| `"full"` | `player_damage: "1d8"` | `player_damage: "1d8"` |
+1. **`resolve_examine`** (`resolver.py`): builds
+   `all_soft = set(room.soft_items) ∪ {ent.soft_items for ent in
+   room contents}`.  If the examine target is not a hard room/entity,
+   it is matched against `all_soft`; on match, the item is surfaced on
+   its source (room first, else the owning entity).  This is a
+   *fallback* path — hard room/entity examines are handled earlier and
+   fire `on_examine` events.  **Soft-item examines never fire
+   `on_examine` events**, so soft items carry no `on_examine`-gated
+   mechanical consequence today.
 
-Note the semantic alignment: `CheckResolution.success` means the *check
-passed* (the save was made), so it gets the reduced/no-damage branch;
-`failure` means the save was failed, so it gets full damage. `roll_check`
-succeeds on `total >= target` (`five_e.py:92`), identical to
-`resolve_save`'s `total >= dc` (`five_e.py:533`), so the mapping is
-exact. The `"full"` case requires both branches to carry
-`player_damage` — omitting `failure` would make a failed save a no-op
-and drop the damage.
+2. **`resolve_transfer`** (`resolver.py`): builds
+   `available_pool: dict[str, int]` — a *quantity map* aggregating
+   hard world-items *and* soft items (each soft name counted as `+1`).
+   `taken_items` are validated against `available_pool`; `given_items`
+   are validated against `soft.soft_inventory`.  Note `available_pool`
+   is broader than `all_soft` (it includes hard items with counts);
+   the two must not be conflated.
 
-The `type` field (e.g. `"poison"`) becomes an optional `tag` on
-`CheckResolution` (see "Damage-type labelling" below).
+3. **`_validate_soft_patches`** (`engine.py`, inside engine step 5,
+   *pre*-Call-2): a `soft_inventory_add` patch is validated against
+   `all_soft` for the current room + contained entities.  So
+   `soft_inventory_add` *is* already gated by the corpus today.  The
+   gap is one of *scope* (current room only) and that
+   engine-internal resolver patches bypass this check entirely.
 
-Before:
-```json
-"on_hit_effects": [
-  {
-    "save": { "stat": "CON", "dc": 11 },
-    "damage": "1d8",
-    "on_save": "half",
-    "type": "poison"
-  }
-]
+### 3.2 Where corpus `soft_items` is *not* consulted
+
+Crucially, corpus `soft_items` is **never briefed to either LLM**.
+The Context Assembler populates `BriefingRoom.soft_items` and
+`BriefingEntity.soft_items` from `soft.surfaced_soft_items` (discovered
+items only), never from the corpus lists (`assembler.py`).  So today,
+Call 1 and Call 2 only ever see soft items the player has already
+touched.  This is central to the design: there is currently *no
+channel* by which the corpus `soft_items` list reaches Call 2 as a
+"hint."  Any hint mechanism must be built fresh.
+
+### 3.3 What `surfaced_soft_items` tracks (and doesn't)
+
+`surfaced_soft_items: dict[room_or_entity_id, list[str]]` records
+names the player has examined/taken/given.  It deduplicates by string
+name.  It does **not** track counts, depletion, or how many times a
+name was taken.  A cave with "rock" surfaced once is indistinguishable
+from a desk with one "quill."  Depletion is therefore not an
+engine-knowable fact; it can only be inferred by Call 2 from narrative
+context.
+
+### 3.4 Current soft-item stacking (or lack thereof)
+
+Hard items in the corpus may declare quantities (e.g.,
+`contains: [{"rock": 3}]`), which the resolver tracks via
+`available_pool: dict[str, int]`.  Each take decrements the count.
+Soft items have no such mechanism: `surfaced_soft_items` is a set
+(names only), and each soft name is added to `available_pool` with
+count 1 regardless of how many might plausibly exist.  There is no
+way for the engine or Call 2 to distinguish "the player took one rock"
+from "the player took fifteen rocks."
+
+## 4. Design
+
+### 4.1 Changed flow
+
+```
+Player: "I pick up the rock and examine it."
+
+Call 1 → TransferAction(target="bag_floor", taken_items=["rock"])
+          (LLM proposes freely — no corpus soft_items lookup)
+
+Resolver → does NOT check bag_floor.soft_items for "rock".
+         → records "rock" as a pending SoftItemProposal on the
+           ResolutionResult (source_id="bag_floor", action="take").
+
+Engine  → step 5: _validate_soft_patches no longer accepts
+           soft_inventory_add patches from Call 1 (deprecated path —
+           see §4.5).  The proposal is carried on EngineResult.
+         → EngineResult.soft_item_proposals = [
+             { item_name: "rock", action: "take",
+               source_id: "bag_floor", target_id: null,
+               proposed_by: "call_1" }
+           ]
+
+Call 2  → receives the EngineResult (including soft_item_proposals)
+         → sees surfaced_soft_items["bag_floor"] = {"rock": 1} from
+           a previous take
+         → decides: rock on a cave floor?  Still plausible (count is
+           low, source is far from exhausted).
+         → narrates: "You stoop and pick up a smooth grey stone from
+           the rubble."
+         → NarrationOutput.soft_item_adjudications = [
+             { item_name: "rock", action: "take", accepted: true,
+               source_id: "bag_floor", target_id: null,
+               justification: "The bag floor is covered in debris
+               and loose stones." }
+           ]
+
+Loop    → apply_post_validation() calls post_validate_soft_items():
+         → validates adjudication shape and mechanical consistency
+         → for accepted "take": appends "rock" to soft_inventory,
+           increments surfaced_soft_items["bag_floor"]["rock"] → 2
+         → mutates EngineResult: soft_items_accepted / soft_items_rejected
 ```
 
-After:
-```json
-"on_hit_effects": [
-  {
-    "check": {
-      "type": "stat_check",
-      "stat": "CON",
-      "target": 11,
-      "proficiency": "save",
-      "repeatable": false
-    },
-    "tag": "poison",
-    "success": {
-      "narrative": "You resist the poison.",
-      "player_damage": "half(1d8)"
-    },
-    "failure": {
-      "narrative": "The poison courses through your veins.",
-      "player_damage": "1d8"
-    }
-  }
-]
-```
-
-### The `half(expr)` dice notation
-
-A small extension to damage expressions: `half(expr)` evaluates `expr`
-normally, then returns `max(1, result // 2)` — matching today's
-`on_save: "half"` semantics (`five_e.py:245`).
-
-```
-half(1d8)     → roll 1d8, return max(1, result // 2)
-half(2d6+3)   → roll 2d6+3, return max(1, result // 2)
-half(4)       → return max(1, 4 // 2) = 2
-```
-
-The wrapper is stripped before delegating to the existing parser
-(`dice.py:parse_damage_dice`, which uses `re.fullmatch` on `NdM[+/-k]`
-or a bare integer and would not match `half(...)`). Nested
-`half(half(1d8))` is valid (double-halves).
-
-Because `Result.player_damage` is rolled through `system.roll_damage`
-(`resolver.py:1408`) — the same `roll_damage` used for NPC `dmg` — a
-single extension in the 5e system's `roll_damage` covers both uses.
-`"none"` and `"full"` map to omitting or including `player_damage` in
-the branch, so `half(...)` is the only new notation.
-
-### StatCheck proficiency marker
-
-Add an optional field to `StatCheck`:
+### 4.2 Schemas
 
 ```python
-proficiency: Optional[str] = None
+class SoftItemProposal(BaseModel):
+    item_name: str
+    action: Literal["take", "give", "examine"]
+    source_id: str            # room or entity the item comes from
+    target_id: Optional[str]  # entity receiving a "give"
+    proposed_by: Literal["call_1"] = "call_1"
+
+class SoftItemAdjudication(BaseModel):
+    item_name: str
+    action: Literal["take", "give", "examine"]
+    accepted: bool
+    source_id: str            # echoed from the proposal
+    target_id: Optional[str]
+    justification: Optional[str]   # required when accepted=False
+
+class NarrationOutput(BaseModel):
+    narration: str
+    npc_response: Optional[str] = None
+    knowledge_tags: Optional[KnowledgeTags] = None
+    attitude_changes: Optional[Dict[str, AttitudeChange]] = None
+    conversation_note: Optional[str] = None
+    terminate_chain: bool = False
+    soft_item_adjudications: List[SoftItemAdjudication] = Field(default_factory=list)
 ```
 
-Currently the only recognized value is `"save"`. When set, the engine
-adds `compute_save_modifier(stat, hard.player)` (`five_e.py:547`) — the
-player's proficiency bonus if they are proficient in that stat's saves,
-else 0 — to the check's flat modifier before rolling.
+`SoftItemProposal` is added to `EngineResult` (produced by the engine,
+pre-Call-2, mirroring how the engine already populates
+`EngineResult`).  `SoftItemAdjudication` is added to `NarrationOutput`
+(produced by Call 2).  The two are joined inside
+`post_validate_soft_items()`.
 
-This is **not** a boolean "is the player proficient" assertion.
-Proficiency is player state (`hard_state.py:33`: `save_proficiencies`),
-and the author cannot know the player's build. The check declares
-*which proficiency domain applies*; the engine resolves it against the
-player's proficiency set, exactly as `compute_save_modifier` already
-does. A boolean would force the author to guess the build and would be
-semantically broken.
+**`source_id` is required on both proposals and adjudications.**  The
+engine needs a surfacing target, and cannot derive the source from
+item name alone (a name can belong to multiple sources).  Call 1
+already specifies the source via `TransferAction.target` /
+`ExamineAction.target`, and has access to the room ID and all present
+entity IDs via the GM Briefing.  Call 2 echoes the proposal's
+`source_id`; see §4.4 for the rule that makes this always possible.
 
-Implementation:
+### 4.3 `justification` is required only on rejection
 
-- Add `proficiency: Optional[str] = None` to `StatCheck` (`corpus.py`).
-  `StatCheck` already has `extra="allow"` and a `modifier: int = 0`
-  field; this is a first-class, documented version of the existing
-  extension seam (extras already flow to `roll_check` as `params`,
-  `resolver.py:1529`).
-- Add a system hook `proficiency_bonus(check, player_state) -> int` to
-  `ResolutionSystem` (`base.py`), defaulting to `0`. The 5e impl returns
-  `compute_save_modifier(check.stat, player_state)` when
-  `check.proficiency == "save"`, else `0`. This keeps the resolver
-  system-agnostic.
-- In `_resolve_checkable`'s `StatCheck` branch (`resolver.py:1512`),
-  change the flat modifier to
-  `check.modifier + system.proficiency_bonus(check, hard.player)`.
+On `accepted: true`, `justification` is optional — every accepted
+pebble should not cost a justification token.  On `accepted: false`,
+`justification` must be a non-empty string; Call 2's narration already
+explains the rejection to the player, and the justification is an
+engine-side audit record.  (This matches the asymmetry of
+`attitude_changes`, where `reason` is always required because every
+attitude change is consequential — but soft-item acceptance is
+consequence-light.)
 
-Consequences:
+### 4.4 Call 2 may only adjudicate items Call 1 proposed
 
-- On-hit saves retain proficiency after the merge.
-- `resolve_save` (`five_e.py:513`, `base.py:331`) becomes dead code
-  (only `_resolve_on_hit_effects` called it) and is removed.
-  `compute_save_modifier` is retained and reused by the hook.
-- Non-combat saves (traps, traversal, encounters) authored as
-  `StatCheck` can now set `proficiency: "save"` to opt into
-  save-proficiency — fixing the pre-existing inconsistency.
-- The field is documented as 5e-specific and extensible: future
-  values (`"athletics"`, `"thieves_tools"`, …) can be added once player
-  state models skill/tool proficiencies. Until then, only `"save"` is
-  resolvable.
+Call 2 receives `EngineResult.soft_item_proposals` and adjudicates
+each.  Call 2 **may not invent new soft items** in its
+`soft_item_adjudications`.  Rationale:
 
-### Combat-safe effect subset
+- **Inventory traceability.** `soft_inventory` changes must be
+  traceable to a Call-1-ruled `TransferAction` recorded in
+  `turn_history`.  Spontaneous Call-2 takes would break that
+  invariant.
+- **Source bookkeeping.** Without a Call-1 proposal, there is no
+  `source_id` to surface on, and the engine cannot derive one.
 
-On-hit `Result`s run inside the combat loop via the generic resolution
-path, so they must only produce effects the combat manager can consume
-and that make sense mid-NPC-attack. A `model_validator` on
-`CombatBlock` restricts the `success`/`failure` Results of each on-hit
-`CheckResolution` (recursing through `then_check` chains) to:
+If the player's input implies an item Call 1 missed ("I smash the
+bottle"), the correct behaviour is for Call 1 to propose it.  The Call
+1 prompt (§6.1) instructs Call 1 to propose soft items generously when
+the player's input implies them.  The engine's post-validation
+**rejects** any adjudication whose `item_name`+`action` does not match
+a pending proposal (see §4.6 rule 6).
 
-**Allowed:** `narrative`, `player_damage`, `set_flag`, `alter_stat`,
-`reveals`, `game_over`, `then_check`.
+**Single point of failure.**  This constraint means the system's
+coverage of player intent is only as good as Call 1's proposal
+generation.  If Call 1 is conservative or misses implied items, the
+player gets the same failure mode as today ("you find no such thing"),
+just with a different root cause.  The mitigation is prompt
+engineering (§6.1) — Call 1 must be instructed to propose generously
+and to infer implied items from context.  This is an acceptable
+trade-off: the alternative (allowing Call 2 to invent items) breaks
+inventory traceability.
 
-**Prohibited:** `add_item`, `add_item_count`, `remove_item`,
-`remove_item_count`, `set_entity_state`, `set_room_state`,
-`adjust_attitude`, `set_player_location`, `start_combat`.
+### 4.5 Split of the soft-state patch space
 
-Rationale: the allowed set covers the advertised rich effects (a
-`poisoned` flag, a STR-draining bite, a save-or-die, narrative
-branching, further checks) and maps cleanly onto `HardStateChanges`
-fields the combat manager already merges. The prohibited set is either
-not combat-safe (`set_player_location` breaks combat invariants;
-`start_combat` is nonsensical when already in combat) or not meaningful
-mid-NPC-attack (inventory, attitude, entity/room state). `then_check` is
-allowed so nesting works, but its branch `Result`s must obey the same
-subset.
+Under the new design:
 
-### On-hit resolution in the combat manager
+- **`soft_inventory_add`** — **deprecated as a Call-1 patch.**  Soft
+  additions flow exclusively through `TransferAction`/`ExamineAction`
+  → proposal → Call-2 adjudication → `post_validate_soft_items`.  The
+  engine rejects `soft_inventory_add` patches from
+  `proposed_soft_state_patches` (they appear in
+  `soft_state_patches_rejected`).  This removes the current
+  current-room-scoped corpus check in `_validate_soft_patches`
+  (`engine.py`), which is now redundant: Call 2 owns existence.
 
-Today, `resolve_npc_attack` (`five_e.py:337`) rolls the base attack,
-calls `_resolve_on_hit_effects`, sums the extra damage into
-`total_damage`, and returns `NPCAttackResult.player_hp_delta`. The
-combat manager (`combat.py`) already maintains a `HardStateChanges`
-accumulator and folds `npc_result.player_hp_delta` and
-`npc_result.game_over` into it (`combat.py:311-313, 454-461`).
+- **`soft_inventory_remove`** — **retained.**  Call 1 may still remove
+  items from `soft_inventory` for mechanical reasons (consuming an
+  item as part of an interaction).  The engine validates the item
+  exists in `soft_inventory` (unchanged).
 
-The new design:
+- **Other patches** (`room_note`, `entity_note`, `appearance_note_add`,
+  `set_improvised_weapon`) — unchanged.
 
-- **`resolve_npc_attack` returns the base attack only** — hit/miss,
-  base damage, base-attack player death. On-hit handling is removed
-  from the 5e system entirely (`_resolve_on_hit_effects` is deleted).
-  `NPCAttackResult.player_hp_delta` carries base damage only;
-  `NPCAttackResult.game_over` reflects base-attack player death.
-- **The combat manager resolves on-hit effects.** In both the
-  `enter_combat` pre-player loop (`combat.py:296`) and the
-  `resolve_combat_turn` post-player loop (`combat.py:439`), after
-  calling `resolve_npc_attack`, the manager iterates
-  `combat_block.on_hit_effects` and calls `_resolve_checkable` for each,
-  passing `changes=hard_changes` (the manager's existing accumulator)
-  plus `soft`, `state_manager`, `room_id=hard.player.location`,
-  `source_id=npc_id`, `source_type="combat"`, and the shared
-  `narrative`/`revealed_hints`/`rolls` lists.
-- **Effects flow through `HardStateChanges`.** `player_damage` →
-  `hard_changes.player_hp_delta` (merged, sums with base damage);
-  `set_flag` → `flags_set`; `alter_stat` → `stat_modifiers`; `reveals`
-  → the `revealed_hints` list; `narrative` → the narrative list;
-  `game_over` → `hard.game_over` (set by `_apply_result` at
-  `resolver.py:1416`, consistent with non-combat resolution — the
-  manager detects it and sets its `game_over` flag).
-- **Player death from on-hit damage.** Base-attack death stays in
-  `resolve_npc_attack`. On-hit death is detected by the manager: after
-  resolving an on-hit effect, if the player's effective HP
-  (`hard.player.current_hp + hard_changes.player_hp_delta`) is `<= 0`,
-  emit a death log entry and set `game_over`. (HP is not mutated
-  mid-loop; the delta is applied later by the engine, as today.)
-- **Context plumbing.** `enter_combat` and `resolve_combat_turn` gain
-  `soft` and `state_manager` parameters. Their sole callers
-  (`resolver.py:1716, 1740`) have both in scope and pass them through.
+This cleanly splits the soft-state patch space:
 
-This puts on-hit resolution where `HardStateChanges` already lives, and
-treats on-hit as the generic `CheckResolution` it now is. The 5e system
-stays focused on attack math; save proficiency is handled inside
-`_resolve_checkable` via the marker, not in the system.
+| Concern | Authority |
+|---------|-----------|
+| Narrative existence / acquisition | Call 2 adjudicates |
+| Mechanical consumption / removal | Call 1 proposes, engine validates |
+| Narrative notes / appearance | Call 1 proposes, engine validates |
 
-### Independence and nesting
+### 4.6 Engine post-validation rules
 
-`on_hit_effects` stays a **list** of `CheckResolution` objects, resolved
-independently (preserving "roll all saves, sum all damage"). Nesting
-*within* a single effect is supported via `then_check` on the
-success/failure `Result`s, routed through `_resolve_checkable`, bounded
-by `MAX_THEN_CHECK_DEPTH = 3` (`resolver.py:64`). The on-hit
-`CheckResolution` enters at `depth=0`, so the chain can extend three
-levels deep (the on-hit check plus two `then_check` levels) before the
-guard blocks further nesting — the same budget as other top-level
-checkables (e.g. `take_check`).
+`post_validate_soft_items(adjudications, proposals, soft, hard, corpus,
+result)` follows the shape of `post_validate_knowledge_tags` /
+`post_validate_attitude_changes`.  For each adjudication:
 
-### Damage-type labelling
+| Rule | Failure action |
+|------|----------------|
+| 1. `item_name` non-empty | Reject |
+| 2. `action` ∈ {take, give, examine} | Reject |
+| 3. `accepted` is boolean | Reject |
+| 4. If `accepted == false`: `justification` non-empty | Reject |
+| 5. `source_id` present and is a valid room or entity ID; `target_id` required and valid for `give` actions | Reject |
+| 6. `item_name` + `action` matches a pending `SoftItemProposal` (case-insensitive after normalization) | Reject |
+| 7. Hard-entity collision: normalized `item_name` does not match a corpus entity ID or display name | Reject |
+| 8. For `take` (accepted): engine does *not* re-check a corpus list. Duplicate-take is permitted — stacking identical names (two "rock") is allowed. `surfaced_soft_items` tracks the count | Apply: append to `soft_inventory`, increment count on `source_id` |
+| 9. For `give` (accepted): `item_name` must be present in `soft.soft_inventory` | Apply: remove from `soft_inventory`, increment count on `target_id` |
+| 10. For `examine` (accepted): surface on `source_id` only; no inventory change | Apply: mark as surfaced on `source_id` (count 0 if not already present) |
+| 11. Rejected adjudications | Log; no state change. Call 2's narration already explains the rejection, so there is no separate player-visible error. |
 
-The combat log (`hard-state.md:305`) records `on_hit_effects` as
-structured dicts with `save_stat`, `save_dc`, `save_roll`, `save_total`,
-`save_success`, `damage_expr`, `damage`, and `damage_type`. With
-`CheckResolution`, the damage type is no longer a first-class field on
-the effect — but it cannot be reliably inferred from `narrative` text.
+**Default for missing/empty adjudications.**  If
+`soft_item_adjudications` is absent or empty while proposals exist,
+the engine treats every proposal as **rejected** (no state change).
+Rejection is the safe default for inventory correctness: a missing
+adjudication is treated as "Call 2 declined to confirm existence,"
+which must not silently add items to the player's inventory.
 
-The fix is an optional **`tag: Optional[str] = None`** field on
-`CheckResolution` (`corpus.py`). For on-hit effects it carries the
-damage-type label (e.g. `"poison"`); the combat manager copies it into
-the log entry's `damage_type`. The `on_save` field is dropped from the
-log — `save_success` plus the per-branch `damage` already convey the
-outcome. The log entry is built by the combat manager from the
-`CheckResolution.check` (stat/target), the resolved save outcome
-(roll/total/success), the resolved `player_damage`, and `tag`.
+### 4.7 Stacking and depletion
 
-## Implementation phases
+Soft items are **stackable by name**.  The engine permits taking
+multiple items of the same name (e.g., two "rock" entries in
+`soft_inventory`).  `surfaced_soft_items` tracks how many times each
+name has been taken from each source, giving Call 2 the information it
+needs to judge depletion.
 
-### Phase A: `half(expr)` dice notation
+**Schema change.**  `surfaced_soft_items` changes from
+`dict[str, list[str]]` to `dict[str, dict[str, int]]`:
 
-**A1. Parser extension (`mgmai/engine/systems/five_e.py`,
-possibly `mgmai/engine/systems/dice.py`)**
+```json
+{
+  "bag_floor": { "rock": 3, "pebble": 1 },
+  "rubbish_pile": { "cork": 1, "lint clump": 2 }
+}
+```
 
-In `FiveESystem.roll_damage`, strip an outer `half(...)` wrapper before
-calling `parse_damage_dice`, roll the inner expression normally, then
-return `max(1, total // 2)` with a readable roll string. The wrapper is
-recursive.
+The integer counts how many times the player has taken that item from
+that source.  An examine sets the count to 0 (surfaced but not taken)
+if the name is not already present, or leaves the count unchanged if
+it is.
 
-**A2. Tests**
+**Briefing format.**  The Context Assembler briefs counts to Call 2.
+The briefing surface includes both the item name and its take count,
+so Call 2 can judge whether the source is plausibly exhausted.  For
+example:
 
-- `half(1d8)` returns a value in `[1, 4]`.
-- `half(1d8)` with a roll of 1 returns 1 (min-1 guard).
-- `half(2d6+3)` halves the total.
-- `half(4)` returns 2.
-- Nested `half(half(1d8))` works.
-- `player_damage: "half(1d8)"` in a `Result` deals halved damage
-  (integration test via the resolver).
+```
+Soft items on bag_floor: rock (taken 3), pebble (taken 1)
+```
 
-### Phase B: StatCheck proficiency marker
+Call 2 is prompted to use this count as a depletion signal: a cave
+with "rock" taken 3 times likely still has more, but a desk with
+"quill" taken once may not.  The engine does **not** enforce depletion
+— that remains Call 2's judgment — but it provides the data to make
+that judgment informed.
 
-**B1. Schema (`mgmai/models/corpus.py`)** — add
-`proficiency: Optional[str] = None` to `StatCheck`.
+**`soft_inventory` remains a flat list.**  The player's carried items
+are still `List[str]` (e.g., `["rock", "rock", "pebble"]`).  Duplicate
+entries are allowed, matching existing semantics
+(`schema/soft-state.md`: "Duplicate entries are allowed").  The
+inventory is not count-deduplicated — each take appends a string.
 
-**B2. System hook (`mgmai/engine/systems/base.py`,
-`mgmai/engine/systems/five_e.py`)** — add abstract
-`proficiency_bonus(check, player_state) -> int` (default `0`) to
-`ResolutionSystem`; 5e impl returns `compute_save_modifier(check.stat,
-player_state)` when `check.proficiency == "save"`, else `0`.
+**Failure mode.**  The worst case is a player accumulating a
+narratively silly number of identical items (47 rocks from one cave)
+because Call 2 fails to judge depletion.  This is mechanically
+harmless (see §5, Layer 5) and unlikely in practice, since Call 2 sees
+the rising count in its briefing and is prompted to refuse when a
+source is plausibly exhausted.
 
-**B3. Resolver (`mgmai/engine/resolver.py`)** — in the `StatCheck`
-branch of `_resolve_checkable`, set
-`flat_modifier = check.modifier + system.proficiency_bonus(check,
-hard.player)`.
+### 4.8 Hard-entity collision check (Layer 4)
 
-**B4. Tests** — proficiency bonus applied for save-proficient players;
-not applied for non-proficient; non-save checks unaffected; bonus
-stacks with `check.modifier`.
+This check is a backstop, not the primary gate.  It matches the
+adjudication `item_name` against corpus entity IDs and display names
+**after normalization** (lowercase, strip articles, collapse
+whitespace, map spaces↔underscores).  This catches "rusty key" vs
+`rusty_key` but cannot catch semantic collisions ("the old key" vs
+`rusty_key`).
 
-### Phase C: Schema and model changes
+Call 1's prompt (§6.1) is the primary defence: it is instructed to
+check whether a proposed item matches a hard entity in the room before
+proposing it as a soft item.  The engine's collision check catches
+cases where Call 1 misses this.  A miss is not catastrophic because
+soft items have no mechanical leverage — the player would end up with
+a soft "rusty key" that doesn't unlock anything, while the hard
+`rusty_key` entity remains uncollected.  This is confusing but not
+game-breaking, and the engine's entity-ID check prevents the most
+common collisions.
 
-**C1. `CombatBlock.on_hit_effects` type (`mgmai/models/corpus.py`)** —
-change to `list[CheckResolution]`.
+## 5. Safety Model
 
-**C2. `CheckResolution.tag` (`mgmai/models/corpus.py`)** — add
-`tag: Optional[str] = None`.
+The safety model shifts from "engine whitelist" to "LLM prompt
+constraints + engine post-validation of adjudication shape."  The
+layers are:
 
-**C3. Combat-safe subset validator (`mgmai/models/corpus.py`)** —
-`model_validator` on `CombatBlock` that, for each on-hit
-`CheckResolution`, walks `success`/`failure` (and recurses through
-`then_check`), rejecting any `Result` that sets a prohibited field.
+### Layer 1: Call 1 prompt guardrails
+Call 1 is instructed not to propose magical, valuable, or
+game-breaking items, and to check for hard-entity collisions before
+proposing a soft item.  This catches the most obvious failure modes
+before they reach Call 2.
 
-**C4. Remove `OnHitEffect` / `OnHitSave` (`mgmai/models/corpus.py`).**
+### Layer 2: Call 2's narrative judgment
+Call 2, with full narrative context (room description, recent history,
+the verbatim chat log, the player's `soft_inventory`, and
+`soft_item_guidance` from the corpus), is the primary plausibility
+gate.  It rejects items contradicted by established fiction, depleted
+sources, or setting inappropriateness.  It receives take counts from
+`surfaced_soft_items` to judge depletion.
 
-**C5. Schema docs (`schema/corpus.md`)** — replace the OnHitEffect
-section with a reference to `CheckResolution`; update the `CombatBlock`
-table; document `StatCheck.proficiency` (5e-specific, `"save"`) and
-`CheckResolution.tag`; add a cross-reference from the FollowUp section.
+### Layer 3: Engine post-validation of adjudication shape
+`post_validate_soft_items` validates well-formedness and mechanical
+consistency (no giving items not held, source/target validity,
+proposal matching).  This prevents corrupted outputs from producing
+corrupted state.
 
-**C6. Combat/scenario docs (`doc/combat.md`,
-`schema/scenario-generation.md`)** — update examples and tables.
+### Layer 4: Hard-entity ID collision check
+See §4.8.  Prevents soft-item-ifying a hard item.
 
-### Phase D: Engine — on-hit resolution in the combat manager
+### Layer 5: No mechanical leverage
+Soft items carry no mechanical effect — they don't deal damage, unlock
+doors, or satisfy conditions.  They do not fire `on_examine` events
+(only hard room/entity examines do).  The worst-case hallucination is
+a narratively silly soft inventory, which is mechanically harmless.
+The improvised-weapon path (`set_improvised_weapon`) is the *separate,
+mechanically consequential* route for using a soft item as a weapon,
+and remains Call-1-validated.
 
-**D1. Strip on-hit from the 5e system (`mgmai/engine/systems/five_e.py`)**
-— delete `_resolve_on_hit_effects`; `resolve_npc_attack` returns base
-attack only (base damage in `player_hp_delta`, base-death in
-`game_over`); remove the `OnHitEffect` type-checking import.
+### Adversarial players
+A player who says "I pick up the Wand of Wishing" routes through both
+LLMs.  Call 1 should refuse to propose it (guardrails); if Call 1
+proposes it, Call 2 should reject it (guardrails); if both fail, the
+engine's entity-ID check catches it if it is a corpus entity; if it is
+not a corpus entity and both LLMs accept, the player receives a soft
+item named "Wand of Wishing" with no mechanical meaning.  The narrator
+can describe it as "a gnarled twig you optimistically call a wand."
+This is an acceptable failure mode: the system prevents absurd things
+from *having mechanical consequences*, not from being *said*.
 
-**D2. Remove `resolve_save` (`mgmai/engine/systems/base.py`,
-`mgmai/engine/systems/five_e.py`)** — dead after D1. Keep
-`compute_save_modifier` (reused by the proficiency hook).
+## 6. Prompt Changes
 
-**D3. On-hit resolution in the combat manager
-(`mgmai/engine/combat.py`)** — in both `enter_combat` and
-`resolve_combat_turn`, after `resolve_npc_attack`, iterate
-`combat_block.on_hit_effects` and call `_resolve_checkable` for each
-with `changes=hard_changes`, `soft`, `state_manager`,
-`room_id=hard.player.location`, `source_id=npc_id`,
-`source_type="combat"`, and the shared narrative/revealed_hints/rolls
-lists.
+### 6.1 Call 1 (Ruling)
 
-**D4. Plumb context (`mgmai/engine/combat.py`,
-`mgmai/engine/resolver.py`)** — add `soft` and `state_manager` params
-to `enter_combat`/`resolve_combat_turn`; pass them at the call sites
-(`resolver.py:1716, 1740`).
+Add to the Call 1 system prompt:
 
-**D5. On-hit death detection (`mgmai/engine/combat.py`)** — after each
-on-hit effect, if `hard.player.current_hp + hard_changes.player_hp_delta
-<= 0`, append a death log entry and set `game_over`; stop resolving
-further on-hit effects for that attacker.
+```
+You may propose interactions with any mundane object that could plausibly
+exist in the current environment — rocks, dust, loose coins, scraps of
+cloth, bone fragments, water droplets, and similar ambient items.  These
+are "soft items" — they carry no mechanical stats and are identified by
+their common name.
 
-**D6. On-hit log entries (`mgmai/engine/combat.py`)** — build the
-structured dict from the `CheckResolution.check` (stat/target), the
-resolved save outcome (raw_roll/total/success), the resolved
-`player_damage` (expression + applied damage), and `tag`; append to the
-attack's `CombatLogEntry.on_hit_effects`.
+The prose narrator (Call 2) will judge whether each soft item you propose
+actually exists in the scene.  Do not try to predict which items are
+present; propose what the player's input asks for (including items the
+player's action implies, such as "broken glass" when the player smashes a
+bottle), and trust the narrator to adjudicate.
 
-**D7. `game_over` from on-hit `Result`s** — `_apply_result` sets
-`hard.game_over` (`resolver.py:1416`); the manager checks for it after
-each on-hit resolution and sets its `game_over` flag (consistent with
-non-combat resolution).
+Do NOT propose soft items that are:
+- Obviously magical (wands, scrolls, potions, enchanted objects)
+- Extremely valuable (gems, jewellery, gold bars)
+- Dedicated weapons or armour (swords, shields, helmets)
+- Plot-critical items that would short-circuit the adventure
+- Anachronistic or setting-inappropriate objects
 
-**D8. `stat_checks.py` (`mgmai/engine/stat_checks.py:142`)** — verify
-the `on_hit_effects` log-rendering still works with the new entry shape.
+Before proposing a soft item, check whether the item name matches a hard
+entity (by ID or display name) currently present in the room.  If it does,
+target that entity directly — do not propose it as a soft item.  Soft items
+are for ambient objects that have no corpus entity.
 
-### Phase E: Tests
+When the player's input implies interacting with a soft item, use the normal
+action types: TransferAction for taking/giving, ExamineAction for examining.
+Set source_id to the room ID if the item comes from the room environment, or
+to the entity ID if the player specifies a source (e.g., "take a cork from
+the rubbish pile").
 
-**E1.** `half(expr)` unit + integration (Phase A2).
+If the player grabs a non-standard object to use as a weapon, that is NOT a
+soft-item take: propose a set_improvised_weapon patch instead, with the
+object's mechanical parameters.  Soft items are narrative props; improvised
+weapons are mechanical.
+```
 
-**E2.** Proficiency marker unit + integration (Phase B4).
+### 6.2 Call 2 (Prose)
 
-**E3. Corpus validation** — a `CombatBlock` with valid
-`CheckResolution` entries passes; prohibited fields on an on-hit
-`Result` (including inside `then_check`) are rejected; `tag` is
-accepted; `proficiency: "save"` is accepted on a `StatCheck`.
+Add to the Call 2 system prompt:
 
-**E4. Combat resolution** —
-- `on_save: "half"`: failed save → full `player_damage`; made save →
-  `half(expr)` damage.
-- `on_save: "none"`: made save → no damage.
-- `on_save: "full"`: both outcomes → full damage.
-- Multiple on-hit effects trigger independently; damage sums.
-- On-hit effect sets a flag on failure → flag in `hard_changes.flags_set`.
-- On-hit effect alters a stat → reflected in `hard_changes.stat_modifiers`.
-- On-hit save-or-die → `game_over` set.
-- Proficiency bonus applied when the player is save-proficient.
-- Nested `then_check` resolves up to the depth cap.
-- On-hit damage that drops the player to 0 HP → death log entry +
-  `game_over`.
+```
+SOFT ITEM ADJUDICATION
+---------------------
+The EngineResult may contain "soft_item_proposals" — items the ruling LLM
+believes the player is trying to take, give, or examine, but whose existence
+in the scene has not been mechanically verified.
 
-**E5. Combat-log entries** — contain `save_stat`, `save_dc`,
-`save_roll`, `save_total`, `save_success`, `damage_expr`, `damage`,
-`damage_type` (from `tag`); multiple effects produce multiple entries.
+For each proposal, you must decide whether the item plausibly exists in the
+current scene and produce a "soft_item_adjudications" entry.  Echo the
+proposal's source_id and target_id.  Your decision should be reflected in
+your narration: accept → narrate finding/using the item; reject → narrate
+not finding it.
 
-**E6. Update existing tests** — remove `OnHitEffect`/`OnHitSave` usage
-(`tests/helpers.py:38-39`, `tests/test_systems.py`); remove
-`resolve_save` tests (`tests/test_systems.py:241-251`); keep/update
-`compute_save_modifier` tests (`tests/test_systems.py:261-283`).
+Guidelines for acceptance:
+- Default to ACCEPTING mundane items that fit the environment (rocks in a
+  cave, dust in an attic, coins in a purse).
+- Consult soft_item_guidance (if present on the room or source entity) as
+  a hint about what the environment contains.  You may accept items not
+  mentioned and reject items mentioned — the guidance is advisory.
+- REJECT items that are magical, legendary, extremely valuable, anachronistic,
+  or would break the adventure's balance.
+- REJECT items that contradict recent narrative (e.g., accepting "a torch"
+  in a room just described as pitch-black with no light sources).
+- REJECT items the player has already taken excessively, if the source is
+  now depleted.  The surfaced-soft-items briefing shows take counts per
+  item per source — use this to judge depletion.  A cave has many rocks
+  (low count is fine), but a desk has only one quill (count ≥ 1 means
+  depleted).
 
-### Phase F: Documentation
+You may ONLY adjudicate items that appear in soft_item_proposals.  Do not
+invent new soft items.
 
-**F1. `doc/combat.md`** — rewrite the OnHitEffect section and example
-to the `CheckResolution` form; note flags/stat-drain/save-or-die/nesting
-are now available; document the combat-safe subset.
+When rejecting, provide a brief "justification" (one sentence).  When
+accepting, justification is optional.
+```
 
-**F2. `schema/corpus.md`** — replace the OnHitEffect section with a
-cross-reference to `CheckResolution`; update the `CombatBlock` table and
-example; document `StatCheck.proficiency` and `CheckResolution.tag`.
+## 7. Corpus Changes
 
-**F3. `schema/hard-state.md`** — note that `on_hit_effects` log entries
-are now derived from `CheckResolution` outcomes (and that `on_save` is
-gone, `damage_type` comes from `tag`).
+### 7.1 `soft_items` removed
 
-**F4. `schema/scenario-generation.md`** — update any on-hit examples.
+The `soft_items` field is removed from `Room` and `Entity`.  There is
+no backward compatibility shim: this project is pre-alpha, and a
+shim would only preserve a validation gate the design explicitly
+removes.  Existing modules must drop their `soft_items` lists (or
+convert any authorially-significant ones to `soft_item_guidance`, §7.2).
 
-## Files touched
+### 7.2 `soft_item_guidance` (optional)
 
-| File | Phase | Nature of change |
-|------|-------|------------------|
-| `mgmai/models/corpus.py` | B1, C1-C4 | `StatCheck.proficiency`; `CombatBlock.on_hit_effects` → `list[CheckResolution]` + combat-safe validator; `CheckResolution.tag`; remove `OnHitEffect`, `OnHitSave` |
-| `mgmai/engine/systems/five_e.py` | A1, B2, D1, D2 | `half(expr)` in `roll_damage`; `proficiency_bonus` impl; strip on-hit from `resolve_npc_attack`; delete `_resolve_on_hit_effects`, `resolve_save` |
-| `mgmai/engine/systems/base.py` | B2, D2 | `proficiency_bonus` abstract; remove `resolve_save` abstract |
-| `mgmai/engine/systems/dice.py` | A1 | Optional `half(...)` strip helper (or keep in `five_e.py`) |
-| `mgmai/engine/resolver.py` | B3, D4 | `_resolve_checkable` uses `proficiency_bonus`; pass `soft`/`state_manager` to combat calls |
-| `mgmai/engine/combat.py` | D3-D7 | On-hit resolution in `enter_combat`/`resolve_combat_turn`; plumb `soft`/`state_manager`; death detection; log-entry building |
-| `mgmai/engine/stat_checks.py` | D8 | Verify `on_hit_effects` log rendering |
-| `schema/corpus.md` | C5, F2 | Replace OnHitEffect section; document `proficiency`, `tag` |
-| `doc/combat.md` | C6, F1 | Rewrite OnHitEffect section |
-| `schema/hard-state.md` | F3 | Log entry derivation note |
-| `schema/scenario-generation.md` | C6, F4 | Update examples |
-| `tests/test_systems.py` | A2, E6 | `half(expr)` tests; remove `resolve_save`/`OnHitEffect` usage; keep `compute_save_modifier` tests |
-| `tests/helpers.py` | E6 | Remove `OnHitEffect`/`OnHitSave` imports |
-| `tests/test_resolver.py` | E2, E4 | Proficiency + on-hit integration via `CheckResolution` |
-| `tests/test_state_manager.py` | E3 | Validation tests |
-| `tests/test_corpus.py` | E3 | Corpus validation for `CheckResolution` in `CombatBlock` |
-| `tests/test_combat.py` | E4, E5 | Combat resolution and log-entry tests |
-| `plan.md` | — | This document |
+Because corpus `soft_items` is never briefed today (§3.2), removing it
+loses nothing the LLMs currently see.  But authors may want to *seed*
+Call 2's judgment with hints (e.g., "this room is barren; reject all
+soft items," or "the desk has a quill and inkwell").  An optional
+freeform string is added:
 
-## Open questions / deferred
+```json
+{
+  "rooms": {
+    "void_chamber": { "soft_item_guidance": "Barren. No ambient items." },
+    "sages_desk":   { "soft_item_guidance": "Quill, inkwell, scattered parchment." }
+  }
+}
+```
 
-- **`repeatable` on on-hit checks.** `StatCheck.repeatable` is required,
-  so on-hit checks must set `repeatable: false`. The attempt-tracking in
-  `_resolve_checkable` (`resolver.py:1502`) is gated on `track_attempts`,
-  which combat will not pass, so the field has no effect for on-hit
-  effects — it is cosmetic noise. Document the convention; optionally
-  default it for combat-originated checks later.
-- **`skip_check_if` on on-hit effects.** New capability (e.g. skip the
-  save if the player has poison immunity). Available automatically via
-  `CheckResolution`; worth documenting as a use case.
-- **Player-attack / NPC-vs-NPC on-hit effects.** Today on-hit effects
-  fire only for NPC attacks on the player. The generic mechanism could
-  extend to other attacker/target pairs. Out of scope; the schema now
-  supports it naturally.
-- **Routing `game_over` into `HardStateChanges`.** `_apply_result`
-  mutates `hard.game_over` directly (`resolver.py:1416`); all other
-  on-hit effects flow through `HardStateChanges`. Routing `game_over`
-  into a `HardStateChanges.game_over` field would make the flow uniform
-  and is a worthwhile cleanup, but it touches non-combat game-over
-  handling and is deferred.
-- **General proficiency keys beyond `"save"`.** Skill/tool proficiency
-  (e.g. `proficiency: "athletics"`) requires player state to model
-  skill/tool proficiencies, which it does not yet. The field is designed
-  to extend without a schema change once that exists.
+`soft_item_guidance` is surfaced to Call 2 (via `BriefingRoom` /
+`BriefingEntity`) as a hint.  It is **not** a validation list — Call 2
+may accept items not mentioned, and reject items mentioned.  This is
+the *only* new corpus/briefing field; it is the channel that did not
+exist before.
+
+### 7.3 Authorial control for puzzle rooms
+
+Some rooms have puzzle-significant item availability (e.g., "the only
+takeable thing here is the silver lever").  Narrative adjudication
+cannot enforce this strictly.  Authors who need rigid control should
+model the item as a **hard entity** (which the engine still gates
+strictly), not a soft item.  The `strict` policy mode (§9.1) is future
+work for cases where hard-entity modelling is too heavy; it is
+intended as an escape hatch for puzzle rooms, not a general
+alternative to narrative adjudication.
+
+## 8. EngineResult and NarrationOutput changes
+
+- Add `soft_item_proposals: List[SoftItemProposal]` to `EngineResult`
+  (`mgmai/models/actions.py`).  Populated by the resolver/engine
+  pre-Call-2.
+- Add `soft_item_adjudications: List[SoftItemAdjudication]` to
+  `NarrationOutput` (`mgmai/models/narration.py`).  Populated by Call
+  2.
+- Add `soft_items_accepted: List[SoftItemAdjudication]` and
+  `soft_items_rejected: List[SoftItemAdjudication]` to `EngineResult`,
+  populated by `post_validate_soft_items` (post-Call-2 mutation,
+  mirroring `revelations_applied` / `attitude_changes_applied`).
+
+`NarrationOutput` now carries 7 structured fields (4 optional objects
+alongside the prose).  This increases the compliance risk — LLMs are
+more likely to omit or malform fields as the number grows.  Phase F
+testing must measure Call 2's compliance rate with `soft_item_adjudications`
+and simplify the prompt if compliance is poor.
+
+## 9. Extensibility
+
+### 9.1 `soft_item_policy` modes (future)
+
+```json
+{
+  "rooms": {
+    "throne_room": {
+      "soft_item_policy": "strict",
+      "soft_item_guidance": "dust, loose thread"
+    }
+  }
+}
+```
+
+- `"narrative"` (default): Call 2 adjudicates; `soft_item_guidance` is
+  a hint.
+- `"strict"`: engine enforces that accepted items appear in a corpus
+  list (restoring a whitelist for puzzle rooms).  Intended as an
+  escape hatch for rooms where hard-entity modelling is too heavy.
+  Future work — requires keeping an explicit list, so deferred.
+- `"barren"`: Call 2 is instructed to reject all soft-item proposals.
+
+### 9.2 Narrative notes via Call 2 (future)
+
+`room_note` / `entity_note` currently proposed by Call 1 could follow
+the same Call-2-adjudication pattern.  Future work.
+
+### 9.3 Improvised weapons (future)
+
+`set_improvised_weapon` straddles narrative and mechanics.  Call 1
+could propose the mechanical parameters while Call 2 adjudicates the
+object's existence.  The current design keeps this in Call 1 for
+simplicity; the split is natural but deferred.
+
+## 10. Trade-offs
+
+### Advantages
+- **No exhaustive pre-listing.**  Module authors describe rooms
+  narratively; the LLM handles ambient objects.
+- **True narrative flexibility.**  Players improvise with the
+  environment and the system adapts.
+- **Leverages existing architecture.**  `post_validate.py` already
+  hosts two Call-2-output validators; a third fits the pattern
+  cleanly, including in-place `EngineResult` mutation.
+- **Call 1 stays focused on mechanics.**  Soft-item existence becomes
+  Call 2's domain, alongside NPC dialogue, attitude, and revelations.
+- **Graceful degradation.**  Missing adjudications default to
+  rejection (safe for inventory correctness); if both LLMs
+  hallucinate, the worst outcome is a silly soft inventory entry.
+- **Depletion-aware.**  `surfaced_soft_items` tracks take counts,
+  giving Call 2 the data to judge depletion without engine-level
+  enforcement.
+
+### Disadvantages
+- **Less deterministic.**  The same input at the same state may
+  produce different soft-item outcomes across runs.  Arguably correct
+  for a narrative system, but makes testing harder.
+- **Token cost.**  `soft_item_proposals` on `EngineResult` and
+  `soft_item_adjudications` on `NarrationOutput` add tokens.  The
+  proposals are small (a few item names per turn) and Call 2 already
+  reads the room description, so marginal cost is low.
+- **Call 2 prompt complexity.**  Adjudication instructions lengthen
+  the Call 2 prompt; keep them terse and test for compliance.  With 7
+  structured fields on `NarrationOutput`, compliance monitoring is
+  essential.
+- **Module author loss of strict control.**  Authors who need rigid
+  item availability must use hard entities (§7.3) or wait for
+  `strict` mode (§9.1).
+- **Single point of failure on Call 1.**  The "Call 2 may not invent
+  new soft items" constraint (§4.4) means coverage of player intent
+  depends entirely on Call 1 proposing generously.  Mitigated by
+  prompt engineering.
+
+## 11. Implementation Outline
+
+### Phase A: Schema and models
+- Add `SoftItemProposal` to `mgmai/models/actions.py` (or a new
+  `soft_items.py`); add the field to `EngineResult`.
+- Add `SoftItemAdjudication` and the `soft_item_adjudications` field
+  to `mgmai/models/narration.py` (`NarrationOutput`).
+- Add `soft_items_accepted` / `soft_items_rejected` to `EngineResult`.
+- Remove `soft_items` from `Room` and `Entity` in
+  `mgmai/models/corpus.py`.  Add `soft_item_guidance: Optional[str]`.
+- Add `soft_item_guidance` to `BriefingRoom` / `BriefingEntity` in
+  `mgmai/models/briefing.py`.
+- Change `surfaced_soft_items` from `Dict[str, List[str]]` to
+  `Dict[str, Dict[str, int]]` in `mgmai/models/soft_state.py`.
+- Remove `soft_inventory_add` from the `SoftStatePatch.field` Literal
+  in `mgmai/models/soft_state.py`.
+
+### Phase B: Resolver changes
+- In `resolve_transfer`: for `taken_items` / `given_items` that are
+  soft-item names, stop checking `available_pool` for the soft portion
+  and stop checking `ent.soft_items` / `room.soft_items`.  Instead
+  record a `SoftItemProposal` on the `ResolutionResult` (and thence
+  `EngineResult`).  Hard-item transfer validation is unchanged.
+- In `resolve_examine`: for targets that don't match a hard room/entity,
+  record a `SoftItemProposal` instead of matching `all_soft`.  (The
+  `on_examine` path for hard targets is unchanged.)
+- Remove the `soft_inventory_add` branch from `_validate_soft_patches`
+  in `engine.py`; emit a rejection for any such patch.
+- `soft_inventory_remove` handling is unchanged.
+
+### Phase C: Post-validation
+- Add `post_validate_soft_items()` in `mgmai/engine/post_validate.py`,
+  following `post_validate_knowledge_tags` / `post_validate_attitude_changes`.
+- Rules per §4.6.
+- Hook into `apply_post_validation()`; populate
+  `soft_items_accepted` / `soft_items_rejected` on `EngineResult`.
+- Invoked from the game loop (`loop.py`) after Call 2, alongside the
+  existing knowledge-tag and attitude-change post-validation.
+
+### Phase D: Context assembler
+- Populate `BriefingRoom.soft_item_guidance` /
+  `BriefingEntity.soft_item_guidance` from the new corpus field.
+- Update `BriefingRoom.soft_items` / `BriefingEntity.soft_items` to
+  surface take counts from the new `surfaced_soft_items` schema.
+  Format: include item names and counts so Call 2 can judge depletion.
+- Confirm `soft_inventory` is briefed to Call 2 (it already is, via the
+  player-state block — `assembler.py`).
+
+### Phase E: Prompts
+- Update the Call 1 system prompt per §6.1.
+- Update the Call 2 system prompt per §6.2.
+
+### Phase F: Tests
+- Adjudication shape validation: missing fields, empty `item_name`,
+  unknown action, missing `justification` on rejection.
+- Hard-entity ID collision: "rusty key" rejected when `rusty_key` is a
+  corpus entity (with normalization).
+- Proposal-matching: adjudication without a matching proposal rejected.
+- `take` (accepted): appended to `soft_inventory`, count incremented
+  on `source_id`.  Duplicate `take` of the same name permitted.
+- `give` (accepted) of a non-held item: rejected.
+- `examine` (accepted): surfaced on `source_id`, no inventory change.
+- Rejected adjudications produce no state change.
+- Missing/empty `soft_item_adjudications` with pending proposals → all
+  rejected, no state change.
+- `soft_inventory_add` patch from Call 1 → rejected.
+- `soft_item_guidance` surfaced to Call 2.
+- Source ID validation: proposal with missing `source_id` → rejected;
+  proposal with invalid `source_id` (non-existent room/entity) →
+  rejected; adjudication `source_id` that doesn't match the proposal's
+  `source_id` → rejected.
+- Depletion counts: `surfaced_soft_items` increments correctly on
+  repeated takes; counts are surfaced in briefing to Call 2.
+- **Fixture migration:** all existing test fixtures and the adventure
+  corpus must be updated to remove `soft_items` and adopt the new
+  `surfaced_soft_items` schema.  74 soft-item references across 8 test
+  files, plus 2 corpus JSONs and 2 soft-state JSONs.
+
+### Phase G: Documentation
+- Update `doc/soft-items.md` to reflect the adjudication model and
+  count-based depletion.
+- Update `schema/actions.md` (EngineResult fields, Call 2 output).
+- Update `schema/soft-state.md`: remove `soft_inventory_add` from the
+  patch table; document new `surfaced_soft_items` schema
+  (`dict[str, dict[str, int]]`).
+- Update `schema/corpus.md`: remove `soft_items`, document
+  `soft_item_guidance`.

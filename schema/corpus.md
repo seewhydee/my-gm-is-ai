@@ -611,7 +611,7 @@ a world graph keyed by a globally-unique `room_id`.
     "name": "string",
     "description": "string (shown when player enters or examines room)",
     "contains": ["<entity_id>", {"<entity_id>": <count>}, ...],
-    "soft_items": ["string", ...],
+    "soft_item_guidance": "string (freeform guidance for plausible generic items)",
     "exits": [ { /* exit */ } ],
     "interactions": [ { /* interaction */ } ],
     "on_examine": [ { /* on_examine event */ } ],
@@ -632,7 +632,7 @@ a world graph keyed by a globally-unique `room_id`.
 | `interactions`¹  | Resolvable[] | Special interactions (see below)|
 | `on_examine`¹    | array        | See [Examination](#examination) |
 | `reactions`¹     | Reaction[]   | See [Reaction](#reaction)       |
-| `soft_items`¹    | string[]     | Plausible generic items in room |
+| `soft_item_guidance`¹ | string  | Plausible generic items in room |
 | `is_start_room`¹ | boolean      |`true` for starting room only    |
 > ¹ optional
 
@@ -693,9 +693,12 @@ Notes:
   - If `failure` is unspecified, a failed check sends a generic
     "nothing happens" message to the GM narrator.
 
-- Soft objects examples: `["rock", "loose stone", "dust"]`). These are
-  identified by their general name only — they carry no unique item
-  ID. The engine tracks them in `soft_inventory` when picked up.
+- `soft_item_guidance`, if specified, should be a list of possible
+  nondescript objects in this room, e.g. `["rock", "stone", "leaf"]`.
+  Each has a general name only, with no unique item ID.  It guides the
+  GM as to what plausible contents the room may have.  Its role is
+  advisory: depending on the gameplay context, the GM may include
+  items not in this list, or even reject items in the list.
 
 ### Exit
 
@@ -977,7 +980,7 @@ No other entity may use this ID.
     "type": "player | feature | npc | item",
     "name": "string (required for item, optional otherwise)",
     "description": "string",
-    "soft_items": ["string", ...],
+    "soft_item_guidance": "string (freeform guidance for plausible generic items)",
     "contains": ["<entity_id>", {"<entity_id>": <count>}, ...],
     "tags": ["<tag>", ...],
     "take_check": { /* Gated Check (optional) */ },
@@ -1006,7 +1009,7 @@ The following fields are meaningful for all entity types:
 | `on_examine`¹   | array    | See [Examination](#examination)      |
 | `reactions`¹    | array    | See [Reaction](#reaction)            |
 | `state_fields`¹ | object   | `{ "<field>": <spec>, ...  }`        |
-| `soft_items`¹   | array    | Plausible soft items on/in entity    |
+| `soft_item_guidance`¹ | string   | Freeform guidance for plausible soft items on/in entity |
 > ¹ optional
 
 Notes:
@@ -1033,9 +1036,14 @@ Notes:
   an entity ID string (count = 1).  Each count must be positive, and a
   non-item entity or non-stackable item must have total count 1.
 
-- State fields describe various mutable aspects of the entity's state.
+- `interactions` is an array of [Resolvables](#resolvable) listing
+  non-generic actions on the entity.  Each must have an entity-unique
+  `id`.  The spec is the same as for [Room](#room) interactions.
+
+- `state_fields` lists various mutable aspects of the entity's state.
   They are labeled by entity-unique IDs.  There are several reserved
-  state fields, which need not be declared in `state_fields`:
+  state fields, which need NOT be declared here, unless the author
+  wants to override the default initial value with something else:
 
 |Res. Field  |Type        | Init Value | Description                        |
 |------------|------------|------------|------------------------------------|
@@ -1046,9 +1054,6 @@ Notes:
 |`following` |boolean     | `false`    | NPC follows player between rooms   |
 |`current_hp`|number      | `combat.hp`| Current hit points (for combat)    |
 |`open`      |boolean     | `false`    | Container open/closed state        |
-
-  Authors may override any reserved-field initial value by supplying
-  an explicit field declaration with `initial`.
 
   The `location` state field is special: it is only valid for NPCs,
   features, and non-stackable items, and is managed by the engine via
@@ -1081,9 +1086,10 @@ Notes:
     while a custom field defaults to `false` (boolean), `0` (number),
     or `""` (string).
 
-- `interactions` is an array of [Resolvables](#resolvable) listing
-  non-generic actions on the entity.  Each must have an entity-unique
-  `id`.  The spec is the same as for [Room](#room) interactions.
+- `soft_item_guidance`, if specified, should be a list of possible
+  nondescript items contained within this entity.  Like the
+  identically-named field in Room objects, this advises the GM as to
+  what items to expect, but it is not used for strict validation.
 
 ### Feature
 
@@ -1116,10 +1122,10 @@ Containers should be assigned the following properties:
   the player can perform direct open/close actions (as opposed to
   indirect methods, like pressing a button elsewhere).
 
-A container's initial contents are declared in its `contains` and
-`soft_items` fields.  Note that these fields can also be used for
-non-container entities, like a rubbish pile, which is not a container
-in the present sense as it lacks open/close functionality.
+A container's initial contents are declared in its `contains` field.
+Note that this field can also be used for non-container entities, like
+a rubbish pile, which is not a container in the present sense as it
+lacks open/close functionality.
 
 When the container is open, the engine automatically surfaces its
 contents to the GM and player; when closed, the contents are

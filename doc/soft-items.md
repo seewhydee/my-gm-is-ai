@@ -15,43 +15,48 @@ The term reflects the relationship to the **hard/soft state** split:
 - **Hard items** are tracked in `HardGameState.player.inventory` as entity IDs.
   Moving them requires `HardStateChanges`. The engine is the sole authority.
 - **Soft items** are tracked in `SoftGameState.soft_inventory` as plain strings.
-  The LLM proposes additions/removals via `SoftStatePatch`, and the engine
-  validates them.
+  The LLM may propose taking, giving, or examining them; the engine issues
+  **soft-item proposals**, and LLM Call 2 adjudicates whether each proposal is
+  accepted. Accepted proposals are then persisted by the engine's post-validation
+  step.
 
 This split serves two purposes:
 
-1. **Context efficiency.** The corpus may define dozens of plausible soft items
-   per room (dust, pebbles, etc.). Surfacing all of them in the GMBriefing
-   wastes tokens without benefit.
-2. **Narrative flexibility.** The LLM can reference soft items naturally ("I
+1. **Context efficiency.** A room may plausibly contain dozens of generic objects
+   (dust, pebbles, etc.). Surfacing all of them in the GMBriefing wastes tokens
+   without benefit.
+2. **Narrative flexibility.** The player can reference soft items naturally ("I
    pick up a rock") without requiring the author to pre-define every possible
-   interaction. The engine validates against the corpus; the LLM's common sense
-   fills the gap.
+   object. The engine records the proposal, and the narrator decides whether the
+   object is actually present in the scene.
 
 ## Where Soft Items Live
 
-### Corpus
+### Corpus guidance
 
-Rooms and entities declare soft items in the corpus (`schema/corpus.md`):
+Rooms and entities no longer declare exhaustive `soft_items` lists. Instead,
+they may provide freeform `soft_item_guidance` to help the LLM know what kinds
+of generic objects are plausible in a scene (`schema/corpus.md`):
 
 ```json
 {
   "rooms": {
     "axe_head": {
-      "soft_items": ["loose stone", "dust"]
+      "soft_item_guidance": "Loose stones, dust, and cobwebs are common here."
     }
   },
   "entities": {
     "rubbish_pile": {
       "type": "feature",
-      "soft_items": ["cork", "loose copper", "stale sandwich", "lint"]
+      "soft_item_guidance": "Corks, loose copper pieces, stale food, and lint are plausible."
     }
   }
 }
 ```
 
-These lists are the **authoritative source of truth** for what exists. The
-engine validates every soft-item action against them.
+This guidance is **not** an authoritative whitelist. It is narrative context for
+the LLM. Whether a proposed soft item actually exists in the scene is decided by
+LLM Call 2 (the prose narrator) during adjudication.
 
 ### Soft State
 
@@ -64,55 +69,19 @@ The player's carried soft items live in `soft_inventory`:
 ```
 
 Soft items that the player has encountered (examined, taken, given) are tracked
-in `surfaced_soft_items`:
+in `surfaced_soft_items` as counts per source:
 
 ```json
 {
   "surfaced_soft_items": {
-    "axe_head": ["loose stone"],
-    "rubbish_pile": ["cork"],
-    "korbar": ["cork"]
+    "axe_head": { "loose stone": 1 },
+    "rubbish_pile": { "cork": 1 },
+    "korbar": { "cork": 1 }
   }
 }
 ```
 
 See `schema/soft-state.md` for the full schema.
-
-## Design Evolution
-
-### Phase 1 (Initial): Full Enumeration
-
-The initial design surfaced all corpus `soft_items` in the GMBriefing. Every
-room and entity carried its full list. This caused:
-
-- **Context pollution.** The LLM read "loose stone, dust, rock, dense webbing,
-  sticky webbing" in every briefing, most of which were never relevant.
-- **Token waste.** A typical room might have 2-5 soft items, but across
-  entities the total could reach 10+ irrelevant strings per briefing.
-
-### Phase 2 (Current): Surface-on-Interaction
-
-Soft items are omitted from the GMBriefing by default. Only items the player
-has interacted with (through `examine`, `transfer`, or `interact` actions)
-appear in subsequent briefings.
-
-The algorithm:
-
-1. Player submits an action targeting a soft item (e.g., "examine rock").
-2. The engine's resolver validates the action against the corpus `soft_items` list.
-3. On success, the resolver returns a `surfaced_soft_items` map in the
-   `ResolutionResult`.
-4. The engine persists these entries into `SoftGameState.surfaced_soft_items`.
-5. The Context Assembler reads `surfaced_soft_items` when building the
-   GMBriefing, populating `BriefingRoom.soft_items` and
-   `BriefingEntity.soft_items`.
-
-This ensures:
-
-- **Zero context waste** for untouched items.
-- **Informed LLM decisions** for items the player has seen.
-- **Deterministic engine validation** against the full corpus list regardless
-  of what's surfaced.
 
 ## Interaction Flow
 
@@ -123,15 +92,24 @@ Player: "I examine the rock."
 
 LLM Call 1 → ExamineAction(target="rock")
          ↓
-Engine resolver → validates "rock" ∈ all_soft for current room
-                → on success: surfaces "rock" on the room/entity it belongs to
-                → returns ResolutionResult(success=True, surfaced_soft_items={...})
+Engine resolver → "rock" is not a hard room/entity
+                → returns ResolutionResult(success=True,
+                     soft_item_proposals=[
+                       SoftItemProposal(item_name="rock", action="examine",
+                                        source_id="<current_room>")
+                     ])
          ↓
-LLM Call 2 → narrates: "You examine the rock. It's a smooth, grey stone,
-              small enough to fit in your palm."
+LLM Call 2 → narrates and adjudicates:
+             "You examine the rock. It's a smooth, grey stone, small enough
+              to fit in your palm." (accepted)
+         ↓
+Engine post-validation → records surfaced_soft_items["<current_room>"]["rock"] = 1
 
 Subsequent briefings for this room include soft_items=["rock"].
 ```
+
+Because `ExamineAction` does not carry an entity source, examine proposals
+always use the **current room** as `source_id`.
 
 ### Picking Up / Taking a Soft Item
 
@@ -140,15 +118,17 @@ Player: "I take the cork."
 
 LLM Call 1 → TransferAction(target="rubbish_pile", taken_items=["cork"])
          ↓
-Engine resolver → validates "cork" ∈ available_pool (rubbish_pile.soft_items)
-                → adds "cork" to hard_changes.inventory_added
-                → surfaces "cork" on rubbish_pile
-                → surfaces "cork" on target if given
+Engine resolver → "cork" is not available as a hard item
+                → returns ResolutionResult(success=True,
+                     soft_item_proposals=[
+                       SoftItemProposal(item_name="cork", action="take",
+                                        source_id="rubbish_pile", count=1)
+                     ])
          ↓
-Engine (post-resolution) → applies inventory changes
-                         → persists surfaced items
+LLM Call 2 → narrates and adjudicates acceptance
          ↓
-LLM Call 2 → narrates: "You pick up a cork from the pile."
+Engine post-validation → adds "cork" to soft_inventory
+                       → records surfaced_soft_items["rubbish_pile"]["cork"] = 1
 ```
 
 ### Giving a Soft Item
@@ -158,11 +138,18 @@ Player: "I give the cork to Korbar."
 
 LLM Call 1 → TransferAction(target="korbar", given_items=["cork"])
          ↓
-Engine resolver → validates "cork" ∈ soft.soft_inventory
-                → creates soft_patch: soft_inventory_remove("cork")
-                → surfaces "cork" on "korbar"
+Engine resolver → "cork" is in soft_inventory
+                → returns ResolutionResult(success=True,
+                     soft_item_proposals=[
+                       SoftItemProposal(item_name="cork", action="give",
+                                        source_id="<current_room>",
+                                        target_id="korbar", count=1)
+                     ])
          ↓
-Subsequent briefings → korbar.soft_items=["cork"]
+LLM Call 2 → narrates and adjudicates acceptance
+         ↓
+Engine post-validation → removes "cork" from soft_inventory
+                       → records surfaced_soft_items["korbar"]["cork"] = 1
 ```
 
 ## Carried Soft Items
@@ -172,6 +159,38 @@ Soft items in the player's inventory are surfaced through
 surfacing — the player always sees what they're carrying via the player state
 block in the GMBriefing.
 
+## Adjudication Model
+
+`SoftItemProposal` objects carry:
+
+| Field       | Description |
+|-------------|-------------|
+| `item_name` | The soft item name proposed by the player. |
+| `action`    | `"examine"`, `"take"`, or `"give"`. |
+| `source_id` | Room or entity ID where the item is proposed to exist. |
+| `target_id` | For `"give"`, the recipient entity ID. |
+| `count`     | Quantity (default 1). |
+
+LLM Call 2 responds with `SoftItemAdjudication` objects in `NarrationOutput`:
+
+| Field       | Description |
+|-------------|-------------|
+| `item_name` | Matches the proposal. |
+| `action`    | Matches the proposal. |
+| `accepted`  | `true` if the narrator agrees the item exists/did the thing. |
+| `source_id` | Must match the proposal's `source_id`. |
+| `target_id` | For `"give"`, must match the proposal's `target_id`. |
+| `count`     | Must match the proposal's `count`. |
+
+The engine's post-validation step:
+
+1. Matches each adjudication to a proposal by `(item_name, action, source_id,
+   target_id, count)`.
+2. Verifies the proposal source/target is a valid room or entity in the corpus.
+3. Ensures `"take"` adjudications do not collide with a hard entity ID.
+4. Applies the accepted change: mutates `soft_inventory`, updates
+   `surfaced_soft_items` counts, and records rejection reasons for mismatches.
+
 ## Key Design Decisions
 
 ### 1. No Unique IDs
@@ -180,42 +199,45 @@ Soft items are identified by their general name only. Two "rock" entries in
 `soft_inventory` are indistinguishable. This is intentional — soft items are
 narrative props, not mechanical objects.
 
-### 2. No Garbage Collection (Yet)
+### 2. Counts Are Tracked
 
-Surfaced items accumulate but are never removed by the engine. If the player
-examines "dust" in a room, it stays surfaced for the rest of the game. Future
-work might add pruning (e.g., clearing surfaced items when the player leaves a
-room for good), but the current design prioritises simplicity.
+`surfaced_soft_items` stores counts so repeated takes or gives are reflected
+accurately. The Context Assembler formats surfaced items as `name (taken N)`
+when building the GMBriefing.
 
-### 3. Engine as Gatekeeper
+### 3. LLM as Adjudicator
 
-The corpus `soft_items` list remains the authoritative truth for validation,
-regardless of what is surfaced. The LLM cannot conjure "Wand of Wishing" even
-if all soft items are omitted from the briefing. The engine rejects invalid
-items, and LLM Call 2 narrates the failure naturally ("You search but find no
-such thing").
+The engine no longer rejects soft-item actions for being "not in the corpus."
+Instead, it issues proposals and lets LLM Call 2 decide what exists in the
+scene. This prevents the engine from blocking plausible player actions (e.g.,
+"I pick up a pebble") while still giving the narrator authority over the world.
 
-### 4. LLM Common Sense
+### 4. Engine Still Validates Structure
 
-The LLM does not need the full soft-items list to propose plausible actions.
-If the player says "I pick up a rock in this cave," the LLM can construct
-`TransferAction(target="<cave_room>", taken_items=["rock"])` using world
-knowledge. The engine then validates against the corpus — if the cave has
-"rock" in its `soft_items`, it succeeds; if not, the narrator explains why.
+The engine rejects adjudications that:
+
+- Do not match a proposal.
+- Reference an unknown room or entity.
+- Attempt to "take" an item whose name collides with a hard entity ID.
+- Propose state mutations without a matching proposal.
 
 ## Files Summary
 
 | File | Role |
 |------|------|
-| `schema/corpus.md` | Defines `soft_items` fields on rooms and entities. |
+| `schema/corpus.md` | Defines `soft_item_guidance` fields on rooms and entities. |
 | `schema/soft-state.md` | Documents `soft_inventory` and `surfaced_soft_items` fields. |
-| `schema/actions.md` | Documents soft-item validation for `examine`, `interact`, `transfer`. |
-| `mgmai/models/corpus.py` | Pydantic models: `Room.soft_items`, `Entity.soft_items`. |
-| `mgmai/models/briefing.py` | Pydantic models: `BriefingRoom.soft_items`, `BriefingEntity.soft_items`. |
-| `mgmai/models/soft_state.py` | Pydantic models: `SoftGameState.surfaced_soft_items`. |
-| `mgmai/engine/resolver.py` | Soft-item validation and surfacing in `resolve_examine`, `resolve_transfer`. |
+| `schema/actions.md` | Documents soft-item proposals and adjudications for `examine`, `transfer`, and narration output. |
+| `mgmai/models/corpus.py` | Pydantic models: `Room.soft_item_guidance`, `Entity.soft_item_guidance`. |
+| `mgmai/models/briefing.py` | Pydantic models: `BriefingRoom.soft_item_guidance`, `BriefingEntity.soft_item_guidance`. |
+| `mgmai/models/soft_state.py` | Pydantic model: `SoftGameState.surfaced_soft_items` as `dict[str, dict[str, int]]`. |
+| `mgmai/models/actions.py` | Pydantic models: `SoftItemProposal`, `EngineResult.soft_item_proposals`. |
+| `mgmai/models/narration.py` | Pydantic model: `SoftItemAdjudication`, `NarrationOutput.soft_item_adjudications`. |
+| `mgmai/engine/resolver.py` | Issues soft-item proposals in `resolve_examine` and `resolve_transfer`. |
 | `mgmai/engine/engine.py` | Persists surfaced items; populates `_build_room_after` with surfaced items. |
+| `mgmai/engine/post_validate.py` | Validates and applies soft-item adjudications. |
 | `mgmai/context/assembler.py` | Populates `BriefingRoom.soft_items` and `BriefingEntity.soft_items` from surfaced items. |
+| `mgmai/game/loop.py` | Passes adjudications to post-validation. |
 | `doc/soft-items.md` | This document. |
 
 

@@ -122,8 +122,10 @@ class TestResolveExamine:
     def test_examine_nonexistent_target(self, state_manager):
         action = ExamineAction(action_type="examine", target="nonexistent", detail="Looking")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
-        assert result.success is False
-        assert "not found" in (result.error or "")
+        assert result.success is True
+        assert len(result.soft_item_proposals) == 1
+        assert result.soft_item_proposals[0].item_name == "nonexistent"
+        assert result.soft_item_proposals[0].action == "examine"
 
     def test_examine_with_using_not_in_inventory(self, state_manager):
         action = ExamineAction(action_type="examine", target="padlock", using="rusty_key", detail="Poking with key")
@@ -143,37 +145,54 @@ class TestResolveExamine:
         assert result.success is True
 
     def test_examine_soft_item_surfaces_on_room(self, state_manager):
-        """Soft items belonging to the room are surfaced on the room ID."""
+        """Soft items belonging to the room are proposed for adjudication on the room ID."""
         action = ExamineAction(action_type="examine", target="loose stone", detail="Looking at stone")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
-        assert result.surfaced_soft_items.get("axe_head") == ["loose stone"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "loose stone"
+        assert proposal.action == "examine"
+        assert proposal.source_id == "axe_head"
 
     def test_examine_soft_item_surfaces_on_entity(self, state_manager):
-        """Soft items exclusive to an entity are surfaced on that entity ID."""
+        """Soft items exclusive to an entity are proposed with the current room as source."""
         state_manager.hard_state.player.location = "bag_floor"
         action = ExamineAction(action_type="examine", target="stale sandwich", detail="Looking at sandwich")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
-        assert result.surfaced_soft_items.get("rubbish_pile") == ["stale sandwich"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "stale sandwich"
+        assert proposal.action == "examine"
+        assert proposal.source_id == "bag_floor"
 
     def test_examine_room_soft_item_surfaces_on_room(self, state_manager):
-        """Soft items listed on the room surface on the room ID."""
+        """Soft items listed on the room surface as proposals on the room ID."""
         state_manager.hard_state.player.location = "axe_handle_lower"
         action = ExamineAction(action_type="examine", target="rock", detail="Looking at rock")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
-        assert result.surfaced_soft_items.get("axe_handle_lower") == ["rock"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "rock"
+        assert proposal.action == "examine"
+        assert proposal.source_id == "axe_handle_lower"
 
     def test_examine_soft_item_surfaces_on_room_when_shared(self, state_manager):
         """When a soft item exists on both room and entity, room wins."""
         state_manager.hard_state.player.location = "axe_handle_upper"
         action = ExamineAction(action_type="examine", target="sticky webbing", detail="Looking at webbing")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
-        assert result.surfaced_soft_items.get("axe_handle_upper") == ["sticky webbing"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "sticky webbing"
+        assert proposal.action == "examine"
+        assert proposal.source_id == "axe_handle_upper"
 
     def test_examine_non_soft_item_no_surfacing(self, state_manager):
-        """Examining an entity (not a soft item) does not populate surfaced_soft_items."""
+        """Examining an entity (not a soft item) does not populate soft-item proposals."""
         action = ExamineAction(action_type="examine", target="padlock", detail="Looking at padlock")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.success is True
+        assert result.soft_item_proposals == []
         assert result.surfaced_soft_items == {}
 
     def test_non_rigorous_examine_costs_no_turn(self, state_manager):
@@ -193,11 +212,22 @@ class TestResolveExamine:
         assert result.costs_turn is True
 
     def test_failed_examine_costs_no_turn(self, state_manager):
-        """A failed examine attempt does not cost a turn."""
+        """A non-rigorous examine of an unknown target costs no turn."""
         action = ExamineAction(action_type="examine", target="nonexistent", detail="Looking")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
-        assert result.success is False
+        assert result.success is True
         assert result.costs_turn is False
+
+    def test_rigorous_examine_of_unknown_costs_turn(self, state_manager):
+        """A rigorous examine of an unknown target costs a turn and produces a proposal."""
+        action = ExamineAction(
+            action_type="examine", target="nonexistent", rigorous=True, detail="Searching"
+        )
+        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
+        assert result.success is True
+        assert result.costs_turn is True
+        assert len(result.soft_item_proposals) == 1
+        assert result.soft_item_proposals[0].item_name == "nonexistent"
 
 
 class TestResolveMove:
@@ -469,12 +499,16 @@ class TestResolveTransfer:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        assert len(result.soft_patches) == 1
-        assert result.soft_patches[0].field == "soft_inventory_remove"
-        assert result.soft_patches[0].new_value == "cork"
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "cork"
+        assert proposal.action == "give"
+        assert proposal.source_id == "player"
+        assert proposal.target_id == "korbar"
+        assert proposal.count == 1
 
     def test_give_soft_item_surfaces_on_target(self, state_manager):
-        """Given soft items are surfaced on the transfer target."""
+        """Given soft items are proposed for adjudication on the transfer target."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
@@ -487,10 +521,15 @@ class TestResolveTransfer:
             detail="Giving a cork",
         )
         result = resolve_transfer(action, hard, soft, corpus)
-        assert result.surfaced_soft_items.get("korbar") == ["cork"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "cork"
+        assert proposal.action == "give"
+        assert proposal.source_id == "player"
+        assert proposal.target_id == "korbar"
 
     def test_take_soft_item_surfaces_on_entity_source(self, state_manager):
-        """Taken soft items exclusive to an entity are surfaced on that entity."""
+        """Taken soft items exclusive to an entity are proposed on that entity."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
@@ -503,10 +542,14 @@ class TestResolveTransfer:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        assert result.surfaced_soft_items.get("rubbish_pile") == ["stale sandwich"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "stale sandwich"
+        assert proposal.action == "take"
+        assert proposal.source_id == "rubbish_pile"
 
     def test_take_soft_item_surfaces_on_entity_when_shared(self, state_manager):
-        """When target is an entity, soft items surface on that entity."""
+        """When target is an entity, soft items are proposed on that entity."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
@@ -519,11 +562,14 @@ class TestResolveTransfer:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        # cork is in rubbish_pile.soft_items; target_is_entity path checks target entity
-        assert result.surfaced_soft_items.get("rubbish_pile") == ["cork"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "cork"
+        assert proposal.action == "take"
+        assert proposal.source_id == "rubbish_pile"
 
     def test_take_soft_item_surfaces_on_room_when_target_is_room(self, state_manager):
-        """When transfer target is the room itself, surface on the room."""
+        """When transfer target is the room itself, propose on the room."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
@@ -536,7 +582,11 @@ class TestResolveTransfer:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        assert result.surfaced_soft_items.get("bag_floor") == ["cork"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "cork"
+        assert proposal.action == "take"
+        assert proposal.source_id == "bag_floor"
 
 
 class TestResolveInteract:
@@ -1500,7 +1550,11 @@ class TestResolveExamineWithStackedItems:
         )
         result = resolve_examine(action, hard, soft, corpus)
         assert result.success is True
-        assert result.surfaced_soft_items.get("axe_head") == ["loose stone"]
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "loose stone"
+        assert proposal.action == "examine"
+        assert proposal.source_id == "axe_head"
 
 
 class TestResolveTalkWithStackedItems:

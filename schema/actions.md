@@ -62,6 +62,45 @@ Player Input
    Player (text output)
 ```
 
+## Soft-Item Adjudication Loop
+
+Soft items use an extra adjudication step between the Engine and LLM Call 2:
+
+```
+Engine Resolution
+       |
+       v
++------------------------------+
+| SoftItemProposal[]           |
+| (take / give / examine)      |
++------------------------------+
+       |
+       v
++------------------------------+
+| 4. LLM Call 2: Prose         |
+|    Narrates outcome and       |
+|    returns SoftItemAdjudication|
+|    for each proposal.         |
++------------------------------+
+       |
+       v
++------------------------------+
+| 4.5. Engine Post-Validation  |
+|    Matches adjudications to   |
+|    proposals, applies accepted|
+|    ones, rejects mismatches.  |
++------------------------------+
+       |
+       v
+   Player (text output)
+```
+
+A `SoftItemProposal` is produced by the engine when the player attempts to
+examine, take, or give an item that is not represented by a hard entity. LLM
+Call 2 decides whether the proposal is plausible in the scene and returns a
+matching `SoftItemAdjudication`. The engine then applies accepted adjudications
+to `soft_inventory` and `surfaced_soft_items`.
+
 ---
 
 ## 1. GMBriefing -- Input to LLM Call 1
@@ -80,6 +119,7 @@ Soft State, for the ruling LLM (call 1).
     "id": "axe_handle_lower",
     "name": "Axe Handle (Lower)",
     "description": "You are on the lower section of the axe handle. The webs here are denser, blocking the path downward unless you push through. If you look carefully, you see the spider — huge and hungry for blood — lurking in the webs. Below, many irregularly shaped objects are coming into view. It looks like you could drop down safely. There is some muffled clanking from the shadows below.",
+    "soft_item_guidance": "Loose stones, dust, and cobwebs are common here.",
     "soft_items": ["rock", "loose stone"],
     "entities_visible": [
       {
@@ -89,6 +129,7 @@ Soft State, for the ruling LLM (call 1).
         "description": "A huge, hungry spider lurking in the dense webs.",
         "state": { "alive": true },
         "entity_notes": [],
+        "soft_item_guidance": "",
         "soft_items": [],
         "dialogue_paths": {
           "flatter": "Praise the spider's hunting prowess to improve its attitude toward the player."
@@ -101,6 +142,7 @@ Soft State, for the ruling LLM (call 1).
         "description": "Thick webs blocking the downward path.",
         "state": {},
         "entity_notes": [],
+        "soft_item_guidance": "",
         "soft_items": []
       }
     ],
@@ -203,8 +245,11 @@ Soft State, for the ruling LLM (call 1).
    is a map of `{path_id: description}` so LLM Call 1 can match player intent
    to the correct special dialogue path.
 
-3. **Soft items** in the room (from `room.soft_items`) are listed directly.
-   Entity-specific soft items are listed under each entity's entry.
+3. **Soft item guidance** is included from `room.soft_item_guidance` and each
+   visible entity's `soft_item_guidance` to inform the LLM about plausible generic
+   objects in the scene. Already-surfaced soft items are listed under
+   `current_room.soft_items` and `entities_visible[*].soft_items`; non-surfaced
+   items are omitted to keep the briefing focused.
 
 4. **Exits** whose conditions are met are included. Hidden exits (e.g., the
    secret compartment) are omitted unless their reveal flag is set.
@@ -299,14 +344,17 @@ The LLM must output a single structured action, corresponding to the player's in
 
 | Field      | Type          | Required | Description |
 |------------|---------------|----------|-------------|
-| `target`   | string        | yes      | A valid entity ID present in the current room, the current room ID itself (for examining the room), or a soft item name present in the current room or on a visible entity. |
+| `target`   | string        | yes      | A valid entity ID present in the current room, the current room ID itself (for examining the room), or a soft item name the player wishes to examine. |
 | `rigorous` | boolean       | no       | If `true`, signifies an in-depth search costing one turn. A non-rigorous examine is a free cursory glance that costs no turns. |
 | `using`    | string\|null  | no       | A valid entity ID or soft item used to assist the examination (e.g., using a torch to look at a dark corner). Tool-assisted examines should usually be `rigorous: true`. |
 
 **Engine validation:**
-- `target` must be a valid entity in the current room's `contains`, the
-  current room ID, or a soft item name present in the current room or on a
-  visible entity.
+- If `target` matches a valid entity in the current room's `contains` or the
+  current room ID, the engine performs a normal examine and fires any matching
+  `on_examine` events.
+- If `target` does not match a hard room or entity, the engine returns
+  `success: true` with a `soft_item_proposal` for `"examine"`. LLM Call 2 will
+  adjudicate whether the item exists in the scene.
 - If `using` is specified, the item must be in the player's hard inventory
   (entity IDs) or soft inventory (soft item names).
 - If `rigorous: true`, the engine evaluates the room/entity's interactions
@@ -318,6 +366,8 @@ The LLM must output a single structured action, corresponding to the player's in
   `rigorous_only` events or skill checks.
 - The engine returns the entity's `description` and any applicable
   examine-only narrative.
+
+For soft-item examine proposals, `source_id` is set to the current room ID.
 
 ---
 
@@ -337,13 +387,14 @@ The LLM must output a single structured action, corresponding to the player's in
 
 | Field            | Type           | Required | Description |
 |------------------|----------------|----------|-------------|
-| `target`         | string         | yes      | The entity ID or soft item name being interacted with. |
+| `target`         | string         | yes      | The entity ID being interacted with. Soft items should be handled via `examine` or `transfer`. |
 | `interaction_id` | string         | yes      | The specific interaction to perform. Generic interactions include `attack`. Module authors define additional ones (e.g., `recharge`). Picking up or giving items should use the `transfer` action instead. |
 | `using`          | string\|null   | no       | An entity ID or soft item enabling the interaction (e.g., "iron_sword" for attack). |
 
 **Engine validation:**
-- `target` must exist: an entity present in the room, or a soft item present
-  in the room or on a present entity.
+- `target` must be a hard entity present in the room or a following NPC.
+  Interactions with generic soft items are not directly supported; use `examine`
+  or `transfer` for soft items instead.
 - `interaction_id` must match a defined interaction on the target entity, the
   current room, or a generic interaction (e.g., `attack`).
 - All interaction `conditions` must be met.
@@ -420,15 +471,23 @@ The LLM must output a single structured action, corresponding to the player's in
 - Each item in `given_items` must be in the player's hard inventory
   (entity IDs) or soft inventory (soft item names).
 - Each item in `taken_items` must be obtainable from the target in the
-  required quantity.  Hard items are looked up in the runtime containment
-  maps (`room_contains` / `entity_contains`); soft item names must appear
-  in the target's `soft_items` or the room's `soft_items`.
+  required quantity. Hard items are looked up in the runtime containment
+  maps (`room_contains` / `entity_contains`). If a requested item is not
+  present as a hard item, the engine issues a `soft_item_proposal` for
+  `"take"` with `source_id` set to the target (room or entity).
+- If a hard item exists in the available pool but the requested quantity
+  exceeds the available count, the action fails with a "not available" error.
 - `given_counts`/`taken_counts` may be used for stackable items to move
   quantities greater than 1 in a single action. Non-stackable hard items
   reject counts greater than 1.
 - On success, hard items are moved between `player.inventory` and the
-  world-side runtime containment maps; soft items are surfaced on the
-  target without a hard-state change.
+  world-side runtime containment maps.
+- Soft items given from the player's inventory produce a `soft_item_proposal`
+  for `"give"` with `source_id` set to the current room and `target_id` set
+  to the recipient entity (or `null` when giving to a room).
+- Soft-item proposals are adjudicated by LLM Call 2; accepted takes add to
+  `soft_inventory`, and accepted gives remove from `soft_inventory`. The
+  engine records surfaced items in `surfaced_soft_items`.
 - If the target is a room, `given_items` are removed from the player's
   inventory and added to `room_contains[room_id]`; `taken_items` are
   removed from `room_contains[room_id]` (or a nested open container) and
@@ -599,10 +658,10 @@ whether to continue the chain:
 | Action            | target must be                                  | other constraints                          |
 |-------------------|-------------------------------------------------|--------------------------------------------|
 | `move`            | exit_id in current room                         | exit conditions met, not one-way blocked   |
-| `examine`         | entity_id in current room, current room_id, or soft item name present in room/on visible entity | `using` item must be in inventory |
-| `interact`        | entity_id or soft item present in room          | interaction_id must match defined interaction; `using` item must be present/in-inventory |
+| `examine`         | entity_id in current room, current room_id, or soft item name | `using` item must be in inventory; unknown targets become soft-item proposals |
+| `interact`        | entity_id present in room or following NPC      | interaction_id must match defined interaction; `using` item must be present/in-inventory |
 | `talk`            | npc entity_id in current room, alive            | `utterance` optional                       |
-| `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source  |
+| `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source; soft items become proposals |
 | `wait`            | null (no target)                                | none; advances turn counter                |
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
 | `equip`           | entity_id of item in inventory                  | must have `equip_block`; validates tag conflicts and `max_equipped` |
@@ -626,8 +685,8 @@ full format and validation rules are detailed in `soft-state.md`. In summary:
 }
 ```
 
-Supported fields: `room_note`, `entity_note`, `soft_inventory_add`,
-`soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon`.
+Supported fields: `room_note`, `entity_note`, `soft_inventory_remove`,
+`appearance_note_add`, `set_improvised_weapon`.
 (Attitude changes are proposed by LLM Call 2 via `attitude_changes`, not by
 LLM Call 1.)
 
@@ -676,6 +735,11 @@ everything LLM Call 2 needs to narrate the outcome.
 
   "soft_state_patches_applied": [],
   "soft_state_patches_rejected": [],
+
+  "soft_item_proposals": [
+    { "item_name": "cork", "action": "take", "source_id": "rubbish_pile", "target_id": null, "count": 1, "proposed_by": "call_1" }
+  ],
+  "soft_item_adjudications": [],
 
   "rolls": [],
 
@@ -728,6 +792,8 @@ everything LLM Call 2 needs to narrate the outcome.
 | `hard_state_changes`           | All applied changes to hard state: location, inventory changes, flag changes, room state changes, entity state changes. LLM Call 2 must not contradict these. |
 | `soft_state_patches_applied`   | Soft-state patches the engine accepted. |
 | `soft_state_patches_rejected`  | Soft-state patches the engine rejected, each with a `reason` string. LLM Call 2 must not narrate rejected changes. |
+| `soft_item_proposals`          | Proposals for examine/take/give of soft items produced by the engine. LLM Call 2 must adjudicate each one. |
+| `soft_item_adjudications`      | The subset of proposals accepted by LLM Call 2, after post-validation. Empty until post-validation runs. |
 | `rolls`                        | Any probabilistic rolls or stat checks the engine resolved. For `roll` checks: `{ outcome, roll, threshold }`. For `stat_check` checks: `{ check_type, stat, target, raw_roll, modifier, stat_modifier, total, margin, advantage, disadvantage }`. |
 | `encounter_outcome`            | If an encounter triggered, its resolution. |
 | `triggered_narration`          | Pre-written narrative blocks for specific events (e.g., spider fleeing, room entry). LLM Call 2 should incorporate or paraphrase these — they represent canonical prose for key moments. |
@@ -800,10 +866,42 @@ LLM Call 2 receives:
    effect (the engine rejects it). If no revelations occur, `knowledge_tags`
    may be omitted or empty.
 
-10. **Propose `attitude_changes` when relevant** (non-`ooc_discussion` actions
+10. **Adjudicate `soft_item_proposals` when present.** If the EngineResult
+    contains `soft_item_proposals`, LLM Call 2 must return a matching
+    `soft_item_adjudications` array. Each adjudication must match the
+    corresponding proposal's `item_name`, `action`, `source_id`, `target_id`,
+    and `count`, and indicate whether the narrator accepts the proposal.
+
+11. **Propose `attitude_changes` when relevant** (non-`ooc_discussion` actions
     only). After narrating the turn's events, consider which NPCs' dispositions
     shifted and propose `attitude_changes` accordingly. Never contradict the
     `npc_attitude_limits` listed in the EngineResult.
+
+#### `soft_item_adjudications` output format
+
+```json
+{
+  "soft_item_adjudications": [
+    {
+      "item_name": "cork",
+      "action": "take",
+      "accepted": true,
+      "source_id": "rubbish_pile",
+      "target_id": null,
+      "count": 1
+    }
+  ]
+}
+```
+
+| Field       | Type    | Description |
+|-------------|---------|-------------|
+| `item_name` | string  | Must match the proposal. |
+| `action`    | string  | Must match the proposal (`examine`, `take`, or `give`). |
+| `accepted`  | boolean | `true` if the narrator agrees the item exists/did the thing. |
+| `source_id` | string  | Must match the proposal's `source_id`. |
+| `target_id` | string\|null | Must match the proposal's `target_id`. |
+| `count`     | integer | Must match the proposal's `count`. |
 
 #### `attitude_changes` output format
 
@@ -891,13 +989,14 @@ direction, the LLM should adapt.
 2. Context Assembler builds GMBriefing
 3. LLM Call 1 (Ruling) produces PlayerAction + SoftStatePatch[]
 4. Engine validates action
-   +-- Valid:   resolve, apply hard state, validate soft patches
+   +-- Valid:   resolve, apply hard state, validate soft patches,
+                produce soft_item_proposals for unresolved soft items
    +-- Invalid: return error (goto 3 with retry, or goto 6 with fail)
 5. Engine adds entry to turn_history (ooc_discussion entries are logged
    but do not count toward the GMBriefing cap)
-6. LLM Call 2 (Prose) narrates outcome
-7. If LLM Call 2 produced knowledge_tags or attitude_changes:
-   engine post-validates and produces corrected EngineResult (step 4.5)
+6. LLM Call 2 (Prose) narrates outcome and returns soft_item_adjudications
+7. Engine post-validates knowledge_tags, attitude_changes, and
+   soft_item_adjudications; produces corrected EngineResult (step 4.5)
 8. If chained action is ongoing and not terminated by engine: goto 2
    Else: output text to player, save game state
 ```

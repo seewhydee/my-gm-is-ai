@@ -119,7 +119,10 @@ def inject_following_npcs(
         if entity_state.get("hidden", False):
             continue
         notes = soft.entity_notes.get(eid, [])[-5:]
-        entity_soft = soft.surfaced_soft_items.get(eid, [])
+        entity_soft_items = [
+            f"{name} (taken {count})" if count > 0 else name
+            for name, count in soft.surfaced_soft_items.get(eid, {}).items()
+        ]
         path_descriptions: dict[str, str] = {}
         if entity.type == "npc" and entity.dialogue:
             path_descriptions = {
@@ -135,7 +138,8 @@ def inject_following_npcs(
                 description=entity.description,
                 state=entity_state,
                 entity_notes=notes,
-                soft_items=list(entity_soft),
+                soft_item_guidance=entity.soft_item_guidance,
+                soft_items=entity_soft_items,
                 contains=build_contains(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
             )

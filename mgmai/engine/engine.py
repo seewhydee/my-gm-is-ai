@@ -364,10 +364,11 @@ def resolve(
 
     for entity_or_room_id, items in resolution.surfaced_soft_items.items():
         if entity_or_room_id not in soft.surfaced_soft_items:
-            soft.surfaced_soft_items[entity_or_room_id] = []
-        for item in items:
-            if item not in soft.surfaced_soft_items[entity_or_room_id]:
-                soft.surfaced_soft_items[entity_or_room_id].append(item)
+            soft.surfaced_soft_items[entity_or_room_id] = {}
+        for item, count in items.items():
+            soft.surfaced_soft_items[entity_or_room_id][item] = (
+                soft.surfaced_soft_items[entity_or_room_id].get(item, 0) + count
+            )
 
     soft_patches = _validate_soft_patches(
         player_action.proposed_soft_state_patches or [],
@@ -582,6 +583,7 @@ def resolve(
         combat_triggered=combat_triggered,
         combat_log=combat_log + reaction_combat_log,
         costs_turn=resolution.costs_turn,
+        soft_item_proposals=list(resolution.soft_item_proposals or []),
     )
 
 
@@ -623,19 +625,10 @@ def _validate_soft_patches(
                     if contradiction:
                         reason = contradiction
         elif patch.field == "soft_inventory_add":
-            room_id = hard.player.location
-            room = corpus.rooms.get(room_id)
-            if room is None:
-                reason = f"Invalid room: {room_id}"
-            else:
-                all_soft = set(room.soft_items or [])
-                for eid in hard.room_contains.get(room_id, {}):
-                    ent = corpus.entities.get(eid)
-                    if ent and ent.soft_items:
-                        all_soft.update(ent.soft_items)
-                item = patch.new_value if isinstance(patch.new_value, str) else str(patch.new_value)
-                if item not in all_soft:
-                    reason = f"Soft item '{item}' not available in room '{room_id}'"
+            reason = (
+                "soft_inventory_add is deprecated; soft items are now "
+                "adjudicated via soft_item_proposals / soft_item_adjudications"
+            )
         elif patch.field == "soft_inventory_remove":
             item = patch.new_value if isinstance(patch.new_value, str) else str(patch.new_value)
             if item not in soft.soft_inventory:
@@ -717,7 +710,10 @@ def _build_room_after(
                 continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
-        entity_soft = soft.surfaced_soft_items.get(eid, [])
+        entity_soft_items = [
+            f"{name} (taken {count})" if count > 0 else name
+            for name, count in soft.surfaced_soft_items.get(eid, {}).items()
+        ]
 
         path_descriptions: dict[str, str] = {}
         if entity.type == "npc" and entity.dialogue:
@@ -734,7 +730,8 @@ def _build_room_after(
                 description=entity.description,
                 state=entity_state,
                 entity_notes=notes,
-                soft_items=list(entity_soft),
+                soft_item_guidance=entity.soft_item_guidance,
+                soft_items=entity_soft_items,
                 dialogue_paths=path_descriptions,
                 count=count,
             )
@@ -765,7 +762,10 @@ def _build_room_after(
         )
 
     room_notes = soft.room_notes.get(room_id, [])[-5:]
-    room_soft_items = soft.surfaced_soft_items.get(room_id, [])
+    room_soft_items = [
+        f"{name} (taken {count})" if count > 0 else name
+        for name, count in soft.surfaced_soft_items.get(room_id, {}).items()
+    ]
 
     inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
 
@@ -773,7 +773,8 @@ def _build_room_after(
         id=room_id,
         name=room.name,
         description=room.description,
-        soft_items=list(room_soft_items),
+        soft_item_guidance=room.soft_item_guidance,
+        soft_items=room_soft_items,
         entities_visible=entities_visible,
         exits_available=exits_available,
         interactions_available=interactions_available,

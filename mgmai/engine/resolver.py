@@ -30,6 +30,7 @@ from mgmai.models.actions import (
     InteractAction,
     MoveAction,
     OocDiscussionAction,
+    SoftItemProposal,
     TalkAction,
     TransferAction,
     UnequipAction,
@@ -152,7 +153,8 @@ class ResolutionResult:
     dialogue_exited: DialogueExitedResult | dict | None = None
     soft_patches: list[SoftStatePatch] = field(default_factory=list)
     rolls: list[dict[str, Any]] = field(default_factory=list)
-    surfaced_soft_items: dict[str, list[str]] = field(default_factory=dict)
+    surfaced_soft_items: dict[str, dict[str, int]] = field(default_factory=dict)
+    soft_item_proposals: list[Any] = field(default_factory=list)
     events: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     immediate_changes: HardStateChanges = field(default_factory=HardStateChanges)
     costs_turn: bool = True
@@ -260,35 +262,21 @@ def resolve_examine(
         result.rolls = surface_result["rolls"]
         return result
 
-    all_soft = set(room.soft_items or [])
-    for eid in hard.room_contains.get(room_id, {}):
-        ent = corpus.entities.get(eid)
-        if ent and ent.soft_items:
-            all_soft.update(ent.soft_items)
-    if target in all_soft:
-        # Determine where the soft item lives for surfacing
-        surfaced: dict[str, list[str]] = {}
-        if room.soft_items and target in room.soft_items:
-            surfaced[room_id] = [target]
-        else:
-            for eid in hard.room_contains.get(room_id, {}):
-                ent = corpus.entities.get(eid)
-                if ent and ent.soft_items and target in ent.soft_items:
-                    surfaced[eid] = [target]
-                    break
-        return ResolutionResult(
-            success=True,
-            hard_changes=HardStateChanges(),
-            triggered_narration=[f"You examine the {target}."],
-            room_after_id=room_id,
-            surfaced_soft_items=surfaced,
-            costs_turn=action.rigorous,
-        )
-
+    # Not a hard room/entity; propose it as a soft-item examine.
+    # Call 2 will adjudicate whether the item exists in the scene.
     return ResolutionResult(
-        success=False,
-        error=f"Target '{target}' not found in room '{room_id}' or your inventory",
-        costs_turn=False,
+        success=True,
+        hard_changes=HardStateChanges(),
+        triggered_narration=[f"You examine the {target}."],
+        room_after_id=room_id,
+        costs_turn=action.rigorous,
+        soft_item_proposals=[
+            SoftItemProposal(
+                item_name=target,
+                action="examine",
+                source_id=room_id,
+            )
+        ],
     )
 
 
@@ -665,15 +653,17 @@ def resolve_transfer(
             else:
                 changes.entity_contains_added.setdefault(target_id, {})[item] = count
         elif item in soft.soft_inventory:
-            if count > 1:
+            if count > len([i for i in soft.soft_inventory if i == item]):
                 result.success = False
-                result.error = f"Cannot give {count} of soft item '{item}'"
+                result.error = f"Not enough '{item}' in soft inventory to give"
                 return result
-            soft_patches.append(
-                SoftStatePatch(
-                    field="soft_inventory_remove",
-                    new_value=item,
-                    reason=f"Transfer: given to {target_id}",
+            result.soft_item_proposals.append(
+                SoftItemProposal(
+                    item_name=item,
+                    action="give",
+                    source_id="player",
+                    target_id=target_id if target_is_entity else None,
+                    count=count,
                 )
             )
         else:
@@ -681,7 +671,7 @@ def resolve_transfer(
             result.error = f"Item '{item}' is not in your inventory"
             return result
 
-    # Build available pool with quantities from the runtime maps.
+    # Build available pool with quantities from the runtime maps (hard items only).
     available_pool: dict[str, int] = {}
     if target_is_room:
         for eid, ecount in room_contains.items():
@@ -695,12 +685,6 @@ def resolve_transfer(
                         if cstate.get("hidden", False):
                             continue
                         available_pool[cid] = available_pool.get(cid, 0) + ccount
-            if ent and ent.soft_items:
-                if _container_is_open(eid, hard, corpus):
-                    for soft_item in ent.soft_items:
-                        available_pool[soft_item] = available_pool.get(soft_item, 0) + 1
-        for soft_item in room.soft_items or []:
-            available_pool[soft_item] = available_pool.get(soft_item, 0) + 1
     elif target_is_entity:
         target_ent = corpus.entities.get(target_id)
         if target_ent:
@@ -709,8 +693,6 @@ def resolve_transfer(
                     available_pool.get(target_id, 0) + room_contains[target_id]
                 )
             if _container_is_open(target_id, hard, corpus):
-                for soft_item in target_ent.soft_items or []:
-                    available_pool[soft_item] = available_pool.get(soft_item, 0) + 1
                 for cid, ccount in hard.entity_contains.get(target_id, {}).items():
                     available_pool[cid] = available_pool.get(cid, 0) + ccount
         # Fallback: add room-level items not nested inside another entity.
@@ -725,10 +707,7 @@ def resolve_transfer(
             ent = corpus.entities.get(eid)
             if ent and ent.type == "item" and eid not in claimed_entities:
                 available_pool[eid] = available_pool.get(eid, 0) + ecount
-        for soft_item in room.soft_items or []:
-            available_pool[soft_item] = available_pool.get(soft_item, 0) + 1
 
-    surfaced: dict[str, list[str]] = {}
     triggered_narration: list[str] = []
     revealed_hints: list[str] = []
     rolls: list[dict[str, Any]] = []
@@ -741,19 +720,27 @@ def resolve_transfer(
             )
 
         if available_pool.get(item, 0) < count:
+            # If the item exists as a hard item but the quantity is insufficient,
+            # fail outright rather than falling back to a soft-item proposal.
+            if item in available_pool:
+                return ResolutionResult(
+                    success=False,
+                    error=(
+                        f"'{item}' is not available in sufficient quantity "
+                        f"(have {available_pool[item]}, need {count})"
+                    ),
+                )
             closed_error: str | None = None
             if target_is_entity:
                 target_ent = corpus.entities.get(target_id)
                 if target_ent and not _container_is_open(target_id, hard, corpus):
-                    if (item in hard.entity_contains.get(target_id, {})
-                            or item in target_ent.soft_items):
+                    if item in hard.entity_contains.get(target_id, {}):
                         closed_error = f"The {target_ent.name or target_id} is closed."
             else:
                 for eid in room_contains:
                     ent = corpus.entities.get(eid)
                     if ent and not _container_is_open(eid, hard, corpus):
-                        if (item in hard.entity_contains.get(eid, {})
-                                or (ent.soft_items and item in ent.soft_items)):
+                        if item in hard.entity_contains.get(eid, {}):
                             closed_error = f"The {ent.name or eid} is closed."
                             break
             if closed_error is not None:
@@ -761,10 +748,16 @@ def resolve_transfer(
                     success=False,
                     error=closed_error,
                 )
-            return ResolutionResult(
-                success=False,
-                error=f"Item '{item}' is not available from '{target_id}'",
+            # Not present as a hard item: propose as a soft-item take.
+            result.soft_item_proposals.append(
+                SoftItemProposal(
+                    item_name=item,
+                    action="take",
+                    source_id=target_id,
+                    count=count,
+                )
             )
+            continue
 
         item_entity = corpus.entities.get(item)
         if item_entity and item_entity.take_check:
@@ -817,29 +810,8 @@ def resolve_transfer(
                     container_id, {}
                 )[item] = count
 
-        # Surface the soft item on its source.
-        if target_is_room:
-            if room.soft_items and item in room.soft_items:
-                surfaced.setdefault(room_id, []).append(item)
-            else:
-                for eid in room_contains:
-                    ent = corpus.entities.get(eid)
-                    if ent and ent.soft_items and item in ent.soft_items:
-                        surfaced.setdefault(eid, []).append(item)
-                        break
-        elif target_is_entity:
-            target_ent = corpus.entities.get(target_id)
-            if target_ent and target_ent.soft_items and item in target_ent.soft_items:
-                surfaced.setdefault(target_id, []).append(item)
-
-    # Given soft items: surface on the target (they now reside there)
-    for item in given_items:
-        if item in soft.soft_inventory:
-            surfaced.setdefault(target_id, []).append(item)
-
     result.hard_changes = changes
     result.soft_patches = soft_patches
-    result.surfaced_soft_items = surfaced
     result.triggered_narration = triggered_narration
     result.revealed_hints = revealed_hints
     result.rolls = rolls
@@ -1633,7 +1605,7 @@ def _fire_on_examine_events(
     Returns a dict with accumulated 'revealed_hints', 'surfaced', and 'rolls'.
     """
     revealed_hints: list[str] = []
-    surfaced: dict[str, list[str]] = {}
+    surfaced: dict[str, dict[str, int]] = {}
     rolls: list[dict[str, Any]] = []
 
     for event in events:
@@ -1657,8 +1629,10 @@ def _fire_on_examine_events(
             if ex_result.revealed_hints:
                 revealed_hints.extend(ex_result.revealed_hints)
             if ex_result.surfaced_soft_items:
-                for k, v in ex_result.surfaced_soft_items.items():
-                    surfaced.setdefault(k, []).extend(v)
+                for k, items in ex_result.surfaced_soft_items.items():
+                    surfaced.setdefault(k, {})
+                    for item, count in items.items():
+                        surfaced[k][item] = surfaced[k].get(item, 0) + count
             if ex_result.rolls:
                 rolls.extend(ex_result.rolls)
         elif event.result:

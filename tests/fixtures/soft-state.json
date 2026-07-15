@@ -1,15 +1,15 @@
 {
-    "soft_inventory": [],
-    "room_notes": {},
-    "entity_notes": {},
-    "npc_revelations": {},
-    "turn_history": [],
-    "dialogue_state": {
-        "active_npc": null,
-        "conversation_log": [],
-        "topics_discussed": [],
-        "entered_turn": 0,
-        "stall_counter": 0
-    },
-    "surfaced_soft_items": {}
+  "soft_inventory": [],
+  "room_notes": {},
+  "entity_notes": {},
+  "npc_revelations": {},
+  "turn_history": [],
+  "dialogue_state": {
+    "active_npc": null,
+    "conversation_log": [],
+    "topics_discussed": [],
+    "entered_turn": 0,
+    "stall_counter": 0
+  },
+  "surfaced_soft_items": {}
 }

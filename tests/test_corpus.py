@@ -621,13 +621,13 @@ class TestEntity:
         assert len(e.interactions) == 1
         assert e.interactions[0].id == "pray_at_altar"
 
-    def test_entity_with_soft_items(self) -> None:
+    def test_entity_with_soft_item_guidance(self) -> None:
         e = Entity.model_validate({
             "type": "feature",
             "description": "A dead adventurer.",
-            "soft_items": ["rusty coin", "torn map", "empty flask"],
+            "soft_item_guidance": "rusty coin, torn map, empty flask",
         })
-        assert e.soft_items == ["rusty coin", "torn map", "empty flask"]
+        assert e.soft_item_guidance == "rusty coin, torn map, empty flask"
 
 
 class TestExit:
@@ -705,13 +705,13 @@ class TestRoom:
         assert len(r.interactions) == 1
         assert r.interactions[0].id == "pull_lever"
 
-    def test_room_with_soft_items(self) -> None:
+    def test_room_with_soft_item_guidance(self) -> None:
         r = Room.model_validate({
             "name": "Cavern",
             "description": "A dark cavern.",
-            "soft_items": ["rock", "loose stone", "stale bread"],
+            "soft_item_guidance": "rock, loose stone, stale bread",
         })
-        assert r.soft_items == ["rock", "loose stone", "stale bread"]
+        assert r.soft_item_guidance == "rock, loose stone, stale bread"
 
     def test_room_with_contains(self) -> None:
         r = Room.model_validate({

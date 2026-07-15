@@ -53,14 +53,14 @@ class TestSoftStatePatch:
         assert p.entity_id == "spider"
         assert p.field == "entity_note"
 
-    def test_soft_inventory_add(self) -> None:
+    def test_appearance_note_add(self) -> None:
         p = SoftStatePatch.model_validate({
-            "field": "soft_inventory_add",
-            "new_value": "rock",
-            "reason": "Player picks up a rock from the floor.",
+            "field": "appearance_note_add",
+            "new_value": "A loose rock catches the player's eye.",
+            "reason": "Player notices a rock on the floor.",
         })
-        assert p.field == "soft_inventory_add"
-        assert p.new_value == "rock"
+        assert p.field == "appearance_note_add"
+        assert p.new_value == "A loose rock catches the player's eye."
 
     def test_soft_inventory_remove(self) -> None:
         p = SoftStatePatch.model_validate({
@@ -325,12 +325,12 @@ class TestSoftGameState:
     def test_surfaced_soft_items_populated(self) -> None:
         s = SoftGameState.model_validate({
             "surfaced_soft_items": {
-                "axe_head": ["loose stone"],
-                "rubbish_pile": ["cork", "lint"],
+                "axe_head": {"loose stone": 0},
+                "rubbish_pile": {"cork": 2, "lint": 1},
             },
         })
-        assert s.surfaced_soft_items["axe_head"] == ["loose stone"]
-        assert s.surfaced_soft_items["rubbish_pile"] == ["cork", "lint"]
+        assert s.surfaced_soft_items["axe_head"] == {"loose stone": 0}
+        assert s.surfaced_soft_items["rubbish_pile"] == {"cork": 2, "lint": 1}
 
     def test_load_sample_soft_state(self) -> None:
         import json

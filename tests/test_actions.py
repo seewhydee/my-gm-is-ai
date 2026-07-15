@@ -155,17 +155,17 @@ class TestPlayerAction:
     def test_with_soft_state_patches(self) -> None:
         a = PlayerAction.model_validate({
             "action_type": "wait",
-            "detail": "The player picks up a rock.",
+            "detail": "The player notes the rock.",
             "proposed_soft_state_patches": [
                 {
-                    "field": "soft_inventory_add",
-                    "new_value": "rock",
-                    "reason": "Player picks up a rock from the floor.",
+                    "field": "appearance_note_add",
+                    "new_value": "A loose rock catches the player's eye.",
+                    "reason": "Player notices a rock on the floor.",
                 },
             ],
         })
         assert len(a.proposed_soft_state_patches) == 1
-        assert a.proposed_soft_state_patches[0].field == "soft_inventory_add"
+        assert a.proposed_soft_state_patches[0].field == "appearance_note_add"
 
     def test_follow_up(self) -> None:
         a = PlayerAction.model_validate({

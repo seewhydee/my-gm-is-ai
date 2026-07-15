@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, TypeAdapter, model_validator
 from mgmai.models.briefing import BriefingRoom
 from mgmai.models.combat import CombatLogEntry
 from mgmai.models.corpus import StatModifier
-from mgmai.models.narration import AttitudeChange
+from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
 from mgmai.models.soft_state import SoftStatePatch
 
 
@@ -318,6 +318,15 @@ class EncounterOutcome(BaseModel):
     branch_taken: Optional[str] = None
 
 
+class SoftItemProposal(BaseModel):
+    item_name: str
+    action: Literal["take", "give", "examine"]
+    source_id: str
+    target_id: Optional[str] = None
+    count: int = 1
+    proposed_by: Literal["call_1"] = "call_1"
+
+
 class GameOverResult(BaseModel):
     type: str
     trigger: str
@@ -387,3 +396,6 @@ class EngineResult(BaseModel):
     combat_triggered: bool = False
     combat_log: list[CombatLogEntry] = Field(default_factory=list)
     costs_turn: bool = True
+    soft_item_proposals: List[SoftItemProposal] = Field(default_factory=list)
+    soft_items_accepted: List[SoftItemAdjudication] = Field(default_factory=list)
+    soft_items_rejected: List[Dict[str, Any]] = Field(default_factory=list)

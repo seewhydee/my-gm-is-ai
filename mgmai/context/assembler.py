@@ -108,7 +108,10 @@ def _build_room(room_id: str,
                 continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
-        entity_soft = soft.surfaced_soft_items.get(eid, [])
+        entity_soft_items = [
+            f"{name} (taken {count})" if count > 0 else name
+            for name, count in soft.surfaced_soft_items.get(eid, {}).items()
+        ]
 
         path_descriptions: dict[str, str] = {}
         if entity.type == "npc" and entity.dialogue:
@@ -129,7 +132,8 @@ def _build_room(room_id: str,
                 description=entity.description,
                 state=dict(entity_state),
                 entity_notes=list(notes),
-                soft_items=list(entity_soft),
+                soft_item_guidance=entity.soft_item_guidance,
+                soft_items=entity_soft_items,
                 contains=build_contains(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
                 combat_block=combat_block_dict,
@@ -175,13 +179,17 @@ def _build_room(room_id: str,
                                     description=inter.description))
 
     room_notes = soft.room_notes.get(room_id, [])[-5:]
-    room_soft_items = soft.surfaced_soft_items.get(room_id, [])
+    room_soft_items = [
+        f"{name} (taken {count})" if count > 0 else name
+        for name, count in soft.surfaced_soft_items.get(room_id, {}).items()
+    ]
 
     return BriefingRoom(
         id=room_id,
         name=room.name,
         description=room.description,
-        soft_items=list(room_soft_items),
+        soft_item_guidance=room.soft_item_guidance,
+        soft_items=room_soft_items,
         entities_visible=entities_visible,
         exits_available=exits_available,
         interactions_available=interactions_available,
