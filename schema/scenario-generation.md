@@ -1,28 +1,26 @@
 # Scenario-to-JSON Generation Instructions
 
-This document is a prompt/checklist for an LLM to convert a
-natural-language adventure scenario (e.g., `scenario.md`) into an
-adventure module consisting of these structured JSON files:
+This document describes how an LLM agent should convert a natural
+language adventure scenario (e.g., `scenario.md`) into an adventure
+module for My GM Is AI.  The module consists of these JSON files:
 
-- **`corpus.json`** — read-only adventure content (rooms, entities, mechanics)
-- **`soft-state.json`** — initial narrative-oriented mutable state
-- **`default-player.json`** — default player character (required when `corpus.stats` is present)
-- **`hard-state.json`** — optional world-state override (usually omitted)
+- `corpus.json` — read-only content: rooms, entities, mechanics, etc.
+- `soft-state.json` — initial narrative-oriented mutable state
+- `default-player.json` — default player stats; omitted if the
+  adventure does not use stats
 
-The schemas for these files are defined in:
+The schemas used in these files are defined in:
 - [`corpus.md`](corpus.md) for the Module Corpus
-- [`events.md`](events.md) for the canonical event model and reaction event types
+  - [`events.md`](events.md) for extra documentation of events/reactions
 - [`hard-state.md`](hard-state.md) for Hard Game State
 - [`soft-state.md`](soft-state.md) for Soft Game State
-- [`actions.md`](actions.md) for actions (engine validation logic)
 
 ---
 
 ## Generation Workflow
 
 Do NOT try to generate all three JSON files in one shot. Instead,
-follow these six sequential steps.  Validate each step before
-proceeding.
+follow these six steps.  Validate each step before proceeding.
 
 ```
 scenario.md
@@ -51,37 +49,33 @@ Cross-file validation
 
 Each step produces intermediate output in the adventure module folder.
 Step 1 writes the Scenario Map — a document named `scenario-map.md`
-that all subsequent steps read from.  Steps 2–4 produce draft corpus
-blocks; Steps 5–6 produce the final `default-player.json` (when needed)
-and `soft-state.json`.  After cross-file validation, assemble the complete
-`corpus.json` from the draft blocks.
+used by all subsequent steps.  Steps 2–4 draft `corpus.json`.  Steps
+5–6 produce `default-player.json` (if needed) and `soft-state.json`.
 
-At the end of every step, run through the step's validation checklist.
-If anything fails, **stop and fix before proceeding**.
+At the end of each step, run through the step's validation checklist.
+If anything fails, stop and fix before proceeding.
 
 ---
 
 ## Step 1: Parse & Extract
 
-**Objective:** make a structured list of everything that needs to be
-modelled, including consistent IDs for all rooms, entities, flags,
+**Objective:** make structured lists of everything that needs to be
+modelled, with consistent IDs for all rooms, entities, flags,
 interactions, state fields, entity tags, etc.  All IDs must be in
 snake_case; `self` is reserved.
 
 Read README.md and doc/intro.md, followed by the supplied scenario
-(usually a Markdown file in adventures/MODULE-NAME/).
-
-Then follow the specs below to write a Scenario Map (a text document,
-not JSON), and save it to `scenario-map.md` in the adventure module
-folder.  This will be the working plan for all subsequent steps.
-
-To avoid context pressure, it is strongly recommended NOT to read the
-schema docs in Step 1.  The schema will be read in Step 2, when we
+(usually a Markdown file in adventures/MODULE-NAME/).  Do NOT read the
+schema docs yet; you will only need them later, in Step 2, when we
 write the actual JSON.
 
+Now, we will write a Scenario Map (a markdown document, not JSON).
+This will be saved to `scenario-map.md` in the adventure module
+folder, and serves as the working plan for all subsequent steps.
+
 Follow Steps 1A–1H in order.  Each describes a top-level markdown
-section for `scenario-map.md`.  You may also add implementation notes
-anywhere in the document, as you deem appropriate.
+section for the Scenario Map.  You may also add implementation notes
+anywhere in the document, as appropriate.
 
 ### 1A. Adventure metadata
 
@@ -97,7 +91,7 @@ Write down, in a section at the top of the Scenario Map:
 - *Adventure ID* — A short identifier for the adventure module (e.g.,
   `bag_of_holding`).  Used for save/load validation.
 
-- *Atmosphere* — A few sentences about the world setting and narrative
+- *Atmosphere* — Some sentences about the world setting and narrative
   tone, synthesised from your reading of the scenario.  No spoilers.
 
 If the scenario uses player stats, note:
@@ -112,9 +106,9 @@ If the scenario uses player stats, note:
 ### 1B. Rooms (Pass 1)
 
 This section lists the rooms in the adventure.  Every visitable
-location in the scenario should be a room.  Don't create rooms not in
-the scenario, *unless* needed for gameplay; note deviations in your
-report.  For each room, write out:
+location should be a room.  Don't create rooms not in the scenario,
+*unless* needed for gameplay (note deviations in your report).  For
+each room, write out:
 
 - **Room ID** — assign a globally-unique ID.
 
@@ -153,15 +147,15 @@ immobile features, NPCs, and items), specifying:
 
 - **Description** — a prose description of what this entity is, its
   location at game start (room, container, player inventory, etc.),
-  and any other notable details.  Keep it factual and succinct.  We
+  and any plot-relevant details.  Keep it factual and succinct.  We
   will fill in mechanical details later (§1G).  If the entity is a
   feature visible from multiple rooms, note which rooms it spans.
 
 ### 1D. Global Flags
 
 Make a list of global flags: boolean conditions tracking world state
-not tied to any specific room or entity.  In particular, consider
-assigning global flags for:
+not tied to any specific room or entity.  In particular, you may
+assign global flags for:
 
 - each major secret or piece of information the player can learn
   during the adventure ("the vizier is a lich", "password is foo").
@@ -177,8 +171,8 @@ For each flag, specify:
 
 ### 1E. Mechanics
 
-Now list out mechanics — set-piece encounters or global rules that are
-not bound to a single room or entity.  For each mechanic, specify:
+Now list out mechanics — set-piece encounters or global rules not
+bound to a single room or entity.  For each mechanic, specify:
 
 - **Mechanic ID** — assign a globally-unique ID
 - **Kind** — one of these two:
@@ -186,9 +180,8 @@ not bound to a single room or entity.  For each mechanic, specify:
   - **Mechanic** — encounter or global reaction mechanic
 - **Description** — how the mechanic works, and its effects
 
-When writing the description, don't worry about the schema-following
-implementation; the schema can accommodate many triggers and outcomes,
-including branching outcomes.  Focus on crafting a precise *prose*
+In writing the description, don't worry about how the mechanic will
+eventually be implemented.  Focus on crafting a precise *prose*
 description, specifying flag IDs (§1D), room exit IDs (§1F), entity
 tags (§1G), etc.  Backfill if necessary.
 
@@ -200,27 +193,26 @@ examples follow.
   many different ways, use a mechanic.  Examples:
   - player wins on leaving the castle with the artifact
   - player loses if HP drops to ≤ 0.
-  However, a game-over condition reached by a specific route (e.g.,
+  Conversely, a game-over condition reached by a specific route (e.g.,
   falling into *this* pit) should be room- or entity-scoped.
 
-- **Encounters** (set-piece confrontations or action sequences, with
-  branching outcomes and/or leading to combat) are usually mechanics.
+- **Encounters** – set-piece confrontations or action sequences, with
+  branching outcomes and/or leading to combat – are usually mechanics.
 
   Example: a confrontation with three goblins, who ambush an unaware
   player, or flee if the player looks strong, or just start combat.
-  If the encounter starts when the player arrives in the room, the
+  If the encounter starts when the player arrives in the room, its
   trigger can be supplied by a separate room-scoped reaction (§1F).
-  
-  However, an encounter involving a single NPC (e.g., the NPC aggros
-  when the player attacks) should be NPC-scoped.
-   
+
+  Exception: any encounter involving a single NPC (e.g., the NPC
+  aggros when the player attacks) should be NPC-scoped.
+
 - For an outcome arising directly from doing a special action (e.g.,
   pulling a lever), use a room/entity interaction instead (§1F,1G).
 
 - For state changes that are a **reaction** to an event, if the
   reaction occurs only in a given room, use a room reaction (§1F); if
   it requires a given entity's presence, use an entity reaction (§1G).
-  
   If the reaction doesn't fit such scoping, use a mechanic.  Examples:
   - player's HP dropping to ≤ 3 fires off a life ward
   - starting combat anywhere in a town makes all guards hostile
@@ -239,7 +231,9 @@ Revisit the room list, and add the following info to each room:
   specify the destination room ID (§1B).
 
   Optionally, describe:
-  - any conditions gating the exit's availability
+  - any conditions gating the exit's availability (e.g., if an exit is
+    initially hidden, do list it here, and describe the conditions
+    under which it is hidden or visible).
   - any success check (e.g., stat check) needed to traverse the exit
   - any side-effects of succeeding or failing in traversing the exit
 
@@ -262,7 +256,7 @@ Revisit the room list, and add the following info to each room:
   different results on success/failure.  Write a plain-text
   description, clearly specifying the game pieces affected: give
   specific flag IDs, room/entity IDs, state field names, etc.
-  
+
   DO NOT define interactions similar to these generic player actions:
   `move` (traversing rooms), `examine` (cursory or in-depth study), or
   `transfer` (moving items to/from a container or location).
@@ -311,14 +305,14 @@ state fields and reactions), etc.  Do so as necessary.
 
 Revisit the entity list, and add the following to each entity:
 
-- **Tags** — any semantic features relevant to gameplay.
+- **Tags** — any gameplay-relevant, non-mutable semantic features.
   Assign the special tag `container` to any entity that acts as a
   container with open/close functionality (e.g., a chest).  A
   tabletop, with no open/close function, should not have this tag.
 
   Other tags are defined at your discretion based on adventure
-  requirements (e.g., items with `heavy` tag can trigger a pressure
-  plate).  Do not define gameplay-irrelevant tags.
+  requirements (e.g., a pressure plate can be triggered by any item
+  with the `heavy` tag).  Do not define gameplay-irrelevant tags.
 
 - **Equippable?** — if this entity is an item that can be equipped
   (weapon, armor, shield, ring, etc.), write a textual description of
@@ -330,10 +324,9 @@ Revisit the entity list, and add the following to each entity:
   (e.g., a drawer holding a key, a rubbish pile holding a gem), list
   the entity IDs inside.  Use the descriptions in §1C as a guide.
 
-- **Special interactions** — assign an entity-unique interaction ID to
-  every special action the player can perform on the entity (e.g.,
-  pulling a lever).  No need for synonyms; one interaction ID per
-  gameplay-relevant interaction.
+- **Special interactions** — assign an entity-unique ID to every
+  special interaction the player can have with the entity (e.g.,
+  pulling a lever).  No synonyms; just one ID per interaction.
 
   Include an `open` and/or `close` interaction if it's a container
   that can be directly opened/closed by the player.
@@ -341,39 +334,30 @@ Revisit the entity list, and add the following to each entity:
   DO NOT define interactions for built-in generic actions: `attack`,
   `examine`, `talk`, or `transfer`.
 
-- **State fields** — list each of the entity's scenario-relevant
-  mutable properties, and the initial value (boolean, number, or
-  string).  Some state fields, listed below, have special engine
-  effects, but you can also define custom ones.
+- **State fields** — list the entity's state fields: scenario-relevant
+  mutable properties.  For each state field, note down its meaning,
+  type (number/boolean/string), and initial value.  You are free to
+  define custom state fields to suit the needs of the scenario.
+  However, there are some with special engine effects:
 
-  NPC state fields:
-  - `alive` (boolean) is required
-  - `attitude` (number) if able to change attitude to the player
-  - `hidden` (boolean) if concealable; see below
-  - `following` (boolean) if a possible companion
-  - `current_hp` (number) if able to engage in combat
-  - custom state fields (e.g., `charmed`)
+  - `open` (boolean) for container (entity holding `container` tag)
+    with open/close functionality; initial value typically false.
 
-  To model an NPC leaving the scene, set its `location` to `null` via a
-  result or reaction (e.g., `"set_entity_state": { "spider": { "location":
-  null } }`).  This removes the NPC from `room_contains`, which in turn
-  excludes it from combat and entity-scoped reactions.
+  - `hidden` (boolean) if entity is concealable (e.g., a thief hiding
+    in shadows, a sword buried in rubble).  NOT intended for items
+    that are out of view due to being inside a closed container.
 
-  Non-NPC state fields:
-  - `hidden` (boolean) if concealable; see below
-  - `open` (boolean) for container with open/close functionality,
-    with a `container` tag; initial value is typically false
-  - custom state fields (e.g., `locked`, `lit`)
+  NPCs also support the following special state fields; do NOT declare
+  these except to assign them non-default initial values.
 
-  The `hidden` state field denotes explicit concealment (e.g., a thief
-  hiding in shadows, or sword buried in rubble).  Do not use it for
-  items that are out of view due to being inside a closed container.
-
-  For each custom field, note down its meaning.
+  - `alive` (boolean, default true)
+  - `attitude` (number, default 0) – level of friendliness
+  - `following` (boolean, default false) – if a companion
+  - `current_hp` (number, default set to stat block's max hp)
 
 - **Reactions** — describe any consequential reaction tied to the
   entity.  Each reaction can occur only if the entity is in the
-  current room (and, for an NPC, alive and active).
+  current room (and, for an NPC, alive).
 
   Examples:
   - if an item is picked up, inflict a curse on the player
@@ -383,25 +367,24 @@ Revisit the entity list, and add the following to each entity:
   Assign each reaction an ID (globally-unique if it's a one-off
   reaction, entity-unique otherwise).  Describe the reaction,
   including:
-
   - the trigger event
   - any additional gating condition for the reaction to occur
   - the consequences if the reaction indeed occurs
   - whether the reaction is one-off, or recurring
 
 - **On-Examine Effects** — describe any effects triggered by the
-  player examining the entity, possibly gated by a condition or stat
-  check.  Note that this field belongs on the thing being examined,
-  *not* the room containing it: e.g., when the scenario says "upon
-  examining the statue, the player notices...", the examination effect
-  belongs on the statue entity.
+  player examining the entity.  Such effects may be gated by a
+  condition or stat check.  Note that this field belongs on the thing
+  being examined, *not* the room containing it: e.g., if the scenario
+  says "upon examining the statue, the player notices...", the
+  examination effect belongs on the statue entity.
 
-For items, also note:
+#### Additional things to note for item entities
 
 - **Take Check** (optional) — availability conditions or success
   checks for the player to take the item.  Can have failure effects.
 
-For NPCs, also add descriptions for the following:
+#### Additional things to note for NPC entities
 
 - **Combat Stats** — if the NPC is combat-capable and the scenario
   provides a stat block (HP, AC, attack bonus, damage dice, initiative
@@ -409,16 +392,15 @@ For NPCs, also add descriptions for the following:
   combat features, such as on-hit effects.  If the scenario doesn't
   give exact numbers, record whatever info is provided.
 
-- **Aggro** — during an encounter with a hostile NPC (including one
-  triggered by the player attacking an initially non-hostile NPC), the
-  default behavior is to launch turn-based combat if the NPC has
-  combat stats, or for the NPC to simply die otherwise.
-  
-  If the aggro encounter should unfold in another way, describe it in
-  terms of a set of branching conditional outcomes.  The encounter
-  rules can include stat checks, auto-death outcomes for either the
-  NPC or the player, etc.  Example: begin combat normally if the
-  player is armed, otherwise auto-kill the player (game-over).
+- **Aggro** — if the NPC is attacked by the player, or is hostile for
+  whatever reason (hostile from the start, or triggered somehow), the
+  default outcome is to launch turn-based combat if the NPC has combat
+  stats, or for the NPC to simply die otherwise.  If the aggro
+  encounter should *NOT* unfold this way, state the alternative.
+  Describe the enocunter as a set of branching outcomes, each of which
+  may include stat checks, auto-death outcomes for the NPC or the
+  player, starting combat, etc.  Example: begin combat normally if the
+  player is armed, otherwise the player dies (game-over).
 
 - **Combat Group** — If the NPC is intended to fight as part of a
   band, assign the combat group a globally-unique ID, and report that
@@ -460,16 +442,15 @@ For NPCs, also add descriptions for the following:
 
 ### 1H. Cleanup
 
-Go through the lists you have constructed, and check that IDs are
-consistent, every ID required by a mechanic is defined, etc.
+Go through the lists you have constructed, and check that all IDs are
+consistent.  For descriptions lacking specific IDs, backfill the IDs.
 
-For each game mechanic, check that you have assigned it to the right
-host (global, room, or entity), and that it accurately captures the
-spirit of what's written in the scenario.  Deviations from the
-scenario may be OK, but should be noted down clearly in:
+Check that every game mechanic described in the scenario is present,
+and assigned to the right type: global mechanic, room-scoped reaction,
+entity-scoped reaction, on-examination effect, etc.
 
-- an Errata section at the bottom of the Scenario Map
-- your task report
+If you deemed it necessary to deviate from the scenario, list the
+devations in an Errata section at the end of the Scenario Map.
 
 Revise as necessary.
 
@@ -477,9 +458,9 @@ Revise as necessary.
 
 ### Step 1 validation checklist
 
-Check the following before proceeding to Step 2.  The Scenario Map
-(`scenario-map.md`) will be the blueprint for all later steps;
-catching gaps here avoids rework downstream.
+Check the following before proceeding to Step 2.  The Scenario Map,
+`scenario-map.md`, is the blueprint for all later steps; catching gaps
+here avoids rework downstream.
 
 #### Coverage and Consistency
 
@@ -664,13 +645,12 @@ Notes:
   `result` with no `check`.
 
 - Use `condition` to gate availability: e.g., an "open" interaction on
-  a chest can be gated on `entity:chest.locked == false`.
-
-- Use `skip_check_if` to bypass gating and checks entirely.
+  a chest can be gated on `entity:chest.locked == false`.  Use
+  `skip_check_if` to bypass gating and checks entirely.
 
 - Set `repeatable: false` for tasks where failure is permanent: the
-  engine will block any retry after failure.  For tasks with one-off
-  success (e.g., smashing a pot), use `condition` as described above.
+  engine will block any retry after failure.  For one-off success
+  (e.g., smashing a pot), use `condition` as described above.
 
   If the scenario and Scenario Map are ambiguous about whether an
   interaction should be one-off success and/or failure, use your
@@ -679,22 +659,18 @@ Notes:
 - If the optional `failure` field is omitted, the engine returns a
   generic "nothing happens" narrative on failure.
 
-- When an interaction behaves differently depending on what the player
-  uses, define a `using_results` map.  Each key is an item entity ID
-  (not soft-item name); the special key `"*"` matches any `using`
-  value not explicitly listed.  The engine substitutes the matched
-  override for the interaction's `check`, `success`, `failure`, and
-  `result` — it replaces them entirely, it does not merge.
+- If an interaction works differently if the player uses a tool,
+  define `using_results` as shown in the above example.  The special
+  key `"*"` matches any `using` value not explicitly listed.  Any
+  matching override *replaces* the original check's `check`,
+  `success`, `failure`, and `result`; the effects do not merge.
 
 #### State fields
 
 Using the state fields planned in the Scenario Map, construct the
 entity's `state_fields`.  Each field must have a `type`, a terse but
-informative `description`, and — wherever the initial value differs
-from the type default or reserved-field default — an explicit
-`initial` value.  The engine generates the initial world state directly
-from these declarations, so `initial` is the canonical source of truth
-for starting values.
+informative `description`, and — if the initial value differs from the
+default — an explicit `initial` value.
 
 Example:
 
@@ -708,36 +684,33 @@ Example:
 
 Notes:
 
-- `initial` is optional.  When omitted, the engine uses the reserved-field
-  default if one exists (e.g., `alive` defaults to `true`, `current_hp`
-  defaults to `combat.hp`); otherwise it falls back to the type default
-  (`false` for boolean, `0` for number, `""` for string).  Attitude has
-  no special default — set `initial` explicitly when the NPC's starting
-  disposition differs from 0.
+- If `initial` is omitted, the engine uses the reserved-field default
+  if any (e.g., `alive` defaults to `true`, `current_hp` defaults to
+  `combat.hp`); otherwise it falls back to the type default (`false`
+  for boolean, `0` for number, `""` for string).  There's generally no
+  harm explicitly listing the initial value, regardless.
 
-- Fields whose starting value matches the default do not need an
-  `initial` key, though including it explicitly is harmless and
-  recommended for clarity.
+- If an entity is concealed (initially, or subsequently in the
+  adventure), it must have a `hidden` state field: e.g., a lurking
+  enemy, or a sword in long grass.  When `hidden` is true, the engine
+  omits the entity even from the GM (to avoid leakage).  However,
+  don't use `hidden` to describe entities that are masked just by
+  being in a closed container (see Containers, below).
 
-- If a `hard-state.json` override is supplied, it can override any corpus
-  `initial` value.  In the normal workflow, `hard-state.json` is omitted
-  and the generated world state is used.
+  **Timing:** when a result directly sets `hidden: false` via
+  `set_entity_state` (e.g., in an `on_examine` event or interaction
+  result), the entity becomes visible to the narrator in the same
+  turn.  If the reveal is gated through a separate reaction on
+  `flag.set` that then sets `hidden: false`, the entity does not
+  appear until the next turn, because state-change events fire during
+  deferred end-of-turn dispatch.  Prefer the direct approach for
+  dramatic immediacy, unless the scenario requires the reveal to be
+  deferred.
 
-If an entity is concealed (initially, or subsequently in the
-adventure), it must have a `hidden` state field: e.g., a lurking
-enemy, or a sword in long grass.  When `hidden` is true, the engine
-omits the entity even from the GM (to avoid leakage).  However, don't
-use `hidden` to describe entities that are masked just by being in a
-closed container (see Containers, below).
-
-**Timing:** when a result directly sets `hidden: false` via
-`set_entity_state` (e.g., in an `on_examine` event or interaction
-result), the entity becomes visible to the narrator in the same turn.
-If the reveal is gated through a separate reaction on `flag.set` that
-then sets `hidden: false`, the entity does not appear until the next
-turn, because state-change events fire during deferred end-of-turn
-dispatch.  Prefer the direct approach for dramatic immediacy, unless
-the scenario requires the reveal to be deferred.
+To model an NPC leaving the scene, set its `location` to `null` via a
+result or reaction (e.g., `"set_entity_state": { "spider": {
+"location": null } }`).  This removes the NPC from `room_contains`,
+which in turn excludes it from combat and entity-scoped reactions.
 
 #### Entity Reactions
 
@@ -1092,7 +1065,6 @@ Example of a will_reveal structure:
 
 > TBD: instructions to keep global flags up to date, and revise
 > Scenario Map to reflect updates...
-
 
 ---
 
@@ -1963,7 +1935,7 @@ a top-level `game_over_conditions` entry:
 ```
 
 ---
-  
+
 
 (Showing matches; edit interrupted by user)
 

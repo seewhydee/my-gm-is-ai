@@ -6,11 +6,11 @@ state; it only submits actions for the engine to validate and resolve.
 
 When the game starts, the engine generates the initial world state
 (`flags`, `room_states`, `entity_states`, containment, etc.) from the
-corpus.  `hard-state.json`, if present, is an optional override for the
-world state.  The player block is resolved separately from
-`default-player.json` (the boxed-set default hero), an optional player
-block inside `hard-state.json`, and/or `--char-sheet` supplied by the
-player.
+corpus.  An optional file `hard-state.json`, if present, overrides the
+starting world state.  The player block is initialized from (in order
+of increasing priority) the adventure default `default-player.json`,
+any player block override in `hard-state.json`, and any `--char-sheet`
+supplied by the player.
 
 Between turns, hard state is held in memory. On each turn, the engine
 applies changes based on the player's actions and its side-effects.
