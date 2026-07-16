@@ -2,41 +2,33 @@
 
 ## Overview
 
-Soft items are generic, nondescript objects that exist in the game world without
-unique identifiers or mechanical significance. Examples: rocks, loose stones,
-dust, cobwebs, cork, lint. They contrast with **hard items** — named entities
-with IDs, hard-state tracking, and plot relevance (e.g., `rusty_key`,
-`toenail_sword`).
+**Soft items** refer to generic, nondescript items that exist in the
+game world, and can be picked up and/or used by the player, but that
+lack special significance.  Examples: rocks, loose stones, and leaves
+in a forest.  They are tracked by their generic names (e.g., `rock`).
+They contrast with **hard items** — named entities with plot relevance
+(e.g., `rusty_key`, `excalibur_sword`).
 
-## Why "Soft"?
+The soft items subsystem is intended to give the player access to
+items that (i) are mentioned in the narration as incidental detail,
+but were *not* explicitly modelled in the adventure corpus, or (ii)
+aren't mentioned, but ought to exist based on common sense (e.g., hair
+on a dog).  However, the subsystem guards against abuses ("I search
+the pile of leaves and pick up a wand of wishing").
 
-The term reflects the relationship to the **hard/soft state** split:
-
-- **Hard items** are tracked in `HardGameState.player.inventory` as entity IDs.
-  Moving them requires `HardStateChanges`. The engine is the sole authority.
-- **Soft items** are tracked in `SoftGameState.soft_inventory` as plain strings.
-  The LLM may propose taking, giving, or examining them; the engine issues
-  **soft-item proposals**, and LLM Call 2 adjudicates whether each proposal is
-  accepted. Accepted proposals are then persisted by the engine's post-validation
-  step.
-
-This split serves two purposes:
-
-1. **Context efficiency.** A room may plausibly contain dozens of generic objects
-   (dust, pebbles, etc.). Surfacing all of them in the GMBriefing wastes tokens
-   without benefit.
-2. **Narrative flexibility.** The player can reference soft items naturally ("I
-   pick up a rock") without requiring the author to pre-define every possible
-   object. The engine records the proposal, and the narrator decides whether the
-   object is actually present in the scene.
+During the [turn loop](intro.md), LLM Call 1 may propose taking,
+giving, or examining one or more previously-unsurfaced soft items.
+This is passed by the engine to LLM Call 2, which adjudicates whether
+to accept the proposed interaction.  If accepted, the soft item is
+introduced into the game world by the engine's post-validation step.
 
 ## Where Soft Items Live
 
 ### Corpus guidance
 
-Rooms and entities no longer declare exhaustive `soft_items` lists. Instead,
-they may provide freeform `soft_item_guidance` to help the LLM know what kinds
-of generic objects are plausible in a scene (`schema/corpus.md`):
+Rooms and entities may contain an optional `soft_item_guidance` field,
+containing a freeform string that help the LLM know what kinds of
+generic objects are plausible in a scene.
 
 ```json
 {
@@ -54,9 +46,9 @@ of generic objects are plausible in a scene (`schema/corpus.md`):
 }
 ```
 
-This guidance is **not** an authoritative whitelist. It is narrative context for
-the LLM. Whether a proposed soft item actually exists in the scene is decided by
-LLM Call 2 (the prose narrator) during adjudication.
+This is advisory, *not* an authoritative whitelist.  Whether a
+proposed soft item is actually allowed is decided by LLM Call 2 during
+adjudication, as explained below.
 
 ### Soft State
 
@@ -68,8 +60,8 @@ The player's carried soft items live in `soft_inventory`:
 }
 ```
 
-Soft items that the player has encountered (examined, taken, given) are tracked
-in `surfaced_soft_items` as counts per source:
+Soft items the player has encountered (examined, taken, given) are
+tracked in `surfaced_soft_items` as counts per source:
 
 ```json
 {
@@ -80,8 +72,6 @@ in `surfaced_soft_items` as counts per source:
   }
 }
 ```
-
-See `schema/soft-state.md` for the full schema.
 
 ## Interaction Flow
 
