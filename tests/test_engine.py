@@ -533,8 +533,8 @@ class TestEngineRoomAfter:
         assert result.will_reveal_readiness is not None
         assert "korbar" in result.will_reveal_readiness
 
-    def test_surfaced_soft_items_persisted_after_examine(self, state_manager):
-        """Examining a soft item produces a proposal; accepting it surfaces the item."""
+    def test_examine_acceptance_writes_no_soft_item_state(self, state_manager):
+        """Examining a soft item produces a proposal; accepting it records nothing."""
         from mgmai.engine.post_validate import apply_post_validation
         from mgmai.models.narration import SoftItemAdjudication
 
@@ -556,12 +556,13 @@ class TestEngineRoomAfter:
         result = apply_post_validation(
             None, None, state_manager, result, soft_item_adjudications=[adjudication]
         )
-        assert "axe_head" in state_manager.soft_state.surfaced_soft_items
-        assert "loose stone" in state_manager.soft_state.surfaced_soft_items["axe_head"]
-        assert state_manager.soft_state.surfaced_soft_items["axe_head"]["loose stone"] == 0
+        soft = state_manager.soft_state
+        assert soft.soft_items_taken == {}
+        assert soft.soft_contents == {}
+        assert result.soft_items_accepted[0].item_name == "loose stone"
 
-    def test_surfaced_soft_items_persisted_after_take(self, state_manager):
-        """Taking a soft item produces a proposal; accepting it adds to inventory and surfaces it."""
+    def test_soft_items_taken_after_take(self, state_manager):
+        """Accepting an ambient take adds to inventory and the extraction ledger."""
         from mgmai.engine.post_validate import apply_post_validation
         from mgmai.models.narration import SoftItemAdjudication
 
@@ -586,26 +587,30 @@ class TestEngineRoomAfter:
         result = apply_post_validation(
             None, None, state_manager, result, soft_item_adjudications=[adjudication]
         )
-        assert "stale sandwich" in state_manager.soft_state.soft_inventory
-        assert "rubbish_pile" in state_manager.soft_state.surfaced_soft_items
-        assert state_manager.soft_state.surfaced_soft_items["rubbish_pile"]["stale sandwich"] == 1
+        soft = state_manager.soft_state
+        assert "stale sandwich" in soft.soft_inventory
+        assert soft.soft_items_taken["rubbish_pile"]["stale sandwich"] == 1
+        assert soft.soft_contents == {}
 
-    def test_surfaced_soft_items_in_room_after(self, state_manager):
-        """Surfaced items appear in the EngineResult.room_after briefing."""
-        state_manager.soft_state.surfaced_soft_items["axe_head"] = {"loose stone": 0}
+    def test_soft_items_in_room_after(self, state_manager):
+        """Extraction history and placed items appear in the room_after briefing."""
+        state_manager.soft_state.soft_items_taken["axe_head"] = {"loose stone": 1}
+        state_manager.soft_state.soft_contents["axe_head"] = {"pebble": 2}
         action = WaitAction(
             action_type="wait",
             detail="Looking around",
         )
         result = resolve(action, state_manager)
         assert result.room_after is not None
-        assert "loose stone" in result.room_after.soft_items
+        assert result.room_after.soft_items_taken == ["loose stone (taken 1)"]
+        assert result.room_after.soft_items_present == ["pebble x2"]
 
-    def test_surfaced_entity_soft_items_in_room_after(self, state_manager):
-        """Entity-level surfaced items appear in the entity's soft_items in room_after."""
+    def test_entity_soft_items_in_room_after(self, state_manager):
+        """Entity-level soft items appear as two fields in room_after."""
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"
-        state_manager.soft_state.surfaced_soft_items["rubbish_pile"] = {"lint": 1}
+        state_manager.soft_state.soft_items_taken["rubbish_pile"] = {"lint": 1}
+        state_manager.soft_state.soft_contents["rubbish_pile"] = {"cork": 2}
         action = WaitAction(
             action_type="wait",
             detail="Looking around",
@@ -615,7 +620,8 @@ class TestEngineRoomAfter:
             e for e in result.room_after.entities_visible
             if e.id == "rubbish_pile"
         )
-        assert any("lint" in s for s in rubbish.soft_items)
+        assert rubbish.soft_items_taken == ["lint (taken 1)"]
+        assert rubbish.soft_items_present == ["cork x2"]
 
     def test_npc_attitude_limits(self, state_manager):
         hard = state_manager.hard_state
@@ -631,6 +637,178 @@ class TestEngineRoomAfter:
         assert limits.min == -5
         assert limits.max == 10
         assert limits.step_per_turn == 3
+
+
+class TestSoftContentFlow:
+    """End-to-end placement and retrieval of soft items (soft_contents)."""
+
+    def _accepted_give(self, state_manager, target_id, item, count=1):
+        """Run a give action through resolve + accepted adjudication."""
+        from mgmai.engine.post_validate import apply_post_validation
+        from mgmai.models.narration import SoftItemAdjudication
+
+        action = TransferAction(
+            action_type="transfer",
+            target=target_id,
+            given_counts={item: count},
+            detail=f"Giving {item} to {target_id}",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        adjudication = SoftItemAdjudication(
+            item_name=proposal.item_name,
+            action="give",
+            accepted=True,
+            source_id=proposal.source_id,
+            target_id=proposal.target_id,
+            count=proposal.count,
+        )
+        return apply_post_validation(
+            None, None, state_manager, result, soft_item_adjudications=[adjudication]
+        )
+
+    def test_give_to_entity_writes_soft_contents(self, state_manager):
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("cork")
+        self._accepted_give(state_manager, "korbar", "cork")
+        assert soft.soft_contents == {"korbar": {"cork": 1}}
+        assert soft.soft_items_taken == {}
+        assert "cork" not in soft.soft_inventory
+
+    def test_give_to_room_is_a_legal_drop(self, state_manager):
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("stone")
+        result = self._accepted_give(state_manager, "bag_floor", "stone")
+        assert result.soft_items_rejected == []
+        assert soft.soft_contents == {"bag_floor": {"stone": 1}}
+        assert "stone" not in soft.soft_inventory
+
+    def test_retrieval_from_feature_is_mechanical(self, state_manager):
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        soft = state_manager.soft_state
+        soft.soft_contents["rubbish_pile"] = {"stone": 2}
+        action = TransferAction(
+            action_type="transfer",
+            target="rubbish_pile",
+            taken_items=["stone"],
+            detail="Taking the stone back",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert result.soft_item_proposals == []
+        assert result.soft_content_takes == {"rubbish_pile": {"stone": 1}}
+        assert soft.soft_contents == {"rubbish_pile": {"stone": 1}}
+        assert soft.soft_inventory == ["stone"]
+        assert soft.soft_items_taken == {}
+        # Turn history records the retrieval.
+        assert "Retrieved" in soft.turn_history[-1].engine_result_summary
+
+    def test_retrieval_prunes_zero_entries(self, state_manager):
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        soft = state_manager.soft_state
+        soft.soft_contents["rubbish_pile"] = {"stone": 1}
+        action = TransferAction(
+            action_type="transfer",
+            target="rubbish_pile",
+            taken_items=["stone"],
+            detail="Taking the stone back",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert soft.soft_contents == {}
+        assert soft.soft_inventory == ["stone"]
+
+    def test_retrieval_from_npc_uses_adjudication(self, state_manager):
+        from mgmai.engine.post_validate import apply_post_validation
+        from mgmai.models.narration import SoftItemAdjudication
+
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        soft = state_manager.soft_state
+        soft.soft_contents["korbar"] = {"cork": 1}
+        action = TransferAction(
+            action_type="transfer",
+            target="korbar",
+            taken_items=["cork"],
+            detail="Taking the cork back",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert result.soft_content_takes == {}
+        assert len(result.soft_item_proposals) == 1
+        adjudication = SoftItemAdjudication(
+            item_name="cork",
+            action="take",
+            accepted=True,
+            source_id="korbar",
+        )
+        apply_post_validation(
+            None, None, state_manager, result, soft_item_adjudications=[adjudication]
+        )
+        assert soft.soft_contents == {}
+        assert soft.soft_items_taken == {}
+        assert soft.soft_inventory == ["cork"]
+
+    def test_shortfall_splits_mechanical_and_ambient(self, state_manager):
+        from mgmai.engine.post_validate import apply_post_validation
+        from mgmai.models.narration import SoftItemAdjudication
+
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        soft = state_manager.soft_state
+        soft.soft_contents["rubbish_pile"] = {"stone": 1}
+        action = TransferAction(
+            action_type="transfer",
+            target="rubbish_pile",
+            taken_counts={"stone": 2},
+            detail="Taking two stones",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert result.soft_content_takes == {"rubbish_pile": {"stone": 1}}
+        assert len(result.soft_item_proposals) == 1
+        assert result.soft_item_proposals[0].count == 1
+        # The mechanical portion is already applied.
+        assert soft.soft_contents == {}
+        assert soft.soft_inventory == ["stone"]
+
+        adjudication = SoftItemAdjudication(
+            item_name="stone",
+            action="take",
+            accepted=True,
+            source_id="rubbish_pile",
+            count=1,
+        )
+        apply_post_validation(
+            None, None, state_manager, result, soft_item_adjudications=[adjudication]
+        )
+        assert soft.soft_inventory == ["stone", "stone"]
+        # Only the ambient remainder counts as extraction.
+        assert soft.soft_items_taken == {"rubbish_pile": {"stone": 1}}
+
+    def test_depletion_integrity_after_give(self, state_manager):
+        """A give must not corrupt the depletion signal on the target."""
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("cork")
+        self._accepted_give(state_manager, "korbar", "cork")
+        action = WaitAction(action_type="wait", detail="Looking at Korbar")
+        result = resolve(action, state_manager)
+        korbar = next(
+            e for e in result.room_after.entities_visible if e.id == "korbar"
+        )
+        assert korbar.soft_items_present == ["cork x1"]
+        assert korbar.soft_items_taken == []
+        assert soft.soft_items_taken == {}
 
 
 class TestMultiCombatantEncounters:

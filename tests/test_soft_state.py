@@ -318,19 +318,22 @@ class TestSoftGameState:
         assert len(s.turn_history) == 1
         assert s.dialogue_state.active_npc == "korbar"
 
-    def test_surfaced_soft_items_default(self) -> None:
+    def test_soft_items_taken_default(self) -> None:
         s = SoftGameState.model_validate({})
-        assert s.surfaced_soft_items == {}
+        assert s.soft_items_taken == {}
+        assert s.soft_contents == {}
 
-    def test_surfaced_soft_items_populated(self) -> None:
+    def test_soft_items_taken_populated(self) -> None:
         s = SoftGameState.model_validate({
-            "surfaced_soft_items": {
-                "axe_head": {"loose stone": 0},
+            "soft_items_taken": {
                 "rubbish_pile": {"cork": 2, "lint": 1},
             },
+            "soft_contents": {
+                "table": {"stone": 1},
+            },
         })
-        assert s.surfaced_soft_items["axe_head"] == {"loose stone": 0}
-        assert s.surfaced_soft_items["rubbish_pile"] == {"cork": 2, "lint": 1}
+        assert s.soft_items_taken["rubbish_pile"] == {"cork": 2, "lint": 1}
+        assert s.soft_contents["table"] == {"stone": 1}
 
     def test_load_sample_soft_state(self) -> None:
         import json

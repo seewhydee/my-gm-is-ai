@@ -59,7 +59,7 @@ from mgmai.engine.dialogue import (
     enter_dialogue,
     exit_dialogue,
 )
-from mgmai.engine.utils import get_following_npc_ids, _is_stackable
+from mgmai.engine.utils import get_following_npc_ids, _is_stackable, _match_soft_content
 from mgmai.engine.systems import get_system_for_corpus
 
 MAX_THEN_CHECK_DEPTH = 3
@@ -153,7 +153,7 @@ class ResolutionResult:
     dialogue_exited: DialogueExitedResult | dict | None = None
     soft_patches: list[SoftStatePatch] = field(default_factory=list)
     rolls: list[dict[str, Any]] = field(default_factory=list)
-    surfaced_soft_items: dict[str, dict[str, int]] = field(default_factory=dict)
+    soft_content_takes: dict[str, dict[str, int]] = field(default_factory=dict)
     soft_item_proposals: list[Any] = field(default_factory=list)
     events: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     immediate_changes: HardStateChanges = field(default_factory=HardStateChanges)
@@ -225,13 +225,12 @@ def resolve_examine(
             room_after_id=room_id,
             costs_turn=action.rigorous,
         )
-        surface_result = _fire_on_examine_events(
+        event_result = _fire_on_examine_events(
             room.on_examine, hard, soft, corpus, room_id, action, changes, base_narrative,
             state_manager, result,
         )
-        result.revealed_hints = surface_result["revealed_hints"]
-        result.surfaced_soft_items = surface_result["surfaced"]
-        result.rolls = surface_result["rolls"]
+        result.revealed_hints = event_result["revealed_hints"]
+        result.rolls = event_result["rolls"]
         return result
 
     entity = _find_entity_in_room_followers(target, room_id, hard, corpus)
@@ -253,13 +252,12 @@ def resolve_examine(
             room_after_id=room_id,
             costs_turn=action.rigorous,
         )
-        surface_result = _fire_on_examine_events(
+        event_result = _fire_on_examine_events(
             entity.on_examine, hard, soft, corpus, room_id, action, changes, base_narrative,
             state_manager, result,
         )
-        result.revealed_hints = surface_result["revealed_hints"]
-        result.surfaced_soft_items = surface_result["surfaced"]
-        result.rolls = surface_result["rolls"]
+        result.revealed_hints = event_result["revealed_hints"]
+        result.rolls = event_result["rolls"]
         return result
 
     # Not a hard room/entity; propose it as a soft-item examine.
@@ -662,7 +660,7 @@ def resolve_transfer(
                     item_name=item,
                     action="give",
                     source_id="player",
-                    target_id=target_id if target_is_entity else None,
+                    target_id=target_id,
                     count=count,
                 )
             )
@@ -713,7 +711,10 @@ def resolve_transfer(
     rolls: list[dict[str, Any]] = []
 
     for item, count in _merge_item_counts(taken_items, taken_counts).items():
-        if not _is_stackable(item, corpus) and count > 1:
+        # Soft names (no corpus entity) are exempt from the stackable
+        # guard — their counts are bounded by soft_contents or by
+        # Call 2 adjudication, not by corpus tags.
+        if item in corpus.entities and not _is_stackable(item, corpus) and count > 1:
             return ResolutionResult(
                 success=False,
                 error=f"Cannot take {count} of non-stackable item '{item}'",
@@ -748,15 +749,75 @@ def resolve_transfer(
                     success=False,
                     error=closed_error,
                 )
-            # Not present as a hard item: propose as a soft-item take.
-            result.soft_item_proposals.append(
-                SoftItemProposal(
-                    item_name=item,
-                    action="take",
-                    source_id=target_id,
-                    count=count,
+            # Not present as a hard item.  Consult placed soft items
+            # (soft_contents) — their existence is mechanically verified —
+            # before falling back to an ambient soft-item take proposal.
+            # Order mirrors the hard-item path: accessible sources first,
+            # then closed containers; NPC sources defer to Call 2 consent.
+            if target_is_entity:
+                soft_candidates = [target_id]
+            else:
+                soft_candidates = [room_id]
+                soft_candidates.extend(room_contains)
+                soft_candidates.extend(
+                    fid for fid in follower_ids if fid not in room_contains
                 )
-            )
+            mech_source: tuple[str, str, int] | None = None
+            npc_source: str | None = None
+            closed_soft_error: str | None = None
+            for source_id in soft_candidates:
+                key, placed = _match_soft_content(
+                    soft.soft_contents.get(source_id, {}), item
+                )
+                if key is None:
+                    continue
+                ent = corpus.entities.get(source_id)
+                if ent is not None and ent.type == "npc":
+                    if npc_source is None:
+                        npc_source = source_id
+                    continue
+                if ent is not None and not _container_is_open(source_id, hard, corpus):
+                    if closed_soft_error is None:
+                        closed_soft_error = f"The {ent.name or source_id} is closed."
+                    continue
+                mech_source = (source_id, key, placed)
+                break
+
+            remaining = count
+            if mech_source is not None:
+                mech_source_id, mech_key, mech_placed = mech_source
+                retrieved = min(mech_placed, remaining)
+                sct = result.soft_content_takes.setdefault(mech_source_id, {})
+                sct[mech_key] = sct.get(mech_key, 0) + retrieved
+                remaining -= retrieved
+            if remaining:
+                if (
+                    mech_source is None
+                    and npc_source is None
+                    and closed_soft_error is not None
+                ):
+                    return ResolutionResult(
+                        success=False,
+                        error=closed_soft_error,
+                    )
+                # NPC-held items keep their full count in the proposal —
+                # consent is Call 2's call, and post-validation decrements
+                # soft_contents first on acceptance.  A shortfall after
+                # mechanical retrieval becomes an ambient proposal from
+                # the same source.
+                proposal_source = (
+                    mech_source[0] if mech_source is not None
+                    else npc_source if npc_source is not None
+                    else target_id
+                )
+                result.soft_item_proposals.append(
+                    SoftItemProposal(
+                        item_name=item,
+                        action="take",
+                        source_id=proposal_source,
+                        count=remaining,
+                    )
+                )
             continue
 
         item_entity = corpus.entities.get(item)
@@ -1602,10 +1663,9 @@ def _fire_on_examine_events(
 ) -> dict[str, Any]:
     """Fire matching on_examine events for an entity or room being examined.
 
-    Returns a dict with accumulated 'revealed_hints', 'surfaced', and 'rolls'.
+    Returns a dict with accumulated 'revealed_hints' and 'rolls'.
     """
     revealed_hints: list[str] = []
-    surfaced: dict[str, dict[str, int]] = {}
     rolls: list[dict[str, Any]] = []
 
     for event in events:
@@ -1628,11 +1688,6 @@ def _fire_on_examine_events(
                 narrative.extend(ex_result.triggered_narration)
             if ex_result.revealed_hints:
                 revealed_hints.extend(ex_result.revealed_hints)
-            if ex_result.surfaced_soft_items:
-                for k, items in ex_result.surfaced_soft_items.items():
-                    surfaced.setdefault(k, {})
-                    for item, count in items.items():
-                        surfaced[k][item] = surfaced[k].get(item, 0) + count
             if ex_result.rolls:
                 rolls.extend(ex_result.rolls)
         elif event.result:
@@ -1649,7 +1704,6 @@ def _fire_on_examine_events(
 
     return {
         "revealed_hints": revealed_hints,
-        "surfaced": surfaced,
         "rolls": rolls,
     }
 

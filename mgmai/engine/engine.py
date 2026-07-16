@@ -357,18 +357,28 @@ def resolve(
         resolution.room_after_id = old_room
     _apply_and_merge(action_changes)
 
-    # 5. Apply soft patches and persist surfaced items / revealed hints.
+    # 5. Apply soft patches and persist soft-content takes / revealed hints.
     engine_soft_patches = list(resolution.soft_patches or [])
     if engine_soft_patches:
         state_manager.apply_soft_patches(engine_soft_patches)
 
-    for entity_or_room_id, items in resolution.surfaced_soft_items.items():
-        if entity_or_room_id not in soft.surfaced_soft_items:
-            soft.surfaced_soft_items[entity_or_room_id] = {}
+    # Mechanically verified retrievals of placed soft items: decrement
+    # soft_contents (pruning zeros) and move the items to soft_inventory.
+    for source_id, items in resolution.soft_content_takes.items():
+        contents = soft.soft_contents.get(source_id)
+        if not contents:
+            continue
         for item, count in items.items():
-            soft.surfaced_soft_items[entity_or_room_id][item] = (
-                soft.surfaced_soft_items[entity_or_room_id].get(item, 0) + count
-            )
+            retrieved = min(contents.get(item, 0), count)
+            if retrieved <= 0:
+                continue
+            contents[item] -= retrieved
+            if contents[item] <= 0:
+                del contents[item]
+            for _ in range(retrieved):
+                soft.soft_inventory.append(item)
+        if not contents:
+            soft.soft_contents.pop(source_id, None)
 
     soft_patches = _validate_soft_patches(
         player_action.proposed_soft_state_patches or [],
@@ -584,6 +594,7 @@ def resolve(
         combat_log=combat_log + reaction_combat_log,
         costs_turn=resolution.costs_turn,
         soft_item_proposals=list(resolution.soft_item_proposals or []),
+        soft_content_takes={k: dict(v) for k, v in resolution.soft_content_takes.items()},
     )
 
 
@@ -710,9 +721,13 @@ def _build_room_after(
                 continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
-        entity_soft_items = [
-            f"{name} (taken {count})" if count > 0 else name
-            for name, count in soft.surfaced_soft_items.get(eid, {}).items()
+        entity_soft_items_taken = [
+            f"{name} (taken {count})"
+            for name, count in soft.soft_items_taken.get(eid, {}).items()
+        ]
+        entity_soft_items_present = [
+            f"{name} x{count}"
+            for name, count in soft.soft_contents.get(eid, {}).items()
         ]
 
         path_descriptions: dict[str, str] = {}
@@ -731,7 +746,8 @@ def _build_room_after(
                 state=entity_state,
                 entity_notes=notes,
                 soft_item_guidance=entity.soft_item_guidance,
-                soft_items=entity_soft_items,
+                soft_items_taken=entity_soft_items_taken,
+                soft_items_present=entity_soft_items_present,
                 dialogue_paths=path_descriptions,
                 count=count,
             )
@@ -762,9 +778,13 @@ def _build_room_after(
         )
 
     room_notes = soft.room_notes.get(room_id, [])[-5:]
-    room_soft_items = [
-        f"{name} (taken {count})" if count > 0 else name
-        for name, count in soft.surfaced_soft_items.get(room_id, {}).items()
+    room_soft_items_taken = [
+        f"{name} (taken {count})"
+        for name, count in soft.soft_items_taken.get(room_id, {}).items()
+    ]
+    room_soft_items_present = [
+        f"{name} x{count}"
+        for name, count in soft.soft_contents.get(room_id, {}).items()
     ]
 
     inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
@@ -774,7 +794,8 @@ def _build_room_after(
         name=room.name,
         description=room.description,
         soft_item_guidance=room.soft_item_guidance,
-        soft_items=room_soft_items,
+        soft_items_taken=room_soft_items_taken,
+        soft_items_present=room_soft_items_present,
         entities_visible=entities_visible,
         exits_available=exits_available,
         interactions_available=interactions_available,
@@ -1140,6 +1161,14 @@ def _summarize_resolution(
                     sign = "+" if mod.value >= 0 else ""
                     stat_descs.append(f"{stat_key}{sign}{mod.value}")
             parts.append(f"Stats: {', '.join(stat_descs)}")
+    if resolution.soft_content_takes:
+        retrieved = [
+            f"{name} x{count} from {source_id}" if count > 1
+            else f"{name} from {source_id}"
+            for source_id, items in resolution.soft_content_takes.items()
+            for name, count in items.items()
+        ]
+        parts.append(f"Retrieved: {', '.join(retrieved)}")
     if resolution.encounter_trigger:
         parts.append(f"Encounter: {resolution.encounter_trigger}")
     if resolution.triggered_narration:

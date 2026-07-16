@@ -1648,7 +1648,8 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
   "soft_inventory": [],
   "room_notes": {},
   "entity_notes": {},
-  "surfaced_soft_items": {},
+  "soft_items_taken": {},
+  "soft_contents": {},
   "checks_attempted": {},
   "revealed_hints": [],
   "turn_history": [],
@@ -1672,20 +1673,24 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 
 3. **`entity_notes`** — `{}`. Same as room_notes.
 
-4. **`surfaced_soft_items`** — `{}`. Tracks discovered soft items per
-   room/entity as `{ "<id>": { "<item_name>": <count> } }`. Starts as empty dict.
+4. **`soft_items_taken`** — `{}`. Tracks how many times the player has taken
+   each soft item per room/entity as `{ "<id>": { "<item_name>": <count> } }`.
+   Starts as empty dict.
 
-5. **`checks_attempted`** — `{}`. Records which non-repeatable checks have
+5. **`soft_contents`** — `{}`. Tracks soft items the player has given,
+   placed, or dropped per room/entity, in the same shape. Starts as empty dict.
+
+6. **`checks_attempted`** — `{}`. Records which non-repeatable checks have
    been attempted. Starts as empty dict.
 
-6. **`revealed_hints`** — `[]`. Stores `reveals` strings from successful
+7. **`revealed_hints`** — `[]`. Stores `reveals` strings from successful
    interactions. Starts empty.
 
-7. **`turn_history`** — always `[]`.
+8. **`turn_history`** — always `[]`.
 
-8. **`dialogue_state`** — always the null structure shown above.
+9. **`dialogue_state`** — always the null structure shown above.
 
-9. **`player_knowledge`** — `[]`. List of knowledge entries accumulated
+10. **`player_knowledge`** — `[]`. List of knowledge entries accumulated
     during play (from NPC dialogue revelations and `reveals` fields in
     Result objects). Starts empty.
 
@@ -1694,7 +1699,8 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 ### Step 6 validation checklist
 
 - [ ] `soft_inventory` is `[]`
-- [ ] `surfaced_soft_items` is `{}`
+- [ ] `soft_items_taken` is `{}`
+- [ ] `soft_contents` is `{}`
 - [ ] `checks_attempted` is `{}`
 - [ ] `revealed_hints` is `[]`
 - [ ] `dialogue_state.active_npc` is `null`
@@ -1773,7 +1779,8 @@ optional world-state override, include it in the checks below.
 ### Soft-state checks
 
 - [ ] `soft_inventory` is `[]`
-- [ ] `surfaced_soft_items` is `{}`
+- [ ] `soft_items_taken` is `{}`
+- [ ] `soft_contents` is `{}`
 - [ ] `checks_attempted` is `{}`
 - [ ] `revealed_hints` is `[]`
 - [ ] `dialogue_state` has the standard null structure

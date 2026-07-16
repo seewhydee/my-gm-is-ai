@@ -108,9 +108,13 @@ def _build_room(room_id: str,
                 continue
 
         notes = soft.entity_notes.get(eid, [])[-5:]
-        entity_soft_items = [
-            f"{name} (taken {count})" if count > 0 else name
-            for name, count in soft.surfaced_soft_items.get(eid, {}).items()
+        entity_soft_items_taken = [
+            f"{name} (taken {count})"
+            for name, count in soft.soft_items_taken.get(eid, {}).items()
+        ]
+        entity_soft_items_present = [
+            f"{name} x{count}"
+            for name, count in soft.soft_contents.get(eid, {}).items()
         ]
 
         path_descriptions: dict[str, str] = {}
@@ -133,7 +137,8 @@ def _build_room(room_id: str,
                 state=dict(entity_state),
                 entity_notes=list(notes),
                 soft_item_guidance=entity.soft_item_guidance,
-                soft_items=entity_soft_items,
+                soft_items_taken=entity_soft_items_taken,
+                soft_items_present=entity_soft_items_present,
                 contains=build_contains(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
                 combat_block=combat_block_dict,
@@ -179,9 +184,13 @@ def _build_room(room_id: str,
                                     description=inter.description))
 
     room_notes = soft.room_notes.get(room_id, [])[-5:]
-    room_soft_items = [
-        f"{name} (taken {count})" if count > 0 else name
-        for name, count in soft.surfaced_soft_items.get(room_id, {}).items()
+    room_soft_items_taken = [
+        f"{name} (taken {count})"
+        for name, count in soft.soft_items_taken.get(room_id, {}).items()
+    ]
+    room_soft_items_present = [
+        f"{name} x{count}"
+        for name, count in soft.soft_contents.get(room_id, {}).items()
     ]
 
     return BriefingRoom(
@@ -189,7 +198,8 @@ def _build_room(room_id: str,
         name=room.name,
         description=room.description,
         soft_item_guidance=room.soft_item_guidance,
-        soft_items=room_soft_items,
+        soft_items_taken=room_soft_items_taken,
+        soft_items_present=room_soft_items_present,
         entities_visible=entities_visible,
         exits_available=exits_available,
         interactions_available=interactions_available,

@@ -397,5 +397,6 @@ class EngineResult(BaseModel):
     combat_log: list[CombatLogEntry] = Field(default_factory=list)
     costs_turn: bool = True
     soft_item_proposals: List[SoftItemProposal] = Field(default_factory=list)
+    soft_content_takes: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     soft_items_accepted: List[SoftItemAdjudication] = Field(default_factory=list)
     soft_items_rejected: List[Dict[str, Any]] = Field(default_factory=list)

@@ -11,5 +11,6 @@
     "entered_turn": 0,
     "stall_counter": 0
   },
-  "surfaced_soft_items": {}
+  "soft_items_taken": {},
+  "soft_contents": {}
 }

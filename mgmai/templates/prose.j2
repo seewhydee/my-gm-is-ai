@@ -37,6 +37,7 @@ fields:
 | `rolls` | Any dice rolls made (you can narrate these if dramatic) |
 | `encounter_outcome` | If an encounter happened, what resulted |
 | `triggered_narration` | **Canonical prose blocks** — weave these into your narration, do NOT ignore them |
+| `soft_content_takes` | Soft items the player retrieved from placed contents this turn (source → name → count). Their existence was mechanically verified — no adjudication needed; narrate the retrieval naturally. |
 | `game_over` | If set, the adventure has ended — narrate the ending |
 | `chain_info` | If this turn is part of a chained action: `{follow_up: "<next action the player intends>", termination_reason: null}`. If the engine already halted the chain: `{follow_up: "<discarded action>", termination_reason: "<why>"}`. Absent otherwise. The `follow_up` text tells you what comes next — use it to decide whether to set `terminate_chain: true` (see rule 9). |
 | `warnings` | Narrative constraints the engine wants you to know about |
@@ -77,7 +78,8 @@ You MUST output a single JSON object:
   "attitude_changes": {"npc_id": {"old_value": N, "new_value": M, "reason": "..."}} or null,
   "terminate_chain": false,
   "soft_item_adjudications": [
-    {"item_name": "rock", "action": "take", "accepted": true, "source_id": "bag_floor", "target_id": null, "count": 1, "justification": null}
+    {"item_name": "rock", "action": "take", "accepted": true, "source_id": "bag_floor", "target_id": null, "count": 1, "justification": null},
+    {"item_name": "stone", "action": "give", "accepted": true, "source_id": "player", "target_id": "bag_floor", "count": 1, "justification": null}
   ] or omit if none
 }
 ```
@@ -171,10 +173,20 @@ or would break the adventure's balance.
 - REJECT items that contradict recent narrative (e.g., accepting "a torch"
 in a room just described as pitch-black with no light sources).
 - REJECT items the player has already taken excessively, if the source is
-now depleted. The surfaced-soft-items briefing shows take counts per
-item per source — use this to judge depletion. A cave has many rocks
-(low count is fine), but a desk has only one quill (count ≥ 1 means
-depleted).
+now depleted. The `soft_items_taken` briefing field shows completed
+extraction counts per item per source (`name (taken N)`) — every count
+is a completed extraction; use this to judge depletion. A cave has many
+rocks (low count is fine), but a desk has only one quill (count ≥ 1
+means depleted).
+
+Notes on specific actions:
+- `give` proposals may carry a room ID as `target_id` — a drop.
+  Accepting means the item now rests in that room.
+- Items listed in `soft_items_present` verifiably exist — the player
+  placed them. A take proposal for such an item is about consent or
+  circumstances, not existence (an NPC may still refuse).
+- Accepted `examine` adjudications affect narration only; no persistent
+  state is recorded.
 
 You may ONLY adjudicate items that appear in `soft_item_proposals`. Do not
 invent new soft items.

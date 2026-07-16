@@ -181,7 +181,8 @@ class TestEntityVisibility:
         rubbish = next(
             e for e in result.current_room.entities_visible if e.id == "rubbish_pile"
         )
-        assert rubbish.soft_items == []
+        assert rubbish.soft_items_taken == []
+        assert rubbish.soft_items_present == []
 
     def test_entity_type_included(self, state_manager):
         state_manager.hard_state.player.location = "bag_floor"
@@ -382,28 +383,41 @@ class TestInteractions:
 class TestRoomSoftItemsAndNotes:
     """Room-level soft items and room notes."""
 
-    def test_room_soft_items_no_longer_populated(self, state_manager):
+    def test_room_soft_items_default_empty(self, state_manager):
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
             state_manager.soft_state,
             "look",
         )
-        assert result.current_room.soft_items == []
+        assert result.current_room.soft_items_taken == []
+        assert result.current_room.soft_items_present == []
 
-    def test_surfaced_room_soft_items_appear(self, state_manager):
-        state_manager.soft_state.surfaced_soft_items["axe_head"] = {"loose stone": 0}
+    def test_room_soft_items_taken_appear(self, state_manager):
+        state_manager.soft_state.soft_items_taken["axe_head"] = {"loose stone": 1}
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
             state_manager.soft_state,
             "look",
         )
-        assert result.current_room.soft_items == ["loose stone"]
+        assert result.current_room.soft_items_taken == ["loose stone (taken 1)"]
 
-    def test_surfaced_entity_soft_items_appear(self, state_manager):
+    def test_room_soft_items_present_appear(self, state_manager):
+        state_manager.soft_state.soft_contents["axe_head"] = {"pebble": 2}
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        assert result.current_room.soft_items_present == ["pebble x2"]
+
+    def test_entity_soft_items_two_fields(self, state_manager):
+        """Extraction history and placed items render as separate fields."""
         state_manager.hard_state.player.location = "bag_floor"
-        state_manager.soft_state.surfaced_soft_items["rubbish_pile"] = {"cork": 2, "lint": 1}
+        state_manager.soft_state.soft_items_taken["rubbish_pile"] = {"cork": 2, "lint": 1}
+        state_manager.soft_state.soft_contents["rubbish_pile"] = {"stone": 1}
         result = assemble(
             state_manager.corpus,
             state_manager.hard_state,
@@ -413,23 +427,8 @@ class TestRoomSoftItemsAndNotes:
         rubbish = next(
             e for e in result.current_room.entities_visible if e.id == "rubbish_pile"
         )
-        assert rubbish.soft_items == ["cork (taken 2)", "lint (taken 1)"]
-
-    def test_surfaced_entity_soft_items_no_longer_empty(self, state_manager):
-        """The 'no longer populated' test should now show surfaced items instead."""
-        state_manager.hard_state.player.location = "bag_floor"
-        state_manager.soft_state.surfaced_soft_items["rubbish_pile"] = {"cork": 0}
-        result = assemble(
-            state_manager.corpus,
-            state_manager.hard_state,
-            state_manager.soft_state,
-            "look",
-        )
-        rubbish = next(
-            e for e in result.current_room.entities_visible if e.id == "rubbish_pile"
-        )
-        assert rubbish.soft_items == ["cork"]
-        assert rubbish.soft_items != []
+        assert rubbish.soft_items_taken == ["cork (taken 2)", "lint (taken 1)"]
+        assert rubbish.soft_items_present == ["stone x1"]
 
     def test_room_notes_included(self, state_manager):
         state_manager.soft_state.room_notes["axe_head"] = [

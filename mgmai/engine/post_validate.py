@@ -30,20 +30,7 @@ from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
 from mgmai.models.soft_state import KnowledgeEntry, SoftGameState
 from mgmai.state.manager import StateManager
 from mgmai.engine.conditions import evaluate
-
-
-def _normalize_item_name(name: str) -> str:
-    """Normalize a soft item name for comparison.
-
-    Lowercase, strip leading articles, collapse whitespace, and map
-    spaces to underscores so that "rusty key" matches "rusty_key".
-    """
-    lower = name.lower()
-    for article in ("the ", "a ", "an "):
-        if lower.startswith(article):
-            lower = lower[len(article):]
-    lower = " ".join(lower.split())
-    return lower.replace(" ", "_")
+from mgmai.engine.utils import _match_soft_content, _normalize_item_name
 
 
 def _is_hard_entity_collision(name: str, corpus: ModuleCorpus) -> bool:
@@ -68,9 +55,11 @@ def post_validate_soft_items(
 
     Returns a tuple of (applied_adjudications, rejected_entries).  State is
     mutated directly: accepted takes append to ``soft_inventory`` and
-    increment counts on ``surfaced_soft_items``; accepted gives remove from
-    ``soft_inventory`` and increment counts on the target; accepted examines
-    surface on the source with count 0.
+    decrement ``soft_contents`` on the source first (retrieval of placed
+    items), with any remainder incrementing ``soft_items_taken`` (ambient
+    extraction); accepted gives remove from ``soft_inventory`` and
+    increment ``soft_contents`` on the target; accepted examines have no
+    state effect.
     """
     applied: list[SoftItemAdjudication] = []
     rejected: list[dict[str, Any]] = []
@@ -91,7 +80,10 @@ def post_validate_soft_items(
             reason = "justification required when accepted is false"
         elif not adj.source_id or adj.source_id not in valid_source_ids:
             reason = f"invalid source_id: {adj.source_id}"
-        elif adj.action == "give" and (not adj.target_id or adj.target_id not in corpus.entities):
+        elif adj.action == "give" and (
+            not adj.target_id
+            or (adj.target_id not in corpus.entities and adj.target_id not in corpus.rooms)
+        ):
             reason = f"give action requires valid target_id: {adj.target_id}"
         else:
             match_index: int | None = None
@@ -135,36 +127,42 @@ def post_validate_soft_items(
         if not adj.accepted:
             continue
 
-        if adj.action in ("take", "give"):
-            source = adj.target_id if adj.action == "give" else adj.source_id
-            if source:
-                if source not in soft.surfaced_soft_items:
-                    soft.surfaced_soft_items[source] = {}
-                soft.surfaced_soft_items[source][adj.item_name] = (
-                    soft.surfaced_soft_items[source].get(adj.item_name, 0) + adj.count
-                )
-            if adj.action == "take":
-                for _ in range(adj.count):
-                    soft.soft_inventory.append(adj.item_name)
-            else:  # give
-                removed = 0
-                new_inventory: list[str] = []
-                for item in soft.soft_inventory:
-                    if (
-                        removed < adj.count
-                        and _normalize_item_name(item) == _normalize_item_name(adj.item_name)
-                    ):
-                        removed += 1
-                    else:
-                        new_inventory.append(item)
-                soft.soft_inventory = new_inventory
-        elif adj.action == "examine":
-            source = adj.source_id
-            if source:
-                if source not in soft.surfaced_soft_items:
-                    soft.surfaced_soft_items[source] = {}
-                if adj.item_name not in soft.surfaced_soft_items[source]:
-                    soft.surfaced_soft_items[source][adj.item_name] = 0
+        if adj.action == "take":
+            # Placed items on the source are retrieved first — retrieval is
+            # not extraction and must not pollute the depletion signal.
+            remaining = adj.count
+            contents = soft.soft_contents.get(adj.source_id)
+            if contents:
+                key, _placed = _match_soft_content(contents, adj.item_name)
+                if key is not None:
+                    retrieved = min(contents[key], remaining)
+                    contents[key] -= retrieved
+                    remaining -= retrieved
+                    if contents[key] <= 0:
+                        del contents[key]
+                    if not contents:
+                        del soft.soft_contents[adj.source_id]
+            if remaining:
+                taken = soft.soft_items_taken.setdefault(adj.source_id, {})
+                taken[adj.item_name] = taken.get(adj.item_name, 0) + remaining
+            for _ in range(adj.count):
+                soft.soft_inventory.append(adj.item_name)
+        elif adj.action == "give":
+            removed = 0
+            new_inventory: list[str] = []
+            for item in soft.soft_inventory:
+                if (
+                    removed < adj.count
+                    and _normalize_item_name(item) == _normalize_item_name(adj.item_name)
+                ):
+                    removed += 1
+                else:
+                    new_inventory.append(item)
+            soft.soft_inventory = new_inventory
+            if adj.target_id:
+                placed = soft.soft_contents.setdefault(adj.target_id, {})
+                placed[adj.item_name] = placed.get(adj.item_name, 0) + adj.count
+        # Accepted examines have no state effect.
 
     # Any proposals still pending did not receive an adjudication.
     for prop in pending:

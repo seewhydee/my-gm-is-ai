@@ -48,7 +48,8 @@ class BriefingEntity(BaseModel):
     state: Dict[str, Any] = Field(default_factory=dict)
     entity_notes: List[str] = Field(default_factory=list)
     soft_item_guidance: Optional[str] = None
-    soft_items: List[str] = Field(default_factory=list)
+    soft_items_taken: List[str] = Field(default_factory=list)
+    soft_items_present: List[str] = Field(default_factory=list)
     contains: List[BriefingContainsEntry] = Field(default_factory=list)
     dialogue_paths: Dict[str, str] = Field(default_factory=dict)
     combat_block: Optional[dict[str, Any]] = None
@@ -66,7 +67,8 @@ class BriefingRoom(BaseModel):
     name: str
     description: str
     soft_item_guidance: Optional[str] = None
-    soft_items: List[str] = Field(default_factory=list)
+    soft_items_taken: List[str] = Field(default_factory=list)
+    soft_items_present: List[str] = Field(default_factory=list)
     entities_visible: List[BriefingEntity] = Field(default_factory=list)
     exits_available: List[BriefingExit] = Field(default_factory=list)
     interactions_available: List[BriefingInteraction] = Field(default_factory=list)

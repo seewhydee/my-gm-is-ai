@@ -37,6 +37,33 @@ def _is_stackable(item_id: str, corpus: ModuleCorpus | None) -> bool:
     return "stackable" in entity.tags
 
 
+def _normalize_item_name(name: str) -> str:
+    """Normalize a soft item name for comparison.
+
+    Lowercase, strip leading articles, collapse whitespace, and map
+    spaces to underscores so that "rusty key" matches "rusty_key".
+    """
+    lower = name.lower()
+    for article in ("the ", "a ", "an "):
+        if lower.startswith(article):
+            lower = lower[len(article):]
+    lower = " ".join(lower.split())
+    return lower.replace(" ", "_")
+
+
+def _match_soft_content(contents: dict[str, int], name: str) -> tuple[str | None, int]:
+    """Return (stored_key, count) for *name* in a ``soft_contents`` map.
+
+    Keys are stored verbatim from give adjudications; comparison
+    normalizes both sides so "the Stone" matches "stone".
+    """
+    normalized = _normalize_item_name(name)
+    for key, count in contents.items():
+        if _normalize_item_name(key) == normalized:
+            return key, count
+    return None, 0
+
+
 def is_exit_visible(
     exit_obj: object,
     hard: HardGameState,
@@ -119,9 +146,13 @@ def inject_following_npcs(
         if entity_state.get("hidden", False):
             continue
         notes = soft.entity_notes.get(eid, [])[-5:]
-        entity_soft_items = [
-            f"{name} (taken {count})" if count > 0 else name
-            for name, count in soft.surfaced_soft_items.get(eid, {}).items()
+        entity_soft_items_taken = [
+            f"{name} (taken {count})"
+            for name, count in soft.soft_items_taken.get(eid, {}).items()
+        ]
+        entity_soft_items_present = [
+            f"{name} x{count}"
+            for name, count in soft.soft_contents.get(eid, {}).items()
         ]
         path_descriptions: dict[str, str] = {}
         if entity.type == "npc" and entity.dialogue:
@@ -139,7 +170,8 @@ def inject_following_npcs(
                 state=entity_state,
                 entity_notes=notes,
                 soft_item_guidance=entity.soft_item_guidance,
-                soft_items=entity_soft_items,
+                soft_items_taken=entity_soft_items_taken,
+                soft_items_present=entity_soft_items_present,
                 contains=build_contains(entity, hard, corpus, entity_id=eid),
                 dialogue_paths=path_descriptions,
             )

@@ -149,7 +149,8 @@ class TestBriefingRoom:
             "name": "Simple Room",
             "description": "A plain room.",
         })
-        assert r.soft_items == []
+        assert r.soft_items_taken == []
+        assert r.soft_items_present == []
         assert r.room_notes == []
         assert r.entities_visible == []
         assert r.exits_available == []

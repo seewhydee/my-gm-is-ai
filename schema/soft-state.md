@@ -23,7 +23,8 @@ continuity (NPC moods, environmental details, conversation memory).
   "entity_notes":      { "<entity_id>": ["string", ...] },
   "player_knowledge":  [ { "topic_id": "...", "description": "...", "source_type": "...", "source_id": "...", "turn_learned": 0 } ],
   "turn_history":      [ { /* turn log entry */ } ],
-  "surfaced_soft_items": { "<room_or_entity_id>": { "<item_name>": <count> } },
+  "soft_items_taken":  { "<room_or_entity_id>": { "<item_name>": <count> } },
+  "soft_contents":     { "<room_or_entity_id>": { "<item_name>": <count> } },
   "checks_attempted":  { "<check_id>": ["<room_id>", ...] },
   "revealed_hints":    ["string", ...],
   "dialogue_state":    { /* active NPC conversation state */ },
@@ -228,37 +229,77 @@ Call 2's `knowledge_tags`.
 
 ---
 
-## `surfaced_soft_items` — Player-encountered soft items
+## `soft_items_taken` — Soft-item extraction ledger
 
 ```json
 {
   "axe_head": { "loose stone": 1 },
-  "rubbish_pile": { "cork": 1 }
+  "rubbish_pile": { "cork": 2 }
 }
 ```
 
-A dictionary mapping room IDs and entity IDs to dictionaries of soft item names
-and the number of times the player has successfully interacted with them.
-Unlike the freeform guidance in the corpus (which enumerates every plausible
-pebble), surfaced items are those the player has actually examined, taken, or
-given.
+A dictionary mapping room IDs and entity IDs to dictionaries of soft item
+names and the number of times the player has successfully taken them from
+that source. This is a pure extraction ledger:
+`soft_items_taken[source][name] = N` means exactly "the player has extracted
+N of *name* from *source*". Entries are created only by accepted takes of
+ambient soft items, so every count is ≥ 1 — examines and gives never write
+here, and retrieving a placed item (see `soft_contents` below) is not
+extraction.
 
 ### Population rules
 
 | Trigger | Action |
 |---------|--------|
-| `examine` targets a soft item and LLM Call 2 accepts the proposal | The engine records the item name under the current room with count 1. |
-| `transfer` takes a soft item from a source and LLM Call 2 accepts | The engine records the item name under the source room or entity, incrementing its count. |
-| `transfer` gives a soft item to a target and LLM Call 2 accepts | The engine records the item name under the target entity, incrementing its count. |
-| Item already surfaced | Count is incremented rather than deduplicated. |
+| `transfer` takes a soft item from a source and LLM Call 2 accepts | The engine increments the item's count under the source room or entity — but only for the portion not covered by `soft_contents` on that source (retrieval is not extraction). |
+| `examine` targets a soft item and LLM Call 2 accepts the proposal | No state effect; the adjudication affects narration only. Durable examine facts should be recorded via `room_note`/`entity_note`. |
+| `transfer` gives a soft item to a target and LLM Call 2 accepts | No effect on this field; the placement is recorded in `soft_contents`. |
 
 ### Usage in GMBriefing
 
-The Context Assembler populates `BriefingRoom.soft_items` and
-`BriefingEntity.soft_items` from the keys of this field. Non-surfaced soft items
-are omitted, keeping the briefing focused on items the player has observed.
-Carried soft items are surfaced separately via `soft_inventory` in the player
-state block.
+The Context Assembler populates `BriefingRoom.soft_items_taken` and
+`BriefingEntity.soft_items_taken` from this field, formatted as
+`"name (taken N)"`. LLM Call 2 reads these counts as a depletion signal when
+adjudicating further takes from the same source. Carried soft items are
+surfaced separately via `soft_inventory` in the player state block.
+
+---
+
+## `soft_contents` — Placed soft items
+
+```json
+{
+  "korbar": { "cork": 1 },
+  "bag_floor": { "rock": 2 }
+}
+```
+
+A dictionary mapping room IDs and entity IDs to the soft items the player
+has given, placed, or dropped there, with current counts. Unlike
+`soft_items_taken` (a monotonic history), this is *current state*: entries
+are incremented on accepted gives and decremented when the placed items are
+retrieved. Counts are always ≥ 1 — zero-count entries (and emptied parent
+entries) are pruned.
+
+Items in `soft_contents` have mechanically verified existence — they came
+out of the player's own `soft_inventory` via an accepted give — so
+retrieving them from a room or non-NPC entity needs no adjudication; from
+an NPC, LLM Call 2 adjudicates consent. Lookups normalize names (via
+`_normalize_item_name`), so "the Stone" matches a stored "stone".
+
+### Population rules
+
+| Trigger | Action |
+|---------|--------|
+| `transfer` gives a soft item to an entity and LLM Call 2 accepts | The engine removes the item from `soft_inventory` and increments its count under the target entity. |
+| `transfer` gives a soft item to a room (a drop) and LLM Call 2 accepts | The engine removes the item from `soft_inventory` and increments its count under the room ID. |
+| Player retrieves a placed item | The engine decrements the count; entries reaching zero (and emptied parent entries) are pruned. |
+
+### Usage in GMBriefing
+
+The Context Assembler populates `BriefingRoom.soft_items_present` and
+`BriefingEntity.soft_items_present` from this field, formatted as
+`"name xN"`. Placed items can be taken back like ordinary contents.
 
 ---
 
@@ -646,7 +687,8 @@ post-validates them against the NPC's `attitude_limits` using the same rules:
   "room_notes": {},
   "entity_notes": {},
   "player_knowledge": [],
-  "surfaced_soft_items": {},
+  "soft_items_taken": {},
+  "soft_contents": {},
   "checks_attempted": {},
   "revealed_hints": [],
   "turn_history": [],

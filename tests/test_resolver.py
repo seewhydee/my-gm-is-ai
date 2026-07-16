@@ -193,7 +193,7 @@ class TestResolveExamine:
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.success is True
         assert result.soft_item_proposals == []
-        assert result.surfaced_soft_items == {}
+        assert result.soft_content_takes == {}
 
     def test_non_rigorous_examine_costs_no_turn(self, state_manager):
         """A default (non-rigorous) examine does not cost a turn."""
@@ -1600,3 +1600,138 @@ class TestResolveRoomChangeDialogueExit:
         assert result is not None
         assert result["npc_id"] == "korbar"
 
+
+
+class TestSoftContentRetrieval:
+    """resolve_transfer consults soft_contents before ambient proposals."""
+
+    def test_mechanical_retrieval_from_feature(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        soft.soft_contents["rubbish_pile"] = {"stone": 1}
+        action = TransferAction(
+            action_type="transfer", target="rubbish_pile",
+            taken_items=["stone"], detail="Taking the stone back",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.soft_item_proposals == []
+        assert result.soft_content_takes == {"rubbish_pile": {"stone": 1}}
+        # Applying the retrieval to state is the engine's job.
+        assert soft.soft_contents == {"rubbish_pile": {"stone": 1}}
+        assert soft.soft_inventory == []
+
+    def test_multi_count_retrieval_fully_mechanical(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        soft.soft_contents["rubbish_pile"] = {"stone": 3}
+        action = TransferAction(
+            action_type="transfer", target="rubbish_pile",
+            taken_counts={"stone": 2}, detail="Taking two stones",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.soft_item_proposals == []
+        assert result.soft_content_takes == {"rubbish_pile": {"stone": 2}}
+
+    def test_multi_count_ambient_take_not_blocked(self, state_manager):
+        """Soft names are exempt from the stackable guard: count-2 ambient
+        takes reach the proposal stage."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        action = TransferAction(
+            action_type="transfer", target="rubbish_pile",
+            taken_counts={"cork": 2}, detail="Taking two corks",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.soft_content_takes == {}
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.action == "take"
+        assert proposal.source_id == "rubbish_pile"
+        assert proposal.count == 2
+
+    def test_room_targeted_take_finds_placed_item_on_entity(self, state_manager):
+        """Ambiguous source: a room-targeted take searches entities in the room."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        soft.soft_contents["rubbish_pile"] = {"stone": 1}
+        action = TransferAction(
+            action_type="transfer", target="bag_floor",
+            taken_items=["stone"], detail="Taking the stone",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.soft_item_proposals == []
+        assert result.soft_content_takes == {"rubbish_pile": {"stone": 1}}
+
+    def test_retrieval_from_npc_defers_to_call2(self, state_manager):
+        """NPC-held soft items need consent: proposal, not mechanical retrieval."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        soft.soft_contents["korbar"] = {"cork": 1}
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            taken_items=["cork"], detail="Taking the cork back",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.soft_content_takes == {}
+        assert len(result.soft_item_proposals) == 1
+        assert result.soft_item_proposals[0].source_id == "korbar"
+
+    def test_retrieval_name_normalization(self, state_manager):
+        """Stored keys are verbatim; lookup normalizes articles and case."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        soft.soft_contents["rubbish_pile"] = {"Stone": 1}
+        action = TransferAction(
+            action_type="transfer", target="rubbish_pile",
+            taken_items=["the stone"], detail="Taking the stone",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.soft_item_proposals == []
+        assert result.soft_content_takes == {"rubbish_pile": {"Stone": 1}}
+
+    def test_retrieval_from_closed_container_fails(self, state_manager):
+        from tests.helpers import _mk_item_entity
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        chest = _mk_item_entity("chest", description="A wooden chest.", tags=["container"])
+        chest.state_fields = {"open": {"type": "boolean", "description": "Open?"}}
+        corpus.entities["chest"] = chest
+        hard.room_contains["bag_floor"]["chest"] = 1
+        hard.entity_states["chest"] = {"open": False}
+        soft.soft_contents["chest"] = {"stone": 1}
+
+        action = TransferAction(
+            action_type="transfer", target="chest",
+            taken_items=["stone"], detail="Taking the stone from the chest",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "closed" in result.error.lower()
+        assert result.soft_content_takes == {}
+        assert soft.soft_contents == {"chest": {"stone": 1}}
+
+        # Once open, the same take succeeds mechanically.
+        hard.entity_states["chest"]["open"] = True
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.soft_content_takes == {"chest": {"stone": 1}}

@@ -1,742 +1,440 @@
-# Design: Narrative-Adjudicated Soft Items
+# Design: Soft-Item State Split — Extraction Ledger + Content Tracking
 
-## 1. Problem
+## 1. Preamble: The Issue
 
-The soft-items subsystem (`doc/soft-items.md`) requires module authors
-to exhaustively pre-list every plausible ambient object on each room
-and entity in the corpus.  A cave room needs `"rock"`, `"pebble"`,
-`"sharp stone"`, `"dust"`, `"cobweb"`, `"bone fragment"`, `"loose
-gravel"`, etc. enumerated in its `soft_items` field, or the engine
-rejects any player attempt to interact with objects not on the list.
+The revamped soft-items subsystem (`doc/soft-items.md`) tracks
+player-encountered soft items in a single soft-state field,
+`surfaced_soft_items: dict[room_or_entity_id, dict[item_name, count]]`.
+Review of the implementation shows this one field is currently asked to
+carry **three different meanings at once**, and fails to carry a fourth
+meaning we actually need:
 
-This is fragile: if the corpus author overlooks soft items and leaves
-a cave room with `soft_items: []`, a player who says "I pick up a
-pebble" gets *"You search but find no such thing"* —
-immersion-breaking in a room the prose describes as littered with
-rubble.
+1. **Extraction counts (the load-bearing use).**  Accepted takes
+   increment a count on the source (`post_validate.py`).  The prose
+   template (`prose.j2` §Soft Item Adjudication) explicitly instructs
+   Call 2 to read these `(taken N)` counts as a *depletion* signal —
+   the anti-farming guard promised in `doc/soft-items.md`.  This is the
+   only structured, non-evictable record of how many times a soft item
+   has been extracted from a source (turn history and notes are capped
+   at 5 entries each).
 
-The fundamental tension is that the LLM's common sense *can* judge
-whether a rock exists in a cave, but the engine's corpus whitelist is
-the sole authority.  An exhaustive whitelist is the wrong shape for
-the safety problem.
+2. **Examine records (semantically muddy).**  Accepted examines write a
+   count-0 entry attributed to the *current room* — `ExamineAction`
+   carries no source, so "I examine the lint on the rubbish pile"
+   surfaces `lint` on the room, not the pile.  These entries are never
+   evicted or decremented, so they clutter briefings without bound and
+   assert stale presence (examine a quill → room claims a quill forever,
+   even after it is taken from the desk).  The information they preserve
+   is the weakest possible (a bare name); the *valuable* part of an
+   examine — the established description — is discarded, and is anyway
+   the job of the `room_note`/`entity_note` channel, which is already
+   used when the player examines feature entities and soft room
+   features.
 
-## 2. Core Insight: Call 2 Already Adjudicates Narrative Plausibility
+3. **Give records (semantically wrong).**  Accepted gives increment the
+   *same* counter on the *target* (`post_validate.py`).  Give a cork to
+   Korbar and future briefings show Korbar with `"cork (taken 1)"` —
+   which Call 2 is instructed to read as *depletion of Korbar*.  The
+   depletion signal is actively corrupted by gives, and nothing records
+   the true fact ("Korbar now has the cork").
 
-LLM Call 2 (Prose) already produces structured, non-narrative output
-that the engine post-validates after Call 2 returns.  The validation
-lives in `mgmai/engine/post_validate.py` and is orchestrated by
-`apply_post_validation()`, which is invoked from the game loop
-(`mgmai/game/loop.py`) after Call 2 completes — *not* from inside the
-engine's `resolve()` step.  The established pattern is:
+4. **Missing: content tracking.**  There is no representation of where
+   placed soft items currently are.  "I put the stone on the table"
+   is recorded only as a bogus take-count on the table; "I drop the
+   stone" (room target) is structurally *rejected*, because
+   `resolve_transfer` builds room-targeted give proposals with
+   `target_id=None` (`resolver.py`) and post-validation rejects gives
+   without a valid entity target (`post_validate.py`).  The only
+   workaround is a `soft_inventory_remove` patch plus a freeform room
+   note — unstructured, uncountable, and evicted after 5 notes.
 
-- **`knowledge_tags`** — which `will_reveal` topics the NPC disclosed
-  this turn.  The engine validates against corpus conditions
-  (`will_reveal.conditions`) and applies side effects (`set_flag`,
-  `set_entity_state`).  Implemented by `post_validate_knowledge_tags`.
-- **`attitude_changes`** — proposed shifts in NPC disposition.  The
-  engine validates against `attitude_limits` (step per turn, min/max
-  bounds) and the requirement of a non-empty `reason`.  Implemented by
-  `post_validate_attitude_changes`.
-- **`conversation_note`** — a narrative summary of a concluded
-  dialogue, written entirely by Call 2, stored by the engine as an
-  `entity_note`.
-- **`npc_response`** — extracted spoken text, used by the engine to
-  populate `conversation_log`.
+In addition, two further defects survive from the pre-revamp design:
 
-In all four cases, Call 2 is not merely a narrator but also doubles as
-the *narrative authority* — it decides what the NPC said, how their
-attitude shifted, what was revealed, and how the conversation should
-be remembered.  The engine provides a safety fence (gating conditions,
-bounds checks) but does *not* attempt to predict or whitelist the
-LLM's output.  In every case the engine's post-validation *mutates the
-`EngineResult` in place* (e.g. `revelations_applied`,
-`attitude_changes_applied`) — so adding post-Call-2 soft-item results
-to `EngineResult` follows an established flow.
+- A **dead code path**: `ResolutionResult.surfaced_soft_items`
+  (`resolver.py`) is only ever populated by `_fire_on_examine_events`,
+  which accumulates it from nested `_resolve_interaction` results that
+  never set the field.  The merge loop in `engine.py` (step 5, "persist
+  surfaced items") therefore always iterates an empty dict.
+- A **latent multi-take bug**: `resolve_transfer` rejects `count > 1`
+  for any item not tagged stackable in the corpus, and `_is_stackable`
+  (`engine/utils.py`) treats unknown names as non-stackable — i.e.
+  every soft item.  "Take 2 stones" therefore fails outright today,
+  before any soft-item handling.  The retrieval design below requires
+  multi-count soft takes, so the guard must be relaxed for soft item
+  names (§4.5).
 
-Soft items are the same category of problem: we want *narrative
-plausibility*, not mechanical truth.  A rock belongs in a cave because
-the fiction says so, not because a corpus entry says so.  The engine
-should gate the mechanical consequences (inventory placement,
-surfacing), not the ontological question of whether the rock exists.
+**The plan: split the field into two single-purpose structures.**
 
-**The proposal: extend Call 2's structured output to include
-soft-item adjudication, route those adjudications through a new
-`post_validate_soft_items()` in `post_validate.py`, and stop checking
-corpus `soft_items` lists in the resolver.**
+- `soft_items_taken` — a pure *extraction ledger*: written only on
+  accepted takes of ambient items.  `soft_items_taken[source][name] = N`
+  means exactly "the player has extracted N of *name* from *source*."
+- `soft_contents` — *current placement* of soft items the player has
+  given, placed, or dropped: incremented on accepted gives (including
+  room targets, which become legal), decremented when placed items are
+  retrieved.
 
-## 3. Current Mechanics (what changes)
+Examines no longer write soft-item state at all; durable examine facts
+route through the existing note channel.  The dead code path is
+deleted.
 
-The reader needs the precise current flow, since several details
-matter for the design.
+## 2. Design Rationale
 
-### 3.1 Where corpus `soft_items` is consulted today
+### 2.1 Take-only surfacing
 
-Corpus `soft_items` (`Room.soft_items`, `Entity.soft_items` — both
-`List[str]`) are consulted in exactly three places:
+The examine round-trip (proposal → adjudication) is **kept**: it is the
+channel that tells Call 2 "the player is examining an unverified item —
+decide whether it exists and narrate accordingly."  What is removed is
+only the *state write* on acceptance.  Justification:
 
-1. **`resolve_examine`** (`resolver.py`): builds
-   `all_soft = set(room.soft_items) ∪ {ent.soft_items for ent in
-   room contents}`.  If the examine target is not a hard room/entity,
-   it is matched against `all_soft`; on match, the item is surfaced on
-   its source (room first, else the owning entity).  This is a
-   *fallback* path — hard room/entity examines are handled earlier and
-   fire `on_examine` events.  **Soft-item examines never fire
-   `on_examine` events**, so soft items carry no `on_examine`-gated
-   mechanical consequence today.
+- Call 1 is already told not to predict presence from surfaced lists
+  (`ruling.j2` §Soft Items: "Do not try to predict which items are
+  present; propose what the player's input asks for... trust the
+  narrator to adjudicate"), so a later take does not mechanically need
+  the examine record.
+- Call 2 default-accepts mundane, setting-appropriate items, so an
+  examine-then-take sequence re-accepts on fresh adjudication.
+- Short-term continuity is covered by `turn_history` (5 turns).
+  Durable continuity, where it matters, belongs in
+  `room_notes`/`entity_notes` — with the description intact, the source
+  correctly attributed, and 5-entry eviction.  `ruling.j2` gains a line
+  of guidance to this effect (§6.2).
+- Rejected examines were never recorded, so no regression there.
 
-2. **`resolve_transfer`** (`resolver.py`): builds
-   `available_pool: dict[str, int]` — a *quantity map* aggregating
-   hard world-items *and* soft items (each soft name counted as `+1`).
-   `taken_items` are validated against `available_pool`; `given_items`
-   are validated against `soft.soft_inventory`.  Note `available_pool`
-   is broader than `all_soft` (it includes hard items with counts);
-   the two must not be conflated.
+With takes as the only writer, every entry has count ≥ 1, the
+`(taken N)` display becomes uniform, and the depletion guidance in
+`prose.j2` becomes literally true of the data.
 
-3. **`_validate_soft_patches`** (`engine.py`, inside engine step 5,
-   *pre*-Call-2): a `soft_inventory_add` patch is validated against
-   `all_soft` for the current room + contained entities.  So
-   `soft_inventory_add` *is* already gated by the corpus today.  The
-   gap is one of *scope* (current room only) and that
-   engine-internal resolver patches bypass this check entirely.
+### 2.2 Content tracking as a separate structure
 
-### 3.2 Where corpus `soft_items` is *not* consulted
-
-Crucially, corpus `soft_items` is **never briefed to either LLM**.
-The Context Assembler populates `BriefingRoom.soft_items` and
-`BriefingEntity.soft_items` from `soft.surfaced_soft_items` (discovered
-items only), never from the corpus lists (`assembler.py`).  So today,
-Call 1 and Call 2 only ever see soft items the player has already
-touched.  This is central to the design: there is currently *no
-channel* by which the corpus `soft_items` list reaches Call 2 as a
-"hint."  Any hint mechanism must be built fresh.
-
-### 3.3 What `surfaced_soft_items` tracks (and doesn't)
-
-`surfaced_soft_items: dict[room_or_entity_id, list[str]]` records
-names the player has examined/taken/given.  It deduplicates by string
-name.  It does **not** track counts, depletion, or how many times a
-name was taken.  A cave with "rock" surfaced once is indistinguishable
-from a desk with one "quill."  Depletion is therefore not an
-engine-knowable fact; it can only be inferred by Call 2 from narrative
-context.
-
-### 3.4 Current soft-item stacking (or lack thereof)
-
-Hard items in the corpus may declare quantities (e.g.,
-`contains: [{"rock": 3}]`), which the resolver tracks via
-`available_pool: dict[str, int]`.  Each take decrements the count.
-Soft items have no such mechanism: `surfaced_soft_items` is a set
-(names only), and each soft name is added to `available_pool` with
-count 1 regardless of how many might plausibly exist.  There is no
-way for the engine or Call 2 to distinguish "the player took one rock"
-from "the player took fifteen rocks."
-
-## 4. Design
-
-### 4.1 Changed flow
-
-```
-Player: "I pick up the rock and examine it."
-
-Call 1 → TransferAction(target="bag_floor", taken_items=["rock"])
-          (LLM proposes freely — no corpus soft_items lookup)
-
-Resolver → does NOT check bag_floor.soft_items for "rock".
-         → records "rock" as a pending SoftItemProposal on the
-           ResolutionResult (source_id="bag_floor", action="take").
-
-Engine  → step 5: _validate_soft_patches no longer accepts
-           soft_inventory_add patches from Call 1 (deprecated path —
-           see §4.5).  The proposal is carried on EngineResult.
-         → EngineResult.soft_item_proposals = [
-             { item_name: "rock", action: "take",
-               source_id: "bag_floor", target_id: null,
-               proposed_by: "call_1" }
-           ]
-
-Call 2  → receives the EngineResult (including soft_item_proposals)
-         → sees surfaced_soft_items["bag_floor"] = {"rock": 1} from
-           a previous take
-         → decides: rock on a cave floor?  Still plausible (count is
-           low, source is far from exhausted).
-         → narrates: "You stoop and pick up a smooth grey stone from
-           the rubble."
-         → NarrationOutput.soft_item_adjudications = [
-             { item_name: "rock", action: "take", accepted: true,
-               source_id: "bag_floor", target_id: null,
-               justification: "The bag floor is covered in debris
-               and loose stones." }
-           ]
-
-Loop    → apply_post_validation() calls post_validate_soft_items():
-         → validates adjudication shape and mechanical consistency
-         → for accepted "take": appends "rock" to soft_inventory,
-           increments surfaced_soft_items["bag_floor"]["rock"] → 2
-         → mutates EngineResult: soft_items_accepted / soft_items_rejected
-```
-
-### 4.2 Schemas
-
-```python
-class SoftItemProposal(BaseModel):
-    item_name: str
-    action: Literal["take", "give", "examine"]
-    source_id: str            # room or entity the item comes from
-    target_id: Optional[str]  # entity receiving a "give"
-    proposed_by: Literal["call_1"] = "call_1"
-
-class SoftItemAdjudication(BaseModel):
-    item_name: str
-    action: Literal["take", "give", "examine"]
-    accepted: bool
-    source_id: str            # echoed from the proposal
-    target_id: Optional[str]
-    justification: Optional[str]   # required when accepted=False
-
-class NarrationOutput(BaseModel):
-    narration: str
-    npc_response: Optional[str] = None
-    knowledge_tags: Optional[KnowledgeTags] = None
-    attitude_changes: Optional[Dict[str, AttitudeChange]] = None
-    conversation_note: Optional[str] = None
-    terminate_chain: bool = False
-    soft_item_adjudications: List[SoftItemAdjudication] = Field(default_factory=list)
-```
-
-`SoftItemProposal` is added to `EngineResult` (produced by the engine,
-pre-Call-2, mirroring how the engine already populates
-`EngineResult`).  `SoftItemAdjudication` is added to `NarrationOutput`
-(produced by Call 2).  The two are joined inside
-`post_validate_soft_items()`.
-
-**`source_id` is required on both proposals and adjudications.**  The
-engine needs a surfacing target, and cannot derive the source from
-item name alone (a name can belong to multiple sources).  Call 1
-already specifies the source via `TransferAction.target` /
-`ExamineAction.target`, and has access to the room ID and all present
-entity IDs via the GM Briefing.  Call 2 echoes the proposal's
-`source_id`; see §4.4 for the rule that makes this always possible.
-
-### 4.3 `justification` is required only on rejection
-
-On `accepted: true`, `justification` is optional — every accepted
-pebble should not cost a justification token.  On `accepted: false`,
-`justification` must be a non-empty string; Call 2's narration already
-explains the rejection to the player, and the justification is an
-engine-side audit record.  (This matches the asymmetry of
-`attitude_changes`, where `reason` is always required because every
-attitude change is consequential — but soft-item acceptance is
-consequence-light.)
-
-### 4.4 Call 2 may only adjudicate items Call 1 proposed
-
-Call 2 receives `EngineResult.soft_item_proposals` and adjudicates
-each.  Call 2 **may not invent new soft items** in its
-`soft_item_adjudications`.  Rationale:
-
-- **Inventory traceability.** `soft_inventory` changes must be
-  traceable to a Call-1-ruled `TransferAction` recorded in
-  `turn_history`.  Spontaneous Call-2 takes would break that
-  invariant.
-- **Source bookkeeping.** Without a Call-1 proposal, there is no
-  `source_id` to surface on, and the engine cannot derive one.
-
-If the player's input implies an item Call 1 missed ("I smash the
-bottle"), the correct behaviour is for Call 1 to propose it.  The Call
-1 prompt (§6.1) instructs Call 1 to propose soft items generously when
-the player's input implies them.  The engine's post-validation
-**rejects** any adjudication whose `item_name`+`action` does not match
-a pending proposal (see §4.6 rule 6).
-
-**Single point of failure.**  This constraint means the system's
-coverage of player intent is only as good as Call 1's proposal
-generation.  If Call 1 is conservative or misses implied items, the
-player gets the same failure mode as today ("you find no such thing"),
-just with a different root cause.  The mitigation is prompt
-engineering (§6.1) — Call 1 must be instructed to propose generously
-and to infer implied items from context.  This is an acceptable
-trade-off: the alternative (allowing Call 2 to invent items) breaks
-inventory traceability.
-
-### 4.5 Split of the soft-state patch space
-
-Under the new design:
-
-- **`soft_inventory_add`** — **deprecated as a Call-1 patch.**  Soft
-  additions flow exclusively through `TransferAction`/`ExamineAction`
-  → proposal → Call-2 adjudication → `post_validate_soft_items`.  The
-  engine rejects `soft_inventory_add` patches from
-  `proposed_soft_state_patches` (they appear in
-  `soft_state_patches_rejected`).  This removes the current
-  current-room-scoped corpus check in `_validate_soft_patches`
-  (`engine.py`), which is now redundant: Call 2 owns existence.
-
-- **`soft_inventory_remove`** — **retained.**  Call 1 may still remove
-  items from `soft_inventory` for mechanical reasons (consuming an
-  item as part of an interaction).  The engine validates the item
-  exists in `soft_inventory` (unchanged).
-
-- **Other patches** (`room_note`, `entity_note`, `appearance_note_add`,
-  `set_improvised_weapon`) — unchanged.
-
-This cleanly splits the soft-state patch space:
-
-| Concern | Authority |
-|---------|-----------|
-| Narrative existence / acquisition | Call 2 adjudicates |
-| Mechanical consumption / removal | Call 1 proposes, engine validates |
-| Narrative notes / appearance | Call 1 proposes, engine validates |
-
-### 4.6 Engine post-validation rules
-
-`post_validate_soft_items(adjudications, proposals, soft, hard, corpus,
-result)` follows the shape of `post_validate_knowledge_tags` /
-`post_validate_attitude_changes`.  For each adjudication:
-
-| Rule | Failure action |
-|------|----------------|
-| 1. `item_name` non-empty | Reject |
-| 2. `action` ∈ {take, give, examine} | Reject |
-| 3. `accepted` is boolean | Reject |
-| 4. If `accepted == false`: `justification` non-empty | Reject |
-| 5. `source_id` present and is a valid room or entity ID; `target_id` required and valid for `give` actions | Reject |
-| 6. `item_name` + `action` matches a pending `SoftItemProposal` (case-insensitive after normalization) | Reject |
-| 7. Hard-entity collision: normalized `item_name` does not match a corpus entity ID or display name | Reject |
-| 8. For `take` (accepted): engine does *not* re-check a corpus list. Duplicate-take is permitted — stacking identical names (two "rock") is allowed. `surfaced_soft_items` tracks the count | Apply: append to `soft_inventory`, increment count on `source_id` |
-| 9. For `give` (accepted): `item_name` must be present in `soft.soft_inventory` | Apply: remove from `soft_inventory`, increment count on `target_id` |
-| 10. For `examine` (accepted): surface on `source_id` only; no inventory change | Apply: mark as surfaced on `source_id` (count 0 if not already present) |
-| 11. Rejected adjudications | Log; no state change. Call 2's narration already explains the rejection, so there is no separate player-visible error. |
-
-**Default for missing/empty adjudications.**  If
-`soft_item_adjudications` is absent or empty while proposals exist,
-the engine treats every proposal as **rejected** (no state change).
-Rejection is the safe default for inventory correctness: a missing
-adjudication is treated as "Call 2 declined to confirm existence,"
-which must not silently add items to the player's inventory.
-
-### 4.7 Stacking and depletion
-
-Soft items are **stackable by name**.  The engine permits taking
-multiple items of the same name (e.g., two "rock" entries in
-`soft_inventory`).  `surfaced_soft_items` tracks how many times each
-name has been taken from each source, giving Call 2 the information it
-needs to judge depletion.
-
-**Schema change.**  `surfaced_soft_items` changes from
-`dict[str, list[str]]` to `dict[str, dict[str, int]]`:
+Placement is a different kind of fact from extraction: it is *current
+state*, requiring increment and decrement, whereas the extraction ledger
+is a monotonic history.  Folding both into one counter is what produced
+the give-corruption above.  `soft_contents` mirrors the hard-state
+containment maps (`room_contains` / `entity_contains`) in shape, but for
+name-keyed soft items:
 
 ```json
 {
-  "bag_floor": { "rock": 3, "pebble": 1 },
-  "rubbish_pile": { "cork": 1, "lint clump": 2 }
-}
-```
-
-The integer counts how many times the player has taken that item from
-that source.  An examine sets the count to 0 (surfaced but not taken)
-if the name is not already present, or leaves the count unchanged if
-it is.
-
-**Briefing format.**  The Context Assembler briefs counts to Call 2.
-The briefing surface includes both the item name and its take count,
-so Call 2 can judge whether the source is plausibly exhausted.  For
-example:
-
-```
-Soft items on bag_floor: rock (taken 3), pebble (taken 1)
-```
-
-Call 2 is prompted to use this count as a depletion signal: a cave
-with "rock" taken 3 times likely still has more, but a desk with
-"quill" taken once may not.  The engine does **not** enforce depletion
-— that remains Call 2's judgment — but it provides the data to make
-that judgment informed.
-
-**`soft_inventory` remains a flat list.**  The player's carried items
-are still `List[str]` (e.g., `["rock", "rock", "pebble"]`).  Duplicate
-entries are allowed, matching existing semantics
-(`schema/soft-state.md`: "Duplicate entries are allowed").  The
-inventory is not count-deduplicated — each take appends a string.
-
-**Failure mode.**  The worst case is a player accumulating a
-narratively silly number of identical items (47 rocks from one cave)
-because Call 2 fails to judge depletion.  This is mechanically
-harmless (see §5, Layer 5) and unlikely in practice, since Call 2 sees
-the rising count in its briefing and is prompted to refuse when a
-source is plausibly exhausted.
-
-### 4.8 Hard-entity collision check (Layer 4)
-
-This check is a backstop, not the primary gate.  It matches the
-adjudication `item_name` against corpus entity IDs and display names
-**after normalization** (lowercase, strip articles, collapse
-whitespace, map spaces↔underscores).  This catches "rusty key" vs
-`rusty_key` but cannot catch semantic collisions ("the old key" vs
-`rusty_key`).
-
-Call 1's prompt (§6.1) is the primary defence: it is instructed to
-check whether a proposed item matches a hard entity in the room before
-proposing it as a soft item.  The engine's collision check catches
-cases where Call 1 misses this.  A miss is not catastrophic because
-soft items have no mechanical leverage — the player would end up with
-a soft "rusty key" that doesn't unlock anything, while the hard
-`rusty_key` entity remains uncollected.  This is confusing but not
-game-breaking, and the engine's entity-ID check prevents the most
-common collisions.
-
-## 5. Safety Model
-
-The safety model shifts from "engine whitelist" to "LLM prompt
-constraints + engine post-validation of adjudication shape."  The
-layers are:
-
-### Layer 1: Call 1 prompt guardrails
-Call 1 is instructed not to propose magical, valuable, or
-game-breaking items, and to check for hard-entity collisions before
-proposing a soft item.  This catches the most obvious failure modes
-before they reach Call 2.
-
-### Layer 2: Call 2's narrative judgment
-Call 2, with full narrative context (room description, recent history,
-the verbatim chat log, the player's `soft_inventory`, and
-`soft_item_guidance` from the corpus), is the primary plausibility
-gate.  It rejects items contradicted by established fiction, depleted
-sources, or setting inappropriateness.  It receives take counts from
-`surfaced_soft_items` to judge depletion.
-
-### Layer 3: Engine post-validation of adjudication shape
-`post_validate_soft_items` validates well-formedness and mechanical
-consistency (no giving items not held, source/target validity,
-proposal matching).  This prevents corrupted outputs from producing
-corrupted state.
-
-### Layer 4: Hard-entity ID collision check
-See §4.8.  Prevents soft-item-ifying a hard item.
-
-### Layer 5: No mechanical leverage
-Soft items carry no mechanical effect — they don't deal damage, unlock
-doors, or satisfy conditions.  They do not fire `on_examine` events
-(only hard room/entity examines do).  The worst-case hallucination is
-a narratively silly soft inventory, which is mechanically harmless.
-The improvised-weapon path (`set_improvised_weapon`) is the *separate,
-mechanically consequential* route for using a soft item as a weapon,
-and remains Call-1-validated.
-
-### Adversarial players
-A player who says "I pick up the Wand of Wishing" routes through both
-LLMs.  Call 1 should refuse to propose it (guardrails); if Call 1
-proposes it, Call 2 should reject it (guardrails); if both fail, the
-engine's entity-ID check catches it if it is a corpus entity; if it is
-not a corpus entity and both LLMs accept, the player receives a soft
-item named "Wand of Wishing" with no mechanical meaning.  The narrator
-can describe it as "a gnarled twig you optimistically call a wand."
-This is an acceptable failure mode: the system prevents absurd things
-from *having mechanical consequences*, not from being *said*.
-
-## 6. Prompt Changes
-
-### 6.1 Call 1 (Ruling)
-
-Add to the Call 1 system prompt:
-
-```
-You may propose interactions with any mundane object that could plausibly
-exist in the current environment — rocks, dust, loose coins, scraps of
-cloth, bone fragments, water droplets, and similar ambient items.  These
-are "soft items" — they carry no mechanical stats and are identified by
-their common name.
-
-The prose narrator (Call 2) will judge whether each soft item you propose
-actually exists in the scene.  Do not try to predict which items are
-present; propose what the player's input asks for (including items the
-player's action implies, such as "broken glass" when the player smashes a
-bottle), and trust the narrator to adjudicate.
-
-Do NOT propose soft items that are:
-- Obviously magical (wands, scrolls, potions, enchanted objects)
-- Extremely valuable (gems, jewellery, gold bars)
-- Dedicated weapons or armour (swords, shields, helmets)
-- Plot-critical items that would short-circuit the adventure
-- Anachronistic or setting-inappropriate objects
-
-Before proposing a soft item, check whether the item name matches a hard
-entity (by ID or display name) currently present in the room.  If it does,
-target that entity directly — do not propose it as a soft item.  Soft items
-are for ambient objects that have no corpus entity.
-
-When the player's input implies interacting with a soft item, use the normal
-action types: TransferAction for taking/giving, ExamineAction for examining.
-Set source_id to the room ID if the item comes from the room environment, or
-to the entity ID if the player specifies a source (e.g., "take a cork from
-the rubbish pile").
-
-If the player grabs a non-standard object to use as a weapon, that is NOT a
-soft-item take: propose a set_improvised_weapon patch instead, with the
-object's mechanical parameters.  Soft items are narrative props; improvised
-weapons are mechanical.
-```
-
-### 6.2 Call 2 (Prose)
-
-Add to the Call 2 system prompt:
-
-```
-SOFT ITEM ADJUDICATION
----------------------
-The EngineResult may contain "soft_item_proposals" — items the ruling LLM
-believes the player is trying to take, give, or examine, but whose existence
-in the scene has not been mechanically verified.
-
-For each proposal, you must decide whether the item plausibly exists in the
-current scene and produce a "soft_item_adjudications" entry.  Echo the
-proposal's source_id and target_id.  Your decision should be reflected in
-your narration: accept → narrate finding/using the item; reject → narrate
-not finding it.
-
-Guidelines for acceptance:
-- Default to ACCEPTING mundane items that fit the environment (rocks in a
-  cave, dust in an attic, coins in a purse).
-- Consult soft_item_guidance (if present on the room or source entity) as
-  a hint about what the environment contains.  You may accept items not
-  mentioned and reject items mentioned — the guidance is advisory.
-- REJECT items that are magical, legendary, extremely valuable, anachronistic,
-  or would break the adventure's balance.
-- REJECT items that contradict recent narrative (e.g., accepting "a torch"
-  in a room just described as pitch-black with no light sources).
-- REJECT items the player has already taken excessively, if the source is
-  now depleted.  The surfaced-soft-items briefing shows take counts per
-  item per source — use this to judge depletion.  A cave has many rocks
-  (low count is fine), but a desk has only one quill (count ≥ 1 means
-  depleted).
-
-You may ONLY adjudicate items that appear in soft_item_proposals.  Do not
-invent new soft items.
-
-When rejecting, provide a brief "justification" (one sentence).  When
-accepting, justification is optional.
-```
-
-## 7. Corpus Changes
-
-### 7.1 `soft_items` removed
-
-The `soft_items` field is removed from `Room` and `Entity`.  There is
-no backward compatibility shim: this project is pre-alpha, and a
-shim would only preserve a validation gate the design explicitly
-removes.  Existing modules must drop their `soft_items` lists (or
-convert any authorially-significant ones to `soft_item_guidance`, §7.2).
-
-### 7.2 `soft_item_guidance` (optional)
-
-Because corpus `soft_items` is never briefed today (§3.2), removing it
-loses nothing the LLMs currently see.  But authors may want to *seed*
-Call 2's judgment with hints (e.g., "this room is barren; reject all
-soft items," or "the desk has a quill and inkwell").  An optional
-freeform string is added:
-
-```json
-{
-  "rooms": {
-    "void_chamber": { "soft_item_guidance": "Barren. No ambient items." },
-    "sages_desk":   { "soft_item_guidance": "Quill, inkwell, scattered parchment." }
+  "soft_contents": {
+    "table":     { "stone": 1 },
+    "korbar":    { "cork": 1 },
+    "bag_floor": { "rock": 2 }
   }
 }
 ```
 
-`soft_item_guidance` is surfaced to Call 2 (via `BriefingRoom` /
-`BriefingEntity`) as a hint.  It is **not** a validation list — Call 2
-may accept items not mentioned, and reject items mentioned.  This is
-the *only* new corpus/briefing field; it is the channel that did not
-exist before.
+A key property: items in `soft_contents` have **mechanically verified
+existence** — they came out of the player's own `soft_inventory` via an
+accepted give.  Retrieving them therefore does not need narrative
+adjudication of *existence* (though NPC consent still does; see §4.4).
 
-### 7.3 Authorial control for puzzle rooms
+## 3. Schema Changes
 
-Some rooms have puzzle-significant item availability (e.g., "the only
-takeable thing here is the silver lever").  Narrative adjudication
-cannot enforce this strictly.  Authors who need rigid control should
-model the item as a **hard entity** (which the engine still gates
-strictly), not a soft item.  The `strict` policy mode (§9.1) is future
-work for cases where hard-entity modelling is too heavy; it is
-intended as an escape hatch for puzzle rooms, not a general
-alternative to narrative adjudication.
+### 3.1 `SoftGameState` (`mgmai/models/soft_state.py`)
 
-## 8. EngineResult and NarrationOutput changes
+| Field | Change |
+|-------|--------|
+| `surfaced_soft_items` | **Renamed** to `soft_items_taken` (`Dict[str, Dict[str, int]]`, default `{}`).  Semantics: accepted ambient takes only. |
+| `soft_contents` | **New** (`Dict[str, Dict[str, int]]`, default `{}`).  Keyed by room or entity ID; values map soft item names to current counts.  Counts are always ≥ 1; zero-count entries (and emptied parent entries) are pruned.  Keys are stored verbatim from give adjudications; all lookups normalize via `_normalize_item_name` (§4.4). |
 
-- Add `soft_item_proposals: List[SoftItemProposal]` to `EngineResult`
-  (`mgmai/models/actions.py`).  Populated by the resolver/engine
-  pre-Call-2.
-- Add `soft_item_adjudications: List[SoftItemAdjudication]` to
-  `NarrationOutput` (`mgmai/models/narration.py`).  Populated by Call
-  2.
-- Add `soft_items_accepted: List[SoftItemAdjudication]` and
-  `soft_items_rejected: List[SoftItemAdjudication]` to `EngineResult`,
-  populated by `post_validate_soft_items` (post-Call-2 mutation,
-  mirroring `revelations_applied` / `attitude_changes_applied`).
+No changes to `SoftItemProposal` / `SoftItemAdjudication` shapes.  The
+only behavioural schema change is that a give proposal's `target_id`
+may now be a **room ID** (a drop) as well as an entity ID.
 
-`NarrationOutput` now carries 7 structured fields (4 optional objects
-alongside the prose).  This increases the compliance risk — LLMs are
-more likely to omit or malform fields as the number grows.  Phase F
-testing must measure Call 2's compliance rate with `soft_item_adjudications`
-and simplify the prompt if compliance is poor.
+### 3.2 Briefing models (`mgmai/models/briefing.py`)
 
-## 9. Extensibility
+`BriefingRoom.soft_items` and `BriefingEntity.soft_items` are replaced
+by two fields each:
 
-### 9.1 `soft_item_policy` modes (future)
+| Field | Contents | Format |
+|-------|----------|--------|
+| `soft_items_taken` | from `soft.soft_items_taken[id]` | `"cork (taken 2)"` |
+| `soft_items_present` | from `soft.soft_contents[id]` | `"stone x1"` |
 
-```json
-{
-  "rooms": {
-    "throne_room": {
-      "soft_item_policy": "strict",
-      "soft_item_guidance": "dust, loose thread"
-    }
-  }
-}
+`PlayerStateBriefing.soft_inventory` is unchanged.
+
+### 3.3 `EngineResult` (`mgmai/models/actions.py`)
+
+New field `soft_content_takes: Dict[str, Dict[str, int]]` (default
+`{}`) — source → name → count for placed soft items mechanically
+retrieved this turn (§4.4).  This is Call 2's *explicit* signal that a
+retrieval happened: the `EngineResult` is Call 2's only view of engine
+outcomes, and without the field a mechanical retrieval would be
+visible only by diffing `room_after` against the pre-turn briefing.
+
+## 4. Flow Changes
+
+### 4.1 Examine (state write removed)
+
+```
+Player: "I examine the rock."
+
+Call 1 → ExamineAction(target="rock")
+       → may attach a room_note patch if the examine establishes a
+         durable fact (see §6.2)
+Resolver → soft proposal (examine, source_id=<current room>)   [unchanged]
+Call 2 → adjudicates; accepted → narrates the rock              [unchanged]
+Post-validation → validates + records the adjudication in
+         soft_items_accepted (audit only); NO soft-state mutation
 ```
 
-- `"narrative"` (default): Call 2 adjudicates; `soft_item_guidance` is
-  a hint.
-- `"strict"`: engine enforces that accepted items appear in a corpus
-  list (restoring a whitelist for puzzle rooms).  Intended as an
-  escape hatch for rooms where hard-entity modelling is too heavy.
-  Future work — requires keeping an explicit list, so deferred.
-- `"barren"`: Call 2 is instructed to reject all soft-item proposals.
+The examine branch in `post_validate_soft_items` (`post_validate.py`,
+the `elif adj.action == "examine"` block) is deleted.  All other
+validation rules (proposal matching, hard-entity collision, etc.)
+remain.
 
-### 9.2 Narrative notes via Call 2 (future)
+### 4.2 Take of an ambient item (unchanged except field name)
 
-`room_note` / `entity_note` currently proposed by Call 1 could follow
-the same Call-2-adjudication pattern.  Future work.
+```
+Player: "I take the cork from the pile."
 
-### 9.3 Improvised weapons (future)
+Resolver → cork not a hard item, not in soft_contents["rubbish_pile"]
+         → proposal (take, source_id="rubbish_pile", count=1)
+Call 2 → adjudicates (consults soft_items_taken counts for depletion)
+Post-validation (accepted) → soft_inventory += "cork"
+                           → soft_items_taken["rubbish_pile"]["cork"] += 1
+```
 
-`set_improvised_weapon` straddles narrative and mechanics.  Call 1
-could propose the mechanical parameters while Call 2 adjudicates the
-object's existence.  The current design keeps this in Call 1 for
-simplicity; the split is natural but deferred.
+### 4.3 Give / place / drop
 
-## 10. Trade-offs
+```
+Player: "I put the stone on the table."      (table = feature entity)
+Call 1 → TransferAction(target="table", given_items=["stone"])
+Resolver → stone in soft_inventory
+         → proposal (give, source_id="player", target_id="table")
+Call 2 → adjudicates (can the stone rest there? does the NPC accept?)
+Post-validation (accepted) → soft_inventory -= "stone"
+                           → soft_contents["table"]["stone"] += 1
+```
 
-### Advantages
-- **No exhaustive pre-listing.**  Module authors describe rooms
-  narratively; the LLM handles ambient objects.
-- **True narrative flexibility.**  Players improvise with the
-  environment and the system adapts.
-- **Leverages existing architecture.**  `post_validate.py` already
-  hosts two Call-2-output validators; a third fits the pattern
-  cleanly, including in-place `EngineResult` mutation.
-- **Call 1 stays focused on mechanics.**  Soft-item existence becomes
-  Call 2's domain, alongside NPC dialogue, attitude, and revelations.
-- **Graceful degradation.**  Missing adjudications default to
-  rejection (safe for inventory correctness); if both LLMs
-  hallucinate, the worst outcome is a silly soft inventory entry.
-- **Depletion-aware.**  `surfaced_soft_items` tracks take counts,
-  giving Call 2 the data to judge depletion without engine-level
-  enforcement.
+Room drops become legal:
 
-### Disadvantages
-- **Less deterministic.**  The same input at the same state may
-  produce different soft-item outcomes across runs.  Arguably correct
-  for a narrative system, but makes testing harder.
-- **Token cost.**  `soft_item_proposals` on `EngineResult` and
-  `soft_item_adjudications` on `NarrationOutput` add tokens.  The
-  proposals are small (a few item names per turn) and Call 2 already
-  reads the room description, so marginal cost is low.
-- **Call 2 prompt complexity.**  Adjudication instructions lengthen
-  the Call 2 prompt; keep them terse and test for compliance.  With 7
-  structured fields on `NarrationOutput`, compliance monitoring is
-  essential.
-- **Module author loss of strict control.**  Authors who need rigid
-  item availability must use hard entities (§7.3) or wait for
-  `strict` mode (§9.1).
-- **Single point of failure on Call 1.**  The "Call 2 may not invent
-  new soft items" constraint (§4.4) means coverage of player intent
-  depends entirely on Call 1 proposing generously.  Mitigated by
-  prompt engineering.
+```
+Player: "I drop the stone."
+Call 1 → TransferAction(target=<room_id>, given_items=["stone"])
+Resolver → proposal (give, source_id="player", target_id=<room_id>)
+           [resolver.py: pass the room ID instead of None]
+Post-validation → valid give targets = corpus entities ∪ corpus rooms
+                → soft_contents[<room_id>]["stone"] += 1
+```
 
-## 11. Implementation Outline
+Gives **no longer touch the extraction ledger.**
 
-### Phase A: Schema and models
-- Add `SoftItemProposal` to `mgmai/models/actions.py` (or a new
-  `soft_items.py`); add the field to `EngineResult`.
-- Add `SoftItemAdjudication` and the `soft_item_adjudications` field
-  to `mgmai/models/narration.py` (`NarrationOutput`).
-- Add `soft_items_accepted` / `soft_items_rejected` to `EngineResult`.
-- Remove `soft_items` from `Room` and `Entity` in
-  `mgmai/models/corpus.py`.  Add `soft_item_guidance: Optional[str]`.
-- Add `soft_item_guidance` to `BriefingRoom` / `BriefingEntity` in
-  `mgmai/models/briefing.py`.
-- Change `surfaced_soft_items` from `Dict[str, List[str]]` to
-  `Dict[str, Dict[str, int]]` in `mgmai/models/soft_state.py`.
-- Remove `soft_inventory_add` from the `SoftStatePatch.field` Literal
-  in `mgmai/models/soft_state.py`.
+### 4.4 Retrieving a placed item
 
-### Phase B: Resolver changes
-- In `resolve_transfer`: for `taken_items` / `given_items` that are
-  soft-item names, stop checking `available_pool` for the soft portion
-  and stop checking `ent.soft_items` / `room.soft_items`.  Instead
-  record a `SoftItemProposal` on the `ResolutionResult` (and thence
-  `EngineResult`).  Hard-item transfer validation is unchanged.
-- In `resolve_examine`: for targets that don't match a hard room/entity,
-  record a `SoftItemProposal` instead of matching `all_soft`.  (The
-  `on_examine` path for hard targets is unchanged.)
-- Remove the `soft_inventory_add` branch from `_validate_soft_patches`
-  in `engine.py`; emit a rejection for any such patch.
-- `soft_inventory_remove` handling is unchanged.
+Takes consult `soft_contents` before falling back to an ambient
+proposal.  All `soft_contents` lookups — here and in the
+post-validation rule below — normalize names with
+`_normalize_item_name`: keys are stored verbatim from give
+adjudications, and "the Stone" must match "stone".
 
-### Phase C: Post-validation
-- Add `post_validate_soft_items()` in `mgmai/engine/post_validate.py`,
-  following `post_validate_knowledge_tags` / `post_validate_attitude_changes`.
-- Rules per §4.6.
-- Hook into `apply_post_validation()`; populate
-  `soft_items_accepted` / `soft_items_rejected` on `EngineResult`.
-- Invoked from the game loop (`loop.py`) after Call 2, alongside the
-  existing knowledge-tag and attitude-change post-validation.
+- **Source is a room or non-NPC entity:** existence is mechanically
+  established, so the resolver satisfies the take directly — no Call 2
+  adjudication.  The resolver records the retrieval on a new
+  `ResolutionResult.soft_content_takes: dict[source_id, dict[name, count]]`;
+  engine step 5 applies it (decrement `soft_contents`, prune zeros and
+  emptied parents, append to `soft_inventory`), and it is copied onto
+  `EngineResult.soft_content_takes` (§3.3) so Call 2 can narrate the
+  retrieval.  `_summarize_resolution` gains a line for it so turn
+  history keeps a record.  This replaces the dead
+  `surfaced_soft_items` plumbing with live plumbing of the same shape.
+- **Closed containers gate retrieval.**  A container entity's
+  `soft_contents` are subject to the same `_container_is_open` check
+  as its hard contents: taking a placed soft item from a closed
+  container fails with the same "The X is closed." error a hard item
+  would produce.  (Gives need no such gate — they pass through Call 2,
+  which sees the container's `open` state.)
+- **Source is an NPC:** existence is known but *consent* is not.  The
+  resolver emits a normal take proposal; Call 2 adjudicates (it sees
+  the item in the NPC's `soft_items_present`).
+- **Ambiguous source:** if the take targets the room but the item is
+  placed on an entity in the room, the resolver searches the
+  `soft_contents` of the room's entities before emitting an ambient
+  proposal — mirroring the hard-item path, which checks the available
+  pool first, then scans closed containers for the closed error.  An
+  item found only inside a closed container yields that error.
+  Without this fallback, "take the stone" aimed at the room would miss
+  `soft_contents["table"]`, pollute `soft_items_taken[room]` on
+  acceptance, and leave a stale table entry.
+- **Shortfall:** if the requested count exceeds the placed count, the
+  placed portion is satisfied per the rules above and only the
+  remainder becomes an ambient-take proposal.
 
-### Phase D: Context assembler
-- Populate `BriefingRoom.soft_item_guidance` /
-  `BriefingEntity.soft_item_guidance` from the new corpus field.
-- Update `BriefingRoom.soft_items` / `BriefingEntity.soft_items` to
-  surface take counts from the new `surfaced_soft_items` schema.
-  Format: include item names and counts so Call 2 can judge depletion.
-- Confirm `soft_inventory` is briefed to Call 2 (it already is, via the
-  player-state block — `assembler.py`).
+Unified post-validation rule for accepted takes: decrement from
+`soft_contents[source]` first (up to `count`); only the remainder
+increments `soft_items_taken[source]`.  Retrieving your own stone is
+not extraction and must not pollute the depletion signal.
 
-### Phase E: Prompts
-- Update the Call 1 system prompt per §6.1.
-- Update the Call 2 system prompt per §6.2.
+### 4.5 Multi-count soft takes
 
-### Phase F: Tests
-- Adjudication shape validation: missing fields, empty `item_name`,
-  unknown action, missing `justification` on rejection.
-- Hard-entity ID collision: "rusty key" rejected when `rusty_key` is a
-  corpus entity (with normalization).
-- Proposal-matching: adjudication without a matching proposal rejected.
-- `take` (accepted): appended to `soft_inventory`, count incremented
-  on `source_id`.  Duplicate `take` of the same name permitted.
-- `give` (accepted) of a non-held item: rejected.
-- `examine` (accepted): surfaced on `source_id`, no inventory change.
-- Rejected adjudications produce no state change.
-- Missing/empty `soft_item_adjudications` with pending proposals → all
-  rejected, no state change.
-- `soft_inventory_add` patch from Call 1 → rejected.
-- `soft_item_guidance` surfaced to Call 2.
-- Source ID validation: proposal with missing `source_id` → rejected;
-  proposal with invalid `source_id` (non-existent room/entity) →
-  rejected; adjudication `source_id` that doesn't match the proposal's
-  `source_id` → rejected.
-- Depletion counts: `surfaced_soft_items` increments correctly on
-  repeated takes; counts are surfaced in briefing to Call 2.
-- **Fixture migration:** all existing test fixtures and the adventure
-  corpus must be updated to remove `soft_items` and adopt the new
-  `surfaced_soft_items` schema.  74 soft-item references across 8 test
-  files, plus 2 corpus JSONs and 2 soft-state JSONs.
+`resolve_transfer` currently rejects `count > 1` for any item not
+tagged stackable in the corpus, and `_is_stackable` treats unknown
+names as non-stackable — i.e. every soft item (§1).  Relax the guard
+to skip names with no corpus entity, so multi-count soft takes reach
+both the retrieval path above and the ordinary ambient-proposal path.
 
-### Phase G: Documentation
-- Update `doc/soft-items.md` to reflect the adjudication model and
-  count-based depletion.
-- Update `schema/actions.md` (EngineResult fields, Call 2 output).
-- Update `schema/soft-state.md`: remove `soft_inventory_add` from the
-  patch table; document new `surfaced_soft_items` schema
-  (`dict[str, dict[str, int]]`).
-- Update `schema/corpus.md`: remove `soft_items`, document
-  `soft_item_guidance`.
+## 5. Dead Code Removal
+
+| Location | Action |
+|----------|--------|
+| `resolver.py` — `ResolutionResult.surfaced_soft_items` field | Delete (superseded by `soft_content_takes`, §4.4). |
+| `resolver.py` — `_fire_on_examine_events` accumulation of `ex_result.surfaced_soft_items` and the `"surfaced"` return key | Delete; update the two call sites in `resolve_examine`. |
+| `engine.py` — step-5 merge loop over `resolution.surfaced_soft_items` | Replace with application of `resolution.soft_content_takes`. |
+
+## 6. Template Changes
+
+### 6.1 `ruling.j2`
+
+- Briefing description (line ~17): describe both fields —
+  `soft_items_taken` ("what the player has already extracted here, as
+  `name (taken N)`") and `soft_items_present` ("soft items currently
+  placed here — these verifiably exist").
+- §Soft Items / §Containers & Items: note that dropping a soft item
+  uses `transfer` with the room ID as `target` (the action reference
+  already documents room IDs as transfer targets — drops simply start
+  working as documented), and that placed items listed in
+  `soft_items_present` can be taken back like ordinary contents.
+  Explicitly: to retrieve a placed item, target the room or entity
+  whose `soft_items_present` lists it.  Targeting the listing entity
+  is preferred; a room-targeted take works too, via the resolver's
+  entity fallback (§4.4).
+- Clarify division of labour: destruction/consumption of a carried soft
+  item → `soft_inventory_remove` patch; putting it somewhere →
+  `transfer`.
+
+### 6.2 `ruling.j2` §Soft State Patches — note-ification guidance
+
+Add: *"If an examine establishes a notable ambient object or detail the
+player may return to, record it as a `room_note` or `entity_note` —
+soft-item examines leave no other persistent record."*
+
+### 6.3 `prose.j2`
+
+- Engine-result table: add a `soft_content_takes` row — "soft items
+  the player retrieved from placed contents this turn (source → name →
+  count); narrate the retrieval naturally.  These need no adjudication
+  — their existence was mechanically verified."
+- §Soft Item Adjudication: depletion guidance now references
+  `soft_items_taken` and can assert its clean semantics (every count
+  is a completed extraction).
+- Note that `give` proposals may carry a room ID as `target_id`
+  (a drop) and acceptance means the item now rests there.  Extend the
+  output example (which currently shows only `"target_id": null`) with
+  a room-drop give, so Call 2 reliably echoes room targets —
+  post-validation matches proposals on exact `target_id`.
+- Note that accepted `examine` adjudications affect narration only.
+
+## 7. Documentation Changes
+
+| File | Change |
+|------|--------|
+| `doc/soft-items.md` | Rewrite the state section around the two fields; update the examine/take/give flow diagrams and add the retrieval flow (§4.4: mechanical for rooms/features, Call 2 consent for NPCs, closed-container gate, shortfall); fix drift: give proposals use `source_id="player"` (the doc currently says `"<current_room>"`); update Key Design Decisions (#2 becomes "extraction counts are tracked; placement is tracked separately") and the files summary. |
+| `schema/soft-state.md` | Replace the `surfaced_soft_items` section with `soft_items_taken` (population: accepted takes only) and a new `soft_contents` section (population: accepted gives/drops; decrement on retrieval; zero-pruning); update the top-level structure block and the initial-state example. |
+| `schema/actions.md` | Update references: examine adjudications carry no state effect; give targets may be rooms. |
+| `schema/scenario-generation.md` | Rename field in the initial-state template and checklists; add `soft_contents: {}`. |
+
+## 8. Data / Fixture Migration
+
+Rename `surfaced_soft_items` → `soft_items_taken` and add
+`soft_contents: {}` in:
+
+- `adventures/bag-of-holding/soft-state.json`
+- `tests/fixtures/soft-state.json`
+- `tests/fixtures/mini_adventure/soft-state.json`
+
+This is a clean break (pre-release); existing save files are not
+migrated.  A stale `surfaced_soft_items` key in a pre-change save
+(e.g. the `autosave.json` in the repo root) is ignored by pydantic on
+load — no crash, the old data is simply discarded.  If save
+compatibility turns out to matter, a one-line validator alias on
+`SoftGameState` (accept the old key, discard count-0 entries) can be
+added, but it is not planned.
+
+## 9. Implementation Checklist
+
+1. `mgmai/models/soft_state.py` — rename field; add `soft_contents`.
+2. `mgmai/models/briefing.py` — split briefing `soft_items` into
+   `soft_items_taken` / `soft_items_present`.
+3. `mgmai/models/actions.py` — add `EngineResult.soft_content_takes`.
+4. `mgmai/engine/post_validate.py` — delete examine state write; give
+   targets may be rooms; gives write `soft_contents`; accepted takes
+   decrement `soft_contents` first (normalized lookup), remainder to
+   `soft_items_taken`.
+5. `mgmai/engine/resolver.py` — room-targeted give proposals carry the
+   room ID; takes consult `soft_contents` (mechanical retrieval via
+   `soft_content_takes`, closed-container gate, room-targeted entity
+   fallback, NPC-consent proposals, shortfall rule); relax the
+   `_is_stackable` count guard for soft names; delete
+   `ResolutionResult.surfaced_soft_items` and `_fire_on_examine_events`
+   surfacing.
+6. `mgmai/engine/engine.py` — replace the dead step-5 merge loop with
+   `soft_content_takes` application; copy it onto `EngineResult`;
+   extend `_summarize_resolution`; update `_build_room_after`
+   formatting (two fields).
+7. `mgmai/engine/utils.py` — `inject_following_npcs` formatting (two
+   fields).
+8. `mgmai/context/assembler.py` — populate both briefing fields;
+   `(taken N)` formatting is now unconditional.
+9. Templates — §6.
+10. Docs — §7.  Fixtures — §8.
+
+## 10. Test Plan
+
+Updates to existing tests:
+
+- `tests/test_soft_state.py` — rename field; drop count-0 population
+  case; add `soft_contents` round-trip.
+- `tests/test_engine.py` —
+  `test_surfaced_soft_items_persisted_after_examine` inverts: accepted
+  examine writes **no** soft-item state; take test asserts
+  `soft_items_taken` only.
+- `tests/test_assembler.py` — count-0 formatting cases replaced by
+  two-field assertions.
+- `tests/test_resolver.py` — assert `soft_content_takes` instead of
+  `surfaced_soft_items`.
+
+New coverage:
+
+- Accepted give to entity → `soft_contents` incremented,
+  `soft_items_taken` untouched, item removed from `soft_inventory`.
+- Accepted give to **room** (drop) → accepted by post-validation,
+  `soft_contents[room]` incremented.
+- Retrieval from room/feature → resolved mechanically (no proposal
+  emitted), `soft_contents` decremented and pruned at zero,
+  `soft_items_taken` untouched.
+- Retrieval from NPC → proposal emitted; on acceptance,
+  `soft_contents` decremented, `soft_items_taken` untouched.
+- Shortfall: placed 1, take 2 → 1 mechanical + 1 ambient proposal;
+  on acceptance the ambient unit increments `soft_items_taken`.
+- Depletion integrity: give cork to Korbar, then examine Korbar —
+  briefing shows `soft_items_present=["cork x1"]` and no `(taken N)`
+  entry.
+- Multi-count takes: take 2 of a placed item → fully mechanical,
+  `soft_contents` decremented by 2; take 2 ambient → proposal with
+  `count=2` (no stackable-guard failure).
+- Closed container: placed item inside a closed container entity →
+  take fails with the closed error and `soft_contents` is unchanged;
+  the same take succeeds once the container is open.
+- Ambiguous source: item placed on a table, take with the room as
+  target → satisfied from the table's `soft_contents`; no
+  `soft_items_taken` entry, no stale table entry.
+- Normalization: give "Stone", then take "the stone" → retrieval
+  matches the stored key.
+- Surfacing: mechanical retrieval populates
+  `EngineResult.soft_content_takes` and the turn-history summary.
+- Assembler/briefing: room with both extraction history and placed
+  items renders both fields correctly.
+
+## 11. Out of Scope
+
+- Hard-item containment (`room_contains`/`entity_contains`) is
+  untouched.
+- No engine-enforced depletion: depletion remains a Call 2 judgment
+  informed by `soft_items_taken`.
+- NPCs autonomously using/moving placed soft items (a `soft_contents`
+  entry only changes via player actions).
+- Corpus changes: `soft_item_guidance` is unchanged.
+
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).

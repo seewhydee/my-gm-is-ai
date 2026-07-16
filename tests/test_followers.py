@@ -113,7 +113,7 @@ class TestInjectFollowingNpcs:
         entities: list[BriefingEntity] = [
             BriefingEntity(
                 id="korbar", name="Korbar", type="npc",
-                description="test", state={}, entity_notes=[], soft_items=[],
+                description="test", state={}, entity_notes=[],
             )
         ]
         inject_following_npcs(entities, "axe_head", hard, soft, corpus)
