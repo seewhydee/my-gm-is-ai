@@ -326,6 +326,11 @@
           "description": "Whether Korbar is following the player.",
           "initial": false
         },
+        "passive": {
+          "type": "boolean",
+          "description": "Whether Korbar is too afraid of the spider to fight.",
+          "initial": true
+        },
         "convinced_spider_dead": {
           "type": "boolean",
           "description": "Whether Korbar believes the spider is dead.",
@@ -343,7 +348,7 @@
         ]
       },
       "dialogue": {
-        "guidelines": "Cynical, tired, and deeply lonely after being abandoned by her adventuring party. Wears ludicrously noisy platemail that prevents stealth. Drinks to forget. Despite her bitterness, she craves companionship and can warm up to respectful treatment. Can commiserate about being trapped, share her story of abandonment, agree to follow the player, help haul heavy objects, and point out the handkerchief. Cannot fight the spider (too afraid), enter the secret compartment (armor too bulky), remove her armor (fears the spider), or know what is inside the secret compartment. Knows that her adventuring party stuck her in this Bag of Holding during a stealth mission then forgot about her; the battleaxe was her weapon when she was full-sized outside the Bag; time and space function strangely inside the Bag; this cave is a Bag of Holding, a legendary magical storage item that exists simultaneously in the prime and astral planes; and that there is a handkerchief covering a hidden flap in the bag floor, but she has never been able to see what is underneath.",
+        "guidelines": "Cynical, tired, and deeply lonely after being abandoned by her adventuring party. Wears ludicrously noisy platemail that prevents stealth. Drinks to forget. Despite her bitterness, she craves companionship and can warm up to respectful treatment. Can commiserate about being trapped, share her story of abandonment, agree to follow the player, help haul heavy objects, and point out the handkerchief. Is terrified of the spider and cowers in battle when it appears, but if the player has earned her trust (attitude 3 or higher) she can be persuaded to stand and fight despite her fear. Cannot enter the secret compartment (armor too bulky), remove her armor (fears the spider), or know what is inside the secret compartment. Knows that her adventuring party stuck her in this Bag of Holding during a stealth mission then forgot about her; the battleaxe was her weapon when she was full-sized outside the Bag; time and space function strangely inside the Bag; this cave is a Bag of Holding, a legendary magical storage item that exists simultaneously in the prime and astral planes; and that there is a handkerchief covering a hidden flap in the bag floor, but she has never been able to see what is underneath.",
         "on_meeting": "Korbar looks up blearily as you approach, reaching instinctively for a weapon that isn't there. 'Who in the nine hells are you?' she slurs.",
         "attitude_limits": {
           "min": -10,
@@ -415,6 +420,27 @@
               }
             }
           },
+          "convince_fight": {
+            "description": "Persuade Korbar to overcome her fear and stand and fight the spider alongside you.",
+            "condition": {
+              "all": [
+                {
+                  "require": "entity:korbar.attitude >= 3"
+                },
+                {
+                  "require": "entity:korbar.passive == true"
+                }
+              ]
+            },
+            "result": {
+              "narrative": "Korbar goes very still, her knuckles whitening. 'You're the first soul in this cursed sack who's given a damn about me,' she says at last, hauling herself upright with a clatter of iron. 'Fine. If that overgrown hairball shows its ugly face, I'll bash it flat — for you. Moradin help me, I mean it.'",
+              "set_entity_state": {
+                "korbar": {
+                  "passive": false
+                }
+              }
+            }
+          },
           "convince_follow": {
             "description": "Convince Korbar to follow you up or down the axe.",
             "condition": {
@@ -456,7 +482,10 @@
         "atk": 4,
         "dmg": "3",
         "initiative_mod": -1,
-        "flee_dc": 14
+        "flee_dc": 14,
+        "ai": {
+          "passive": true
+        }
       },
       "reactions": [
         {

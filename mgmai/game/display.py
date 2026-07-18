@@ -189,10 +189,9 @@ class Display:
             lines.append(f"[dim]Initiative:[/dim] {initiative_str}")
             lines.append("")
 
-            for cid in combat.combatants:
+            def _rich_row(cid: str) -> str:
                 if cid == "player":
-                    display_name = "Player"
-                    name = f"[bold bright_white]{display_name:<15}[/bold bright_white]"
+                    name = f"[bold bright_white]{'Player':<15}[/bold bright_white]"
                     current = hard.player.current_hp or 0
                     max_hp = hard.player.max_hp or 0
                 else:
@@ -202,11 +201,25 @@ class Display:
                     state = hard.entity_states.get(cid, {})
                     current = state.get("current_hp") or 0
                     max_hp = (entity.combat.hp if entity and entity.combat else 0)
-
                 bar = _hp_bar(current, max_hp)
-                lines.append(
-                    f"{name} HP {bar} {current}/{max_hp}"
-                )
+                return f"{name} HP {bar} {current}/{max_hp}"
+
+            party = [
+                c for c in combat.combatants
+                if c == "player" or c in combat.allies
+            ]
+            enemies = [c for c in combat.combatants if c not in party]
+            if combat.allies:
+                lines.append("[bold]Party[/bold]")
+                for cid in party:
+                    lines.append(_rich_row(cid))
+                lines.append("")
+                lines.append("[bold]Enemies[/bold]")
+                for cid in enemies:
+                    lines.append(_rich_row(cid))
+            else:
+                for cid in combat.combatants:
+                    lines.append(_rich_row(cid))
 
             lines.append("")
             lines.append("[dim italic]It's your turn.[/dim italic]")
@@ -222,7 +235,7 @@ class Display:
             initiative_str = " -> ".join(combat.initiative_order)
             print(f"Initiative: {initiative_str}")
             print()
-            for cid in combat.combatants:
+            def _plain_row(cid: str) -> str:
                 if cid == "player":
                     name = "Player"
                     current = hard.player.current_hp or 0
@@ -234,7 +247,24 @@ class Display:
                     current = state.get("current_hp") or 0
                     max_hp = (entity.combat.hp if entity and entity.combat else 0)
                 bar = _hp_bar(current, max_hp)
-                print(f"  {name:<15} HP {bar} {current}/{max_hp}")
+                return f"  {name:<15} HP {bar} {current}/{max_hp}"
+
+            party = [
+                c for c in combat.combatants
+                if c == "player" or c in combat.allies
+            ]
+            enemies = [c for c in combat.combatants if c not in party]
+            if combat.allies:
+                print("Party:")
+                for cid in party:
+                    print(_plain_row(cid))
+                print()
+                print("Enemies:")
+                for cid in enemies:
+                    print(_plain_row(cid))
+            else:
+                for cid in combat.combatants:
+                    print(_plain_row(cid))
             print()
             print("  It's your turn.")
             print()

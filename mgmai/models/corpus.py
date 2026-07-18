@@ -596,6 +596,21 @@ class StatDefinition(BaseModel):
     name: str
 
 
+class CombatAIBlock(BaseModel):
+    """Rule-of-thumb combat AI configuration for an NPC.
+
+    All NPC combat decisions are made deterministically by the engine —
+    no LLM is involved.  When ``ai`` is absent, defaults apply: enemies
+    retaliate against their last attacker (falling back to the player),
+    allies attack the player's target, and nobody flees.
+    """
+    targeting: Literal["last_attacker", "player", "lowest_hp", "random"] = (
+        "last_attacker"
+    )
+    flee_below_hp_pct: Optional[int] = Field(default=None, ge=1, le=99)
+    passive: bool = False
+
+
 class CombatBlock(BaseModel):
     """NPC combat stat block (5e-flavoured but corpus-agnostic).
 
@@ -609,6 +624,7 @@ class CombatBlock(BaseModel):
     initiative_mod: int = 0
     flee_dc: int = 10
     on_hit_effects: list[CheckResolution] = Field(default_factory=list)
+    ai: Optional[CombatAIBlock] = None
 
     @model_validator(mode="after")
     def _validate_on_hit_effects(self) -> "CombatBlock":

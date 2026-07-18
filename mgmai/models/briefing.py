@@ -132,7 +132,7 @@ class CombatBriefing(BaseModel):
     round_number: int
     initiative_order: list[str]
     current_actor: str
-    combatants: list[dict[str, Any]]  # [{id, name, current_hp, max_hp}]
+    combatants: list[dict[str, Any]]  # [{id, name, side, current_hp, max_hp}]
 
 
 class GMBriefing(BaseModel):

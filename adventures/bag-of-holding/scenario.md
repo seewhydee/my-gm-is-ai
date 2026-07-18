@@ -312,7 +312,8 @@ downward, it attacks.  This happens whether or not the player has
 noticed the SPIDER, or if in conversation.  Triggering combat reveals
 the SPIDER and fixes its attitude at -10 permanently.
 
-If Korbar is present during this encounter, she will not fight, and is
+If Korbar is present during this encounter, she will not fight unless
+the player has persuaded her to (see Korbar, below); otherwise she is
 narrated to be cowering in fear.
 
 If the SPIDER is present *and* has been revealed when the player
@@ -370,8 +371,8 @@ important pieces of information:
 
 - She knows about the Spider, which has been stalking her for as long
   as she's been here.  She is very afraid of spiders in general, and
-  will never agree to fight it.  She readily offers this information
-  whenever it comes up in conversation.
+  will refuse to fight it unless persuaded (see below).  She readily
+  offers this information whenever it comes up in conversation.
 
 - She knows what this cave is --- i.e., a Bag of Holding --- as well
   as some basic information about what a Bag of Holding is.  However,
@@ -415,6 +416,12 @@ player up (or down) the axe.  She won't go into the secret
 compartment; her armor is too inflexible to squeeze through the flap.
 While following, she can also help lug the key (see Key in the
 Mechanics section).
+
+If KORBAR's attitude is 3 or higher, the player can persuade her to
+stand and fight despite her fear of the Spider.  No check is required:
+the trust she has already earned is enough.  From then on she fights
+alongside the player whenever combat breaks out in her presence (she
+is a capable fighter, even unarmed).
 
 #### Stat Block: Korbar
 

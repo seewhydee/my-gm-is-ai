@@ -288,11 +288,14 @@ a combat log:
 ```json
 {
   "active": true,
-  "combatants": ["player", "spider"],
-  "initiative_order": ["player", "spider"],
+  "combatants": ["player", "korbar", "spider"],
+  "allies": ["korbar"],
+  "initiative_order": ["player", "korbar", "spider"],
   "current_index": 0,
   "round_number": 1,
-  "log": []
+  "log": [],
+  "last_attacker": {"spider": "player"},
+  "player_last_target": "spider"
 }
 ```
 
@@ -300,10 +303,18 @@ a combat log:
 |--------------------|----------|------------------------------------|
 | `active`           | bool     | Whether combat is in progress      |
 | `combatants`       | string[] | Participants: `"player"`, NPC IDs  |
+| `allies`           | string[] | Combatant IDs fighting on the player's side (followers with combat blocks) |
 | `initiative_order` | string[] | Sorted turn order of combatants    |
 | `current_index`    | int      | Initiative index for current actor |
 | `round_number`     | int      | Current combat round (starts at 1) |
 | `log`              | CombatLogEntry[] | See below                  |
+| `last_attacker`    | object   | Combat-AI bookkeeping: combatant ID → ID of the combatant who last landed a hit on them |
+| `player_last_target` | string?  | The enemy the player most recently attacked (drives default ally targeting) |
+
+Enemy NPCs may also carry the engine-owned `fled` entity state
+(`entity_states.<npc_id>.fled == true`) after fleeing combat via their
+`ai.flee_below_hp_pct` threshold; it is set by the engine at runtime and
+persists across saves.
 
 ### Combat Log Entries
 

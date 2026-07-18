@@ -396,6 +396,7 @@ def _build_combat_state(
             combatants.append({
                 "id": "player",
                 "name": "Player",
+                "side": "party",
                 "current_hp": hard.player.current_hp or 0,
                 "max_hp": hard.player.max_hp or 0,
             })
@@ -406,6 +407,7 @@ def _build_combat_state(
             combatants.append({
                 "id": cid,
                 "name": name,
+                "side": "party" if cid in combat.allies else "enemy",
                 "current_hp": state.get("current_hp") or 0,
                 "max_hp": (entity.combat.hp if entity and entity.combat else 0),
             })

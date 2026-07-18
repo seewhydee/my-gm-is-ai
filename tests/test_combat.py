@@ -32,6 +32,7 @@ from mgmai.models.actions import (
 )
 from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import (
+    CombatAIBlock,
     CombatBlock,
     EncounterRule,
     Entity,
@@ -1582,3 +1583,427 @@ class TestBriefingMultiEnemy:
         assert briefing is not None
         enemy_ids = {c["id"] for c in briefing.combatants if c["id"] != "player"}
         assert enemy_ids == {"goblin", "goblin2"}
+
+
+# ------------------------------------------------------------------
+# 14. Party combat (allies + combat AI)
+# ------------------------------------------------------------------
+
+class TestPartyCombat:
+    """Allied NPCs in combat and rule-of-thumb NPC targeting."""
+
+    @pytest.fixture
+    def party_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Party Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1",
+                    "description": "A room.",
+                    "contains": ["goblin"],
+                    "exits": [
+                        {"id": "exit_north", "direction": "north", "target_room": "room2"},
+                    ],
+                },
+                "room2": {"name": "Room 2", "description": "Another room."},
+            },
+            "entities": {
+                "companion": {
+                    "type": "npc",
+                    "name": "Companion",
+                    "description": "A loyal companion.",
+                    "dialogue": {"guidelines": "Loyal and brave."},
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "following": {"type": "boolean", "description": "Following?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {
+                        "hp": 20, "ac": 14, "atk": 5, "dmg": "1d8+2",
+                        "initiative_mod": 1,
+                    },
+                },
+                "goblin": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6+2", "flee_dc": 10},
+                },
+            },
+        })
+
+    @pytest.fixture
+    def party_hard(self, combat_hard_state) -> HardGameState:
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.entity_states = {
+            "companion": {"alive": True, "following": True, "current_hp": 20},
+            "goblin": {"alive": True, "current_hp": 7},
+        }
+        hard.room_contains = {"room1": {"goblin": 1}}
+        return hard
+
+    def _combat_state(self, hard, order=None):
+        order = order or ["player", "companion", "goblin"]
+        hard.combat = CombatState(
+            active=True,
+            combatants=list(order),
+            allies=["companion"],
+            initiative_order=list(order),
+            current_index=0,
+            round_number=1,
+        )
+
+    def _attack(self, target="goblin"):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target=target, detail="Attack!",
+        )
+
+    # -- Ally auto-join at combat entry -------------------------------
+
+    def test_allies_auto_join(self, party_hard, party_corpus, monkeypatch):
+        """enter_combat pulls combat-capable followers in as allies."""
+        monkeypatch.setattr(random, "randint", lambda a, b: b)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+        result = enter_combat(["goblin"], party_hard, party_corpus)
+        combat = party_hard.combat
+        assert combat is not None
+        assert combat.allies == ["companion"]
+        assert combat.combatants == ["player", "companion", "goblin"]
+        # Initiative: all roll 20; mods break ties (player +2, companion +1, goblin +0)
+        assert combat.initiative_order == ["player", "companion", "goblin"]
+        assert result["combat_triggered"] is True
+
+    def test_attacked_follower_not_also_ally(self, party_hard, party_corpus, monkeypatch):
+        """Attacking one's own follower makes it the enemy, not an ally."""
+        monkeypatch.setattr(random, "randint", lambda a, b: b)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+        enter_combat(["companion"], party_hard, party_corpus)
+        combat = party_hard.combat
+        assert combat.allies == []
+        assert "companion" in combat.combatants
+
+    # -- Ally behavior ------------------------------------------------
+
+    def test_ally_attacks_player_target(self, party_hard, party_corpus, monkeypatch):
+        """Default ally AI: attack the player's most recent target."""
+        self._combat_state(party_hard)
+        # player hits goblin (15+5=20 vs 12), dmg 3+3=6;
+        # companion hits goblin (10+5=15 vs 12), dmg 4+2=6 -> dead
+        rand_vals = iter([15, 3, 10, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        assert result["success"]
+        ally_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "companion"
+        ]
+        assert len(ally_attacks) == 1
+        assert ally_attacks[0].target == "goblin"
+
+    def test_ally_kill_ends_combat_mid_sequence(self, party_hard, party_corpus, monkeypatch):
+        """When an ally kills the last enemy, combat ends immediately and
+        the slain enemy does not act."""
+        self._combat_state(party_hard)
+        party_hard.entity_states["goblin"]["current_hp"] = 5
+        # player misses (1); companion hits (10) for 4+2=6 -> goblin dead
+        rand_vals = iter([1, 10, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        assert result["success"]
+        assert result["game_over"] is False
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert goblin_attacks == []
+        assert party_hard.combat is None  # victory
+        assert result["hard_changes"].entity_state_changes["goblin"]["alive"] is False
+
+    def test_passive_ally_does_not_act(self, party_hard, party_corpus, monkeypatch):
+        """A passive ally joins combat but takes no actions."""
+        party_corpus.entities["companion"].combat.ai = (
+            CombatAIBlock(passive=True)
+        )
+        self._combat_state(party_hard)
+        # player hits goblin for 6 (hp 7 -> 1); goblin attacks player, misses
+        rand_vals = iter([15, 3, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        assert result["success"]
+        ally_actions = [
+            e for e in result["combat_log"] if e.actor == "companion"
+        ]
+        assert ally_actions == []
+
+    # -- Enemy targeting rules ----------------------------------------
+
+    def test_enemy_retaliates_on_last_attacker(self, party_hard, party_corpus, monkeypatch):
+        """Default enemy AI: attack whoever hit it most recently."""
+        self._combat_state(party_hard)
+        party_hard.entity_states["goblin"]["current_hp"] = 20
+        # player hits for 6; companion hits for 6 (last attacker = companion);
+        # goblin retaliates: 12+4=16 vs companion AC 14 -> hit, dmg 3+2=5
+        rand_vals = iter([15, 3, 10, 4, 12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        assert result["success"]
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert len(goblin_attacks) == 1
+        assert goblin_attacks[0].target == "companion"
+        assert result["hard_changes"].entity_state_changes["companion"]["current_hp"] == 15
+
+    def test_enemy_targeting_player_override(self, party_hard, party_corpus, monkeypatch):
+        """ai.targeting 'player': ignore the last attacker, attack the player."""
+        party_corpus.entities["goblin"].combat.ai = (
+            CombatAIBlock(targeting="player")
+        )
+        self._combat_state(party_hard)
+        party_hard.entity_states["goblin"]["current_hp"] = 20
+        # player hits; companion hits (last attacker); goblin still hits player
+        rand_vals = iter([15, 3, 10, 4, 12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert goblin_attacks[0].target == "player"
+
+    def test_enemy_targeting_lowest_hp(self, party_hard, party_corpus, monkeypatch):
+        """ai.targeting 'lowest_hp': pick the weakest living opponent."""
+        party_corpus.entities["goblin"].combat.ai = (
+            CombatAIBlock(targeting="lowest_hp")
+        )
+        self._combat_state(party_hard)
+        party_hard.entity_states["companion"]["current_hp"] = 5
+        # player misses; companion attacks and misses; goblin picks companion (5 < 10)
+        rand_vals = iter([1, 1, 12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert goblin_attacks[0].target == "companion"
+
+    def test_enemy_targeting_random(self, party_hard, party_corpus, monkeypatch):
+        """ai.targeting 'random': randint-steered pick among opponents."""
+        party_corpus.entities["goblin"].combat.ai = (
+            CombatAIBlock(targeting="random")
+        )
+        self._combat_state(party_hard)
+        party_hard.entity_states["goblin"]["current_hp"] = 20
+        # player misses; companion hits; goblin picks opponents[1] = companion
+        rand_vals = iter([1, 10, 4, 1, 12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert goblin_attacks[0].target == "companion"
+
+    # -- NPC flee -----------------------------------------------------
+
+    def test_npc_flees_below_hp_threshold(self, party_hard, party_corpus, monkeypatch):
+        """An enemy below its flee threshold leaves combat; if it was the
+        last enemy, combat ends."""
+        party_corpus.entities["goblin"].combat.ai = (
+            CombatAIBlock(flee_below_hp_pct=50)
+        )
+        self._combat_state(party_hard)
+        party_hard.entity_states["goblin"]["current_hp"] = 3  # 3/7 = 43% < 50%
+        # player misses; companion misses; goblin flees
+        rand_vals = iter([1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        assert result["success"]
+        assert party_hard.entity_states["goblin"]["fled"] is True
+        flees = [
+            e for e in result["combat_log"]
+            if e.action == "flee" and e.actor == "goblin"
+        ]
+        assert len(flees) == 1
+        assert party_hard.combat is None  # last enemy gone -> combat over
+
+    def test_combat_continues_after_one_enemy_flees(self, party_hard, party_corpus, monkeypatch):
+        """With other enemies alive, one fleeing does not end combat."""
+        party_corpus.entities["spider"] = Entity(
+            type="npc",
+            description="A spider.",
+            state_fields={
+                "alive": {"type": "boolean", "description": "Alive?"},
+                "current_hp": {"type": "number", "description": "HP"},
+            },
+            combat=CombatBlock(hp=30, ac=13, atk=5, dmg="1d8+3"),
+        )
+        party_corpus.entities["goblin"].combat.ai = (
+            CombatAIBlock(flee_below_hp_pct=50)
+        )
+        party_hard.entity_states["spider"] = {"alive": True, "current_hp": 30}
+        party_hard.entity_states["goblin"]["current_hp"] = 3
+        self._combat_state(party_hard, order=["player", "companion", "goblin", "spider"])
+        # player misses; companion misses goblin; goblin flees; spider attacks
+        # player (no last attacker): 5+5=10 vs AC 14 -> miss
+        rand_vals = iter([1, 1, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        assert result["success"]
+        assert party_hard.combat is not None
+        assert "goblin" not in party_hard.combat.combatants
+        assert "spider" in party_hard.combat.combatants
+        assert party_hard.entity_states["goblin"]["fled"] is True
+
+    # -- Ally death ---------------------------------------------------
+
+    def test_ally_death(self, party_hard, party_corpus, monkeypatch):
+        """A slain ally is removed from combat, marked dead, and stops
+        following; combat continues."""
+        self._combat_state(party_hard)
+        party_hard.entity_states["goblin"]["current_hp"] = 20
+        party_hard.entity_states["companion"]["current_hp"] = 5
+        # player misses; companion hits goblin (last attacker); goblin
+        # retaliates: 15+4=19 vs AC 14 -> hit, dmg 6+2=8 -> companion dead
+        rand_vals = iter([1, 10, 4, 15, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        assert result["success"]
+        assert result["game_over"] is False
+        companion_changes = result["hard_changes"].entity_state_changes["companion"]
+        assert companion_changes["alive"] is False
+        assert companion_changes["current_hp"] <= 0
+        assert "companion" not in party_hard.combat.combatants
+        assert "companion" not in party_hard.combat.allies
+        assert party_hard.combat is not None  # goblin still alive
+        from mgmai.engine.utils import get_following_npc_ids
+        assert "companion" not in get_following_npc_ids(party_hard, party_corpus)
+        deaths = [
+            e for e in result["combat_log"]
+            if e.action == "death" and e.actor == "companion"
+        ]
+        assert len(deaths) == 1
+
+    # -- Player actions with allies ------------------------------------
+
+    def test_cannot_target_ally(self, party_hard, party_corpus):
+        self._combat_state(party_hard)
+        result = resolve_combat_turn(self._attack(target="companion"), party_hard, party_corpus)
+        assert result["success"] is False
+        assert "not an enemy" in result["error"]
+
+    def test_player_flee_with_allies(self, party_hard, party_corpus, monkeypatch):
+        """A successful player flee ends combat for the whole party; the
+        follower keeps following."""
+        self._combat_state(party_hard)
+        # DEX 14 -> +2; roll 8 + 2 = 10 >= goblin flee_dc 10
+        monkeypatch.setattr(random, "randint", lambda a, b: 8)
+        action = MoveAction(
+            action_type="move", target="exit_north", detail="Run north!",
+        )
+        result = resolve_combat_turn(action, party_hard, party_corpus)
+        assert result["success"]
+        assert party_hard.combat is None
+        assert result["hard_changes"].player_location == "room2"
+        assert party_hard.entity_states["companion"]["following"] is True
+        from mgmai.engine.utils import get_following_npc_ids
+        assert "companion" in get_following_npc_ids(party_hard, party_corpus)
+
+    def test_flee_dc_ignores_allies(self, party_hard, party_corpus, monkeypatch):
+        """The flee DC is the max over enemies only, not allies."""
+        party_corpus.entities["companion"].combat.flee_dc = 18
+        self._combat_state(party_hard)
+        # roll 10 + 2 = 12: succeeds vs enemy DC 10, would fail vs ally DC 18
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        action = MoveAction(
+            action_type="move", target="exit_north", detail="Run!",
+        )
+        result = resolve_combat_turn(action, party_hard, party_corpus)
+        assert result["success"]
+        assert result["hard_changes"].player_location == "room2"
+
+    # -- State / briefing / prefix ------------------------------------
+
+    def test_combat_state_ai_fields_roundtrip(self):
+        """CombatState AI bookkeeping survives serialization."""
+        cs = CombatState(
+            active=True,
+            combatants=["player", "companion", "goblin"],
+            allies=["companion"],
+            initiative_order=["player", "companion", "goblin"],
+            current_index=0,
+            round_number=2,
+            last_attacker={"goblin": "companion", "player": "goblin"},
+            player_last_target="goblin",
+        )
+        cs2 = CombatState.model_validate(cs.model_dump(mode="json"))
+        assert cs2.allies == ["companion"]
+        assert cs2.last_attacker == {"goblin": "companion", "player": "goblin"}
+        assert cs2.player_last_target == "goblin"
+
+    def test_briefing_includes_sides(self, party_hard, party_corpus):
+        from mgmai.context.assembler import _build_combat_state
+        self._combat_state(party_hard)
+        briefing = _build_combat_state(party_hard, party_corpus)
+        assert briefing is not None
+        sides = {c["id"]: c["side"] for c in briefing.combatants}
+        assert sides == {"player": "party", "companion": "party", "goblin": "enemy"}
+
+    def test_npc_flee_prefix(self, party_corpus):
+        log = [{"actor": "goblin", "action": "flee"}]
+        prefix = format_combat_prefix(log, party_corpus)
+        assert "goblin flees!" in prefix.lower()
+
+    # -- Passive entity-state override --------------------------------
+
+    def test_passive_entity_state_override_enables_fighting(self, party_hard, party_corpus, monkeypatch):
+        """A declared ``passive`` entity state overrides the corpus AI
+        default: a passive ally persuaded to fight (passive: false) acts."""
+        party_corpus.entities["companion"].combat.ai = CombatAIBlock(passive=True)
+        party_hard.entity_states["companion"]["passive"] = False
+        self._combat_state(party_hard)
+        # player hits goblin for 6; companion acts (override) and hits for 6 -> dead
+        rand_vals = iter([15, 3, 10, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        ally_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "companion"
+        ]
+        assert len(ally_attacks) == 1
+
+    def test_passive_entity_state_override_suppresses_fighting(self, party_hard, party_corpus, monkeypatch):
+        """Entity state ``passive: true`` suppresses an NPC that would
+        otherwise act (no ai block at all)."""
+        party_hard.entity_states["companion"]["passive"] = True
+        self._combat_state(party_hard)
+        # player hits goblin for 6 (hp 7 -> 1); goblin attacks player, misses
+        rand_vals = iter([15, 3, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
+        ally_actions = [e for e in result["combat_log"] if e.actor == "companion"]
+        assert ally_actions == []
+
+    def test_bag_of_holding_korbar_persuadable(self):
+        """Scenario guard: Korbar is passive by default but persuadable —
+        passive state field declared, convince_fight path clears it."""
+        from pathlib import Path
+
+        from mgmai.state.manager import StateManager
+
+        sm = StateManager()
+        sm.load_all(Path("adventures/bag-of-holding"))
+        korbar = sm.corpus.entities["korbar"]
+        assert "passive" in korbar.state_fields
+        assert korbar.combat.ai is not None
+        assert korbar.combat.ai.passive is True
+        path = korbar.dialogue.dialogue_paths["convince_fight"]
+        assert path.result is not None
+        assert path.result.set_entity_state["korbar"]["passive"] is False
+        assert sm.hard_state.entity_states["korbar"]["passive"] is True

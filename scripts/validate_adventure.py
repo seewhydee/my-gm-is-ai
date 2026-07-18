@@ -238,6 +238,18 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
                 f"Entity '{entity_id}' has CombatBlock but no 'current_hp' "
                 f"declared in state_fields"
             )
+        ai = cb.ai
+        if ai is not None:
+            if ai.targeting not in ("last_attacker", "player", "lowest_hp", "random"):
+                errors.append(
+                    f"Entity '{entity_id}' CombatAIBlock.targeting is invalid: "
+                    f"'{ai.targeting}'"
+                )
+            if ai.flee_below_hp_pct is not None and not (1 <= ai.flee_below_hp_pct <= 99):
+                errors.append(
+                    f"Entity '{entity_id}' CombatAIBlock.flee_below_hp_pct must "
+                    f"be between 1 and 99, got {ai.flee_below_hp_pct}"
+                )
 
     return errors
 

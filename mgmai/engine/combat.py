@@ -150,9 +150,10 @@ def get_player_max_hp(hard: HardGameState) -> int:
 def roll_initiative(
     hard: HardGameState,
     corpus: ModuleCorpus,
-    enemy_ids: list[str],
+    npc_ids: list[str],
 ) -> list[str]:
-    """Roll initiative for the player and all enemies.  Return sorted order.
+    """Roll initiative for the player and all NPC combatants (allies and
+    enemies).  Return sorted order.
 
     Ties are broken by initiative modifier, then coin flip.
     """
@@ -165,8 +166,8 @@ def roll_initiative(
     player_roll = system.roll_initiative(player_mod)
     entries.append(("player", player_roll, player_mod, random.random()))
 
-    # Enemies
-    for eid in enemy_ids:
+    # NPCs
+    for eid in npc_ids:
         entity = corpus.entities.get(eid)
         if entity is None or entity.combat is None:
             continue
@@ -301,10 +302,11 @@ def _side_of(combat: CombatState, combatant_id: str) -> str:
 def _living_enemies(combat: CombatState, hard: HardGameState) -> list[str]:
     """Return living enemy combatants; combat ends in victory when empty.
 
-    Combatants killed earlier in the round are already removed from
-    ``combat.combatants``; the HP check additionally filters enemies whose
-    hard state says they are dead (hard entity state lags mid-turn because
-    HP changes are applied by the state manager at end of turn).
+    Combatants killed or fled earlier in the round are already removed
+    from ``combat.combatants``; the HP check additionally filters enemies
+    whose hard state says they are dead (belt-and-braces: combat HP is
+    mutated live mid-round, but other systems may kill entities outside
+    the combat module).
     """
     return [
         c
@@ -314,18 +316,101 @@ def _living_enemies(combat: CombatState, hard: HardGameState) -> list[str]:
     ]
 
 
+def _same_side(a: str, b: str) -> bool:
+    """True if two sides are the same: the player and party are one side."""
+    return (a in ("player", "party")) == (b in ("player", "party"))
+
+
+def _living_opponents(
+    actor_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+) -> list[str]:
+    """Return living combatants on the side opposing *actor_id*.
+
+    Membership in ``combat.combatants`` (updated immediately on death) is
+    the primary liveness filter, since hard entity state lags mid-turn;
+    the player is always a valid opponent while in combatants.
+    """
+    actor_side = _side_of(combat, actor_id)
+    opponents: list[str] = []
+    for cid in combat.combatants:
+        if cid == actor_id or _same_side(actor_side, _side_of(combat, cid)):
+            continue
+        if cid == "player":
+            opponents.append(cid)
+        elif (hard.entity_states.get(cid, {}).get("current_hp") or 0) > 0:
+            opponents.append(cid)
+    return opponents
+
+
 def _choose_npc_target(
     actor_id: str,
     combat: CombatState,
     hard: HardGameState,
     corpus: ModuleCorpus,
-) -> str:
-    """Pick a target for an NPC combatant.
+) -> str | None:
+    """Pick a target for an NPC combatant via rule-of-thumb combat AI.
 
-    Phase 1 has no allied combatants, so every NPC attacks the player;
-    Phase 2 introduces corpus-configured targeting rules.
+    Returns None when no living opponent exists.  Targeting rules (from
+    the NPC's ``combat.ai`` block):
+
+    - ``player`` — enemies only: attack the player.
+    - ``last_attacker`` — whoever landed the most recent hit on the
+      actor, if still a living opponent (fallback: player for enemies,
+      lowest-HP opponent for allies).
+    - ``lowest_hp`` — the living opponent with the lowest current HP.
+    - ``random`` — a random living opponent.
+
+    Defaults without an ``ai`` block: enemies use the ``last_attacker``
+    rule (in solo play this is always the player, preserving pre-AI
+    behavior); allies attack the player's most recent living target, then
+    their own last attacker, then the lowest-HP opponent.
     """
-    return "player"
+    entity = corpus.entities.get(actor_id)
+    ai = entity.combat.ai if entity and entity.combat else None
+    rule = ai.targeting if ai else None
+    actor_side = _side_of(combat, actor_id)
+    opponents = _living_opponents(actor_id, combat, hard)
+    if not opponents:
+        return None
+
+    def _hp(cid: str) -> int:
+        if cid == "player":
+            return hard.player.current_hp or 0
+        return hard.entity_states.get(cid, {}).get("current_hp") or 0
+
+    def _lowest() -> str:
+        return min(opponents, key=lambda c: (_hp(c), opponents.index(c)))
+
+    if rule == "player" and actor_side == "enemy":
+        return "player"
+    if rule == "random":
+        # randint (not random.choice) so tests that monkeypatch
+        # random.randint steer targeting like every other roll.
+        return opponents[random.randint(0, len(opponents) - 1)]
+    if rule == "lowest_hp":
+        return _lowest()
+    if rule == "last_attacker":
+        attacker = combat.last_attacker.get(actor_id)
+        if attacker in opponents:
+            return attacker
+        return "player" if actor_side == "enemy" else _lowest()
+
+    # Defaults (no ai block).
+    if actor_side == "enemy":
+        attacker = combat.last_attacker.get(actor_id)
+        if attacker in opponents:
+            return attacker
+        return "player"
+    # Ally default: the player's most recent living target, then own last
+    # attacker, then the lowest-HP opponent.
+    if combat.player_last_target in opponents:
+        return combat.player_last_target
+    attacker = combat.last_attacker.get(actor_id)
+    if attacker in opponents:
+        return attacker
+    return _lowest()
 
 
 def _target_ac(
@@ -365,16 +450,49 @@ def _resolve_npc_turn(
     if entity is None or entity.combat is None:
         return False, False
     if actor_id not in combat.combatants:
-        # Killed earlier this round: dead combatants are removed from
-        # combatants immediately, while their hard entity state only
-        # catches up when the state manager applies hard_changes.
+        # Killed or fled earlier this round: departed combatants are
+        # removed from combatants immediately (entity state is also
+        # mutated live, so the HP check below is a second line of defense).
         return False, False
     npc_state = hard.entity_states.get(actor_id, {})
     if (npc_state.get("current_hp") or 0) <= 0:
         return False, False
 
+    ai = entity.combat.ai
+    passive = ai.passive if ai is not None else False
+    if npc_state.get("passive") is not None:
+        # A declared ``passive`` entity state overrides the corpus AI
+        # default at runtime (e.g. an ally persuaded to fight).
+        passive = bool(npc_state["passive"])
+    if passive:
+        # Passive NPCs (cowering civilians, bystanders) take no actions.
+        return False, False
+
+    # NPC flee: enemies with a flee threshold abandon combat when badly
+    # hurt.  Allies never flee — they withdraw with the player.
+    if (
+        _side_of(combat, actor_id) == "enemy"
+        and ai is not None
+        and ai.flee_below_hp_pct is not None
+    ):
+        hp = npc_state.get("current_hp") or 0
+        if 100 * hp < ai.flee_below_hp_pct * entity.combat.hp:
+            combat.combatants.remove(actor_id)
+            # ``fled`` is engine-owned runtime state, set by direct
+            # mutation (same as current_hp initialisation in enter_combat).
+            hard.entity_states.setdefault(actor_id, {})["fled"] = True
+            combat_log.append(
+                CombatLogEntry(
+                    round=combat.round_number, actor=actor_id, action="flee",
+                )
+            )
+            return False, not _living_enemies(combat, hard)
+
     system = get_system_for_corpus(corpus)
     target_id = _choose_npc_target(actor_id, combat, hard, corpus)
+    if target_id is None:
+        # No living opponents: for an ally this means victory.
+        return False, not _living_enemies(combat, hard)
     target_ac = _target_ac(target_id, hard, corpus)
     if target_ac is None:
         return False, False
@@ -385,6 +503,9 @@ def _resolve_npc_turn(
     combat_log.extend(npc_result.log_entries)
     turn_entries = list(npc_result.log_entries)
 
+    if npc_result.hit:
+        combat.last_attacker[target_id] = actor_id
+
     if npc_result.target_hp_delta:
         if target_id == "player":
             hard_changes.player_hp_delta = (
@@ -394,14 +515,23 @@ def _resolve_npc_turn(
             new_hp = (
                 hard.entity_states.get(target_id, {}).get("current_hp") or 0
             ) + npc_result.target_hp_delta
+            # Mutate hard entity state directly so subsequent attackers in
+            # the same round see fresh HP.  The same absolute values are
+            # recorded in hard_changes, and absolute sets are idempotent
+            # when the state manager applies them at end of turn.
+            tgt_state = hard.entity_states.setdefault(target_id, {})
+            tgt_state["current_hp"] = new_hp
             tgt_changes = hard_changes.entity_state_changes.setdefault(
                 target_id, {}
             )
             tgt_changes["current_hp"] = new_hp
             if new_hp <= 0:
+                tgt_state["alive"] = False
                 tgt_changes["alive"] = False
                 if target_id in combat.combatants:
                     combat.combatants.remove(target_id)
+                if target_id in combat.allies:
+                    combat.allies.remove(target_id)
 
     # On-hit effects resolve only against the player (they reference
     # player stats and saves); they no-op internally if the player is
@@ -521,6 +651,24 @@ def resolve_combat_enemies(
     return out
 
 
+def resolve_combat_allies(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> list[str]:
+    """Return follower NPCs that join combat on the player's side.
+
+    Every alive follower (``following == True``, see
+    ``get_following_npc_ids``) that carries a combat block fights as an
+    ally; followers without combat blocks stay non-combatant bystanders.
+    """
+    allies: list[str] = []
+    for eid in get_following_npc_ids(hard, corpus):
+        entity = corpus.entities.get(eid)
+        if entity is not None and entity.combat is not None:
+            allies.append(eid)
+    return allies
+
+
 def enter_combat(
     enemy_ids: list[str],
     hard: HardGameState,
@@ -535,13 +683,17 @@ def enter_combat(
     """
     system = get_system_for_corpus(corpus)
 
+    # Followers with combat blocks join the player's side automatically —
+    # unless one of them is itself an enemy (the player attacked it).
+    ally_ids = [a for a in resolve_combat_allies(hard, corpus) if a not in enemy_ids]
+
     # Initialize player HP if absent
     if hard.player.current_hp is None:
         hard.player.current_hp = system.compute_player_max_hp(hard, corpus)
         hard.player.max_hp = hard.player.max_hp or hard.player.current_hp
 
     # Initialize NPC current_hp from combat block
-    for eid in enemy_ids:
+    for eid in list(ally_ids) + list(enemy_ids):
         entity = corpus.entities.get(eid)
         if entity is None or entity.combat is None:
             continue
@@ -550,12 +702,13 @@ def enter_combat(
             state["current_hp"] = entity.combat.hp
 
     # Roll initiative once
-    initiative_order = roll_initiative(hard, corpus, enemy_ids)
+    initiative_order = roll_initiative(hard, corpus, list(ally_ids) + list(enemy_ids))
 
     # Create combat state
     combat = CombatState(
         active=True,
-        combatants=["player"] + list(enemy_ids),
+        combatants=["player"] + list(ally_ids) + list(enemy_ids),
+        allies=list(ally_ids),
         initiative_order=initiative_order,
         current_index=0,
         round_number=1,
@@ -631,6 +784,12 @@ def resolve_combat_turn(
         if target_id not in combat.combatants:
             return {"success": False, "error": f"Target '{target_id}' not in combat"}
 
+        if _side_of(combat, target_id) != "enemy":
+            return {
+                "success": False,
+                "error": f"Cannot attack '{target_id}': not an enemy combatant",
+            }
+
         entity = corpus.entities.get(target_id)
         if entity is None or entity.combat is None:
             return {"success": False, "error": f"Invalid combat target '{target_id}'"}
@@ -639,17 +798,26 @@ def resolve_combat_turn(
         if (npc_state.get("current_hp") or 0) <= 0:
             return {"success": False, "error": f"Target '{target_id}' is already dead"}
 
+        combat.player_last_target = target_id
         target_ac = entity.combat.ac
         pa_result = system.resolve_player_attack(hard, corpus, target_id, target_ac, combat.round_number)
         combat_log.extend(pa_result.log_entries)
 
         if pa_result.hit:
+            combat.last_attacker[target_id] = "player"
             new_hp = (npc_state.get("current_hp") or 0) + pa_result.target_hp_delta
+            # Mutate hard entity state directly (fresh mid-turn reads for
+            # allies attacking the same target); the same absolute values
+            # are recorded in hard_changes, which the state manager applies
+            # idempotently at end of turn.
+            tgt_state = hard.entity_states.setdefault(target_id, {})
+            tgt_state["current_hp"] = new_hp
             hard_changes.entity_state_changes.setdefault(target_id, {})[
                 "current_hp"
             ] = new_hp
 
             if new_hp <= 0:
+                tgt_state["alive"] = False
                 hard_changes.entity_state_changes.setdefault(target_id, {})[
                     "alive"
                 ] = False
@@ -668,7 +836,7 @@ def resolve_combat_turn(
             (
                 corpus.entities.get(c).combat.flee_dc
                 for c in combat.combatants
-                if c != "player"
+                if _side_of(combat, c) == "enemy"
                 and corpus.entities.get(c)
                 and corpus.entities.get(c).combat
             ),

@@ -158,8 +158,9 @@ def format_combat_prefix(
             else:
                 summaries.append(f"**{name} {target_name}: miss.**")
         elif action == "flee":
-            hit = entry.get("hit")
-            if hit:
+            if actor != "player":
+                summaries.append(f"**{_entity_name(actor, corpus)} flees!**")
+            elif entry.get("hit"):
                 summaries.append("**You break away from combat!**")
             else:
                 summaries.append("**You fail to escape!**")

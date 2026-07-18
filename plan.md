@@ -270,12 +270,39 @@ Each sub-chunk is independently mergeable.  Suggested order:
 - Tests; `schema/corpus.md`, `schema/actions.md`, `doc/combat.md`
   updates.
 
-### 3e — NPC multiattack
+### 3e — NPC attack definitions & multiattack
 
-- `CombatBlock.attacks: int = 1`; an NPC's turn resolves that many attack
-  rolls against its chosen target (stops early if the target dies; no
-  target splitting yet).
-- Tests; `schema/corpus.md`, `doc/combat.md` updates.
+Not a flat "number of attacks": real monsters have distinct attack
+options (bite/claw/claw with different stats), so attacks are defined
+individually.
+
+- `CombatBlock.attacks: list[NPCAttackDef]` — named attack options, each
+  `{id, name?, atk, dmg, on_hit_effects?}`.  When `attacks` is absent the
+  NPC has one implicit "basic attack" built from the block-level `atk` /
+  `dmg` / `on_hit_effects` (existing blocks behave unchanged — the
+  shorthand is kept deliberately, since simple mobs need no more).  When
+  `attacks` is present, block-level `atk` becomes optional and
+  block-level `on_hit_effects` is forbidden (validation error): each
+  attack carries its own.
+- `CombatBlock.multiattack: list[str]` — the ordered attack ids the NPC
+  performs each turn; ids may repeat (`["bite", "claw", "claw"]`).
+  Absent → a single attack per turn: the first entry of `attacks`, else
+  the basic attack.
+- Resolution: `_resolve_npc_turn` iterates the turn's attack sequence and
+  passes the chosen attack definition (bonus, damage expr, on-hit
+  effects) into `ResolutionSystem.resolve_npc_attack`, which no longer
+  reads `CombatBlock.atk` / `.dmg` directly.  If the target dies
+  mid-sequence the remaining attacks are lost (no target splitting this
+  phase).  Attack selection beyond the fixed `multiattack` order (e.g.
+  conditional choice) is left to Phase 4's `ai.ability_rules`.
+- `CombatLogEntry` gains an optional `attack_id` so the combat prefix
+  and prose can name the attack ("Spider bites you").
+- Validation: `multiattack` ids must resolve to a defined attack; damage
+  expressions parse; `attacks` and block-level `on_hit_effects` are
+  mutually exclusive.
+- Tests: sequence resolves each attack in order with its own bonus/dice;
+  sequence stops on target death; per-attack on-hit effects fire;
+  prefix names the attack.
 
 ---
 
@@ -386,10 +413,10 @@ chapter), `doc/player-stats.md` (character-sheet `abilities` field).
 ## Execution checklist
 
 - [x] Phase 1 — combat core generalization (refactor, behavior-preserving)
-- [ ] Phase 2 — allied NPCs + combat AI
+- [x] Phase 2 — allied NPCs + combat AI
 - [ ] Phase 3a — weapon properties (finesse, ranged)
 - [ ] Phase 3b — damage types / resistance / vulnerability / immunity
 - [ ] Phase 3c — conditions (poisoned, stunned, prone)
 - [ ] Phase 3d — consumables + `use_item` in combat
-- [ ] Phase 3e — NPC multiattack
+- [ ] Phase 3e — NPC attack definitions & multiattack
 - [ ] Phase 4 — abilities in combat

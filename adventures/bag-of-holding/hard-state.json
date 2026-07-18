@@ -60,6 +60,7 @@
       "alive": true,
       "attitude": 0,
       "following": false,
+      "passive": true,
       "convinced_spider_dead": false,
       "current_hp": 29
     },

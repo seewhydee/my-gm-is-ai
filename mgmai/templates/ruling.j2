@@ -20,7 +20,7 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 - **recent_history**: Last few turn summaries (structured, not verbatim).
 - **dialogue_context**: (if in conversation) Active NPC details, attitude, dialogue guidelines, recent exchanges, topics discussed, and revealed topics.
 - **revealed_hints**: Hint strings the player has previously learned or observed (from examinations or interactions). Treat these as established facts the player knows; do not contradict them.
-- **combat_state**: (if combat is active) Round number, initiative order, current actor, and combatants with HP. When present, only `combat` and `move` actions are valid.
+- **combat_state**: (if combat is active) Round number, initiative order, current actor, and combatants with HP and `side` (`"party"` = the player and their allies, `"enemy"` = hostiles). When present, only `combat` and `move` actions are valid.
 - **player_input**: The player's verbatim input for this turn.
 
 ---
@@ -81,9 +81,9 @@ You MUST output a single JSON object with the following structure.
 - `target` (string, required): Entity ID of the currently equipped item to remove
 
 **combat** — Attack during combat:
-- `target` (string, required): Entity ID of the combatant to attack
+- `target` (string, required): Entity ID of the enemy combatant to attack
 - `combat_action` (string, required): Must be `"attack"`
-- Only valid when `combat_state` is present in the briefing.
+- Only valid when `combat_state` is present in the briefing. The target must have `side: "enemy"` — allies on the player's side act on their own and cannot be attacked.
 
 **ooc_discussion** — Out-of-character talk with the GM:
 - No additional fields.  Summarize the player input in `detail`.
@@ -217,11 +217,14 @@ up an object from the ground as an improvised weapon is also one action.
 5. **Transfer**: Giving items to someone or taking items from someone/somewhere. `target` is the source/recipient: the container or NPC entity ID, or the room ID for items loose on the floor. Hard items use their entity IDs (taken from the container's `contains` or the player's inventory); soft items use their names (from the container's or room's `soft_items_present`, or the player's `soft_inventory`). Only take items that are actually present at the target. See *Containers & Items*.
 
 6. **Combat**: When `combat_state` is present in the briefing, the only
-   valid actions are `combat` (to attack a combatant), `move` (to attempt
-   to flee), and `examine` with `rigorous: false` (a free cursory look).
-   The target for `combat` must be an ID from `combat_state.combatants`.
-   Do not use `examine` with `rigorous: true` during combat — thorough
-   searching is not feasible in the heat of battle.
+   valid actions are `combat` (to attack an enemy combatant), `move` (to
+   attempt to flee), and `examine` with `rigorous: false` (a free cursory
+   look). The target for `combat` must be an ID from
+   `combat_state.combatants` with `side: "enemy"`. Allied NPCs
+   (`side: "party"`) fight autonomously under engine control — the player
+   cannot direct or attack them. Do not use `examine` with
+   `rigorous: true` during combat — thorough searching is not feasible in
+   the heat of battle.
 
 7. **Wait**: Catch-all for actions that don't fit other types — introspection (looking through inventory), non-interactive observation, actions the GM can't resolve.
 
@@ -240,7 +243,9 @@ up an object from the ground as an improvised weapon is also one action.
 - **Combat awareness**: When `combat_state` is present, combat is active.
   Only use `combat` (attack), `move` (flee), or non-rigorous `examine`
   (free cursory look) actions. The player cannot conduct thorough searches,
-  talk to NPCs, or take items during combat.
+  talk to NPCs, or take items during combat. Allied NPCs act on their own
+  under engine control; only `side: "enemy"` combatants are valid attack
+  targets.
 
 ---
 

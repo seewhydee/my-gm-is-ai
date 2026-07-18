@@ -1418,6 +1418,7 @@ the turn-based combat subsystem.
 | `atk`            | integer       | Attack bonus for the NPC's attack |
 | `dmg`¹           | string        | Damage expression; default `"1d6"`|
 | `on_hit_effects`¹| CheckResolution[] | On-hit effects; default `[]`  |
+| `ai`¹            | CombatAI      | Rule-of-thumb combat AI; see below |
 > ¹ optional
 
 Notes:
@@ -1455,6 +1456,46 @@ Notes:
   - `adjust_attitude`
   - `set_player_location`
   - `start_combat`
+
+#### Combat AI
+
+The optional `ai` block configures the engine's deterministic,
+rule-of-thumb combat AI for the NPC.  NPC decisions never involve the
+LLM.
+
+```json
+"ai": {
+  "targeting": "last_attacker",
+  "flee_below_hp_pct": 25,
+  "passive": false
+}
+```
+
+| Field               | Type    | Description |
+|---------------------|---------|-------------|
+| `targeting`¹        | string  | Target selection rule: `"last_attacker"` (default), `"player"`, `"lowest_hp"`, or `"random"` |
+| `flee_below_hp_pct`¹| integer | Flee when current HP% falls below this value (1–99); default: never flee |
+| `passive`¹          | boolean | Take no actions in combat; default `false` |
+
+Notes:
+
+- `targeting` selects among living opponents: `"last_attacker"` attacks
+  whoever landed the most recent hit on the NPC (enemies fall back to
+  the player); `"player"` always attacks the player (meaningful for
+  enemies only); `"lowest_hp"` attacks the weakest living opponent;
+  `"random"` picks a random living opponent.
+- Without an `ai` block, enemies use `last_attacker` (in solo combat
+  this is always the player, preserving the original behavior), and
+  allies attack the player's most recent target, then their own last
+  attacker, then the weakest enemy.
+- Fleeing removes the NPC from combat and sets its engine-owned `fled`
+  entity state to `true`; if it was the last living enemy, combat ends.
+  Only enemies flee — allies never do.
+- `passive` NPCs join combat (they can be targeted and hurt) but never
+  act — suitable for cowering civilians or bystanders.  A declared
+  `passive` entity state overrides this default at runtime (e.g. set to
+  `false` by a `set_entity_state` result when the player persuades the
+  NPC to fight).
 
 ### Aggro
 
@@ -1509,6 +1550,9 @@ present living member of that group as a hostile combatant.
 Followers (see below) are treated as allies, and excluded from
 auto-inclusion as a hostile combatant even if they share the tag.
 However, a follower may still enter combat by being attacked directly.
+Conversely, when combat begins, every present living follower that has
+a `combat` block automatically joins the player's side as an **ally**
+(see [Combat AI](#combat-ai)).
 
 #### Follower
 

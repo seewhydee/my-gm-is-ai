@@ -83,6 +83,7 @@ That's it.  When the player uses an `interact` action with
 | `initiative_mod` | int | `0` | DEX-like modifier for initiative rolls |
 | `flee_dc` | int | `10` | Difficulty class for the player to flee |
 | `on_hit_effects` | list[CheckResolution] | `[]` | Secondary effects that trigger on a successful hit (saving throws + damage) |
+| `ai` | CombatAIBlock? | `null` | Rule-of-thumb combat AI configuration (see [Party Combat and Combat AI](#party-combat-and-combat-ai)) |
 
 All values are **pre-computed** by the adventure author — the engine does
 not derive them from ability scores for NPCs.
@@ -205,6 +206,14 @@ present in the current room and alive; dead, absent, or non-stat-blocked
 ids are silently dropped.  If the filtered set is empty, no combat is
 entered.
 
+**Allies.**  When combat begins, every present living **follower** (an
+NPC with `following: true` in its entity state) that has a combat block
+automatically joins the player's side: it rolls initiative, appears in
+`combatants` and `allies`, and acts on its own turn via the combat AI
+(see *Party Combat and Combat AI* below).  Followers without combat
+blocks stay non-combatant bystanders.  A follower the player attacked
+directly joins as an enemy, not an ally.
+
 On entry:
 - Player HP is initialised from CON if not already set.
 - Each enemy's `current_hp` is initialised from their `CombatBlock.hp`.
@@ -289,11 +298,75 @@ When the player uses `move` during combat:
 
 ---
 
+## Party Combat and Combat AI
+
+Combat has two sides: the **party** (the player plus allied followers)
+and the **enemies**.  Every NPC combatant — on either side — is
+controlled by a deterministic, rule-of-thumb combat AI in the engine;
+no LLM calls are involved in NPC decisions, and the narration LLM call
+simply narrates the outcomes.
+
+### Target selection
+
+When an NPC acts, the engine picks its target among the living members
+of the opposing side according to the NPC's `combat.ai.targeting` rule:
+
+| Rule | Behavior |
+|------|----------|
+| `last_attacker` (default) | Attack whoever landed the most recent hit on the NPC.  Enemies fall back to the player when never hit; allies fall back to the weakest enemy. |
+| `player` | Always attack the player (meaningful for enemies only). |
+| `lowest_hp` | Attack the living opponent with the lowest current HP. |
+| `random` | Attack a random living opponent. |
+
+Without an `ai` block, enemies use `last_attacker` — in solo combat the
+last attacker is always the player, so existing adventures behave
+exactly as before.  Allies without an `ai` block attack the player's
+most recent target, then their own last attacker, then the weakest
+enemy (focus fire by default).
+
+The engine tracks `last_attacker` (who last hit each combatant) and
+`player_last_target` on `CombatState` to drive these rules.
+
+### NPC fleeing
+
+An enemy with `ai.flee_below_hp_pct` set flees on its turn when its
+current HP percentage falls below the threshold: it is removed from
+combat, its engine-owned `fled` entity state is set to `true` (the
+adventure can react to it, e.g. with `entity:<id>.fled` conditions),
+and if it was the last living enemy, combat ends.  Allies never flee —
+they withdraw with the player when the player flees.
+
+### Passive NPCs
+
+An NPC with `ai.passive: true` joins combat (it can be targeted and
+hurt) but never acts — for cowering civilians, pack animals, or
+bystanders.  A declared `passive` entity state overrides the corpus
+default at runtime, so adventure content can flip it either way (e.g. a
+`set_entity_state` result that sets `passive: false` after the player
+persuades an ally to fight).
+
+### Death and victory in party combat
+
+- An ally reduced to 0 HP dies (`alive: false`) and is removed from
+  combat; a dead follower stops following.  Combat continues as long as
+  the player lives.
+- Combat ends in victory when no living enemies remain — including when
+  an ally lands the killing blow, or when the last enemy flees.
+- The player may only target enemies; allies cannot be attacked
+  mid-combat (attacking a follower works as before: as a combat-entry
+  trigger, making it hostile).
+- When the player flees, combat ends for the whole party; followers
+  move to the new room with the player as usual.
+
+---
+
 ## Display and Narration
 
 ### Combat Status Panel
 
-Between combat turns, the console UI shows a status panel:
+Between combat turns, the console UI shows a status panel.  When allies
+are present, combatants are grouped under **Party** and **Enemies**
+headings:
 
 ```
 ┌─ Combat: Round 2 ──────────────────────────────────────┐
@@ -400,9 +473,6 @@ The minimum viable combat system deliberately excludes:
 - Death saving throws
 - Healing during combat
 - Multi-attack, reactions, opportunity attacks
-- NPC-vs-NPC combat
-- NPC-initiated fleeing
-- Enemy AI / decision-making (enemies always attack)
 
 These may be added in future phases.
 
