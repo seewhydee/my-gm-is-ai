@@ -161,7 +161,9 @@ set of system-specific fields.
   "max_hp": 10,
   "ac": null,
   "proficiency_bonus": 2,
-  "save_proficiencies": ["STR", "CON"]
+  "save_proficiencies": ["STR", "CON"],
+  "conditions": { "poisoned": 2 },
+  "abilities": ["fire_bolt", "cure_wounds"]
 }
 ```
 
@@ -173,6 +175,8 @@ set of system-specific fields.
 | `ac`                 | integer  | Explicit AC, if not computed   |
 | `proficiency_bonus`¹ | integer  | Proficiency bonus              |
 | `save_proficiencies` | string[] | Saving throw proficiency stats |
+| `conditions`         | object   | Active combat conditions (condition ID → rounds remaining); combat-scoped, cleared at combat end |
+| `abilities`          | string[] | IDs of [Abilities](corpus.md#abilities) the player knows |
 
 When `ac` is `null`, AC is computed from base (10 + DEX mod) plus
 equipment bonuses. Set an explicit value to override the computation.
@@ -310,6 +314,8 @@ a combat log:
 | `log`              | CombatLogEntry[] | See below                  |
 | `last_attacker`    | object   | Combat-AI bookkeeping: combatant ID → ID of the combatant who last landed a hit on them |
 | `player_last_target` | string?  | The enemy the player most recently attacked (drives default ally targeting) |
+| `ability_uses`     | object   | Combatant ID → `{ ability_id: times used }` this combat |
+| `npc_cooldowns`    | object   | NPC ID → `{ ability_id: rounds until usable again }` (ticks at round end) |
 
 Enemy NPCs may also carry the engine-owned `fled` entity state
 (`entity_states.<npc_id>.fled == true`) after fleeing combat via their

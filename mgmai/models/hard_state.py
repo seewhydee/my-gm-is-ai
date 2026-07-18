@@ -31,6 +31,10 @@ class PlayerState(BaseModel):
     ac: Optional[int] = None
     proficiency_bonus: Optional[int] = None
     save_proficiencies: list[str] = Field(default_factory=list)
+    # Combat conditions (condition id -> rounds remaining); combat-scoped.
+    conditions: Dict[str, int] = Field(default_factory=dict)
+    # IDs of combat abilities the player knows (corpus.abilities keys).
+    abilities: list[str] = Field(default_factory=list)
 
 class GameOverState(BaseModel):
     type: str  # "win" or "lose"

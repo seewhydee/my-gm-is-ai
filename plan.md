@@ -414,9 +414,9 @@ chapter), `doc/player-stats.md` (character-sheet `abilities` field).
 
 - [x] Phase 1 — combat core generalization (refactor, behavior-preserving)
 - [x] Phase 2 — allied NPCs + combat AI
-- [ ] Phase 3a — weapon properties (finesse, ranged)
-- [ ] Phase 3b — damage types / resistance / vulnerability / immunity
-- [ ] Phase 3c — conditions (poisoned, stunned, prone)
-- [ ] Phase 3d — consumables + `use_item` in combat
-- [ ] Phase 3e — NPC attack definitions & multiattack
-- [ ] Phase 4 — abilities in combat
+- [x] Phase 3a — weapon properties (finesse, ranged)
+- [x] Phase 3b — damage types / resistance / vulnerability / immunity
+- [x] Phase 3c — conditions (poisoned, stunned, prone)
+- [x] Phase 3d — consumables + `use_item` in combat
+- [x] Phase 3e — NPC attack definitions & multiattack
+- [x] Phase 4 — abilities in combat

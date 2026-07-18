@@ -97,8 +97,9 @@ class WaitAction(_BaseAction):
 
 class CombatAction(_BaseAction):
     action_type: Literal["combat"]
-    combat_action: Literal["attack"]
+    combat_action: Literal["attack", "use_item", "use_ability"]
     target: str
+    ability_id: Optional[str] = None
 
 
 class OocDiscussionAction(_BaseAction):

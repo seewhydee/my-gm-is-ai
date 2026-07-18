@@ -35,7 +35,7 @@ from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
-from mgmai.engine.utils import get_following_npc_ids
+from mgmai.engine.utils import get_conditions, get_following_npc_ids
 from mgmai.engine.systems import get_system, get_system_for_corpus
 from mgmai.engine.systems.dice import parse_damage_dice
 
@@ -197,6 +197,7 @@ def _resolve_npc_on_hits(
     rolls: list[dict[str, Any]],
     *,
     round_number: int,
+    on_hit_effects: list,
 ) -> tuple[list[dict[str, Any]], list[CombatLogEntry], bool]:
     """Resolve an NPC's on-hit ``CheckResolution`` effects.
 
@@ -214,7 +215,7 @@ def _resolve_npc_on_hits(
     death_log: list[CombatLogEntry] = []
     game_over = False
 
-    for effect in entity.combat.on_hit_effects:
+    for effect in on_hit_effects:
         # Stop if the player is already dead from the base attack or a
         # previous on-hit effect.
         effective_hp = (hard.player.current_hp or 0) + (hard_changes.player_hp_delta or 0)
@@ -427,6 +428,573 @@ def _target_ac(
     return entity.combat.ac
 
 
+def _attack_sequence(entity: Any) -> list:
+    """Return the ordered attack definitions for an NPC's turn.
+
+    ``multiattack`` lists the attack ids performed each turn (repeats
+    allowed); without it the NPC makes a single attack — the first entry
+    of ``attacks``, or the implicit basic attack (``None``, built from
+    block-level fields) when ``attacks`` is absent.
+    """
+    cb = entity.combat
+    if not cb.attacks:
+        return [None]  # basic attack from block-level fields
+    if cb.multiattack:
+        by_id = {a.id: a for a in cb.attacks}
+        return [by_id[atk_id] for atk_id in cb.multiattack]
+    return [cb.attacks[0]]
+
+
+# ------------------------------------------------------------------
+# Conditions
+# ------------------------------------------------------------------
+
+def _tick_conditions(combatant_id: str, hard: HardGameState) -> None:
+    """Start-of-turn condition processing for one combatant.
+
+    Prone combatants automatically stand (prone is removed); other
+    conditions tick down one round and expire at zero.
+    """
+    conditions = get_conditions(combatant_id, hard)
+    if not conditions:
+        return
+    conditions.pop("prone", None)
+    for cond_id in list(conditions):
+        conditions[cond_id] -= 1
+        if conditions[cond_id] <= 0:
+            del conditions[cond_id]
+
+
+def _clear_conditions(hard: HardGameState) -> None:
+    """Clear all conditions (conditions are combat-scoped)."""
+    hard.player.conditions.clear()
+    for state in hard.entity_states.values():
+        state.pop("conditions", None)
+
+
+# ------------------------------------------------------------------
+# Abilities
+# ------------------------------------------------------------------
+
+def _apply_damage_to_target(
+    target_id: str,
+    damage: int,
+    hard: HardGameState,
+    combat: CombatState,
+    hard_changes: HardStateChanges,
+) -> bool:
+    """Apply damage to a combatant, handling death bookkeeping.
+
+    Player HP goes through hard_changes as a delta (applied at end of
+    turn); NPC HP is mutated directly and also recorded as absolute sets.
+    Returns True when the target dropped to 0 HP or below.
+    """
+    if damage <= 0:
+        return False
+    if target_id == "player":
+        hard_changes.player_hp_delta = (
+            (hard_changes.player_hp_delta or 0) - damage
+        )
+        effective_hp = (hard.player.current_hp or 0) + (
+            hard_changes.player_hp_delta or 0
+        )
+        return effective_hp <= 0
+    new_hp = (
+        hard.entity_states.get(target_id, {}).get("current_hp") or 0
+    ) - damage
+    tgt_state = hard.entity_states.setdefault(target_id, {})
+    tgt_state["current_hp"] = new_hp
+    tgt_changes = hard_changes.entity_state_changes.setdefault(target_id, {})
+    tgt_changes["current_hp"] = new_hp
+    if new_hp <= 0:
+        tgt_state["alive"] = False
+        tgt_changes["alive"] = False
+        if target_id in combat.combatants:
+            combat.combatants.remove(target_id)
+        if target_id in combat.allies:
+            combat.allies.remove(target_id)
+        return True
+    return False
+
+
+def _apply_healing_to_target(
+    target_id: str,
+    amount: int,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    system: Any,
+    hard_changes: HardStateChanges,
+) -> int:
+    """Apply healing clamped to the target's max HP; returns the actual
+    amount healed."""
+    if target_id == "player":
+        effective_hp = (hard.player.current_hp or 0) + (
+            hard_changes.player_hp_delta or 0
+        )
+        max_hp = system.compute_player_max_hp(hard, corpus)
+        healed = max(0, min(amount, max_hp - effective_hp))
+        if healed:
+            hard_changes.player_hp_delta = (
+                (hard_changes.player_hp_delta or 0) + healed
+            )
+        return healed
+    entity = corpus.entities.get(target_id)
+    max_hp = entity.combat.hp if entity and entity.combat else 0
+    cur = hard.entity_states.get(target_id, {}).get("current_hp") or 0
+    healed = max(0, min(amount, max_hp - cur))
+    if healed:
+        new_hp = cur + healed
+        tgt_state = hard.entity_states.setdefault(target_id, {})
+        tgt_state["current_hp"] = new_hp
+        hard_changes.entity_state_changes.setdefault(target_id, {})[
+            "current_hp"
+        ] = new_hp
+    return healed
+
+
+def _target_current_hp(
+    target_id: str,
+    hard: HardGameState,
+    hard_changes: HardStateChanges,
+) -> int:
+    """Current effective HP of a combatant (player HP includes the
+    pending end-of-turn delta)."""
+    if target_id == "player":
+        return (hard.player.current_hp or 0) + (hard_changes.player_hp_delta or 0)
+    return hard.entity_states.get(target_id, {}).get("current_hp") or 0
+
+
+def _most_injured(
+    ids: list[str],
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    system: Any,
+    hard_changes: HardStateChanges,
+) -> str | None:
+    """Return the most-injured (lowest HP fraction) combatant among *ids*
+    that is below max HP, or None when everyone is unhurt."""
+    best: str | None = None
+    best_frac = 1.0
+    for cid in ids:
+        if cid == "player":
+            max_hp = system.compute_player_max_hp(hard, corpus)
+        else:
+            entity = corpus.entities.get(cid)
+            max_hp = entity.combat.hp if entity and entity.combat else 0
+        if max_hp <= 0:
+            continue
+        cur = _target_current_hp(cid, hard, hard_changes)
+        frac = cur / max_hp
+        if frac < best_frac:
+            best, best_frac = cid, frac
+    return best
+
+
+def _resolve_heal_ability(
+    caster_id: str,
+    aid: str,
+    ability: Any,
+    target_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+) -> None:
+    """Resolve a heal ability (clamped to the target's max HP)."""
+    system = get_system_for_corpus(corpus)
+    heal_total, heal_roll = system.roll_damage(ability.heal)
+    healed = _apply_healing_to_target(
+        target_id, heal_total, hard, corpus, system, hard_changes
+    )
+    combat_log.append(
+        CombatLogEntry(
+            round=combat.round_number,
+            actor=caster_id,
+            action="heal",
+            target=target_id,
+            attack_id=aid,
+            attack_name=ability.name,
+            damage=healed,
+            damage_roll=heal_roll,
+            remaining_hp=_target_current_hp(target_id, hard, hard_changes),
+        )
+    )
+
+
+def _resolve_attack_ability(
+    caster_id: str,
+    aid: str,
+    ability: Any,
+    atk_bonus: int,
+    target_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+) -> bool:
+    """Resolve an attack ability (attack roll + damage, crits, mitigation).
+
+    Returns True when the target died.
+    """
+    system = get_system_for_corpus(corpus)
+    atk = ability.attack
+    target_ac = _target_ac(target_id, hard, corpus)
+    adv, disadv = system.attack_roll_mods(
+        get_conditions(caster_id, hard), get_conditions(target_id, hard)
+    )
+    attack_roll = system.roll_die(20, advantage=adv, disadvantage=disadv)
+    attack_total = attack_roll + atk_bonus
+    critical = system.is_critical(attack_roll)
+    miss = system.is_fumble(attack_roll)
+    hit = critical or (not miss and attack_total >= (target_ac or 0))
+
+    log_entry = CombatLogEntry(
+        round=combat.round_number,
+        actor=caster_id,
+        action="attack",
+        target=target_id,
+        attack_roll=attack_roll,
+        attack_total=attack_total,
+        ac=target_ac,
+        hit=hit,
+        critical=critical if hit else None,
+        attack_id=aid,
+        attack_name=ability.name,
+    )
+    combat_log.append(log_entry)
+    if not hit:
+        log_entry.remaining_hp = _target_current_hp(target_id, hard, hard_changes)
+        return False
+
+    damage, damage_roll = system.roll_damage(atk.damage, critical=critical)
+    damage, mitigation = system.apply_damage_modifiers(
+        damage, atk.damage_type, target_id, hard, corpus
+    )
+    log_entry.damage_roll = damage_roll
+    log_entry.damage = damage
+    log_entry.damage_type = atk.damage_type or None
+    log_entry.mitigation = mitigation
+    combat.last_attacker[target_id] = caster_id
+    died = _apply_damage_to_target(target_id, damage, hard, combat, hard_changes)
+    log_entry.remaining_hp = _target_current_hp(target_id, hard, hard_changes)
+    if died:
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor=target_id, action="death",
+            )
+        )
+    return died
+
+
+def _resolve_save_ability(
+    caster_id: str,
+    aid: str,
+    ability: Any,
+    target_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+) -> bool:
+    """Resolve a save ability: the target saves (player with proficiency
+    rules, NPCs with their ``save_bonus``), taking half or no damage on
+    success and possibly a condition on failure.  Returns True when the
+    target died."""
+    system = get_system_for_corpus(corpus)
+    save = ability.save
+    if target_id == "player":
+        stat_value = (
+            hard.player.stats.get(save.stat, 10) if hard.player.stats else 10
+        )
+        flat = system.compute_save_modifier(save.stat, hard.player)
+        check = system.roll_check(
+            save.stat, stat_value, save.dc, flat_modifier=flat
+        )
+        save_success = check.success
+        save_roll, save_total = check.raw_roll, check.total
+    else:
+        tgt_entity = corpus.entities.get(target_id)
+        save_bonus = (
+            tgt_entity.combat.save_bonus
+            if tgt_entity and tgt_entity.combat
+            else 0
+        )
+        save_roll = system.roll_die(20)
+        save_total = save_roll + save_bonus
+        save_success = save_total >= save.dc
+
+    damage = 0
+    damage_roll: str | None = None
+    mitigation: str | None = None
+    if save.damage:
+        damage, damage_roll = system.roll_damage(save.damage)
+        if save_success:
+            damage = damage // 2 if save.half_on_success else 0
+        damage, mitigation = system.apply_damage_modifiers(
+            damage, save.damage_type, target_id, hard, corpus
+        )
+
+    applied_cond: str | None = None
+    if not save_success and save.apply_condition_on_failure is not None:
+        cond = save.apply_condition_on_failure
+        if target_id == "player":
+            hard.player.conditions[cond.id] = cond.rounds
+        else:
+            hard.entity_states.setdefault(target_id, {}).setdefault(
+                "conditions", {}
+            )[cond.id] = cond.rounds
+        applied_cond = cond.id
+
+    died = False
+    if damage:
+        died = _apply_damage_to_target(
+            target_id, damage, hard, combat, hard_changes
+        )
+
+    save_dict: dict[str, Any] = {
+        "save_stat": save.stat,
+        "save_dc": save.dc,
+        "save_roll": save_roll,
+        "save_total": save_total,
+        "save_success": save_success,
+        "damage_expr": save.damage or None,
+        "damage": damage,
+        "damage_type": save.damage_type or None,
+    }
+    if applied_cond:
+        save_dict["condition"] = applied_cond
+    combat_log.append(
+        CombatLogEntry(
+            round=combat.round_number,
+            actor=caster_id,
+            action="ability_save",
+            target=target_id,
+            attack_id=aid,
+            attack_name=ability.name,
+            damage=damage,
+            damage_roll=damage_roll,
+            mitigation=mitigation,
+            remaining_hp=_target_current_hp(target_id, hard, hard_changes),
+            on_hit_effects=[save_dict],
+        )
+    )
+    if died:
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor=target_id, action="death",
+            )
+        )
+    return died
+
+
+def _choose_npc_ability(
+    actor_id: str,
+    entity: Any,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+) -> tuple[str, Any, str] | None:
+    """Pick an ability for an NPC to use this turn: the first entry of
+    its ``combat.abilities`` list that is usable (uses remaining,
+    cooldown expired, AI HP condition met) and has a valid target.
+
+    Returns ``(ability_id, ability, target_id)`` or None.  Heal abilities
+    pick the most-injured living same-side combatant and are skipped
+    when nobody is hurt.
+    """
+    cb = entity.combat
+    if not cb.abilities:
+        return None
+    system = get_system_for_corpus(corpus)
+    actor_side = _side_of(combat, actor_id)
+    used_map = combat.ability_uses.setdefault(actor_id, {})
+    cd_map = combat.npc_cooldowns.setdefault(actor_id, {})
+    rules = cb.ai.ability_rules if cb.ai else {}
+
+    for aid in cb.abilities:
+        ability = corpus.abilities.get(aid)
+        if ability is None:
+            continue
+        if (
+            ability.uses_per_combat >= 0
+            and used_map.get(aid, 0) >= ability.uses_per_combat
+        ):
+            continue
+        if cd_map.get(aid, 0) > 0:
+            continue
+        rule = rules.get(aid)
+        if rule is not None and rule.use_below_own_hp_pct is not None:
+            hp = hard.entity_states.get(actor_id, {}).get("current_hp") or 0
+            if 100 * hp >= rule.use_below_own_hp_pct * cb.hp:
+                continue
+
+        if ability.target == "self":
+            if ability.heal:
+                cur = hard.entity_states.get(actor_id, {}).get("current_hp") or 0
+                if cur >= cb.hp:
+                    continue
+            target_id = actor_id
+        elif ability.target == "ally":
+            if not ability.heal:
+                continue  # only ally healing is supported this phase
+            friends = [
+                c
+                for c in combat.combatants
+                if c != actor_id and _same_side(actor_side, _side_of(combat, c))
+            ]
+            target_id = _most_injured(friends, hard, corpus, system, hard_changes)
+            if target_id is None:
+                continue
+        else:  # enemy
+            target_id = _choose_npc_target(actor_id, combat, hard, corpus)
+            if target_id is None:
+                continue
+        return aid, ability, target_id
+    return None
+
+
+def _use_npc_ability(
+    actor_id: str,
+    entity: Any,
+    aid: str,
+    ability: Any,
+    target_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+) -> bool:
+    """Resolve an NPC's chosen ability; returns True when the player died."""
+    combat.ability_uses[actor_id][aid] = (
+        combat.ability_uses[actor_id].get(aid, 0) + 1
+    )
+    rule = entity.combat.ai.ability_rules.get(aid) if entity.combat.ai else None
+    if rule is not None and rule.cooldown_rounds:
+        # +1 because cooldowns tick at the end of the cast round too:
+        # cooldown_rounds N = unusable for the N rounds after this one.
+        combat.npc_cooldowns[actor_id][aid] = rule.cooldown_rounds + 1
+
+    if ability.heal:
+        _resolve_heal_ability(
+            actor_id, aid, ability, target_id,
+            combat, hard, corpus, hard_changes, combat_log,
+        )
+        return False
+    if ability.attack is not None:
+        died = _resolve_attack_ability(
+            actor_id, aid, ability, entity.combat.atk or 0, target_id,
+            combat, hard, corpus, hard_changes, combat_log,
+        )
+        return died and target_id == "player"
+    if ability.save is not None:
+        died = _resolve_save_ability(
+            actor_id, aid, ability, target_id,
+            combat, hard, corpus, hard_changes, combat_log,
+        )
+        return died and target_id == "player"
+    return False
+
+
+def _resolve_player_ability(
+    action: CombatAction,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    combat: CombatState,
+) -> dict[str, Any] | None:
+    """Resolve the player's ``use_ability`` combat action.
+
+    Returns an error dict on failure, None on success (uses are consumed
+    even on a missed attack roll, by tabletop convention).
+    """
+    system = get_system_for_corpus(corpus)
+    aid = action.ability_id
+    if not aid:
+        return {"success": False, "error": "use_ability requires 'ability_id'"}
+    ability = corpus.abilities.get(aid)
+    if ability is None:
+        return {"success": False, "error": f"Unknown ability '{aid}'"}
+    if aid not in hard.player.abilities:
+        return {"success": False, "error": f"You do not know ability '{aid}'"}
+    used_map = combat.ability_uses.setdefault("player", {})
+    if (
+        ability.uses_per_combat >= 0
+        and used_map.get(aid, 0) >= ability.uses_per_combat
+    ):
+        return {
+            "success": False,
+            "error": f"'{ability.name}' has no uses left this combat",
+        }
+
+    target_id = action.target
+    if ability.target == "self":
+        if target_id != "player":
+            return {
+                "success": False,
+                "error": f"'{ability.name}' can only target yourself",
+            }
+    elif ability.target == "ally":
+        if target_id not in combat.combatants or _side_of(combat, target_id) == "enemy":
+            return {
+                "success": False,
+                "error": f"'{ability.name}' must target a party member",
+            }
+    else:  # enemy
+        if target_id not in combat.combatants:
+            return {"success": False, "error": f"Target '{target_id}' not in combat"}
+        if _side_of(combat, target_id) != "enemy":
+            return {
+                "success": False,
+                "error": f"'{ability.name}' must target an enemy",
+            }
+        if (hard.entity_states.get(target_id, {}).get("current_hp") or 0) <= 0:
+            return {
+                "success": False,
+                "error": f"Target '{target_id}' is already dead",
+            }
+
+    used_map[aid] = used_map.get(aid, 0) + 1
+    if ability.target == "enemy":
+        combat.player_last_target = target_id
+
+    if ability.heal:
+        _resolve_heal_ability(
+            "player", aid, ability, target_id,
+            combat, hard, corpus, hard_changes, combat_log,
+        )
+        return None
+
+    if ability.attack is not None:
+        stat_value = (
+            hard.player.stats.get(ability.attack.stat, 10)
+            if hard.player.stats
+            else 10
+        )
+        atk_bonus = system.compute_modifier(stat_value)
+        if ability.attack.proficient:
+            atk_bonus += getattr(hard.player, "proficiency_bonus", None) or 2
+        _resolve_attack_ability(
+            "player", aid, ability, atk_bonus, target_id,
+            combat, hard, corpus, hard_changes, combat_log,
+        )
+        return None
+
+    if ability.save is not None:
+        _resolve_save_ability(
+            "player", aid, ability, target_id,
+            combat, hard, corpus, hard_changes, combat_log,
+        )
+        return None
+
+    return {"success": False, "error": f"Ability '{aid}' has no effect"}
+
+
 def _resolve_npc_turn(
     actor_id: str,
     combat: CombatState,
@@ -456,6 +1024,16 @@ def _resolve_npc_turn(
         return False, False
     npc_state = hard.entity_states.get(actor_id, {})
     if (npc_state.get("current_hp") or 0) <= 0:
+        return False, False
+
+    # Start-of-turn condition processing; stunned combatants lose the turn.
+    _tick_conditions(actor_id, hard)
+    if "stunned" in get_conditions(actor_id, hard):
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor=actor_id, action="stunned",
+            )
+        )
         return False, False
 
     ai = entity.combat.ai
@@ -488,6 +1066,19 @@ def _resolve_npc_turn(
             )
             return False, not _living_enemies(combat, hard)
 
+    # Abilities take precedence over basic attacks: the NPC's first
+    # usable ability (uses, cooldown, AI rules) wins.
+    chosen = _choose_npc_ability(
+        actor_id, entity, combat, hard, corpus, hard_changes
+    )
+    if chosen is not None:
+        aid, ability, ability_target = chosen
+        game_over = _use_npc_ability(
+            actor_id, entity, aid, ability, ability_target,
+            combat, hard, corpus, hard_changes, combat_log,
+        )
+        return game_over, not _living_enemies(combat, hard)
+
     system = get_system_for_corpus(corpus)
     target_id = _choose_npc_target(actor_id, combat, hard, corpus)
     if target_id is None:
@@ -497,89 +1088,100 @@ def _resolve_npc_turn(
     if target_ac is None:
         return False, False
 
-    npc_result = system.resolve_npc_attack(
-        actor_id, hard, corpus, target_id, target_ac, combat.round_number,
-    )
-    combat_log.extend(npc_result.log_entries)
-    turn_entries = list(npc_result.log_entries)
-
-    if npc_result.hit:
-        combat.last_attacker[target_id] = actor_id
-
-    if npc_result.target_hp_delta:
-        if target_id == "player":
-            hard_changes.player_hp_delta = (
-                (hard_changes.player_hp_delta or 0) + npc_result.target_hp_delta
-            )
-        else:
-            new_hp = (
-                hard.entity_states.get(target_id, {}).get("current_hp") or 0
-            ) + npc_result.target_hp_delta
-            # Mutate hard entity state directly so subsequent attackers in
-            # the same round see fresh HP.  The same absolute values are
-            # recorded in hard_changes, and absolute sets are idempotent
-            # when the state manager applies them at end of turn.
-            tgt_state = hard.entity_states.setdefault(target_id, {})
-            tgt_state["current_hp"] = new_hp
-            tgt_changes = hard_changes.entity_state_changes.setdefault(
-                target_id, {}
-            )
-            tgt_changes["current_hp"] = new_hp
-            if new_hp <= 0:
-                tgt_state["alive"] = False
-                tgt_changes["alive"] = False
-                if target_id in combat.combatants:
-                    combat.combatants.remove(target_id)
-                if target_id in combat.allies:
-                    combat.allies.remove(target_id)
-
-    # On-hit effects resolve only against the player (they reference
-    # player stats and saves); they no-op internally if the player is
-    # already dead.
     game_over = False
-    if npc_result.hit and target_id == "player" and soft is not None:
-        attack_entry = next(
-            (entry for entry in npc_result.log_entries if entry.action == "attack"),
-            None,
+    for attack_def in _attack_sequence(entity):
+        npc_result = system.resolve_npc_attack(
+            actor_id, hard, corpus, target_id, target_ac,
+            combat.round_number, attack=attack_def,
         )
-        on_hit_narrative: list[str] = []
-        on_hit_hints: list[str] = []
-        on_hit_rolls: list[dict[str, Any]] = []
-        on_hit_entries, death_entries, on_hit_game_over = _resolve_npc_on_hits(
-            actor_id, hard, soft, corpus, state_manager,
-            hard_changes, on_hit_narrative, on_hit_hints, on_hit_rolls,
-            round_number=combat.round_number,
-        )
-        if attack_entry is not None:
-            attack_entry.on_hit_effects.extend(on_hit_entries)
-        combat_log.extend(death_entries)
-        turn_entries.extend(death_entries)
-        if on_hit_game_over:
-            # Either an inline Result.game_over (save-or-die) or death by
-            # on-hit damage.
-            game_over = True
+        combat_log.extend(npc_result.log_entries)
+        turn_entries = list(npc_result.log_entries)
 
-    # Authoritative end-condition check after the action.  hard.player is
-    # not mutated mid-turn, so effective player HP combines the base value
-    # with the accumulated delta; this catches the player dropping to 0 HP
-    # from damage accumulated across several attackers, which no single
-    # attack roll detects on its own.
-    if target_id == "player":
-        effective_hp = (hard.player.current_hp or 0) + (
-            hard_changes.player_hp_delta or 0
-        )
-        if effective_hp <= 0:
-            game_over = True
-            if not any(
-                e.action == "death" and e.actor == "player" for e in turn_entries
-            ):
-                combat_log.append(
-                    CombatLogEntry(
-                        round=combat.round_number,
-                        actor="player",
-                        action="death",
-                    )
+        if npc_result.hit:
+            combat.last_attacker[target_id] = actor_id
+
+        if npc_result.target_hp_delta:
+            if target_id == "player":
+                hard_changes.player_hp_delta = (
+                    (hard_changes.player_hp_delta or 0) + npc_result.target_hp_delta
                 )
+            else:
+                new_hp = (
+                    hard.entity_states.get(target_id, {}).get("current_hp") or 0
+                ) + npc_result.target_hp_delta
+                # Mutate hard entity state directly so subsequent attackers in
+                # the same round see fresh HP.  The same absolute values are
+                # recorded in hard_changes, and absolute sets are idempotent
+                # when the state manager applies them at end of turn.
+                tgt_state = hard.entity_states.setdefault(target_id, {})
+                tgt_state["current_hp"] = new_hp
+                tgt_changes = hard_changes.entity_state_changes.setdefault(
+                    target_id, {}
+                )
+                tgt_changes["current_hp"] = new_hp
+                if new_hp <= 0:
+                    tgt_state["alive"] = False
+                    tgt_changes["alive"] = False
+                    if target_id in combat.combatants:
+                        combat.combatants.remove(target_id)
+                    if target_id in combat.allies:
+                        combat.allies.remove(target_id)
+
+        # On-hit effects resolve only against the player (they reference
+        # player stats and saves); they no-op internally if the player is
+        # already dead.  Effects come from the attack definition (basic
+        # attack: block-level on_hit_effects).
+        if npc_result.hit and target_id == "player" and soft is not None:
+            attack_entry = next(
+                (entry for entry in npc_result.log_entries if entry.action == "attack"),
+                None,
+            )
+            on_hit_narrative: list[str] = []
+            on_hit_hints: list[str] = []
+            on_hit_rolls: list[dict[str, Any]] = []
+            on_hit_entries, death_entries, on_hit_game_over = _resolve_npc_on_hits(
+                actor_id, hard, soft, corpus, state_manager,
+                hard_changes, on_hit_narrative, on_hit_hints, on_hit_rolls,
+                round_number=combat.round_number,
+                on_hit_effects=(
+                    attack_def.on_hit_effects if attack_def is not None
+                    else entity.combat.on_hit_effects
+                ),
+            )
+            if attack_entry is not None:
+                attack_entry.on_hit_effects.extend(on_hit_entries)
+            combat_log.extend(death_entries)
+            turn_entries.extend(death_entries)
+            if on_hit_game_over:
+                # Either an inline Result.game_over (save-or-die) or death by
+                # on-hit damage.
+                game_over = True
+
+        # Authoritative end-condition check after the action.  hard.player is
+        # not mutated mid-turn, so effective player HP combines the base value
+        # with the accumulated delta; this catches the player dropping to 0 HP
+        # from damage accumulated across several attackers, which no single
+        # attack roll detects on its own.
+        if target_id == "player":
+            effective_hp = (hard.player.current_hp or 0) + (
+                hard_changes.player_hp_delta or 0
+            )
+            if effective_hp <= 0:
+                game_over = True
+                if not any(
+                    e.action == "death" and e.actor == "player" for e in turn_entries
+                ):
+                    combat_log.append(
+                        CombatLogEntry(
+                            round=combat.round_number,
+                            actor="player",
+                            action="death",
+                        )
+                    )
+
+        # Remaining attacks in the sequence are lost once the target drops.
+        if game_over or npc_result.target_died:
+            break
 
     return game_over, not _living_enemies(combat, hard)
 
@@ -736,6 +1338,7 @@ def enter_combat(
         if ended:
             # No living enemies remain (only reachable once allies can
             # fight, Phase 2); combat is over before the player's turn.
+            _clear_conditions(hard)
             hard.combat = None
             break
 
@@ -754,6 +1357,66 @@ def enter_combat(
 # ------------------------------------------------------------------
 # Combat turn resolution
 # ------------------------------------------------------------------
+
+def _resolve_use_item(
+    item_id: str,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    system: Any,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    round_number: int,
+) -> dict[str, Any] | None:
+    """Resolve a ``use_item`` combat action (drink a potion, …).
+
+    Uses the player's action: healing is clamped to max HP, one count of
+    the item is consumed (when the block says so), and NPC turns proceed
+    normally.  Returns an error dict on failure, None on success.
+    """
+    if item_id not in hard.player.inventory:
+        return {"success": False, "error": f"Item '{item_id}' not in inventory"}
+    entity = corpus.entities.get(item_id)
+    if entity is None or entity.consumable is None:
+        return {"success": False, "error": f"Item '{item_id}' is not usable"}
+    block = entity.consumable
+
+    healed = 0
+    heal_roll: str | None = None
+    if block.heal:
+        heal_total, heal_roll = system.roll_damage(block.heal)
+        effective_hp = (hard.player.current_hp or 0) + (
+            hard_changes.player_hp_delta or 0
+        )
+        max_hp = system.compute_player_max_hp(hard, corpus)
+        healed = max(0, min(heal_total, max_hp - effective_hp))
+        if healed:
+            hard_changes.player_hp_delta = (
+                (hard_changes.player_hp_delta or 0) + healed
+            )
+
+    for cond_id in block.cure_conditions:
+        hard.player.conditions.pop(cond_id, None)
+
+    if block.destroy:
+        hard_changes.inventory_removed[item_id] = (
+            hard_changes.inventory_removed.get(item_id, 0) + 1
+        )
+        hard_changes.inventory_removed_reasons[item_id] = "consumed"
+
+    combat_log.append(
+        CombatLogEntry(
+            round=round_number,
+            actor="player",
+            action="use_item",
+            target=item_id,
+            damage=healed,  # healing amount (positive), shown by the prefix
+            damage_roll=heal_roll,
+            remaining_hp=(hard.player.current_hp or 0)
+            + (hard_changes.player_hp_delta or 0),
+        )
+    )
+    return None
+
 
 def resolve_combat_turn(
     action: CombatAction | MoveAction,
@@ -778,7 +1441,33 @@ def resolve_combat_turn(
     game_over = False
     combat_ended = False
 
-    if isinstance(action, CombatAction):
+    # Start-of-turn condition processing for the player; a stunned player
+    # loses the action but the turn (and NPC turns) still proceeds.
+    _tick_conditions("player", hard)
+    if "stunned" in get_conditions("player", hard):
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor="player", action="stunned",
+            )
+        )
+    elif isinstance(action, CombatAction) and action.combat_action == "use_ability":
+        # --- Use a combat ability ---
+        err = _resolve_player_ability(
+            action, hard, corpus, hard_changes, combat_log, combat,
+        )
+        if err is not None:
+            return err
+        if not _living_enemies(combat, hard):
+            combat_ended = True
+    elif isinstance(action, CombatAction) and action.combat_action == "use_item":
+        # --- Use a consumable item ---
+        err = _resolve_use_item(
+            action.target, hard, corpus, system,
+            hard_changes, combat_log, combat.round_number,
+        )
+        if err is not None:
+            return err
+    elif isinstance(action, CombatAction):
         # --- Player attack ---
         target_id = action.target
         if target_id not in combat.combatants:
@@ -888,12 +1577,18 @@ def resolve_combat_turn(
         # Advance to next round
         combat.round_number += 1
         combat.current_index = player_idx
+        # NPC ability cooldowns tick at round end.
+        for cds in combat.npc_cooldowns.values():
+            for aid in list(cds):
+                cds[aid] = max(0, cds[aid] - 1)
 
     combat.log.extend(combat_log)
 
     if combat_ended:
+        _clear_conditions(hard)
         hard.combat = None
     elif game_over:
+        _clear_conditions(hard)
         hard.combat = None
 
     return {

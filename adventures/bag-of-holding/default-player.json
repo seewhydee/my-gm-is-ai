@@ -14,6 +14,9 @@
     "current_hp": 27,
     "ac": 11,
     "proficiency_bonus": 2,
-    "save_proficiencies": ["DEX", "INT"]
+    "save_proficiencies": ["DEX", "INT"],
+    "inventory": {
+      "health_potion": 1
+    }
   }
 }

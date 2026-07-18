@@ -82,8 +82,31 @@ That's it.  When the player uses an `interact` action with
 | `dmg` | str | `"1d6"` | Damage expression, e.g. `"1d6+2"`, `"2d4"`, `"1d8+1"`, or a flat integer like `"3"` |
 | `initiative_mod` | int | `0` | DEX-like modifier for initiative rolls |
 | `flee_dc` | int | `10` | Difficulty class for the player to flee |
+| `dmg_type` | str | `""` | Damage type of the NPC's damage (untyped if empty) |
+| `resistances` | list[str] | `[]` | Damage types halved (rounded down) against this NPC |
+| `vulnerabilities` | list[str] | `[]` | Damage types doubled against this NPC |
+| `immunities` | list[str] | `[]` | Damage types reduced to 0 against this NPC |
 | `on_hit_effects` | list[CheckResolution] | `[]` | Secondary effects that trigger on a successful hit (saving throws + damage) |
+| `attacks` | list[NPCAttackDef] | `[]` | Named attack options (`{id, name?, atk, dmg, dmg_type?, on_hit_effects?}`) |
+| `multiattack` | list[str] | `[]` | Ordered attack ids performed each turn (repeats allowed) |
 | `ai` | CombatAIBlock? | `null` | Rule-of-thumb combat AI configuration (see [Party Combat and Combat AI](#party-combat-and-combat-ai)) |
+
+An NPC with no `attacks` makes one basic attack per turn from the
+block-level `atk` / `dmg` / `on_hit_effects`.  With `attacks`, it uses
+the `multiattack` sequence (or the first listed attack when no sequence
+is given), each with its own bonus, damage, and on-hit effects; the
+sequence stops early if the target drops.  Attack `name` is a verb
+phrase used by the combat prefix ("Wolf bites you").  When `attacks` is
+present, block-level `on_hit_effects` is forbidden and `atk` optional.
+
+Damage types use the 5e vocabulary (acid, bludgeoning, cold, fire,
+force, lightning, necrotic, piercing, poison, radiant, slashing,
+thunder).  Mitigation applies to any typed damage dealt to the NPC —
+by the player's weapons (`EquipBlock.damage_type`) or by other NPCs;
+untyped damage is never mitigated, and the player has no damage-type
+modifiers yet.  Combat log entries record the `damage_type` and the
+applied `mitigation` (`"resisted"`, `"vulnerable"`, `"immune"`), which
+the combat prefix annotates.
 
 All values are **pre-computed** by the adventure author — the engine does
 not derive them from ability scores for NPCs.
@@ -157,6 +180,33 @@ The player gains optional combat fields on `HardGameState.player`:
 | `ac` | int? | `None` | Armour Class (computed from DEX if absent) |
 | `proficiency_bonus` | int? | `None` | Proficiency bonus (defaults to `2`) |
 | `save_proficiencies` | list[str]? | `[]` | Ability scores the player is proficient in for saving throws (e.g. `["DEX","INT"]`) |
+| `conditions` | dict[str,int] | `{}` | Active combat conditions (condition id → rounds remaining); combat-scoped |
+
+### Conditions
+
+Three conditions from the 5e SRD are implemented in simplified,
+combat-scoped form.  The player's conditions live on
+`PlayerState.conditions`; NPC conditions live in
+`entity_states[id]["conditions"]`.  Durations tick down at the start of
+the afflicted combatant's turn and everything clears when combat ends.
+
+| Condition | Effect (simplified) |
+|-----------|---------------------|
+| `poisoned` | Disadvantage on own attack rolls and ability checks (including the flee check). |
+| `stunned` | The combatant loses its turn; attack rolls against it have advantage. |
+| `prone` | Attack rolls against it have advantage; it automatically stands at the start of its turn. |
+
+Advantage and disadvantage cancel each other as usual.  Conditions are
+applied to the player through the `apply_condition` field of combat-safe
+Results (typically on-hit effects):
+
+```json
+"failure": {
+  "narrative": "The venom courses through you.",
+  "player_damage": "1d8",
+  "apply_condition": { "id": "poisoned", "rounds": 3 }
+}
+```
 
 When the adventure has a `corpus.stats` block and a field is absent, the
 engine computes defaults at combat-start time:
@@ -235,7 +285,8 @@ When combat is active, the following action types are valid:
 
 | Action | Description |
 |--------|-------------|
-| `combat` (`combat_action: "attack"`) | Attack a combatant.  `target` must be an entity ID in `combatants`. |
+| `combat` (`combat_action: "attack"`) | Attack a combatant.  `target` must be an enemy entity ID in `combatants`. |
+| `combat` (`combat_action: "use_item"`) | Use a consumable item.  `target` must be an inventory item with a `consumable` block (healing clamps to max HP; consumes the player's action). |
 | `move` | Attempt to flee (see below). |
 | `examine` | Free cursory look (non-rigorous only). Rigorous examine is not allowed during combat. |
 
@@ -360,6 +411,52 @@ persuades an ally to fight).
 
 ---
 
+## Abilities in Combat
+
+Named abilities — spells, class features, monster powers — are defined
+in the top-level corpus `abilities` block (see
+[schema/corpus.md](../schema/corpus.md#abilities)) and used in combat
+by the player and by NPCs.  Each ability has a target kind (`self`,
+`ally`, `enemy`), a per-combat use limit (`-1` = unlimited), and
+exactly one effect:
+
+- **`attack`** — an attack roll (the player's named ability modifier +
+  proficiency, or the NPC's `atk` bonus) plus damage, with the usual
+  crit, fumble, and damage-type mitigation rules.
+- **`save`** — the target makes a saving throw (the player with normal
+  proficiency rules; NPCs with `d20 + save_bonus`), taking half or no
+  damage on success and possibly a condition on failure.
+- **`heal`** — a healing dice expression, clamped to the target's max
+  HP.  Heal abilities target `self` or `ally` only.
+
+### Player abilities
+
+The character sheet's `abilities` list (see
+[player-stats.md](player-stats.md)) names the abilities the player
+knows.  In combat the player uses them via the `combat` action with
+`combat_action: "use_ability"`, an `ability_id`, and a `target`
+matching the ability's target kind (`"player"` for `self`, a party
+combatant for `ally`, an enemy for `enemy`).  Uses are consumed even on
+a missed attack roll, and exhausted abilities are rejected by the
+engine.  The combat briefing lists the player's abilities with
+remaining uses and effect summaries.
+
+### NPC abilities
+
+An NPC's `CombatBlock.abilities` lists the abilities it knows, in
+preference order.  On its turn, the combat AI uses the **first** entry
+that is usable — uses remaining, cooldown expired, and any
+`ai.ability_rules` condition met — falling back to its normal attack(s)
+when none qualifies.  `ai.ability_rules` provides per-ability
+constraints: `cooldown_rounds` (unusable for N rounds after each use)
+and `use_below_own_hp_pct` (only while the NPC is below the given HP
+percentage).  NPC healers target the most-injured living same-side
+combatant and skip healing entirely when everyone is healthy.
+Cooldowns tick at the end of each round; uses and cooldowns are tracked
+on `CombatState` and reset when combat ends.
+
+---
+
 ## Display and Narration
 
 ### Combat Status Panel
@@ -468,11 +565,8 @@ The minimum viable combat system deliberately excludes:
 
 - Gear / equipment (beyond weapon tag detection)
 - Movement / positioning / tactical maps
-- Spellcasting and class features
-- Conditions (poisoned, stunned, etc.)
 - Death saving throws
-- Healing during combat
-- Multi-attack, reactions, opportunity attacks
+- Reactions, opportunity attacks
 
 These may be added in future phases.
 

@@ -36,10 +36,16 @@ format as `--char-sheet`:
     "current_hp": 27,
     "ac": 11,
     "proficiency_bonus": 2,
-    "save_proficiencies": ["DEX", "INT"]
+    "save_proficiencies": ["DEX", "INT"],
+    "abilities": ["fire_bolt", "cure_wounds"]
   }
 }
 ```
+
+The optional `abilities` list names the combat abilities the player
+knows (defined in the corpus's
+[abilities](../schema/corpus.md#abilities) block); the player uses them
+in combat via the `use_ability` combat action.
 
 At new-game init the player block is resolved as a field-by-field overlay:
 

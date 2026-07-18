@@ -34,9 +34,12 @@ from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import (
     CombatAIBlock,
     CombatBlock,
+    ConsumableBlock,
     EncounterRule,
     Entity,
+    EquipBlock,
     ModuleCorpus,
+    NPCAttackDef,
 )
 from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.engine.combat import (
@@ -2007,3 +2010,1019 @@ class TestPartyCombat:
         assert path.result is not None
         assert path.result.set_entity_state["korbar"]["passive"] is False
         assert sm.hard_state.entity_states["korbar"]["passive"] is True
+
+
+# ------------------------------------------------------------------
+# 15. Weapon properties (Phase 3a)
+# ------------------------------------------------------------------
+
+class TestWeaponProperties:
+    """finesse / ranged weapon properties select the attack ability."""
+
+    def _corpus_with_weapon(self, combat_npc_corpus, properties):
+        corpus = combat_npc_corpus.model_copy(deep=True)
+        corpus.entities["rapier"] = Entity(
+            type="item",
+            name="Rapier",
+            description="A rapier.",
+            tags=["weapon"],
+            equip_block=EquipBlock(
+                equip_tags=["weapon"],
+                damage_expr="1d8",
+                properties=properties,
+            ),
+        )
+        return corpus
+
+    def _hard_with_weapon(self, combat_hard_state, stats):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.stats = stats
+        hard.player.equipped = ["rapier"]
+        return hard
+
+    def test_finesse_uses_dex_when_higher(self, combat_npc_corpus, combat_hard_state):
+        corpus = self._corpus_with_weapon(combat_npc_corpus, ["finesse"])
+        hard = self._hard_with_weapon(combat_hard_state, {"STR": 10, "DEX": 18, "CON": 12})
+        s = FiveESystem()
+        # DEX 18 -> +4, prof +2 -> +6
+        assert s.compute_player_attack_bonus(hard, corpus) == 6
+        assert s.compute_player_damage_expr(hard, corpus) == "1d8+4"
+
+    def test_finesse_uses_str_when_higher(self, combat_npc_corpus, combat_hard_state):
+        corpus = self._corpus_with_weapon(combat_npc_corpus, ["finesse"])
+        hard = self._hard_with_weapon(combat_hard_state, {"STR": 18, "DEX": 12, "CON": 12})
+        s = FiveESystem()
+        # STR 18 -> +4, prof +2 -> +6
+        assert s.compute_player_attack_bonus(hard, corpus) == 6
+        assert s.compute_player_damage_expr(hard, corpus) == "1d8+4"
+
+    def test_ranged_always_uses_dex(self, combat_npc_corpus, combat_hard_state):
+        corpus = self._corpus_with_weapon(combat_npc_corpus, ["ranged"])
+        hard = self._hard_with_weapon(combat_hard_state, {"STR": 18, "DEX": 12, "CON": 12})
+        s = FiveESystem()
+        # DEX 12 -> +1, prof +2 -> +3
+        assert s.compute_player_attack_bonus(hard, corpus) == 3
+        assert s.compute_player_damage_expr(hard, corpus) == "1d8+1"
+
+    def test_plain_weapon_uses_str(self, combat_npc_corpus, combat_hard_state):
+        corpus = self._corpus_with_weapon(combat_npc_corpus, [])
+        hard = self._hard_with_weapon(combat_hard_state, {"STR": 16, "DEX": 14, "CON": 12})
+        s = FiveESystem()
+        assert s.compute_player_attack_bonus(hard, corpus) == 5
+        assert s.compute_player_damage_expr(hard, corpus) == "1d8+3"
+
+
+# ------------------------------------------------------------------
+# 16. Damage types: resistance, vulnerability, immunity (Phase 3b)
+# ------------------------------------------------------------------
+
+class TestDamageTypes:
+    """Typed damage vs NPC resistance/vulnerability/immunity."""
+
+    def _setup(self, combat_npc_corpus, combat_hard_state, damage_type="fire", **enemy_block_kwargs):
+        corpus = combat_npc_corpus.model_copy(deep=True)
+        corpus.entities["flame_sword"] = Entity(
+            type="item",
+            name="Flame Sword",
+            description="A burning sword.",
+            tags=["weapon"],
+            equip_block=EquipBlock(
+                equip_tags=["weapon"], damage_expr="1d8", damage_type=damage_type,
+            ),
+        )
+        cb = corpus.entities["goblin"].combat
+        for key, value in enemy_block_kwargs.items():
+            setattr(cb, key, value)
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.equipped = ["flame_sword"]
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+        return corpus, hard
+
+    def _attack(self):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target="goblin", detail="Strike!",
+        )
+
+    def test_immune_target_takes_no_damage(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus, hard = self._setup(combat_npc_corpus, combat_hard_state, immunities=["fire"])
+        # player hits (15+5 vs 12), rolls 4 -> 4+3=7 fire, immune -> 0; goblin misses (1)
+        rand_vals = iter([15, 4, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        entry = result["combat_log"][0]
+        assert entry.hit is True
+        assert entry.damage == 0
+        assert entry.mitigation == "immune"
+        assert result["hard_changes"].entity_state_changes["goblin"]["current_hp"] == 7
+
+    def test_resistance_halves_damage(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus, hard = self._setup(combat_npc_corpus, combat_hard_state, resistances=["fire"])
+        rand_vals = iter([15, 4, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        entry = result["combat_log"][0]
+        assert entry.damage == 3  # 7 // 2
+        assert entry.mitigation == "resisted"
+        assert result["hard_changes"].entity_state_changes["goblin"]["current_hp"] == 4
+
+    def test_vulnerability_doubles_damage(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus, hard = self._setup(combat_npc_corpus, combat_hard_state, vulnerabilities=["fire"])
+        rand_vals = iter([15, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        entry = result["combat_log"][0]
+        assert entry.damage == 14  # 7 * 2
+        assert entry.mitigation == "vulnerable"
+        assert result["hard_changes"].entity_state_changes["goblin"]["alive"] is False
+
+    def test_untyped_damage_ignores_resistance(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state, damage_type="", resistances=["fire"],
+        )
+        rand_vals = iter([15, 4, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        entry = result["combat_log"][0]
+        assert entry.damage == 7
+        assert entry.mitigation is None
+
+    def test_npc_attack_mitigation_vs_npc_target(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        """An NPC attacker with a typed damage expr is mitigated by the NPC
+        target's resistances (e.g. an ally striking a resistant enemy)."""
+        corpus = combat_npc_corpus.model_copy(deep=True)
+        corpus.entities["golem"] = Entity(
+            type="npc",
+            description="A stone golem.",
+            state_fields={
+                "alive": {"type": "boolean", "description": "Alive?"},
+                "current_hp": {"type": "number", "description": "HP"},
+            },
+            combat=CombatBlock(hp=20, ac=10, atk=2, dmg="1d4", resistances=["fire"]),
+        )
+        cb = corpus.entities["goblin"].combat
+        cb.dmg_type = "fire"
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.entity_states["golem"] = {"alive": True, "current_hp": 20}
+        # goblin hits golem (12+4 vs 10), dmg 4+2=6 fire -> resisted -> 3
+        rand_vals = iter([12, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_npc_attack(
+            "goblin", hard, corpus, "golem", 10, 1,
+        )
+        assert result.target_hp_delta == -3
+        assert result.log_entries[0].mitigation == "resisted"
+
+    def test_mitigation_prefix(self):
+        log = [{"actor": "player", "action": "attack", "target": "goblin",
+                "hit": True, "damage": 3, "mitigation": "resisted"}]
+        prefix = format_combat_prefix(log)
+        assert "(resisted)" in prefix
+
+
+# ------------------------------------------------------------------
+# 17. Conditions: poisoned, stunned, prone (Phase 3c)
+# ------------------------------------------------------------------
+
+class TestConditions:
+    """Condition application, effects on rolls, ticking, and clearing."""
+
+    def _combat_state(self, hard):
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+
+    def _attack(self):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target="goblin", detail="Attack!",
+        )
+
+    def _add_on_hit(self, corpus: ModuleCorpus, effects: list[dict]) -> ModuleCorpus:
+        data = corpus.model_dump()
+        data["stats"] = {
+            "definitions": {
+                "STR": {"name": "Strength"},
+                "DEX": {"name": "Dexterity"},
+                "CON": {"name": "Constitution"},
+                "INT": {"name": "Intelligence"},
+                "WIS": {"name": "Wisdom"},
+                "CHA": {"name": "Charisma"},
+            },
+            "system": "5e",
+        }
+        data["entities"]["goblin"]["combat"]["on_hit_effects"] = effects
+        return ModuleCorpus.model_validate(data)
+
+    def test_poisoned_player_attacks_with_disadvantage(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.conditions = {"poisoned": 2}
+        self._combat_state(hard)
+        # tick: 2 -> 1, still poisoned; attack rolls twice, keeps lower (3)
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 3
+        assert entry.hit is False
+        assert hard.player.conditions == {"poisoned": 1}
+
+    def test_poison_expires_at_turn_start(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.conditions = {"poisoned": 1}
+        self._combat_state(hard)
+        # tick removes poison (1 -> 0); single attack roll 15 -> hit
+        rand_vals = iter([15, 4, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 15
+        assert entry.hit is True
+
+    def test_stunned_player_loses_action(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.conditions = {"stunned": 2}
+        self._combat_state(hard)
+        # player skips; goblin attacks the stunned player WITH ADVANTAGE
+        # (keeps 12), hits for 3+2=5
+        rand_vals = iter([12, 5, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
+        assert result["success"] is True
+        stunned = [e for e in result["combat_log"] if e.action == "stunned"]
+        assert len(stunned) == 1
+        assert stunned[0].actor == "player"
+        player_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "player"
+        ]
+        assert player_attacks == []
+        assert result["hard_changes"].player_hp_delta == -5
+        assert hard.combat.round_number == 2
+
+    def test_stunned_npc_loses_turn(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.entity_states["goblin"]["conditions"] = {"stunned": 2}
+        self._combat_state(hard)
+        # player attacks the stunned goblin WITH ADVANTAGE (keeps 15),
+        # dmg 1+3=4 (goblin hp 7 -> 3); goblin stunned, skips
+        rand_vals = iter([3, 15, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
+        stunned = [e for e in result["combat_log"] if e.action == "stunned"]
+        assert len(stunned) == 1
+        assert stunned[0].actor == "goblin"
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert goblin_attacks == []
+        assert result["hard_changes"].player_hp_delta is None
+
+    def test_attacks_against_prone_have_advantage(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.entity_states["goblin"]["conditions"] = {"prone": 5}
+        self._combat_state(hard)
+        # player attacks with advantage (keeps 15), dmg 1+3=4 (hp 7 -> 3);
+        # goblin auto-stands at its turn start and attacks normally
+        rand_vals = iter([3, 15, 1, 12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 15
+        assert entry.hit is True
+        assert "prone" not in hard.entity_states["goblin"].get("conditions", {})
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert len(goblin_attacks) == 1
+
+    def test_apply_condition_from_on_hit(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        corpus = self._add_on_hit(combat_npc_corpus, [{
+            "check": {
+                "type": "stat_check", "stat": "CON", "target": 10,
+                "proficiency": "save", "repeatable": False,
+            },
+            "success": {},
+            "failure": {
+                "narrative": "Venom burns through you.",
+                "apply_condition": {"id": "poisoned", "rounds": 3},
+            },
+        }])
+        hard = combat_hard_state.model_copy(deep=True)
+        self._combat_state(hard)
+        # player misses (1); goblin hits (15) for 1+2=3; save 5+1=6 < 10 fail
+        rand_vals = iter([1, 15, 1, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus, soft=SoftGameState())
+        assert result["success"]
+        assert hard.player.conditions == {"poisoned": 3}
+
+    def test_conditions_cleared_at_combat_end(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.conditions = {"poisoned": 9}
+        hard.entity_states["goblin"]["conditions"] = {"stunned": 9}
+        self._combat_state(hard)
+        # player crits: 2*(1d6)+3 = 15 -> goblin dead -> combat ends
+        rand_vals = iter([20, 6, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
+        assert result["success"]
+        assert hard.combat is None
+        assert hard.player.conditions == {}
+        assert "conditions" not in hard.entity_states["goblin"]
+
+    def test_poisoned_flee_with_disadvantage(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.conditions = {"poisoned": 2}
+        self._combat_state(hard)
+        # flee rolls twice, keeps lower (5): 5+2=7 < 10 -> fail; goblin misses
+        rand_vals = iter([12, 5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = MoveAction(action_type="move", target="exit_north", detail="Run!")
+        result = resolve_combat_turn(action, hard, combat_npc_corpus)
+        assert result["success"]
+        assert result["hard_changes"].player_location is None
+        assert hard.combat is not None  # still in combat
+
+
+# ------------------------------------------------------------------
+# 18. Consumables: use_item combat action (Phase 3d)
+# ------------------------------------------------------------------
+
+class TestUseItem:
+    """Drinking potions and using consumables in combat."""
+
+    def _setup(self, combat_npc_corpus, combat_hard_state, consumable):
+        corpus = combat_npc_corpus.model_copy(deep=True)
+        corpus.entities["potion"] = Entity(
+            type="item",
+            name="Healing Potion",
+            description="A red potion.",
+            consumable=consumable,
+        )
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.inventory["potion"] = 1
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+        return corpus, hard
+
+    def _use(self, target="potion"):
+        return CombatAction(
+            action_type="combat", combat_action="use_item",
+            target=target, detail="Drink the potion!",
+        )
+
+    def test_heal_clamped_to_max_hp(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state,
+            ConsumableBlock(heal="2d4+2"),
+        )
+        hard.player.current_hp = 5
+        # heal rolls 3+4+2 = 9, clamped to 5 (max 10); goblin misses (1)
+        rand_vals = iter([3, 4, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._use(), hard, corpus)
+        assert result["success"]
+        hc = result["hard_changes"]
+        assert hc.player_hp_delta == 5
+        assert hc.inventory_removed == {"potion": 1}
+        entry = result["combat_log"][0]
+        assert entry.action == "use_item"
+        assert entry.target == "potion"
+        assert entry.damage == 5
+        assert entry.remaining_hp == 10
+        # the goblin still took its turn afterwards (action consumed)
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert len(goblin_attacks) == 1
+
+    def test_cure_conditions(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state,
+            ConsumableBlock(cure_conditions=["poisoned"]),
+        )
+        hard.player.conditions = {"poisoned": 3}
+        # tick: 3 -> 2; use_item then cures it; goblin misses (1)
+        rand_vals = iter([1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._use(), hard, corpus)
+        assert result["success"]
+        assert hard.player.conditions == {}
+
+    def test_destroy_false_keeps_item(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state,
+            ConsumableBlock(heal="1d4", destroy=False),
+        )
+        rand_vals = iter([2, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._use(), hard, corpus)
+        assert result["success"]
+        assert result["hard_changes"].inventory_removed == {}
+
+    def test_use_item_not_in_inventory(self, combat_npc_corpus, combat_hard_state):
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
+        )
+        del hard.player.inventory["potion"]
+        result = resolve_combat_turn(self._use(), hard, corpus)
+        assert result["success"] is False
+        assert "not in inventory" in result["error"]
+
+    def test_use_item_not_usable(self, combat_npc_corpus, combat_hard_state):
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
+        )
+        corpus.entities["rock"] = Entity(
+            type="item", name="Rock", description="A rock.",
+        )
+        hard.player.inventory["rock"] = 1
+        result = resolve_combat_turn(self._use(target="rock"), hard, corpus)
+        assert result["success"] is False
+        assert "not usable" in result["error"]
+
+    def test_use_item_prefix(self, combat_npc_corpus):
+        log = [{"actor": "player", "action": "use_item",
+                "target": "potion", "damage": 5}]
+        corpus = combat_npc_corpus.model_copy(deep=True)
+        corpus.entities["potion"] = Entity(
+            type="item", name="Healing Potion", description="A red potion.",
+            consumable=ConsumableBlock(heal="2d4+2"),
+        )
+        prefix = format_combat_prefix(log, corpus)
+        assert "healing potion" in prefix.lower()
+        assert "healed 5" in prefix.lower()
+
+
+# ------------------------------------------------------------------
+# 19. NPC attack definitions & multiattack (Phase 3e)
+# ------------------------------------------------------------------
+
+class TestMultiattack:
+    """Per-attack definitions and ordered multiattack sequences."""
+
+    def _wolf_corpus(self, combat_npc_corpus, multiattack):
+        corpus = combat_npc_corpus.model_copy(deep=True)
+        corpus.entities["wolf"] = Entity(
+            type="npc",
+            name="Wolf",
+            description="A snarling wolf.",
+            state_fields={
+                "alive": {"type": "boolean", "description": "Alive?"},
+                "current_hp": {"type": "number", "description": "HP"},
+            },
+            combat=CombatBlock(
+                hp=20, ac=13,
+                attacks=[
+                    NPCAttackDef(id="bite", name="bites", atk=5, dmg="1d8+2"),
+                    NPCAttackDef(id="claw", name="claws", atk=5, dmg="1d6+2"),
+                ],
+                multiattack=multiattack,
+            ),
+        )
+        return corpus
+
+    def _wolf_hard(self, combat_hard_state, player_hp=30):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.current_hp = player_hp
+        hard.player.max_hp = max(hard.player.max_hp or 0, player_hp)
+        hard.entity_states["wolf"] = {"alive": True, "current_hp": 20}
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "wolf"],
+            initiative_order=["player", "wolf"],
+            current_index=0,
+            round_number=1,
+        )
+        return hard
+
+    def _attack_wolf(self):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target="wolf", detail="Attack the wolf!",
+        )
+
+    def test_multiattack_sequence_in_order(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus = self._wolf_corpus(combat_npc_corpus, ["claw", "claw", "bite"])
+        hard = self._wolf_hard(combat_hard_state)
+        # player misses (1); wolf: claw hits for 2+2=4, claw for 4, bite for 3+2=5
+        rand_vals = iter([1, 12, 2, 12, 2, 12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack_wolf(), hard, corpus)
+        assert result["success"]
+        attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "wolf"
+        ]
+        assert [e.attack_id for e in attacks] == ["claw", "claw", "bite"]
+        assert [e.damage for e in attacks] == [4, 4, 5]
+        assert result["hard_changes"].player_hp_delta == -13
+
+    def test_sequence_stops_on_target_death(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        corpus = self._wolf_corpus(combat_npc_corpus, ["claw", "claw", "bite"])
+        hard = self._wolf_hard(combat_hard_state, player_hp=8)
+        # player misses; claw for 4 (hp 8 -> 4), claw for 6 (hp -> dead);
+        # the bite never happens
+        rand_vals = iter([1, 12, 2, 12, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack_wolf(), hard, corpus)
+        attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "wolf"
+        ]
+        assert [e.attack_id for e in attacks] == ["claw", "claw"]
+        assert result["game_over"] is True
+        deaths = [
+            e for e in result["combat_log"]
+            if e.action == "death" and e.actor == "player"
+        ]
+        assert len(deaths) == 1
+
+    def test_single_default_attack(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        """Without multiattack, an NPC with attacks uses the first one."""
+        corpus = self._wolf_corpus(combat_npc_corpus, [])
+        hard = self._wolf_hard(combat_hard_state)
+        rand_vals = iter([1, 12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack_wolf(), hard, corpus)
+        attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "wolf"
+        ]
+        assert [e.attack_id for e in attacks] == ["bite"]
+
+    def test_per_attack_on_hit_effects(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        """On-hit effects fire from the attack that carries them only."""
+        data = combat_npc_corpus.model_dump()
+        data["stats"] = {
+            "definitions": {
+                "STR": {"name": "Strength"}, "DEX": {"name": "Dexterity"},
+                "CON": {"name": "Constitution"}, "INT": {"name": "Intelligence"},
+                "WIS": {"name": "Wisdom"}, "CHA": {"name": "Charisma"},
+            },
+            "system": "5e",
+        }
+        data["entities"]["wolf"] = {
+            "type": "npc",
+            "name": "Wolf",
+            "description": "A snarling wolf.",
+            "state_fields": {
+                "alive": {"type": "boolean", "description": "Alive?"},
+                "current_hp": {"type": "number", "description": "HP"},
+            },
+            "combat": {
+                "hp": 20, "ac": 13,
+                "attacks": [
+                    {
+                        "id": "bite", "name": "bites", "atk": 5, "dmg": "1d8+2",
+                        "on_hit_effects": [{
+                            "check": {
+                                "type": "stat_check", "stat": "CON", "target": 10,
+                                "proficiency": "save", "repeatable": False,
+                            },
+                            "success": {},
+                            "failure": {"player_damage": "1d4"},
+                        }],
+                    },
+                    {"id": "claw", "name": "claws", "atk": 5, "dmg": "1d6+2"},
+                ],
+                "multiattack": ["claw", "bite"],
+            },
+        }
+        corpus = ModuleCorpus.model_validate(data)
+        hard = self._wolf_hard(combat_hard_state)
+        # player misses; claw hits (no save), bite hits -> save 5+1=6 < 10 -> 1d4=3
+        rand_vals = iter([1, 12, 2, 12, 3, 5, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack_wolf(), hard, corpus, soft=SoftGameState())
+        attacks = {e.attack_id: e for e in result["combat_log"] if e.action == "attack"}
+        assert attacks["claw"].on_hit_effects == []
+        assert len(attacks["bite"].on_hit_effects) == 1
+        assert attacks["bite"].on_hit_effects[0]["save_success"] is False
+        # 4 (claw) + 5 (bite) + 3 (poison) = 12
+        assert result["hard_changes"].player_hp_delta == -12
+
+    def test_multiattack_unknown_attack_id(self):
+        with pytest.raises(ValueError, match="unknown attack"):
+            CombatBlock(
+                hp=5, ac=10,
+                attacks=[NPCAttackDef(id="bite", atk=2)],
+                multiattack=["claw"],
+            )
+
+    def test_attacks_forbid_block_on_hit_effects(self):
+        with pytest.raises(ValueError, match="on_hit_effects"):
+            CombatBlock(
+                hp=5, ac=10,
+                attacks=[NPCAttackDef(id="bite", atk=2)],
+                on_hit_effects=[{
+                    "check": {"type": "roll", "target": 50, "repeatable": False},
+                    "success": {},
+                }],
+            )
+
+    def test_duplicate_attack_ids_rejected(self):
+        with pytest.raises(ValueError, match="duplicate"):
+            CombatBlock(
+                hp=5, ac=10,
+                attacks=[NPCAttackDef(id="bite", atk=2), NPCAttackDef(id="bite", atk=3)],
+            )
+
+    def test_atk_required_without_attacks(self):
+        with pytest.raises(ValueError, match="atk is required"):
+            CombatBlock(hp=5, ac=10)
+
+    def test_attack_name_prefix(self):
+        log = [{"actor": "wolf", "action": "attack", "target": "player",
+                "hit": True, "damage": 5, "attack_name": "bites"}]
+        prefix = format_combat_prefix(log)
+        assert "wolf bites you" in prefix.lower()
+
+
+# ------------------------------------------------------------------
+# 20. Abilities in combat (Phase 4)
+# ------------------------------------------------------------------
+
+class TestAbilities:
+    """Player and NPC combat abilities: attack, save, heal."""
+
+    @pytest.fixture
+    def ability_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Ability Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1", "description": "A room.",
+                    "contains": ["goblin", "acolyte", "medic"],
+                },
+            },
+            "abilities": {
+                "fire_bolt": {
+                    "name": "Fire Bolt",
+                    "description": "A mote of fire.",
+                    "target": "enemy",
+                    "uses_per_combat": -1,
+                    "attack": {
+                        "stat": "INT", "proficient": True,
+                        "damage": "1d10", "damage_type": "fire",
+                    },
+                },
+                "cure_wounds": {
+                    "name": "Cure Wounds",
+                    "description": "Healing light.",
+                    "target": "ally",
+                    "uses_per_combat": 2,
+                    "heal": "1d8+2",
+                },
+                "poison_spray": {
+                    "name": "Poison Spray",
+                    "description": "A puff of toxic gas.",
+                    "target": "enemy",
+                    "uses_per_combat": 1,
+                    "save": {
+                        "stat": "CON", "dc": 12, "damage": "1d12",
+                        "damage_type": "poison", "half_on_success": True,
+                    },
+                },
+                "breath": {
+                    "name": "Fire Breath",
+                    "description": "A gout of flame.",
+                    "target": "enemy",
+                    "uses_per_combat": -1,
+                    "save": {
+                        "stat": "DEX", "dc": 13, "damage": "2d6",
+                        "damage_type": "fire", "half_on_success": True,
+                    },
+                },
+            },
+            "entities": {
+                "goblin": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+                "acolyte": {
+                    "type": "npc",
+                    "description": "A fire cultist.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {
+                        "hp": 18, "ac": 12, "atk": 4, "dmg": "1d6+1",
+                        "save_bonus": 1,
+                        "abilities": ["breath"],
+                        "ai": {"ability_rules": {"breath": {"cooldown_rounds": 2}}},
+                    },
+                },
+                "medic": {
+                    "type": "npc",
+                    "name": "Medic",
+                    "description": "A field medic.",
+                    "dialogue": {"guidelines": "Kind and calm."},
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "following": {"type": "boolean", "description": "Following?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {
+                        "hp": 16, "ac": 12, "atk": 2, "dmg": "1d4+1",
+                        "abilities": ["cure_wounds"],
+                    },
+                },
+            },
+        })
+
+    @pytest.fixture
+    def ability_hard(self, combat_hard_state) -> HardGameState:
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.abilities = ["fire_bolt", "cure_wounds", "poison_spray"]
+        hard.entity_states = {
+            "goblin": {"alive": True, "current_hp": 7},
+            "acolyte": {"alive": True, "current_hp": 18},
+            "medic": {"alive": True, "following": True, "current_hp": 16},
+        }
+        hard.room_contains = {"room1": {"goblin": 1, "acolyte": 1}}
+        return hard
+
+    def _combat_state(self, hard, order=("player", "goblin"), allies=()):
+        hard.combat = CombatState(
+            active=True,
+            combatants=list(order),
+            allies=list(allies),
+            initiative_order=list(order),
+            current_index=0,
+            round_number=1,
+        )
+
+    def _ability(self, ability_id, target):
+        return CombatAction(
+            action_type="combat", combat_action="use_ability",
+            target=target, ability_id=ability_id, detail="Use an ability!",
+        )
+
+    def _attack_goblin(self):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target="goblin", detail="Attack!",
+        )
+
+    # -- Player attack abilities ---------------------------------------
+
+    def test_player_attack_ability_hit(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard)
+        # INT 10 -> +0, prof +2; roll 15+2=17 vs 12 -> hit; 1d10=6 fire
+        rand_vals = iter([15, 6, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._ability("fire_bolt", "goblin"), ability_hard, ability_corpus)
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.action == "attack"
+        assert entry.attack_id == "fire_bolt"
+        assert entry.attack_name == "Fire Bolt"
+        assert entry.hit is True
+        assert entry.damage == 6
+        assert result["hard_changes"].entity_state_changes["goblin"]["current_hp"] == 1
+        assert ability_hard.combat.ability_uses["player"]["fire_bolt"] == 1
+
+    def test_player_attack_ability_crit(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard)
+        # nat 20 -> crit, damage dice doubled: 2d10 = 12+... two dice at 5
+        rand_vals = iter([20, 5, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._ability("fire_bolt", "goblin"), ability_hard, ability_corpus)
+        entry = result["combat_log"][0]
+        assert entry.critical is True
+        assert entry.damage == 10
+        assert result["hard_changes"].entity_state_changes["goblin"]["alive"] is False
+        assert ability_hard.combat is None  # victory
+
+    def test_uses_exhausted_error(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard)
+        # poison_spray has 1 use; goblin saves successfully (15 >= 12)
+        rand_vals = iter([15, 8, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._ability("poison_spray", "goblin"), ability_hard, ability_corpus)
+        assert result["success"]
+        # Second use is rejected
+        result2 = resolve_combat_turn(self._ability("poison_spray", "goblin"), ability_hard, ability_corpus)
+        assert result2["success"] is False
+        assert "no uses left" in result2["error"]
+
+    def test_unknown_and_unlearned_ability_errors(self, ability_hard, ability_corpus):
+        self._combat_state(ability_hard)
+        result = resolve_combat_turn(self._ability("wish", "goblin"), ability_hard, ability_corpus)
+        assert result["success"] is False
+        assert "Unknown ability" in result["error"]
+        ability_corpus.abilities["wish"] = ability_corpus.abilities["fire_bolt"]
+        result = resolve_combat_turn(self._ability("wish", "goblin"), ability_hard, ability_corpus)
+        assert result["success"] is False
+        assert "do not know" in result["error"]
+
+    def test_ability_wrong_target_side(self, ability_hard, ability_corpus):
+        self._combat_state(ability_hard, order=("player", "medic", "goblin"), allies=["medic"])
+        result = resolve_combat_turn(self._ability("fire_bolt", "medic"), ability_hard, ability_corpus)
+        assert result["success"] is False
+        assert "must target an enemy" in result["error"]
+
+    # -- Player save abilities -----------------------------------------
+
+    def test_save_ability_full_damage_on_failure(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard)
+        # goblin save_bonus 0: save 5 < 12 -> fail -> full 1d12 = 8 -> dead
+        rand_vals = iter([5, 8])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._ability("poison_spray", "goblin"), ability_hard, ability_corpus)
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.action == "ability_save"
+        assert entry.damage == 8
+        save_dict = entry.on_hit_effects[0]
+        assert save_dict["save_success"] is False
+        assert save_dict["save_dc"] == 12
+        assert result["hard_changes"].entity_state_changes["goblin"]["alive"] is False
+        assert ability_hard.combat is None
+
+    def test_save_ability_half_on_success(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard)
+        # goblin saves (15 >= 12): half of 8 = 4; goblin then misses
+        rand_vals = iter([15, 8, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._ability("poison_spray", "goblin"), ability_hard, ability_corpus)
+        entry = result["combat_log"][0]
+        assert entry.damage == 4
+        assert entry.on_hit_effects[0]["save_success"] is True
+        assert result["hard_changes"].entity_state_changes["goblin"]["current_hp"] == 3
+
+    # -- Player heal abilities -----------------------------------------
+
+    def test_heal_ally_target_player(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard)
+        ability_hard.player.current_hp = 4
+        # cure 6+2=8 clamped to 6 (max 10); goblin misses
+        rand_vals = iter([6, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._ability("cure_wounds", "player"), ability_hard, ability_corpus)
+        assert result["success"]
+        assert result["hard_changes"].player_hp_delta == 6
+        entry = result["combat_log"][0]
+        assert entry.action == "heal"
+        assert entry.damage == 6
+
+    def test_heal_ally_target_ally_npc(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard, order=("player", "medic", "goblin"), allies=["medic"])
+        ability_hard.entity_states["medic"]["current_hp"] = 5
+        # player cures medic 4+2=6 (5 -> 11); medic finds everyone healthy
+        # and attacks the goblin (miss); goblin misses
+        rand_vals = iter([4, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._ability("cure_wounds", "medic"), ability_hard, ability_corpus)
+        assert result["success"]
+        assert result["hard_changes"].entity_state_changes["medic"]["current_hp"] == 11
+        assert ability_hard.entity_states["medic"]["current_hp"] == 11
+
+    # -- NPC ability usage ----------------------------------------------
+
+    def test_npc_uses_save_ability(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard, order=("player", "acolyte"))
+        # player attacks goblin... (no goblin in this combat; attack acolyte)
+        # player misses (1); acolyte breathes fire: player DEX save 10+2=12 < 13
+        # -> fail -> full 2d6 = 8
+        rand_vals = iter([1, 10, 4, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = CombatAction(
+            action_type="combat", combat_action="attack",
+            target="acolyte", detail="Attack!",
+        )
+        result = resolve_combat_turn(action, ability_hard, ability_corpus)
+        assert result["success"]
+        breath = [e for e in result["combat_log"] if e.action == "ability_save"]
+        assert len(breath) == 1
+        assert breath[0].actor == "acolyte"
+        assert breath[0].attack_name == "Fire Breath"
+        assert breath[0].on_hit_effects[0]["save_success"] is False
+        assert result["hard_changes"].player_hp_delta == -8
+        # cooldown recorded (2 rounds)
+        assert ability_hard.combat.npc_cooldowns["acolyte"]["breath"] == 2
+
+    def test_npc_cooldown_falls_back_to_attack(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(ability_hard, order=("player", "acolyte"))
+        ability_hard.combat.npc_cooldowns["acolyte"] = {"breath": 1}
+        # player misses; acolyte is on cooldown -> basic attack (miss);
+        # cooldown ticks to 0 at round end
+        rand_vals = iter([1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = CombatAction(
+            action_type="combat", combat_action="attack",
+            target="acolyte", detail="Attack!",
+        )
+        result = resolve_combat_turn(action, ability_hard, ability_corpus)
+        assert result["success"]
+        assert [e for e in result["combat_log"] if e.action == "ability_save"] == []
+        basic = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "acolyte"
+        ]
+        assert len(basic) == 1
+        assert ability_hard.combat.npc_cooldowns["acolyte"]["breath"] == 0
+
+    def test_ally_npc_heals_most_injured(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(
+            ability_hard, order=("player", "medic", "goblin"), allies=["medic"],
+        )
+        ability_hard.player.current_hp = 3  # player is the most injured
+        # player hits goblin for 5 (hp 7 -> 2); medic cures player 4+2=6;
+        # goblin misses
+        rand_vals = iter([15, 2, 4, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack_goblin(), ability_hard, ability_corpus)
+        assert result["success"]
+        heals = [e for e in result["combat_log"] if e.action == "heal"]
+        assert len(heals) == 1
+        assert heals[0].actor == "medic"
+        assert heals[0].target == "player"
+        assert result["hard_changes"].player_hp_delta == 6
+
+    def test_ally_healer_skips_when_all_healthy(self, ability_hard, ability_corpus, monkeypatch):
+        self._combat_state(
+            ability_hard, order=("player", "medic", "goblin"), allies=["medic"],
+        )
+        # everyone at full HP: medic falls back to its basic attack
+        # player hits goblin for 5; medic attacks goblin (miss); goblin misses
+        rand_vals = iter([15, 2, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack_goblin(), ability_hard, ability_corpus)
+        assert result["success"]
+        assert [e for e in result["combat_log"] if e.action == "heal"] == []
+        medic_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "medic"
+        ]
+        assert len(medic_attacks) == 1
+
+    # -- Model validation & briefing ------------------------------------
+
+    def test_ability_shape_validation(self):
+        from mgmai.models.corpus import Ability
+
+        with pytest.raises(ValueError, match="exactly one effect"):
+            Ability(name="Bad", target="enemy")
+        with pytest.raises(ValueError, match="exactly one effect"):
+            Ability(
+                name="Bad", target="enemy", heal="1d8",
+                attack={"stat": "INT", "damage": "1d10"},
+            )
+        with pytest.raises(ValueError, match="heal abilities"):
+            Ability(name="Bad", target="enemy", heal="1d8")
+
+    def test_briefing_lists_abilities(self, ability_hard, ability_corpus):
+        from mgmai.context.assembler import _build_combat_state
+        self._combat_state(ability_hard)
+        ability_hard.combat.ability_uses["player"] = {"poison_spray": 1}
+        briefing = _build_combat_state(ability_hard, ability_corpus)
+        assert briefing is not None
+        by_id = {a["id"]: a for a in briefing.abilities}
+        assert by_id["fire_bolt"]["uses_remaining"] is None  # unlimited
+        assert by_id["poison_spray"]["uses_remaining"] == 0
+        assert by_id["cure_wounds"]["uses_remaining"] == 2
+        assert "attack" in by_id["fire_bolt"]["effect"]
+
+    def test_ability_save_prefix(self):
+        log = [{
+            "actor": "player", "action": "ability_save", "target": "goblin",
+            "attack_name": "Poison Spray", "damage": 8,
+            "on_hit_effects": [{"save_success": False}],
+        }]
+        prefix = format_combat_prefix(log)
+        assert "poison spray" in prefix.lower()
+        assert "fails to resist" in prefix.lower()
+
+    def test_heal_prefix(self):
+        log = [{"actor": "player", "action": "heal", "target": "player",
+                "attack_name": "Cure Wounds", "damage": 6}]
+        prefix = format_combat_prefix(log)
+        assert "cure wounds" in prefix.lower()
+        assert "healed 6" in prefix.lower()

@@ -41,6 +41,12 @@ class CombatLogEntry(BaseModel):
     remaining_hp: Optional[int] = None
     # On-hit saving throws and secondary damage
     on_hit_effects: list[dict] = Field(default_factory=list)
+    # Damage typing and mitigation (resistance / vulnerability / immunity)
+    damage_type: Optional[str] = None
+    mitigation: Optional[str] = None   # "resisted" | "vulnerable" | "immune"
+    # Named attack used (NPC attack definitions / multiattack)
+    attack_id: Optional[str] = None
+    attack_name: Optional[str] = None
 
 
 class CombatState(BaseModel):
@@ -62,3 +68,7 @@ class CombatState(BaseModel):
     # (target id -> attacker id), and the player's most recent target.
     last_attacker: dict[str, str] = Field(default_factory=dict)
     player_last_target: Optional[str] = None
+    # Ability bookkeeping: combatant id -> {ability id -> times used this
+    # combat}, and NPC id -> {ability id -> rounds until usable again}.
+    ability_uses: dict[str, dict[str, int]] = Field(default_factory=dict)
+    npc_cooldowns: dict[str, dict[str, int]] = Field(default_factory=dict)

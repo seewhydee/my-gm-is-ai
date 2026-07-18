@@ -180,6 +180,7 @@
         "ac": 8,
         "atk": 1,
         "dmg": "1d4+2",
+        "dmg_type": "piercing",
         "initiative_mod": 3,
         "flee_dc": 10,
         "on_hit_effects": [
@@ -734,6 +735,15 @@
       "tags": [
         "key_item"
       ]
+    },
+    "health_potion": {
+      "type": "item",
+      "name": "Healing Potion",
+      "description": "A small vial of red liquid that smells faintly of cherries. From your own pack's supplies.",
+      "consumable": {
+        "heal": "2d4+2",
+        "destroy": true
+      }
     }
   },
   "rooms": {

@@ -17,6 +17,7 @@ actions and apply game mechanics.
   "mechanics":    { "<mechanic_id>": { /* mechanic */ } },
   "game_over_conditions": [ { /* global game-over condition */ } ],
   "stats":        { /* stat definitions (optional) */ },
+  "abilities":    { "<ability_id>": { /* combat ability (optional) */ } },
 }
 ```
 
@@ -278,6 +279,7 @@ ALL fields in a Result object are optional.
 | `alter_stat`        | object   | Stat IDs → `{ "mode": "delta"\|"set", "value": <int> }` |
 | `set_player_location`| string  | Relocate player to given Room ID    |
 | `player_damage`     | string   | Deal damage to player, e.g. `"1d4"` |
+| `apply_condition`   | object   | Apply a combat condition to the player: `{ "id": "poisoned", "rounds": 3 }` |
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Update player knowledge (see below) |
 | `then_check` | CheckResolution | Follow-up check (see below)         |
@@ -329,6 +331,14 @@ Notes:
 
 - `player_damage` supports the normal damage syntax, plus `half(expr)`
   to deal half of `expr` rounded down (minimum 1), like `"half(1d8)"`.
+
+- `apply_condition` applies a combat condition to the player (see
+  [Combat](#combat)): `{ "id": "poisoned", "rounds": 3 }`.  Recognized
+  conditions are `poisoned` (disadvantage on own attacks and ability
+  checks), `stunned` (loses turns; attacks against have advantage), and
+  `prone` (attacks against have advantage; auto-stands at turn start).
+  Conditions are combat-scoped: durations tick at the start of the
+  afflicted combatant's turn and all conditions clear when combat ends.
 
 ```json
 "success": { "narrative": "You resist the poison", "player_damage": "half(1d8)" },
@@ -1149,6 +1159,7 @@ comparisons in conditions (e.g. `inventory:coin >= 30`).
 | `name`         | string     | Display name (required!)     |
 | `take_check`¹  | GatedCheck | Obstacle to taking the item  |
 | `equip_block`¹ | object     | For equipment (see below)    |
+| `consumable`¹  | object     | For consumables (see below)  |
 | `max_stack`¹   | interger   | Stack cap for stackable item |
 
 > ¹ optional
@@ -1169,6 +1180,14 @@ Notes:
 
 - For a stackable item, `max_stack`, if supplied, should be >= 1 and
   sets the inventory count; if omitted, there is no cap.
+
+- `consumable`, if present, marks the item as usable (potion, scroll,
+  food).  It holds `{ "heal": "2d4+2", "cure_conditions": ["poisoned"],
+  "destroy": true }`: `heal` is a dice expression of HP restored
+  (clamped to max HP), `cure_conditions` lists combat conditions removed
+  on use, and `destroy` (default `true`) consumes one count per use.
+  In combat the player uses consumables via the `use_item` combat
+  action.
 
 #### Equipment
 
@@ -1417,9 +1436,54 @@ the turn-based combat subsystem.
 | `flee_dc`¹       | integer       | DC for player flee; default `10`  |
 | `atk`            | integer       | Attack bonus for the NPC's attack |
 | `dmg`¹           | string        | Damage expression; default `"1d6"`|
+| `dmg_type`¹      | string        | Damage type of the NPC's damage (e.g. `"piercing"`); default untyped |
+| `resistances`¹   | string[]      | Damage types halved against this NPC (rounded down) |
+| `vulnerabilities`¹| string[]     | Damage types doubled against this NPC |
+| `immunities`¹    | string[]      | Damage types reduced to 0 against this NPC |
 | `on_hit_effects`¹| CheckResolution[] | On-hit effects; default `[]`  |
+| `attacks`¹       | AttackDef[]  | Named attack options (see below)    |
+| `multiattack`¹   | string[]     | Ordered attack ids used each turn   |
+| `abilities`¹     | string[]     | IDs of [Abilities](#abilities) the NPC can use |
+| `save_bonus`¹    | integer      | Flat save modifier against save abilities (NPCs have no ability scores); default `0` |
 | `ai`¹            | CombatAI      | Rule-of-thumb combat AI; see below |
 > ¹ optional
+
+Damage types use the 5e vocabulary: acid, bludgeoning, cold, fire,
+force, lightning, necrotic, piercing, poison, radiant, slashing,
+thunder.  Mitigation applies to typed damage from player weapons
+(`EquipBlock.damage_type`) and from NPC attackers alike; untyped damage
+is never mitigated.
+
+#### Attack definitions and multiattack
+
+An NPC's per-turn attacks come in two forms:
+
+- **Basic attack** (default): one attack per turn built from the
+  block-level `atk` / `dmg` / `on_hit_effects`.
+- **Attack definitions**: an `attacks` list of named options, plus an
+  optional `multiattack` sequence (ids may repeat) performed each turn:
+
+```json
+"combat": {
+  "hp": 20, "ac": 13,
+  "attacks": [
+    { "id": "bite", "name": "bites", "atk": 5, "dmg": "1d8+2",
+      "dmg_type": "piercing",
+      "on_hit_effects": [ /* CheckResolution, combat-safe */ ] },
+    { "id": "claw", "name": "claws", "atk": 5, "dmg": "1d6+2" }
+  ],
+  "multiattack": ["claw", "claw", "bite"]
+}
+```
+
+Each attack definition has `id`, `atk`, and optional `name` (a verb
+phrase for narration, e.g. `"bites"` — defaults to `id`), `dmg`,
+`dmg_type`, and `on_hit_effects`.  Without `multiattack`, the NPC makes
+a single attack (the first entry of `attacks`).  If the target drops
+mid-sequence, the remaining attacks are lost.
+
+When `attacks` is present, block-level `on_hit_effects` is forbidden
+(each attack carries its own) and block-level `atk` is optional.
 
 Notes:
 
@@ -1467,7 +1531,10 @@ LLM.
 "ai": {
   "targeting": "last_attacker",
   "flee_below_hp_pct": 25,
-  "passive": false
+  "passive": false,
+  "ability_rules": {
+    "breath": { "cooldown_rounds": 2, "use_below_own_hp_pct": 50 }
+  }
 }
 ```
 
@@ -1476,6 +1543,7 @@ LLM.
 | `targeting`¹        | string  | Target selection rule: `"last_attacker"` (default), `"player"`, `"lowest_hp"`, or `"random"` |
 | `flee_below_hp_pct`¹| integer | Flee when current HP% falls below this value (1–99); default: never flee |
 | `passive`¹          | boolean | Take no actions in combat; default `false` |
+| `ability_rules`¹    | object  | Per-ability usage rules (only for abilities listed in `CombatBlock.abilities`): `{ "ability_id": { "cooldown_rounds": 2, "use_below_own_hp_pct": 50 } }` |
 
 Notes:
 
@@ -1496,6 +1564,9 @@ Notes:
   `passive` entity state overrides this default at runtime (e.g. set to
   `false` by a `set_entity_state` result when the player persuades the
   NPC to fight).
+- `ability_rules`: `cooldown_rounds` makes an ability unusable for that
+  many rounds after each use; `use_below_own_hp_pct` only allows it
+  while the NPC is below the given HP percentage.
 
 ### Aggro
 
@@ -1577,6 +1648,67 @@ If the player enters one of these listed rooms while the NPC is
 following, the engine clears the `following` state field.
 
 ---
+
+## Abilities
+
+The top-level `abilities` block defines named **combat abilities** —
+spells, class features, and monster powers — usable by the player (via
+the `use_ability` combat action when listed in the character sheet's
+`abilities`) and by NPCs (via `CombatBlock.abilities` and the combat
+AI).  Each ability has exactly one effect: `attack`, `save`, or
+`heal`.
+
+```json
+"abilities": {
+  "fire_bolt": {
+    "name": "Fire Bolt",
+    "description": "A mote of fire hurled at a foe.",
+    "target": "enemy",
+    "uses_per_combat": -1,
+    "attack": { "stat": "INT", "proficient": true, "damage": "1d10", "damage_type": "fire" }
+  },
+  "poison_spray": {
+    "name": "Poison Spray",
+    "target": "enemy",
+    "uses_per_combat": 1,
+    "save": {
+      "stat": "CON", "dc": 12, "damage": "1d12", "damage_type": "poison",
+      "half_on_success": true,
+      "apply_condition_on_failure": { "id": "poisoned", "rounds": 3 }
+    }
+  },
+  "cure_wounds": {
+    "name": "Cure Wounds",
+    "target": "ally",
+    "uses_per_combat": 2,
+    "heal": "1d8+2"
+  }
+}
+```
+
+| Field             | Type    | Description |
+|-------------------|---------|-------------|
+| `name`            | string  | Display name |
+| `description`¹    | string  | Flavor text for briefings |
+| `target`          | string  | `"self"`, `"ally"` (a same-side combatant), or `"enemy"` |
+| `uses_per_combat`¹| integer | Uses allowed per combat; `-1` (default) = unlimited |
+| `attack`¹         | object  | Attack-roll effect (exactly one effect allowed) |
+| `save`¹           | object  | Save-based effect |
+| `heal`¹           | string  | Healing dice expression (only for `self`/`ally` targets) |
+
+**Attack effects**: `{ "stat": "INT", "proficient": true, "damage":
+"1d10", "damage_type": "fire" }`.  Player casters roll with the named
+ability score's modifier plus proficiency bonus (when `proficient`);
+NPC casters use their combat block's `atk` bonus instead.  Crits,
+fumbles, and damage-type mitigation apply as for weapon attacks.
+
+**Save effects**: `{ "stat": "CON", "dc": 12, "damage": "1d12",
+"damage_type": "poison", "half_on_success": true,
+"apply_condition_on_failure": { "id": "poisoned", "rounds": 3 } }`.
+The target saves — the player with the usual stat modifier and save
+proficiencies, NPCs with `d20 + save_bonus`.  On success the damage is
+halved (`half_on_success`) or negated; on failure the full damage
+(`""` = no damage) and any condition apply.
 
 ## Mechanic
 

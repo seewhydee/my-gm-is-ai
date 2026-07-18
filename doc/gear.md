@@ -53,6 +53,8 @@ without an `equip_block` cannot be equipped (keys, potions, quest items, etc.).
 | `max_equipped`      | `int|null`  | `1`      | How many items of this slot can be equipped simultaneously.  `1` = standard (one helmet, one armour).  `2` = rings (two ring slots).  `null` = unlimited (artifacts, auras).  The engine uses the **highest** value among all items sharing the same slot tag. |
 | `damage_expr`       | `string`    | `"1d8"`  | Damage dice expression for this weapon (e.g. `"1d6"`, `"2d4"`, `"1d12"`).  Only meaningful when `"weapon"` is in `equip_tags`. |
 | `hit_bonus`         | `int`       | `0`      | Flat bonus to hit rolls.  A "+1 sword" has `hit_bonus: 1`.  Stacks across equipped weapons. |
+| `properties`        | `[string]`  | `[]`     | Weapon properties.  The `5e` system recognizes `"finesse"` (attack and damage use the better of STR or DEX) and `"ranged"` (attack and damage use DEX; no range mechanics exist). |
+| `damage_type`       | `string`    | `""`     | Damage type of the weapon (e.g. `"slashing"`, `"fire"`) used for resistance/vulnerability/immunity.  Empty = untyped. |
 
 System-specific fields are also accepted as extra top-level keys.  The `5e`
 system recognises the following extras:
@@ -208,7 +210,8 @@ priority:
 4. **Unarmed** — `"1d6"`.
 
 `FiveESystem.compute_player_attack_bonus(hard, corpus)` sums:
-- STR modifier (or DEX, depending on weapon properties in a future version).
+- The weapon's attack ability modifier: STR by default, DEX for `ranged`
+  weapons, the better of STR or DEX for `finesse` weapons.
 - Proficiency bonus.
 - `hit_bonus` from all equipped weapons.
 
@@ -245,6 +248,39 @@ The LLM prompt instructs the ruling model to use common sense:
 If a conflict is detected, the **engine rejects the action** — the LLM must
 explicitly unequip the conflicting item first.  This keeps narrative control
 with the ruling model.
+
+---
+
+## Consumables
+
+Items with a `consumable` block can be used (drunk, eaten, activated).
+In combat this is the `use_item` combat action, which consumes the
+player's action:
+
+```json
+{
+  "health_potion": {
+    "type": "item",
+    "name": "Healing Potion",
+    "description": "A small vial of red liquid.",
+    "consumable": {
+      "heal": "2d4+2",
+      "cure_conditions": ["poisoned"],
+      "destroy": true
+    }
+  }
+}
+```
+
+| Field             | Type      | Default | Description |
+|-------------------|-----------|---------|-------------|
+| `heal`            | `string`  | `""`    | Healing dice expression (e.g. `"2d4+2"`); clamped to max HP. Empty = no healing. |
+| `cure_conditions` | `[string]`| `[]`    | Combat conditions removed on use (e.g. `["poisoned"]`). |
+| `destroy`         | `bool`    | `true`  | Consume one count of the item on use. |
+
+The combat briefing lists the player's usable consumables under
+`combat_state.usable_items` so the ruling LLM can map requests like "I
+drink the potion" to `use_item`.
 
 ---
 

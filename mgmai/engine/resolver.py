@@ -1442,6 +1442,11 @@ def _apply_result(
         dmg_total, _ = system.roll_damage(result.player_damage)
         existing = changes.player_hp_delta or 0
         changes.player_hp_delta = existing - dmg_total
+    if result.apply_condition is not None and hard is not None:
+        # Engine-owned runtime state (like combat state): mutate directly.
+        hard.player.conditions[result.apply_condition.id] = (
+            result.apply_condition.rounds
+        )
     if result.reveals:
         revealed_hints.append(result.reveals)
     # Inline game-over: propagate from any result (interaction, reaction,

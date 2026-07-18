@@ -124,7 +124,14 @@ def format_combat_prefix(
             crit = entry.get("critical")
 
             if actor == "player":
-                name = "You attack"
+                if entry.get("attack_name"):
+                    # Player ability attacks read "You use Fire Bolt on …"
+                    name = f"You use {entry['attack_name']} on"
+                else:
+                    name = "You attack"
+            elif entry.get("attack_name"):
+                # Named attacks carry a verb phrase ("bites", "slashes").
+                name = f"{_entity_name(actor, corpus)} {entry['attack_name']}"
             else:
                 name = f"{_entity_name(actor, corpus)} attacks"
 
@@ -135,7 +142,9 @@ def format_combat_prefix(
 
             if hit:
                 crit_str = " (CRIT!)" if crit else ""
-                dmg_str = f" for {damage} damage{crit_str}" if damage is not None else ""
+                mit = entry.get("mitigation")
+                mit_str = f" ({mit})" if mit else ""
+                dmg_str = f" for {damage} damage{crit_str}{mit_str}" if damage is not None else ""
                 summaries.append(f"**{name} {target_name}: hit{dmg_str}.**")
 
                 # On-hit effect summaries
@@ -164,6 +173,41 @@ def format_combat_prefix(
                 summaries.append("**You break away from combat!**")
             else:
                 summaries.append("**You fail to escape!**")
+        elif action == "stunned":
+            if actor == "player":
+                summaries.append("**You are stunned and cannot act!**")
+            else:
+                summaries.append(
+                    f"**{_entity_name(actor, corpus)} is stunned and cannot act.**"
+                )
+        elif action == "use_item":
+            name = _entity_name(target, corpus)
+            healed = entry.get("damage") or 0
+            if healed:
+                summaries.append(f"**You use {name}: healed {healed} HP.**")
+            else:
+                summaries.append(f"**You use {name}.**")
+        elif action == "ability_save":
+            caster = "You" if actor == "player" else _entity_name(actor, corpus)
+            abil = entry.get("attack_name") or "an ability"
+            tgt = "you" if target == "player" else _entity_name(target, corpus)
+            dmg = entry.get("damage") or 0
+            oh = (entry.get("on_hit_effects") or [{}])[0]
+            outcome = "resists" if oh.get("save_success") else "fails to resist"
+            summaries.append(
+                f"**{caster} uses {abil}: {tgt} {outcome} — {dmg} damage.**"
+            )
+        elif action == "heal":
+            caster = "You" if actor == "player" else _entity_name(actor, corpus)
+            abil = entry.get("attack_name") or "an ability"
+            healed = entry.get("damage") or 0
+            if target == actor:
+                summaries.append(f"**{caster} uses {abil}: healed {healed} HP.**")
+            else:
+                tgt = "you" if target == "player" else _entity_name(target, corpus)
+                summaries.append(
+                    f"**{caster} uses {abil} on {tgt}: healed {healed} HP.**"
+                )
 
     if not summaries:
         return ""

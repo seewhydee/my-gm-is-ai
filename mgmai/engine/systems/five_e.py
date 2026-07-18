@@ -36,10 +36,11 @@ from mgmai.engine.systems.base import (
     ResolutionSystem,
 )
 from mgmai.engine.systems.dice import parse_damage_dice
+from mgmai.engine.utils import get_conditions
 from mgmai.models.combat import CombatLogEntry
 
 if TYPE_CHECKING:
-    from mgmai.models.corpus import EquipBlock, ModuleCorpus
+    from mgmai.models.corpus import EquipBlock, ModuleCorpus, NPCAttackDef
     from mgmai.models.hard_state import HardGameState
 
 
@@ -49,6 +50,37 @@ class FiveESystem(ResolutionSystem):
     name = "5e"
     unarmed_damage = "1d6"
     default_weapon_damage = "1d8"
+
+    #: Recognized damage types (SRD 5.2.1).
+    DAMAGE_TYPES = frozenset({
+        "acid", "bludgeoning", "cold", "fire", "force", "lightning",
+        "necrotic", "piercing", "poison", "radiant", "slashing", "thunder",
+    })
+
+    def apply_damage_modifiers(
+        self,
+        damage: int,
+        damage_type: str,
+        target_id: str,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+    ) -> tuple[int, str | None]:
+        """5e resistance (half, rounded down), vulnerability (double),
+        immunity (zero).  Applied to NPC targets; the player has no
+        damage-type modifiers yet (no-op hook for a future phase)."""
+        if not damage_type or target_id == "player":
+            return damage, None
+        entity = corpus.entities.get(target_id)
+        cb = entity.combat if entity else None
+        if cb is None:
+            return damage, None
+        if damage_type in cb.immunities:
+            return 0, "immune"
+        if damage_type in cb.resistances:
+            return damage // 2, "resisted"
+        if damage_type in cb.vulnerabilities:
+            return damage * 2, "vulnerable"
+        return damage, None
 
     # ------------------------------------------------------------------
     # Modifiers & dice
@@ -159,12 +191,45 @@ class FiveESystem(ResolutionSystem):
             return 10
         return stats.get(key, 10)
 
+    def _equipped_weapon_block(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> "EquipBlock | None":
+        """Return the EquipBlock of the first equipped weapon, else None."""
+        for item_id in hard.player.equipped:
+            entity = corpus.entities.get(item_id)
+            if (
+                entity
+                and entity.equip_block
+                and "weapon" in entity.equip_block.equip_tags
+            ):
+                return entity.equip_block
+        return None
+
+    def _weapon_attack_stat(self, hard: HardGameState, corpus: ModuleCorpus) -> str:
+        """Ability score for the equipped weapon's attack and damage rolls.
+
+        ``ranged`` weapons use DEX; ``finesse`` weapons use the better of
+        STR and DEX; everything else uses STR.  (No positioning exists, so
+        "ranged" only changes the ability score.)
+        """
+        weapon = self._equipped_weapon_block(hard, corpus)
+        props = weapon.properties if weapon else []
+        if "ranged" in props:
+            return "DEX"
+        if "finesse" in props:
+            str_mod = self.compute_modifier(self._player_stat(hard.player.stats, "STR"))
+            dex_mod = self.compute_modifier(self._player_stat(hard.player.stats, "DEX"))
+            return "DEX" if dex_mod > str_mod else "STR"
+        return "STR"
+
     def compute_player_attack_bonus(
         self, hard: HardGameState, corpus: ModuleCorpus
     ) -> int:
-        """5e melee attack bonus: STR mod + proficiency + weapon bonuses."""
+        """5e attack bonus: weapon ability mod + proficiency + weapon bonuses."""
         stats = hard.player.stats
-        str_mod = self.compute_modifier(self._player_stat(stats, "STR"))
+        stat_mod = self.compute_modifier(
+            self._player_stat(stats, self._weapon_attack_stat(hard, corpus))
+        )
         prof = getattr(hard.player, "proficiency_bonus", None) or 2
         weapon_bonus = 0
         for item_id in hard.player.equipped:
@@ -175,7 +240,27 @@ class FiveESystem(ResolutionSystem):
                 and "weapon" in entity.equip_block.equip_tags
             ):
                 weapon_bonus += entity.equip_block.hit_bonus
-        return str_mod + prof + weapon_bonus
+        return stat_mod + prof + weapon_bonus
+
+    def compute_player_damage_type(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> str:
+        """Damage type of the player's equipped weapon ("" when untyped —
+        unarmed, improvised, or legacy weapons apply no type modifiers)."""
+        weapon = self._equipped_weapon_block(hard, corpus)
+        return weapon.damage_type if weapon else ""
+
+    def attack_roll_mods(
+        self, attacker_conds: dict, target_conds: dict
+    ) -> tuple[bool, bool]:
+        """(advantage, disadvantage) from combat conditions (5e, simplified):
+
+        - attacker poisoned or prone -> disadvantage on the attack roll
+        - target stunned or prone -> advantage on the attack roll
+        """
+        advantage = "stunned" in target_conds or "prone" in target_conds
+        disadvantage = "poisoned" in attacker_conds or "prone" in attacker_conds
+        return advantage, disadvantage
 
     def compute_player_damage_expr(
         self,
@@ -183,20 +268,21 @@ class FiveESystem(ResolutionSystem):
         corpus: ModuleCorpus,
         soft: object | None = None,
     ) -> str:
-        """5e melee damage expression: weapon dice + STR mod, or unarmed."""
+        """5e damage expression: weapon dice + ability mod, or unarmed."""
         stats = hard.player.stats
         str_mod = self.compute_modifier(self._player_stat(stats, "STR"))
 
-        # Equipped weapon
-        for item_id in hard.player.equipped:
-            entity = corpus.entities.get(item_id)
-            if (
-                entity
-                and entity.equip_block
-                and "weapon" in entity.equip_block.equip_tags
-            ):
-                base = entity.equip_block.damage_expr
-                return f"{base}+{str_mod}" if str_mod >= 0 else f"{base}{str_mod}"
+        # Equipped weapon (ability mod per its properties)
+        weapon = self._equipped_weapon_block(hard, corpus)
+        if weapon is not None:
+            stat_mod = self.compute_modifier(
+                self._player_stat(stats, self._weapon_attack_stat(hard, corpus))
+            )
+            return (
+                f"{weapon.damage_expr}+{stat_mod}"
+                if stat_mod >= 0
+                else f"{weapon.damage_expr}{stat_mod}"
+            )
 
         # Improvised weapon
         if soft is not None:
@@ -234,7 +320,10 @@ class FiveESystem(ResolutionSystem):
             raise ValueError(f"Invalid combat target '{target_id}'")
 
         atk_bonus = self.compute_player_attack_bonus(hard, corpus)
-        attack_roll = self.roll_die(20)
+        adv, disadv = self.attack_roll_mods(
+            get_conditions("player", hard), get_conditions(target_id, hard)
+        )
+        attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
         attack_total = attack_roll + atk_bonus
         critical = self.is_critical(attack_roll)
         miss = self.is_fumble(attack_roll)
@@ -261,8 +350,14 @@ class FiveESystem(ResolutionSystem):
         if hit:
             dmg_expr = self.compute_player_damage_expr(hard, corpus)
             damage, damage_roll = self.roll_damage(dmg_expr, critical=critical)
+            damage_type = self.compute_player_damage_type(hard, corpus)
+            damage, mitigation = self.apply_damage_modifiers(
+                damage, damage_type, target_id, hard, corpus
+            )
             log_entry.damage_roll = damage_roll
             log_entry.damage = damage
+            log_entry.damage_type = damage_type or None
+            log_entry.mitigation = mitigation
             target_hp_delta = -damage
 
             current_hp = npc_state.get("current_hp") or 0
@@ -299,15 +394,30 @@ class FiveESystem(ResolutionSystem):
         target_id: str,
         target_ac: int,
         round_number: int,
+        attack: "NPCAttackDef | None" = None,
     ) -> NPCAttackResult:
-        """Resolve an NPC attack against a combatant (player or NPC)."""
+        """Resolve an NPC attack against a combatant (player or NPC).
+
+        ``attack=None`` resolves the basic attack (block-level fields).
+        """
         entity = corpus.entities.get(npc_id)
         if entity is None or entity.combat is None:
             raise ValueError(f"Invalid NPC '{npc_id}'")
 
         combat_block = entity.combat
-        attack_roll = self.roll_die(20)
-        attack_total = attack_roll + combat_block.atk
+        atk_bonus = attack.atk if attack is not None else (combat_block.atk or 0)
+        dmg_expr = attack.dmg if attack is not None else combat_block.dmg
+        dmg_type = (
+            (attack.dmg_type or combat_block.dmg_type)
+            if attack is not None
+            else combat_block.dmg_type
+        )
+
+        adv, disadv = self.attack_roll_mods(
+            get_conditions(npc_id, hard), get_conditions(target_id, hard)
+        )
+        attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
+        attack_total = attack_roll + atk_bonus
         critical = self.is_critical(attack_roll)
         miss = self.is_fumble(attack_roll)
         hit = critical or (not miss and attack_total >= target_ac)
@@ -322,6 +432,8 @@ class FiveESystem(ResolutionSystem):
             ac=target_ac,
             hit=hit,
             critical=critical if hit else None,
+            attack_id=attack.id if attack is not None else None,
+            attack_name=(attack.name or attack.id) if attack is not None else None,
         )
         log_entries: list[CombatLogEntry] = [log_entry]
 
@@ -332,10 +444,15 @@ class FiveESystem(ResolutionSystem):
 
         if hit:
             damage, damage_roll = self.roll_damage(
-                combat_block.dmg, critical=critical
+                dmg_expr, critical=critical
+            )
+            damage, mitigation = self.apply_damage_modifiers(
+                damage, dmg_type, target_id, hard, corpus
             )
             log_entry.damage_roll = damage_roll
             log_entry.damage = damage
+            log_entry.damage_type = dmg_type or None
+            log_entry.mitigation = mitigation
             target_hp_delta = -damage
             if target_id == "player":
                 current_hp = hard.player.current_hp or 0
@@ -379,7 +496,9 @@ class FiveESystem(ResolutionSystem):
         dex_mod = self.compute_modifier(
             self._player_stat(hard.player.stats, "DEX")
         )
-        roll = self.roll_die(20)
+        # Poisoned: disadvantage on ability checks.
+        disadvantage = "poisoned" in get_conditions("player", hard)
+        roll = self.roll_die(20, disadvantage=disadvantage)
         total = roll + dex_mod
         success = total >= flee_dc
 

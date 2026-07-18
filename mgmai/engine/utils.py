@@ -99,6 +99,19 @@ def get_following_npc_ids(
     return result
 
 
+def get_conditions(combatant_id: str, hard: HardGameState) -> dict[str, int]:
+    """Return a combatant's conditions map (condition id -> rounds left).
+
+    Player conditions live on ``hard.player.conditions``; NPC conditions
+    live in ``entity_states[id]["conditions"]``.  Returns a read-only
+    view (empty dict when none); callers that apply conditions mutate the
+    underlying maps directly.
+    """
+    if combatant_id == "player":
+        return hard.player.conditions
+    return hard.entity_states.get(combatant_id, {}).get("conditions", {}) or {}
+
+
 def present_entity_ids(
     hard: HardGameState,
     corpus: ModuleCorpus,

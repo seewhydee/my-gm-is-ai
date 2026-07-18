@@ -119,6 +119,17 @@ class StatModifier(BaseModel):
     value: int
 
 
+class ApplyCondition(BaseModel):
+    """Apply a combat condition (e.g. poisoned) to the player.
+
+    Conditions are combat-scoped: ``rounds`` ticks down at the start of
+    the afflicted combatant's turn, and all conditions clear when combat
+    ends.
+    """
+    id: str
+    rounds: int = 1
+
+
 class EquipBlock(BaseModel):
     """Describes how an item interacts with the equipment system.
 
@@ -137,6 +148,8 @@ class EquipBlock(BaseModel):
     max_equipped: int | None = 1
     damage_expr: str = "1d8"
     hit_bonus: int = 0
+    properties: list[str] = Field(default_factory=list)
+    damage_type: str = ""
 
     def effects_summary(self) -> str:
         """Compact mechanical-effects summary, shared by briefing and /inv."""
@@ -164,6 +177,26 @@ class EquipBlock(BaseModel):
         return ", ".join(parts)
 
 
+class ConsumableBlock(BaseModel):
+    """Describes how an item is consumed (potion drunk, scroll read, …).
+
+    Only present on item-type entities.  Usable in combat via the
+    ``use_item`` combat action, which consumes the player's action.
+    """
+    heal: str = ""                              # dice expression, e.g. "2d4+2"
+    cure_conditions: list[str] = Field(default_factory=list)
+    destroy: bool = True                        # consume one count on use
+
+    def effects_summary(self) -> str:
+        """Compact plain-English summary for briefings and display."""
+        parts: list[str] = []
+        if self.heal:
+            parts.append(f"heals {self.heal}")
+        if self.cure_conditions:
+            parts.append(f"cures {', '.join(self.cure_conditions)}")
+        return ", ".join(parts)
+
+
 class Result(BaseModel):
     narrative: Optional[str] = None
     add_item: Optional[List[str]] = None
@@ -176,6 +209,7 @@ class Result(BaseModel):
     set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
     adjust_attitude: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
+    apply_condition: Optional[ApplyCondition] = None
     then_check: Optional[CheckResolution] = None
     player_damage: Optional[str] = None
     set_player_location: Optional[str] = None
@@ -487,6 +521,76 @@ class EncounterRule(Checkable):
 
 
 
+class AbilityAttack(BaseModel):
+    """Attack-roll ability effect (e.g. Fire Bolt).
+
+    Player casters roll with the named ability score's modifier (plus
+    proficiency bonus when ``proficient``); NPC casters use their combat
+    block's ``atk`` bonus instead (NPCs have no ability scores).
+    """
+    stat: str
+    proficient: bool = True
+    damage: str
+    damage_type: str = ""
+
+
+class AbilitySave(BaseModel):
+    """Save-based ability effect (e.g. Poison Spray, a breath weapon).
+
+    The target saves: the player rolls with stat modifier plus save
+    proficiency as usual; NPC targets roll ``d20 + save_bonus`` from
+    their combat block.
+    """
+    stat: str
+    dc: int
+    damage: str = ""                 # dice expr; "" = no damage
+    damage_type: str = ""
+    half_on_success: bool = True     # successful save halves damage
+    apply_condition_on_failure: Optional[ApplyCondition] = None
+
+
+class Ability(BaseModel):
+    """A named combat ability (spell, class feature, monster power).
+
+    Exactly one effect: ``attack`` (attack roll), ``save`` (target saves),
+    or ``heal`` (dice expression).  ``uses_per_combat`` of -1 means
+    unlimited use (cantrip-style).
+    """
+    name: str
+    description: str = ""
+    target: Literal["self", "ally", "enemy"]
+    uses_per_combat: int = -1
+    attack: Optional[AbilityAttack] = None
+    save: Optional[AbilitySave] = None
+    heal: str = ""
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> "Ability":
+        kinds = sum([
+            self.attack is not None,
+            self.save is not None,
+            bool(self.heal),
+        ])
+        if kinds != 1:
+            raise ValueError(
+                "Ability must have exactly one effect: attack, save, or heal"
+            )
+        if self.heal and self.target == "enemy":
+            raise ValueError("heal abilities must target self or ally")
+        return self
+
+    def effect_summary(self) -> str:
+        """Compact plain-English summary for briefings."""
+        if self.attack is not None:
+            dtype = f" {self.attack.damage_type}" if self.attack.damage_type else ""
+            return f"attack ({self.attack.stat}) for {self.attack.damage}{dtype} damage"
+        if self.save is not None:
+            half = ", half on success" if self.save.half_on_success else ""
+            dmg = f"{self.save.damage} damage" if self.save.damage else "no damage"
+            return f"{self.save.stat} save DC {self.save.dc}: {dmg}{half}"
+        return f"heals {self.heal}"
+
+
 class FollowerConfig(BaseModel):
     blacklist: List[str] = Field(default_factory=list)
 
@@ -508,6 +612,7 @@ class Entity(BaseModel):
     combat: Optional[CombatBlock] = None
     combat_group: Optional[str] = None
     equip_block: Optional[EquipBlock] = None
+    consumable: Optional[ConsumableBlock] = None
     max_stack: Optional[int] = None
     reactions: List[Reaction] = Field(default_factory=list)
     _contains_map: Dict[str, int] = PrivateAttr(default_factory=dict)
@@ -548,6 +653,10 @@ class Entity(BaseModel):
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'equip_block'. "
                 f"Only 'item' entities may carry equip_block.")
+        if self.type != "item" and self.consumable is not None:
+            raise ValueError(
+                f"Entity type '{self.type}' must not have 'consumable'. "
+                f"Only 'item' entities may carry consumable.")
         if self.type != "item" and self.max_stack is not None:
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'max_stack'. "
@@ -609,6 +718,80 @@ class CombatAIBlock(BaseModel):
     )
     flee_below_hp_pct: Optional[int] = Field(default=None, ge=1, le=99)
     passive: bool = False
+    # Per-ability usage rules, keyed by ability id (see CombatBlock.abilities).
+    ability_rules: dict[str, "AbilityAIRule"] = Field(default_factory=dict)
+
+
+class AbilityAIRule(BaseModel):
+    """Usage constraints for one NPC ability (evaluated each turn).
+
+    ``cooldown_rounds`` makes the ability unusable for that many rounds
+    after each use; ``use_below_own_hp_pct`` only allows it while the
+    NPC is below the given HP percentage.
+    """
+    cooldown_rounds: int = Field(default=0, ge=0)
+    use_below_own_hp_pct: Optional[int] = Field(default=None, ge=1, le=100)
+
+
+def _validate_combat_safe_effects(
+    effects: list[CheckResolution], path: str
+) -> None:
+    """Restrict on-hit CheckResolution results to combat-safe effects."""
+    prohibited = {
+        "add_item",
+        "add_item_count",
+        "remove_item",
+        "remove_item_count",
+        "set_entity_state",
+        "set_room_state",
+        "adjust_attitude",
+        "set_player_location",
+        "start_combat",
+    }
+
+    def _is_set(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, (list, dict)):
+            return len(value) > 0
+        return True
+
+    def _check_result(result: Result | None, path: str) -> None:
+        if result is None:
+            return
+        for field in prohibited:
+            if _is_set(getattr(result, field)):
+                raise ValueError(
+                    f"Prohibited field '{field}' in on-hit result at {path}"
+                )
+        if result.then_check is not None:
+            _check_check_resolution(result.then_check, f"{path}.then_check")
+
+    def _check_check_resolution(chk: CheckResolution, path: str) -> None:
+        _check_result(chk.success, f"{path}.success")
+        _check_result(chk.failure, f"{path}.failure")
+
+    for i, effect in enumerate(effects):
+        _check_check_resolution(effect, f"{path}[{i}]")
+
+
+class NPCAttackDef(BaseModel):
+    """A named attack option in an NPC's combat block (e.g. a wolf's bite).
+
+    ``name`` is a verb phrase used in narration prefixes ("bites",
+    "slashes with its claws"); it defaults to ``id``.
+    """
+    id: str
+    name: Optional[str] = None
+    atk: int
+    dmg: str = "1d6"
+    dmg_type: str = ""
+    on_hit_effects: list[CheckResolution] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_on_hit_effects(self) -> "NPCAttackDef":
+        _validate_combat_safe_effects(self.on_hit_effects, "on_hit_effects")
+        return self
 
 
 class CombatBlock(BaseModel):
@@ -616,56 +799,58 @@ class CombatBlock(BaseModel):
 
     All values are pre-computed by the adventure author.  NPCs without
     this block cannot participate in HP-based combat.
+
+    Attack options come in two forms: a single implicit "basic attack"
+    built from the block-level ``atk`` / ``dmg`` / ``on_hit_effects``
+    (when ``attacks`` is absent), or an explicit ``attacks`` list with a
+    ``multiattack`` sequence naming the attacks performed each turn.
     """
     hp: int = Field(gt=0)
     ac: int
-    atk: int
+    atk: Optional[int] = None
     dmg: str = "1d6"
+    dmg_type: str = ""
     initiative_mod: int = 0
     flee_dc: int = 10
+    resistances: list[str] = Field(default_factory=list)
+    vulnerabilities: list[str] = Field(default_factory=list)
+    immunities: list[str] = Field(default_factory=list)
+    attacks: list[NPCAttackDef] = Field(default_factory=list)
+    multiattack: list[str] = Field(default_factory=list)
+    abilities: list[str] = Field(default_factory=list)
+    save_bonus: int = 0
     on_hit_effects: list[CheckResolution] = Field(default_factory=list)
     ai: Optional[CombatAIBlock] = None
 
     @model_validator(mode="after")
     def _validate_on_hit_effects(self) -> "CombatBlock":
-        """Restrict on-hit CheckResolution results to combat-safe effects."""
-        prohibited = {
-            "add_item",
-            "add_item_count",
-            "remove_item",
-            "remove_item_count",
-            "set_entity_state",
-            "set_room_state",
-            "adjust_attitude",
-            "set_player_location",
-            "start_combat",
-        }
+        _validate_combat_safe_effects(self.on_hit_effects, "on_hit_effects")
+        return self
 
-        def _is_set(value: Any) -> bool:
-            if value is None:
-                return False
-            if isinstance(value, (list, dict)):
-                return len(value) > 0
-            return True
-
-        def _check_result(result: Result | None, path: str) -> None:
-            if result is None:
-                return
-            for field in prohibited:
-                if _is_set(getattr(result, field)):
+    @model_validator(mode="after")
+    def _validate_attacks(self) -> "CombatBlock":
+        if self.attacks:
+            if self.on_hit_effects:
+                raise ValueError(
+                    "CombatBlock: 'on_hit_effects' is forbidden when 'attacks' "
+                    "is present; put on-hit effects on individual attacks"
+                )
+            ids = [a.id for a in self.attacks]
+            if len(set(ids)) != len(ids):
+                raise ValueError("CombatBlock: duplicate attack ids")
+            for atk_id in self.multiattack:
+                if atk_id not in ids:
                     raise ValueError(
-                        f"Prohibited field '{field}' in on-hit result at {path}"
+                        f"CombatBlock.multiattack references unknown attack "
+                        f"'{atk_id}'"
                     )
-            if result.then_check is not None:
-                _check_check_resolution(result.then_check, f"{path}.then_check")
-
-        def _check_check_resolution(chk: CheckResolution, path: str) -> None:
-            _check_result(chk.success, f"{path}.success")
-            _check_result(chk.failure, f"{path}.failure")
-
-        for i, effect in enumerate(self.on_hit_effects):
-            _check_check_resolution(effect, f"on_hit_effects[{i}]")
-
+        else:
+            if self.atk is None:
+                raise ValueError(
+                    "CombatBlock.atk is required when 'attacks' is absent"
+                )
+            if self.multiattack:
+                raise ValueError("CombatBlock.multiattack requires 'attacks'")
         return self
 
 
@@ -682,6 +867,7 @@ class ModuleCorpus(BaseModel):
     game_over_conditions: List[GameOverCondition] = Field(default_factory=list)
     flags_declared: Optional[List[FlagDecl]] = None
     stats: Optional[StatsBlock] = None
+    abilities: Dict[str, Ability] = Field(default_factory=dict)
 
     @field_validator("flags_declared", mode="before")
     @classmethod

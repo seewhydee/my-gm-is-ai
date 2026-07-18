@@ -214,6 +214,7 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
 
     # 9. CombatBlock validation
     from mgmai.engine.combat import parse_damage_dice
+    from mgmai.engine.systems.five_e import FiveESystem
     for entity_id, entity in corpus.entities.items():
         if entity.combat is None:
             continue
@@ -233,6 +234,19 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
                 f"Entity '{entity_id}' CombatBlock.dmg is not a valid damage "
                 f"expression: '{cb.dmg}'"
             )
+        for dt in [cb.dmg_type, *cb.resistances, *cb.vulnerabilities, *cb.immunities]:
+            if dt and dt not in FiveESystem.DAMAGE_TYPES:
+                errors.append(
+                    f"Entity '{entity_id}' has unknown damage type: '{dt}'"
+                )
+        for atk_def in cb.attacks:
+            try:
+                parse_damage_dice(atk_def.dmg)
+            except ValueError:
+                errors.append(
+                    f"Entity '{entity_id}' attack '{atk_def.id}' dmg is not a "
+                    f"valid damage expression: '{atk_def.dmg}'"
+                )
         if "current_hp" not in entity.state_fields:
             errors.append(
                 f"Entity '{entity_id}' has CombatBlock but no 'current_hp' "
@@ -250,6 +264,60 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
                     f"Entity '{entity_id}' CombatAIBlock.flee_below_hp_pct must "
                     f"be between 1 and 99, got {ai.flee_below_hp_pct}"
                 )
+
+    # 10. EquipBlock damage-type validation
+    for entity_id, entity in corpus.entities.items():
+        eb = entity.equip_block
+        if eb is not None and eb.damage_type and eb.damage_type not in FiveESystem.DAMAGE_TYPES:
+            errors.append(
+                f"Entity '{entity_id}' EquipBlock.damage_type is unknown: "
+                f"'{eb.damage_type}'"
+            )
+
+    # 11. Ability validation
+    for aid, ability in corpus.abilities.items():
+        exprs = []
+        if ability.attack is not None:
+            exprs.append(("attack.damage", ability.attack.damage))
+        if ability.save is not None and ability.save.damage:
+            exprs.append(("save.damage", ability.save.damage))
+        if ability.heal:
+            exprs.append(("heal", ability.heal))
+        for label, expr in exprs:
+            try:
+                parse_damage_dice(expr)
+            except ValueError:
+                errors.append(
+                    f"Ability '{aid}' {label} is not a valid damage "
+                    f"expression: '{expr}'"
+                )
+        if corpus.stats is not None:
+            stats_used = []
+            if ability.attack is not None:
+                stats_used.append(ability.attack.stat)
+            if ability.save is not None:
+                stats_used.append(ability.save.stat)
+            for st in stats_used:
+                if st not in corpus.stats.definitions:
+                    errors.append(
+                        f"Ability '{aid}' references unknown stat '{st}'"
+                    )
+    for entity_id, entity in corpus.entities.items():
+        cb = entity.combat
+        if cb is None:
+            continue
+        for aid in cb.abilities:
+            if aid not in corpus.abilities:
+                errors.append(
+                    f"Entity '{entity_id}' references unknown ability '{aid}'"
+                )
+        if cb.ai is not None:
+            for aid in cb.ai.ability_rules:
+                if aid not in cb.abilities:
+                    errors.append(
+                        f"Entity '{entity_id}' has ability_rules for '{aid}' "
+                        f"but does not list it in abilities"
+                    )
 
     return errors
 

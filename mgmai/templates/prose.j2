@@ -53,7 +53,7 @@ Important `action_type` values:
 | `examine` | The player examines something. `rigorous: true` means a
   thorough search costing a turn. Default (non-rigorous) is a free
   cursory glance — keep narration brief. |
-| `combat` | Attack a target during combat; `target` is the combatant entity ID, `combat_action` is always `"attack"`. |
+| `combat` | Act during combat; `combat_action` is `"attack"` (`target` = enemy combatant ID), `"use_item"` (`target` = inventory item ID, e.g. drinking a potion), or `"use_ability"` (`ability_id` from the briefing's ability list; `target` per the ability's target kind). |
 | `talk` | Speak to NPC `target`; `utterance` is verbatim in-character speech, `detail` is non-verbal context, `ends_dialogue: true` means the player is ending the conversation. |
 | `transfer` | Give or take items; `given_items` / `taken_items` list item IDs or soft item names, `target` is the recipient/source. |
 | `wait` | Catch-all player action. Used for plot-insignificant actions, introspection, inventory checks, *and* for actions the engine cannot categorize or resolve. **If `detail` explains a problem (no exit, ambiguous target, etc.), narrate the problem, not literal waiting.** |

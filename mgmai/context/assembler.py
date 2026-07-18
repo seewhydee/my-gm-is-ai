@@ -399,6 +399,7 @@ def _build_combat_state(
                 "side": "party",
                 "current_hp": hard.player.current_hp or 0,
                 "max_hp": hard.player.max_hp or 0,
+                "conditions": sorted(hard.player.conditions),
             })
         else:
             entity = corpus.entities.get(cid)
@@ -410,11 +411,44 @@ def _build_combat_state(
                 "side": "party" if cid in combat.allies else "enemy",
                 "current_hp": state.get("current_hp") or 0,
                 "max_hp": (entity.combat.hp if entity and entity.combat else 0),
+                "conditions": sorted(state.get("conditions", {}) or {}),
             })
+
+    usable_items: list[dict[str, Any]] = []
+    for item_id in hard.player.inventory:
+        entity = corpus.entities.get(item_id)
+        if entity is not None and entity.consumable is not None:
+            usable_items.append({
+                "id": item_id,
+                "name": entity.name or item_id,
+                "effects": entity.consumable.effects_summary(),
+            })
+
+    abilities: list[dict[str, Any]] = []
+    for aid in hard.player.abilities:
+        ability = corpus.abilities.get(aid)
+        if ability is None:
+            continue
+        used = combat.ability_uses.get("player", {}).get(aid, 0)
+        remaining = (
+            None
+            if ability.uses_per_combat < 0
+            else max(0, ability.uses_per_combat - used)
+        )
+        abilities.append({
+            "id": aid,
+            "name": ability.name,
+            "description": ability.description,
+            "target": ability.target,
+            "uses_remaining": remaining,  # null = unlimited
+            "effect": ability.effect_summary(),
+        })
 
     return CombatBriefing(
         round_number=combat.round_number,
         initiative_order=list(initiative),
         current_actor=current_actor,
         combatants=combatants,
+        usable_items=usable_items,
+        abilities=abilities,
     )

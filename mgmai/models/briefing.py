@@ -132,7 +132,11 @@ class CombatBriefing(BaseModel):
     round_number: int
     initiative_order: list[str]
     current_actor: str
-    combatants: list[dict[str, Any]]  # [{id, name, side, current_hp, max_hp}]
+    combatants: list[dict[str, Any]]  # [{id, name, side, current_hp, max_hp, conditions}]
+    # Usable consumables in the player's inventory: [{id, name, effects}]
+    usable_items: list[dict[str, Any]] = Field(default_factory=list)
+    # Player's combat abilities: [{id, name, description, target, uses_remaining, effect}]
+    abilities: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class GMBriefing(BaseModel):

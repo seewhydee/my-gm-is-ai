@@ -37,7 +37,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mgmai.models.corpus import EquipBlock, ModuleCorpus, StatCheck
+    from mgmai.models.corpus import (
+        EquipBlock,
+        ModuleCorpus,
+        NPCAttackDef,
+        StatCheck,
+    )
     from mgmai.models.hard_state import HardGameState
 
 from mgmai.models.combat import CombatLogEntry
@@ -233,10 +238,33 @@ class ResolutionSystem(ABC):
     def is_fumble(self, roll: int) -> bool:
         """True if a raw attack roll is an automatic miss."""
 
+    def attack_roll_mods(
+        self, attacker_conds: dict, target_conds: dict
+    ) -> tuple[bool, bool]:
+        """Return ``(advantage, disadvantage)`` for an attack roll given
+        the attacker's and target's condition maps.  Default: neither."""
+        return False, False
+
     @abstractmethod
     def roll_damage(self, expr: str, critical: bool = False) -> tuple[int, str]:
         """Roll a dice expression, applying the system's crit rule.
         Returns ``(total, readable_string)``."""
+
+    def apply_damage_modifiers(
+        self,
+        damage: int,
+        damage_type: str,
+        target_id: str,
+        hard: "HardGameState",
+        corpus: "ModuleCorpus",
+    ) -> tuple[int, str | None]:
+        """Apply damage-type modifiers (resistance, vulnerability,
+        immunity) to rolled damage against a target.
+
+        Returns ``(damage, mitigation)`` where mitigation is ``None`` or a
+        short label such as ``"resisted"``.  Default: no modifiers.
+        """
+        return damage, None
 
     @abstractmethod
     def resolve_player_attack(
@@ -264,14 +292,17 @@ class ResolutionSystem(ABC):
         target_id: str,
         target_ac: int,
         round_number: int,
+        attack: "NPCAttackDef | None" = None,
     ) -> NPCAttackResult:
         """Resolve an NPC attack against a combatant.
 
         The engine has already validated the target and computed its AC;
-        ``target_id`` is ``"player"`` or another combatant's entity ID.  The
-        system reads the NPC's combat data from ``corpus.entities[npc_id]``,
-        computes the attack, and returns log entries plus the target HP
-        delta.  It must not mutate ``hard``.
+        ``target_id`` is ``"player"`` or another combatant's entity ID.
+        ``attack`` selects the attack definition (bonus, damage, on-hit
+        effects) from the NPC's ``attacks`` list; ``None`` means the basic
+        attack built from block-level fields.  The system computes the
+        attack and returns log entries plus the target HP delta.  It must
+        not mutate ``hard``.
         """
 
     @abstractmethod
