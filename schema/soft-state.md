@@ -4,7 +4,7 @@ The game's **soft state** is a store of fuzzy, narrative-oriented
 information.  Unlike hard state, which is managed rigorously by the
 engine only, soft state is co-managed by the LLM and the engine.
 
-For design details, see the [Soft State docs](../docs/soft.md).  This
+For design details, see the [Soft State docs](../doc/soft.md).  This
 document describes the schema used in-game to track soft state.
 
 ## Top-Level Structure
@@ -66,31 +66,29 @@ unique IDs. They can be:
 
 Freeform strings describing non-plot-relevant changes to rooms (e.g.,
 cleared webs, rearranged debris, campfire remains). The Context
-Assembler includes the most recent notes (up to 5 per room) in the
-GMBriefing room description.
+Assembler includes all room notes in the GMBriefing room description.
 
 ### Patch format
 
+A `room_note` patch carries no room identifier — the engine attaches it
+to the player's current room automatically.
+
 ```json
 {
-  "entity_id": null,
   "field": "room_note",
-  "target_id": "axe_handle_lower",
-  "old_value": null,
   "new_value": "The webs here are partially cleared.",
-  "reason": "Player hacked through the webs with the toenail sword."
+  "reason": "Player hacked through the webs with the iron sword."
 }
 ```
 
 ### Validation rules
 
-1. `target_id` must be a valid room ID in the module corpus.
-2. `new_value` must be a non-empty string.
-3. The note must not contradict any hard state flag or entity state (e.g., the
+1. `new_value` must be a non-empty string.
+2. The note must not contradict any hard state flag or entity state (e.g., the
    engine rejects a note saying "the spider is dead" if
    `entity_states.spider.alive == true`).
-4. No duplicate detection — identical notes may accumulate; the Context
-   Assembler can deduplicate at briefing time.
+3. Notes accumulate in insertion order; the Context Assembler surfaces all of
+   them.
 
 ---
 
@@ -111,14 +109,16 @@ Freeform strings describing non-plot-relevant changes to entities (e.g., door
 marked with chalk, scratch marks on a table). When dialogue mode exits, the
 conversation summary is appended here as an `entity_note` on the NPC.
 
+The **player entity** (`entity_id: "player"`) is also a valid target: notes
+placed on it are "global" observations that follow the player across rooms
+and are surfaced in the GMBriefing's player-state block.
+
 ### Patch format
 
 ```json
 {
   "entity_id": "spider",
   "field": "entity_note",
-  "target_id": null,
-  "old_value": null,
   "new_value": "The spider's left legs are covered in ichor.",
   "reason": "Player wounded the spider with the toenail sword."
 }
@@ -126,53 +126,15 @@ conversation summary is appended here as an `entity_note` on the NPC.
 
 ### Validation rules
 
-1. `entity_id` must be a valid entity ID in the module corpus.
+1. `entity_id` must identify either the player entity (`"player"` or any
+   corpus entity with `type == "player"`) or an entity **present in the
+   current room** — directly, nested inside a container in the room, or a
+   following NPC. Notes on entities in other rooms are rejected.
 2. `new_value` must be a non-empty string.
 3. The note must not contradict hard state (same rules as room notes).
-4. Dialogue archival summaries appended by the engine are exempt from the
+4. For non-player entities, `alive == false` rejects the note.
+5. Dialogue archival summaries appended by the engine are exempt from the
    `reason` length check (the reason is the engine's own archival trigger).
-
----
-
-## NPC Attitude Tracking
-
-NPC attitude is tracked as a `state_fields` entry per NPC in
-`hard_state.entity_states` (see `corpus.md` §
-`dialogue.attitude_limits` and the `entity_states` section of
-`hard-state.md`). Attitude changes are proposed by LLM Call 2 via the
-`attitude_changes` block, post-validated by the engine, and applied to
-`hard_state.entity_states[<npc_id>].attitude` via
-`StateManager.apply_hard_changes()`.
-
-The Context Assembler includes attitude values for visible NPCs through the
-`BriefingEntity.state` field, which contains all declared entity state fields.
-
-### Transition rules (enforced by engine)
-
-Attitude changes are proposed by LLM Call 2 via the `attitude_changes` block
-and post-validated by the engine in step 4.5:
-
-1. Attitude changes are validated against the NPC's `attitude_limits` in the
-   corpus (`min`, `max`, `step_per_turn`). The absolute change from `old_value`
-   to `new_value` must not exceed `step_per_turn`. The `new_value` must be within
-   `[min, max]`.
-2. Attitude changes must be accompanied by a **non-empty reason**.
-3. If an NPC's hard state says `alive == false`, all attitude changes for that
-   NPC are rejected.
-4. The engine initialises each NPC's attitude from the corpus
-   `state_fields.attitude.initial` (default 0).
-
-### Relationship to `dialogue`
-
-The module corpus may gate certain dialogue topics behind attitude thresholds
-via the `will_reveal` block. The engine evaluates the `conditions` on each
-`will_reveal` entry (e.g., `entity:korbar.attitude >= 2`) against the current game
-state. If the LLM narrates a reveal that the conditions do not permit, the
-engine flags it in `warnings`.
-
-Revelations are recorded in `npc_revelations` (see below), which feeds into
-future GMBriefings and is surfaced in `dialogue_context.revealed_topics` when
-that NPC is the active speaker.
 
 ---
 
@@ -494,8 +456,7 @@ If `active_npc` is null, `dialogue_context` is omitted from the GMBriefing.
 
 When dialogue mode exits, the engine appends a conversation memory note to
 `entity_notes[<npc_id>]`. This note persists across turns and is surfaced in
-the GMBriefing whenever that NPC is present in the room (last 5 notes per
-entity).
+the GMBriefing whenever that NPC is present in the room.
 
 **LLM-authored (preferred):** If LLM Call 2 (Prose) includes a
 `conversation_note` field in its output, that note is used. The LLM should
@@ -613,14 +574,11 @@ Clear an improvised weapon (set to `null`):
 ## SoftStatePatch reference
 
 The general soft-state patch format that LLM Call 1 outputs in
-`PlayerAction.proposed_soft_state_patches`:
+`PlayerAction.soft_state_patches`:
 
 ```json
 {
-  "entity_id": null,
   "field": "room_note",
-  "target_id": "axe_handle_lower",
-  "old_value": null,
   "new_value": "The webs here are partially cleared.",
   "reason": "Player hacked through the webs with the iron sword."
 }
@@ -628,10 +586,8 @@ The general soft-state patch format that LLM Call 1 outputs in
 
 | Field       | Type           | Description |
 |-------------|----------------|-------------|
-| `entity_id` | string\|null   | Target entity ID for `entity_note`. Null for `room_note`. |
-| `field`     | string         | One of `room_note`, `entity_note`, `soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon`. Attitude changes are proposed separately by LLM Call 2 — see below. |
-| `target_id` | string\|null   | For `room_note`, the room ID. Null for entity-level patches. |
-| `old_value` | any\|null      | Expected current value (for validation). Null for add-only patches. |
+| `entity_id` | string\|null   | Target entity ID for `entity_note`. Must be `"player"` or an entity present in the current room. Null (omitted) for other patch types. |
+| `field`     | string         | One of `room_note`, `entity_note`, `soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon`. Attitude changes are proposed separately by LLM Call 2 — see `actions.md` §5 and `hard-state.md`. |
 | `new_value` | any            | Proposed new value. |
 | `reason`    | string         | Narrative justification. Must be non-empty. |
 
@@ -639,8 +595,8 @@ The general soft-state patch format that LLM Call 1 outputs in
 
 | Field                     | Type     | Allowed values              | Notes |
 |---------------------------|----------|-----------------------------|-------|
-| `room_note`               | string   | Non-empty, non-contradictory | Appended to `room_notes[target_id]`. |
-| `entity_note`             | string   | Non-empty, non-contradictory | Appended to `entity_notes[entity_id]`. |
+| `room_note`               | string   | Non-empty, non-contradictory | Appended to `room_notes[<current_room>]`; the engine derives the room from the player's location. |
+| `entity_note`             | string   | Non-empty, non-contradictory | Appended to `entity_notes[entity_id]`. `entity_id` must be the player entity or an entity present in the current room. |
 | `soft_inventory_remove`   | string   | Must exist in `soft_inventory` | Removed from `soft_inventory[]`. |
 | `appearance_note_add`     | string   | Non-empty string               | Appended to `appearance_notes[]`. |
 | `set_improvised_weapon`   | dict\|null | Valid `ImprovisedWeapon` dict or `null` | Sets or clears `improvised_weapon`. |
@@ -649,9 +605,9 @@ The general soft-state patch format that LLM Call 1 outputs in
 
 | Rule | Description |
 |------|-------------|
-| Entity/room must exist | `entity_id` or `target_id` must be defined in the module corpus. |
+| Entity must be present | For `entity_note`, `entity_id` must be the player entity or an entity present in the current room (directly, nested in a container, or a following NPC). |
 | Field must be registered | `field` must be one of the supported types above. |
-| Alive check | Patches for entities with `alive == false` are rejected. |
+| Alive check | Patches for non-player entities with `alive == false` are rejected. |
 | Reason required | `reason` must be non-empty. |
 | No hard-state contradiction | Notes cannot assert facts that contradict hard-state flags or entity states. |
 | Soft inventory removal | `soft_inventory_remove` must reference an item currently in `soft_inventory`. |
@@ -661,16 +617,9 @@ The general soft-state patch format that LLM Call 1 outputs in
 ### Attitude changes (LLM Call 2)
 
 Attitude changes are proposed by LLM Call 2 via the `attitude_changes` block
-(see `actions.md` §5), not by LLM Call 1 via `SoftStatePatch`. The engine
-post-validates them against the NPC's `attitude_limits` using the same rules:
-
-| Rule | Description |
-|------|-------------|
-| Entity must exist | NPC entity ID must be defined in the corpus. |
-| Attitude step limit | Absolute delta must not exceed corpus `attitude_limits.step_per_turn`. |
-| Attitude bounds | `new_value` must be within corpus `attitude_limits.[min, max]`. |
-| Alive check | Changes for entities with `alive == false` are rejected. |
-| Reason required | `reason` must be non-empty. |
+(see `actions.md` §5), not by LLM Call 1 via `SoftStatePatch`. Attitude is
+hard state (`hard_state.entity_states[<npc_id>].attitude`); its validation
+rules are documented in `hard-state.md` (§ NPC Attitude).
 
 ---
 

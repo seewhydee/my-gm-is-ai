@@ -208,6 +208,32 @@ addition, each room entry must include the reserved state field
 `visited` (boolean), which the engine sets to `true` the first time
 the player enters a room.
 
+### NPC Attitude
+
+Each NPC may declare a numeric `attitude` state field representing its
+disposition toward the player.  Attitude is hard state: it lives in
+`entity_states[<npc_id>].attitude` and is mutated exclusively by the
+engine.  The LLM never writes it directly; LLM Call 2 proposes changes
+via the `attitude_changes` block (see `actions.md` §5), and the engine
+post-validates them in step 4.5 against the NPC's corpus-defined
+`dialogue.attitude_limits` (see `corpus.md`, and `doc/npcs.md` for the
+design):
+
+| Rule | Description |
+|------|-------------|
+| Entity must exist | NPC entity ID must be defined in the corpus. |
+| Attitude step limit | Absolute delta must not exceed corpus `attitude_limits.step_per_turn`. |
+| Attitude bounds | `new_value` must be within corpus `attitude_limits.[min, max]`. |
+| Alive check | Changes for entities with `alive == false` are rejected. |
+| Reason required | `reason` must be non-empty. |
+
+The engine initialises each NPC's attitude from the corpus
+`state_fields.attitude.initial` (default 0).  The Context Assembler
+surfaces the current attitude for visible NPCs via
+`BriefingEntity.state`, and the `EngineResult.npc_attitude_limits`
+block tells LLM Call 2 the bounds and `step_per_turn` for NPCs present
+after resolution.
+
 ---
 
 ## Containment Lists

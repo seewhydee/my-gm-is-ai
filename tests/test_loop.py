@@ -59,7 +59,7 @@ def _wait_action_json(detail: str = "Waiting") -> str:
         "action_type": "wait",
         "detail": detail,
         "follow_up": None,
-        "proposed_soft_state_patches": [],
+        "soft_state_patches": [],
     })
 
 
@@ -210,7 +210,7 @@ class TestRunTurn:
             "target": "exit_climb_down_handle",
             "detail": "Climb down",
             "follow_up": "look around",
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         prose = _prose_json("You climb down.")
         llm = FakeLLMClient(ruling_response=ruling, prose_response=prose)
@@ -237,7 +237,7 @@ class TestRunTurn:
                 "target": "exit_climb_down_handle",
                 "detail": "Climb down",
                 "follow_up": "look around",
-                "proposed_soft_state_patches": [],
+                "soft_state_patches": [],
             }),
             _wait_action_json("look around"),
         ]
@@ -267,7 +267,7 @@ class TestRunTurn:
             "action_type": "wait",
             "detail": "wait",
             "follow_up": "wait more",
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         llm = FakeLLMClient(ruling_response=ruling, prose_response=_prose_json())
         loop = GameLoop(state_manager, llm, display=fake_display)

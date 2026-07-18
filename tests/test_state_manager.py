@@ -393,9 +393,9 @@ class TestApplyHardChanges:
 
 class TestApplySoftPatches:
     def test_room_note(self, manager: StateManager) -> None:
+        # room_note attaches to the player's current room (axe_head).
         patch = SoftStatePatch(
             field="room_note",
-            target_id="axe_head",
             new_value="The blade gleams.",
             reason="Player polished it.",
         )
@@ -442,14 +442,6 @@ class TestApplySoftPatches:
         manager.apply_soft_patches([patch])
         assert manager.soft_state.soft_inventory == []
 
-    def test_room_note_missing_target_raises(self, manager: StateManager) -> None:
-        with pytest.raises(ValidationError, match="requires target_id"):
-            SoftStatePatch(
-                field="room_note",
-                new_value="Something.",
-                reason="Test.",
-            )
-
     def test_entity_note_missing_entity_raises(self, manager: StateManager) -> None:
         with pytest.raises(ValidationError, match="requires entity_id"):
             SoftStatePatch(
@@ -476,7 +468,6 @@ class TestApplySoftPatches:
     def test_room_note_non_string_raises(self, manager: StateManager) -> None:
         patch = SoftStatePatch(
             field="room_note",
-            target_id="axe_head",
             new_value=123,
             reason="Test.",
         )

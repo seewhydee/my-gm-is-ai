@@ -1501,9 +1501,11 @@ class StateManager:
 
             field = patch.field
             if field == "room_note":
-                target = patch.target_id
+                # room_note attaches to the player's current room; the
+                # validator (engine) ensures the room is valid.
+                target = self.hard_state.player.location if self.hard_state else None
                 if target is None:
-                    raise ValueError("room_note patch requires target_id")
+                    raise ValueError("room_note patch requires a loaded hard state")
                 if target not in self.soft_state.room_notes:
                     self.soft_state.room_notes[target] = []
                 if not isinstance(patch.new_value, str):

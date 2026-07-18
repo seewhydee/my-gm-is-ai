@@ -85,7 +85,7 @@ LLM Call 1, which runs at a moderately low temperature, receives the GMBriefing 
 | `wait` | Pass time, catch-all for below-threshold actions | `detail` describing intent |
 | `ooc_discussion` | Out-of-character question to the GM | `detail` with the question |
 
-Every action includes a `detail` field (natural-language description), optional `proposed_soft_state_patches`, and optional `follow_up` for chained actions (see below).
+Every action includes a `detail` field (natural-language description), optional `soft_state_patches`, and optional `follow_up` for chained actions (see below).
 
 Only one action occurs per turn.  Multi-step inputs ("I pick up the key and unlock the door") are handled by constructing **chained actions**.  The LLM extracts the first action ("I pick up the key") and stores the rest in the `follow_up` field ("unlock the door").  After the first action is processed, the engine injects the follow-up as a new turn, *without waiting for further player input*.  This follow-up can itself be broken up, thereby extending the chain.  The chain terminates if any step fails validation, or if the length exceeds a maximum value.
 

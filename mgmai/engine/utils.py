@@ -99,6 +99,45 @@ def get_following_npc_ids(
     return result
 
 
+def present_entity_ids(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> set[str]:
+    """Return the set of entity IDs physically present in the player's
+    current room.
+
+    Includes entities directly in the room, entities transitively nested
+    inside containers in the room (regardless of whether the container is
+    open or closed — the player can still affect a container's exterior),
+    and following NPCs (which live outside the containment maps at
+    runtime).  The player entity itself is NOT included; callers that
+    need to treat the player as a valid target (e.g. the soft-state note
+    validator) handle it separately via ``entity.type == "player"``.
+    """
+    room_id = hard.player.location
+    result: set[str] = {
+        eid for eid, count in hard.room_contains.get(room_id, {}).items()
+        if count > 0
+    }
+
+    # Walk the containment tree rooted at room-level entities, so that
+    # items inside a chest (or nested deeper) count as present.  The
+    # ``result`` set doubles as the cycle guard.
+    stack: list[str] = list(result)
+    while stack:
+        container_id = stack.pop()
+        for cid, count in hard.entity_contains.get(container_id, {}).items():
+            if count <= 0 or cid in result:
+                continue
+            result.add(cid)
+            stack.append(cid)
+
+    for eid in get_following_npc_ids(hard, corpus):
+        result.add(eid)
+
+    return result
+
+
 def get_entity_location(
     entity_id: str,
     hard: HardGameState,
@@ -145,7 +184,7 @@ def inject_following_npcs(
         entity_state = hard.entity_states.get(eid, {})
         if entity_state.get("hidden", False):
             continue
-        notes = soft.entity_notes.get(eid, [])[-5:]
+        notes = soft.entity_notes.get(eid, [])
         entity_soft_items_taken = [
             f"{name} (taken {count})"
             for name, count in soft.soft_items_taken.get(eid, {}).items()

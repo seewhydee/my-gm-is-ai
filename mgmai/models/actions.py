@@ -27,7 +27,7 @@ from mgmai.models.soft_state import SoftStatePatch
 class _BaseAction(BaseModel):
     detail: str
     follow_up: Optional[str] = None
-    proposed_soft_state_patches: List[SoftStatePatch] = Field(default_factory=list)
+    soft_state_patches: List[SoftStatePatch] = Field(default_factory=list)
 
 
 class MoveAction(_BaseAction):

@@ -245,7 +245,7 @@ Soft State, for the ruling LLM (call 1).
 2. **Current room**: fetched by ID from the module corpus. Includes 
    `entities_visible`, listing all non-concealed entities in the room.
    Each of these entity entries includes the entity ID, current hard
-   state, and entity notes (up to 3 most recent). For NPCs with
+   state, and entity notes. For NPCs with
    `dialogue.dialogue_paths`, `entities_visible[*].dialogue_paths`
    is a map of `{path_id: description}` so LLM Call 1 can match player intent
    to the correct special dialogue path.
@@ -301,7 +301,7 @@ The LLM must output a single structured action, corresponding to the player's in
 | `action_type`                | string  | yes      | One of the action types below. |
 | `detail`                     | string  | yes      | Natural-language description of what the player attempts. |
 | `follow_up`                  | string  | no       | The remainder of a chained action yet to be performed. See Follow-up below. |
-| `proposed_soft_state_patches`| array   | no       | Structured soft-state patch requests. See SoftStatePatch in soft-state.md. |
+| `soft_state_patches`| array   | no       | Structured soft-state patch requests. See SoftStatePatch in soft-state.md. |
 
 ### 2.1 Supported action types
 
@@ -315,7 +315,7 @@ The LLM must output a single structured action, corresponding to the player's in
   "using": "toenail_sword",
   "detail": "The player gets down on hands and knees and crawls through the narrow tunnel.",
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -345,7 +345,7 @@ The LLM must output a single structured action, corresponding to the player's in
   "using": null,
   "detail": "The player peers closely at the rusty mechanism, looking for a way to disengage it.",
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -391,7 +391,7 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
   "using": "iron_sword",
   "detail": "The player slashes at the spider with the iron sword.",
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -427,7 +427,7 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
   "detail": "The player approaches the dwarf with an open, friendly demeanour, hands visible to show no threat.",
   "ends_dialogue": false,
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -450,7 +450,7 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 - If `ends_dialogue` is `true`, engine clears dialogue mode after resolution.
 - Soft-state patches (e.g., entity notes) are validated per the soft-state
   patch schema. Attitude changes are proposed by LLM Call 2, not via
-  `proposed_soft_state_patches`.
+  `soft_state_patches`.
 
 ---
 
@@ -464,7 +464,7 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
   "taken_items": ["rock"],
   "detail": "The player hands the rusty key to Korbar and takes back the rock.",
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -532,7 +532,7 @@ an "not available" error.
   "action_type": "wait",
   "detail": "The player pauses, taking stock of what they're carrying. Among their belongings: an iron sword, a rock, and a torn piece of canvas.",
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -549,7 +549,7 @@ counter increment.
 **Engine validation:**
 - No additional validation beyond turn advancement.
 - The engine may trigger time-based events (for future modules).
-- Soft-state patches in `proposed_soft_state_patches` are validated as usual.
+- Soft-state patches in `soft_state_patches` are validated as usual.
 
 ---
 
@@ -560,7 +560,7 @@ counter increment.
   "action_type": "ooc_discussion",
   "detail": "The player wants to clarify whether the spider is still visible in the room.",
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -589,7 +589,7 @@ rule questions, or meta-discussion.
   "unequip_targets": [],
   "detail": "Player draws the toenail sword and holds it ready.",
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -620,7 +620,7 @@ rule questions, or meta-discussion.
   "target": "toenail_sword",
   "detail": "Player sheathes the toenail sword.",
   "follow_up": null,
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -652,7 +652,7 @@ the key and unlock the door"). The LLM is instructed to:
   "taken_items": ["rusty_key"],
   "detail": "The player picks up the rusty key from the floor.",
   "follow_up": "Unlock the padlock on the outside of the bag using the rusty key.",
-  "proposed_soft_state_patches": []
+  "soft_state_patches": []
 }
 ```
 
@@ -696,10 +696,7 @@ full format and validation rules are detailed in `soft-state.md`. In summary:
 
 ```json
 {
-  "entity_id": null,
   "field": "room_note",
-  "target_id": "axe_handle_lower",
-  "old_value": null,
   "new_value": "The webs here are partially cleared.",
   "reason": "Player hacked through the webs with the iron sword."
 }
@@ -707,6 +704,8 @@ full format and validation rules are detailed in `soft-state.md`. In summary:
 
 Supported fields: `room_note`, `entity_note`, `soft_inventory_remove`,
 `appearance_note_add`, `set_improvised_weapon`.
+`room_note` attaches to the player's current room; `entity_note` targets an
+entity present in the current room (or `"player"` for a global note).
 (Attitude changes are proposed by LLM Call 2 via `attitude_changes`, not by
 LLM Call 1.)
 

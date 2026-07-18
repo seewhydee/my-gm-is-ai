@@ -51,6 +51,7 @@ from mgmai.engine.utils import (
     inject_following_npcs,
     get_following_npc_ids,
     is_exit_visible,
+    present_entity_ids,
     _is_stackable,
 )
 from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
@@ -381,7 +382,7 @@ def resolve(
             soft.soft_contents.pop(source_id, None)
 
     soft_patches = _validate_soft_patches(
-        player_action.proposed_soft_state_patches or [],
+        player_action.soft_state_patches or [],
         hard,
         soft,
         corpus,
@@ -607,32 +608,51 @@ def _validate_soft_patches(
     applied: list[SoftStatePatch] = []
     rejected: list[dict[str, Any]] = []
 
+    present_room = hard.player.location
+    present_entities = present_entity_ids(hard, corpus)
+
     for patch in patches:
         reason = None
 
         if patch.field == "room_note":
-            if not patch.target_id or patch.target_id not in corpus.rooms:
-                reason = f"Invalid room_id: {patch.target_id}"
+            # room_note always attaches to the player's current room.
+            if present_room not in corpus.rooms:
+                reason = f"Invalid current room: {present_room}"
             elif not isinstance(patch.new_value, str) or not patch.new_value.strip():
                 reason = "room_note new_value must be a non-empty string"
             else:
-                room = corpus.rooms.get(patch.new_value if isinstance(patch.new_value, str) else "")
-                if room is None:
-                    pass
-                contradiction = _check_note_contradiction(patch.new_value, patch.target_id, hard, corpus)
+                contradiction = _check_note_contradiction(
+                    patch.new_value, present_room, hard, corpus)
                 if contradiction:
                     reason = contradiction
         elif patch.field == "entity_note":
-            if not patch.entity_id or patch.entity_id not in corpus.entities:
-                reason = f"Invalid entity_id: {patch.entity_id}"
+            eid = patch.entity_id
+            entity = corpus.entities.get(eid) if eid else None
+            is_player = eid == "player" or (
+                entity is not None and entity.type == "player")
+            if not eid or (entity is None and not is_player):
+                reason = f"Invalid entity_id: {eid}"
             elif not isinstance(patch.new_value, str) or not patch.new_value.strip():
                 reason = "entity_note new_value must be a non-empty string"
             else:
-                entity_state = hard.entity_states.get(patch.entity_id, {})
+                entity_state = hard.entity_states.get(eid, {})
                 if entity_state.get("alive") is False:
-                    reason = f"Entity '{patch.entity_id}' is dead; notes are not allowed"
+                    reason = f"Entity '{eid}' is dead; notes are not allowed"
+                elif not is_player and eid not in present_entities:
+                    # The player entity (type == "player") is always a
+                    # valid target — it carries "global" notes that follow
+                    # the player.  Otherwise the entity must be present in
+                    # the current room (directly, nested in a container, or
+                    # a following NPC).
+                    reason = (
+                        f"Entity '{eid}' is not present in room "
+                        f"'{present_room}'; entity notes are only allowed "
+                        f"on entities in the current room or on the "
+                        f"player entity"
+                    )
                 else:
-                    contradiction = _check_note_contradiction(patch.new_value, None, hard, corpus)
+                    contradiction = _check_note_contradiction(
+                        patch.new_value, None, hard, corpus)
                     if contradiction:
                         reason = contradiction
         elif patch.field == "soft_inventory_add":
@@ -720,7 +740,7 @@ def _build_room_after(
             if eid in hard.player.inventory and not _is_stackable(eid, corpus):
                 continue
 
-        notes = soft.entity_notes.get(eid, [])[-5:]
+        notes = soft.entity_notes.get(eid, [])
         entity_soft_items_taken = [
             f"{name} (taken {count})"
             for name, count in soft.soft_items_taken.get(eid, {}).items()
@@ -777,7 +797,7 @@ def _build_room_after(
             )
         )
 
-    room_notes = soft.room_notes.get(room_id, [])[-5:]
+    room_notes = soft.room_notes.get(room_id, [])
     room_soft_items_taken = [
         f"{name} (taken {count})"
         for name, count in soft.soft_items_taken.get(room_id, {}).items()

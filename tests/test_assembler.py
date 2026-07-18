@@ -162,7 +162,7 @@ class TestEntityVisibility:
         padlock = next(
             e for e in result.current_room.entities_visible if e.id == "padlock"
         )
-        # Capped at 5 most recent (all 4 fit)
+        # All notes are surfaced (no cap).
         assert padlock.entity_notes == [
             "Scratched surface",
             "Rusty mechanism",
@@ -446,7 +446,9 @@ class TestRoomSoftItemsAndNotes:
             "Dust disturbed recently",
         ]
 
-    def test_room_notes_capped_at_5(self, state_manager):
+    def test_room_notes_not_capped(self, state_manager):
+        # Soft notes are lightly used, so the briefing surfaces all of
+        # them rather than capping at a fixed window.
         state_manager.soft_state.room_notes["axe_head"] = [
             "note1", "note2", "note3", "note4", "note5", "note6",
         ]
@@ -456,9 +458,8 @@ class TestRoomSoftItemsAndNotes:
             state_manager.soft_state,
             "look",
         )
-        assert len(result.current_room.room_notes) == 5
         assert result.current_room.room_notes == [
-            "note2", "note3", "note4", "note5", "note6",
+            "note1", "note2", "note3", "note4", "note5", "note6",
         ]
 
 

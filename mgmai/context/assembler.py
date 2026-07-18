@@ -107,7 +107,7 @@ def _build_room(room_id: str,
             if eid in hard.player.inventory and not _is_stackable(eid, corpus):
                 continue
 
-        notes = soft.entity_notes.get(eid, [])[-5:]
+        notes = soft.entity_notes.get(eid, [])
         entity_soft_items_taken = [
             f"{name} (taken {count})"
             for name, count in soft.soft_items_taken.get(eid, {}).items()
@@ -183,7 +183,7 @@ def _build_room(room_id: str,
                 BriefingInteraction(id=inter.id,
                                     description=inter.description))
 
-    room_notes = soft.room_notes.get(room_id, [])[-5:]
+    room_notes = soft.room_notes.get(room_id, [])
     room_soft_items_taken = [
         f"{name} (taken {count})"
         for name, count in soft.soft_items_taken.get(room_id, {}).items()

@@ -48,7 +48,7 @@ class TestParsePlayerAction:
             "target": "exit_north",
             "detail": "Player heads north",
             "follow_up": None,
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert isinstance(action, MoveAction)
@@ -61,7 +61,7 @@ class TestParsePlayerAction:
             "detail": "Crawling through the tunnel",
             "follow_up": None,
             "style": "crawling",
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert isinstance(action, MoveAction)
@@ -75,7 +75,7 @@ class TestParsePlayerAction:
             "rigorous": True,
             "using": None,
             "follow_up": None,
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert isinstance(action, ExamineAction)
@@ -89,7 +89,7 @@ class TestParsePlayerAction:
             "using": "sword",
             "detail": "Attack the spider",
             "follow_up": None,
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert isinstance(action, InteractAction)
@@ -103,7 +103,7 @@ class TestParsePlayerAction:
             "ends_dialogue": False,
             "detail": "Greeting Korbar",
             "follow_up": None,
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert isinstance(action, TalkAction)
@@ -117,7 +117,7 @@ class TestParsePlayerAction:
             "taken_items": None,
             "detail": "Give key to Korbar",
             "follow_up": None,
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert isinstance(action, TransferAction)
@@ -128,7 +128,7 @@ class TestParsePlayerAction:
             "action_type": "wait",
             "detail": "Looking around",
             "follow_up": None,
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert isinstance(action, WaitAction)
@@ -138,7 +138,7 @@ class TestParsePlayerAction:
             "action_type": "ooc_discussion",
             "detail": "What room am I in?",
             "follow_up": None,
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert isinstance(action, OocDiscussionAction)
@@ -161,7 +161,7 @@ class TestParsePlayerAction:
                 "action_type": "dance",
                 "detail": "dancing",
                 "follow_up": None,
-                "proposed_soft_state_patches": [],
+                "soft_state_patches": [],
             }))
 
     def test_follow_up_chain(self) -> None:
@@ -171,7 +171,7 @@ class TestParsePlayerAction:
             "taken_items": ["rusty_key"],
             "detail": "Pick up key",
             "follow_up": "unlock the door with the rusty key",
-            "proposed_soft_state_patches": [],
+            "soft_state_patches": [],
         })
         action = parse_player_action(raw)
         assert action.follow_up == "unlock the door with the rusty key"
@@ -181,7 +181,7 @@ class TestParsePlayerAction:
             "action_type": "wait",
             "detail": "Note the rock",
             "follow_up": None,
-            "proposed_soft_state_patches": [
+            "soft_state_patches": [
                 {
                     "field": "appearance_note_add",
                     "new_value": "A loose rock catches the eye.",
@@ -191,7 +191,7 @@ class TestParsePlayerAction:
         })
         action = parse_player_action(raw)
         assert isinstance(action, WaitAction)
-        assert len(action.proposed_soft_state_patches) == 1
+        assert len(action.soft_state_patches) == 1
 
     def test_empty_object_rejected(self) -> None:
         with pytest.raises(LLMOutputError):

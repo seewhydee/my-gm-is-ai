@@ -43,40 +43,34 @@ class SoftStatePatch(BaseModel):
         "room_note", "entity_note", "soft_inventory_remove",
         "appearance_note_add", "set_improvised_weapon"
     ]
-    target_id: Optional[str] = None
-    old_value: Optional[Any] = None
     new_value: Any
     reason: str
 
     @model_validator(mode="after")
     def check_field_consistency(self) -> SoftStatePatch:
         if self.field == "room_note":
+            # room_note attaches to the player's current room; the engine
+            # derives the target, so neither entity_id nor target_id is
+            # accepted on the patch.
             if self.entity_id is not None:
                 raise ValueError(
-                    "room_note patch must not have entity_id; use target_id "
-                    "for the room ID"
+                    "room_note patch must not carry entity_id; it attaches "
+                    "to the player's current room"
                 )
-            if self.target_id is None:
-                raise ValueError("room_note patch requires target_id (the room ID)")
         elif self.field == "entity_note":
-            if self.target_id is not None:
-                raise ValueError(
-                    "entity_note patch must not have target_id; use entity_id "
-                    "for the entity ID"
-                )
             if self.entity_id is None:
                 raise ValueError("entity_note patch requires entity_id")
         elif self.field == "appearance_note_add":
-            if self.target_id is not None:
+            if self.entity_id is not None:
                 raise ValueError(
-                    "appearance_note_add patch must not have target_id"
+                    "appearance_note_add patch must not carry entity_id"
                 )
             if not isinstance(self.new_value, str) or not self.new_value.strip():
                 raise ValueError("appearance_note_add new_value must be a non-empty string")
         elif self.field == "set_improvised_weapon":
-            if self.target_id is not None:
+            if self.entity_id is not None:
                 raise ValueError(
-                    "set_improvised_weapon patch must not have target_id"
+                    "set_improvised_weapon patch must not carry entity_id"
                 )
         return self
 

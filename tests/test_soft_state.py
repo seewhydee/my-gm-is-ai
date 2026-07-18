@@ -30,28 +30,42 @@ from mgmai.models.soft_state import (
 class TestSoftStatePatch:
     def test_room_note(self) -> None:
         p = SoftStatePatch.model_validate({
-            "entity_id": None,
             "field": "room_note",
-            "target_id": "axe_handle_lower",
-            "old_value": None,
             "new_value": "The webs here are partially cleared.",
             "reason": "Player hacked through the webs with the iron sword.",
         })
         assert p.field == "room_note"
-        assert p.target_id == "axe_handle_lower"
+        assert p.entity_id is None
+        assert p.new_value == "The webs here are partially cleared."
+
+    def test_room_note_needs_no_room_id(self) -> None:
+        # room_note carries no room identifier; the engine attaches it to
+        # the player's current room.
+        p = SoftStatePatch.model_validate({
+            "field": "room_note",
+            "new_value": "Cleared webs.",
+            "reason": "Player cleared webs.",
+        })
         assert p.entity_id is None
 
     def test_entity_note(self) -> None:
         p = SoftStatePatch.model_validate({
             "entity_id": "spider",
             "field": "entity_note",
-            "target_id": None,
-            "old_value": None,
             "new_value": "The spider's left legs are covered in ichor.",
             "reason": "Player wounded the spider with the toenail sword.",
         })
         assert p.entity_id == "spider"
         assert p.field == "entity_note"
+
+    def test_entity_note_player_target(self) -> None:
+        p = SoftStatePatch.model_validate({
+            "entity_id": "player",
+            "field": "entity_note",
+            "new_value": "Player vowed to find Korbar's old party.",
+            "reason": "Player made a promise worth remembering.",
+        })
+        assert p.entity_id == "player"
 
     def test_appearance_note_add(self) -> None:
         p = SoftStatePatch.model_validate({
@@ -79,17 +93,6 @@ class TestSoftStatePatch:
                 "reason": "y",
             })
 
-    def test_with_old_value(self) -> None:
-        p = SoftStatePatch.model_validate({
-            "field": "room_note",
-            "target_id": "room1",
-            "old_value": "The room is messy.",
-            "new_value": "The room is tidy.",
-            "reason": "Player cleaned the room.",
-        })
-        assert p.old_value == "The room is messy."
-        assert p.new_value == "The room is tidy."
-
     def test_missing_field_raises(self) -> None:
         with pytest.raises(ValidationError):
             SoftStatePatch.model_validate({
@@ -116,27 +119,8 @@ class TestSoftStatePatch:
             SoftStatePatch.model_validate({
                 "entity_id": "spider",
                 "field": "room_note",
-                "target_id": "axe_handle_lower",
                 "new_value": "The webs are cleared.",
                 "reason": "Player cleared webs.",
-            })
-
-    def test_room_note_missing_target_id_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            SoftStatePatch.model_validate({
-                "field": "room_note",
-                "new_value": "Cleared webs.",
-                "reason": "Player cleared webs.",
-            })
-
-    def test_entity_note_with_target_id_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            SoftStatePatch.model_validate({
-                "entity_id": "spider",
-                "field": "entity_note",
-                "target_id": "axe_handle_lower",
-                "new_value": "The spider is wounded.",
-                "reason": "Player attacked.",
             })
 
     def test_entity_note_missing_entity_id_raises(self) -> None:
@@ -145,6 +129,15 @@ class TestSoftStatePatch:
                 "field": "entity_note",
                 "new_value": "Wounded.",
                 "reason": "Player attacked.",
+            })
+
+    def test_appearance_note_with_entity_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStatePatch.model_validate({
+                "entity_id": "spider",
+                "field": "appearance_note_add",
+                "new_value": "Shiny.",
+                "reason": "Player noted it.",
             })
 
 

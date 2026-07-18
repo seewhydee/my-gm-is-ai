@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from mgmai.engine.engine import resolve
+from mgmai.engine.utils import present_entity_ids
 from mgmai.models.actions import (
     ExamineAction,
     InteractAction,
@@ -333,10 +334,9 @@ class TestEngineFullFlow:
         action = WaitAction(
             action_type="wait",
             detail="Looking around",
-            proposed_soft_state_patches=[
+            soft_state_patches=[
                 SoftStatePatch(
                     field="room_note",
-                    target_id="axe_head",
                     new_value="The room seems dusty.",
                     reason="Perception",
                 ),
@@ -345,24 +345,133 @@ class TestEngineFullFlow:
         result = resolve(action, state_manager)
         assert result.success is True
         assert len(result.soft_state_patches_applied) == 1
+        # room_note attaches to the player's current room (axe_head).
+        assert state_manager.soft_state.room_notes.get("axe_head") == [
+            "The room seems dusty."
+        ]
 
-    def test_soft_patch_rejected(self, state_manager):
+    def test_entity_note_on_present_entity_accepted(self, state_manager):
+        from mgmai.models.soft_state import SoftStatePatch
+        # rip_in_canvas is in axe_head (the player's starting room).
+        action = WaitAction(
+            action_type="wait",
+            detail="Noting the rip",
+            soft_state_patches=[
+                SoftStatePatch(
+                    field="entity_note",
+                    entity_id="rip_in_canvas",
+                    new_value="The rip is fraying at the edges.",
+                    reason="Player inspected the rip.",
+                ),
+            ],
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert len(result.soft_state_patches_applied) == 1
+        assert state_manager.soft_state.entity_notes.get("rip_in_canvas") == [
+            "The rip is fraying at the edges."
+        ]
+
+    def test_entity_note_on_player_accepted(self, state_manager):
         from mgmai.models.soft_state import SoftStatePatch
         action = WaitAction(
             action_type="wait",
-            detail="Looking around",
-            proposed_soft_state_patches=[
+            detail="Vowing",
+            soft_state_patches=[
                 SoftStatePatch(
-                    field="room_note",
-                    target_id="nonexistent_room",
-                    new_value="Something",
-                    reason="Test",
+                    field="entity_note",
+                    entity_id="player",
+                    new_value="Player vowed to find Korbar's party.",
+                    reason="A promise worth remembering.",
+                ),
+            ],
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert len(result.soft_state_patches_applied) == 1
+        assert state_manager.soft_state.entity_notes.get("player") == [
+            "Player vowed to find Korbar's party."
+        ]
+
+    def test_entity_note_on_absent_entity_rejected(self, state_manager):
+        from mgmai.models.soft_state import SoftStatePatch
+        # spider is in axe_handle_lower, not the player's current room
+        # (axe_head).
+        action = WaitAction(
+            action_type="wait",
+            detail="Noting the spider",
+            soft_state_patches=[
+                SoftStatePatch(
+                    field="entity_note",
+                    entity_id="spider",
+                    new_value="The spider looks agitated.",
+                    reason="Player recalls the spider.",
                 ),
             ],
         )
         result = resolve(action, state_manager)
         assert result.success is True
         assert len(result.soft_state_patches_rejected) == 1
+        assert "not present in room" in result.soft_state_patches_rejected[0]["reason"]
+
+
+class TestPresentEntityIds:
+    """Unit tests for the shared present_entity_ids helper."""
+
+    def test_includes_direct_and_transitively_nested(self) -> None:
+        corpus = ModuleCorpus(
+            adventure=Adventure(
+                title="T", introduction="x",
+                atmosphere=Atmosphere(setting="s", tone="t"),
+            ),
+            rooms={"r1": _mk_room("r1", "Room 1")},
+            entities={
+                "chest": _mk_item_entity("chest", "A chest."),
+                "rock": _mk_item_entity("rock", "A rock."),
+                "gem": _mk_item_entity("gem", "A gem in the chest."),
+                "key": _mk_item_entity("key", "A key inside the gem box."),
+            },
+        )
+        hard = _mk_hard_state(player_location="r1")
+        hard.room_contains = {"r1": {"chest": 1, "rock": 1}}
+        # gem nested in chest; key nested two levels deep inside gem.
+        hard.entity_contains = {"chest": {"gem": 1}, "gem": {"key": 1}}
+        assert present_entity_ids(hard, corpus) == {"chest", "rock", "gem", "key"}
+
+    def test_excludes_entities_in_other_rooms(self) -> None:
+        corpus = ModuleCorpus(
+            adventure=Adventure(
+                title="T", introduction="x",
+                atmosphere=Atmosphere(setting="s", tone="t"),
+            ),
+            rooms={
+                "r1": _mk_room("r1", "Room 1"),
+                "r2": _mk_room("r2", "Room 2"),
+            },
+            entities={
+                "rock": _mk_item_entity("rock", "A rock in r1."),
+                "boulder": _mk_item_entity("boulder", "A boulder in r2."),
+            },
+        )
+        hard = _mk_hard_state(player_location="r1")
+        hard.room_contains = {"r1": {"rock": 1}, "r2": {"boulder": 1}}
+        assert present_entity_ids(hard, corpus) == {"rock"}
+
+    def test_zero_count_excluded(self) -> None:
+        corpus = ModuleCorpus(
+            adventure=Adventure(
+                title="T", introduction="x",
+                atmosphere=Atmosphere(setting="s", tone="t"),
+            ),
+            rooms={"r1": _mk_room("r1", "Room 1")},
+            entities={
+                "rock": _mk_item_entity("rock", "A rock."),
+                "stick": _mk_item_entity("stick", "A stick."),
+            },
+        )
+        hard = _mk_hard_state(player_location="r1")
+        hard.room_contains = {"r1": {"rock": 1, "stick": 0}}
+        assert present_entity_ids(hard, corpus) == {"rock"}
 
 
 class TestEngineGameOver:

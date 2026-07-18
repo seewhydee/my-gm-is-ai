@@ -18,15 +18,16 @@ The system has two parts: **soft state notes**, and **soft items**.
 - **Soft State Notes** – During the [turn loop](intro.md), LLM Call 1
   checks if the player's actions cause a notable change to a room or
   corpus-defined entity (feature, item, or NPC).  If so, it constructs
-  a `SoftStatePatch` object.  These are put this turn's
-  `PlayerAction`, in the `proposed_soft_state_patches` array (see the
-  [Action schema](actions.md)).
+  a `SoftStatePatch` object.  These are put in that turn's
+  `PlayerAction`, in the `soft_state_patches` array (see the
+  [Action schema](../schema/actions.md)).
   
   Each `SoftStatePatch` records a change to the present room, or an
-  entity in that room.  The engine validates it against a simple
-  schema that forbids rooms other than the present room, and so forth;
-  if it passes, the note is attached to the room/entity and included
-  in future GM briefings.
+  entity present in that room (or the player entity, for "global"
+  notes).  The engine validates it against a simple schema that forbids
+  rooms other than the present room and entities not in the present
+  room, and so forth; if it passes, the note is attached to the
+  room/entity and included in future GM briefings.
 
 - **Soft Items** – These are nondescript items lacking special
   significance, which can be picked up, dropped, and/or used by the
@@ -60,25 +61,31 @@ to each room or entity (feature, item, or NPC) ID:
 }
 ```
 
-These notes come from LLM Call 1 when it generates its output: a
-`PlayerAction` JSON object with a field `proposed_soft_state_patches`
-(optional), which accepts an array of objects like this:
+These notes come from LLM Call 1: its `PlayerAction` output carries an
+optional `soft_state_patches` array (see the [Action schema](../schema/actions.md)).
+A room-note patch carries no room identifier — the engine attaches it to
+the player's current room:
 
 ```json
 {
-  "entity_id": null,
   "field": "room_note",
-  "target_id": "manor_courtyeard",
-  "old_value": null,
   "new_value": "Player counted the trees: there are exactly 12",
   "reason": "Player looked around the courtyard and specifically counted the number of trees"
 }
 ```
 
 Multiple notes can be generated each turn, at the LLM's discretion.
-However, notes are allowed to be placed on only the current room, or
-entities present in the current room; any proposed note not following
-this rule is rejected by the engine.
+Notes may target only:
+
+- the **current room** (via `room_note`), or
+- an **entity present in the current room** — including entities nested
+  inside containers, and following NPCs (via `entity_note`), or
+- the **player entity** (`entity_id: "player"`), for "global"
+  observations that should follow the player across rooms.
+
+Any proposed note not following this rule is rejected by the engine.
+The full patch format and validation rules live in
+[schema/soft-state.md](../schema/soft-state.md).
 
 ## Soft Items
 
@@ -102,55 +109,18 @@ This is advisory, *not* an authoritative whitelist.
 
 ### Soft State
 
-The player's carried soft items live in `soft_inventory`:
-
-```json
-{
-  "soft_inventory": ["rock", "cork"]
-}
-```
-
-Soft items are identified by their general name only. Two "rock"
-entries in `soft_inventory` are indistinguishable. This is intentional
-— soft items are narrative props, not mechanical objects.
-
-Two further fields track soft items in the world, each with a single
-meaning.  `soft_items_taken` is a pure **extraction ledger**, written
-only on accepted takes of ambient soft items:
-`soft_items_taken[source_id][item_name] = N` means exactly "the player
-has extracted N of `item_name` from `source_id`".  Every count is ≥ 1.
-
-```json
-{
-  "soft_items_taken": {
-    "axe_head": { "loose stone": 1 },
-    "rubbish_pile": { "cork": 2 }
-  }
-}
-```
-
-This is written only by accepted takes, so every count is a completed
-extraction — a clean depletion signal for LLM Call 2. Placement is a
-different kind of fact — current state, not history — and lives in
-`soft_contents`, from which placed items can later be retrieved. The
-Context Assembler formats the two as `name (taken N)` and `name xN`
-respectively when building the GMBriefing.
-
-
-`soft_contents` tracks the **current placement** of soft items the
-player has given, placed, or dropped, keyed by the room or entity ID
-now holding them.  It is incremented on accepted gives and decremented
-when placed items are retrieved; zero-count entries (and emptied
-parent entries) are pruned.
-
-```json
-{
-  "soft_contents": {
-    "korbar": { "cork": 1 },
-    "bag_floor": { "rock": 2 }
-  }
-}
-```
+Carried soft items live in `soft_inventory`, identified by general name
+only — two "rock" entries are indistinguishable, which is intentional
+(soft items are narrative props, not mechanical objects). Two further
+fields track soft items in the world: `soft_items_taken` is a pure
+**extraction ledger** (written only on accepted takes of ambient items,
+so every count is a completed extraction and a clean depletion signal),
+while `soft_contents` tracks the **current placement** of items the
+player has given, dropped, or placed (incremented on accepted gives,
+decremented on retrieval, pruned at zero). The Context Assembler
+formats the two as `name (taken N)` and `name xN` respectively in the
+GMBriefing. See [schema/soft-state.md](../schema/soft-state.md) for the
+JSON shapes and population rules.
 
 ## Interaction Flow
 
@@ -292,63 +262,35 @@ what they're carrying via the player state block in the GMBriefing.
 
 ## Adjudication Model
 
-`SoftItemProposal` objects carry:
-
-| Field       | Description |
-|-------------|-------------|
-| `item_name` | The soft item name proposed by the player. |
-| `action`    | `"examine"`, `"take"`, or `"give"`. |
-| `source_id` | Room or entity ID where the item is proposed to exist; `"player"` for gives. |
-| `target_id` | For `"give"`, the recipient entity ID or room ID (a drop). |
-| `count`     | Quantity (default 1). |
-
-LLM Call 2 responds with `SoftItemAdjudication` objects in `NarrationOutput`:
-
-| Field       | Description |
-|-------------|-------------|
-| `item_name` | Matches the proposal. |
-| `action`    | Matches the proposal. |
-| `accepted`  | `true` if the narrator agrees the item exists/did the thing. |
-| `source_id` | Must match the proposal's `source_id`. |
-| `target_id` | For `"give"`, must match the proposal's `target_id`. |
-| `count`     | Must match the proposal's `count`. |
-
-The engine's post-validation step:
-
-1. Matches each adjudication to a proposal by `(item_name, action, source_id,
-   target_id, count)`.
-2. Verifies the proposal source/target is a valid room or entity in the corpus
-   (or `"player"` as a give source).
-3. Ensures `"take"` adjudications do not collide with a hard entity ID.
-4. Applies the accepted change: mutates `soft_inventory`, updates
-   `soft_items_taken` and `soft_contents`, and records rejection reasons
-   for mismatches.  Accepted examines have no state effect.
-
-The engine rejects adjudications that:
-
-- Do not match a proposal.
-- Reference an unknown room or entity.
-- Attempt to "take" an item whose name collides with a hard entity ID.
-- Propose state mutations without a matching proposal.
+Each soft-item interaction is adjudicated by LLM Call 2: the engine
+produces a `SoftItemProposal` (for `examine`, `take`, or `give`), Call 2
+returns a matching `SoftItemAdjudication`, and the engine's
+post-validation step matches adjudications to proposals, verifies the
+source/target against the corpus, and applies accepted changes to
+`soft_inventory`, `soft_items_taken`, and `soft_contents` (accepted
+examines have no state effect). The full field formats and the
+rejection rules are documented in [schema/actions.md](../schema/actions.md)
+(§4 and §5).
 
 ## Files Summary
 
 | File | Role |
 |------|------|
 | `schema/corpus.md` | Defines `soft_item_guidance` fields on rooms and entities. |
-| `schema/soft-state.md` | Documents `soft_inventory`, `soft_items_taken`, and `soft_contents` fields. |
+| `schema/soft-state.md` | Documents the full soft-state schema: `soft_inventory`, `room_notes`, `entity_notes`, `soft_items_taken`, `soft_contents`, and the `SoftStatePatch` reference. |
 | `schema/actions.md` | Documents soft-item proposals and adjudications for `examine`, `transfer`, and narration output. |
 | `mgmai/models/corpus.py` | Pydantic models: `Room.soft_item_guidance`, `Entity.soft_item_guidance`. |
 | `mgmai/models/briefing.py` | Pydantic models: `BriefingRoom.soft_item_guidance`, `BriefingEntity.soft_item_guidance`, and the `soft_items_taken` / `soft_items_present` briefing fields. |
-| `mgmai/models/soft_state.py` | Pydantic model: `SoftGameState.soft_items_taken` and `SoftGameState.soft_contents` as `dict[str, dict[str, int]]`. |
-| `mgmai/models/actions.py` | Pydantic models: `SoftItemProposal`, `EngineResult.soft_item_proposals`, `EngineResult.soft_content_takes`. |
+| `mgmai/models/soft_state.py` | Pydantic models: `SoftGameState` (incl. `soft_items_taken`, `soft_contents`, `room_notes`, `entity_notes`) and `SoftStatePatch`. |
+| `mgmai/models/actions.py` | Pydantic models: `SoftItemProposal`, `EngineResult.soft_item_proposals`, `EngineResult.soft_content_takes`; `PlayerAction.soft_state_patches`. |
 | `mgmai/models/narration.py` | Pydantic model: `SoftItemAdjudication`, `NarrationOutput.soft_item_adjudications`. |
+| `mgmai/engine/utils.py` | `present_entity_ids(hard, corpus)` — the shared helper for "entities present in the current room" (direct, nested, and following NPCs); used by the note validator. |
 | `mgmai/engine/resolver.py` | Issues soft-item proposals in `resolve_examine` and `resolve_transfer`; resolves mechanical retrievals from `soft_contents` into `ResolutionResult.soft_content_takes`. |
-| `mgmai/engine/engine.py` | Applies `soft_content_takes` (decrementing `soft_contents`, appending to `soft_inventory`) and copies them onto `EngineResult.soft_content_takes`; populates `_build_room_after` with taken/present items. |
+| `mgmai/engine/engine.py` | Applies `soft_content_takes` (decrementing `soft_contents`, appending to `soft_inventory`) and copies them onto `EngineResult.soft_content_takes`; validates and applies `soft_state_patches` via `_validate_soft_patches`; populates `_build_room_after` with taken/present items. |
 | `mgmai/engine/post_validate.py` | Validates and applies soft-item adjudications. |
-| `mgmai/context/assembler.py` | Populates `BriefingRoom`/`BriefingEntity` `soft_items_taken` and `soft_items_present`. |
+| `mgmai/context/assembler.py` | Populates `BriefingRoom`/`BriefingEntity` `soft_items_taken` and `soft_items_present`, plus `room_notes`/`entity_notes` and player entity notes. |
 | `mgmai/game/loop.py` | Passes adjudications to post-validation. |
-| `doc/soft-state.md` | This document. |
+| `doc/soft.md` | This document. |
 
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>

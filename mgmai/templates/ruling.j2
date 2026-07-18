@@ -36,7 +36,7 @@ You MUST output a single JSON object with the following structure.
 | `action_type` | string | One of: `move`, `examine`, `interact`, `talk`, `transfer`, `combat`, `wait`, `ooc_discussion` |
 | `detail` | string | Natural-language description of what the player attempts |
 | `follow_up` | string|null | If the player described a chained action, put the rest here (omit or null otherwise) |
-| `proposed_soft_state_patches` | array | Soft state changes (see below). Empty array if none. |
+| `soft_state_patches` | array | Soft state changes (see below). Empty array if none. |
 
 ### Action-specific fields:
 
@@ -90,17 +90,22 @@ You MUST output a single JSON object with the following structure.
 
 ### Soft State Patches
 
-Use `proposed_soft_state_patches` to request changes to soft state that can accompany the PlayerAction. Each patch is an object:
+Use `soft_state_patches` to request changes to soft state that accompany the PlayerAction. Each patch is an object:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `field` | string | One of: `room_note`, `entity_note`, `soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon` |
-| `target_id` | string | (for room_note) Room ID |
-| `entity_id` | string | (for entity_note) Entity ID |
-| `new_value` | string | The note text, item name, or improvised-weapon object |
+| `entity_id` | string | (for `entity_note` only) Entity ID of the target. Must be an entity present in the current room (entities nested inside containers count as present), or `"player"` for a player-scoped note. Omit for other patch types. |
+| `new_value` | string/object | The note text, item name, or improvised-weapon object |
 | `reason` | string | Why this change is being proposed |
 
-Only propose patches that are plausible given the current room and player state. The engine will validate and reject impossible patches.
+- `room_note` attaches to the **current room** automatically; do not specify a room ID.
+- `entity_note` targets a single entity present in the current room. Use `"player"` as the `entity_id` to record a global/player-scoped observation that should follow the player across rooms.
+- `soft_inventory_remove` is for destroying or consuming a carried soft item — not for placing it (use `transfer` for placement).
+- `appearance_note_add` records a narrative note about the player's appearance.
+- `set_improvised_weapon` sets or clears (`null`) an improvised weapon.
+
+Only propose patches that are plausible given the current room and player state. The engine validates and rejects impossible patches (e.g. a note on an entity that is not in the current room, or a note claiming an outcome the hard state contradicts).
 
 If an examine establishes a notable ambient object or detail the player may return to, record it as a `room_note` or `entity_note` — soft-item examines leave no other persistent record.
 
@@ -125,7 +130,7 @@ Remember: entity `id`/`name` are snake_case identifiers — use them verbatim in
 Example — briefing shows `rubbish_pile.contains = [{"id":"toenail_sword", "name":"Toenail Sword", "count":1, ...}]`:
 
 Input: "I pull the toenail sword free from the pile"
-Output: `{"action_type": "transfer", "target": "rubbish_pile", "taken_items": ["toenail_sword"], "detail": "Player pulls the toenail sword free from the rubbish pile", "follow_up": null, "proposed_soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "rubbish_pile", "taken_items": ["toenail_sword"], "detail": "Player pulls the toenail sword free from the rubbish pile", "follow_up": null, "soft_state_patches": []}`
 
 ## Soft Items
 
@@ -225,7 +230,7 @@ up an object from the ground as an improvised weapon is also one action.
 ## Critical Constraints
 
 - **Never invent hard items, NPCs, exits, or interactions.** Only use IDs and names that appear in the GMBriefing. Soft items are the exception: you may propose mundane ambient soft items freely, because Call 2 will adjudicate their existence.
-- **Never propose hard-state changes.** You cannot change flags, move the player, kill entities, or modify inventory outside of `proposed_soft_state_patches`. The engine does that.
+- **Never propose hard-state changes.** You cannot change flags, move the player, kill entities, or modify inventory outside of `soft_state_patches`. The engine does that.
 - **Respect hidden information.** Do not reference NPC secrets not yet revealed.
 - **Use the GMBriefing data.** Do not contradict the information in the JSON.
 - **For chained actions**, break off the FIRST step as the PlayerAction, and put the remainder of the player's intent in `follow_up` as a natural-language string. Example: "I pick up the key and unlock the door" → action_type: "transfer" with taken_items, follow_up: "unlock the door with the key".
@@ -242,30 +247,30 @@ up an object from the ground as an improvised weapon is also one action.
 ## Examples
 
 Input: "I go north"
-Output: `{"action_type": "move", "target": "exit_north", "detail": "Player heads north through the doorway", "follow_up": null, "proposed_soft_state_patches": []}`
+Output: `{"action_type": "move", "target": "exit_north", "detail": "Player heads north through the doorway", "follow_up": null, "soft_state_patches": []}`
 
 Input: "I search the room thoroughly"
-Output: `{"action_type": "examine", "target": "room_entrance", "rigorous": true, "detail": "Player conducts a thorough search of the entrance hall", "follow_up": null, "proposed_soft_state_patches": []}`
+Output: `{"action_type": "examine", "target": "room_entrance", "rigorous": true, "detail": "Player conducts a thorough search of the entrance hall", "follow_up": null, "soft_state_patches": []}`
 
 Input: "I pick up the rusty key and unlock the padlock"
-Output: `{"action_type": "transfer", "target": "dungeon_cell", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "proposed_soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "dungeon_cell", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "soft_state_patches": []}`
 
 Input: "I pull a loose rock from the wall and throw it at the spider"
-Output: `{"action_type": "transfer", "target": "axe_head", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": "throw the rock at the spider", "proposed_soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "axe_head", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": "throw the rock at the spider", "soft_state_patches": []}`
 
 Input: "ooc: wait, what room am I in again?"
-Output: `{"action_type": "ooc_discussion", "detail": "Player asks what room they are in", "follow_up": null, "proposed_soft_state_patches": []}`
+Output: `{"action_type": "ooc_discussion", "detail": "Player asks what room they are in", "follow_up": null, "soft_state_patches": []}`
 
 ### Invalid or ambiguous movement — fall back to `wait`
 
 Input: "go north" (no exit to the north is available in the current room)
-Output: `{"action_type": "wait", "detail": "Player tries to go north, but there is no exit to the north", "follow_up": null, "proposed_soft_state_patches": []}`
+Output: `{"action_type": "wait", "detail": "Player tries to go north, but there is no exit to the north", "follow_up": null, "soft_state_patches": []}`
 
 Input: "go through the door" (two doors are available)
-Output: `{"action_type": "wait", "detail": "Player wants to go through a door, but it is unclear which door", "follow_up": null, "proposed_soft_state_patches": []}`
+Output: `{"action_type": "wait", "detail": "Player wants to go through a door, but it is unclear which door", "follow_up": null, "soft_state_patches": []}`
 
 Input: "go down the axe handle" (matching exit available)
-Output: `{"action_type": "move", "target": "exit_climb_down_handle", "detail": "Player climbs carefully down the axe handle", "follow_up": null, "proposed_soft_state_patches": []}`
+Output: `{"action_type": "move", "target": "exit_climb_down_handle", "detail": "Player climbs carefully down the axe handle", "follow_up": null, "soft_state_patches": []}`
 
 ---
 

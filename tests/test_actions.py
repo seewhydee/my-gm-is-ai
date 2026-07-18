@@ -156,7 +156,7 @@ class TestPlayerAction:
         a = PlayerAction.model_validate({
             "action_type": "wait",
             "detail": "The player notes the rock.",
-            "proposed_soft_state_patches": [
+            "soft_state_patches": [
                 {
                     "field": "appearance_note_add",
                     "new_value": "A loose rock catches the player's eye.",
@@ -164,8 +164,8 @@ class TestPlayerAction:
                 },
             ],
         })
-        assert len(a.proposed_soft_state_patches) == 1
-        assert a.proposed_soft_state_patches[0].field == "appearance_note_add"
+        assert len(a.soft_state_patches) == 1
+        assert a.soft_state_patches[0].field == "appearance_note_add"
 
     def test_follow_up(self) -> None:
         a = PlayerAction.model_validate({
@@ -232,7 +232,6 @@ class TestEngineResult:
             "soft_state_patches_applied": [
                 {
                     "field": "room_note",
-                    "target_id": "axe_head",
                     "new_value": "Webs cleared.",
                     "reason": "Player cleared the webs.",
                 },
