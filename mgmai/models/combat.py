@@ -53,6 +53,7 @@ class CombatState(BaseModel):
     """
     active: bool = False
     combatants: list[str] = Field(default_factory=list)        # entity IDs + "player"
+    allies: list[str] = Field(default_factory=list)            # combatant IDs fighting on the player's side (Phase 2)
     initiative_order: list[str] = Field(default_factory=list)  # sorted turn order
     current_index: int = 0                                     # index into initiative_order
     round_number: int = 0

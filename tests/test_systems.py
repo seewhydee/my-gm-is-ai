@@ -102,12 +102,12 @@ class TestRegistry:
                     target_hp_delta=0,
                     log_entries=[CombatLogEntry(round=round_number, actor="player", action="attack", target=target_id)],
                 )
-            def resolve_npc_attack(self, npc_id, hard, corpus, player_ac, round_number):
+            def resolve_npc_attack(self, npc_id, hard, corpus, target_id, target_ac, round_number):
                 return NPCAttackResult(
                     hit=True,
                     damage=0,
-                    player_hp_delta=0,
-                    log_entries=[CombatLogEntry(round=round_number, actor=npc_id, action="attack", target="player")],
+                    target_hp_delta=0,
+                    log_entries=[CombatLogEntry(round=round_number, actor=npc_id, action="attack", target=target_id)],
                 )
             def resolve_flee(self, hard, corpus, flee_dc, round_number):
                 return FleeResult(

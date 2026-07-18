@@ -137,16 +137,21 @@ class PlayerAttackResult:
 
 @dataclass
 class NPCAttackResult:
-    """Outcome of an NPC attack resolved by the RPG system."""
+    """Outcome of an NPC attack resolved by the RPG system.
+
+    The target may be the player or another NPC combatant; the engine owns
+    the bookkeeping (HP application, death, game-over) from the returned
+    deltas.
+    """
 
     hit: bool
     damage: int
-    player_hp_delta: int          # negative for damage dealt to the player
+    target_hp_delta: int          # negative for damage dealt to the target
     log_entries: list[CombatLogEntry]
-    game_over: bool = False
+    target_died: bool = False     # True when the attack dropped the target to <= 0 HP
     attack_roll: int | None = None
     attack_total: int | None = None
-    player_ac: int | None = None
+    target_ac: int | None = None
     critical: bool | None = None
     damage_roll: str | None = None
 
@@ -256,15 +261,17 @@ class ResolutionSystem(ABC):
         npc_id: str,
         hard: HardGameState,
         corpus: ModuleCorpus,
-        player_ac: int,
+        target_id: str,
+        target_ac: int,
         round_number: int,
     ) -> NPCAttackResult:
-        """Resolve an NPC attack against the player.
+        """Resolve an NPC attack against a combatant.
 
-        The engine has already computed the player's AC. The system reads the
-        NPC's combat data from ``corpus.entities[npc_id]``, computes the
-        attack, and returns log entries plus the player HP delta. It must not
-        mutate ``hard``.
+        The engine has already validated the target and computed its AC;
+        ``target_id`` is ``"player"`` or another combatant's entity ID.  The
+        system reads the NPC's combat data from ``corpus.entities[npc_id]``,
+        computes the attack, and returns log entries plus the target HP
+        delta.  It must not mutate ``hard``.
         """
 
     @abstractmethod

@@ -170,6 +170,7 @@ engine computes defaults at combat-start time:
 |-------|------|-------------|
 | `active` | bool | `True` when combat is live |
 | `combatants` | list[str] | Entity IDs plus `"player"` |
+| `allies` | list[str] | Combatant IDs fighting on the player's side (reserved for party combat; empty in solo encounters) |
 | `initiative_order` | list[str] | Sorted turn order (highest initiative first) |
 | `current_index` | int | Index into `initiative_order` of next actor |
 | `round_number` | int | Current round (starts at 1) |
@@ -249,15 +250,22 @@ engine while combat is active.
 
 **NPC attack:**
 
-- Attack roll: `d20 + CombatBlock.atk` vs player AC.
+- Attack roll: `d20 + CombatBlock.atk` vs the target's AC.  The engine
+  chooses the target (currently always the player; the resolution path is
+  generalized so NPCs can target any combatant).
   - Same natural-1 / natural-20 rules.
 - Damage: parsed from `CombatBlock.dmg` (e.g., `"1d6+2"`).
 - Critical: double dice, modifier once.
 - If the player's `current_hp` drops to ≤ 0, `game_over` is set with
-  `type: "lose"` and `trigger: "player_death"`.
+  `type: "lose"` and `trigger: "player_death"`.  This is checked after
+  **every** action against damage accumulated across all attackers in the
+  current turn, so several enemies whose combined damage is lethal end
+  the game immediately rather than after a phantom extra turn.
 
 After the player's turn, all surviving enemies take their turns in
-initiative order.  Then the round advances.
+initiative order.  Then the round advances.  Enemies killed earlier in
+the round (e.g. by the player's attack) are removed from `combatants`
+immediately and do not act when their initiative slot comes up.
 
 ### Ending Combat
 
@@ -402,6 +410,9 @@ These may be added in future phases.
 > `ResolutionSystem` interface; the limitations above concern combat
 > *features* (gear, conditions, spells, …), not system portability.  Player
 > and NPC attacks are resolved by `ResolutionSystem.resolve_player_attack` and
-> `ResolutionSystem.resolve_npc_attack`.  On-hit effects are resolved as
-> generic `CheckResolution` objects via the active resolution system's
-> `roll_check` and `proficiency_bonus` hooks.
+> `ResolutionSystem.resolve_npc_attack`; the latter takes a `target_id`
+> (player or NPC combatant) and reports `target_hp_delta` / `target_died`,
+> leaving HP bookkeeping, death, and game-over decisions to the engine.
+> On-hit effects are resolved as generic `CheckResolution` objects via the
+> active resolution system's `roll_check` and `proficiency_bonus` hooks,
+> and only fire against the player.

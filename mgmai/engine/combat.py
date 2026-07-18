@@ -286,6 +286,175 @@ def _resolve_npc_on_hits(
 
 
 # ------------------------------------------------------------------
+# NPC turn resolution
+# ------------------------------------------------------------------
+
+def _side_of(combat: CombatState, combatant_id: str) -> str:
+    """Return the side of a combatant: ``"player"``, ``"party"``, or ``"enemy"``."""
+    if combatant_id == "player":
+        return "player"
+    if combatant_id in combat.allies:
+        return "party"
+    return "enemy"
+
+
+def _living_enemies(combat: CombatState, hard: HardGameState) -> list[str]:
+    """Return living enemy combatants; combat ends in victory when empty.
+
+    Combatants killed earlier in the round are already removed from
+    ``combat.combatants``; the HP check additionally filters enemies whose
+    hard state says they are dead (hard entity state lags mid-turn because
+    HP changes are applied by the state manager at end of turn).
+    """
+    return [
+        c
+        for c in combat.combatants
+        if _side_of(combat, c) == "enemy"
+        and (hard.entity_states.get(c, {}).get("current_hp") or 0) > 0
+    ]
+
+
+def _choose_npc_target(
+    actor_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> str:
+    """Pick a target for an NPC combatant.
+
+    Phase 1 has no allied combatants, so every NPC attacks the player;
+    Phase 2 introduces corpus-configured targeting rules.
+    """
+    return "player"
+
+
+def _target_ac(
+    target_id: str,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> int | None:
+    """Return the AC of a combatant (player or NPC); None if not attackable."""
+    if target_id == "player":
+        return compute_player_ac(hard, corpus)
+    entity = corpus.entities.get(target_id)
+    if entity is None or entity.combat is None:
+        return None
+    return entity.combat.ac
+
+
+def _resolve_npc_turn(
+    actor_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: SoftGameState | None,
+    state_manager: Any | None,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+) -> tuple[bool, bool]:
+    """Resolve one NPC combatant's turn (attack plus on-hit effects).
+
+    HP deltas and death bookkeeping are accumulated into *hard_changes*
+    (player HP as a delta, NPC HP as absolute sets) and *combat*; log
+    entries are appended to *combat_log*.  End-of-combat conditions are
+    checked after the action.  Returns ``(game_over, combat_ended)`` —
+    game_over when the player died, combat_ended when no living enemies
+    remain.
+    """
+    entity = corpus.entities.get(actor_id)
+    if entity is None or entity.combat is None:
+        return False, False
+    if actor_id not in combat.combatants:
+        # Killed earlier this round: dead combatants are removed from
+        # combatants immediately, while their hard entity state only
+        # catches up when the state manager applies hard_changes.
+        return False, False
+    npc_state = hard.entity_states.get(actor_id, {})
+    if (npc_state.get("current_hp") or 0) <= 0:
+        return False, False
+
+    system = get_system_for_corpus(corpus)
+    target_id = _choose_npc_target(actor_id, combat, hard, corpus)
+    target_ac = _target_ac(target_id, hard, corpus)
+    if target_ac is None:
+        return False, False
+
+    npc_result = system.resolve_npc_attack(
+        actor_id, hard, corpus, target_id, target_ac, combat.round_number,
+    )
+    combat_log.extend(npc_result.log_entries)
+    turn_entries = list(npc_result.log_entries)
+
+    if npc_result.target_hp_delta:
+        if target_id == "player":
+            hard_changes.player_hp_delta = (
+                (hard_changes.player_hp_delta or 0) + npc_result.target_hp_delta
+            )
+        else:
+            new_hp = (
+                hard.entity_states.get(target_id, {}).get("current_hp") or 0
+            ) + npc_result.target_hp_delta
+            tgt_changes = hard_changes.entity_state_changes.setdefault(
+                target_id, {}
+            )
+            tgt_changes["current_hp"] = new_hp
+            if new_hp <= 0:
+                tgt_changes["alive"] = False
+                if target_id in combat.combatants:
+                    combat.combatants.remove(target_id)
+
+    # On-hit effects resolve only against the player (they reference
+    # player stats and saves); they no-op internally if the player is
+    # already dead.
+    game_over = False
+    if npc_result.hit and target_id == "player" and soft is not None:
+        attack_entry = next(
+            (entry for entry in npc_result.log_entries if entry.action == "attack"),
+            None,
+        )
+        on_hit_narrative: list[str] = []
+        on_hit_hints: list[str] = []
+        on_hit_rolls: list[dict[str, Any]] = []
+        on_hit_entries, death_entries, on_hit_game_over = _resolve_npc_on_hits(
+            actor_id, hard, soft, corpus, state_manager,
+            hard_changes, on_hit_narrative, on_hit_hints, on_hit_rolls,
+            round_number=combat.round_number,
+        )
+        if attack_entry is not None:
+            attack_entry.on_hit_effects.extend(on_hit_entries)
+        combat_log.extend(death_entries)
+        turn_entries.extend(death_entries)
+        if on_hit_game_over:
+            # Either an inline Result.game_over (save-or-die) or death by
+            # on-hit damage.
+            game_over = True
+
+    # Authoritative end-condition check after the action.  hard.player is
+    # not mutated mid-turn, so effective player HP combines the base value
+    # with the accumulated delta; this catches the player dropping to 0 HP
+    # from damage accumulated across several attackers, which no single
+    # attack roll detects on its own.
+    if target_id == "player":
+        effective_hp = (hard.player.current_hp or 0) + (
+            hard_changes.player_hp_delta or 0
+        )
+        if effective_hp <= 0:
+            game_over = True
+            if not any(
+                e.action == "death" and e.actor == "player" for e in turn_entries
+            ):
+                combat_log.append(
+                    CombatLogEntry(
+                        round=combat.round_number,
+                        actor="player",
+                        action="death",
+                    )
+                )
+
+    return game_over, not _living_enemies(combat, hard)
+
+
+# ------------------------------------------------------------------
 # Combat entry
 # ------------------------------------------------------------------
 
@@ -400,53 +569,26 @@ def enter_combat(
     game_over = False
 
     player_idx = initiative_order.index("player")
-    player_ac = compute_player_ac(hard, corpus)
     for i in range(player_idx):
         actor_id = initiative_order[i]
         if actor_id == "player":
             continue
-        entity = corpus.entities.get(actor_id)
-        if entity is None or entity.combat is None:
-            continue
-        npc_state = hard.entity_states.get(actor_id, {})
-        if (npc_state.get("current_hp") or 0) <= 0:
-            continue
-
-        npc_result = system.resolve_npc_attack(
-            actor_id, hard, corpus, player_ac, 1,
+        go, ended = _resolve_npc_turn(
+            actor_id, combat, hard, corpus, soft, state_manager,
+            hard_changes, combat_log,
         )
-        combat_log.extend(npc_result.log_entries)
-        if npc_result.player_hp_delta:
-            hard_changes.player_hp_delta = (
-                (hard_changes.player_hp_delta or 0) + npc_result.player_hp_delta
-            )
-        if npc_result.game_over:
+        if go:
             game_over = True
             break
+        if ended:
+            # No living enemies remain (only reachable once allies can
+            # fight, Phase 2); combat is over before the player's turn.
+            hard.combat = None
+            break
 
-        # Resolve on-hit effects using the generic CheckResolution path.
-        if npc_result.hit and soft is not None:
-            attack_entry = next(
-                (entry for entry in npc_result.log_entries if entry.action == "attack"),
-                None,
-            )
-            on_hit_narrative: list[str] = []
-            on_hit_hints: list[str] = []
-            on_hit_rolls: list[dict[str, Any]] = []
-            on_hit_entries, death_entries, on_hit_game_over = _resolve_npc_on_hits(
-                actor_id, hard, soft, corpus, state_manager,
-                hard_changes, on_hit_narrative, on_hit_hints, on_hit_rolls,
-                round_number=1,
-            )
-            if attack_entry is not None:
-                attack_entry.on_hit_effects.extend(on_hit_entries)
-            combat_log.extend(death_entries)
-            if on_hit_game_over:
-                game_over = True
-                break
-
-    combat.current_index = player_idx
-    combat.log.extend(combat_log)
+    if hard.combat is not None:
+        combat.current_index = player_idx
+        combat.log.extend(combat_log)
 
     return {
         "combat_log": combat_log,
@@ -517,13 +659,7 @@ def resolve_combat_turn(
                     combat.combatants.remove(target_id)
 
         # Check if all enemies are dead
-        alive_enemies = [
-            c
-            for c in combat.combatants
-            if c != "player"
-            and (hard.entity_states.get(c, {}).get("current_hp") or 0) > 0
-        ]
-        if not alive_enemies:
+        if not _living_enemies(combat, hard):
             combat_ended = True
 
     elif isinstance(action, MoveAction):
@@ -564,53 +700,21 @@ def resolve_combat_turn(
         initiative = combat.initiative_order
         n = len(initiative)
         player_idx = initiative.index("player")
-        player_ac = compute_player_ac(hard, corpus)
         # advance past the player
         idx = (player_idx + 1) % n
         while idx != player_idx:
             actor_id = initiative[idx]
             if actor_id != "player":
-                ent = corpus.entities.get(actor_id)
-                if ent and ent.combat:
-                    npc_state = hard.entity_states.get(actor_id, {})
-                    if (npc_state.get("current_hp") or 0) > 0:
-                        npc_result = system.resolve_npc_attack(
-                            actor_id,
-                            hard,
-                            corpus,
-                            player_ac,
-                            combat.round_number,
-                        )
-                        combat_log.extend(npc_result.log_entries)
-                        if npc_result.player_hp_delta:
-                            hard_changes.player_hp_delta = (
-                                (hard_changes.player_hp_delta or 0)
-                                + npc_result.player_hp_delta
-                            )
-                        if npc_result.game_over:
-                            game_over = True
-                            break
-
-                        # Resolve on-hit effects using CheckResolution.
-                        if npc_result.hit and soft is not None:
-                            attack_entry = next(
-                                (entry for entry in npc_result.log_entries if entry.action == "attack"),
-                                None,
-                            )
-                            on_hit_narrative: list[str] = []
-                            on_hit_hints: list[str] = []
-                            on_hit_rolls: list[dict[str, Any]] = []
-                            on_hit_entries, death_entries, on_hit_game_over = _resolve_npc_on_hits(
-                                actor_id, hard, soft, corpus, state_manager,
-                                hard_changes, on_hit_narrative, on_hit_hints, on_hit_rolls,
-                                round_number=combat.round_number,
-                            )
-                            if attack_entry is not None:
-                                attack_entry.on_hit_effects.extend(on_hit_entries)
-                            combat_log.extend(death_entries)
-                            if on_hit_game_over:
-                                game_over = True
-                                break
+                go, ended = _resolve_npc_turn(
+                    actor_id, combat, hard, corpus, soft, state_manager,
+                    hard_changes, combat_log,
+                )
+                if go:
+                    game_over = True
+                    break
+                if ended:
+                    combat_ended = True
+                    break
             idx = (idx + 1) % n
 
         # Advance to next round

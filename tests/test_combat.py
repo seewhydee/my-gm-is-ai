@@ -1244,6 +1244,166 @@ class TestCombatEndStates:
 
 
 # ------------------------------------------------------------------
+# 12b. Generalized NPC targeting (Phase 1)
+# ------------------------------------------------------------------
+
+class TestNpcTargeting:
+    """resolve_npc_attack against NPC targets + per-action end checks."""
+
+    @pytest.fixture
+    def two_goblin_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Test Room",
+                    "description": "A test room.",
+                    "contains": ["goblin_1", "goblin_2"],
+                },
+            },
+            "entities": {
+                "goblin_1": {
+                    "type": "npc",
+                    "description": "First goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+                "goblin_2": {
+                    "type": "npc",
+                    "description": "Second goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+            },
+        })
+
+    @pytest.fixture
+    def two_goblin_hard(self, combat_hard_state) -> HardGameState:
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.entity_states = {
+            "goblin_1": {"alive": True, "current_hp": 7},
+            "goblin_2": {"alive": True, "current_hp": 7},
+        }
+        hard.room_contains = {"room1": {"goblin_1": 1, "goblin_2": 1}}
+        return hard
+
+    def test_npc_attack_npc_target_hit(self, two_goblin_corpus, two_goblin_hard, monkeypatch):
+        """An NPC attack against an NPC target reads the target's HP from
+        entity_states and reports a target HP delta."""
+        rand_vals = iter([12, 3])  # attack roll, damage die
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_npc_attack(
+            "goblin_1", two_goblin_hard, two_goblin_corpus,
+            target_id="goblin_2", target_ac=12, round_number=1,
+        )
+        assert result.hit is True
+        assert result.target_hp_delta == -5  # 3 + 2
+        assert result.target_died is False
+        entry = result.log_entries[0]
+        assert entry.actor == "goblin_1"
+        assert entry.target == "goblin_2"
+        assert entry.remaining_hp == 2  # 7 - 5
+
+    def test_npc_attack_npc_target_kill(self, two_goblin_corpus, two_goblin_hard, monkeypatch):
+        """Lethal damage sets target_died and appends a death log entry."""
+        two_goblin_hard.entity_states["goblin_2"]["current_hp"] = 4
+        rand_vals = iter([12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_npc_attack(
+            "goblin_1", two_goblin_hard, two_goblin_corpus,
+            target_id="goblin_2", target_ac=12, round_number=1,
+        )
+        assert result.target_died is True
+        death = [e for e in result.log_entries if e.action == "death"]
+        assert len(death) == 1
+        assert death[0].actor == "goblin_2"
+
+    def test_npc_attack_npc_target_miss(self, two_goblin_corpus, two_goblin_hard, monkeypatch):
+        monkeypatch.setattr(random, "randint", lambda a, b: 1)  # natural 1
+        result = FiveESystem().resolve_npc_attack(
+            "goblin_1", two_goblin_hard, two_goblin_corpus,
+            target_id="goblin_2", target_ac=12, round_number=1,
+        )
+        assert result.hit is False
+        assert result.target_hp_delta == 0
+        assert result.target_died is False
+
+    def test_cumulative_damage_game_over(self, two_goblin_corpus, two_goblin_hard, monkeypatch):
+        """Two attackers whose combined damage drops the player to 0 HP end
+        the game immediately, even though neither single attack is lethal
+        against the player's start-of-turn HP."""
+        hard = two_goblin_hard
+        hard.player.current_hp = 5
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin_1", "goblin_2"],
+            initiative_order=["player", "goblin_1", "goblin_2"],
+            current_index=0,
+            round_number=1,
+        )
+        # player misses (1); goblin_1 hits (15) for 3; goblin_2 hits (15) for 3
+        rand_vals = iter([1, 15, 1, 15, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        action = CombatAction(
+            action_type="combat", combat_action="attack",
+            target="goblin_1", detail="Swing!",
+        )
+        result = resolve_combat_turn(action, hard, two_goblin_corpus)
+        assert result["success"]
+        assert result["game_over"] is True
+        assert result["hard_changes"].player_hp_delta == -6
+        deaths = [
+            e for e in result["combat_log"]
+            if e.action == "death" and e.actor == "player"
+        ]
+        assert len(deaths) == 1  # exactly one death entry, appended by the engine
+        assert hard.combat is None
+
+    def test_slain_npc_does_not_act_same_round(self, two_goblin_corpus, two_goblin_hard, monkeypatch):
+        """An enemy killed by the player is skipped when its initiative slot
+        comes up later in the same round."""
+        hard = two_goblin_hard
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin_1", "goblin_2"],
+            initiative_order=["player", "goblin_1", "goblin_2"],
+            current_index=0,
+            round_number=1,
+        )
+        # player crits goblin_1 (20, dmg 6+6+3 = 15 -> dead);
+        # goblin_2 then hits (12) for 2+2 = 4
+        rand_vals = iter([20, 6, 6, 12, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        action = CombatAction(
+            action_type="combat", combat_action="attack",
+            target="goblin_1", detail="Take one down!",
+        )
+        result = resolve_combat_turn(action, hard, two_goblin_corpus)
+        assert result["success"]
+        g1_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin_1"
+        ]
+        assert g1_attacks == []  # slain before its turn
+        g2_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin_2"
+        ]
+        assert len(g2_attacks) == 1
+        assert result["hard_changes"].player_hp_delta == -4
+        # goblin_2 is still alive, so combat continues
+        assert hard.combat is not None
+
+
+# ------------------------------------------------------------------
 # 13. Enemy resolution (resolve_combat_enemies)
 # ------------------------------------------------------------------
 

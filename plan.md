@@ -1,262 +1,395 @@
-# Soft State System — Revision Plan
+# Combat Expansion Plan: Party Combat, Richer Stats, Abilities
 
-This plan addresses (a) the shortcomings in the soft-state patch
-system and (b) the disarray in the soft-state documentation.  Each
-section records the decision and the concrete actions required.
+This plan supersedes the previous contents of `plan.md` (a completed
+soft-state revision).  It lays out the phased expansion of the combat
+subsystem in three directions:
 
-Conventions for action items: file paths are repo-relative; line
-numbers are current as of this writing and may drift during edits.
+1. **Richer player combat stats** — a digestible subset of D&D 5e that
+   makes combat mechanically interesting, *not* the whole rulebook.
+2. **Abilities in combat** — usable by the player and by NPCs.
+3. **Allied NPCs (followers) in combat** — enabling party-vs-mobs battles.
 
----
+## Constraints and design principles
 
-## 1. Rename `proposed_soft_state_patches` → `soft_state_patches`
+- **No new LLM calls.**  The per-turn budget stays at exactly two calls
+  (Call 1 ruling, Call 2 prose).  All NPC combat decisions are made by a
+  deterministic, rule-of-thumb **combat AI in the engine**, configured
+  per-NPC through the corpus.  (The alternative — having Call 1 or Call 2
+  pick NPC actions — was rejected: it is nondeterministic, hard to test,
+  inflates prompts, and contradicts the "engine is the source of truth for
+  rules" architecture.  Call 2 already narrates everything the engine
+  decides, so narration quality does not suffer.)
+- **Digestible chunks.**  Each phase below is independently mergeable with
+  the full test suite green.  Phase 3 is further split into independent
+  sub-chunks.
+- **Backward compatibility.**  All new corpus/state fields are optional
+  with defaults.  Existing adventures and save files load unchanged, and
+  solo player-vs-mobs combat behaves exactly as today (asserted by tests).
+- **System-agnostic engine preserved.**  All 5e-specific maths stay behind
+  the `ResolutionSystem` interface (`mgmai/engine/systems/`); the combat
+  loop orchestrates state and turns only.
 
-**Decision.** Rename the `PlayerAction` field to `soft_state_patches`
-(plural — it is an array).  Do **not** rename it to `proposed_notes`:
-the field carries five patch types, only three of which are notes
-(`room_note`, `entity_note`, `appearance_note_add`); the other two
-(`soft_inventory_remove`, `set_improvised_weapon`) are not notes.  The
-original rename motivation rested on a miscount.  Dropping the
-`proposed_` prefix is pure brevity; the engine still validates every
-patch, so "proposed" was implicit.
+## Deliberate 5e simplifications
 
-**Actions.**
+These hold for all phases and are documented in `doc/combat.md` as we go:
 
-- [ ] `mgmai/models/actions.py:30` — rename the field.
-- [ ] `mgmai/engine/engine.py:384` — update the read site.
-- [ ] `mgmai/templates/ruling.j2` — rename in the field table, all
-      examples, and the "Critical Constraints" section.
-- [ ] `schema/actions.md` — rename in the PlayerAction field table
-      (§2) and every action example block.
-- [ ] `schema/soft-state.md` — rename in the SoftStatePatch reference.
-- [ ] `doc/soft.md`, `doc/intro.md:88` — update prose references.
-- [ ] `tests/` — update fixtures across `test_actions.py`,
-      `test_engine.py`, `test_loop.py`, `test_parser.py`,
-      `test_soft_state.py` (all reference the old name).
+- No positioning, range, cover, or tactical maps (a "ranged" weapon only
+  changes which ability score is used).
+- No bonus actions, reactions, or opportunity attacks.
+- Conditions are combat-scoped (cleared when combat ends).
+- Prone combatants automatically stand at the start of their turn.
+- Player at 0 HP = game over (no death saving throws yet); allies die at
+  0 HP (no unconscious state).
+- NPCs have no ability scores; NPC saving throws against abilities use a
+  flat `save_bonus` from their combat block.
 
----
+## Current state (verified inventory)
 
-## 2. Patch format simplification
-
-**Decision.** Keep the **append-array** model for `room_notes` and
-`entity_notes` (each patch appends one string; the LLM only emits the
-new detail).  Three simplifications:
-
-1. **Drop `old_value`** from `SoftStatePatch`.  It is stored on the
-   model but never validated for any note patch (only `attitude_changes`
-   uses `old_value`, and those are a separate LLM-Call-2 channel, not a
-   `SoftStatePatch`).  It is dead weight and undocumented in
-   `ruling.j2`.
-2. **Drop `target_id`** from `room_note` patches.  Under the scope
-   decision (§4), room notes always attach to the present room, so
-   `target_id` is derivable from `hard.player.location` and is
-   redundant.  `entity_note` keeps `entity_id` (several entities may be
-   present).  `target_id` is removed from the model entirely — no
-   remaining patch type uses it.
-3. **Remove the last-5 cap.**  Soft notes are lightly used; the
-   `[-5:]` slicing at briefing time is premature optimisation that also
-   silently discards history.  Surface all notes, in insertion order.
-   (Briefing-time dedup is not currently implemented despite the docs
-   claiming it "can" dedup; drop that aspirational claim rather than
-   implement it now.)
-
-Resulting note patch shapes:
-
-```json
-{ "field": "room_note",
-  "new_value": "The webs here are partially cleared.",
-  "reason": "Player hacked through the webs with the iron sword." }
-
-{ "field": "entity_note", "entity_id": "spider",
-  "new_value": "The spider's left legs are covered in ichor.",
-  "reason": "Player wounded the spider with the toenail sword." }
-```
-
-**Actions.**
-
-- [ ] `mgmai/models/soft_state.py:40-81` — `SoftStatePatch`: remove
-      `old_value` and `target_id` fields; update
-      `check_field_consistency` so `room_note` no longer requires
-      `target_id` (and rejects a stray one), `entity_note` still
-      requires `entity_id`, and the other branch validators drop their
-      `target_id` checks.
-- [ ] `mgmai/engine/engine.py:601-659` (`_validate_soft_patches`) —
-      `room_note`: use `hard.player.location` as the target; remove any
-      `old_value`/`target_id` handling.
-- [ ] `mgmai/state/manager.py:1503-1521` (`apply_soft_patches`) —
-      `room_note` writes to `room_notes[hard.player.location]`; drop
-      `target_id` reads.
-- [ ] Remove the last-5 cap (drop `[-5:]`):
-      `mgmai/context/assembler.py:110,186`,
-      `mgmai/engine/utils.py:148`,
-      `mgmai/engine/engine.py:723,780`.
-- [ ] `mgmai/templates/ruling.j2` (§ "Soft State Patches") — drop the
-      `target_id` row and any `old_value` mention; state that
-      `room_note` attaches to the present room.
-- [ ] `schema/soft-state.md` — rewrite the patch-format examples and
-      the SoftStatePatch reference table (remove `old_value` and
-      `target_id` columns/rows); update validation rules.
-- [ ] `schema/actions.md` §3 — update the SoftStatePatch summary.
-- [ ] `tests/test_soft_state.py`, `tests/test_actions.py`,
-      `tests/test_engine.py` — update patch fixtures (drop
-      `target_id`/`old_value`).
-- [ ] `schema/actions.md:248` — "entity notes (up to 3 most recent)"
-      → "entity notes" (cap removed; also fixes an old 3-vs-5
-      inconsistency).
+- `mgmai/engine/combat.py` — combat loop: `enter_combat`,
+  `resolve_combat_turn`, `resolve_combat_enemies`, `roll_initiative`.
+  Enemies always attack the player; victory checked only after the
+  player's action.
+- `mgmai/engine/systems/base.py` / `five_e.py` — `ResolutionSystem` ABC
+  and the 5e implementation.  `resolve_npc_attack` is hardwired to target
+  the player (`player_hp_delta`).
+- `mgmai/models/combat.py` — `CombatState` (`combatants`,
+  `initiative_order`, `round_number`, `log`); no side/allies concept.
+- `mgmai/models/corpus.py` — `CombatBlock` (hp/ac/atk/dmg/initiative_mod/
+  flee_dc/on_hit_effects), `EquipBlock`, `StatsBlock`.
+- `mgmai/models/actions.py` — `CombatAction` with
+  `combat_action: "attack"` only.
+- `mgmai/engine/utils.py` — `get_following_npc_ids`; followers already
+  exist (dialogue NPCs with `following: true`) and are already excluded
+  from enemy `combat_group` expansion in `resolve_combat_enemies`.
+- `mgmai/context/assembler.py` — `_build_combat_state` briefing;
+  `mgmai/engine/stat_checks.py` — `format_combat_prefix` (already generic
+  for npc→npc lines); `mgmai/game/display.py` — combat status panel.
+- Equipment system (weapon `damage_expr`/`hit_bonus`, armour
+  `ac_override`/`ac_bonus`, `stat_effects`) already exists; see
+  `doc/gear.md`.
 
 ---
 
-## 3. Player entity notes — officially supported
+## Phase 1 — Combat core generalization (behavior-preserving refactor)
 
-**Decision.** `entity_note` with `entity_id == "player"` is the
-sanctioned mechanism for "global" soft-state notes that follow the
-player.  The infrastructure already exists: `"player"` is a corpus
-entity (`adventures/bag-of-holding/corpus.json:17`,
-`type: "player"`), and the Context Assembler already surfaces
-`soft.entity_notes["player"]` in the player-state briefing block
-(`assembler.py:215`, tested at `test_assembler.py:520`).  The only gap
-is that nothing tells the LLM it may do this, and the new presence
-check (§4) must exempt the player entity, which is never in
-`room_contains`.
+**Goal.**  Restructure the loop so any NPC actor can attack any
+combatant, and end-of-combat conditions are checked after every action —
+with zero observable behavior change for solo player-vs-mobs.  This is
+the foundation for Phases 2 and 4 and is cheapest while the combat
+surface is small.
 
-**Actions.**
+**Changes.**
 
-- [ ] `mgmai/engine/engine.py` `_validate_soft_patches` — when
-      enforcing presence, accept an `entity_id` whose
-      `corpus.entities[entity_id].type == "player"` regardless of room
-      presence.
-- [ ] `doc/soft.md` — document that an `entity_note` on the player
-      entity records player-scoped/global observations.
-- [ ] `mgmai/templates/ruling.j2` — instruct LLM Call 1 that
-      `entity_note` with `entity_id: "player"` is available for
-      cross-room observations worth remembering.
-- [ ] `schema/soft-state.md` — note in the `entity_notes` section that
-      the player entity is a valid target.
+- `mgmai/engine/systems/base.py`
+  - `ResolutionSystem.resolve_npc_attack(npc_id, hard, corpus, target_id,
+    target_ac, round_number)` — new `target_id` parameter replacing the
+    hardwired player target.
+  - `NPCAttackResult`: rename `player_hp_delta` → `target_hp_delta`; add
+    `target_died: bool`; drop `game_over` (the engine decides: game over
+    iff `target_id == "player"` and the player is dead).
+- `mgmai/engine/systems/five_e.py` — implement the new signature; read
+  target HP from player state when `target_id == "player"`, else from
+  `entity_states[target_id]["current_hp"]`.  Log-entry shapes unchanged.
+- `mgmai/engine/combat.py`
+  - `CombatState` gains `allies: list[str] = []` (populated in Phase 2).
+  - New `_side_of(combat, cid) -> "player" | "party" | "enemy"`.
+  - New `_resolve_npc_turn(actor_id, ...)` helper: choose target via
+    `_choose_target` (hardwired to `"player"` in this phase), resolve the
+    attack, apply the HP delta to the right place (`player_hp_delta` vs
+    `entity_state_changes`), append death entries, resolve on-hit effects
+    only when the target is the player (they reference player stats).
+  - `enter_combat` and `resolve_combat_turn` use the helper for every NPC
+    actor; after **every** NPC action, check victory (no living enemies)
+    and player death, and stop processing on either.  (Today victory is
+    checked only after the player's action — equivalent without allies,
+    since only the player can kill, but the generalized check is required
+    in Phase 2 and harmless now.)
+- Callers updated for the renamed result field: `mgmai/engine/resolver.py`,
+  `mgmai/engine/engine.py`, `tests/test_combat.py`, `tests/test_systems.py`.
 
----
+**Tests.**  Full suite green with no behavior changes except the field
+rename; new unit tests for `resolve_npc_attack` against an NPC target
+(direct system calls).
 
-## 4. Note scope: present room + present entities + player
-
-**Decision.** Notes may target:
-
-- the **current room** (`room_note`, no `target_id`),
-- any **entity present in the current room**, including entities nested
-  inside containers in the room (contained entities are *not* "visible"
-  in `entities_visible`, but the player can still affect them, e.g.
-  scratching the outside of a closed chest), plus **following NPCs**,
-- the **player entity** (see §3).
-
-This matches what the LLM can actually observe and closes the
-doc-vs-code gap: `doc/soft.md` currently *claims* present-only, but
-`_validate_soft_patches` (`engine.py:613`) accepts any corpus
-room/entity.  We tighten the engine to enforce the doc's intent
-(extended to explicitly cover contained entities and the player),
-rather than loosening the doc.
-
-**Actions.**
-
-- [ ] `mgmai/engine/engine.py` `_validate_soft_patches` —
-      - `room_note`: target is `hard.player.location` (always valid).
-      - `entity_note`: build the present-entity set =
-        `set(hard.room_contains[current_room])`
-        ∪ transitively-nested entities in containers present in the room
-        (reuse the `entity_contains` walk pattern from
-        `mgmai/engine/resolver.py:589-591`)
-        ∪ `get_following_npc_ids(hard, corpus)` (see `event_bus.py:79-81`)
-        ∪ {player entity, by `type == "player"`}.
-        Reject `entity_id` not in this set.  Keep the existing
-        `alive == false` rejection.
-- [ ] Consider factoring a shared `present_entity_ids(hard, corpus)`
-      helper (currently inlined in `event_bus.py`, `combat.py:311`,
-      `resolver.py`) so the validator, assembler, and event bus share
-      one definition.
-- [ ] `doc/soft.md` — state the scope rule clearly (present room +
-      present entities incl. contained + following NPCs + player).
-- [ ] `schema/soft-state.md` — update `entity_notes` validation rules
-      to state the presence requirement.
-- [ ] Tests — add cases: (a) note on present entity accepted, (b) note
-      on entity in another room rejected, (c) note on contained entity
-      in present room accepted, (d) note on player entity accepted.
+**Docs.**  `doc/combat.md` internals note only; no schema changes.
 
 ---
 
-## 5. Documentation reorganization
+## Phase 2 — Allied NPCs (party combat) + combat AI
 
-The split: **`doc/soft.md`** is the *design overview* (what soft state
-is, why it exists, how the pieces interact); **`schema/soft-state.md`**
-is the *in-game representation* (the JSON fields, their shapes, and
-validation rules).  Material has drifted across the boundary and some
-is duplicated in a third place (`schema/actions.md`).
+**Goal.**  Followers with combat blocks automatically fight on the
+player's side; all NPCs (both sides) act via rule-of-thumb AI.
 
-### 5.1 Role split (guiding principle)
+**Corpus.**
 
-- `doc/soft.md` keeps: rationale, the "two parts" overview, the Soft
-  Items concept, corpus guidance for `soft_item_guidance`, the
-  Interaction Flow narrative (with ASCII diagrams), Carried Soft Items,
-  and a corrected Files Summary.
-- `schema/soft-state.md` keeps: the top-level schema, every field's
-  JSON shape and validation rules, the SoftStatePatch reference.
-- `schema/actions.md` keeps: `SoftItemProposal` / `SoftItemAdjudication`
-  formats (already in §4–5), the `attitude_changes` output format (§5).
+- `CombatBlock` gains an optional `ai` block (`CombatAIBlock`):
+  - `targeting`: `"last_attacker"` (default), `"player"`, `"lowest_hp"`,
+    `"random"`.
+  - `flee_below_hp_pct`: int 1–99, optional; default = never flee.
+- Validators for the new literals; `scripts/validate_adventure.py` checks.
 
-### 5.2 Move schema detail out of `doc/soft.md`
+**State.**
 
-- [ ] Remove the patch-format JSON example (`doc/soft.md:67-76`) — it
-      duplicates `schema/soft-state.md`; replace with a one-line
-      pointer.
-- [ ] Trim the "Soft State" subsection (`doc/soft.md:103-153`): the
-      `soft_inventory` / `soft_items_taken` / `soft_contents` JSON
-      blocks duplicate `schema/soft-state.md`.  Keep a brief design
-      statement ("soft inventory holds carried soft items; extraction
-      history and current placement are tracked separately") and point
-      to the schema for shapes.
-- [ ] Remove the "Adjudication Model" tables (`doc/soft.md:293-332`):
-      the `SoftItemProposal` and `SoftItemAdjudication` field tables are
-      already in `schema/actions.md` §4–5.  Keep the surrounding
-      narrative (what adjudication achieves) and link to the schema.
+- `CombatState.allies` populated at entry; new
+  `last_attacker: dict[str, str]` (target → most recent attacker, updated
+  on every hit) and `player_last_target: str | None`.
 
-### 5.3 Remove misplaced hard-state material from `schema/soft-state.md`
+**Engine (`mgmai/engine/combat.py`).**
 
-- [ ] Delete the "NPC Attitude Tracking" section
-      (`schema/soft-state.md:137-176`).  Attitude lives in
-      `hard_state.entity_states` (documented in `schema/hard-state.md`
-      under `entity_states`), and the design is covered in `doc/npcs.md`
-      ("Attitude System").  The section also references a **non-existent
-      `npc_revelations` field** (the real field is `player_knowledge`).
-- [ ] Move the "Attitude changes (LLM Call 2)" validation-rules table
-      (`schema/soft-state.md:661-673`) into `schema/hard-state.md` as a
-      new "NPC Attitude" subsection under `entity_states` (attitude is
-      hard state; the proposal *format* stays in `schema/actions.md` §5;
-      the design stays in `doc/npcs.md`).
+- `resolve_combat_allies(hard, corpus)`: alive followers (via
+  `get_following_npc_ids`) that have a `combat` block.
+- `enter_combat` auto-includes allies: initiative rolls for them too;
+  `combatants = ["player"] + allies + enemies`; pre-player NPC turns use
+  `_resolve_npc_turn`.
+- Target selection:
+  - **Enemies**: per `ai.targeting` among living party members (player +
+    allies).  Default `last_attacker` falls back to the player.  In solo
+    play the last attacker is always the player, so default behavior is
+    identical to today; in party combat mobs naturally retaliate against
+    whoever hit them last.
+  - **Allies**: `ai.targeting` may override; default order: the player's
+    most recent living target → own last attacker → lowest-HP living
+    enemy.
+- **NPC flee**: on its turn, if `flee_below_hp_pct` is set and current
+  HP% is below it, the NPC leaves combat: removed from combatants and
+  initiative order, entity state `fled: true` set (adventures can react
+  to it, e.g. the existing `spider_fled` pattern), `action: "flee"` log
+  entry.  If it was the last living enemy, combat ends (victory).
+- **Ally death**: `alive: false`, removed from combatants/initiative/
+  allies; a dead follower automatically stops following
+  (`get_following_npc_ids` excludes `alive: false`).
+- **Player flee**: unchanged mechanics; on success combat ends for the
+  whole party — followers withdraw with the player (consistent with
+  follower room-travel semantics).
+- The player may not target same-side combatants (engine error).
+  Attacking a follower still works exactly as today — as a combat-entry
+  seed, not mid-combat.
+- On-hit effects resolve only against the player (Phase 1 decision).
 
-### 5.4 Fix broken cross-references
+**Briefing / templates / display.**
 
-- [ ] `schema/soft-state.md:7` — `../docs/soft.md` → `../doc/soft.md`
-      (the directory is `doc/`, not `docs/`).
-- [ ] `doc/soft.md:23` — `actions.md` → `../schema/actions.md`.
-- [ ] `README.md:84` — `doc/soft-items.md` → `doc/soft.md` (file was
-      renamed/merged; the link is dead).
-- [ ] `doc/soft.md:351` (Files Summary, last row) — currently reads
-      `doc/soft-state.md | This document`.  Fix to
-      `doc/soft.md | This document`, and ensure the
-      `schema/soft-state.md` row references the correct path.
+- `CombatBriefing` combatant entries gain `side` (`"party"` / `"enemy"`);
+  `assembler._build_combat_state` populates it from `combat.allies`.
+- `ruling.j2` combat section: allies act autonomously under engine
+  control; valid `combat` targets are enemy combatants only.
+- `format_combat_prefix`: add the NPC-flee line; npc→npc attack/death
+  lines already work (verified generic).
+- `display.py` combat panel: group HP rows under "Party" and "Enemies".
 
-### 5.5 Remove the last-5 cap from the docs
+**Optional stretch (only if cheap):** a `combat_action: "command"` action
+(`target` = ally, `order` = attack-target / hold) stored as
+`CombatState.ally_orders` and consulted by ally AI before defaults.  Uses
+the existing Call 1; no new LLM calls.  Marked optional — the default AI
+already provides reasonable ally behavior.
 
-(Cap removal is decided in §2; this covers the doc fallout.)
+**Tests** (`tests/test_combat.py`, `tests/test_followers.py`).
 
-- [ ] `schema/soft-state.md:70` — drop "(up to 5 per room)".
-- [ ] `schema/soft-state.md:94` — drop the "Context Assembler can
-      deduplicate at briefing time" claim (not implemented; surface all
-      notes in insertion order).
-- [ ] `schema/soft-state.md:497-498` — drop "(last 5 notes per
-      entity)".
-- [ ] `schema/actions.md:248` — drop "(up to 3 most recent)".
+- Allies auto-join; initiative order includes them.
+- Ally kills the last enemy → combat ends immediately (victory) mid
+  NPC-turn sequence.
+- Enemy targeting rules: `last_attacker` (mob retaliates on the ally that
+  hit it), `lowest_hp`, `random` (seeded `random.random`), explicit
+  `"player"`.
+- NPC flee at threshold; last-enemy flee ends combat; `fled` state set.
+- Ally death: `alive: false`, removed everywhere, stops following.
+- Player flee with allies ends combat; allies appear in the new room.
+- Save/load round-trip mid-combat with allies.
+- Solo-combat regression: no allies → behavior byte-identical to Phase 1.
+
+**Docs.**  `schema/corpus.md` (`ai` block), `schema/hard-state.md`
+(`CombatState.allies`, `last_attacker`), `doc/combat.md` (party combat
+chapter; remove "NPC-vs-NPC combat" and "NPC-initiated fleeing" from the
+limitations list; document the enemy-targeting default).
 
 ---
 
-## Open question (non-blocking)
+## Phase 3 — Richer player combat stats (independent sub-chunks)
 
-- Whether to factor a shared `present_entity_ids(hard, corpus)` helper
-  (§4) is a minor refactor judgment left to implementation; it is not
-  required for correctness.
+Each sub-chunk is independently mergeable.  Suggested order:
+3a → 3b → 3c → 3d → 3e (3c feeds Phase 4).
+
+### 3a — Weapon properties (finesse, ranged)
+
+- `EquipBlock` accepts extra key `properties: list[str]`; the 5e system
+  recognizes `finesse` and `ranged`.
+- `FiveESystem.compute_player_attack_bonus` /
+  `compute_player_damage_expr`: finesse → use max(STR, DEX) modifier;
+  ranged → DEX modifier.  Unarmed/legacy weapons unchanged (STR).
+- No range/position mechanics (documented limitation).
+- Tests; `doc/gear.md`, `schema/corpus.md` updates.
+
+### 3b — Damage types, resistance, vulnerability, immunity
+
+- Damage-type vocabulary (5e): acid, bludgeoning, cold, fire, force,
+  lightning, necrotic, piercing, poison, radiant, slashing, thunder.
+- `EquipBlock.damage_type: str` (extra, 5e-recognized); `CombatBlock`
+  gains `dmg_type: str = ""`, `resistances`, `vulnerabilities`,
+  `immunities` (`list[str]`).
+- Resolution (inside `ResolutionSystem`, new `apply_damage_modifiers`
+  hook): immunity → 0, resistance → half rounded down, vulnerability →
+  double.  Applied to NPC targets of player attacks; player-side
+  application is a no-op hook for now (player resistances are a future
+  chunk).
+- Log entries and combat prefix annotate `(resisted)` / `(vulnerable)` /
+  `(immune)`.
+- `validate_adventure.py` checks damage-type vocabulary.
+- Tests; `schema/corpus.md`, `doc/combat.md` updates.
+
+### 3c — Conditions: poisoned, stunned, prone
+
+- Player: `PlayerState.conditions: dict[str, int]` (condition id →
+  rounds remaining).  NPCs: same shape in
+  `entity_states[id]["conditions"]`.  Combat-scoped: cleared when combat
+  ends (documented simplification).
+- Effects (per SRD 5.2.1, simplified; enforced inside the resolution
+  system, which already supports advantage/disadvantage):
+  - **poisoned** — disadvantage on own attack rolls and ability checks.
+  - **stunned** — turn skipped; attack rolls against have advantage.
+  - **prone** — disadvantage on own attack rolls; attack rolls against
+    have advantage; automatically stands at the start of its turn.
+- Processing: at the start of each combatant's turn, tick durations and
+  drop expired conditions; stunned skips the action.
+- Application path: combat-safe `Result` gains
+  `apply_condition: {id, rounds}` (usable from `on_hit_effects` now and
+  abilities in Phase 4); the `CombatBlock` on-hit validator allows it.
+  Player ability checks made in combat pass disadvantage when poisoned.
+- Tests; `schema/corpus.md`, `schema/hard-state.md`, `doc/combat.md`
+  updates.
+
+### 3d — Consumable items + `use_item` combat action
+
+- `ConsumableBlock` on item entities: `heal: str` (dice expression),
+  `cure_conditions: list[str] = []`, `destroy: bool = true`.
+- `CombatAction.combat_action` extended to `"attack" | "use_item"`;
+  `target` is an inventory item id and the player's action is consumed.
+  Healing applies as positive `player_hp_delta`, clamped to `max_hp`.
+  Out-of-combat use is deferred (authored interactions already cover it).
+- Combat briefing gains `usable_items` (id, name, effect summary) so
+  Call 1 can map "I drink the potion".
+- `ruling.j2` / `prose.j2` updated; prefix line ("You use X: healed N.").
+- Tests; `schema/corpus.md`, `schema/actions.md`, `doc/combat.md`
+  updates.
+
+### 3e — NPC multiattack
+
+- `CombatBlock.attacks: int = 1`; an NPC's turn resolves that many attack
+  rolls against its chosen target (stops early if the target dies; no
+  target splitting yet).
+- Tests; `schema/corpus.md`, `doc/combat.md` updates.
+
+---
+
+## Phase 4 — Abilities in combat
+
+**Goal.**  Named, limited-use abilities (spells, class features, monster
+powers) usable by the player and by NPCs, reusing the attack/save
+pipelines built above.
+
+**Corpus.**
+
+- Top-level `abilities: dict[str, Ability]` on `ModuleCorpus`:
+  - `name`, `description`.
+  - `target`: `"self" | "ally" | "enemy"`.
+  - `uses_per_combat: int` (`-1` = unlimited, cantrip-style).
+  - Exactly one effect:
+    - `attack`: `{stat, proficient: bool, damage, damage_type?,
+      on_hit?: CheckResolution}` — rolled like a weapon attack using the
+      named ability score.
+    - `save`: `{stat, dc, damage, damage_type?, half_on_success: bool,
+      apply_condition_on_failure?: {id, rounds}}`.
+    - `heal`: dice expression.
+- `PlayerState.abilities: list[str]` — ids the player knows, set via
+  character sheet / `default-player.json`.
+- `CombatBlock.abilities: list[str]` — ids the NPC knows; per-ability AI
+  hints in `ai.ability_rules`:
+  `{ability_id: {cooldown_rounds: int, use_below_own_hp_pct?: int}}`.
+- `CombatBlock.save_bonus: int = 0` — flat NPC save modifier against
+  `save` abilities (NPCs have no ability scores; documented
+  simplification).
+- `CombatState` gains `ability_uses: dict[str, dict[str, int]]` and
+  `npc_cooldowns: dict[str, dict[str, int]]` (both die with combat, which
+  matches `uses_per_combat` semantics).
+
+**Engine.**
+
+- `CombatAction.combat_action` += `"use_ability"`; new optional
+  `ability_id` field; `target` validated against the ability's
+  `target` kind (self / party combatant / enemy combatant).
+- Attack abilities reuse the attack pipeline (stat modifier + proficiency
+  bonus if `proficient`, crit rules, resistance application).
+- Save abilities reuse the save/CheckResolution pipeline (half damage on
+  success, condition on failure).
+- Heals clamp to max HP; uses decrement; exhausted uses → action rejected
+  with an engine error.
+- NPC AI: on its turn, evaluate known abilities in listed order — first
+  one that is usable (uses left, cooldown expired, HP condition met) is
+  used; otherwise basic attack.  Cooldowns tick at round end.  Ally NPCs
+  with `heal` target the most-injured living party member (including
+  self) and skip healing when nobody is hurt.
+- Buff / temporary-modifier abilities are **deferred** (they need
+  temp-effect tracking machinery); listed under non-goals.
+
+**Briefing / templates.**
+
+- Combat briefing gains `abilities` (id, name, description, target kind,
+  uses remaining, plain-English effect summary) and exposes
+  `combatants[].conditions`.
+- `ruling.j2`: `use_ability` syntax and targeting rules; `prose.j2`:
+  narrate ability outcomes; prefix lines for ability/save results.
+
+**Tests.**  Attack ability hit/crit/miss; save ability with
+half-on-success and condition-on-failure; heal self/ally with clamping;
+uses exhaustion error; NPC cooldown cycling; NPC AI ability preference
+and attack fallback; validation errors (unknown ability id, wrong target
+side); Call 1 JSON parse round-trip for `use_ability`.
+
+**Validation.**  `validate_adventure.py`: referenced ability ids exist,
+exactly-one-effect shape, target vocabulary, cooldown/uses sanity.
+
+**Docs.**  `schema/corpus.md` (`Ability`, `CombatBlock.abilities`,
+`ai.ability_rules`, `save_bonus`), `schema/actions.md` (`use_ability`),
+`schema/hard-state.md` (`ability_uses`), `doc/combat.md` (abilities
+chapter), `doc/player-stats.md` (character-sheet `abilities` field).
+
+---
+
+## Cross-cutting concerns
+
+- **Save compatibility.**  New state fields all default empty; old
+  autosaves load without migration.  Mid-combat saves from older versions
+  have `allies: []` — correct, since old saves can only be in solo
+  combat.
+- **Sample adventure.**  After Phase 2: give one `bag-of-holding`
+  follower a combat block + `ai` hints to demo party combat.  After
+  3b/3d: annotate spiders (poison damage type) and a healing potion
+  (`ConsumableBlock`).  Small, additive diffs.
+- **Module layout.**  No new Python modules are planned; if Phase 2
+  makes `combat.py` unwieldy, the AI target/ability selection may move to
+  `mgmai/engine/combat_ai.py` (decision deferred to implementation).
+  Update `doc/intro.md`'s directory listing if so.
+- **Testing conventions.**  Existing monkeypatching of `random.randint` /
+  `random.random` continues to steer all rolls; each phase ends with the
+  full `pytest` suite green.
+
+## Explicit non-goals (future phases)
+
+- Positioning, range, cover, tactical maps.
+- Reactions, opportunity attacks, bonus actions.
+- Death saving throws; unconscious-but-stable players/allies.
+- Buff / temporary-modifier abilities; AoE abilities.
+- Player-side damage resistances; full NPC ability scores.
+- Rest, leveling, per-day ability uses (uses are per-combat only).
+- Non-follower allies; ally defection when attacked mid-combat;
+  multi-PC parties.
+- LLM-chosen NPC actions (rejected per the design principles above).
+
+## Execution checklist
+
+- [x] Phase 1 — combat core generalization (refactor, behavior-preserving)
+- [ ] Phase 2 — allied NPCs + combat AI
+- [ ] Phase 3a — weapon properties (finesse, ranged)
+- [ ] Phase 3b — damage types / resistance / vulnerability / immunity
+- [ ] Phase 3c — conditions (poisoned, stunned, prone)
+- [ ] Phase 3d — consumables + `use_item` in combat
+- [ ] Phase 3e — NPC multiattack
+- [ ] Phase 4 — abilities in combat

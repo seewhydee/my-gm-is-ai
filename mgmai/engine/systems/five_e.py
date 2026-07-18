@@ -296,10 +296,11 @@ class FiveESystem(ResolutionSystem):
         npc_id: str,
         hard: HardGameState,
         corpus: ModuleCorpus,
-        player_ac: int,
+        target_id: str,
+        target_ac: int,
         round_number: int,
     ) -> NPCAttackResult:
-        """Resolve an NPC attack against the player."""
+        """Resolve an NPC attack against a combatant (player or NPC)."""
         entity = corpus.entities.get(npc_id)
         if entity is None or entity.combat is None:
             raise ValueError(f"Invalid NPC '{npc_id}'")
@@ -309,16 +310,16 @@ class FiveESystem(ResolutionSystem):
         attack_total = attack_roll + combat_block.atk
         critical = self.is_critical(attack_roll)
         miss = self.is_fumble(attack_roll)
-        hit = critical or (not miss and attack_total >= player_ac)
+        hit = critical or (not miss and attack_total >= target_ac)
 
         log_entry = CombatLogEntry(
             round=round_number,
             actor=npc_id,
             action="attack",
-            target="player",
+            target=target_id,
             attack_roll=attack_roll,
             attack_total=attack_total,
-            ac=player_ac,
+            ac=target_ac,
             hit=hit,
             critical=critical if hit else None,
         )
@@ -326,8 +327,8 @@ class FiveESystem(ResolutionSystem):
 
         damage = 0
         damage_roll: str | None = None
-        player_hp_delta = 0
-        game_over = False
+        target_hp_delta = 0
+        target_died = False
 
         if hit:
             damage, damage_roll = self.roll_damage(
@@ -335,29 +336,34 @@ class FiveESystem(ResolutionSystem):
             )
             log_entry.damage_roll = damage_roll
             log_entry.damage = damage
-            player_hp_delta = -damage
-            current_hp = hard.player.current_hp or 0
+            target_hp_delta = -damage
+            if target_id == "player":
+                current_hp = hard.player.current_hp or 0
+            else:
+                current_hp = (
+                    hard.entity_states.get(target_id, {}).get("current_hp") or 0
+                )
             new_hp = current_hp - damage
             log_entry.remaining_hp = new_hp
 
             if new_hp <= 0:
                 death_entry = CombatLogEntry(
                     round=round_number,
-                    actor="player",
+                    actor=target_id,
                     action="death",
                 )
                 log_entries.append(death_entry)
-                game_over = True
+                target_died = True
 
         return NPCAttackResult(
             hit=hit,
             damage=damage,
-            player_hp_delta=player_hp_delta,
+            target_hp_delta=target_hp_delta,
             log_entries=log_entries,
-            game_over=game_over,
+            target_died=target_died,
             attack_roll=attack_roll,
             attack_total=attack_total,
-            player_ac=player_ac,
+            target_ac=target_ac,
             critical=critical if hit else None,
             damage_roll=damage_roll,
         )
