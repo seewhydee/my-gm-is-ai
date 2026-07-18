@@ -128,16 +128,32 @@ def save_app_config(config: AppConfig,
 
 @dataclass
 class Credentials:
-    """API credentials stored in credentials.json (separate from config for security)."""
+    """API credentials stored in credentials.json (separate from config for security).
+
+    ``api_key`` is the default key used when no provider-specific key
+    matches.  ``api_keys`` maps a provider short-name (the hostname
+    portion of a base_url, e.g. ``"deepseek"`` for
+    ``https://api.deepseek.com``) to its API key, so different models
+    hosted by different providers can each have their own key.
+    """
 
     api_key: str = ""
+    api_keys: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"api_key": self.api_key}
+        d: dict[str, Any] = {}
+        if self.api_key:
+            d["api_key"] = self.api_key
+        if self.api_keys:
+            d["api_keys"] = dict(self.api_keys)
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Credentials:
-        return cls(api_key=data.get("api_key", ""))
+        return cls(
+            api_key=data.get("api_key", ""),
+            api_keys=data.get("api_keys", {}),
+        )
 
 
 def load_credentials(config_dir: str | Path | None = None) -> Credentials:
@@ -178,13 +194,65 @@ def save_credentials(credentials: Credentials,
 def resolve_api_key(*,
                     cli_arg: str | None = None,
                     env_var: str | None = None,
-                    credentials: Credentials | None = None) -> str:
+                    credentials: Credentials | None = None,
+                    provider: str | None = None) -> str:
     """Return the first non-empty API key from the given sources.
 
-    Priority: *cli_arg* > *env_var* > *credentials*.
-    Returns ``""`` if no key is found.
+    Priority: *cli_arg* > *env_var* > provider-specific key in
+    *credentials* > *credentials* default key.  Returns ``""`` if no
+    key is found.
+
+    *provider* is a short label like ``"deepseek"`` or ``"moonshot"``
+    derived from the model's base URL hostname.  When set, the
+    credentials lookup checks ``credentials.api_keys[provider]``
+    before falling back to ``credentials.api_key``.
     """
-    for source in (cli_arg, env_var, credentials.api_key if credentials else ""):
+    for source in (cli_arg, env_var):
         if source:
             return source
+    if credentials is not None:
+        if provider and provider in credentials.api_keys:
+            return credentials.api_keys[provider]
+        if credentials.api_key:
+            return credentials.api_key
     return ""
+
+
+def _provider_from_base_url(base_url: str) -> str | None:
+    """Extract a short provider name from a base URL.
+
+    ``https://api.deepseek.com`` → ``"deepseek"``
+    ``https://api.moonshot.ai/v1`` → ``"moonshot"``
+    """
+    from urllib.parse import urlparse
+    host = urlparse(base_url).hostname or base_url
+    # Peel off subdomain prefixes like "api.", then the TLD.
+    parts = host.split(".")
+    if len(parts) >= 2:
+        # Return the second-to-last component (the organisation name).
+        return parts[-2]
+    return host
+
+
+def resolve_api_key_for_model(
+    model_name: str,
+    *,
+    credentials: Credentials | None = None,
+    custom_models: dict[str, Any] | None = None,
+    base_url_override: str | None = None,
+    env_var: str | None = None,
+) -> tuple[str, str]:
+    """Resolve the API key suitable for *model_name*.
+
+    Looks up the model's base URL, extracts a provider short-name, and
+    delegates to :func:`resolve_api_key`.  Returns ``(api_key,
+    provider_name)``.
+
+    *env_var* is checked before the credentials file (so
+    ``MGMAI_API_KEY`` in the environment takes precedence).
+    """
+    from mgmai.llm.model_config import get_model_config
+    config = get_model_config(model_name, base_url=base_url_override, custom_models=custom_models)
+    provider = _provider_from_base_url(config.base_url) or "unknown"
+    key = resolve_api_key(env_var=env_var, credentials=credentials, provider=provider)
+    return key, provider

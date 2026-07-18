@@ -38,9 +38,13 @@ log = logging.getLogger(__name__)
 _JUDGE_SYSTEM_PROMPT = """\
 You are a QA judge evaluating a transcript of an AI Game Master session.
 
-You will receive a JSON transcript of a combat scenario: each turn's
-player command, the GM's narration, the engine's combat log (ground
-truth for what mechanically happened), and the post-turn status.
+You will receive a JSON transcript of a scenario: each turn's player
+command, the GM's narration, the engine's combat log (ground truth for
+what mechanically happened), and the post-turn status.
+
+The transcript includes the scenario directive — what the player was
+told to do.  Evaluate command appropriateness against that directive,
+not against a generic "fight to the death" template.
 
 ## Rubric
 
@@ -59,12 +63,15 @@ score from 1 (worst) to 5 (best) and write a one-sentence note.
    turns, no degenerate text (loops, garbage, empty-seeming
    filler).  Narration is readable and varied.
 
-4. **coherent_arc**: The fight has a coherent arc and conclusion.
-   The narrative flows logically from start to finish.
+4. **coherent_arc**: The game has a coherent arc and a conclusion
+   consistent with the scenario directive.  If the directive says
+   "flee", a successful escape is a valid conclusion even if combat
+   was short.  The narrative flows logically from start to finish.
 
 5. **command_appropriateness**: The player's commands are reasonable
-   for the scenario (attacking enemies, using items when hurt, etc.).
-   The driver does not issue nonsense or get stuck.
+   for the scenario directive (attacking enemies when asked to fight,
+   fleeing when asked to escape, using items when hurt, etc.).  The
+   driver does not issue nonsense or get stuck.
 
 ## Output
 
@@ -86,8 +93,11 @@ Output a single JSON object (no markdown, no prose) with this shape:
 ```
 
 Set ``pass`` to ``false`` if any criterion scores 2 or below, or if
-the run is fundamentally broken (no combat, immediate game-over,
-infinite loop).  Otherwise set ``pass`` to ``true``.
+the run is fundamentally broken (infinite loop, immediate game-over
+when the directive called for a fight, hallucinated mechanics,
+etc.).  Do NOT penalise a scenario for "no combat" when the
+directive explicitly calls for fleeing or non-combat objectives.
+Otherwise set ``pass`` to ``true``.
 """
 
 
@@ -165,8 +175,8 @@ def _build_transcript_for_judge(result: ScenarioResult) -> str:
     """Build the JSON transcript the judge will score.
 
     Compact form: one entry per turn with command, narration, and
-    combat log.  Status snapshots are summarised to HP values to keep
-    the prompt small.
+    combat log.  Status snapshots are summarised to HP values and
+    location to keep the prompt small.
     """
     turns: list[dict[str, Any]] = []
     for i, t in enumerate(result.turns, 1):
@@ -186,6 +196,7 @@ def _build_transcript_for_judge(result: ScenarioResult) -> str:
             "post_turn": {
                 "in_combat": t.status.in_combat,
                 "round": t.status.combat_round,
+                "location": t.status.location,
                 "player_hp": t.status.player_hp,
                 "player_max_hp": t.status.player_max_hp,
                 "combatants": combatants_summary,
@@ -200,6 +211,7 @@ def _build_transcript_for_judge(result: ScenarioResult) -> str:
 
     payload = {
         "scenario": result.scenario_name,
+        "directive": result.directive,
         "turn_count": result.turn_count,
         "final_status": result.final_status,
         "run_error": (
@@ -207,6 +219,8 @@ def _build_transcript_for_judge(result: ScenarioResult) -> str:
             if result.error is not None
             else None
         ),
+        "aborted": result.aborted,
+        "abort_reason": result.abort_reason,
         "turns": turns,
     }
     return json.dumps(payload, indent=2, default=str)

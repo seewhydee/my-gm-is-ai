@@ -345,3 +345,64 @@ class TestHeadlessSession:
         assert transcript.narration == "The torch flickers."
         assert session.hard_state is not None
         assert session.hard_state.player.location == "start_room"
+
+
+# ----------------------------------------------------------------------
+# Integration fixture smoke tests
+# ----------------------------------------------------------------------
+
+
+class TestIntegrationFixtureSmoke:
+    """Quick schema validation of integration-test fixtures.
+
+    These run without any LLM calls and catch fixture drift before the
+    paid integration suite runs.
+    """
+
+    def test_combat_arena_loads(self):
+        """StateManager successfully loads the combat_arena fixture."""
+        from pathlib import Path
+        from mgmai.state.manager import StateManager
+
+        fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "combat_arena"
+        sm = StateManager(adventure_dir=str(fixture))
+
+        assert sm.hard_state is not None
+        assert sm.corpus is not None
+        assert sm.soft_state is not None
+
+        # Player starts in the arena with expected equipment.
+        assert sm.hard_state.player.location == "arena"
+        assert sm.hard_state.player.current_hp == 24
+        assert sm.hard_state.player.max_hp == 24
+        assert sm.hard_state.player.inventory.get("health_potion") == 2
+        assert "flame_strike" in sm.hard_state.player.abilities
+
+        # Four enemies and one ally are defined.
+        assert "goblin_grunt" in sm.corpus.entities
+        assert "goblin_runner" in sm.corpus.entities
+        assert "goblin_shaman" in sm.corpus.entities
+        assert "bugbear" in sm.corpus.entities
+        assert "korbar" in sm.corpus.entities
+
+        # Korbar is a follower with HP 22 and alive.
+        korbar_state = sm.hard_state.entity_states.get("korbar", {})
+        assert korbar_state.get("alive") is True
+        assert korbar_state.get("following") is True
+        assert korbar_state.get("current_hp") == 22
+
+        # Bugbear has piercing resistance, fire vulnerability.
+        bugbear = sm.corpus.entities["bugbear"]
+        assert bugbear.combat.resistances == ["piercing"]
+        assert bugbear.combat.vulnerabilities == ["fire"]
+
+        # Shaman has the heal ability and cooldown AI.
+        shaman = sm.corpus.entities["goblin_shaman"]
+        assert "mend_wounds" in shaman.combat.abilities
+        mend = sm.corpus.abilities["mend_wounds"]
+        assert mend.heal == "2d4+2"
+
+        # Arena has an exit north to corridor.
+        arena = sm.corpus.rooms["arena"]
+        exits = {ex.id: ex.target_room for ex in arena.exits}
+        assert exits.get("exit_north") == "corridor"

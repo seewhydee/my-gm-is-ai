@@ -24,6 +24,83 @@ export MGMAI_API_KEY="your-api-key"
 
 Alternatively, on first launch you will be prompted for this information.  These credentials, as well as save files, are saved to `~/.config/mgmai/`.  A cheap fast model is recommended.
 
+### Model configuration
+
+Beyond the three environment variables, persistent configuration lives in
+`~/.config/mgmai/`.  See [doc/models.md](doc/models.md) for the full
+reference; below is a summary.
+
+**Built-in models.**  Several models come pre-configured and work by name:
+
+| Key | Provider |
+|-----|----------|
+| `deepseek-v4-flash` | DeepSeek |
+| `kimi-k2.6` | Moonshot |
+| `mimo-v2.5` | Xiaomi Mimo |
+| `mistral-small-2603` | Mistral |
+| `deepseek-reasoner` | DeepSeek (reasoning — placeholder) |
+
+Pass `--model <key>` to select one:
+
+```bash
+mgmai adventures/bag-of-holding --model kimi-k2.6
+```
+
+**Custom models** (`~/.config/mgmai/models.json`).  Map arbitrary
+names to their API endpoint and parameters:
+
+```json
+{
+  "my-model": {
+    "name": "model-id-string",
+    "label": "Human-readable label",
+    "base_url": "https://api.provider.com/v1",
+    "ruling_temperature": 0.7,
+    "prose_temperature": 0.9,
+    "supports_json_mode": true,
+    "prose_max_tokens": 2000
+  }
+}
+```
+
+**Reasoning models.**  Set `ruling_temperature` and `prose_temperature`
+to `null` (most reasoning models reject explicit temperature) and
+increase `prose_max_tokens` to accommodate chain-of-thought (4096+ is
+typical).  Use `extra_body` for provider-specific reasoning
+parameters:
+
+```json
+{
+  "deepseek-reasoner": {
+    "name": "<exact-model-name>",
+    "base_url": "https://api.deepseek.com",
+    "ruling_temperature": null,
+    "prose_temperature": null,
+    "extra_body": {"thinking": {"type": "enabled"}},
+    "prose_max_tokens": 4096
+  }
+}
+```
+
+**Multiple API keys** (`~/.config/mgmai/credentials.json`).  When
+different models are hosted by different providers, add
+provider-specific keys:
+
+```json
+{
+  "api_key": "sk-fallback-for-any-provider",
+  "api_keys": {
+    "deepseek": "sk-deepseek-key",
+    "moonshot": "sk-moonshot-key",
+    "mistral": "sk-mistral-key"
+  }
+}
+```
+
+The provider name is the publisher portion of the base URL hostname
+(`deepseek` for `https://api.deepseek.com`).  `api_key` is the
+fallback when no provider-specific key matches.
+
 ## Usage
 
 If you installed the package with `pip install -e .`, you can use the `mgmai` command:
@@ -85,27 +162,9 @@ pytest tests/test_combat.py -k "flee"   # run a specific subset
 
 ### LLM integration tests
 
-A separate suite of **LLM-driven integration tests** lives in `tests/integration/`.  These run a "driver" LLM as the player against the real GM LLM over a combat scenario, verifying the full two-call pipeline (ruling → engine → prose) plus narration quality via an LLM judge.
+A separate suite of **LLM-driven integration tests** lives in `tests/integration/`.  These run a "driver" LLM as the player against the real GM LLM, verifying the full two-call pipeline (ruling → engine → prose) plus narration quality via an LLM judge.
 
-These tests are **skipped by default** (no API key, no cost).  To run them:
-
-```bash
-export MGMAI_API_KEY="..."
-export MGMAI_MODEL="deepseek-v4-flash"   # or any registered model
-
-pytest tests/integration                  # run all integration scenarios
-pytest tests/integration -k flee          # run a specific scenario
-```
-
-Optional flags select different models for each role (defaults to `MGMAI_MODEL`):
-
-```bash
-pytest tests/integration --gm-model deepseek-v4-flash --driver-model kimi-k2.6 --judge-model mistral-small-2603
-```
-
-**Cost expectations.** Each game turn makes 2 GM LLM calls (ruling + prose) plus 1 driver call.  A 15-turn run is ≈ 45 LLM calls, plus 1 judge call at the end.  Four scenarios are included (fight-to-completion, flee, consumable/ability focus, ally death); a full `pytest tests/integration` run is roughly 4 × 45 ≈ 180 calls.
-
-**Artifacts.** Every run dumps a full JSON transcript (commands, narration, combat log, per-turn status snapshots, judge verdict) to `tests/integration/artifacts/` for human review, regardless of pass/fail.
+See [tests/integration/README.md](tests/integration/README.md) for details on the test architecture, scenarios, configuration, and how to modify or extend them.
 
 ### Headless harness
 

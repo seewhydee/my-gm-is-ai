@@ -309,9 +309,9 @@ class HeadlessSession:
     def submit(self, command: str) -> TurnTranscript:
         """Run one player-input turn end to end and return a transcript.
 
-        Captures any exception raised during the turn so the caller can
-        still write an artifact; the exception is re-raised after
-        recording (set ``reraise=False`` to suppress).
+        Any exception raised during the turn is caught, recorded in the
+        transcript, and then re-raised so the caller can still access
+        the partial transcript after catching the exception.
         """
         errors_before = len(self._display.errors)
 

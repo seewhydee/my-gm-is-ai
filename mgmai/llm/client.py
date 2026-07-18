@@ -79,6 +79,7 @@ class LLMClient:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        json_mode: bool = True,
     ) -> str:
         """Generic single-shot chat completion.
 
@@ -86,12 +87,17 @@ class LLMClient:
         judge) that don't fit the ruling/prose dichotomy.  Defaults to
         the model's prose temperature and prose max_tokens when not
         specified.
+
+        *json_mode* can be set to ``False`` to suppress
+        ``response_format`` even when the model config enables it (e.g.
+        for the player driver, which produces plain-text commands).
         """
         return self._call(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=temperature if temperature is not None else self._config.prose_temperature,
             max_tokens=max_tokens if max_tokens is not None else self._config.prose_max_tokens,
+            json_mode=json_mode,
         )
 
     # ------------------------------------------------------------------
@@ -100,7 +106,8 @@ class LLMClient:
 
     def _call(self, system_prompt: str, user_prompt: str,
               temperature: float | None,
-              max_tokens: int) -> str:
+              max_tokens: int,
+              json_mode: bool = True) -> str:
         kwargs: dict[str, Any] = {
             "model": self._config.name,
             "messages": [
@@ -111,7 +118,7 @@ class LLMClient:
         }
         if temperature is not None:
             kwargs["temperature"] = temperature
-        if self._config.supports_json_mode:
+        if json_mode and self._config.supports_json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         if self._config.extra_body is not None:
             kwargs["extra_body"] = self._config.extra_body

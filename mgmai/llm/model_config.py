@@ -52,6 +52,7 @@ class ModelConfig:
 # ------------------------------------------------------------------
 
 _MODEL_REGISTRY: dict[str, ModelConfig] = {
+    # -- Fast / non-reasoning models --
     "deepseek-v4-flash": ModelConfig(
         name="deepseek-v4-flash",
         label="Deepseek v4 Flash (Deepseek API)",
@@ -81,6 +82,57 @@ _MODEL_REGISTRY: dict[str, ModelConfig] = {
         ruling_temperature=0.65,
         prose_temperature=0.75,
     ),
+    # -- Reasoning models --
+    #
+    # NOTE: These are placeholders.  You MUST fill in the correct
+    # model *name* (the identifier the provider's API expects) for each
+    # entry.  The ``base_url`` should point to the provider's
+    # OpenAI-compatible endpoint.  Adjust ``max_tokens`` upwards (some
+    # reasoning models need ≥4096 to fit chain-of-thought).
+    #
+    # Reasoning models often expose a separate "thinking budget".
+    # Use ``extra_body`` to pass provider-specific parameters:
+    #
+    #   DeepSeek:  {"thinking": {"type": "enabled"}}
+    #   OpenAI:    {"reasoning_effort": "medium"}  (o1/o3 series)
+    #   Groq:      {} (enabled by default on reasoning models)
+    #
+    # Set ``supports_json_mode=False`` if the model doesn't support
+    # structured JSON output (e.g. early Anthropic reasoning models).
+
+    "deepseek-reasoner": ModelConfig(
+        name="deepseek-reasoner",          # FIXME: verify correct model name
+        label="Deepseek Reasoner (Deepseek API)",
+        base_url="https://api.deepseek.com",
+        ruling_temperature=None,           # reasoning models often require None
+        prose_temperature=None,
+        extra_body={"thinking": {"type": "enabled"}},
+        supports_json_mode=True,
+        prose_max_tokens=4096,             # reasoning needs headroom for CoT
+    ),
+    # Add more reasoning models here following the same pattern:
+    #
+    # "groq-reasoning": ModelConfig(
+    #     name="FIXME-model-name",
+    #     label="Groq Reasoning Model (Groq API)",
+    #     base_url="FIXME",
+    #     ruling_temperature=None,
+    #     prose_temperature=None,
+    #     extra_body=None,
+    #     supports_json_mode=True,
+    #     prose_max_tokens=4096,
+    # ),
+    #
+    # "openai-o3-mini": ModelConfig(
+    #     name="FIXME-model-name",
+    #     label="OpenAI o3-mini (OpenAI API)",
+    #     base_url="FIXME",
+    #     ruling_temperature=None,
+    #     prose_temperature=None,
+    #     extra_body={"reasoning_effort": "medium"},
+    #     supports_json_mode=True,
+    #     prose_max_tokens=4096,
+    # ),
 }
 
 # ------------------------------------------------------------------

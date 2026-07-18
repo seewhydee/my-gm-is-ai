@@ -122,7 +122,7 @@ class TestCliPrompting:
         mock_llm_cls = self._run_prompt_test(
             monkeypatch,
             inputs=[
-                "5",                       # custom model
+                "6",                       # custom model
                 "",                        # keep model name from --model
                 "https://api.openai.com/v1",  # base URL
                 "",                        # keep API key

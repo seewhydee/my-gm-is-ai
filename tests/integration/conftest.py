@@ -29,11 +29,23 @@ from pathlib import Path
 
 import pytest
 
+from mgmai.config import load_credentials, resolve_api_key_for_model
 from mgmai.llm.client import LLMClient
-from mgmai.llm.model_config import get_model_config
+from mgmai.llm.model_config import get_model_config, load_custom_models
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
+
+# Load once: custom models (user's ~/.config/mgmai/models.json) and
+# credentials (user's ~/.config/mgmai/credentials.json).
+#
+# The user config dir is under the conventional XDG path, not a
+# temporary sandbox, so the same models.json and credentials.json
+# used by the normal REPL are also used by integration tests.
+from platformdirs import user_config_dir
+_USER_CONFIG_DIR = user_config_dir("mgmai")
+_CUSTOM_MODELS = load_custom_models(_USER_CONFIG_DIR)
+_CREDENTIALS = load_credentials(_USER_CONFIG_DIR)
 
 
 def _resolve_model(request, opt_name: str) -> str:
@@ -50,12 +62,23 @@ def _resolve_model(request, opt_name: str) -> str:
 
 
 def _make_client(request, opt_name: str) -> LLMClient:
-    api_key = os.environ.get("MGMAI_API_KEY")
-    if not api_key:
-        pytest.skip("MGMAI_API_KEY not set; skipping LLM integration test")
     model_name = _resolve_model(request, opt_name)
+    # Resolve the API key for this specific model's provider.
+    # Priority: MGMAI_API_KEY env var > credentials.api_keys[provider]
+    # > credentials.api_key.
+    api_key, provider = resolve_api_key_for_model(
+        model_name,
+        credentials=_CREDENTIALS,
+        custom_models=_CUSTOM_MODELS,
+        env_var=os.environ.get("MGMAI_API_KEY"),
+    )
+    if not api_key:
+        pytest.skip(
+            f"MGMAI_API_KEY not set and no API key for provider "
+            f"'{provider}' in credentials; skipping LLM integration test"
+        )
     base_url = os.environ.get("MGMAI_BASE_URL")
-    config = get_model_config(model_name, base_url=base_url)
+    config = get_model_config(model_name, base_url=base_url, custom_models=_CUSTOM_MODELS)
     return LLMClient(api_key=api_key, config=config)
 
 

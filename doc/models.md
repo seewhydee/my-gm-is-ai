@@ -56,6 +56,10 @@ The following models have pre-configured settings and can be used by name withou
 
 Each pre-configured model includes tuned temperature settings, JSON mode support, and any provider-specific parameters (e.g. DeepSeek's thinking-disabled mode).
 
+There is also a `deepseek-reasoner` placeholder for DeepSeek's reasoning
+model.  Its exact model name needs to be filled in — see
+[Reasoning models](#reasoning-models) below.
+
 ## Custom models: `models.json`
 
 To use a model not in the built-in registry (a local llama.cpp server, Ollama, a fine-tune, or any other OpenAI-compatible endpoint), create `~/.config/mgmai/models.json`. This file maps arbitrary model names to their full configuration.
@@ -105,6 +109,81 @@ These are all the fields you can set in `models.json`. Only `base_url` is requir
 | `ruling_max_tokens` | int | `800` | Maximum output tokens for Call 1. The expected PlayerAction JSON is ~50-150 tokens; a cap prevents verbose models from rambling. |
 | `prose_max_tokens` | int | `2000` | Maximum output tokens for Call 2. Narration is typically 100-400 tokens; the generous cap allows for detailed descriptions. |
 
+## Multiple API keys
+
+When models from different providers need separate API keys, expand
+`~/.config/mgmai/credentials.json` to include a per-provider map:
+
+```json
+{
+  "api_key": "sk-fallback-for-any-provider",
+  "api_keys": {
+    "deepseek": "sk-deepseek-key",
+    "moonshot": "sk-moonshot-key",
+    "mistral": "sk-mistral-key"
+  }
+}
+```
+
+The provider key is extracted from the model's base URL hostname:
+`https://api.deepseek.com` → `"deepseek"`,
+`https://api.moonshot.ai/v1` → `"moonshot"`.
+
+Resolution order for each model:
+
+1. CLI `--api-key` (applies to all models)
+2. `MGMAI_API_KEY` environment variable (applies to all models)
+3. `credentials.api_keys[provider]` (per-provider key)
+4. `credentials.api_key` (fallback)
+
+Provider-specific keys are useful for integration tests where the GM,
+driver, and judge LLMs are hosted by different providers, or when a
+reasoning model from one provider needs a different key than the
+fast model from another.
+
+## Reasoning models
+
+Reasoning models (chain-of-thought) work well for tasks that benefit
+from extended deliberation, such as the player driver or integration
+test judge.  They are less suitable for the GM ruling call, where low
+latency matters.
+
+To configure a reasoning model, add an entry to `models.json`:
+
+```json
+{
+  "my-reasoning-model": {
+    "name": "<exact-api-model-name>",
+    "label": "My Reasoning Model",
+    "base_url": "https://api.provider.com/v1",
+    "ruling_temperature": null,
+    "prose_temperature": null,
+    "extra_body": {"reasoning_effort": "medium"},
+    "prose_max_tokens": 4096,
+    "supports_json_mode": true
+  }
+}
+```
+
+Key points:
+
+- **Temperature must be `null`** (JSON null, not the string
+  `"null"`).  Most reasoning models reject explicit temperature
+  settings.
+- **`prose_max_tokens`** should be increased to 4096 or higher.  The
+  max covers both chain-of-thought and the final answer, so the
+  visible output can be much shorter.
+- **`extra_body`** passes provider-specific reasoning parameters:
+
+  | Provider | extra_body |
+  |----------|------------|
+  | DeepSeek | `{"thinking": {"type": "enabled"}}` |
+  | OpenAI (o1/o3) | `{"reasoning_effort": "medium"}` (or `"low"` / `"high"`) |
+  | Groq | `{}` (enabled by default) |
+
+- **`supports_json_mode`** — set to `false` if the reasoning model
+  doesn't support `response_format: {"type": "json_object"}`.
+
 ## Environment variables
 
 | Variable | Equivalent CLI flag | Description |
@@ -128,7 +207,7 @@ These are all the fields you can set in `models.json`. Only `base_url` is requir
 | File | Purpose | Contains |
 |------|---------|----------|
 | `~/.config/mgmai/config.json` | Persistent app config | Last-used model name, base URL, adventure path, temperature overrides |
-| `~/.config/mgmai/credentials.json` | API credentials (chmod 0600) | API key |
+| `~/.config/mgmai/credentials.json` | API credentials (chmod 0600) | Default API key + optional per-provider keys |
 | `~/.config/mgmai/models.json` | Custom model registry | Full ModelConfig entries for non-built-in models |
 
 ## In-game model switching

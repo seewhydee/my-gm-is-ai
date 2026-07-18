@@ -43,19 +43,56 @@ Your objective: DEFEAT ALL ENEMIES.  Fight until combat ends.
 Tactics:
 - Attack enemies with your longsword.  Switch targets when your
   current target dies.
-- The bugbear is vulnerable to fire — use your Flame Strike ability
-  (use_ability with ability_id "flame_strike") on it when you can.
+- The bugbear is vulnerable to fire — use your flame strike ability on
+  it when you can.
 - The goblin shaman heals its allies — consider prioritising it.
-- If your HP drops below half, drink a healing potion (use_item with
-  target "health_potion").
+- If your HP drops below half, drink a healing potion.
 - Do NOT flee.  Fight to the end.
 """
 
+_ENEMIES_FIGHT = {"goblin_grunt", "goblin_runner", "goblin_shaman", "bugbear"}
+
+
+def _enemy_dead_or_fled(
+    result: ScenarioResult,
+    enemy_id: str,
+    *,
+    accept_fled: bool = False,
+) -> bool:
+    """Check whether *enemy_id* was killed (and optionally fled) from
+    the combat log across all turns.
+    """
+    for t in result.turns:
+        for entry in t.combat_log:
+            if entry.get("actor") == enemy_id:
+                if entry.get("action") == "death":
+                    return True
+                if accept_fled and entry.get("action") == "flee":
+                    return True
+    return False
+
 
 def _assert_combat_resolved(result):
-    """Hard assertions on the post-fight state (engine correctness)."""
+    """Hard assertions on the post-fight state (engine correctness).
+
+    Verifies: combat started and ended, no exceptions, all four enemies
+    are dead (or the runner fled), player survived, turn count
+    monotonically increased, game didn't end in a loss.
+    """
     last = result.last_turn
     assert last is not None, "No turns were recorded"
+
+    # Run was not aborted mid-stream.
+    assert not result.aborted, (
+        f"Driver aborted: {result.abort_reason}; "
+        f"see artifact: {result.artifacts_path}"
+    )
+
+    # Combat was entered at some point during the run.
+    any_in_combat = any(t.status.in_combat for t in result.turns)
+    assert any_in_combat, (
+        "Combat never started; see artifact: " + str(result.artifacts_path)
+    )
 
     # Combat ended within the turn cap; combat_state cleared.
     assert not last.status.in_combat, (
@@ -81,21 +118,16 @@ def _assert_combat_resolved(result):
             f"see artifact: {result.artifacts_path}"
         )
 
-    # Defeated enemies dead; the snapshot lists survivors only, so any
-    # enemy absent from the final combatants map is confirmed dead.
-    final_combatants = last.status.combatants
-    for eid in ["goblin_grunt", "goblin_runner", "goblin_shaman", "bugbear"]:
-        if eid in final_combatants:
-            info = final_combatants[eid]
-            assert not info["alive"], (
-                f"Enemy '{eid}' still alive in final combatants: {info}; "
-                f"see artifact: {result.artifacts_path}"
-            )
-            hp = info.get("hp", 0)
-            assert hp <= 0, (
-                f"Enemy '{eid}' is dead but hp={hp} (expected <= 0); "
-                f"see artifact: {result.artifacts_path}"
-            )
+    # Each enemy must have a death entry in the combat log (or a flee
+    # entry for the runner, which has flee AI).  This replaces the old
+    # vacuous final-combatants check (combatants are cleared to {} when
+    # combat ends, so the old loop never ran).
+    for eid in _ENEMIES_FIGHT:
+        accept_fled = (eid == "goblin_runner")
+        assert _enemy_dead_or_fled(result, eid, accept_fled=accept_fled), (
+            f"Enemy '{eid}' is neither dead nor fled in the combat log; "
+            f"see artifact: {result.artifacts_path}"
+        )
 
     # Player HP within bounds (player must have survived).
     player_hp = last.status.player_hp
@@ -125,6 +157,12 @@ def _assert_combat_resolved(result):
     )
 
 
+def _stop_when_combat_ended(session, turns):
+    """Stop early once combat has been active and has since ended."""
+    combat_was_active = any(t.status.in_combat for t in turns)
+    return combat_was_active and not session.in_combat
+
+
 @pytest.mark.llm
 def test_fight_to_completion(
     gm_client,
@@ -144,6 +182,7 @@ def test_fight_to_completion(
         directive=FIGHT_DIRECTIVE,
         max_turns=25,
         config_dir=tmp_path,
+        stop_when=_stop_when_combat_ended,
     )
 
     # The artifact must exist regardless of pass/fail.
@@ -181,11 +220,16 @@ You are surrounded by four enemies and badly outmatched.  Your goal
 is to ESCAPE, not to win.
 
 - On your first turn, attack the goblin grunt to start the fight.
-- Once combat has started, FLEE through the northern corridor
-  ("North to the exit corridor").  Keep trying to flee until you
-  succeed.
+- Once combat has started, FLEE through the northern corridor.
+  Keep trying to flee until you succeed.
 - Do not try to defeat all enemies — just escape alive.
 """
+
+
+def _stop_when_fled(session, turns):
+    """Stop early when the player has fled to the corridor."""
+    snap = session.status_snapshot()
+    return snap.location == "corridor" and not snap.in_combat
 
 
 @pytest.mark.llm
@@ -207,10 +251,15 @@ def test_flee_scenario(
         directive=FLEE_DIRECTIVE,
         max_turns=15,
         config_dir=tmp_path,
+        stop_when=_stop_when_fled,
     )
 
     assert result.artifacts_path is not None
     assert result.artifacts_path.is_file()
+    assert not result.aborted, (
+        f"Driver aborted: {result.abort_reason}; "
+        f"see artifact: {result.artifacts_path}"
+    )
     assert result.error is None, (
         f"Run errored: {result.error!r}; see artifact: {result.artifacts_path}"
     )
@@ -218,15 +267,32 @@ def test_flee_scenario(
     last = result.last_turn
     assert last is not None
 
-    # Combat ended (player is no longer in combat).
+    # Combat was entered at some point.
+    any_in_combat = any(t.status.in_combat for t in result.turns)
+    assert any_in_combat, (
+        "Combat never started — driver may have fled pre-combat; "
+        f"see artifact: {result.artifacts_path}"
+    )
+
+    # Player successfully fled: combat ended, in the corridor.
     assert not last.status.in_combat, (
         f"Combat still active after flee attempt; "
         f"see artifact: {result.artifacts_path}"
     )
 
-    # Player escaped to the corridor.
     assert last.status.location == "corridor", (
         f"Player did not reach corridor (location={last.status.location}); "
+        f"see artifact: {result.artifacts_path}"
+    )
+
+    # A successful "flee" entry for the player exists in the combat log.
+    has_flee = any(
+        entry.get("actor") == "player" and entry.get("action") == "flee"
+        for t in result.turns
+        for entry in t.combat_log
+    )
+    assert has_flee, (
+        "No 'flee' combat-log entry for the player; "
         f"see artifact: {result.artifacts_path}"
     )
 
@@ -264,11 +330,9 @@ CONSUMABLE_DIRECTIVE = """\
 You are fighting a battle and must demonstrate your full arsenal.
 
 - On your first turn, attack the goblin grunt to start the fight.
-- Once combat is active, use your Flame Strike ability (use_ability
-  with ability_id "flame_strike") on the bugbear — it is vulnerable
-  to fire.
-- If your HP drops below 14, drink a healing potion (use_item with
-  target "health_potion").  You start with 2 potions.
+- Once combat is active, use your flame strike ability on the bugbear
+  — it is vulnerable to fire.
+- If your HP drops below 14, drink a healing potion.  You start with 2.
 - Keep fighting until all enemies are defeated.  Switch to regular
   attacks when your abilities are exhausted.
 """
@@ -293,6 +357,7 @@ def test_consumable_ability_scenario(
         directive=CONSUMABLE_DIRECTIVE,
         max_turns=25,
         config_dir=tmp_path,
+        stop_when=_stop_when_combat_ended,
     )
 
     assert result.artifacts_path is not None
@@ -302,24 +367,36 @@ def test_consumable_ability_scenario(
     _assert_combat_resolved(result)
 
     # The combat log across all turns must contain at least one
-    # use_ability entry (Flame Strike) and at least one heal entry
-    # (health potion).  These verify the driver exercised both mechanics.
-    has_ability_use = False
-    has_heal = False
-    for t in result.turns:
-        for entry in t.combat_log:
-            action = entry.get("action", "")
-            if action == "use_ability":
-                has_ability_use = True
-            if action == "heal" or action == "use_item":
-                has_heal = True
+    # ability use for flame_strike (by the player) and at least one
+    # use_item for a health potion (by the player).
+    #
+    # Flame strike is a save ability → engine logs action="ability_save"
+    # with attack_id="flame_strike" (or attack_name="Flame Strike").
+    # Health potion is a consumable → engine logs action="use_item"
+    # with actor="player".
+    _PLAYER_ABILITY_ACTIONS = {"ability_save", "attack"}
+    has_ability_use = any(
+        entry.get("actor") == "player"
+        and entry.get("action") in _PLAYER_ABILITY_ACTIONS
+        and (entry.get("attack_id") == "flame_strike"
+             or entry.get("attack_name") == "Flame Strike")
+        for t in result.turns
+        for entry in t.combat_log
+    )
 
     assert has_ability_use, (
-        "Driver never used an ability (flame_strike); "
+        "Driver never used flame_strike (expected action='ability_save' or "
+        "'attack' with actor='player' and attack_id='flame_strike' or "
+        "attack_name='Flame Strike'); "
         f"see artifact: {result.artifacts_path}"
     )
-    # Healing potion use is encouraged but not strictly required —
-    # the driver might not get hurt enough.  We assert softly.
+
+    has_heal = any(
+        entry.get("actor") == "player"
+        and entry.get("action") == "use_item"
+        for t in result.turns
+        for entry in t.combat_log
+    )
     if not has_heal:
         import warnings
         warnings.warn(
@@ -389,6 +466,7 @@ def test_ally_death_scenario(
         directive=ALLY_DEATH_DIRECTIVE,
         max_turns=25,
         config_dir=tmp_path,
+        stop_when=_stop_when_combat_ended,
     )
 
     assert result.artifacts_path is not None
@@ -396,6 +474,10 @@ def test_ally_death_scenario(
 
     last = result.last_turn
     assert last is not None
+    assert not result.aborted, (
+        f"Driver aborted: {result.abort_reason}; "
+        f"see artifact: {result.artifacts_path}"
+    )
     assert result.error is None, (
         f"Run errored: {result.error!r}; see artifact: {result.artifacts_path}"
     )
@@ -404,14 +486,16 @@ def test_ally_death_scenario(
     _assert_combat_resolved(result)
 
     # Korbar must be dead by end of fight (she started at 1 HP).
-    korbar_info = last.status.combatants.get("korbar")
-    if korbar_info is not None:
-        assert not korbar_info["alive"], (
-            f"Korbar survived despite starting at 1 HP: {korbar_info}; "
+    # Since combat is cleared when it ends, check the final status's
+    # entity_states if available; otherwise verify the death log.
+    final = result.final_status or {}
+    entity_states = final.get("entity_states", {})
+    korbar_state = entity_states.get("korbar", {})
+    if korbar_state:
+        assert not korbar_state.get("alive", True), (
+            f"Korbar survived despite starting at 1 HP: {korbar_state}; "
             f"see artifact: {result.artifacts_path}"
         )
-    # If korbar is absent from combatants, she was removed after death
-    # — that's also acceptable and confirms KO handling.
 
     # The combat log must contain a "death" entry for Korbar at some
     # point during the fight.
