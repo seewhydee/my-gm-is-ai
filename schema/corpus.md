@@ -611,7 +611,7 @@ a world graph keyed by a globally-unique `room_id`.
     "name": "string",
     "description": "string (shown when player enters or examines room)",
     "contains": ["<entity_id>", {"<entity_id>": <count>}, ...],
-    "soft_item_guidance": "string (freeform guidance for plausible generic items)",
+    "soft_item_guidance": "freeform description of generic items in room",
     "exits": [ { /* exit */ } ],
     "interactions": [ { /* interaction */ } ],
     "on_examine": [ { /* on_examine event */ } ],
@@ -693,12 +693,13 @@ Notes:
   - If `failure` is unspecified, a failed check sends a generic
     "nothing happens" message to the GM narrator.
 
-- `soft_item_guidance`, if specified, should be a list of possible
-  nondescript objects in this room, e.g. `["rock", "stone", "leaf"]`.
-  Each has a general name only, with no unique item ID.  It guides the
-  GM as to what plausible contents the room may have.  Its role is
-  advisory: depending on the gameplay context, the GM may include
-  items not in this list, or even reject items in the list.
+- `soft_item_guidance`, if specified, should be a freeform string
+  describing the nondescript ("soft") items within this room,
+  e.g. `"pebbles, leaves, and branches lie scattered on the floor"`.
+  This guides the GM as to what plausible soft items can be surfaced
+  in the room.  It is advisory only: depending on the gameplay
+  context, the GM may accept or reject this guidance.  For more
+  details, see the [Soft State schema](soft-state.md).
 
 ### Exit
 
@@ -980,7 +981,7 @@ No other entity may use this ID.
     "type": "player | feature | npc | item",
     "name": "string (required for item, optional otherwise)",
     "description": "string",
-    "soft_item_guidance": "string (freeform guidance for plausible generic items)",
+    "soft_item_guidance": "freeform description of generic contents",
     "contains": ["<entity_id>", {"<entity_id>": <count>}, ...],
     "tags": ["<tag>", ...],
     "take_check": { /* Gated Check (optional) */ },
@@ -1009,7 +1010,7 @@ The following fields are meaningful for all entity types:
 | `on_examine`¹   | array    | See [Examination](#examination)      |
 | `reactions`¹    | array    | See [Reaction](#reaction)            |
 | `state_fields`¹ | object   | `{ "<field>": <spec>, ...  }`        |
-| `soft_item_guidance`¹ | string   | Freeform guidance for plausible soft items on/in entity |
+| `soft_item_guidance`¹ | string | Guidance on soft items in entity |
 > ¹ optional
 
 Notes:
@@ -1086,10 +1087,10 @@ Notes:
     while a custom field defaults to `false` (boolean), `0` (number),
     or `""` (string).
 
-- `soft_item_guidance`, if specified, should be a list of possible
-  nondescript items contained within this entity.  Like the
-  identically-named field in Room objects, this advises the GM as to
-  what items to expect, but it is not used for strict validation.
+- `soft_item_guidance`, if specified, should be a freeform string
+  describing the nondescript ("soft") items contained within this
+  entity.  Like the identically-named field in Room objects, its role
+  is advisory and not binding on the GM.
 
 ### Feature
 

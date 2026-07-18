@@ -1,18 +1,11 @@
 # Soft Game State Schema
 
-Soft game state stores fuzzier, narrative-oriented information that the LLM may
-propose changes to. Unlike hard state, which is the engine's exclusive domain,
-soft state acts as a structured memory buffer between the LLM and the engine:
+The game's **soft state** is a store of fuzzy, narrative-oriented
+information.  Unlike hard state, which is managed rigorously by the
+engine only, soft state is co-managed by the LLM and the engine.
 
-- The LLM may propose **SoftStatePatch** entries in its `PlayerAction` output.
-- The engine validates each patch against a fixed schema and either applies or
-  rejects it.
-- Applied soft state feeds back into future GMBriefings via the Context
-  Assembler.
-
-This split prevents the LLM from confabulating hard mechanical changes (inventory,
-room transitions, flag toggles) while still allowing it to maintain narrative
-continuity (NPC moods, environmental details, conversation memory).
+For design details, see the [Soft State docs](../docs/soft.md).  This
+document describes the schema used in-game to track soft state.
 
 ## Top-Level Structure
 
@@ -71,9 +64,10 @@ unique IDs. They can be:
 }
 ```
 
-Freeform strings describing non-plot-relevant changes to rooms (e.g., cleared
-webs, rearranged debris, campfire remains). The Context Assembler includes the
-most recent notes (up to 5 per room) in the GMBriefing room description.
+Freeform strings describing non-plot-relevant changes to rooms (e.g.,
+cleared webs, rearranged debris, campfire remains). The Context
+Assembler includes the most recent notes (up to 5 per room) in the
+GMBriefing room description.
 
 ### Patch format
 
@@ -142,11 +136,12 @@ conversation summary is appended here as an `entity_note` on the NPC.
 
 ## NPC Attitude Tracking
 
-NPC attitude is now tracked as a `state_fields` entry per NPC in
-`hard_state.entity_states` (see `corpus.md` § `dialogue.attitude_limits`
-and the `entity_states` section of `hard-state.md`). Attitude changes are proposed
-by LLM Call 2 via the `attitude_changes` block, post-validated by the engine, and
-applied to `hard_state.entity_states[<npc_id>].attitude` via
+NPC attitude is tracked as a `state_fields` entry per NPC in
+`hard_state.entity_states` (see `corpus.md` §
+`dialogue.attitude_limits` and the `entity_states` section of
+`hard-state.md`). Attitude changes are proposed by LLM Call 2 via the
+`attitude_changes` block, post-validated by the engine, and applied to
+`hard_state.entity_states[<npc_id>].attitude` via
 `StateManager.apply_hard_changes()`.
 
 The Context Assembler includes attitude values for visible NPCs through the

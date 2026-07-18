@@ -1,55 +1,104 @@
-# Soft Items: Design and Implementation
+# The Soft State System
 
-## Overview
+The **soft state system** lets the AI GM track aspects of game state
+that are not strictly mechanical, such as tweaks to the environment,
+or moving/using generic items found in the game world.  Unlike hard
+state, which is managed rigorously by the engine only, soft state is
+co-managed by the LLM and the engine.
 
-**Soft items** refer to generic, nondescript items that exist in the
-game world, and can be picked up and/or used by the player, but that
-lack special significance.  Examples: rocks, loose stones, and leaves
-in a forest.  They are tracked by their generic names (e.g., `rock`).
-They contrast with **hard items** — named entities with plot relevance
-(e.g., `rusty_key`, `excalibur_sword`).
+By having the LLM co-manage soft state, we aim for flexibility: e.g.,
+the player may interact with items that were narrated as incidental
+detail but weren't modelled in the adventure corpus, or items that
+simply ought to exist based on common sense (e.g., hair on a dog).
+However, there are safeguards against abuse ("I search the leaves and
+pick up a wand of wishing").
 
-The soft items subsystem is intended to give the player access to
-items that (i) are mentioned in the narration as incidental detail,
-but were *not* explicitly modelled in the adventure corpus, or (ii)
-aren't mentioned, but ought to exist based on common sense (e.g., hair
-on a dog).  However, the subsystem guards against abuses ("I search
-the pile of leaves and pick up a wand of wishing").
+The system has two parts: **soft state notes**, and **soft items**.
 
-During the [turn loop](intro.md), LLM Call 1 may propose taking,
-giving, or examining one or more soft items that are not represented
-by hard entities.  The engine passes the proposal to LLM Call 2, which
-adjudicates whether to accept the proposed interaction.  Accepted
-takes and gives update the player's `soft_inventory` and the tracking
-fields described below; accepted examines affect narration only.
+- **Soft State Notes** – During the [turn loop](intro.md), LLM Call 1
+  checks if the player's actions cause a notable change to a room or
+  corpus-defined entity (feature, item, or NPC).  If so, it constructs
+  a `SoftStatePatch` object.  These are put this turn's
+  `PlayerAction`, in the `proposed_soft_state_patches` array (see the
+  [Action schema](actions.md)).
+  
+  Each `SoftStatePatch` records a change to the present room, or an
+  entity in that room.  The engine validates it against a simple
+  schema that forbids rooms other than the present room, and so forth;
+  if it passes, the note is attached to the room/entity and included
+  in future GM briefings.
 
-## Where Soft Items Live
+- **Soft Items** – These are nondescript items lacking special
+  significance, which can be picked up, dropped, and/or used by the
+  player.  Examples: rocks, loose stones, and leaves in a forest.
+  They are tracked by generic names (e.g., `rock`), and contrast with
+  corpus-defined **hard items** (e.g., `old_key`, `excalibur_sword`).
+
+  During each turn, LLM Call 1 may interpret the player's actions as
+  taking, giving, or examining one or more soft items.  If so, the
+  engine passes its proposal on to LLM Call 2, which adjudicates
+  whether to accept the proposed interaction.  If accepted, the soft
+  item is instantiated as necessary.  Soft items can be put in the
+  player's "soft inventory", or in corpus-defined rooms or entities.
+
+Relatedly, we also use LLM Call 2 to track and manage what NPCs
+remember of their conversations with the player, and any plot-relevant
+bits of information gleaned during conversation.  These mechanisms are
+described separately, in the [NPC docs](npcs.md).
+
+## Soft State Notes
+
+The game tracks soft state notes as arrays of freeform strings, keyed
+to each room or entity (feature, item, or NPC) ID:
+
+```json
+{
+  "manor_courtyard": [
+    "Player swept the leaves into a pile in the center",
+    "Player counted the trees: there are exactly 12"
+  ]
+}
+```
+
+These notes come from LLM Call 1 when it generates its output: a
+`PlayerAction` JSON object with a field `proposed_soft_state_patches`
+(optional), which accepts an array of objects like this:
+
+```json
+{
+  "entity_id": null,
+  "field": "room_note",
+  "target_id": "manor_courtyeard",
+  "old_value": null,
+  "new_value": "Player counted the trees: there are exactly 12",
+  "reason": "Player looked around the courtyard and specifically counted the number of trees"
+}
+```
+
+Multiple notes can be generated each turn, at the LLM's discretion.
+However, notes are allowed to be placed on only the current room, or
+entities present in the current room; any proposed note not following
+this rule is rejected by the engine.
+
+## Soft Items
 
 ### Corpus guidance
 
-Rooms and entities may contain an optional `soft_item_guidance` field,
-containing a freeform string that help the LLM know what kinds of
-generic objects are plausible in a scene.
+In the game's corpus, rooms and entities may contain an optional
+`soft_item_guidance` field, containing a freeform string that help the
+LLM know what kinds of generic contents are plausible.
 
 ```json
 {
   "rooms": {
     "axe_head": {
-      "soft_item_guidance": "Loose stones, dust, and cobwebs are common here."
-    }
-  },
-  "entities": {
-    "rubbish_pile": {
-      "type": "feature",
-      "soft_item_guidance": "Corks, loose copper pieces, stale food, and lint are plausible."
+      "soft_item_guidance": "Loose stones, dust, cobwebs"
     }
   }
 }
 ```
 
-This is advisory, *not* an authoritative whitelist.  Whether a
-proposed soft item is actually allowed is decided by LLM Call 2 during
-adjudication, as explained below.
+This is advisory, *not* an authoritative whitelist.
 
 ### Soft State
 
@@ -60,6 +109,10 @@ The player's carried soft items live in `soft_inventory`:
   "soft_inventory": ["rock", "cork"]
 }
 ```
+
+Soft items are identified by their general name only. Two "rock"
+entries in `soft_inventory` are indistinguishable. This is intentional
+— soft items are narrative props, not mechanical objects.
 
 Two further fields track soft items in the world, each with a single
 meaning.  `soft_items_taken` is a pure **extraction ledger**, written
@@ -75,6 +128,14 @@ has extracted N of `item_name` from `source_id`".  Every count is ≥ 1.
   }
 }
 ```
+
+This is written only by accepted takes, so every count is a completed
+extraction — a clean depletion signal for LLM Call 2. Placement is a
+different kind of fact — current state, not history — and lives in
+`soft_contents`, from which placed items can later be retrieved. The
+Context Assembler formats the two as `name (taken N)` and `name xN`
+respectively when building the GMBriefing.
+
 
 `soft_contents` tracks the **current placement** of soft items the
 player has given, placed, or dropped, keyed by the room or entity ID
@@ -263,33 +324,6 @@ The engine's post-validation step:
    `soft_items_taken` and `soft_contents`, and records rejection reasons
    for mismatches.  Accepted examines have no state effect.
 
-## Key Design Decisions
-
-### 1. No Unique IDs
-
-Soft items are identified by their general name only. Two "rock" entries in
-`soft_inventory` are indistinguishable. This is intentional — soft items are
-narrative props, not mechanical objects.
-
-### 2. Extraction Counts Are Tracked; Placement Is Tracked Separately
-
-`soft_items_taken` records how many times each soft item has been taken from
-each source. It is written only by accepted takes, so every count is a
-completed extraction — a clean depletion signal for LLM Call 2. Placement is
-a different kind of fact — current state, not history — and lives in
-`soft_contents`, from which placed items can later be retrieved. The Context
-Assembler formats the two as `name (taken N)` and `name xN` respectively
-when building the GMBriefing.
-
-### 3. LLM as Adjudicator
-
-The engine no longer rejects soft-item actions for being "not in the corpus."
-Instead, it issues proposals and lets LLM Call 2 decide what exists in the
-scene. This prevents the engine from blocking plausible player actions (e.g.,
-"I pick up a pebble") while still giving the narrator authority over the world.
-
-### 4. Engine Still Validates Structure
-
 The engine rejects adjudications that:
 
 - Do not match a proposal.
@@ -314,7 +348,7 @@ The engine rejects adjudications that:
 | `mgmai/engine/post_validate.py` | Validates and applies soft-item adjudications. |
 | `mgmai/context/assembler.py` | Populates `BriefingRoom`/`BriefingEntity` `soft_items_taken` and `soft_items_present`. |
 | `mgmai/game/loop.py` | Passes adjudications to post-validation. |
-| `doc/soft-items.md` | This document. |
+| `doc/soft-state.md` | This document. |
 
 
 > Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
