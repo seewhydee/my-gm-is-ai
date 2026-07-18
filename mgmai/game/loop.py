@@ -157,18 +157,27 @@ class GameLoop:
 
     # --- turn running ---
 
-    def _run_turn(self, player_input: str) -> None:
+    def _run_turn(self, player_input: str) -> Optional[str]:
+        """Run a single player-input turn (possibly chained) end to end.
+
+        Returns the final narration string rendered to the display, or
+        ``None`` if the turn aborted before producing any narration
+        (e.g. LLM Call 1 failed to parse on both attempts and the
+        fallback was rendered directly by ``_execute_turn``).  The REPL
+        ignores the return value; the headless harness uses it.
+        """
         self._chat_log.append({"role": "player", "content": player_input})
 
         chain_depth = 0
         current_input = normalize_player_input(player_input)
         room_changed = False
         examined_room = False
+        narration: Optional[str] = None
 
         while chain_depth < MAX_CHAIN_LENGTH:
             narration = self._execute_turn(current_input, player_input, chain_depth)
             if narration is None:
-                return
+                return None
 
             result = self._last_result
             action = self._last_action
@@ -202,7 +211,7 @@ class GameLoop:
 
             # Check for game over and handle end-of-turn bookkeeping
             self._finalize_turn(narration)
-            return
+            return narration
 
         if narration:
             if result and result.room_after and (room_changed or examined_room):
@@ -212,6 +221,8 @@ class GameLoop:
             self._chat_log.append({"role": "gm", "content": narration})
             self._display.render_narration(narration)
             self._finalize_turn(narration)
+            return narration
+        return None
 
     # ------------------------------------------------------------------
     # single-turn execution

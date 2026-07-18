@@ -72,6 +72,28 @@ class LLMClient:
             temperature=self._config.prose_temperature,
             max_tokens=self._config.prose_max_tokens)
 
+    def call(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Generic single-shot chat completion.
+
+        Used by auxiliary LLM roles (player driver, integration-test
+        judge) that don't fit the ruling/prose dichotomy.  Defaults to
+        the model's prose temperature and prose max_tokens when not
+        specified.
+        """
+        return self._call(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature if temperature is not None else self._config.prose_temperature,
+            max_tokens=max_tokens if max_tokens is not None else self._config.prose_max_tokens,
+        )
+
     # ------------------------------------------------------------------
     # internal
     # ------------------------------------------------------------------

@@ -29,6 +29,60 @@ from mgmai.engine.event_bus import reset_disabled_once
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-llm",
+        action="store_true",
+        default=False,
+        help="Run live-LLM integration tests (requires MGMAI_API_KEY)",
+    )
+    parser.addoption(
+        "--driver-model",
+        default=None,
+        help="Model name for the driver LLM in integration tests",
+    )
+    parser.addoption(
+        "--judge-model",
+        default=None,
+        help="Model name for the judge LLM in integration tests",
+    )
+    parser.addoption(
+        "--gm-model",
+        default=None,
+        help="Model name for the GM LLM in integration tests",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip llm-marked tests unless the user explicitly opts in.
+
+    Opt-in paths:
+      - targeting ``tests/integration`` explicitly, OR
+      - passing ``-m llm`` (or any marker expr mentioning ``llm``), OR
+      - passing ``--run-llm``
+
+    This keeps the default ``pytest`` invocation fast and free of API
+    costs while preserving the plan's stated UX of
+    ``pytest tests/integration`` running the integration suite.
+    """
+    args = [str(a) for a in (config.args or [])]
+    targeting_integration = any("tests/integration" in a for a in args)
+    marker_expr = config.getoption("-m") or ""
+    opted_in = (
+        targeting_integration
+        or "llm" in marker_expr
+        or config.getoption("--run-llm")
+    )
+    if opted_in:
+        return
+    skip_llm = pytest.mark.skip(
+        reason="LLM integration test; run with `pytest tests/integration`"
+    )
+    for item in items:
+        if "llm" in item.keywords:
+            item.add_marker(skip_llm)
+
+
 @pytest.fixture(scope="session")
 def sample_corpus_dict() -> dict:
     path = FIXTURES_DIR / "corpus.json"

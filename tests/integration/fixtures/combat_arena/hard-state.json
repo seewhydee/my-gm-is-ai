@@ -1,0 +1,36 @@
+{
+  "player": {
+    "location": "arena"
+  },
+  "flags": {},
+  "room_states": {
+    "arena": {"visited": false},
+    "corridor": {"visited": false}
+  },
+  "entity_states": {
+    "korbar": {
+      "alive": true,
+      "following": true,
+      "attitude": 5,
+      "current_hp": 22
+    },
+    "goblin_grunt": {
+      "alive": true,
+      "current_hp": 11
+    },
+    "goblin_runner": {
+      "alive": true,
+      "current_hp": 9
+    },
+    "goblin_shaman": {
+      "alive": true,
+      "current_hp": 16
+    },
+    "bugbear": {
+      "alive": true,
+      "current_hp": 22
+    }
+  },
+  "turn_count": 0,
+  "game_over": null
+}

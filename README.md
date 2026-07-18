@@ -74,6 +74,43 @@ Then fire up an LLM of your choice and instruct it to follow the steps in `schem
 
 Finally, playtest extensively, and ask the LLM to fix the scenario's JSON files until it works satisfactorily (or not).
 
+## Testing
+
+The regular test suite is deterministic and uses fake LLM clients — it runs in a few seconds with no network access:
+
+```bash
+pytest                  # run the full unit suite (fast, no API calls)
+pytest tests/test_combat.py -k "flee"   # run a specific subset
+```
+
+### LLM integration tests
+
+A separate suite of **LLM-driven integration tests** lives in `tests/integration/`.  These run a "driver" LLM as the player against the real GM LLM over a combat scenario, verifying the full two-call pipeline (ruling → engine → prose) plus narration quality via an LLM judge.
+
+These tests are **skipped by default** (no API key, no cost).  To run them:
+
+```bash
+export MGMAI_API_KEY="..."
+export MGMAI_MODEL="deepseek-v4-flash"   # or any registered model
+
+pytest tests/integration                  # run all integration scenarios
+pytest tests/integration -k flee          # run a specific scenario
+```
+
+Optional flags select different models for each role (defaults to `MGMAI_MODEL`):
+
+```bash
+pytest tests/integration --gm-model deepseek-v4-flash --driver-model kimi-k2.6 --judge-model mistral-small-2603
+```
+
+**Cost expectations.** Each game turn makes 2 GM LLM calls (ruling + prose) plus 1 driver call.  A 15-turn run is ≈ 45 LLM calls, plus 1 judge call at the end.  Four scenarios are included (fight-to-completion, flee, consumable/ability focus, ally death); a full `pytest tests/integration` run is roughly 4 × 45 ≈ 180 calls.
+
+**Artifacts.** Every run dumps a full JSON transcript (commands, narration, combat log, per-turn status snapshots, judge verdict) to `tests/integration/artifacts/` for human review, regardless of pass/fail.
+
+### Headless harness
+
+The integration tests are built on `mgmai.game.headless.HeadlessSession`, a programmatic entry point that composes `StateManager` + `GameLoop` + a recording display.  It bypasses the interactive REPL and captures every turn's narration, status, and combat log — useful for automation and scripting beyond testing.
+
 ## Documentation
 
 The design documentation is in the `doc/` folder:

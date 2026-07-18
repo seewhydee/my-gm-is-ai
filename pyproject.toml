@@ -28,3 +28,6 @@ include = ["mgmai*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "llm: marks tests as requiring live LLM API calls (deselect with -m 'not llm')",
+]

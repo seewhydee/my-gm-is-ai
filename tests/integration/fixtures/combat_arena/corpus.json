@@ -1,0 +1,215 @@
+{
+  "adventure": {
+    "id": "combat_arena",
+    "title": "Combat Arena",
+    "introduction": "A proving ground for combat mechanics. You stand in a dusty sand-floored arena beside your ally Korbar. Four enemies block the northern corridor: a goblin grunt, a skittish goblin runner, a goblin shaman, and a thick-skinned bugbear. Fight your way through.",
+    "atmosphere": {
+      "setting": "a dusty gladiatorial arena",
+      "tone": "tense"
+    }
+  },
+  "rooms": {
+    "arena": {
+      "id": "arena",
+      "name": "The Arena",
+      "description": "A circular sand-floored arena ringed by cracked stone walls. A narrow corridor leads north, but four enemies stand between you and the exit: a goblin grunt with a rusty shortsword, a skittish goblin runner clutching javelins, a hunched goblin shaman rattling bone fetishes, and a hulking bugbear hefting a morningstar. Korbar stands at your side, warhammer ready.",
+      "exits": [
+        {
+          "id": "exit_north",
+          "direction": "North to the exit corridor",
+          "target_room": "corridor"
+        }
+      ],
+      "contains": [
+        "goblin_grunt",
+        "goblin_runner",
+        "goblin_shaman",
+        "bugbear",
+        "korbar"
+      ],
+      "interactions": [],
+      "is_start_room": true
+    },
+    "corridor": {
+      "id": "corridor",
+      "name": "Exit Corridor",
+      "description": "A narrow stone corridor leading out of the arena. The sounds of combat fade behind you."
+    }
+  },
+  "entities": {
+    "longsword": {
+      "type": "item",
+      "name": "Longsword",
+      "description": "A standard steel longsword, well-balanced and sharp.",
+      "tags": ["weapon"],
+      "equip_block": {
+        "equip_tags": ["weapon"],
+        "damage_expr": "1d8",
+        "hit_bonus": 0,
+        "damage_type": "slashing"
+      }
+    },
+    "health_potion": {
+      "type": "item",
+      "name": "Healing Potion",
+      "description": "A vial of crimson liquid that heals 2d4+2 HP when drunk. Drink it when badly hurt.",
+      "consumable": {
+        "heal": "2d4+2",
+        "destroy": true
+      }
+    },
+    "korbar": {
+      "type": "npc",
+      "name": "Korbar",
+      "description": "A stocky dwarf warrior with a braided beard and a battered warhammer. She fights at your side.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "following": {"type": "boolean", "description": "Following the player?"},
+        "attitude": {"type": "number", "description": "Attitude toward the player"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "follower": {
+        "blacklist": []
+      },
+      "dialogue": {
+        "guidelines": "Stoic, loyal, and battle-hardened. Speaks in short sentences. Already allied with the player.",
+        "attitude_limits": {
+          "min": -10,
+          "max": 10,
+          "step_per_turn": 1
+        }
+      },
+      "combat": {
+        "hp": 22,
+        "ac": 16,
+        "atk": 5,
+        "dmg": "1d10+3",
+        "dmg_type": "bludgeoning",
+        "initiative_mod": 1,
+        "flee_dc": 12
+      }
+    },
+    "goblin_grunt": {
+      "type": "npc",
+      "name": "Goblin Grunt",
+      "description": "A scrawny goblin wielding a rusty shortsword. The baseline melee threat.",
+      "combat_group": "arena_foes",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 11,
+        "ac": 13,
+        "atk": 4,
+        "dmg": "1d6",
+        "dmg_type": "slashing",
+        "initiative_mod": 2,
+        "flee_dc": 10
+      }
+    },
+    "goblin_runner": {
+      "type": "npc",
+      "name": "Goblin Runner",
+      "description": "A nimble goblin scout clutching javelins. Looks skittish and likely to bolt when hurt.",
+      "combat_group": "arena_foes",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 9,
+        "ac": 14,
+        "atk": 3,
+        "dmg": "1d4",
+        "dmg_type": "piercing",
+        "initiative_mod": 4,
+        "flee_dc": 8,
+        "ai": {
+          "targeting": "last_attacker",
+          "flee_below_hp_pct": 35
+        }
+      }
+    },
+    "goblin_shaman": {
+      "type": "npc",
+      "name": "Goblin Shaman",
+      "description": "A hunched goblin in bone regalia, clutching a feathered fetish. It can heal its allies with a whispered incantation, but only every few rounds.",
+      "combat_group": "arena_foes",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 16,
+        "ac": 12,
+        "atk": 3,
+        "dmg": "1d6",
+        "dmg_type": "slashing",
+        "initiative_mod": 0,
+        "flee_dc": 10,
+        "abilities": ["mend_wounds"],
+        "ai": {
+          "targeting": "lowest_hp",
+          "ability_rules": {
+            "mend_wounds": {"cooldown_rounds": 2}
+          }
+        }
+      }
+    },
+    "bugbear": {
+      "type": "npc",
+      "name": "Bugbear",
+      "description": "A hulking bugbear with thick, leathery hide. It shrugs off piercing weapons but is vulnerable to fire. Its morningstar hits hard.",
+      "combat_group": "arena_foes",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 22,
+        "ac": 11,
+        "atk": 6,
+        "dmg": "1d8+2",
+        "dmg_type": "bludgeoning",
+        "initiative_mod": -1,
+        "flee_dc": 14,
+        "resistances": ["piercing"],
+        "vulnerabilities": ["fire"]
+      }
+    }
+  },
+  "abilities": {
+    "flame_strike": {
+      "name": "Flame Strike",
+      "description": "You call down a column of roaring fire on a target. The target must make a DEX save, taking 2d6 fire damage on a failed save or half on a successful one. Particularly effective against fire-vulnerable foes like the bugbear.",
+      "target": "enemy",
+      "uses_per_combat": 2,
+      "save": {
+        "stat": "DEX",
+        "dc": 13,
+        "damage": "2d6",
+        "damage_type": "fire",
+        "half_on_success": true
+      }
+    },
+    "mend_wounds": {
+      "name": "Mend Wounds",
+      "description": "The shaman knits flesh with a whispered incantation, healing the most-injured ally for 2d4+2 HP.",
+      "target": "ally",
+      "uses_per_combat": 4,
+      "heal": "2d4+2"
+    }
+  },
+  "stats": {
+    "definitions": {
+      "STR": {"name": "Strength"},
+      "DEX": {"name": "Dexterity"},
+      "CON": {"name": "Constitution"},
+      "INT": {"name": "Intelligence"},
+      "WIS": {"name": "Wisdom"},
+      "CHA": {"name": "Charisma"}
+    },
+    "system": "5e"
+  }
+}
