@@ -17,25 +17,24 @@ The system has two parts: **soft state notes**, and **soft items**.
 
 - **Soft State Notes** – During the [turn loop](intro.md), LLM Call 1
   checks if the player's actions cause a notable change to a room or
-  corpus-defined entity (feature, item, or NPC).  If so, it constructs
-  a `SoftStatePatch` object.  These are put in that turn's
-  `PlayerAction`, in the `soft_state_patches` array (see the
-  [Action schema](../schema/actions.md)).
+  corpus-defined entity (feature, item, or NPC).  If so, it writes a
+  `SoftStatePatch` object, which goes in the `PlayerAction`'s
+  `soft_state_patches` array (see [Action schema](../schema/actions.md)).
   
   Each `SoftStatePatch` records a change to the present room, or an
-  entity present in that room (or the player entity, for "global"
-  notes).  The engine validates it against a simple schema that forbids
-  rooms other than the present room and entities not in the present
-  room, and so forth; if it passes, the note is attached to the
-  room/entity and included in future GM briefings.
+  entity in that room (or the player entity, for global notes).  The
+  engine validates it against a simple schema that forbids rooms other
+  than the present room and entities not in the present room, and so
+  forth; if it passes, the note is attached to the room/entity and
+  included in future GM briefings.
 
-- **Soft Items** – These are nondescript items lacking special
-  significance, which can be picked up, dropped, and/or used by the
-  player.  Examples: rocks, loose stones, and leaves in a forest.
-  They are tracked by generic names (e.g., `rock`), and contrast with
+- **Soft Items** – These are nondescript items that can be picked up,
+  dropped, and/or used by the player.  Examples: rocks, loose stones,
+  and leaves in a forest.  They have generic names (e.g., `rock`) and
+  lack distinguishing features (tags, state fields, etc.), unlike
   corpus-defined **hard items** (e.g., `old_key`, `excalibur_sword`).
 
-  During each turn, LLM Call 1 may interpret the player's actions as
+  In each turn, LLM Call 1 may interpret the player's actions as
   taking, giving, or examining one or more soft items.  If so, the
   engine passes its proposal on to LLM Call 2, which adjudicates
   whether to accept the proposed interaction.  If accepted, the soft
@@ -61,10 +60,10 @@ to each room or entity (feature, item, or NPC) ID:
 }
 ```
 
-These notes come from LLM Call 1: its `PlayerAction` output carries an
-optional `soft_state_patches` array (see the [Action schema](../schema/actions.md)).
-A room-note patch carries no room identifier — the engine attaches it to
-the player's current room:
+These notes come from the optional `soft_state_patches` array in the
+`PlayerAction` emitted by LLM Call 1.  Here is an example of a
+room-note patch (which carries no room identifier — the engine
+attaches it automatically to the current room):
 
 ```json
 {
@@ -78,14 +77,14 @@ Multiple notes can be generated each turn, at the LLM's discretion.
 Notes may target only:
 
 - the **current room** (via `room_note`), or
-- an **entity present in the current room** — including entities nested
+- an **entity present in the current room**, including entities nested
   inside containers, and following NPCs (via `entity_note`), or
-- the **player entity** (`entity_id: "player"`), for "global"
+- the **player entity** (`entity_id: "player"`), for global
   observations that should follow the player across rooms.
 
 Any proposed note not following this rule is rejected by the engine.
-The full patch format and validation rules live in
-[schema/soft-state.md](../schema/soft-state.md).
+For the patch format and validation rules,see the
+[Soft State schema](../schema/soft-state.md).
 
 ## Soft Items
 
@@ -109,18 +108,23 @@ This is advisory, *not* an authoritative whitelist.
 
 ### Soft State
 
-Carried soft items live in `soft_inventory`, identified by general name
-only — two "rock" entries are indistinguishable, which is intentional
-(soft items are narrative props, not mechanical objects). Two further
-fields track soft items in the world: `soft_items_taken` is a pure
-**extraction ledger** (written only on accepted takes of ambient items,
-so every count is a completed extraction and a clean depletion signal),
-while `soft_contents` tracks the **current placement** of items the
-player has given, dropped, or placed (incremented on accepted gives,
-decremented on retrieval, pruned at zero). The Context Assembler
-formats the two as `name (taken N)` and `name xN` respectively in the
-GMBriefing. See [schema/soft-state.md](../schema/soft-state.md) for the
-JSON shapes and population rules.
+Soft items identified by general name only; identically-named soft
+items (e.g. two "rock" entries) are deliberately indistinguishable.
+
+Soft items are tracked in three data structures:
+
+- `soft_inventory` lists the soft items carried by the player.
+
+- `soft_items_taken` is an **extraction ledger** specifying the number
+  of soft items taken from various sources (rooms or entities).  Every
+  count is a completed extraction and a clean depletion signal.
+
+- `soft_contents` tracks the **current placement** of soft items the
+  player has put in each room or entity.  These lists are incremented
+  on accepted gives, decremented on retrieval, and pruned at zero.
+  
+The Context Assembler includes these in the GMBriefing; for details,
+see the [Soft State schema](../schema/soft-state.md).
 
 ## Interaction Flow
 
@@ -151,8 +155,8 @@ soft-item state.  If an examine establishes a durable fact the player
 may return to, LLM Call 1 should record it via a `room_note` or
 `entity_note` patch (see `schema/soft-state.md`).
 
-Because `ExamineAction` does not carry an entity source, examine proposals
-always use the **current room** as `source_id`.
+Because `ExamineAction` does not carry an entity source, examine
+proposals always use the **current room** as `source_id`.
 
 ### Picking Up / Taking a Soft Item
 
