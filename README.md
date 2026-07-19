@@ -50,7 +50,6 @@ API keys are stored in `~/.config/mgmai/credentials.json`:
 
 ```json
 {
-  "api_key": "sk-fallback-for-any-provider",
   "api_keys": {
     "deepseek": "sk-deepseek-key",
     "moonshot": "sk-moonshot-key",

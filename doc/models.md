@@ -117,7 +117,6 @@ When models from different providers need separate API keys, expand
 
 ```json
 {
-  "api_key": "sk-fallback-for-any-provider",
   "api_keys": {
     "deepseek": "sk-deepseek-key",
     "moonshot": "sk-moonshot-key",
@@ -135,7 +134,6 @@ Resolution order for each model:
 1. CLI `--api-key` (applies to all models)
 2. `MGMAI_API_KEY` environment variable (applies to all models)
 3. `credentials.api_keys[provider]` (per-provider key)
-4. `credentials.api_key` (fallback)
 
 Provider-specific keys are useful for integration tests where the GM,
 driver, and judge LLMs are hosted by different providers, or when a
@@ -208,7 +206,7 @@ Key points:
 | File | Purpose | Contains |
 |------|---------|----------|
 | `~/.config/mgmai/config.json` | Persistent app config | Last-used model name, base URL, adventure path, temperature overrides |
-| `~/.config/mgmai/credentials.json` | API credentials (chmod 0600) | Default API key + optional per-provider keys |
+| `~/.config/mgmai/credentials.json` | API credentials (chmod 0600) | Per-provider API keys |
 | `~/.config/mgmai/models.json` | Custom model registry | Full ModelConfig entries for non-built-in models |
 
 ## In-game model switching

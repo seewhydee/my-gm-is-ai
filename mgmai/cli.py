@@ -155,7 +155,7 @@ def main(argv: list[str] | None = None) -> None:
 
     api_key, model_name, base_url = _prompt_for_llm_config(
         display, config_dir, credentials, app_config,
-        api_key, model_name, base_url, custom_models)
+        api_key, model_name, base_url, provider, custom_models)
 
     config = get_model_config(model_name, base_url=base_url,
                               custom_models=custom_models)
@@ -220,6 +220,7 @@ def _prompt_for_llm_config(
     api_key: str,
     model_name: str,
     base_url: str | None,
+    provider: str | None,
     custom_models: dict[str, object] | None = None,
 ) -> tuple[str, str, str]:
     """Prompt for any missing LLM configuration.
@@ -324,11 +325,15 @@ def _prompt_for_llm_config(
                 break
             display.print("[red]API key cannot be empty.[/red]")
 
-    credentials.api_key = api_key
-    try:
-        save_credentials(credentials, config_dir)
-    except OSError as e:
-        display.print(f"[yellow]Could not save API key: {e}[/yellow]")
+    if api_key:
+        provider = get_provider(model_name, base_url=base_url,
+                                custom_models=custom_models)
+        if provider:
+            credentials.api_keys[provider] = api_key
+            try:
+                save_credentials(credentials, config_dir)
+            except OSError as e:
+                display.print(f"[yellow]Could not save API key: {e}[/yellow]")
 
     app_config.model_name = model_name
     app_config.base_url = base_url

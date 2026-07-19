@@ -130,20 +130,16 @@ def save_app_config(config: AppConfig,
 class Credentials:
     """API credentials stored in credentials.json (separate from config for security).
 
-    ``api_key`` is the default key used when no provider-specific key
-    matches.  ``api_keys`` maps a provider short-name (the hostname
-    portion of a base_url, e.g. ``"deepseek"`` for
-    ``https://api.deepseek.com``) to its API key, so different models
-    hosted by different providers can each have their own key.
+    ``api_keys`` maps a provider short-name (the hostname portion of a
+    base_url, e.g. ``"deepseek"`` for ``https://api.deepseek.com``) to
+    its API key, so different models hosted by different providers can
+    each have their own key.
     """
 
-    api_key: str = ""
     api_keys: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {}
-        if self.api_key:
-            d["api_key"] = self.api_key
         if self.api_keys:
             d["api_keys"] = dict(self.api_keys)
         return d
@@ -151,7 +147,6 @@ class Credentials:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Credentials:
         return cls(
-            api_key=data.get("api_key", ""),
             api_keys=data.get("api_keys", {}),
         )
 
@@ -195,26 +190,26 @@ def resolve_api_key(*,
                     cli_arg: str | None = None,
                     env_var: str | None = None,
                     credentials: Credentials | None = None,
-                    provider: str | None = None) -> str:
+                    provider: str | None = None,
+                    override_key: str | None = None) -> str:
     """Return the first non-empty API key from the given sources.
 
-    Priority: *cli_arg* > *env_var* > provider-specific key in
-    *credentials* > *credentials* default key.  Returns ``""`` if no
-    key is found.
+    Priority: *cli_arg* > *override_key* > *env_var* >
+    provider-specific key in *credentials*.  Returns ``""`` if no key
+    is found.
 
-    *provider* is a short label like ``"deepseek"`` or ``"moonshot"``
-    derived from the model's base URL hostname.  When set, the
-    credentials lookup checks ``credentials.api_keys[provider]``
-    before falling back to ``credentials.api_key``.
+    *cli_arg* is the ``--api-key`` CLI flag (session override).
+    *override_key* is an interactively entered key (e.g. from the
+    ``/model`` command).  *provider* is a short label like
+    ``"deepseek"`` or ``"moonshot"`` derived from the model's base URL
+    hostname.  When set, the credentials lookup checks
+    ``credentials.api_keys[provider]``.
     """
-    for source in (cli_arg, env_var):
+    for source in (cli_arg, override_key, env_var):
         if source:
             return source
-    if credentials is not None:
-        if provider and provider in credentials.api_keys:
-            return credentials.api_keys[provider]
-        if credentials.api_key:
-            return credentials.api_key
+    if credentials is not None and provider:
+        return credentials.api_keys.get(provider, "")
     return ""
 
 

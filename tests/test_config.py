@@ -133,24 +133,28 @@ class TestAppConfig:
 class TestCredentials:
     def test_default_empty(self):
         c = Credentials()
-        assert c.api_key == ""
+        assert c.api_keys == {}
 
     def test_to_dict(self):
-        c = Credentials(api_key="sk-abc123")
-        assert c.to_dict() == {"api_key": "sk-abc123"}
+        c = Credentials(api_keys={"deepseek": "sk-abc123"})
+        assert c.to_dict() == {"api_keys": {"deepseek": "sk-abc123"}}
+
+    def test_to_dict_empty(self):
+        c = Credentials()
+        assert c.to_dict() == {}
 
     def test_roundtrip(self, tmp_path):
-        c = Credentials(api_key="sk-secret")
+        c = Credentials(api_keys={"deepseek": "sk-secret"})
         save_credentials(c, tmp_path)
         loaded = load_credentials(tmp_path)
-        assert loaded.api_key == "sk-secret"
+        assert loaded.api_keys == {"deepseek": "sk-secret"}
 
     def test_load_missing_file_returns_empty(self, tmp_path):
         c = load_credentials(tmp_path)
-        assert c.api_key == ""
+        assert c.api_keys == {}
 
     def test_file_has_restrictive_permissions(self, tmp_path):
-        c = Credentials(api_key="sk-secret")
+        c = Credentials(api_keys={"deepseek": "sk-secret"})
         save_credentials(c, tmp_path)
         path = get_credentials_file(tmp_path)
         mode = path.stat().st_mode
@@ -162,29 +166,42 @@ class TestCredentials:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("not json")
         c = load_credentials(tmp_path)
-        assert c.api_key == ""
+        assert c.api_keys == {}
 
 
 class TestResolveApiKey:
     def test_cli_arg_wins(self):
-        creds = Credentials(api_key="from-file")
-        assert resolve_api_key(cli_arg="cli", env_var="env", credentials=creds) == "cli"
+        creds = Credentials(api_keys={"deepseek": "from-file"})
+        assert resolve_api_key(cli_arg="cli", env_var="env",
+                               credentials=creds, provider="deepseek") == "cli"
+
+    def test_override_key_wins_over_env(self):
+        creds = Credentials(api_keys={"deepseek": "from-file"})
+        assert resolve_api_key(env_var="env", credentials=creds,
+                               provider="deepseek",
+                               override_key="override") == "override"
 
     def test_env_wins_over_file(self):
-        creds = Credentials(api_key="from-file")
-        assert resolve_api_key(env_var="env", credentials=creds) == "env"
+        creds = Credentials(api_keys={"deepseek": "from-file"})
+        assert resolve_api_key(env_var="env", credentials=creds,
+                               provider="deepseek") == "env"
 
-    def test_file_as_fallback(self):
-        creds = Credentials(api_key="from-file")
-        assert resolve_api_key(credentials=creds) == "from-file"
+    def test_provider_key_from_credentials(self):
+        creds = Credentials(api_keys={"deepseek": "from-file"})
+        assert resolve_api_key(credentials=creds, provider="deepseek") == "from-file"
+
+    def test_missing_provider_returns_empty(self):
+        creds = Credentials(api_keys={"deepseek": "from-file"})
+        assert resolve_api_key(credentials=creds, provider="moonshot") == ""
+
+    def test_no_provider_returns_empty(self):
+        creds = Credentials(api_keys={"deepseek": "from-file"})
+        assert resolve_api_key(credentials=creds) == ""
 
     def test_all_empty_returns_empty(self):
         assert resolve_api_key() == ""
 
     def test_empty_strings_ignored(self):
-        creds = Credentials(api_key="")
-        assert resolve_api_key(cli_arg="", env_var="", credentials=creds) == ""
-
-    def test_skips_empty_then_uses_next(self):
-        creds = Credentials(api_key="from-file")
-        assert resolve_api_key(cli_arg="", env_var="env", credentials=creds) == "env"
+        creds = Credentials(api_keys={"deepseek": "from-file"})
+        assert resolve_api_key(cli_arg="", env_var="", credentials=creds,
+                               provider="deepseek") == "from-file"

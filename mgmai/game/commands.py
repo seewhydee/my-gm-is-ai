@@ -24,6 +24,7 @@ from typing import Any, Callable
 from mgmai.llm.model_config import (
     get_known_model_labels,
     get_model_config,
+    get_provider,
     load_custom_models,
 )
 from mgmai.logging import get_level, set_level
@@ -294,11 +295,19 @@ class Commands:
             new_model = choice
 
         # --- API key ---
-        current_api = credentials.api_key or "(not set)"
-        if current_api and current_api != "(not set)":
-            current_api = current_api[:4] + "..." + current_api[-4:] if len(current_api) > 8 else "***"
+        from mgmai.config import resolve_api_key
+        import os
 
-        self._render(f"\n[bold]API Key[/bold]  [dim](current: {current_api})[/dim]")
+        provider = get_provider(new_model, base_url=None,
+                                custom_models=custom_models)
+        current_api = resolve_api_key(
+            env_var=os.environ.get("MGMAI_API_KEY"),
+            credentials=credentials, provider=provider)
+        display_api = current_api or "(not set)"
+        if display_api != "(not set)":
+            display_api = display_api[:4] + "..." + display_api[-4:] if len(display_api) > 8 else "***"
+
+        self._render(f"\n[bold]API Key[/bold]  [dim](current: {display_api})[/dim]")
         self._render("  (leave blank to keep current)")
         try:
             new_key = getpass.getpass("  Enter API key: ").strip()
@@ -307,7 +316,8 @@ class Commands:
             return
 
         if new_key:
-            credentials.api_key = new_key
+            if provider:
+                credentials.api_keys[provider] = new_key
             try:
                 save_credentials(credentials, self._config_dir)
                 self._render("  [green]API key saved.[/green]")
@@ -349,10 +359,19 @@ class Commands:
         self._render(f"\n[green]Switched to [cyan]{new_model}[/cyan][/green]")
 
         if self._on_model_change:
+            from mgmai.config import resolve_api_key
+            import os
+
             effective_url = new_url if new_url else None
             new_cfg = get_model_config(new_model, base_url=effective_url,
                                        custom_models=custom_models)
-            self._on_model_change(credentials.api_key, new_cfg)
+            new_provider = get_provider(new_model, base_url=effective_url,
+                                        custom_models=custom_models)
+            resolved_key = resolve_api_key(
+                env_var=os.environ.get("MGMAI_API_KEY"),
+                credentials=credentials, provider=new_provider,
+                override_key=new_key or None)
+            self._on_model_change(resolved_key, new_cfg)
             self._model_config = new_cfg
 
     def _cmd_inv(self, _: str) -> None:

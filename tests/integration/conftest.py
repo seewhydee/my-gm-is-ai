@@ -64,8 +64,7 @@ def _resolve_model(request, opt_name: str) -> str:
 def _make_client(request, opt_name: str) -> LLMClient:
     model_name = _resolve_model(request, opt_name)
     # Resolve the API key for this specific model's provider.
-    # Priority: MGMAI_API_KEY env var > credentials.api_keys[provider]
-    # > credentials.api_key.
+    # Priority: MGMAI_API_KEY env var > credentials.api_keys[provider].
     api_key, provider = resolve_api_key_for_model(
         model_name,
         credentials=_CREDENTIALS,

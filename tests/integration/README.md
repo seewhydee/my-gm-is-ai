@@ -8,53 +8,22 @@ these tests make live API calls and are **skipped by default**.
 ## Quick start
 
 ```bash
-export MGMAI_API_KEY="..."
-export MGMAI_MODEL="deepseek-v4-flash"   # or any registered model
-
 pytest tests/integration                  # run all integration scenarios
 pytest tests/integration -k flee          # run a specific scenario
 ```
 
-### Using different models per role
+This uses the default model and API key stored in the config and
+credential files.  As usual, you can use the `MGMAI_MODEL` and
+`MGMAI_API_KEY` envvars to choose a different model and API key.
 
-Pass `--gm-model`, `--driver-model`, and/or `--judge-model` to assign
-different models to each role:
+To use different models for the different test roles, pass
+`--gm-model`, `--driver-model`, and/or `--judge-model`:
 
 ```bash
 pytest tests/integration \
   --gm-model deepseek-v4-flash \
   --driver-model deepseek-reasoner \
   --judge-model mistral-small-2603
-```
-
-Each flag defaults to `MGMAI_MODEL` if not specified, so you can set a
-baseline and override only the roles you want.
-
-### Using different API keys per provider
-
-If your models are hosted by different providers (each needing its own
-API key), add the keys to `~/.config/mgmai/credentials.json`:
-
-```json
-{
-  "api_key": "sk-fallback-key-for-any-provider",
-  "api_keys": {
-    "deepseek": "sk-deepseek-key",
-    "moonshot": "sk-moonshot-key",
-    "mistral": "sk-mistral-key"
-  }
-}
-```
-
-The provider name is the publisher part of the base URL hostname
-(e.g. `"deepseek"` for `https://api.deepseek.com`).  If a
-provider-specific key is not found, `api_key` is used as fallback.
-
-Credentials can also be set via environment variables:
-
-```bash
-export MGMAI_API_KEY="sk-fallback"        # fallback for all providers
-export MGMAI_BASE_URL="https://..."       # override base URL for all models
 ```
 
 ## What is tested
