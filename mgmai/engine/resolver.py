@@ -1747,8 +1747,30 @@ def _resolve_combat_action(
     soft: SoftGameState,
     state_manager: Any | None = None,
 ) -> ResolutionResult:
-    """Resolve a CombatAction via the combat module."""
+    """Resolve a CombatAction via the combat module.
+
+    Out of combat, an ``attack`` is equivalent to the generic
+    ``interact``/``attack`` interaction: it starts combat with the
+    target.  (LLM Call 1 naturally emits ``combat``/``attack`` for
+    out-of-combat attack commands, and the engine already knows
+    exactly what that means.)
+    """
     from mgmai.engine.combat import resolve_combat_turn
+
+    combat = hard.combat
+    if (
+        (combat is None or not combat.active)
+        and action.combat_action == "attack"
+    ):
+        return resolve_interact(
+            InteractAction(
+                action_type="interact",
+                target=action.target,
+                interaction_id="attack",
+                detail=action.detail,
+            ),
+            hard, soft, corpus, state_manager,
+        )
 
     result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
     if not result["success"]:

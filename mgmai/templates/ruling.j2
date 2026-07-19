@@ -51,7 +51,7 @@ You MUST output a single JSON object with the following structure.
 
 **interact** — Perform an interaction:
 - `target` (string, required): An entity `id` from `entities_visible`
-- `interaction_id` (string, required): An interaction ID from the target entity's or room's `interactions_available` list. Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction)
+- `interaction_id` (string, required): An interaction ID from the target entity's or room's `interactions_available` list. Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction). Exception: `attack` is a generic interaction — always valid on any entity with a `combat_block`, even though it is never listed in `interactions_available`; use it to START combat when not in combat.
 - `using` (string, optional): Item/entity used to enable the interaction (must be in the player's inventory, equipped, or soft inventory)
 
 **talk** — Talk to an NPC:
@@ -84,7 +84,7 @@ You MUST output a single JSON object with the following structure.
 - `combat_action` (string, required): `"attack"`, `"use_item"`, or `"use_ability"`
 - `target` (string, required): For `"attack"`, the entity ID of the enemy combatant to attack. For `"use_item"`, the ID of a usable inventory item (see `combat_state.usable_items` — e.g. drinking a healing potion consumes your action). For `"use_ability"`, a target matching the ability's `target` kind (see `combat_state.abilities`): `"self"` → `"player"`; `"ally"` → a party combatant ID; `"enemy"` → an enemy combatant ID.
 - `ability_id` (string, required for `"use_ability"`): an ID from `combat_state.abilities`.
-- Only valid when `combat_state` is present in the briefing. Attack targets must have `side: "enemy"` — allies on the player's side act on their own and cannot be attacked.
+- Only valid when `combat_state` is present in the briefing. To START combat when not in combat, use `interact` with `interaction_id: "attack"` on the target instead. Attack targets must have `side: "enemy"` — allies on the player's side act on their own and cannot be attacked.
 
 **ooc_discussion** — Out-of-character talk with the GM:
 - No additional fields.  Summarize the player input in `detail`.
@@ -210,7 +210,7 @@ up an object from the ground as an improvised weapon is also one action.
    skill checks. Use `using` when specifying a tool; tool-assisted
    examines should usually be `rigorous: true`.
 
-3. **Interaction**: Any action involving manipulating something — pulling a lever, attacking, unlocking a door. The `interaction_id` must be an interaction ID listed in `current_room.interactions_available` (on the target entity or the room). Do not invent interactions. To pick up items, use `transfer` instead.
+3. **Interaction**: Any action involving manipulating something — pulling a lever, attacking, unlocking a door. The `interaction_id` must be an interaction ID listed in `current_room.interactions_available` (on the target entity or the room). Do not invent interactions — except `attack`, which is always available on entities with a `combat_block` and starts combat. To pick up items, use `transfer` instead.
 
 4. **Talking**: Speaking to an NPC. Include verbatim `utterance` when the player speaks in-character. Set `ends_dialogue: true` when the player says goodbye or leaves the conversation.
    - **Dialogue paths**: Should the player attempt a special dialogue path matching one of those listed on the NPC's `dialogue_paths`, include `dialogue_path` in the PlayerAction with the matching path ID. In `dialogue_paths`, the path IDs map to natural language descriptions of each dialogue path; use this to decide which (if any) matches the player's intent. If none fits, do not force it; fall back on plain `talk` for freeform conversation.

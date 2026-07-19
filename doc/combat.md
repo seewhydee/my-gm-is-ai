@@ -244,7 +244,10 @@ Combat starts in one of two ways:
    on an NPC that has a `CombatBlock`. A direct attack immediately enters
    combat with that NPC plus any present, living members of its
    `combat_group`.  If the NPC has an `interaction.used` reaction that
-   triggers an encounter, the encounter rules run first.
+   triggers an encounter, the encounter rules run first.  A `combat`
+   action (`combat_action: "attack"`) received while *not* in combat is
+   treated the same way — the engine routes it through this path rather
+   than rejecting it, since the intent is unambiguous.
 2. **Encounter outcome** — An NPC's `aggro.encounter_rules` or a
    `mechanics` encounter returns a `result.start_combat` list.  The
    listed entity IDs are added to the source, and each id's

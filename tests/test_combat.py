@@ -1113,6 +1113,27 @@ class TestResolverIntegration:
         assert result.combat_triggered
         assert hard.combat is not None
 
+    def test_combat_action_attack_out_of_combat_starts_combat(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A combat/attack action received out of combat is equivalent to
+        interact + interaction_id='attack': it starts combat."""
+        hard = combat_hard_state.model_copy(deep=True)
+        rand_vals = iter([15, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        action = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="I attack the goblin!",
+        )
+        from mgmai.models.soft_state import SoftGameState
+        soft = SoftGameState()
+        result = resolve_action(action, hard, soft, combat_npc_corpus)
+        assert result.success
+        assert result.combat_triggered
+        assert hard.combat is not None
+
 
 # ------------------------------------------------------------------
 # 11. Combat prefix formatting
