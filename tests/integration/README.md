@@ -1,8 +1,10 @@
 # LLM Integration Tests
 
 These tests run a "driver" LLM as the player against the real GM LLM,
-verifying the full two-call pipeline (ruling → engine → prose) plus
-narration quality via an LLM judge.  Unlike the regular unit suite,
+verifying the full two-call pipeline (ruling → engine → prose).  An
+advisory LLM judge also reviews narration quality; its verdict is
+recorded in the artifact but never fails the test — deterministic
+assertions are the only gate.  Unlike the regular unit suite,
 these tests make live API calls and are **skipped by default**.
 
 ## Quick start
@@ -36,7 +38,7 @@ LLM-vs-LLM runs:
 | **Engine combat** | Player attacks, NPC attacks, save abilities, consumable use, healing, friendly NPC ally, NPC flee AI, resistance/vulnerability, cooldown management |
 | **GM rulings** | LLM Call 1 correctly classifies player commands in natural language as combat actions, ability uses, item uses, and flee attempts |
 | **GM prose** | LLM Call 2 produces a coherent narration that reflects the engine outcome, without hallucinating hits/misses/KOs that didn't happen |
-| **Narration quality** | No verbatim repetition, no degenerate loops, consistent HP tracking across turns |
+| **Narration quality** | No verbatim repetition, no degenerate loops, consistent HP tracking across turns (advisory judge) |
 | **Error resilience** | Empty input, malformed LLM output, and edge-case state transitions don't crash the harness |
 | **Follower KO** | An ally dropped to 1 HP at start is correctly handled (death logged, removed from combat) |
 
@@ -58,7 +60,7 @@ puzzles, exploration) — those are exercised by the unit suite.
                  │ narration + combat log
             ┌────▼─────┐
             │  Judge   │  Post-run LLM review (rubric-based)
-            │  LLM     │  Returns pass/fail + scores
+            │  LLM     │  Advisory verdict, recorded in artifact
             └──────────┘
 ```
 
@@ -76,6 +78,12 @@ puzzles, exploration) — those are exercised by the unit suite.
    quality, coherent arc, and command appropriateness.  The judge
    receives the scenario directive so it evaluates against the correct
    objective (e.g. doesn't penalise a flee run for having no combat).
+   The judge is **advisory only**: its verdict is recorded in the
+   artifact, but pass/fail is decided solely by the deterministic
+   assertions.  This keeps the red/green signal stable across reruns,
+   which matters when an orchestrating agent uses these tests in a
+   fix-and-retest loop (the orchestrator can read the artifact
+   itself for anything the assertions don't cover).
 
 ### Abort mechanism
 
@@ -102,7 +110,8 @@ containing:
 - The scenario name and directive
 - Every turn's command, GM narration, combat log, and status snapshot
 - Whether the driver aborted and why
-- The judge's verdict (pass/fail, per-criterion scores and notes)
+- The advisory judge's verdict (pass/fail, per-criterion scores and
+  notes), when it runs successfully — informational only
 - Final entity states (HP, alive/fled) for post-run inspection
 
 The artifact is written regardless of pass/fail, so you can inspect

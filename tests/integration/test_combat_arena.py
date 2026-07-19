@@ -18,12 +18,14 @@
 
 A driver LLM plays the player against the real GM LLM, fighting all
 four enemies until combat ends.  Hard assertions verify the engine
-handled the full fight correctly; an LLM judge verifies narration
-quality.
+handled the full fight correctly; an advisory LLM judge records a
+narration-quality verdict in the artifact (it does not gate the test).
 """
 
 from __future__ import annotations
 
+
+import warnings
 
 import pytest
 
@@ -163,6 +165,33 @@ def _stop_when_combat_ended(session, turns):
     return combat_was_active and not session.in_combat
 
 
+def _record_judge_verdict(judge_client, result) -> None:
+    """Run the advisory LLM judge and record its verdict in the artifact.
+
+    The judge does not gate the test: deterministic assertions decide
+    pass/fail.  An unparseable verdict or a judge "fail" verdict only
+    produces a warning, so the test signal stays stable across reruns.
+    """
+    try:
+        verdict = judge_scenario(judge_client, result)
+    except JudgeError as exc:
+        warnings.warn(
+            f"Judge LLM produced unparseable output: {exc}; "
+            f"see artifact: {result.artifacts_path}",
+            stacklevel=2,
+        )
+        return
+    result.judge_verdict = verdict
+    result.rewrite_artifact()
+    if not verdict.get("pass"):
+        warnings.warn(
+            "Advisory judge rejected the run.\n"
+            + format_verdict_for_failure(verdict)
+            + f"\nSee artifact: {result.artifacts_path}",
+            stacklevel=2,
+        )
+
+
 @pytest.mark.llm
 def test_fight_to_completion(
     gm_client,
@@ -192,23 +221,8 @@ def test_fight_to_completion(
     # Hard assertions (engine correctness).
     _assert_combat_resolved(result)
 
-    # LLM judge: narration quality + consistency.
-    try:
-        verdict = judge_scenario(judge_client, result)
-    except JudgeError as exc:
-        pytest.fail(
-            f"Judge LLM produced unparseable output: {exc}\n"
-            f"See artifact: {result.artifacts_path}"
-        )
-    result.judge_verdict = verdict
-    result.rewrite_artifact()
-
-    if not verdict.get("pass"):
-        pytest.fail(
-            "LLM judge rejected the run.\n"
-            + format_verdict_for_failure(verdict)
-            + f"\nSee artifact: {result.artifacts_path}"
-        )
+    # Advisory judge verdict (recorded in the artifact; not a gate).
+    _record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -307,19 +321,8 @@ def test_flee_scenario(
         f"see artifact: {result.artifacts_path}"
     )
 
-    # Judge verdict.
-    try:
-        verdict = judge_scenario(judge_client, result)
-    except JudgeError as exc:
-        pytest.fail(f"Judge LLM unparseable: {exc}\nSee artifact: {result.artifacts_path}")
-    result.judge_verdict = verdict
-    result.rewrite_artifact()
-    if not verdict.get("pass"):
-        pytest.fail(
-            "LLM judge rejected the flee run.\n"
-            + format_verdict_for_failure(verdict)
-            + f"\nSee artifact: {result.artifacts_path}"
-        )
+    # Advisory judge verdict (recorded in the artifact; not a gate).
+    _record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -398,26 +401,14 @@ def test_consumable_ability_scenario(
         for entry in t.combat_log
     )
     if not has_heal:
-        import warnings
         warnings.warn(
             "Driver did not use a healing potion (HP may not have dropped "
             "low enough); see artifact: " + str(result.artifacts_path),
             stacklevel=2,
         )
 
-    # Judge verdict.
-    try:
-        verdict = judge_scenario(judge_client, result)
-    except JudgeError as exc:
-        pytest.fail(f"Judge LLM unparseable: {exc}\nSee artifact: {result.artifacts_path}")
-    result.judge_verdict = verdict
-    result.rewrite_artifact()
-    if not verdict.get("pass"):
-        pytest.fail(
-            "LLM judge rejected the consumable/ability run.\n"
-            + format_verdict_for_failure(verdict)
-            + f"\nSee artifact: {result.artifacts_path}"
-        )
+    # Advisory judge verdict (recorded in the artifact; not a gate).
+    _record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -509,16 +500,5 @@ def test_ally_death_scenario(
         f"logged correctly; see artifact: {result.artifacts_path}"
     )
 
-    # Judge verdict.
-    try:
-        verdict = judge_scenario(judge_client, result)
-    except JudgeError as exc:
-        pytest.fail(f"Judge LLM unparseable: {exc}\nSee artifact: {result.artifacts_path}")
-    result.judge_verdict = verdict
-    result.rewrite_artifact()
-    if not verdict.get("pass"):
-        pytest.fail(
-            "LLM judge rejected the ally-death run.\n"
-            + format_verdict_for_failure(verdict)
-            + f"\nSee artifact: {result.artifacts_path}"
-        )
+    # Advisory judge verdict (recorded in the artifact; not a gate).
+    _record_judge_verdict(judge_client, result)

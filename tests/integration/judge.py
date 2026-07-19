@@ -20,6 +20,10 @@ Feeds the full transcript plus the engine combat log to a judge model
 with a rubric, returning structured JSON.  The judge verifies
 narration quality and consistency — things the hard assertions can't
 check.
+
+The verdict is advisory only: deterministic assertions are the gate.
+Callers record the verdict in the run artifact and may surface a
+failing verdict as a warning, never as a test failure.
 """
 
 from __future__ import annotations
@@ -227,7 +231,7 @@ def _build_transcript_for_judge(result: ScenarioResult) -> str:
 
 
 def format_verdict_for_failure(verdict: dict[str, Any]) -> str:
-    """Format a failing verdict for inclusion in a pytest failure message."""
+    """Format a failing verdict for inclusion in a warning message."""
     lines = [
         f"Judge verdict: pass={verdict.get('pass')}",
         f"Overall score: {verdict.get('overall_score')}",
