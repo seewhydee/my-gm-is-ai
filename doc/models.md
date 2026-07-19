@@ -101,6 +101,7 @@ These are all the fields you can set in `models.json`. Only `base_url` is requir
 | `name` | string | the key (nickname) | Model identifier sent to the API server. Set this when the server expects a different name than your nickname (e.g. a GGUF filename). |
 | `base_url` | string | *(required)* | OpenAI-compatible API endpoint URL. Must include the path prefix (e.g. `/v1`). |
 | `label` | string | model name | Human-readable label shown in interactive model selection. |
+| `provider` | string | *(from URL)* | Provider ID used to look up API keys in `credentials.json`. If unset, extracted from the base URL hostname (`api.deepseek.com` → `"deepseek"`). Set this explicitly to distinguish accounts at the same provider. |
 | `ruling_temperature` | float | *(model default)* | Temperature for LLM Call 1 (action interpretation). Lower = more deterministic. Set to `null` to use the API's own default. |
 | `prose_temperature` | float | *(model default)* | Temperature for LLM Call 2 (narration). Moderate values (0.6-1.1) work best for creative prose. |
 | `supports_json_mode` | bool | `true` (built-in) / `false` (custom) | Whether to send `response_format: {"type": "json_object"}`. Enable for cloud APIs that support it; disable for local servers where it triggers slow grammar-enforced generation. |

@@ -48,6 +48,7 @@ from mgmai.llm.client import LLMClient
 from mgmai.llm.model_config import (
     get_known_model_labels,
     get_model_config,
+    get_provider,
     load_custom_models,
 )
 from mgmai.game.display import Display
@@ -132,19 +133,25 @@ def main(argv: list[str] | None = None) -> None:
     credentials = load_credentials(config_dir)
     custom_models = load_custom_models(config_dir)
 
-    # Resolve API key: CLI arg > env var > credentials file
-    env_key = os.environ.get("MGMAI_API_KEY")
-    api_key = resolve_api_key(cli_arg=args.api_key,
-                              env_var=env_key,
-                              credentials=credentials)
-
     # Resolve model name preliminarily: CLI arg > env var > config file
     env_model = os.environ.get("MGMAI_MODEL")
     model_name = args.model or env_model or app_config.model_name
 
-    # Resolve base URL preliminarily: CLI arg > env var > config file
+    # Resolve base URL preliminarily: CLI arg > env var > config file.
+    # Must happen before API key resolution so we can determine the
+    # provider for per-provider keys in credentials.json.
     env_url = os.environ.get("MGMAI_BASE_URL")
     base_url = args.base_url or env_url or app_config.base_url
+
+    # Resolve API key: CLI arg > env var > credentials file (per-provider
+    # if we can determine the model, otherwise generic fallback).
+    env_key = os.environ.get("MGMAI_API_KEY")
+    provider = get_provider(model_name, base_url=base_url,
+                            custom_models=custom_models)
+    api_key = resolve_api_key(cli_arg=args.api_key,
+                              env_var=env_key,
+                              credentials=credentials,
+                              provider=provider)
 
     api_key, model_name, base_url = _prompt_for_llm_config(
         display, config_dir, credentials, app_config,

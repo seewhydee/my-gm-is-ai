@@ -219,17 +219,17 @@ def resolve_api_key(*,
 
 
 def _provider_from_base_url(base_url: str) -> str | None:
-    """Extract a short provider name from a base URL.
+    """Extract a short provider name from a base URL hostname.
 
     ``https://api.deepseek.com`` → ``"deepseek"``
     ``https://api.moonshot.ai/v1`` → ``"moonshot"``
+
+    This is a fallback used when ``ModelConfig.provider`` is not set.
     """
     from urllib.parse import urlparse
     host = urlparse(base_url).hostname or base_url
-    # Peel off subdomain prefixes like "api.", then the TLD.
     parts = host.split(".")
     if len(parts) >= 2:
-        # Return the second-to-last component (the organisation name).
         return parts[-2]
     return host
 
@@ -244,15 +244,15 @@ def resolve_api_key_for_model(
 ) -> tuple[str, str]:
     """Resolve the API key suitable for *model_name*.
 
-    Looks up the model's base URL, extracts a provider short-name, and
-    delegates to :func:`resolve_api_key`.  Returns ``(api_key,
-    provider_name)``.
+    Uses the model's ``provider`` field if set; otherwise falls back to
+    extracting the provider from the base URL hostname.  Returns
+    ``(api_key, provider_name)``.
 
     *env_var* is checked before the credentials file (so
     ``MGMAI_API_KEY`` in the environment takes precedence).
     """
-    from mgmai.llm.model_config import get_model_config
-    config = get_model_config(model_name, base_url=base_url_override, custom_models=custom_models)
-    provider = _provider_from_base_url(config.base_url) or "unknown"
+    from mgmai.llm.model_config import get_provider
+    provider = get_provider(model_name, base_url=base_url_override,
+                            custom_models=custom_models)
     key = resolve_api_key(env_var=env_var, credentials=credentials, provider=provider)
     return key, provider

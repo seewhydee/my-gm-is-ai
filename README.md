@@ -14,77 +14,39 @@ Requires Python 3 with some standard packages (pydantic, rich, openai, jinja2, p
 pip install -e .
 ```
 
-The AI GM system requires API access to an LLM via an OpenAI-compatible API.  You can set your credentials using environmental variables, e.g.:
-
-```bash
-export MGMAI_BASE_URL="https://api.deepseek.com"
-export MGMAI_MODEL="deepseek-v4-flash"
-export MGMAI_API_KEY="your-api-key"
-```
-
-Alternatively, on first launch you will be prompted for this information.  These credentials, as well as save files, are saved to `~/.config/mgmai/`.  A cheap fast model is recommended.
-
 ### Model configuration
 
-Beyond the three environment variables, persistent configuration lives in
-`~/.config/mgmai/`.  See [doc/models.md](doc/models.md) for the full
-reference; below is a summary.
+The AI GM requires API access to an LLM via an OpenAI-compatible API.
+There are three ways to set your credentials:
 
-**Built-in models.**  Several models come pre-configured and work by name:
+1. Using environmental variables, e.g.:
+```bash
+export MGMAI_MODEL="deepseek-v4-flash"
+export MGMAI_BASE_URL="https://api.deepseek.com"
+export MGMAI_API_KEY="<your_api_key>"
+```
+2. Alternatively, on first launch you will be prompted for the above
+   information, which will also be saved to `~/.config/mgmai/` for
+   future sessions.
+3. You can also specify model details directly in your config files
+   (see below).
 
-| Key | Provider |
-|-----|----------|
-| `deepseek-v4-flash` | DeepSeek |
-| `kimi-k2.6` | Moonshot |
-| `mimo-v2.5` | Xiaomi Mimo |
-| `mistral-small-2603` | Mistral |
-| `deepseek-reasoner` | DeepSeek (reasoning — placeholder) |
-
-Pass `--model <key>` to select one:
+The system supports switching between different models with the
+`--model <model_id>` command-line option:
 
 ```bash
 mgmai adventures/bag-of-holding --model kimi-k2.6
 ```
 
-**Custom models** (`~/.config/mgmai/models.json`).  Map arbitrary
-names to their API endpoint and parameters:
+It's best to use a cheap fast model, operating in non-reasoning mode
+for responsiveness.  The following models come pre-configured:
 
-```json
-{
-  "my-model": {
-    "name": "model-id-string",
-    "label": "Human-readable label",
-    "base_url": "https://api.provider.com/v1",
-    "ruling_temperature": 0.7,
-    "prose_temperature": 0.9,
-    "supports_json_mode": true,
-    "prose_max_tokens": 2000
-  }
-}
-```
+- `deepseek-v4-flash`
+- `kimi-k2.6`
+- `mimo-v2.5`
+- `mistral-small-2603`
 
-**Reasoning models.**  Set `ruling_temperature` and `prose_temperature`
-to `null` (most reasoning models reject explicit temperature) and
-increase `prose_max_tokens` to accommodate chain-of-thought (4096+ is
-typical).  Use `extra_body` for provider-specific reasoning
-parameters:
-
-```json
-{
-  "deepseek-reasoner": {
-    "name": "<exact-model-name>",
-    "base_url": "https://api.deepseek.com",
-    "ruling_temperature": null,
-    "prose_temperature": null,
-    "extra_body": {"thinking": {"type": "enabled"}},
-    "prose_max_tokens": 4096
-  }
-}
-```
-
-**Multiple API keys** (`~/.config/mgmai/credentials.json`).  When
-different models are hosted by different providers, add
-provider-specific keys:
+API keys are stored in `~/.config/mgmai/credentials.json`:
 
 ```json
 {
@@ -97,9 +59,10 @@ provider-specific keys:
 }
 ```
 
-The provider name is the publisher portion of the base URL hostname
-(`deepseek` for `https://api.deepseek.com`).  `api_key` is the
-fallback when no provider-specific key matches.
+The provider IDs (keys for `api_keys`) are derived from the base URL
+hostname by default.  You can also specify custom model parameters in
+`~/.config/mgmai/models.json`.  See the [Models doc](doc/models.md)
+for details.
 
 ## Usage
 

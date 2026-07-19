@@ -40,6 +40,7 @@ class ModelConfig:
     ruling_temperature: float | None = None
     prose_temperature: float | None = None
     label: str | None = None
+    provider: str | None = None
     extra_body: dict[str, Any] | None = None
     supports_json_mode: bool = True
     request_timeout: float = 300.0
@@ -57,6 +58,7 @@ _MODEL_REGISTRY: dict[str, ModelConfig] = {
         name="deepseek-v4-flash",
         label="Deepseek v4 Flash (Deepseek API)",
         base_url="https://api.deepseek.com",
+        provider="deepseek",
         ruling_temperature=1.0,
         prose_temperature=1.1,
         extra_body={"thinking": {"type": "disabled"}},
@@ -65,6 +67,7 @@ _MODEL_REGISTRY: dict[str, ModelConfig] = {
         name="kimi-k2.6",
         label="Kimi K2.6 (Moonshot API)",
         base_url="https://api.moonshot.ai/v1",
+        provider="moonshot",
         ruling_temperature=None,
         prose_temperature=None,
     ),
@@ -72,6 +75,7 @@ _MODEL_REGISTRY: dict[str, ModelConfig] = {
         name="mimo-v2.5",
         label="Mimo 2.5 (Xiaomi API)",
         base_url="https://api.xiaomimimo.com/v1",
+        provider="xiaomimimo",
         ruling_temperature=0.6,
         prose_temperature=0.7,
     ),
@@ -79,6 +83,7 @@ _MODEL_REGISTRY: dict[str, ModelConfig] = {
         name="mistral-small-2603",
         label="Mistral Small 4 (Mistral API)",
         base_url="https://api.mistral.ai/v1",
+        provider="mistral",
         ruling_temperature=0.65,
         prose_temperature=0.75,
     ),
@@ -104,6 +109,7 @@ _MODEL_REGISTRY: dict[str, ModelConfig] = {
         name="deepseek-reasoner",          # FIXME: verify correct model name
         label="Deepseek Reasoner (Deepseek API)",
         base_url="https://api.deepseek.com",
+        provider="deepseek",
         ruling_temperature=None,           # reasoning models often require None
         prose_temperature=None,
         extra_body={"thinking": {"type": "enabled"}},
@@ -184,7 +190,7 @@ def load_custom_models(config_dir: str | Path) -> dict[str, ModelConfig]:
 
         kwargs: dict[str, Any] = {"name": entry.get("name", model_name)}
         for key in ("base_url", "ruling_temperature", "prose_temperature",
-                     "label", "extra_body", "supports_json_mode",
+                     "label", "provider", "extra_body", "supports_json_mode",
                      "request_timeout", "ruling_max_tokens", "prose_max_tokens"):
             if key in entry:
                 kwargs[key] = entry[key]
@@ -252,6 +258,32 @@ def get_model_config(
     or custom models.
     """
     return _resolve_model_config(model_name, base_url, custom_models)
+
+
+def get_provider(
+    model_name: str,
+    *,
+    base_url: str | None = None,
+    custom_models: dict[str, ModelConfig] | None = None,
+) -> str:
+    """Return the provider ID for *model_name*.
+
+    Uses ``config.provider`` if set; otherwise falls back to extracting
+    the provider from the model's base URL hostname.  Returns
+    ``"unknown"`` if neither is available.
+    """
+    from mgmai.config import _provider_from_base_url
+
+    try:
+        config = get_model_config(model_name, base_url=base_url,
+                                  custom_models=custom_models)
+    except ValueError:
+        if base_url:
+            return _provider_from_base_url(base_url) or "unknown"
+        return "unknown"
+    if config.provider:
+        return config.provider
+    return _provider_from_base_url(config.base_url) or "unknown"
 
 
 def list_known_models(
