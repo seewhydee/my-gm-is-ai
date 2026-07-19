@@ -17,9 +17,10 @@
 """LLM integration test: fight to completion in the combat arena.
 
 A driver LLM plays the player against the real GM LLM, fighting all
-four enemies until combat ends.  Hard assertions verify the engine
-handled the full fight correctly; an advisory LLM judge records a
-narration-quality verdict in the artifact (it does not gate the test).
+four enemies until combat ends.  Hard assertions verify the engine ran
+the fight to a clean conclusion (victory or a gracefully handled
+loss); an advisory LLM judge records a narration-quality verdict in
+the artifact (it does not gate the test).
 """
 
 from __future__ import annotations
@@ -74,12 +75,19 @@ def _enemy_dead_or_fled(
     return False
 
 
-def _assert_combat_resolved(result):
-    """Hard assertions on the post-fight state (engine correctness).
+def _assert_combat_concluded(result):
+    """Hard assertions on a finished combat run (engine correctness).
 
-    Verifies: combat started and ended, no exceptions, all four enemies
-    are dead (or the runner fled), player survived, turn count
-    monotonically increased, game didn't end in a loss.
+    Victory is NOT required: the arena fight is swingy by design, so the
+    player may legitimately die.  What is asserted is that combat started
+    and ended cleanly, with no exceptions or empty narrations, and that
+    the ending was handled gracefully:
+
+    - Player alive at the end (won): every enemy has a death entry in
+      the combat log (or a flee entry for the runner, which has flee AI),
+      and the game did not end in a loss.
+    - Player dead (lost): game-over is recorded as a loss and the
+      player's death is logged.
     """
     last = result.last_turn
     assert last is not None, "No turns were recorded"
@@ -120,29 +128,6 @@ def _assert_combat_resolved(result):
             f"see artifact: {result.artifacts_path}"
         )
 
-    # Each enemy must have a death entry in the combat log (or a flee
-    # entry for the runner, which has flee AI).  This replaces the old
-    # vacuous final-combatants check (combatants are cleared to {} when
-    # combat ends, so the old loop never ran).
-    for eid in _ENEMIES_FIGHT:
-        accept_fled = (eid == "goblin_runner")
-        assert _enemy_dead_or_fled(result, eid, accept_fled=accept_fled), (
-            f"Enemy '{eid}' is neither dead nor fled in the combat log; "
-            f"see artifact: {result.artifacts_path}"
-        )
-
-    # Player HP within bounds (player must have survived).
-    player_hp = last.status.player_hp
-    player_max = last.status.player_max_hp
-    assert player_hp is not None and player_hp > 0, (
-        f"Player HP out of bounds (dead): {player_hp}/{player_max}; "
-        f"see artifact: {result.artifacts_path}"
-    )
-    assert player_hp <= (player_max or 999), (
-        f"Player HP exceeds max: {player_hp}/{player_max}; "
-        f"see artifact: {result.artifacts_path}"
-    )
-
     # turn_count advanced each turn (no turn regressed).
     prev = -1
     for i, t in enumerate(result.turns, 1):
@@ -152,11 +137,41 @@ def _assert_combat_resolved(result):
         )
         prev = t.status.turn_count
 
-    # Game did not end in a loss (player won the fight).
-    assert not last.game_over or last.game_over_type == "win", (
-        f"Game ended with type={last.game_over_type} (expected no game-over "
-        f"or 'win'); see artifact: {result.artifacts_path}"
-    )
+    player_hp = last.status.player_hp or 0
+    if player_hp > 0:
+        # Player won: each enemy must have a death entry in the combat
+        # log (or a flee entry for the runner, which has flee AI).
+        for eid in _ENEMIES_FIGHT:
+            accept_fled = (eid == "goblin_runner")
+            assert _enemy_dead_or_fled(result, eid, accept_fled=accept_fled), (
+                f"Player survived but enemy '{eid}' is neither dead nor "
+                f"fled in the combat log; see artifact: {result.artifacts_path}"
+            )
+        assert player_hp <= (last.status.player_max_hp or 999), (
+            f"Player HP exceeds max: {player_hp}/{last.status.player_max_hp}; "
+            f"see artifact: {result.artifacts_path}"
+        )
+        assert not last.game_over or last.game_over_type == "win", (
+            f"Game ended with type={last.game_over_type} (expected no game-over "
+            f"or 'win'); see artifact: {result.artifacts_path}"
+        )
+    else:
+        # Player lost: the loss must have been handled gracefully —
+        # game-over recorded as a loss, player death logged.
+        assert last.game_over and last.game_over_type == "lose", (
+            f"Player at {player_hp} HP but game-over is "
+            f"{last.game_over_type!r} (expected 'lose'); "
+            f"see artifact: {result.artifacts_path}"
+        )
+        player_death_logged = any(
+            entry.get("actor") == "player" and entry.get("action") == "death"
+            for t in result.turns
+            for entry in t.combat_log
+        )
+        assert player_death_logged, (
+            "Player died but no 'death' combat-log entry for the player; "
+            f"see artifact: {result.artifacts_path}"
+        )
 
 
 def _stop_when_combat_ended(session, turns):
@@ -218,8 +233,8 @@ def test_fight_to_completion(
     assert result.artifacts_path is not None
     assert result.artifacts_path.is_file()
 
-    # Hard assertions (engine correctness).
-    _assert_combat_resolved(result)
+    # Hard assertions (engine correctness; win or graceful loss).
+    _assert_combat_concluded(result)
 
     # Advisory judge verdict (recorded in the artifact; not a gate).
     _record_judge_verdict(judge_client, result)
@@ -366,8 +381,8 @@ def test_consumable_ability_scenario(
     assert result.artifacts_path is not None
     assert result.artifacts_path.is_file()
 
-    # Hard assertions: combat resolved, all enemies dead.
-    _assert_combat_resolved(result)
+    # Hard assertions: combat concluded (win or graceful loss).
+    _assert_combat_concluded(result)
 
     # The combat log across all turns must contain at least one
     # ability use for flame_strike (by the player) and at least one
@@ -473,8 +488,10 @@ def test_ally_death_scenario(
         f"Run errored: {result.error!r}; see artifact: {result.artifacts_path}"
     )
 
-    # Combat resolved (all enemies dead, player survived).
-    _assert_combat_resolved(result)
+    # Combat ran and concluded; the ending (win or a gracefully
+    # handled loss) was processed correctly.  Korbar's 1-HP start makes
+    # this fight especially swingy, so survival is not required.
+    _assert_combat_concluded(result)
 
     # Korbar must be dead by end of fight (she started at 1 HP).
     # Since combat is cleared when it ends, check the final status's

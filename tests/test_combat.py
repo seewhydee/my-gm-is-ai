@@ -2436,6 +2436,33 @@ class TestUseItem:
         ]
         assert len(goblin_attacks) == 1
 
+    def test_npc_attack_after_heal_uses_effective_hp(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        """A same-turn heal must be reflected in subsequent NPC attack log
+        entries: no stale remaining_hp and no spurious player death entry
+        while effective HP is positive."""
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state,
+            ConsumableBlock(heal="2d4+2"),
+        )
+        hard.player.current_hp = 4
+        # heal 3+1+2 = 6 -> effective 10 HP; goblin hits (15+4) for 6+2 = 8.
+        # Stale base read would give 4-8 = -4 (fake death); effective is 2.
+        rand_vals = iter([3, 1, 15, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._use(), hard, corpus)
+        assert result["success"]
+        assert result["game_over"] is False
+        goblin_attack = next(
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        )
+        assert goblin_attack.remaining_hp == 2
+        assert not any(
+            e.action == "death" and e.actor == "player"
+            for e in result["combat_log"]
+        )
+        assert result["hard_changes"].player_hp_delta == -2
+
     def test_cure_conditions(self, combat_npc_corpus, combat_hard_state, monkeypatch):
         corpus, hard = self._setup(
             combat_npc_corpus, combat_hard_state,

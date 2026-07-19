@@ -130,10 +130,10 @@ All scenarios use the same `combat_arena` fixture:
 
 | Scenario | Directive | Key assertions |
 |----------|-----------|----------------|
-| `fight_to_completion` | Defeat all four enemies | Combat started and ended, all enemies have death entries in the combat log (runner may flee), player survived |
+| `fight_to_completion` | Defeat all four enemies | Combat started and concluded cleanly; on a win, all enemies have death/flee entries in the combat log; on a loss, the game-over is handled gracefully (player survival is not required — the arena fight is swingy by design) |
 | `flee_scenario` | Attack once, then flee north | Combat started, player reached corridor, "flee" entry in combat log |
-| `consumable_ability` | Use flame strike on bugbear, potion when HP < 14, then fight to end | Flame strike entry in combat log, combat resolved |
-| `ally_death` | Korbar at 1 HP, fight to end | Korbar death entry in combat log, combat resolved |
+| `consumable_ability` | Use flame strike on bugbear, potion when HP < 14, then fight to end | Flame strike entry in combat log, combat concluded (win or graceful loss) |
+| `ally_death` | Korbar at 1 HP, fight to end | Korbar death entry in combat log, combat resolved — win, or a gracefully handled loss (the 1-HP start makes the fight swingy, so the player's survival is not required) |
 
 ## The combat arena fixture
 

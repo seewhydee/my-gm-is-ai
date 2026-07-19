@@ -395,10 +395,14 @@ class FiveESystem(ResolutionSystem):
         target_ac: int,
         round_number: int,
         attack: "NPCAttackDef | None" = None,
+        player_hp_pending: int = 0,
     ) -> NPCAttackResult:
         """Resolve an NPC attack against a combatant (player or NPC).
 
         ``attack=None`` resolves the basic attack (block-level fields).
+        ``player_hp_pending`` is the player HP delta accumulated earlier
+        this turn; the player's effective HP is the base value plus this
+        delta, since ``hard.player`` is not mutated mid-turn.
         """
         entity = corpus.entities.get(npc_id)
         if entity is None or entity.combat is None:
@@ -455,7 +459,7 @@ class FiveESystem(ResolutionSystem):
             log_entry.mitigation = mitigation
             target_hp_delta = -damage
             if target_id == "player":
-                current_hp = hard.player.current_hp or 0
+                current_hp = (hard.player.current_hp or 0) + player_hp_pending
             else:
                 current_hp = (
                     hard.entity_states.get(target_id, {}).get("current_hp") or 0

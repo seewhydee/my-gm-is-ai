@@ -1093,6 +1093,7 @@ def _resolve_npc_turn(
         npc_result = system.resolve_npc_attack(
             actor_id, hard, corpus, target_id, target_ac,
             combat.round_number, attack=attack_def,
+            player_hp_pending=hard_changes.player_hp_delta or 0,
         )
         combat_log.extend(npc_result.log_entries)
         turn_entries = list(npc_result.log_entries)

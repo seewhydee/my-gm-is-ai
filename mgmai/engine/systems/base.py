@@ -293,6 +293,7 @@ class ResolutionSystem(ABC):
         target_ac: int,
         round_number: int,
         attack: "NPCAttackDef | None" = None,
+        player_hp_pending: int = 0,
     ) -> NPCAttackResult:
         """Resolve an NPC attack against a combatant.
 
@@ -300,7 +301,10 @@ class ResolutionSystem(ABC):
         ``target_id`` is ``"player"`` or another combatant's entity ID.
         ``attack`` selects the attack definition (bonus, damage, on-hit
         effects) from the NPC's ``attacks`` list; ``None`` means the basic
-        attack built from block-level fields.  The system computes the
+        attack built from block-level fields.  ``player_hp_pending`` is the
+        player HP delta accumulated earlier this turn (heals and damage
+        from prior actions), needed because ``hard.player.current_hp`` is
+        not mutated mid-turn.  The system computes the
         attack and returns log entries plus the target HP delta.  It must
         not mutate ``hard``.
         """
