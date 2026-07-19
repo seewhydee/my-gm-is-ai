@@ -96,12 +96,14 @@ Write down, in a section at the top of the Scenario Map:
 
 If the scenario uses player stats, note:
 
-- Which stats are used
+- Which stats are used (e.g., the six 5e ability scores)
 - The resolution system (typically 5e)
-- The initial player stats, including combat stats (level, current and
-  max HP, etc.), and any starting inventory.  If the scenario leaves
-  these unspecfied, yet requires them, choose reasonable defaults and
-  note the omission in your post-task report.
+- The initial player stats: class/race/level, attribute values,
+  proficiency bonus, saving throw proficiencies, current and max HP,
+  AC, any starting combat abilities (spells, class features), and any
+  starting inventory.  If the scenario leaves these unspecified, yet
+  requires them, choose reasonable defaults and note the omission in
+  your post-task report.
 
 ### 1B. Rooms (Pass 1)
 
@@ -149,7 +151,8 @@ immobile features, NPCs, and items), specifying:
   location at game start (room, container, player inventory, etc.),
   and any plot-relevant details.  Keep it factual and succinct.  We
   will fill in mechanical details later (§1G).  If the entity is a
-  feature visible from multiple rooms, note which rooms it spans.
+  feature visible from multiple rooms, note which rooms it spans, and
+  whether any of its behavior differs per room.
 
 ### 1D. Global Flags
 
@@ -171,13 +174,20 @@ For each flag, specify:
 
 ### 1E. Mechanics
 
-Now list out mechanics — set-piece encounters or global rules not
-bound to a single room or entity.  For each mechanic, specify:
+Now list out mechanics — set-piece encounters, global rules, and
+global game-over conditions not bound to a single room or entity.  For
+each mechanic, specify:
 
 - **Mechanic ID** — assign a globally-unique ID
-- **Kind** — one of these two:
-  - **Game-over condition** — a mechanic triggering game-over
-  - **Mechanic** — encounter or global reaction mechanic
+- **Kind** — one of these three:
+  - **Global game-over condition** — a win/loss condition that
+    applies adventure-wide and is checked continuously (e.g., every
+    turn), regardless of how it is reached.
+  - **Encounter mechanic** — a set-piece confrontation or action
+    sequence, with branching outcomes and/or leading to combat.
+  - **Reaction mechanic** — one or more global reactions: state
+    changes in response to events, not bound to a single room or
+    entity.
 - **Description** — how the mechanic works, and its effects
 
 In writing the description, don't worry about how the mechanic will
@@ -190,14 +200,19 @@ or entity-scoped interaction or reaction (described below)?  Some
 examples follow.
 
 - If a **game-over condition** is plot-significant and/or reachable in
-  many different ways, use a mechanic.  Examples:
+  many different ways, make it a global game-over condition.
+  Examples:
   - player wins on leaving the castle with the artifact
   - player loses if HP drops to ≤ 0.
   Conversely, a game-over condition reached by a specific route (e.g.,
-  falling into *this* pit) should be room- or entity-scoped.
+  falling into *this* pit) is NOT a mechanic: record it as a game-over
+  consequence of the specific room/entity interaction, reaction, or
+  encounter that causes it (§1F, §1G).
 
 - **Encounters** – set-piece confrontations or action sequences, with
-  branching outcomes and/or leading to combat – are usually mechanics.
+  branching outcomes and/or leading to combat – are usually encounter
+  mechanics.  An encounter mechanic is set in motion by a trigger:
+  note which reaction (§1F, §1G) sets it off.
 
   Example: a confrontation with three goblins, who ambush an unaware
   player, or flee if the player looks strong, or just start combat.
@@ -205,7 +220,7 @@ examples follow.
   trigger can be supplied by a separate room-scoped reaction (§1F).
 
   Exception: any encounter involving a single NPC (e.g., the NPC
-  aggros when the player attacks) should be NPC-scoped.
+  aggros when the player attacks) should be NPC-scoped (§1G).
 
 - For an outcome arising directly from doing a special action (e.g.,
   pulling a lever), use a room/entity interaction instead (§1F,1G).
@@ -213,14 +228,15 @@ examples follow.
 - For state changes that are a **reaction** to an event, if the
   reaction occurs only in a given room, use a room reaction (§1F); if
   it requires a given entity's presence, use an entity reaction (§1G).
-  If the reaction doesn't fit such scoping, use a mechanic.  Examples:
+  If the reaction doesn't fit such scoping, use a reaction mechanic.
+  Examples:
   - player's HP dropping to ≤ 3 fires off a life ward
   - starting combat anywhere in a town makes all guards hostile
   - a zombie spawns at the start of each turn during nighttime
 
   Exception: an entity reaction cannot react to *its own* entity's
   death, so a consequence of an NPC dying must live elsewhere: a room
-  reaction if it is location-bound, otherwise a mechanic.
+  reaction if it is location-bound, otherwise a reaction mechanic.
 
 ### 1F. Rooms (Pass 2)
 
@@ -228,13 +244,19 @@ Revisit the room list, and add the following info to each room:
 
 - **Exits** — every way out.  For each, assign a room-unique exit ID,
   give a brief description (e.g., "through the north doorway"), and
-  specify the destination room ID (§1B).
+  specify the destination room ID (§1B).  This description will be
+  shown verbatim to the player; keep it a short, distinctive,
+  capitalized phrase.
 
   Optionally, describe:
   - any conditions gating the exit's availability (e.g., if an exit is
     initially hidden, do list it here, and describe the conditions
     under which it is hidden or visible).
-  - any success check (e.g., stat check) needed to traverse the exit
+  - any success check (e.g., stat check) needed to traverse the exit,
+    and the conditions under which the check applies (e.g., "only
+    until the web is cleared").  Note whether the check is repeatable
+    or not; a non-repeatable check can be attempted only once, and the
+    engine itself tracks the attempt.
   - any side-effects of succeeding or failing in traversing the exit
 
   Be specific: e.g., if a secret door appears when a lever is pulled,
@@ -257,9 +279,13 @@ Revisit the room list, and add the following info to each room:
   description, clearly specifying the game pieces affected: give
   specific flag IDs, room/entity IDs, state field names, etc.
 
-  DO NOT define interactions similar to these generic player actions:
-  `move` (traversing rooms), `examine` (cursory or in-depth study), or
-  `transfer` (moving items to/from a container or location).
+  DO NOT define interactions duplicating the generic player actions:
+  `move`, `examine`, `talk`, `transfer`, `attack`, `wait`, or similar
+  generic verbs (e.g., `take`).  Special behavior tied to those
+  actions has its own hook, described elsewhere in this document:
+  movement → exit conditions and traversal checks; examination →
+  On-Examine Effects; taking items → item Take Checks (§1G); talking
+  → Dialogue Paths and Topics (§1G); attacking → NPC Aggro (§1G).
 
 - **Reactions** — describe any consequential reaction tied to the
   *room* (not an entity in the room).  Each reaction can occur only if
@@ -268,19 +294,25 @@ Revisit the room list, and add the following info to each room:
   Examples:
   - once a turn, the poison gas in the room damages the player.
   - when the player enters the room, three goblins attack.  The
-    reaction can start combat directly, or, for a complex set-piece
-    confrontation, trigger an encounter mechanic (1E).
+    reaction can trigger an NPC's aggro encounter (§1G) directly, or,
+    for a complex set-piece confrontation, trigger an encounter
+    mechanic (§1E).
 
   Assign each reaction an ID (globally-unique if it's a one-off
   reaction, room-unique otherwise).  Then write up a precise
   description of the reaction, including:
 
-  - the trigger event: player entering the room, exit traversed, a
-    special interaction is attempted, dialogue/combat start/end, item
-    acquired/lost, global flag or entity state set/cleared, etc.
+  - the trigger event: player entering or leaving the room, exit
+    traversal attempted/succeeded/failed, a special interaction is
+    attempted, dialogue/combat start/end, item acquired/lost, global
+    flag or entity state set/cleared, turn start/end, etc.
   - any additional gating condition for the reaction to occur
   - the consequences if the reaction indeed occurs
   - whether the reaction is one-off, or recurring
+  - whether the reaction must preempt or cancel the triggering action
+    (e.g., an ambush that cancels the player's traversal).  Such
+    reactions trigger on the *attempt* event, while the action is
+    still in progress.
 
   Again, don't try to work out the schema-following implementation:
   focus on naming the specific entity/room IDs, etc.
@@ -288,14 +320,23 @@ Revisit the room list, and add the following info to each room:
 - **State Fields** — assign a room-unique ID for each mutable property
   of the room, and specify the initial value (boolean, number, or
   string).  Don't invent these nilly-willy; focus on properties needed
-  for gameplay or narration: e.g., `filled_with_poison_gas`.  Do not
-  use the reserved fields `is_current` and `visited`.
+  for gameplay or narration: e.g., `filled_with_poison_gas`.  The
+  fields `visited` (the player has entered this room) and `is_current`
+  (the player is here now) are managed by the engine: do NOT declare
+  them, but you may freely reference them in conditions and
+  descriptions (e.g., "if the player has already visited room X").
 
 - **On-Examine Effects** — describe any effects triggered by the
   player examining the room (the room itself, not an entity in it),
   possibly gated by an availability condition or success check.
   Example: viewing a dusty storeroom, and deducing that nobody has
-  come through in years (a plot point).
+  come through in years (a plot point).  For each effect, note whether
+  it triggers on any examination, or only on a rigorous (thorough)
+  examination, which costs the player a turn.
+
+- **Soft-item guidance** — if the room naturally holds nondescript
+  generic items the player might plausibly pick up or use (pebbles,
+  cutlery, rubbish), briefly note what such items the GM may surface.
 
 While writing up the descriptions, you may find it necessary to add
 extra global flags (§1D), update previous rooms (e.g., by adding more
@@ -309,6 +350,9 @@ Revisit the entity list, and add the following to each entity:
   Assign the special tag `container` to any entity that acts as a
   container with open/close functionality (e.g., a chest).  A
   tabletop, with no open/close function, should not have this tag.
+  Assign the special tag `stackable` to items that exist in multiple
+  indistinguishable copies (e.g., coins, arrows), and note the
+  starting quantity in the entity's description.
 
   Other tags are defined at your discretion based on adventure
   requirements (e.g., a pressure plate can be triggered by any item
@@ -317,12 +361,17 @@ Revisit the entity list, and add the following to each entity:
 - **Equippable?** — if this entity is an item that can be equipped
   (weapon, armor, shield, ring, etc.), write a textual description of
   how it is worn or wielded, and any relevant properties from the
-  scenario (damage expression, stat bonuses, AC bonus, restrictions
-  such as "two-handed" or "incompatible with shields").
+  scenario: damage expression and damage type, attack bonus, stat
+  bonuses, AC bonus, restrictions such as "two-handed" or
+  "incompatible with shields".
 
 - **Contained Entities** — if this entity contains other entities
   (e.g., a drawer holding a key, a rubbish pile holding a gem), list
   the entity IDs inside.  Use the descriptions in §1C as a guide.
+
+- **Soft-item guidance** — if the entity naturally holds nondescript
+  generic contents (a rubbish pile, a junk drawer), briefly note what
+  plausible generic items the GM may surface from it.
 
 - **Special interactions** — assign an entity-unique ID to every
   special interaction the player can have with the entity (e.g.,
@@ -331,29 +380,41 @@ Revisit the entity list, and add the following to each entity:
   Include an `open` and/or `close` interaction if it's a container
   that can be directly opened/closed by the player.
 
-  DO NOT define interactions for built-in generic actions: `attack`,
-  `examine`, `talk`, or `transfer`.
+  DO NOT define interactions duplicating the generic player actions:
+  `move`, `examine`, `talk`, `transfer`, `attack`, `wait`, or similar
+  generic verbs (e.g., `take`).  Special behavior tied to those
+  actions has its own hook: movement → exit conditions and traversal
+  checks (§1F); examination → On-Examine Effects; taking items → Take
+  Checks; talking → Dialogue Paths and Topics; attacking → NPC Aggro.
 
 - **State fields** — list the entity's state fields: scenario-relevant
-  mutable properties.  For each state field, note down its meaning,
-  type (number/boolean/string), and initial value.  You are free to
-  define custom state fields to suit the needs of the scenario.
-  However, there are some with special engine effects:
+  mutable properties.  For each custom state field, note down its
+  meaning, type (number/boolean/string), and initial value.  You are
+  free to define custom state fields to suit the needs of the
+  scenario.
 
-  - `open` (boolean) for container (entity holding `container` tag)
-    with open/close functionality; initial value typically false.
+  Several reserved state fields have special engine effects.  Do NOT
+  declare these except to assign them non-default initial values:
 
-  - `hidden` (boolean) if entity is concealable (e.g., a thief hiding
-    in shadows, a sword buried in rubble).  NOT intended for items
-    that are out of view due to being inside a closed container.
+  - `hidden` (boolean, default false) — the entity is concealed (e.g.,
+    a thief hiding in shadows, a sword buried in rubble).  NOT
+    intended for items that are out of view due to being inside a
+    closed container; that is controlled by the container's `open`
+    field.
+  - `open` (boolean, default false) — for an entity holding the
+    `container` tag, whether it is currently open.
+  - `alive` (boolean, default true) — mainly meaningful for NPCs: a
+    dead NPC's dialogue and reactions are disabled.
+  - `attitude` (number, default 0) — an NPC's friendliness (higher =
+    friendlier).
+  - `following` (boolean, default false) — an NPC travels with the
+    player as a companion.
+  - `current_hp` (number, default set to combat stat block's max hp) —
+    for combat-capable NPCs.
 
-  NPCs also support the following special state fields; do NOT declare
-  these except to assign them non-default initial values.
-
-  - `alive` (boolean, default true)
-  - `attitude` (number, default 0) – level of friendliness
-  - `following` (boolean, default false) – if a companion
-  - `current_hp` (number, default set to stat block's max hp)
+  The reserved field `location` (which room or entity currently holds
+  the entity) is managed entirely by the engine: never declare it,
+  though you may reference it in conditions.
 
 - **Reactions** — describe any consequential reaction tied to the
   entity.  Each reaction can occur only if the entity is in the
@@ -371,18 +432,34 @@ Revisit the entity list, and add the following to each entity:
   - any additional gating condition for the reaction to occur
   - the consequences if the reaction indeed occurs
   - whether the reaction is one-off, or recurring
+  - whether the reaction must preempt or cancel the triggering action
+    (e.g., cancel the player's traversal).  Such reactions trigger on
+    the *attempt* event, while the action is still in progress.
+
+  To react to the player *leaving* the room (e.g., an NPC who dies
+  when the player departs), trigger on the player's exit attempt: at
+  that point the entity is still in the current room, so the reaction
+  is still active.
 
 - **On-Examine Effects** — describe any effects triggered by the
   player examining the entity.  Such effects may be gated by a
   condition or stat check.  Note that this field belongs on the thing
   being examined, *not* the room containing it: e.g., if the scenario
   says "upon examining the statue, the player notices...", the
-  examination effect belongs on the statue entity.
+  examination effect belongs on the statue entity.  For each effect,
+  note whether it triggers on any examination, or only on a rigorous
+  (thorough) examination, which costs the player a turn.
 
 #### Additional things to note for item entities
 
 - **Take Check** (optional) — availability conditions or success
   checks for the player to take the item.  Can have failure effects.
+  Note whether the check is repeatable, and whether it still applies
+  after the item has been taken once.
+
+- **Consumable?** (optional) — if the item can be used up (potion,
+  scroll, food), note its effects: HP restored, conditions cured, and
+  whether it is destroyed on use.
 
 #### Additional things to note for NPC entities
 
@@ -392,19 +469,45 @@ Revisit the entity list, and add the following to each entity:
   combat features, such as on-hit effects.  If the scenario doesn't
   give exact numbers, record whatever info is provided.
 
+  By default, an NPC whose HP reaches 0 dies (its `alive` state field
+  is cleared automatically).  If the scenario deviates — e.g., the NPC
+  falls unconscious instead, or surrenders at low HP — record the
+  special rule here.
+
 - **Aggro** — if the NPC is attacked by the player, or is hostile for
   whatever reason (hostile from the start, or triggered somehow), the
   default outcome is to launch turn-based combat if the NPC has combat
   stats, or for the NPC to simply die otherwise.  If the aggro
   encounter should *NOT* unfold this way, state the alternative.
-  Describe the enocunter as a set of branching outcomes, each of which
+  Describe the encounter as a set of branching outcomes, each of which
   may include stat checks, auto-death outcomes for the NPC or the
   player, starting combat, etc.  Example: begin combat normally if the
   player is armed, otherwise the player dies (game-over).
 
-- **Combat Group** — If the NPC is intended to fight as part of a
+  When an NPC's aggro starts combat, the aggro'd NPC is automatically
+  a combatant; name any ADDITIONAL hostile NPCs by entity ID.  Note
+  that any followers (NPCs with `following`) who have combat stats
+  automatically join the player's side as allies.
+
+- **Combat Group** — if the NPC is intended to fight as part of a
   band, assign the combat group a globally-unique ID, and report that
-  ID in the entity entry for each member.
+  ID in the entity entry for each member.  Attacking one member, or
+  triggering combat with one, pulls in every present living member.
+  Every member of a combat group must be an NPC with combat stats.
+
+- **Attitude Limits** — if the NPC's attitude can shift, note its
+  attitude bounds (minimum and/or maximum) and the maximum change per
+  turn (the engine enforces these).  Also record the initial attitude
+  if non-zero (via the reserved `attitude` state field).
+
+- **Follower Behavior** — if the NPC can become a follower (the
+  reserved `following` state field), note any rooms it refuses to
+  enter, and any special behavior while following (e.g., assisting the
+  player).
+
+- **First-Meeting Behavior** — if the NPC has a canonical reaction
+  when first encountered (e.g., hurls insults, begs for help, plays
+  dead), note it.
 
 - **Dialogue Paths** — for dialogue, if the NPC talks.
   A dialogue path is any special plot/gameplay-relevant line of
@@ -420,10 +523,18 @@ Revisit the entity list, and add the following to each entity:
   - any additional effects of success/failure, such as setting flags,
     or triggering mechanics/reactions
 
+  The GM matches the player's conversation to a dialogue path from its
+  description, and adjudicates how the NPC responds; "GM discretion"
+  phrasing is therefore acceptable for the conversational parts.  Do
+  pin down the mechanical parts (conditions, checks, effects)
+  precisely.
+
 - **Will-Reveal Topics** — for dialogue, if the NPC talks.
   Assign an NPC-unique ID for each major topic the NPC might divulge
   information on.  Unlike a dialogue path, such a topic usually has no
-  immediate mechanical effect.
+  immediate mechanical effect.  When the gating conditions are met,
+  the topic is surfaced to the GM, which may narrate the revelation
+  when the conversation allows.
 
   Example: a guard may have a dialogue path `bribe_to_enter` (player
   pays to get past — a mechanic), and a topic `recent_visitors`
@@ -446,11 +557,16 @@ Go through the lists you have constructed, and check that all IDs are
 consistent.  For descriptions lacking specific IDs, backfill the IDs.
 
 Check that every game mechanic described in the scenario is present,
-and assigned to the right type: global mechanic, room-scoped reaction,
-entity-scoped reaction, on-examination effect, etc.
+and assigned to the right type: global game-over condition, encounter
+or reaction mechanic, room-scoped reaction, entity-scoped reaction,
+on-examination effect, etc.
+
+If the scenario contains implementation notes (e.g., remarks about
+engine capabilities or unfinished features), carry them into the
+Scenario Map as implementation notes rather than dropping them.
 
 If you deemed it necessary to deviate from the scenario, list the
-devations in an Errata section at the end of the Scenario Map.
+deviations in an Errata section at the end of the Scenario Map.
 
 Revise as necessary.
 
@@ -469,8 +585,11 @@ here avoids rework downstream.
       valid type (`player`, `npc`, `feature`, `item`) (§1C)
 - [ ] Every item entity is something the player can possibly put into
       inventory; otherwise it should be a `feature` (§1C)
-- [ ] Every win/loss condition and global effect/mechanic from the
-      scenario is captured in the global mechanic list (§1E)
+- [ ] Every win/loss condition from the scenario is captured: global
+      ones in the mechanic list (§1E), route-specific ones as
+      game-over consequences on the owning room/entity (§1F, §1G)
+- [ ] Every global effect/mechanic from the scenario is captured in
+      the mechanic list (§1E)
 - [ ] All IDs (rooms, entities, flags, mechanics, reactions, etc.) are
 	  in snake_case and appropriately disambiguated
 
@@ -485,16 +604,22 @@ here avoids rework downstream.
 - [ ] Every important piece of info that can be divulged by an NPC, if
       not assigned a Dialogue Path, should have a Topic ID (§1G), and
       (usually) a global flag to track the player's knowledge (§1D)
-- [ ] Every NPC whose attitude to the player can shift should have an
-      `attitude` state field (§1G).
-- [ ] Every NPC with `behavior` encounter rules specifying multi-turn
-      combat should have combat stats (§1G)
-- [ ] `start_combat` is only used inside encounter
-      rules (`entity.aggro` or `mechanic.rules`)
-- [ ] Every id in a `start_combat` list belongs to an NPC with combat stats
-- [ ] Every NPC sharing a `combat_group` value has combat stats and is an NPC
-- [ ] Mechanic encounters that enter combat list enemies via
-      `start_combat` or `combat_group` (the mechanic id is not a combatant)
+- [ ] Every NPC whose attitude to the player can shift has its initial
+      attitude (if non-default), attitude bounds, and per-turn change
+      cap noted (§1G).
+- [ ] Every NPC planned for multi-turn combat has combat stats (§1G)
+- [ ] Combat is started only from encounter rules (an NPC's aggro or
+      an encounter mechanic's rules); interactions and reactions
+      trigger encounters rather than starting combat directly
+- [ ] Every NPC named as a combatant (as an aggro's additional
+      combatants, in a combat group, or in an encounter mechanic) is
+      an NPC with combat stats
+- [ ] Every NPC sharing a combat group ID has combat stats and is an NPC
+- [ ] Encounter mechanics that enter combat list their hostile NPCs
+      explicitly or via combat groups (unlike an NPC aggro, which
+      always includes the aggro'd NPC, an encounter mechanic has no
+      default combatant)
+- [ ] Every follower NPC's refused rooms (if any) are noted (§1G)
 
 #### Flags, state, and tags
 
@@ -514,16 +639,21 @@ here avoids rework downstream.
 
 #### Mechanics
 
-- [ ] Stat checks identified and resolution system noted (or "no stats")
-- [ ] Every global mechanic is correctly classified: game-over
-      condition or mechanic with rules/reactions
+- [ ] Stat checks identified (each marked repeatable or
+      non-repeatable) and resolution system noted (or "no stats")
+- [ ] Every mechanic is correctly classified: global game-over
+      condition, encounter mechanic, or reaction mechanic
 - [ ] Event-driven reactions scoped correctly (room, entity, or global
-      mechanic)
+      mechanic); reactions that must cancel the triggering action are
+      marked as preemptive
+- [ ] Examination effects note whether they require rigorous
+      examination (§1F, §1G)
 
 #### Exits
 
-- [ ] Hidden exits have a planned flag-based reveal mechanism (companion
-      interaction sets a flag, exit condition requires that flag)
+- [ ] Hidden exits have a planned reveal mechanism (e.g., an
+      interaction or examination sets a flag or state field, and the
+      exit's condition requires it)
 - [ ] One-way exits have a planned return path (or a narrative reason
       they are permanently one-way)
 
