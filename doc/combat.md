@@ -291,6 +291,7 @@ When combat is active, the following action types are valid:
 | `combat` (`combat_action: "attack"`) | Attack a combatant.  `target` must be an enemy entity ID in `combatants`. |
 | `combat` (`combat_action: "use_item"`) | Use a consumable item.  `target` must be an inventory item with a `consumable` block (healing clamps to max HP; consumes the player's action). |
 | `move` | Attempt to flee (see below). |
+| `wait` | Pass the turn: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply. NPC turns proceed and the round advances. |
 | `examine` | Free cursory look (non-rigorous only). Rigorous examine is not allowed during combat. |
 
 All other actions (`talk`, `transfer`, `interact`) are rejected by the
@@ -348,7 +349,8 @@ When the player uses `move` during combat:
 3. **Success**: combat ends, the player moves to the target room.
    `traversal.succeeded` reactions are **not** evaluated.
 4. **Failure**: the player stays, turn is consumed, and remaining enemy
-   turns are resolved normally.
+   turns are resolved normally — if the player drops to 0 HP, combat
+   ends and the game is over (a loss).
 
 ---
 

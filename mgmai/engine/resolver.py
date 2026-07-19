@@ -1788,6 +1788,32 @@ def _resolve_combat_action(
     )
 
 
+def _resolve_combat_pass(
+    action: WaitAction,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: SoftGameState,
+    state_manager: Any | None = None,
+) -> ResolutionResult:
+    """Resolve a turn pass (wait during combat) via the combat module."""
+    from mgmai.engine.combat import resolve_combat_turn
+
+    result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
+    if not result["success"]:
+        return ResolutionResult(
+            success=False,
+            error=result.get("error"),
+        )
+
+    return ResolutionResult(
+        success=True,
+        hard_changes=result["hard_changes"],
+        combat_log=result["combat_log"],
+        game_over_trigger="player_death" if result["game_over"] else None,
+        room_after_id=hard.player.location,
+    )
+
+
 def _resolve_combat_flee(
     action: MoveAction,
     hard: HardGameState,
@@ -1809,6 +1835,7 @@ def _resolve_combat_flee(
         success=True,
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
+        game_over_trigger="player_death" if result["game_over"] else None,
         room_after_id=(
             result["hard_changes"].player_location
             if result["hard_changes"] and result["hard_changes"].player_location
@@ -1992,6 +2019,9 @@ def resolve_action(
     # During combat, move actions become flee attempts
     if action_type == "move" and hard.combat is not None and hard.combat.active:
         return _resolve_combat_flee(action, hard, corpus, soft, state_manager)
+    # During combat, wait actions pass the player's turn
+    if action_type == "wait" and hard.combat is not None and hard.combat.active:
+        return _resolve_combat_pass(action, hard, corpus, soft, state_manager)
 
     if action_type == "move":
         return resolve_move(action, hard, soft, corpus, state_manager)

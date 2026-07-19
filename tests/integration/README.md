@@ -70,8 +70,8 @@ puzzles, exploration) — those are exercised by the unit suite.
 
 2. **Runner** (`runner.py`) — Orchestrates the driver against a
    `HeadlessSession`.  Applies stop conditions (e.g. "stop when combat
-   ends"), detects driver aborts, guards against "wait" loops, and
-   writes an artifact regardless of pass/fail.
+   ends"), detects driver aborts, and writes an artifact regardless of
+   pass/fail.
 
 3. **Judge** (`judge.py`) — Feeds the full transcript to a third LLM
    with a rubric scoring mechanical fidelity, consistency, narration
@@ -90,9 +90,8 @@ puzzles, exploration) — those are exercised by the unit suite.
 The driver can signal that the game is broken by replying with `ABORT:
 <reason>`.  The runner detects this prefix before submission and stops
 the run immediately, recording the abort reason in the artifact and
-failing the test.  Additionally, if the driver produces 3 consecutive
-unusable commands (sanitized to `"wait"`), the runner aborts
-automatically to avoid burning paid LLM calls on a stuck run.
+failing the test.  A driver that gets stuck repeating itself is simply
+bounded by `max_turns`.
 
 ### Early stop
 
@@ -131,9 +130,9 @@ All scenarios use the same `combat_arena` fixture:
 | Scenario | Directive | Key assertions |
 |----------|-----------|----------------|
 | `fight_to_completion` | Defeat all four enemies | Combat started and concluded cleanly; on a win, all enemies have death/flee entries in the combat log; on a loss, the game-over is handled gracefully (player survival is not required — the arena fight is swingy by design) |
-| `flee_scenario` | Attack once, then flee north | Combat started, player reached corridor, "flee" entry in combat log |
+| `flee_scenario` | Attack once, then flee north | Combat started, at least one flee attempt logged; escape → player reached corridor alive, no game-over; death → gracefully handled loss |
 | `consumable_ability` | Use flame strike on bugbear, potion when HP < 14, then fight to end | Flame strike entry in combat log, combat concluded (win or graceful loss) |
-| `ally_death` | Korbar at 1 HP, fight to end | Korbar death entry in combat log, combat resolved — win, or a gracefully handled loss (the 1-HP start makes the fight swingy, so the player's survival is not required) |
+| `ally_death` | Korbar at 1 HP / AC 1, fight to end | Combat concluded (win or gracefully handled loss); Korbar's fate consistent between combat log and entity state — death recorded on both when she falls (she almost always does) |
 
 ## The combat arena fixture
 

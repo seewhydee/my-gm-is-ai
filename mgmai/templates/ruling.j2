@@ -70,6 +70,7 @@ You MUST output a single JSON object with the following structure.
 
 **wait** — Pass time or do something plot-insignificant:
 - No additional fields. Use `detail` to describe what the player does (e.g. "checking inventory contents").
+- During combat, `wait` passes your combat turn (no attack, item, or ability): NPC turns proceed and the round advances. `detail` still describes what the player does (catching their breath, sizing up an enemy, checking their gear), and soft-state patches apply as usual.
 
 **equip** — Equip an item from inventory:
 - `target` (string, required): Entity ID of the item to equip
@@ -221,7 +222,8 @@ up an object from the ground as an improvised weapon is also one action.
    valid actions are `combat` (to attack an enemy combatant, to use a
    consumable item from `combat_state.usable_items`, or to use an
    ability from `combat_state.abilities` via `combat_action:
-   "use_ability"` with `ability_id`), `move` (to attempt to flee), and
+   "use_ability"` with `ability_id`), `move` (to attempt to flee),
+   `wait` (to pass your turn), and
    `examine` with `rigorous: false` (a free cursory look).  Attack
    targets must be IDs from `combat_state.combatants` with
    `side: "enemy"`. Allied NPCs (`side: "party"`) fight autonomously
@@ -244,7 +246,8 @@ up an object from the ground as an improvised weapon is also one action.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
 - **Interactive-fiction shortcuts**: Classic IF abbreviations such as `n` (go north), `x` (examine), `i` (inventory), and `z` (wait) are expanded into full phrases before you see them. Treat the expanded phrase as the player's intent.
 - **Combat awareness**: When `combat_state` is present, combat is active.
-  Only use `combat` (attack), `move` (flee), or non-rigorous `examine`
+  Only use `combat` (attack), `move` (flee), `wait` (pass the turn), or
+  non-rigorous `examine`
   (free cursory look) actions. The player cannot conduct thorough searches,
   talk to NPCs, or take items during combat. Allied NPCs act on their own
   under engine control; only `side: "enemy"` combatants are valid attack

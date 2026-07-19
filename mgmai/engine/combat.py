@@ -30,6 +30,7 @@ from mgmai.models.actions import (
     CombatAction,
     HardStateChanges,
     MoveAction,
+    WaitAction,
 )
 from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import ModuleCorpus
@@ -1420,13 +1421,16 @@ def _resolve_use_item(
 
 
 def resolve_combat_turn(
-    action: CombatAction | MoveAction,
+    action: CombatAction | MoveAction | WaitAction,
     hard: HardGameState,
     corpus: ModuleCorpus,
     soft: SoftGameState | None = None,
     state_manager: Any | None = None,
 ) -> dict[str, Any]:
     """Resolve the player's combat action and any following NPC turns.
+
+    The player's action is an attack/item/ability (``CombatAction``), a
+    flee attempt (``MoveAction``), or a turn pass (``WaitAction``).
 
     Returns a dict with ``success``, ``hard_changes``, ``combat_log``,
     ``game_over``, and ``error`` (if failure).
@@ -1550,6 +1554,16 @@ def resolve_combat_turn(
                         hard_changes.player_location = ex.target_room
                         break
         # On failure: turn is consumed, combat continues
+    elif isinstance(action, WaitAction):
+        # --- Pass the turn ---
+        # The player forgoes their combat action; NPC turns and the round
+        # advance proceed below.  The action's detail still drives the
+        # narration, and soft-state patches apply as usual (engine-level).
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor="player", action="wait",
+            )
+        )
     else:
         return {"success": False, "error": "Invalid action in combat"}
 

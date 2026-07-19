@@ -967,7 +967,10 @@ class TestMultiCombatantEncounters:
             on="turn.start",
             effect=ReactionEffects(trigger_encounter="ambush"),
         ))
-        action = WaitAction(action_type="wait", detail="Wait")
+        from mgmai.models.actions import ExamineAction
+        # Vehicle action: a non-rigorous examine.  (A wait would now pass
+        # the combat turn, resolving a full round of enemy attacks.)
+        action = ExamineAction(action_type="examine", target="start", detail="Look around")
         result = resolve(action, manager)
         assert result.combat_triggered is True
         assert hard.combat is not None

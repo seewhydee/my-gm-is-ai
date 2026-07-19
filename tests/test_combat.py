@@ -28,6 +28,7 @@ from mgmai.models.actions import (
     InteractAction,
     MoveAction,
     PlayerAction,
+    WaitAction,
     validate_player_action,
 )
 from mgmai.models.combat import CombatLogEntry, CombatState
@@ -1038,6 +1039,61 @@ class TestResolverIntegration:
         result = resolve_action(action, hard, soft, combat_npc_corpus)
         assert result.success
 
+    def test_wait_in_combat_passes_turn(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A wait action during combat passes the player's turn: the wait is
+        logged, NPC turns proceed, and the round advances."""
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+        # goblin attacks (15+4=19 vs AC 14, hit) for 1+2=3 damage
+        rand_vals = iter([15, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        action = WaitAction(action_type="wait", detail="Hold ground.")
+        from mgmai.models.soft_state import SoftGameState
+        soft = SoftGameState()
+        result = resolve_action(action, hard, soft, combat_npc_corpus)
+        assert result.success
+        assert hard.combat is not None and hard.combat.active
+        assert hard.combat.round_number == 2
+        assert result.combat_log[0].actor == "player"
+        assert result.combat_log[0].action == "wait"
+        assert result.combat_log[1].actor == "goblin"
+        assert result.combat_log[1].action == "attack"
+        assert result.hard_changes.player_hp_delta == -3
+
+    def test_player_death_during_flee_attempt(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A player killed by NPC turns after a failed flee attempt must
+        propagate game_over_trigger='player_death' (previously dropped by
+        the flee wrapper, so the game went on with a dead player)."""
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.current_hp = 3
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+        # flee roll fails (1+2 < 10); goblin hits (15+4 vs AC 14) for 6+2=8
+        rand_vals = iter([1, 15, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        action = MoveAction(action_type="move", target="exit_north", detail="Run!")
+        from mgmai.models.soft_state import SoftGameState
+        soft = SoftGameState()
+        result = resolve_action(action, hard, soft, combat_npc_corpus)
+        assert result.success
+        assert result.game_over_trigger == "player_death"
+        assert any(
+            e.actor == "player" and e.action == "death" for e in result.combat_log
+        )
+
     def test_combat_action_on_hit_through_resolver(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         """resolve_action passes soft/state_manager so on-hit effects resolve."""
         hard = combat_hard_state.model_copy(deep=True)
@@ -1142,6 +1198,12 @@ class TestResolverIntegration:
 class TestCombatPrefix:
     def test_empty_log(self):
         assert format_combat_prefix([]) == ""
+
+    def test_wait_entry_produces_no_prefix(self):
+        """A pass-turn entry yields no canned prefix line — the narrator
+        describes the wait from the action's detail, as out of combat."""
+        log = [{"actor": "player", "action": "wait"}]
+        assert format_combat_prefix(log) == ""
 
     def test_player_attack_hit_prefix(self):
         log = [{"actor": "player", "action": "attack", "target": "goblin",

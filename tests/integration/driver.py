@@ -114,7 +114,7 @@ class PlayerDriver:
             json_mode=False,
         )
         self._raw_outputs.append(raw)
-        cmd = sanitize_command(raw, self._command_history)
+        cmd = sanitize_command(raw)
         self._command_history.append(cmd)
         return cmd
 
@@ -144,15 +144,12 @@ def is_abort(command: str) -> str | None:
     return None
 
 
-def sanitize_command(raw: str, recent: list[str] | None = None) -> str:
+def sanitize_command(raw: str) -> str:
     """Sanitise the driver LLM's raw output to a single game command.
 
     - Take the first non-empty line.
     - Strip surrounding quotes and whitespace.
     - Reject ``/`` meta-commands (return ``"wait"`` instead).
-    - If the exact same command appears as the most recent entry in
-      *recent*, the driver is stuck — return ``"wait"`` so the runner
-      can detect a string of fallbacks.
     - Truncate to a reasonable length.
     """
     if not raw:
@@ -177,9 +174,6 @@ def sanitize_command(raw: str, recent: list[str] | None = None) -> str:
     # Truncate to a reasonable length.
     if len(line) > 300:
         line = line[:300]
-    # Guard against exact repetition of the most recent command.
-    if recent and recent and line == recent[-1]:
-        return "wait"
     return line
 
 

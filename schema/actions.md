@@ -546,6 +546,12 @@ The `detail` field instructs LLM Call 2 on how to narrate the response (e.g.,
 reporting inventory contents). No hard state changes occur beyond the turn
 counter increment.
 
+During combat, `wait` passes the player's combat turn: NPC turns resolve
+and the round advances.  The action otherwise behaves as usual — the
+`detail` description drives the narration (e.g., catching one's breath,
+sizing up an enemy), and `soft_state_patches` are validated and applied
+as normal.
+
 **Engine validation:**
 - No additional validation beyond turn advancement.
 - The engine may trigger time-based events (for future modules).

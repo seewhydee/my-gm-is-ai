@@ -126,8 +126,6 @@ def run_scenario(
     """
     import tempfile
 
-    _MAX_CONSECUTIVE_FALLBACKS = 3
-
     if config_dir is None:
         config_dir = Path(tempfile.mkdtemp(prefix="mgmai_scenario_"))
 
@@ -150,8 +148,6 @@ def run_scenario(
 
     result = ScenarioResult(scenario_name=scenario_name, directive=directive)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    consecutive_fallbacks = 0
 
     try:
         for i in range(max_turns):
@@ -178,22 +174,6 @@ def run_scenario(
                 result.abort_reason = abort_reason
                 log.warning("Driver aborted on turn %d: %s", i + 1, abort_reason)
                 break
-
-            # Guard against consecutive sanitize fallbacks (driver is
-            # stuck in a "wait" loop).  A single "wait" is fine — the
-            # LLM might just produce a poorly formatted line.
-            if command == "wait":
-                consecutive_fallbacks += 1
-                if consecutive_fallbacks >= _MAX_CONSECUTIVE_FALLBACKS:
-                    result.aborted = True
-                    result.abort_reason = (
-                        f"driver produced {consecutive_fallbacks} consecutive "
-                        "unusable commands (sanitized to 'wait')"
-                    )
-                    log.warning("Consecutive fallback limit reached on turn %d", i + 1)
-                    break
-            else:
-                consecutive_fallbacks = 0
 
             try:
                 transcript = session.submit(command)

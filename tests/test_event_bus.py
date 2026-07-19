@@ -1460,8 +1460,12 @@ class TestReactionEncounterMultiEnemy:
 
         from mgmai.engine.event_bus import reset_disabled_once
         reset_disabled_once()
-        from mgmai.models.actions import WaitAction
-        action = WaitAction(action_type="wait", detail="wait")
+        from mgmai.models.actions import ExamineAction
+        # Vehicle action: a non-rigorous examine.  (A wait would now pass
+        # the combat turn, resolving a full round of enemy attacks.)
+        action = ExamineAction(
+            action_type="examine", target="bag_floor", detail="look around"
+        )
         engine_result = resolve(action, state_manager)
         assert engine_result.combat_triggered is True
         assert hard.combat is not None
