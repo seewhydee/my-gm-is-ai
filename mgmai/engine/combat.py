@@ -1283,10 +1283,13 @@ def enter_combat(
     """Initialize combat state, roll initiative, resolve pre-player NPC turns.
 
     Returns a dict with ``combat_log``, ``hard_changes``, ``combat_triggered``,
-    and ``player_died``.  ``player_died`` is True when the player dropped to
-    0 HP without an inline (scripted) game-over; the engine routes that
-    through the ``player.died`` event, which lets rescue reactions avert
-    the death.
+    ``player_died``, and ``combat_ended_reason``.  ``player_died`` is True
+    when the player dropped to 0 HP without an inline (scripted) game-over;
+    the engine routes that through the ``player.died`` event, which lets
+    rescue reactions avert the death.  ``combat_ended_reason`` is ``None``
+    when combat continues, or one of ``"victory"`` / ``"defeat"`` when
+    pre-player NPC turns already ended combat (the caller should emit a
+    ``combat.ended`` event in that case).
     """
     system = get_system_for_corpus(corpus)
 
@@ -1326,7 +1329,7 @@ def enter_combat(
     # Resolve NPC turns before the player's first turn
     hard_changes = HardStateChanges()
     combat_log: list[CombatLogEntry] = []
-    game_over = False
+    combat_ended_reason: str | None = None
 
     player_idx = initiative_order.index("player")
     for i in range(player_idx):
@@ -1338,7 +1341,7 @@ def enter_combat(
             hard_changes, combat_log,
         )
         if go:
-            game_over = True
+            combat_ended_reason = "defeat"
             # Combat ends the moment the player drops; if a rescue
             # reaction (player.died) later averts the death, the player
             # survives out of combat.
@@ -1348,6 +1351,7 @@ def enter_combat(
         if ended:
             # No living enemies remain (only reachable once allies can
             # fight, Phase 2); combat is over before the player's turn.
+            combat_ended_reason = "victory"
             _clear_conditions(hard)
             hard.combat = None
             break
@@ -1368,6 +1372,7 @@ def enter_combat(
         "hard_changes": hard_changes,
         "combat_triggered": True,
         "player_died": player_died,
+        "combat_ended_reason": combat_ended_reason,
     }
 
 
@@ -1448,10 +1453,13 @@ def resolve_combat_turn(
     flee attempt (``MoveAction``), or a turn pass (``WaitAction``).
 
     Returns a dict with ``success``, ``hard_changes``, ``combat_log``,
-    ``player_died``, and ``error`` (if failure).  ``player_died`` is True
-    when the player dropped to 0 HP without an inline (scripted)
-    game-over; the engine routes that through the ``player.died`` event,
-    which lets rescue reactions avert the death.
+    ``player_died``, ``combat_ended_reason``, and ``error`` (if failure).
+    ``player_died`` is True when the player dropped to 0 HP without an
+    inline (scripted) game-over; the engine routes that through the
+    ``player.died`` event, which lets rescue reactions avert the death.
+    ``combat_ended_reason`` is ``None`` when combat continues, or one of
+    ``"victory"``, ``"defeat"``, or ``"fled"`` when combat ended this turn;
+    the caller should emit a ``combat.ended`` event in that case.
     """
     combat = hard.combat
     if combat is None or not combat.active:
@@ -1463,6 +1471,7 @@ def resolve_combat_turn(
     combat_log: list[CombatLogEntry] = []
     game_over = False
     combat_ended = False
+    combat_end_reason: str | None = None
 
     # Start-of-turn condition processing for the player; a stunned player
     # loses the action but the turn (and NPC turns) still proceeds.
@@ -1482,6 +1491,7 @@ def resolve_combat_turn(
             return err
         if not _living_enemies(combat, hard):
             combat_ended = True
+            combat_end_reason = "victory"
     elif isinstance(action, CombatAction) and action.combat_action == "use_item":
         # --- Use a consumable item ---
         err = _resolve_use_item(
@@ -1541,6 +1551,7 @@ def resolve_combat_turn(
         # Check if all enemies are dead
         if not _living_enemies(combat, hard):
             combat_ended = True
+            combat_end_reason = "victory"
 
     elif isinstance(action, MoveAction):
         # --- Flee attempt ---
@@ -1564,6 +1575,7 @@ def resolve_combat_turn(
 
         if flee_result.success:
             combat_ended = True
+            combat_end_reason = "fled"
             # Move the player to the target room
             room = corpus.rooms.get(hard.player.location)
             if room:
@@ -1601,9 +1613,11 @@ def resolve_combat_turn(
                 )
                 if go:
                     game_over = True
+                    combat_end_reason = "defeat"
                     break
                 if ended:
                     combat_ended = True
+                    combat_end_reason = "victory"
                     break
             idx = (idx + 1) % n
 
@@ -1636,4 +1650,5 @@ def resolve_combat_turn(
         "hard_changes": hard_changes,
         "combat_log": combat_log,
         "player_died": player_died,
+        "combat_ended_reason": combat_end_reason,
     }

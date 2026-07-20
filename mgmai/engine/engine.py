@@ -212,6 +212,7 @@ def resolve(
     rolls: list[dict[str, Any]] = list(resolution.rolls or [])
     combat_triggered = False
     combat_log: list[CombatLogEntry] = []
+    dialogue_exit_reason: str | None = None
 
     # 3. Process encounter triggers from the action or immediate reactions.
     if resolution.encounter_trigger:
@@ -288,6 +289,19 @@ def resolve(
                     # already applied to hard.game_over above.
                     if soft.dialogue_state.active_npc is not None:
                         resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+                        dialogue_exit_reason = "combat"
+                    # Queue combat.started (and combat.ended if pre-player
+                    # NPC turns already ended combat) for dispatch with the
+                    # action-level events in step 8.
+                    resolution.events.append((
+                        "combat.started",
+                        {"combatant_ids": enemies},
+                    ))
+                    if combat_entry.get("combat_ended_reason"):
+                        resolution.events.append((
+                            "combat.ended",
+                            {"reason": combat_entry["combat_ended_reason"]},
+                        ))
                 else:
                     log.warning(
                         "start_combat produced no eligible combatants for %s",
@@ -403,6 +417,7 @@ def resolve(
         combat_log = list(resolution.combat_log or [])
         if soft.dialogue_state.active_npc is not None:
             resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+            dialogue_exit_reason = "combat"
 
     if resolution.combat_log and not combat_triggered:
         combat_log = list(resolution.combat_log)
@@ -415,7 +430,6 @@ def resolve(
     # 7. Room transition and room-entered reactions.
     new_room = hard.player.location
 
-    dialogue_exit_reason: str | None = None
     if new_room != old_room:
         room_changes = HardStateChanges()
 
@@ -917,7 +931,7 @@ def _build_npc_attitude_limits(
         entity_state = hard.entity_states.get(eid, {})
         attitude_val = entity_state.get("attitude")
         if attitude_val is None:
-            current = limits.initial
+            current = 0
         else:
             current = int(attitude_val)
 

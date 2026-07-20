@@ -939,6 +939,13 @@ def resolve_interact(
                     room_after_id=room_id,
                 )
             entry = enter_combat(enemies, hard, corpus, soft=soft, state_manager=state_manager)
+            events: list[tuple[str, dict[str, Any]]] = [
+                ("combat.started", {"combatant_ids": enemies}),
+            ]
+            if entry.get("combat_ended_reason"):
+                events.append(("combat.ended", {
+                    "reason": entry["combat_ended_reason"],
+                }))
             return ResolutionResult(
                 success=True,
                 hard_changes=entry["hard_changes"],
@@ -946,6 +953,7 @@ def resolve_interact(
                 combat_log=entry["combat_log"],
                 player_died=entry.get("player_died", False),
                 room_after_id=room_id,
+                events=events,
             )
 
         # Attacking an NPC always triggers an encounter.  If the NPC has an
@@ -1791,12 +1799,19 @@ def _resolve_combat_action(
             error=result.get("error"),
         )
 
+    events: list[tuple[str, dict[str, Any]]] = []
+    if result.get("combat_ended_reason"):
+        events.append(("combat.ended", {
+            "reason": result["combat_ended_reason"],
+        }))
+
     return ResolutionResult(
         success=True,
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
         player_died=result.get("player_died", False),
         room_after_id=hard.player.location,
+        events=events,
     )
 
 
@@ -1817,12 +1832,19 @@ def _resolve_combat_pass(
             error=result.get("error"),
         )
 
+    events: list[tuple[str, dict[str, Any]]] = []
+    if result.get("combat_ended_reason"):
+        events.append(("combat.ended", {
+            "reason": result["combat_ended_reason"],
+        }))
+
     return ResolutionResult(
         success=True,
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
         player_died=result.get("player_died", False),
         room_after_id=hard.player.location,
+        events=events,
     )
 
 
@@ -1843,6 +1865,12 @@ def _resolve_combat_flee(
             error=result.get("error"),
         )
 
+    events: list[tuple[str, dict[str, Any]]] = []
+    if result.get("combat_ended_reason"):
+        events.append(("combat.ended", {
+            "reason": result["combat_ended_reason"],
+        }))
+
     return ResolutionResult(
         success=True,
         hard_changes=result["hard_changes"],
@@ -1853,6 +1881,7 @@ def _resolve_combat_flee(
             if result["hard_changes"] and result["hard_changes"].player_location
             else hard.player.location
         ),
+        events=events,
     )
 
 

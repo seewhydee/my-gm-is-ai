@@ -311,7 +311,7 @@ def post_validate_attitude_changes(
         limits = guidelines.attitude_limits
         attitude_val = entity_state.get("attitude")
         if attitude_val is None:
-            current = limits.initial
+            current = 0
         else:
             current = int(attitude_val)
 

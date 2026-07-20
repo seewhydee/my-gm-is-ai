@@ -106,12 +106,14 @@ For these events, the context keys are `exit_id` (the exit ID),
 
 ### Combat and Encounters
 
-- `combat.started` – Combat begins.  No context keys.
+- `combat.started` – Combat begins.  The context key is `combatant_ids`,
+  a list of the enemy entity IDs that entered combat (allies and the
+  player are not listed).
 
-- `combat.ended` – Combat ends.  Context key is `reason`, which should
-  be one of the following: `"victory"`, `"defeat"`, or `"fled"`.
-  **Not yet emitted:** this event is not yet wired into the engine —
-  do not use it in reaction `on` fields.  See [Known gaps](#known-gaps).
+- `combat.ended` – Combat ends.  Context key is `reason`, which is one
+  of the following: `"victory"` (all enemies defeated), `"defeat"`
+  (the player dropped to 0 HP), or `"fled"` (the player successfully
+  fled).
 
 - `encounter.branched` – An Encounter Rule selects a success or
   failure branch (not emitted for `result`-only rules).  The context
@@ -226,13 +228,6 @@ Ordering and loop prevention:
 ---
 
 ## Known gaps
-
-- **`combat.ended` is not yet emitted.**  It is documented above for
-  completeness, but the engine does not currently fire it; do not use
-  it in reaction `on` fields.  To react to a combatant's death, use
-  `on: "entity_state.changed"` with a condition watching
-  `event:entity_id == <npc_id>`, `event:field == alive`, and
-  `event:new_value == false`.
 
 - **Results cannot reference event context values.**  Inside a
   reaction's `result`, fields like `set_entity_state`,

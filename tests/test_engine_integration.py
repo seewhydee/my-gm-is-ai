@@ -17,10 +17,12 @@ from mgmai.models.corpus import (
     GameOverTrigger,
     Interaction,
     Mechanic,
+    ModuleCorpus,
     Reaction,
     ReactionEffects,
     Result,
 )
+from mgmai.state.manager import StateManager
 from tests.helpers import _mk_encounter_rule
 
 
@@ -992,3 +994,370 @@ class TestReactionEncounterMultiEnemy:
         engine_result = resolve(action, state_manager)
         assert engine_result.combat_triggered is False
         assert hard.combat is None
+
+
+class TestCombatEvents:
+    """combat.started and combat.ended events are emitted and dispatched.
+
+    Covers all three combat-entry paths (direct attack, action-triggered
+    encounter, reaction-triggered encounter) and all three combat-ended
+    reasons (victory, defeat, fled).
+    """
+
+    @pytest.fixture
+    def combat_sm(self) -> StateManager:
+        """A state manager with one room, one combat-capable goblin, and an
+        exit for flee tests."""
+        from tests.helpers import build_state_manager
+
+        corpus = ModuleCorpus.model_validate({
+            "adventure": {"title": "Combat Events", "introduction": "Test."},
+            "stats": {
+                "system": "5e",
+                "definitions": {
+                    "STR": {"name": "Strength"},
+                    "DEX": {"name": "Dexterity"},
+                    "CON": {"name": "Constitution"},
+                    "INT": {"name": "Intelligence"},
+                    "WIS": {"name": "Wisdom"},
+                    "CHA": {"name": "Charisma"},
+                },
+            },
+            "rooms": {
+                "arena": {
+                    "name": "Arena",
+                    "description": "A small arena.",
+                    "contains": ["goblin"],
+                    "exits": [
+                        {"id": "exit_north", "direction": "north", "target_room": "safe_room"},
+                    ],
+                },
+                "safe_room": {
+                    "name": "Safe Room",
+                    "description": "A safe room.",
+                },
+            },
+            "entities": {
+                "goblin": {
+                    "type": "npc",
+                    "description": "A scrawny goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {
+                        "hp": 7,
+                        "ac": 12,
+                        "atk": 4,
+                        "dmg": "1d6+2",
+                        "initiative_mod": 2,
+                        "flee_dc": 10,
+                    },
+                },
+            },
+        })
+        sm = build_state_manager(corpus)
+        sm.hard_state.player.location = "arena"
+        sm.hard_state.player.stats = {
+            "STR": 16, "DEX": 14, "CON": 14,
+            "INT": 10, "WIS": 10, "CHA": 10,
+        }
+        sm._init_player_combat_defaults()
+        sm.hard_state.player.current_hp = 30
+        sm.hard_state.player.max_hp = 30
+        sm.hard_state.player.ac = 14
+        sm.hard_state.entity_states["goblin"]["current_hp"] = 7
+        sm.hard_state.entity_states["player"] = {"alive": True}
+        sm.hard_state.room_contains["arena"] = {"goblin": 1}
+        return sm
+
+    # -- combat.started emission ---------------------------------------
+
+    def test_combat_started_on_direct_attack(self, combat_sm, monkeypatch):
+        """A direct interact/attack on a combat NPC emits combat.started."""
+        import random
+        # Player goes first and misses; goblin misses too — combat stays
+        # active so we can verify the state.
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        from mgmai.models.actions import InteractAction
+        action = InteractAction(
+            action_type="interact",
+            target="goblin",
+            interaction_id="attack",
+            detail="Attack!",
+        )
+        result = resolve(action, combat_sm)
+        assert result.success
+        assert result.combat_triggered
+        # The combat.started event is in the resolver's events list; it
+        # was dispatched by the engine.  Verify via a flag set by a
+        # reaction (next test) or by checking that combat is active.
+        assert combat_sm.hard_state.combat is not None
+
+    def test_combat_started_reaction_fires(self, combat_sm, monkeypatch):
+        """A reaction on combat.started fires when combat begins."""
+        import random
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        combat_sm.corpus.rooms["arena"].reactions.append(Reaction(
+            id="combat_start_reaction",
+            on="combat.started",
+            effect=ReactionEffects(result=Result(
+                set_flag={"combat_started_flag": True},
+                narrative="Combat begins!",
+            )),
+        ))
+
+        from mgmai.models.actions import InteractAction
+        action = InteractAction(
+            action_type="interact",
+            target="goblin",
+            interaction_id="attack",
+            detail="Attack!",
+        )
+        result = resolve(action, combat_sm)
+        assert result.success
+        assert combat_sm.hard_state.flags.get("combat_started_flag") is True
+        assert "Combat begins!" in result.triggered_narration
+
+    def test_combat_started_reaction_fires_via_encounter(self, combat_sm, monkeypatch):
+        """combat.started fires when an encounter triggers combat."""
+        import random
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        combat_sm.corpus.rooms["arena"].reactions.append(Reaction(
+            id="combat_start_reaction",
+            on="combat.started",
+            effect=ReactionEffects(result=Result(
+                set_flag={"combat_started_flag": True},
+            )),
+        ))
+        # Trigger combat via a turn.start reaction that fires an encounter.
+        combat_sm.corpus.mechanics["ambush"] = Mechanic(
+            id="ambush",
+            rules=[_mk_encounter_rule(
+                condition=ConditionExpression(
+                    require="entity:player.alive == true"
+                ),
+                outcome="combat",
+                start_combat=["goblin"],
+            )],
+        )
+        combat_sm.corpus.rooms["arena"].reactions.append(Reaction(
+            id="ambush_trigger",
+            on="turn.start",
+            effect=ReactionEffects(trigger_encounter="ambush"),
+        ))
+
+        from mgmai.models.actions import ExamineAction
+        action = ExamineAction(
+            action_type="examine", target="arena", detail="look around"
+        )
+        result = resolve(action, combat_sm)
+        assert result.success
+        assert result.combat_triggered
+        assert combat_sm.hard_state.flags.get("combat_started_flag") is True
+
+    # -- combat.ended: victory ----------------------------------------
+
+    def _set_active_combat(self, combat_sm, initiative=None):
+        """Put the state manager into an active combat with the goblin."""
+        from mgmai.models.combat import CombatState
+        combat_sm.hard_state.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=initiative or ["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+
+    def test_combat_ended_victory(self, combat_sm, monkeypatch):
+        """Killing the last enemy emits combat.ended with reason 'victory'."""
+        import random
+        self._set_active_combat(combat_sm)
+        # Roll 20 → crit, max damage dice → kill the goblin (7 HP).
+        rand_vals = iter([20, 6, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        combat_sm.corpus.rooms["arena"].reactions.append(Reaction(
+            id="victory_reaction",
+            on="combat.ended",
+            condition=ConditionExpression(require="event:reason == victory"),
+            effect=ReactionEffects(result=Result(
+                set_flag={"victory_flag": True},
+                narrative="Victory!",
+            )),
+        ))
+
+        from mgmai.models.actions import CombatAction
+        action = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="Finishing blow!",
+        )
+        result = resolve(action, combat_sm)
+        assert result.success
+        assert combat_sm.hard_state.combat is None
+        assert combat_sm.hard_state.flags.get("victory_flag") is True
+        assert "Victory!" in result.triggered_narration
+
+    # -- combat.ended: fled -------------------------------------------
+
+    def test_combat_ended_fled(self, combat_sm, monkeypatch):
+        """Successfully fleeing emits combat.ended with reason 'fled'."""
+        import random
+        self._set_active_combat(combat_sm)
+        # DEX 14 → +2, flee DC 10. Roll 12 + 2 = 14 ≥ 10 → success.
+        monkeypatch.setattr(random, "randint", lambda a, b: 12)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        # Use a mechanic-scoped (global) reaction because the player
+        # moves to a new room during fleeing, so room-scoped reactions
+        # on the arena would no longer match.
+        combat_sm.corpus.mechanics["fled_tracker"] = Mechanic(
+            id="fled_tracker",
+            reactions=[Reaction(
+                id="fled_reaction",
+                on="combat.ended",
+                condition=ConditionExpression(require="event:reason == fled"),
+                effect=ReactionEffects(result=Result(
+                    set_flag={"fled_flag": True},
+                )),
+            )],
+        )
+
+        from mgmai.models.actions import MoveAction
+        action = MoveAction(
+            action_type="move",
+            target="exit_north",
+            detail="Run away!",
+        )
+        result = resolve(action, combat_sm)
+        assert result.success
+        assert combat_sm.hard_state.combat is None
+        assert combat_sm.hard_state.flags.get("fled_flag") is True
+
+    # -- combat.ended: defeat -----------------------------------------
+
+    def test_combat_ended_defeat(self, combat_sm, monkeypatch):
+        """Player death in combat emits combat.ended with reason 'defeat'."""
+        import random
+        self._set_active_combat(combat_sm)
+        combat_sm.hard_state.player.current_hp = 1
+        # Player misses (1), goblin crits (20 → 2d6+2 = 14 damage).
+        rand_vals = iter([1, 20, 6, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        combat_sm.corpus.rooms["arena"].reactions.append(Reaction(
+            id="defeat_reaction",
+            on="combat.ended",
+            condition=ConditionExpression(require="event:reason == defeat"),
+            effect=ReactionEffects(result=Result(
+                set_flag={"defeat_flag": True},
+            )),
+        ))
+
+        from mgmai.models.actions import CombatAction
+        action = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="Last stand!",
+        )
+        result = resolve(action, combat_sm)
+        assert result.success
+        assert combat_sm.hard_state.combat is None
+        assert combat_sm.hard_state.flags.get("defeat_flag") is True
+
+    # -- combat.ended without condition fires for any reason ----------
+
+    def test_combat_ended_unconditional_reaction(self, combat_sm, monkeypatch):
+        """A reaction on combat.ended without a condition fires for any
+        reason."""
+        import random
+        self._set_active_combat(combat_sm)
+        rand_vals = iter([20, 6, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        combat_sm.corpus.rooms["arena"].reactions.append(Reaction(
+            id="any_end_reaction",
+            on="combat.ended",
+            effect=ReactionEffects(result=Result(
+                set_flag={"combat_ended_flag": True},
+            )),
+        ))
+
+        from mgmai.models.actions import CombatAction
+        action = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="Attack!",
+        )
+        result = resolve(action, combat_sm)
+        assert result.success
+        assert combat_sm.hard_state.flags.get("combat_ended_flag") is True
+
+    # -- dialogue.ended reason 'combat' -------------------------------
+
+    def test_dialogue_ended_reason_combat(self, combat_sm, monkeypatch):
+        """Starting combat while in dialogue emits dialogue.ended with
+        reason 'combat'."""
+        import random
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+
+        # Give the goblin dialogue so we can enter dialogue first.
+        from mgmai.models.corpus import DialogueGuidelines
+        combat_sm.corpus.entities["goblin"].dialogue = DialogueGuidelines(
+            guidelines="The goblin snarls.",
+        )
+
+        combat_sm.corpus.mechanics["dialogue_combat_tracker"] = Mechanic(
+            id="dialogue_combat_tracker",
+            reactions=[
+                Reaction(
+                    id="track_dialogue_end",
+                    on="dialogue.ended",
+                    condition=ConditionExpression(
+                        require="event:reason == combat"
+                    ),
+                    effect=ReactionEffects(result=Result(
+                        set_flag={"dialogue_ended_by_combat": True},
+                    )),
+                ),
+            ],
+        )
+
+        from mgmai.models.actions import TalkAction, InteractAction
+        # Enter dialogue with the goblin.
+        talk = TalkAction(
+            action_type="talk",
+            target="goblin",
+            utterance="Hello goblin.",
+            detail="Talk to the goblin.",
+        )
+        result = resolve(talk, combat_sm)
+        assert result.success
+        assert combat_sm.soft_state.dialogue_state.active_npc == "goblin"
+
+        # Attack the goblin — should exit dialogue with reason 'combat'
+        # and start combat.
+        attack = InteractAction(
+            action_type="interact",
+            target="goblin",
+            interaction_id="attack",
+            detail="Attack!",
+        )
+        result = resolve(attack, combat_sm)
+        assert result.success
+        assert result.combat_triggered
+        assert combat_sm.hard_state.flags.get("dialogue_ended_by_combat") is True

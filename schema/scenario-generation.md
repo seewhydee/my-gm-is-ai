@@ -2260,13 +2260,7 @@ All IDs must be **snake_case, lowercase ASCII**:
     interaction conditions, game-over condition predicates, or exit conditions
     will always evaluate to `false`.
 
-22. **`combat.ended` is not yet emitted**: The `combat.ended` event has not
-    been wired into the engine.  Do not use it in reaction `on` fields.  To
-    react to a combatant's death, use `on: "entity_state.changed"` with a
-    condition watching `event:entity_id == <npc_id>` and `event:field == alive`
-    and `event:new_value == false`.  See [`events.md`](events.md) § Known gaps.
-
-23. **Entity on_examine vs room on_examine**: When the player examines a
+22. **Entity on_examine vs room on_examine**: When the player examines a
     specific entity (a carving, a lever, a hidden switch), only that
     entity's `on_examine` events fire. Room `on_examine` events fire
     only when the player examines the room itself. If the scenario
@@ -2274,7 +2268,7 @@ All IDs must be **snake_case, lowercase ASCII**:
     event must go on the lever entity, not on the room.  See § 3H for entity vs. room placement
     rules.
 
-24. **Examine-gated discoveries written as interactions**: Do not model
+23. **Examine-gated discoveries written as interactions**: Do not model
     discoveries the player makes by *looking* ("examine the pile",
     "examine the webs") as room interactions requiring the player to
     explicitly choose an action from a list.  These should be

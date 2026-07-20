@@ -929,8 +929,8 @@ be omitted if the event lacks that particular detail).
 | `entity_state.changed`  | `entity_id`, `field`, `new_value`          |
 | `room_state.changed`    | `room_id`, `field`, `new_value`            |
 | `dialogue.[started\|ended]` | `npc_id`, `reason?`                    |
-| `combat.started`        | (none)                                     |
-| `combat.ended` (not yet emitted) | `reason` (`victory\|defeat\|fled`) |
+| `combat.started`        | `combatant_ids`                            |
+| `combat.ended`          | `reason` (`victory\|defeat\|fled`)          |
 | `item.acquired`         | `item_id`, `source`                        |
 | `item.lost`             | `item_id`, `reason`                        |
 | `equipment.changed`     | `added?`, `removed?`                       |

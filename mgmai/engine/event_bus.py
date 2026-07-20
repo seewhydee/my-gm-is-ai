@@ -448,9 +448,13 @@ def _resolve_reaction_encounter(
                 exit_dialogue(soft, corpus, hard)
                 events.append(("dialogue.ended", {
                     "npc_id": active_npc,
-                    "reason": "combat_started",
+                    "reason": "combat",
                 }))
             events.append(("combat.started", {"combatant_ids": enemies}))
+            if combat_entry.get("combat_ended_reason"):
+                events.append(("combat.ended", {
+                    "reason": combat_entry["combat_ended_reason"],
+                }))
         else:
             log.warning(
                 "start_combat produced no eligible combatants for %s",

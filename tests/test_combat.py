@@ -1303,6 +1303,7 @@ class TestCombatEndStates:
         result = resolve_combat_turn(action, hard, combat_npc_corpus)
         assert result["success"]
         assert result["player_died"] is False
+        assert result["combat_ended_reason"] == "victory"
         assert hard.combat is None
 
     def test_player_death_game_over(self, combat_hard_state, combat_npc_corpus, monkeypatch):
@@ -1328,7 +1329,55 @@ class TestCombatEndStates:
         result = resolve_combat_turn(action, hard, combat_npc_corpus)
         assert result["success"]
         assert result["player_died"] is True
+        assert result["combat_ended_reason"] == "defeat"
         assert hard.combat is None
+
+    def test_flee_success_reports_fled_reason(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+        # DEX 14 → mod +2, flee DC 10. Roll 12 + 2 = 14 ≥ 10 → success
+        monkeypatch.setattr(random, "randint", lambda a, b: 12)
+
+        action = MoveAction(
+            action_type="move",
+            target="exit_north",
+            detail="Run away!",
+        )
+        result = resolve_combat_turn(action, hard, combat_npc_corpus)
+        assert result["success"]
+        assert result["combat_ended_reason"] == "fled"
+        assert hard.combat is None
+
+    def test_combat_continues_reason_is_none(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """When combat does not end, combat_ended_reason is None."""
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+        # Player misses (1), goblin misses (1)
+        rand_vals = iter([1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+
+        action = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="Swing!",
+        )
+        result = resolve_combat_turn(action, hard, combat_npc_corpus)
+        assert result["success"]
+        assert result["combat_ended_reason"] is None
+        assert hard.combat is not None
 
 
 # ------------------------------------------------------------------
@@ -2077,15 +2126,60 @@ class TestPartyCombat:
         ally_actions = [e for e in result["combat_log"] if e.actor == "companion"]
         assert ally_actions == []
 
-    def test_bag_of_holding_korbar_persuadable(self):
-        """Scenario guard: Korbar is passive by default but persuadable —
-        passive state field declared, convince_fight path clears it."""
-        from pathlib import Path
+    def test_passive_npc_persuadable_pattern(self):
+        """An NPC can be passive by default (ai.passive=True, passive state
+        field) and persuadable via a dialogue path that clears the state.
 
-        from mgmai.state.manager import StateManager
+        This replaces the former ``test_bag_of_holding_korbar_persuadable``
+        which depended on the ``adventures/bag-of-holding`` fixture.  The
+        same data-model invariants are checked on a self-contained corpus.
+        """
+        from tests.helpers import build_state_manager
 
-        sm = StateManager()
-        sm.load_all(Path("adventures/bag-of-holding"))
+        corpus = ModuleCorpus.model_validate({
+            "adventure": {"title": "Test", "introduction": "Test."},
+            "rooms": {
+                "start": {
+                    "name": "Start",
+                    "description": "A room.",
+                    "contains": ["korbar"],
+                },
+            },
+            "entities": {
+                "korbar": {
+                    "type": "npc",
+                    "description": "A dwarf.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                        "passive": {
+                            "type": "boolean",
+                            "description": "Too scared to fight?",
+                            "initial": True,
+                        },
+                    },
+                    "combat": {
+                        "hp": 10, "ac": 12, "atk": 2, "dmg": "1d6",
+                        "ai": {"passive": True},
+                    },
+                    "dialogue": {
+                        "guidelines": "A dwarf.",
+                        "dialogue_paths": {
+                            "convince_fight": {
+                                "description": "Convince Korbar to fight.",
+                                "result": {
+                                    "narrative": "Korbar steels himself.",
+                                    "set_entity_state": {
+                                        "korbar": {"passive": False},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        })
+        sm = build_state_manager(corpus)
         korbar = sm.corpus.entities["korbar"]
         assert "passive" in korbar.state_fields
         assert korbar.combat.ai is not None

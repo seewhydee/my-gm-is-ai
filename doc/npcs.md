@@ -171,7 +171,10 @@ Defined per-NPC in `dialogue.attitude_limits`:
 | `min` | Minimum possible attitude value |
 | `max` | Maximum possible attitude value |
 | `step_per_turn` | Maximum absolute change per turn. If 0, the NPC's attitude is frozen. |
-| `initial` | Starting attitude value at game start |
+
+The initial attitude value is declared separately, in
+`state_fields.attitude.initial` (default 0).  See
+[`hard-state.md`](../schema/hard-state.md#attitude-changes).
 
 ### Flow: How Attitude Changes
 
