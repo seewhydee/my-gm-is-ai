@@ -2,7 +2,7 @@
   "adventure": {
     "id": "combat_arena",
     "title": "Combat Arena",
-    "introduction": "A proving ground for combat mechanics. You stand in a dusty sand-floored arena beside your ally Korbar. Four enemies block the northern corridor: a goblin grunt, a skittish goblin runner, a goblin shaman, and a thick-skinned bugbear. Fight your way through.",
+    "introduction": "A proving ground for combat mechanics. You stand in a dusty sand-floored arena beside your ally Gargan. Four enemies block the northern corridor: a goblin grunt, a skittish goblin runner, a goblin shaman, and a thick-skinned bugbear. Fight your way through.",
     "atmosphere": {
       "setting": "a dusty gladiatorial arena",
       "tone": "tense"
@@ -12,7 +12,7 @@
     "arena": {
       "id": "arena",
       "name": "The Arena",
-      "description": "A circular sand-floored arena ringed by cracked stone walls. A narrow corridor leads north, but four enemies stand between you and the exit: a goblin grunt with a rusty shortsword, a skittish goblin runner clutching javelins, a hunched goblin shaman rattling bone fetishes, and a hulking bugbear hefting a morningstar. Korbar stands at your side, warhammer ready.",
+      "description": "A circular sand-floored arena ringed by cracked stone walls. A narrow corridor leads north, but four enemies stand between you and the exit: a goblin grunt with a rusty shortsword, a skittish goblin runner clutching javelins, a hunched goblin shaman rattling bone fetishes, and a hulking bugbear hefting a morningstar. Gargan the Dwarf stands at your side, hefting his warhammer.",
       "exits": [
         {
           "id": "exit_north",
@@ -25,7 +25,7 @@
         "goblin_runner",
         "goblin_shaman",
         "bugbear",
-        "korbar"
+        "gargan"
       ],
       "interactions": [],
       "is_start_room": true
@@ -58,10 +58,10 @@
         "destroy": true
       }
     },
-    "korbar": {
+    "gargan": {
       "type": "npc",
-      "name": "Korbar",
-      "description": "A stocky dwarf warrior with a braided beard and a battered warhammer. She fights at your side.",
+      "name": "Gargan",
+      "description": "A stocky dwarf warrior with a braided beard and a battered warhammer. He fights at your side.",
       "state_fields": {
         "alive": {"type": "boolean", "description": "Alive?"},
         "following": {"type": "boolean", "description": "Following the player?"},
