@@ -36,6 +36,10 @@ LLM-vs-LLM runs:
 | Layer | What's tested |
 |-------|---------------|
 | **Engine combat** | Player attacks, NPC attacks, save abilities, consumable use, healing, friendly NPC ally, NPC flee AI, resistance/vulnerability, cooldown management |
+| **Conditions & on-hit effects** | NPC on-hit saves (poison, stun), condition application, consumable `cure_conditions` (antidote), conditions cleared at combat end |
+| **Attack variety** | NPC `multiattack` with named attacks, damage **immunity**, mid-combat weapon swap (`equip` + `unequip_targets`), player attack-roll and heal abilities |
+| **Combat AI** | `player` targeting, HP-gated NPC abilities (`use_below_own_hp_pct`), passive NPCs (join combat, never act) |
+| **Encounter-driven combat** | Combat started by an encounter (`trigger_encounter` → `start_combat`) instead of a direct attack; the player's `wait` action; out-of-bounds talk attempts handled gracefully |
 | **GM rulings** | LLM Call 1 correctly classifies player commands in natural language as combat actions, ability uses, item uses, and flee attempts |
 | **GM prose** | LLM Call 2 produces a coherent narration that reflects the engine outcome, without hallucinating hits/misses/KOs that didn't happen |
 | **Narration quality** | No verbatim repetition, no degenerate loops, consistent HP tracking across turns (advisory judge) |
@@ -120,12 +124,12 @@ even broken runs.
 
 Each game turn makes 2 GM LLM calls (ruling + prose) plus 1 driver
 call.  With `stop_when`, a typical fight is ~10 turns ≈ 30 calls.  A
-full `pytest tests/integration` run (4 scenarios) is roughly 120–180
-calls, plus 4 judge calls.
+full `pytest tests/integration` run (11 scenarios) is roughly 300–400
+calls, plus 11 judge calls.
 
 ## Scenarios
 
-All scenarios use the same `combat_arena` fixture:
+Four scenarios use the `combat_arena` fixture:
 
 | Scenario | Directive | Key assertions |
 |----------|-----------|----------------|
@@ -133,6 +137,23 @@ All scenarios use the same `combat_arena` fixture:
 | `flee_scenario` | Attack once, then flee north | Combat started, at least one flee attempt logged; escape → player reached corridor alive, no game-over; death → gracefully handled loss |
 | `consumable_ability` | Use flame strike on bugbear, potion when HP < 14, then fight to end | Flame strike entry in combat log, combat concluded (win or graceful loss) |
 | `ally_death` | Korbar at 1 HP / AC 1, fight to end | Combat concluded (win or gracefully handled loss); Korbar's fate consistent between combat log and entity state — death recorded on both when she falls (she almost always does) |
+
+Four scenarios use the `venom_pit` fixture (`test_venom_pit.py`):
+
+| Scenario | Directive | Key assertions |
+|----------|-----------|----------------|
+| `poisoned_and_cured` | Attack the viper; drink an antidote if poisoned (Willa made passive so the viper always targets the player) | Viper hits carry CON-save poison on-hit effects; on a failed save, a `use_item` antidote entry; no conditions linger after combat |
+| `multiattack_and_stun` | Fight the carrion crawler | Some round has both `tentacles` and `bite` attack entries; on a failed tentacle save, a `stunned` player turn is logged |
+| `immunity_weapon_swap` | Attack the jelly with the sword, then swap to the war hammer | A player attack with `mitigation="immune"` and 0 damage; later bludgeoning attacks; war hammer equipped at the end (no swap → jelly unkillable → turn-cap failure, the intended signal) |
+| `player_abilities` | Power Strike the crawler; Healing Hands on Willa below half HP | ≥1 and ≤2 `power_strike` attack entries; a `heal` entry targeting Willa when she was hurt |
+
+Three scenarios use the `ambush_alley` fixture (`test_ambush_alley.py`):
+
+| Scenario | Directive | Key assertions |
+|----------|-----------|----------------|
+| `ambush_trigger` | Confront and grab the cutpurse (no attack), then fight | Combat entered via the encounter: `ambush_triggered` flag set and all three gang members enemy combatants on the combat-start turn; combat concluded |
+| `targeting_and_frenzy` | Ambush, then fight howler-first | Every thug attack targets the player; `frenzy` entries only at/after the howler first dropped below half HP; pack mule a party combatant with zero attack entries |
+| `hold_and_talk_rejected` | Ambush, hold ground first turn, then try to talk, then fight | A `wait` player entry; no exceptions or empty narrations across the talk attempt; combat concluded |
 
 ## The combat arena fixture
 
@@ -152,6 +173,49 @@ non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
   piercing resistance, fire vulnerability
 - **Rooms**: Arena (start, contains all combatants, exit north to
   corridor) → Exit Corridor
+
+## The venom pit fixture
+
+Located at `tests/integration/fixtures/venom_pit/`, validated by a
+non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
+
+- **Player** (level 3): longsword (1d8 slashing) equipped, war hammer
+  (1d6 bludgeoning) in inventory, 2 healing potions, 2 antidotes
+  (cure `poisoned`), power strike ability (2 uses/combat, 2d6 slashing
+  attack), healing hands ability (2 uses/combat, 2d4+2 heal on ally),
+  HP 28, AC 14; save proficiencies deliberately exclude CON
+- **Willa** (ally): short blade (1d6 slashing), HP 16, AC 12
+- **Pit viper**: HP 20, AC 12, bite (1d4 piercing) with a poison on-hit
+  effect (CON save DC 13: 1d6 poison + `poisoned` 2 rounds on failure,
+  half on success)
+- **Carrion crawler**: HP 22, AC 13, multiattack — tentacles (1d4
+  bludgeoning, CON save DC 13 or stunned for its next turn) + bite
+  (1d6 piercing)
+- **Ochre jelly**: HP 24, AC 8, pseudopod (1d6 acid), **immune to
+  slashing** — unbeatable without swapping to the war hammer
+- **Rooms**: Venom Pit (start, all combatants, rope exit up) → Temple
+  Ruins
+
+## The ambush alley fixture
+
+Located at `tests/integration/fixtures/ambush_alley/`, validated by a
+non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
+
+- **Player** (level 2): longsword (1d8 slashing), 2 healing potions,
+  HP 28, AC 14
+- **Pack mule** (ally): `ai.passive` — joins combat on the player's
+  side but never acts
+- **Cutpurse**: HP 10, AC 13, knife (1d4 piercing); declares a
+  `confront` interaction whose `interaction.used` reaction triggers his
+  aggro encounter, which sets `ambush_triggered` and starts combat with
+  the whole gang
+- **Hired thug**: HP 16, AC 13, club (1d6 bludgeoning),
+  `ai.targeting: "player"`
+- **Frenzied howler**: HP 14, AC 12, knife (1d4 slashing), frenzy
+  ability (2d4 slashing attack) gated to below 50% HP
+- All three gang members share the `alley_gang` combat group
+- **Rooms**: Market Alley (start, all combatants, exit east) → Dead-End
+  Court
 
 ## How to modify
 

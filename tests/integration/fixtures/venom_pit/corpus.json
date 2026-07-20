@@ -1,0 +1,256 @@
+{
+  "adventure": {
+    "id": "venom_pit",
+    "title": "The Venom Pit",
+    "introduction": "You stand in a sunken stone pit beneath a ruined temple, ankle-deep in muck, your companion Willa beside you. Three creatures lurk in the filth before you: a pit viper coiled on a ledge, a carrion crawler worming through the muck, and a quivering ochre jelly. Each demands a different answer.",
+    "atmosphere": {
+      "setting": "a dank vermin-infested pit",
+      "tone": "grimy and dangerous"
+    }
+  },
+  "rooms": {
+    "pit": {
+      "id": "pit",
+      "name": "The Venom Pit",
+      "description": "A circular pit of slick stone, ankle-deep in muck. A pit viper is coiled on a ledge, its fangs dripping venom. A carrion crawler undulates through the filth, tentacles quivering — its touch paralyses. An ochre jelly quivers in a corner. A rope hangs from the surface above. Willa, a young acolyte with a short blade, watches your back.",
+      "exits": [
+        {
+          "id": "exit_rope",
+          "direction": "Up the rope to the surface",
+          "target_room": "surface"
+        }
+      ],
+      "contains": [
+        "pit_viper",
+        "carrion_crawler",
+        "ochre_jelly",
+        "willa"
+      ],
+      "interactions": [],
+      "is_start_room": true
+    },
+    "surface": {
+      "id": "surface",
+      "name": "Temple Ruins",
+      "description": "The ruined temple floor above the pit. Daylight and safety. The rope still hangs down into the pit.",
+      "exits": [
+        {
+          "id": "exit_down",
+          "direction": "Back down the rope into the pit",
+          "target_room": "pit"
+        }
+      ]
+    }
+  },
+  "entities": {
+    "longsword": {
+      "type": "item",
+      "name": "Longsword",
+      "description": "A standard steel longsword, well-balanced and sharp. Deals slashing damage.",
+      "tags": ["weapon"],
+      "equip_block": {
+        "equip_tags": ["weapon"],
+        "damage_expr": "1d8",
+        "hit_bonus": 0,
+        "damage_type": "slashing"
+      }
+    },
+    "war_hammer": {
+      "type": "item",
+      "name": "War Hammer",
+      "description": "A heavy one-handed hammer. Deals bludgeoning damage.",
+      "tags": ["weapon"],
+      "equip_block": {
+        "equip_tags": ["weapon"],
+        "damage_expr": "1d6",
+        "hit_bonus": 0,
+        "damage_type": "bludgeoning"
+      }
+    },
+    "health_potion": {
+      "type": "item",
+      "name": "Healing Potion",
+      "description": "A vial of crimson liquid that heals 2d4+2 HP when drunk.",
+      "consumable": {
+        "heal": "2d4+2",
+        "destroy": true
+      }
+    },
+    "antidote": {
+      "type": "item",
+      "name": "Antidote",
+      "description": "A bitter draught that purges venom. Drinking it removes the poisoned condition.",
+      "consumable": {
+        "cure_conditions": ["poisoned"],
+        "destroy": true
+      }
+    },
+    "willa": {
+      "type": "npc",
+      "name": "Willa",
+      "description": "A young acolyte with a short blade and steady nerves. She fights at your side.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "following": {"type": "boolean", "description": "Following the player?"},
+        "attitude": {"type": "number", "description": "Attitude toward the player"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "follower": {
+        "blacklist": []
+      },
+      "dialogue": {
+        "guidelines": "Earnest, brave, and a little naive. Speaks plainly. Already allied with the player.",
+        "attitude_limits": {
+          "min": -10,
+          "max": 10,
+          "step_per_turn": 1
+        }
+      },
+      "combat": {
+        "hp": 16,
+        "ac": 12,
+        "atk": 4,
+        "dmg": "1d6",
+        "dmg_type": "slashing",
+        "initiative_mod": 1,
+        "flee_dc": 10
+      }
+    },
+    "pit_viper": {
+      "type": "npc",
+      "name": "Pit Viper",
+      "description": "A thick serpent coiled on a stone ledge, fangs slick with venom. Its bite injects a toxin that sickens and weakens (CON save vs poison).",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 20,
+        "ac": 12,
+        "atk": 6,
+        "dmg": "1d4",
+        "dmg_type": "piercing",
+        "initiative_mod": 4,
+        "flee_dc": 10,
+        "on_hit_effects": [
+          {
+            "check": {
+              "type": "stat_check",
+              "stat": "CON",
+              "target": 13,
+              "proficiency": "save",
+              "repeatable": false
+            },
+            "tag": "poison",
+            "success": {
+              "narrative": "You shake off the worst of the venom.",
+              "player_damage": "half(1d6)"
+            },
+            "failure": {
+              "narrative": "Venom burns through your veins — you are poisoned!",
+              "player_damage": "1d6",
+              "apply_condition": { "id": "poisoned", "rounds": 2 }
+            }
+          }
+        ]
+      }
+    },
+    "carrion_crawler": {
+      "type": "npc",
+      "name": "Carrion Crawler",
+      "description": "A huge segmented worm with a ring of quivering tentacles around its maw. Every round it lashes with its paralysing tentacles (CON save or stunned) and then bites.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 22,
+        "ac": 13,
+        "dmg": "1d6",
+        "initiative_mod": 2,
+        "flee_dc": 10,
+        "attacks": [
+          {
+            "id": "tentacles",
+            "name": "lashes with its paralysing tentacles",
+            "atk": 6,
+            "dmg": "1d4",
+            "dmg_type": "bludgeoning",
+            "on_hit_effects": [
+              {
+                "check": {
+                  "type": "stat_check",
+                  "stat": "CON",
+                  "target": 13,
+                  "proficiency": "save",
+                  "repeatable": false
+                },
+                "success": {
+                  "narrative": "You fight off the numbing toxin."
+                },
+                "failure": {
+                  "narrative": "Your limbs seize up — you are stunned!",
+                  "apply_condition": { "id": "stunned", "rounds": 2 }
+                }
+              }
+            ]
+          },
+          {
+            "id": "bite",
+            "name": "bites with its beaked maw",
+            "atk": 4,
+            "dmg": "1d6",
+            "dmg_type": "piercing"
+          }
+        ],
+        "multiattack": ["tentacles", "bite"]
+      }
+    },
+    "ochre_jelly": {
+      "type": "npc",
+      "name": "Ochre Jelly",
+      "description": "A quivering mound of ochre protoplasm. It is slow and sluggish, oozing across the floor and leaving a trail of slime.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 24,
+        "ac": 8,
+        "atk": 3,
+        "dmg": "1d6",
+        "dmg_type": "acid",
+        "initiative_mod": -2,
+        "flee_dc": 8,
+        "immunities": ["slashing"]
+      }
+    }
+  },
+  "abilities": {
+    "power_strike": {
+      "name": "Power Strike",
+      "description": "You put everything into a single mighty blow — an all-out attack for 2d6 slashing damage. Usable twice per combat.",
+      "target": "enemy",
+      "uses_per_combat": 2,
+      "attack": { "stat": "STR", "proficient": true, "damage": "2d6", "damage_type": "slashing" }
+    },
+    "healing_hands": {
+      "name": "Healing Hands",
+      "description": "You lay glowing hands on an ally, knitting their wounds for 2d4+2 HP. Usable twice per combat.",
+      "target": "ally",
+      "uses_per_combat": 2,
+      "heal": "2d4+2"
+    }
+  },
+  "stats": {
+    "definitions": {
+      "STR": {"name": "Strength"},
+      "DEX": {"name": "Dexterity"},
+      "CON": {"name": "Constitution"},
+      "INT": {"name": "Intelligence"},
+      "WIS": {"name": "Wisdom"},
+      "CHA": {"name": "Charisma"}
+    },
+    "system": "5e"
+  }
+}

@@ -110,3 +110,15 @@ def artifacts_dir() -> Path:
 def combat_arena_dir() -> Path:
     """Path to the combat_arena fixture adventure."""
     return FIXTURES_DIR / "combat_arena"
+
+
+@pytest.fixture
+def venom_pit_dir() -> Path:
+    """Path to the venom_pit fixture adventure."""
+    return FIXTURES_DIR / "venom_pit"
+
+
+@pytest.fixture
+def ambush_alley_dir() -> Path:
+    """Path to the ambush_alley fixture adventure."""
+    return FIXTURES_DIR / "ambush_alley"

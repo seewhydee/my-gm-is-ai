@@ -76,7 +76,7 @@ You MUST output a single JSON object with the following structure.
 - `target` (string, required): Entity ID of the item to equip
 - `unequip_targets` (array of strings, optional): Items to unequip first (e.g., swapping weapons)
 - The item must have an `equip_block` in the corpus — not all items are equippable
-- Only valid when not in combat (armour doffing takes minutes)
+- In combat, only quick weapon swaps are valid (one weapon for another, using `unequip_targets`; see *Gear in combat*). Changing armour in combat is never allowed — armour doffing takes minutes.
 
 **unequip** — Unequip a worn item:
 - `target` (string, required): Entity ID of the currently equipped item to remove

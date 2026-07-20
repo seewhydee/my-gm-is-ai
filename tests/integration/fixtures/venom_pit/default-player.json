@@ -1,0 +1,26 @@
+{
+  "system": "5e",
+  "player": {
+    "stats": {
+      "STR": 16,
+      "DEX": 14,
+      "CON": 14,
+      "INT": 10,
+      "WIS": 12,
+      "CHA": 10
+    },
+    "level": 3,
+    "max_hp": 28,
+    "current_hp": 28,
+    "ac": 14,
+    "proficiency_bonus": 2,
+    "save_proficiencies": ["STR", "DEX"],
+    "inventory": {
+      "war_hammer": 1,
+      "health_potion": 2,
+      "antidote": 2
+    },
+    "equipped": ["longsword"],
+    "abilities": ["power_strike", "healing_hands"]
+  }
+}

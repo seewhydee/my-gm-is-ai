@@ -128,6 +128,7 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
 
     # 6. Orphaned entities (not present in any room and not in player inventory)
     referenced_entities = set(hard.player.inventory)
+    referenced_entities.update(hard.player.equipped)
     for room in corpus.rooms.values():
         referenced_entities.update(room.contains)
     # Also consider contains (items nested inside other entities)

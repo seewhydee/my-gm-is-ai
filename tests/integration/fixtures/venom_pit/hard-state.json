@@ -1,0 +1,32 @@
+{
+  "player": {
+    "location": "pit"
+  },
+  "flags": {},
+  "room_states": {
+    "pit": {"visited": false},
+    "surface": {"visited": false}
+  },
+  "entity_states": {
+    "willa": {
+      "alive": true,
+      "following": true,
+      "attitude": 5,
+      "current_hp": 16
+    },
+    "pit_viper": {
+      "alive": true,
+      "current_hp": 20
+    },
+    "carrion_crawler": {
+      "alive": true,
+      "current_hp": 22
+    },
+    "ochre_jelly": {
+      "alive": true,
+      "current_hp": 24
+    }
+  },
+  "turn_count": 0,
+  "game_over": null
+}

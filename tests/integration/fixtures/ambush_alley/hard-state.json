@@ -1,0 +1,32 @@
+{
+  "player": {
+    "location": "market_alley"
+  },
+  "flags": {},
+  "room_states": {
+    "market_alley": {"visited": false},
+    "dead_end": {"visited": false}
+  },
+  "entity_states": {
+    "pack_mule": {
+      "alive": true,
+      "following": true,
+      "attitude": 0,
+      "current_hp": 12
+    },
+    "cutpurse": {
+      "alive": true,
+      "current_hp": 10
+    },
+    "hired_thug": {
+      "alive": true,
+      "current_hp": 16
+    },
+    "frenzied_howler": {
+      "alive": true,
+      "current_hp": 14
+    }
+  },
+  "turn_count": 0,
+  "game_over": null
+}

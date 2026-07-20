@@ -1,0 +1,221 @@
+{
+  "adventure": {
+    "id": "ambush_alley",
+    "title": "Ambush Alley",
+    "introduction": "A twisting market alley at dusk. Ahead you spot the cutpurse who lifted your coin purse an hour ago, loitering with two rough-looking companions — a hired thug and a frenzied howler. Your pack mule trails behind you. Confront the thief and take back what is yours.",
+    "atmosphere": {
+      "setting": "a shadowy back alley behind a market",
+      "tone": "tense"
+    }
+  },
+  "flags_declared": ["ambush_triggered"],
+  "rooms": {
+    "market_alley": {
+      "id": "market_alley",
+      "name": "Market Alley",
+      "description": "A narrow alley behind the market stalls, strewn with crates and refuse. The cutpurse leans against a wall, flipping your stolen coin purse in one hand. A heavyset hired thug cracks his knuckles beside him, and a wild-eyed howler bounces on the balls of his feet, spoiling for a fight. Your pack mule waits patiently behind you. A dead-end court branches off to the east.",
+      "exits": [
+        {
+          "id": "exit_east",
+          "direction": "East to the dead-end court",
+          "target_room": "dead_end"
+        }
+      ],
+      "contains": [
+        "cutpurse",
+        "hired_thug",
+        "frenzied_howler",
+        "pack_mule"
+      ],
+      "interactions": [],
+      "is_start_room": true
+    },
+    "dead_end": {
+      "id": "dead_end",
+      "name": "Dead-End Court",
+      "description": "A walled-in court stacked with broken crates. No way out but back.",
+      "exits": [
+        {
+          "id": "exit_west",
+          "direction": "West back to the market alley",
+          "target_room": "market_alley"
+        }
+      ]
+    }
+  },
+  "entities": {
+    "longsword": {
+      "type": "item",
+      "name": "Longsword",
+      "description": "A standard steel longsword, well-balanced and sharp.",
+      "tags": ["weapon"],
+      "equip_block": {
+        "equip_tags": ["weapon"],
+        "damage_expr": "1d8",
+        "hit_bonus": 0,
+        "damage_type": "slashing"
+      }
+    },
+    "health_potion": {
+      "type": "item",
+      "name": "Healing Potion",
+      "description": "A vial of crimson liquid that heals 2d4+2 HP when drunk.",
+      "consumable": {
+        "heal": "2d4+2",
+        "destroy": true
+      }
+    },
+    "pack_mule": {
+      "type": "npc",
+      "name": "Pack Mule",
+      "description": "A placid, sure-footed mule laden with your travelling gear. It follows you everywhere and will not fight — it just stands there, braying nervously when blades come out.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "following": {"type": "boolean", "description": "Following the player?"},
+        "attitude": {"type": "number", "description": "Attitude toward the player"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "follower": {
+        "blacklist": []
+      },
+      "dialogue": {
+        "guidelines": "A beast of burden. It cannot speak; it brays, snorts, and stamps. It is docile and loyal.",
+        "attitude_limits": {
+          "min": -10,
+          "max": 10,
+          "step_per_turn": 1
+        }
+      },
+      "combat": {
+        "hp": 12,
+        "ac": 10,
+        "atk": 1,
+        "dmg": "1d4",
+        "initiative_mod": 0,
+        "flee_dc": 8,
+        "ai": {
+          "passive": true
+        }
+      }
+    },
+    "cutpurse": {
+      "type": "npc",
+      "name": "Cutpurse",
+      "description": "A wiry thief with quick fingers and a crooked grin — the one who stole your coin purse. If cornered, he whistles for his crew.",
+      "combat_group": "alley_gang",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "interactions": [
+        {
+          "id": "confront",
+          "description": "Confront and grab the cutpurse to take back your stolen purse.",
+          "result": {
+            "narrative": "You seize the cutpurse by the collar. He lets out a sharp, piercing whistle!"
+          }
+        }
+      ],
+      "reactions": [
+        {
+          "id": "cutpurse_whistle",
+          "on": "interaction.used",
+          "condition": {
+            "all": [
+              "event:interaction_id == confront",
+              "event:target_id == cutpurse"
+            ]
+          },
+          "once": true,
+          "effect": { "trigger_encounter": "self" }
+        }
+      ],
+      "aggro": [
+        {
+          "result": {
+            "narrative": "At the cutpurse's whistle, his crew piles in — the hired thug and the frenzied howler rush you from the shadows!",
+            "start_combat": ["hired_thug", "frenzied_howler"],
+            "set_flag": { "ambush_triggered": true }
+          }
+        }
+      ],
+      "combat": {
+        "hp": 10,
+        "ac": 13,
+        "atk": 4,
+        "dmg": "1d4",
+        "dmg_type": "piercing",
+        "initiative_mod": 3,
+        "flee_dc": 10
+      }
+    },
+    "hired_thug": {
+      "type": "npc",
+      "name": "Hired Thug",
+      "description": "A heavyset bruiser paid to break bones. He has orders and a grudge: he goes for you personally, no matter what.",
+      "combat_group": "alley_gang",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 16,
+        "ac": 13,
+        "atk": 5,
+        "dmg": "1d6",
+        "dmg_type": "bludgeoning",
+        "initiative_mod": 1,
+        "flee_dc": 12,
+        "ai": {
+          "targeting": "player"
+        }
+      }
+    },
+    "frenzied_howler": {
+      "type": "npc",
+      "name": "Frenzied Howler",
+      "description": "A wild-eyed knife-fighter who fights dirty. When bloodied (below half HP), he flies into a frenzy, attacking with twice his usual fury.",
+      "combat_group": "alley_gang",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 14,
+        "ac": 12,
+        "atk": 4,
+        "dmg": "1d4",
+        "dmg_type": "slashing",
+        "initiative_mod": 2,
+        "flee_dc": 10,
+        "abilities": ["frenzy"],
+        "ai": {
+          "targeting": "last_attacker",
+          "ability_rules": {
+            "frenzy": { "use_below_own_hp_pct": 50 }
+          }
+        }
+      }
+    }
+  },
+  "abilities": {
+    "frenzy": {
+      "name": "Frenzy",
+      "description": "The howler flies into a shrieking frenzy, attacking with reckless fury for 2d4 slashing damage.",
+      "target": "enemy",
+      "uses_per_combat": -1,
+      "attack": { "stat": "STR", "proficient": true, "damage": "2d4", "damage_type": "slashing" }
+    }
+  },
+  "stats": {
+    "definitions": {
+      "STR": {"name": "Strength"},
+      "DEX": {"name": "Dexterity"},
+      "CON": {"name": "Constitution"},
+      "INT": {"name": "Intelligence"},
+      "WIS": {"name": "Wisdom"},
+      "CHA": {"name": "Charisma"}
+    },
+    "system": "5e"
+  }
+}

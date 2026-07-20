@@ -212,6 +212,15 @@ def run_scenario(
             final_snapshot["entity_states"] = {
                 eid: dict(state) for eid, state in hard.entity_states.items()
             }
+            # Augment with the player sheet so tests can inspect post-combat
+            # conditions, equipment, and abilities.
+            final_snapshot["player"] = {
+                "current_hp": hard.player.current_hp,
+                "max_hp": hard.player.max_hp,
+                "conditions": dict(hard.player.conditions),
+                "equipped": list(hard.player.equipped),
+                "abilities": list(hard.player.abilities),
+            }
         result.final_status = final_snapshot
 
         # Write the artifact regardless of pass/fail.
