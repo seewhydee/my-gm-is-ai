@@ -407,13 +407,13 @@ class TestIntegrationFixtureSmoke:
         assert "goblin_runner" in sm.corpus.entities
         assert "goblin_shaman" in sm.corpus.entities
         assert "bugbear" in sm.corpus.entities
-        assert "korbar" in sm.corpus.entities
+        assert "gargan" in sm.corpus.entities
 
-        # Korbar is a follower with HP 22 and alive.
-        korbar_state = sm.hard_state.entity_states.get("korbar", {})
-        assert korbar_state.get("alive") is True
-        assert korbar_state.get("following") is True
-        assert korbar_state.get("current_hp") == 22
+        # Gargan is a follower with HP 22 and alive.
+        gargan_state = sm.hard_state.entity_states.get("gargan", {})
+        assert gargan_state.get("alive") is True
+        assert gargan_state.get("following") is True
+        assert gargan_state.get("current_hp") == 22
 
         # Bugbear has piercing resistance, fire vulnerability.
         bugbear = sm.corpus.entities["bugbear"]

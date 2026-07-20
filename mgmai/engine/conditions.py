@@ -17,8 +17,13 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
-from mgmai.models.corpus import ConditionExpression, ModuleCorpus
+from mgmai.models.corpus import (
+    ConditionExpression,
+    ModuleCorpus,
+    reserved_entity_field_default,
+)
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import ConditionStatus
@@ -32,6 +37,27 @@ CONDITION_RE = re.compile(
 
 TRUE_VALUES = frozenset({"true", "True"})
 FALSE_VALUES = frozenset({"false", "False"})
+
+
+def _entity_field_value(
+    entity_id: str,
+    field: str,
+    hard_state: HardGameState,
+    corpus: ModuleCorpus | None,
+) -> Any:
+    """Value of an entity state field, falling back to reserved defaults.
+
+    Reserved state fields (``alive``, ``hidden``, ``attitude``, etc.) are
+    valid without a declaration; when undeclared and never set, they read
+    as their documented default.  Returns ``None`` for unknown entities
+    or non-reserved unset fields.
+    """
+    field_val = hard_state.entity_states.get(entity_id, {}).get(field)
+    if field_val is not None:
+        return field_val
+    if corpus is None or entity_id not in corpus.entities:
+        return None
+    return reserved_entity_field_default(field, corpus.entities.get(entity_id))
 
 
 def parse_condition_string(
@@ -121,10 +147,7 @@ def evaluate_condition_string(
             if loc is None:
                 return False
             return _compare(loc, op, value)
-        entity_state = hard_state.entity_states.get(entity_id)
-        if entity_state is None:
-            return False
-        field_val = entity_state.get(field)
+        field_val = _entity_field_value(entity_id, field, hard_state, corpus)
         if field_val is None:
             return False
         return _compare(field_val, op, value)
@@ -365,7 +388,7 @@ def get_condition_detail(
             if field == "location":
                 current_val = get_entity_location(entity_id, hard_state, corpus)
             else:
-                current_val = hard_state.entity_states.get(entity_id, {}).get(field)
+                current_val = _entity_field_value(entity_id, field, hard_state, corpus)
         else:
             entity_id, field = key, "?"
             current_val = None

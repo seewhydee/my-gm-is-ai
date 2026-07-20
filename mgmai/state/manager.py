@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 from mgmai.models.corpus import (
     Entity,
     ModuleCorpus,
+    RESERVED_ENTITY_STATE_FIELDS,
     RESERVED_ROOM_STATE_FIELDS,
     RESERVED_STATE_FIELD_DEFAULTS,
     StateFieldDecl,
@@ -571,12 +572,15 @@ class StateManager:
         _check_ids(self.hard_state.entity_states, self.corpus.entities, "entity")
 
         # Every field in hard_state.entity_states must match declared state_fields
+        # (reserved state fields are valid without a declaration).
         for entity_id, state in self.hard_state.entity_states.items():
             if entity_id not in self.corpus.entities:
                 # Already reported above; skip field check for unknown entities
                 continue
             declared = self.corpus.entities[entity_id].state_fields
             for field_name in state:
+                if field_name in RESERVED_ENTITY_STATE_FIELDS:
+                    continue
                 if field_name not in declared:
                     errors.append(f"Entity '{entity_id}' has undeclared state field: {field_name}")
 
@@ -1373,6 +1377,8 @@ class StateManager:
             else:
                 declared = corpus.entities[entity_id].state_fields
                 for field_name in entity_changes:
+                    if field_name in RESERVED_ENTITY_STATE_FIELDS:
+                        continue
                     if field_name not in declared:
                         errors.append(f"Entity '{entity_id}' state change has undeclared field {field_name}")
 

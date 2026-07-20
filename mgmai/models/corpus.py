@@ -36,6 +36,46 @@ RESERVED_STATE_FIELD_DEFAULTS: dict[str, Any] = {
     "visited": False,
 }
 
+# Reserved entity state fields.  These need NOT be declared in an entity's
+# ``state_fields`` unless the author overrides the default initial value
+# (see corpus.md).  ``location`` is also reserved, but it is derived from
+# containment and managed separately, so it is not listed here.
+RESERVED_ENTITY_STATE_FIELDS = frozenset({
+    "alive",
+    "attitude",
+    "hidden",
+    "following",
+    "open",
+    "current_hp",
+})
+
+# Default values for reserved entity state fields when they are not declared
+# (``current_hp`` is context-sensitive and handled separately below).
+RESERVED_ENTITY_STATE_FIELD_DEFAULTS: dict[str, Any] = {
+    "alive": True,
+    "attitude": 0,
+    "hidden": False,
+    "following": False,
+    "open": False,
+}
+
+
+def reserved_entity_field_default(
+    field_name: str, entity: "Entity | None" = None
+) -> Any:
+    """Default value of a reserved entity state field.
+
+    Returns the documented default for reserved fields that are valid
+    without a declaration, or ``None`` if *field_name* is not a reserved
+    entity state field.  ``current_hp`` defaults to the entity's combat
+    block HP when it has one, else 0.
+    """
+    if field_name == "current_hp":
+        if entity is not None and entity.combat is not None:
+            return entity.combat.hp
+        return 0
+    return RESERVED_ENTITY_STATE_FIELD_DEFAULTS.get(field_name)
+
 # A flags_declared entry is either a plain string (starts false) or a
 # single-key dict mapping a flag id to its initial boolean value.
 FlagDecl = Union[str, Dict[str, bool]]
