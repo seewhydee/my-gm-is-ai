@@ -279,6 +279,7 @@ ALL fields in a Result object are optional.
 | `alter_stat`        | object   | Stat IDs → `{ "mode": "delta"\|"set", "value": <int> }` |
 | `set_player_location`| string  | Relocate player to given Room ID    |
 | `player_damage`     | string   | Deal damage to player, e.g. `"1d4"` |
+| `player_heal`       | string   | Heal player (clamped to max HP), e.g. `"2d4+2"` |
 | `apply_condition`   | object   | Apply a combat condition to the player: `{ "id": "poisoned", "rounds": 3 }` |
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Update player knowledge (see below) |
@@ -1496,6 +1497,13 @@ Notes:
   When an NPC's `current_hp` drops to 0, the engine automatically sets
   the `alive` state field to `false` and drops it out of combat.
 
+- When the player's HP drops to ≤ 0, combat ends immediately (no
+  further hostile actions that round) and the `player.died` event
+  fires (see [Events](events.md#player-death)): if no reaction
+  restores HP above 0, the game ends with
+  `{ "type": "lose", "trigger": "player_death" }`.  No corpus entry
+  is needed for this.
+
 - `initiative_mod` is added to the NPC's initiative roll to determine
   turn order.
 
@@ -1827,6 +1835,12 @@ The engine polls `condition` once per turn, after all reactions have
 settled.  The first entry with `condition` evaluating to `true` ends
 the game using `type` and `trigger` as the [GameOver](#game-over)
 parameters, and with `narrative` (optional) as the ending narration.
+
+Note: player death by HP loss needs no entry here.  Whenever the
+player's HP drops to 0 or below, from any source, the `player.died`
+event fires (see [Events](events.md#player-death)); if no reaction
+restores HP above 0, the game ends with
+`{ "type": "lose", "trigger": "player_death" }`.
 
 Example:
 

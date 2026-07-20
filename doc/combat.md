@@ -320,11 +320,14 @@ engine while combat is active.
   - Same natural-1 / natural-20 rules.
 - Damage: parsed from `CombatBlock.dmg` (e.g., `"1d6+2"`).
 - Critical: double dice, modifier once.
-- If the player's `current_hp` drops to ≤ 0, `game_over` is set with
-  `type: "lose"` and `trigger: "player_death"`.  This is checked after
-  **every** action against damage accumulated across all attackers in the
-  current turn, so several enemies whose combined damage is lethal end
-  the game immediately rather than after a phantom extra turn.
+- If the player's `current_hp` drops to ≤ 0, combat ends immediately —
+  this is checked after **every** action against damage accumulated
+  across all attackers in the current turn, so several enemies whose
+  combined damage is lethal end combat immediately rather than after a
+  phantom extra turn.  The `player.died` event then fires (see
+  [Events](../schema/events.md#player-death)): if no reaction restores
+  HP above 0, `game_over` is set with `type: "lose"` and
+  `trigger: "player_death"`.
 
 After the player's turn, all surviving enemies take their turns in
 initiative order.  Then the round advances.  Enemies killed earlier in
@@ -350,7 +353,8 @@ When the player uses `move` during combat:
    `traversal.succeeded` reactions are **not** evaluated.
 4. **Failure**: the player stays, turn is consumed, and remaining enemy
    turns are resolved normally — if the player drops to 0 HP, combat
-   ends and the game is over (a loss).
+   ends and, unless a `player.died` rescue reaction intervenes, the
+   game is over (a loss).
 
 ---
 

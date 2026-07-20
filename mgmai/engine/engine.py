@@ -283,9 +283,9 @@ def resolve(
                     combat_log = combat_entry["combat_log"]
                     if combat_entry.get("hard_changes"):
                         _apply_and_merge(combat_entry["hard_changes"])
-                    if combat_entry.get("game_over"):
-                        hard.game_over = GameOverState(type="lose", trigger="player_death")
-                        game_over = GameOverResult(type="lose", trigger="player_death")
+                    # Player death by HP loss is handled later, at the
+                    # player.died poll; an inline encounter game-over was
+                    # already applied to hard.game_over above.
                     if soft.dialogue_state.active_npc is not None:
                         resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
                 else:
@@ -396,21 +396,16 @@ def resolve(
         if hint not in soft.revealed_hints:
             soft.revealed_hints.append(hint)
 
-    # 6. Handle direct combat triggers and game-over from resolver.
+    # 6. Handle direct combat triggers from the resolver.  (Player death
+    # by HP loss is handled later, at the player.died poll.)
     if resolution.combat_triggered:
         combat_triggered = True
         combat_log = list(resolution.combat_log or [])
-        if resolution.game_over_trigger:
-            hard.game_over = GameOverState(type="lose", trigger=resolution.game_over_trigger)
-            game_over = GameOverResult(type="lose", trigger=resolution.game_over_trigger)
         if soft.dialogue_state.active_npc is not None:
             resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
     if resolution.combat_log and not combat_triggered:
         combat_log = list(resolution.combat_log)
-        if resolution.game_over_trigger:
-            hard.game_over = GameOverState(type="lose", trigger=resolution.game_over_trigger)
-            game_over = GameOverResult(type="lose", trigger=resolution.game_over_trigger)
 
     # Track whether an encounter has already fired this turn, so that
     # subsequent reaction trigger_encounter effects are suppressed.  Preserve
@@ -524,6 +519,28 @@ def resolve(
             combat_log=reaction_combat_log,
         )
         hard.turn_count += 1
+
+    # 9.4 Player death check (after all reactions settle): dropping to 0 HP
+    # from any source fires player.died; corpus reactions may avert the
+    # death by restoring HP above 0 (alongside other effects, e.g.
+    # teleporting the player away).  If the player is still at 0 HP after
+    # the dispatch, the game is over.  (A None current_hp means HP is not
+    # being tracked, e.g. a statless adventure — no death check.)
+    player_hp = hard.player.current_hp
+    if hard.game_over is None and player_hp is not None and player_hp <= 0:
+        _dispatch_events(
+            [("player.died", {"new_hp": player_hp})],
+            hard, soft, corpus, state_manager, changes=None,
+            triggered_narration=resolution.triggered_narration,
+            revealed_hints=resolution.revealed_hints,
+            rolls=reaction_rolls,
+            encounter_fired_ref=encounter_fired_ref,
+            combat_log=reaction_combat_log,
+        )
+        player_hp = hard.player.current_hp
+        if player_hp is None or player_hp <= 0:
+            hard.game_over = GameOverState(type="lose", trigger="player_death")
+            game_over = GameOverResult(type="lose", trigger="player_death")
 
     # 9.5 Condition-based game-over poll (after all reactions settle).
     if hard.game_over is None:

@@ -406,3 +406,93 @@ class TestIntegrationFixtureSmoke:
         arena = sm.corpus.rooms["arena"]
         exits = {ex.id: ex.target_room for ex in arena.exits}
         assert exits.get("exit_north") == "corridor"
+
+    def test_venom_pit_loads(self):
+        """StateManager successfully loads the venom_pit fixture."""
+        from pathlib import Path
+        from mgmai.state.manager import StateManager
+
+        fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "venom_pit"
+        sm = StateManager(adventure_dir=str(fixture))
+
+        assert sm.hard_state is not None
+        assert sm.corpus is not None
+        assert sm.soft_state is not None
+
+        # Player starts in the pit with expected gear and abilities.
+        assert sm.hard_state.player.location == "pit"
+        assert sm.hard_state.player.current_hp == 28
+        assert sm.hard_state.player.max_hp == 28
+        assert sm.hard_state.player.inventory.get("antidote") == 2
+        assert sm.hard_state.player.inventory.get("war_hammer") == 1
+        assert sm.hard_state.player.equipped == ["longsword"]
+        assert "power_strike" in sm.hard_state.player.abilities
+        assert "healing_hands" in sm.hard_state.player.abilities
+
+        # Viper has a poison on-hit effect.
+        viper = sm.corpus.entities["pit_viper"]
+        assert len(viper.combat.on_hit_effects) == 1
+        effect = viper.combat.on_hit_effects[0]
+        assert effect.check.stat == "CON"
+        assert effect.tag == "poison"
+        assert effect.failure.apply_condition.id == "poisoned"
+
+        # Crawler has a multiattack sequence with a stun on-hit effect.
+        crawler = sm.corpus.entities["carrion_crawler"]
+        assert crawler.combat.multiattack == ["tentacles", "bite"]
+        tentacles = next(a for a in crawler.combat.attacks if a.id == "tentacles")
+        assert tentacles.on_hit_effects[0].failure.apply_condition.id == "stunned"
+
+        # Jelly is immune to slashing.
+        jelly = sm.corpus.entities["ochre_jelly"]
+        assert jelly.combat.immunities == ["slashing"]
+
+        # Willa is a living follower.
+        willa_state = sm.hard_state.entity_states.get("willa", {})
+        assert willa_state.get("alive") is True
+        assert willa_state.get("following") is True
+
+        # Antidote cures poisoned.
+        antidote = sm.corpus.entities["antidote"]
+        assert antidote.consumable.cure_conditions == ["poisoned"]
+
+    def test_ambush_alley_loads(self):
+        """StateManager successfully loads the ambush_alley fixture."""
+        from pathlib import Path
+        from mgmai.state.manager import StateManager
+
+        fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "ambush_alley"
+        sm = StateManager(adventure_dir=str(fixture))
+
+        assert sm.hard_state is not None
+        assert sm.corpus is not None
+        assert sm.soft_state is not None
+
+        # Player starts in the market alley.
+        assert sm.hard_state.player.location == "market_alley"
+        assert sm.hard_state.player.current_hp == 28
+
+        # Cutpurse declares the confront interaction, the whistle
+        # reaction, and an aggro encounter that starts combat.
+        cutpurse = sm.corpus.entities["cutpurse"]
+        assert any(i.id == "confront" for i in cutpurse.interactions)
+        assert any(r.id == "cutpurse_whistle" for r in cutpurse.reactions)
+        assert cutpurse.aggro is not None
+        assert cutpurse.aggro[0].result.start_combat == [
+            "hired_thug", "frenzied_howler",
+        ]
+        assert cutpurse.aggro[0].result.set_flag == {"ambush_triggered": True}
+
+        # Thug always targets the player; howler has a HP-gated ability.
+        thug = sm.corpus.entities["hired_thug"]
+        assert thug.combat.ai.targeting == "player"
+        howler = sm.corpus.entities["frenzied_howler"]
+        assert "frenzy" in howler.combat.abilities
+        rule = howler.combat.ai.ability_rules["frenzy"]
+        assert rule.use_below_own_hp_pct == 50
+
+        # Pack mule is a passive follower.
+        mule = sm.corpus.entities["pack_mule"]
+        assert mule.combat.ai.passive is True
+        mule_state = sm.hard_state.entity_states.get("pack_mule", {})
+        assert mule_state.get("following") is True

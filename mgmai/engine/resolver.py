@@ -147,7 +147,7 @@ class ResolutionResult:
     combat_trigger: list[str] | None = None
     combat_log: list[CombatLogEntry] = field(default_factory=list)
     combat_triggered: bool = False
-    game_over_trigger: str | None = None
+    player_died: bool = False
     warnings: list[str] = field(default_factory=list)
     room_after_id: str | None = None
     dialogue_exited: DialogueExitedResult | dict | None = None
@@ -944,7 +944,7 @@ def resolve_interact(
                 hard_changes=entry["hard_changes"],
                 combat_triggered=True,
                 combat_log=entry["combat_log"],
-                game_over_trigger="player_death" if entry["game_over"] else None,
+                player_died=entry.get("player_died", False),
                 room_after_id=room_id,
             )
 
@@ -1442,6 +1442,18 @@ def _apply_result(
         dmg_total, _ = system.roll_damage(result.player_damage)
         existing = changes.player_hp_delta or 0
         changes.player_hp_delta = existing - dmg_total
+    if result.player_heal and corpus is not None:
+        system = get_system_for_corpus(corpus)
+        heal_total, _ = system.roll_damage(result.player_heal)
+        if hard is not None:
+            # Clamp to max HP, as with consumable healing.
+            effective_hp = (hard.player.current_hp or 0) + (
+                changes.player_hp_delta or 0
+            )
+            max_hp = system.compute_player_max_hp(hard, corpus)
+            heal_total = max(0, min(heal_total, max_hp - effective_hp))
+        existing = changes.player_hp_delta or 0
+        changes.player_hp_delta = existing + heal_total
     if result.apply_condition is not None and hard is not None:
         # Engine-owned runtime state (like combat state): mutate directly.
         hard.player.conditions[result.apply_condition.id] = (
@@ -1783,7 +1795,7 @@ def _resolve_combat_action(
         success=True,
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
-        game_over_trigger="player_death" if result["game_over"] else None,
+        player_died=result.get("player_died", False),
         room_after_id=hard.player.location,
     )
 
@@ -1809,7 +1821,7 @@ def _resolve_combat_pass(
         success=True,
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
-        game_over_trigger="player_death" if result["game_over"] else None,
+        player_died=result.get("player_died", False),
         room_after_id=hard.player.location,
     )
 
@@ -1835,7 +1847,7 @@ def _resolve_combat_flee(
         success=True,
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
-        game_over_trigger="player_death" if result["game_over"] else None,
+        player_died=result.get("player_died", False),
         room_after_id=(
             result["hard_changes"].player_location
             if result["hard_changes"] and result["hard_changes"].player_location

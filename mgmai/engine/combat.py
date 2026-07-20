@@ -1012,8 +1012,8 @@ def _resolve_npc_turn(
     (player HP as a delta, NPC HP as absolute sets) and *combat*; log
     entries are appended to *combat_log*.  End-of-combat conditions are
     checked after the action.  Returns ``(game_over, combat_ended)`` —
-    game_over when the player died, combat_ended when no living enemies
-    remain.
+    game_over when the player dropped to 0 HP or an inline (scripted)
+    game-over occurred, combat_ended when no living enemies remain.
     """
     entity = corpus.entities.get(actor_id)
     if entity is None or entity.combat is None:
@@ -1283,7 +1283,10 @@ def enter_combat(
     """Initialize combat state, roll initiative, resolve pre-player NPC turns.
 
     Returns a dict with ``combat_log``, ``hard_changes``, ``combat_triggered``,
-    and ``game_over``.
+    and ``player_died``.  ``player_died`` is True when the player dropped to
+    0 HP without an inline (scripted) game-over; the engine routes that
+    through the ``player.died`` event, which lets rescue reactions avert
+    the death.
     """
     system = get_system_for_corpus(corpus)
 
@@ -1336,6 +1339,11 @@ def enter_combat(
         )
         if go:
             game_over = True
+            # Combat ends the moment the player drops; if a rescue
+            # reaction (player.died) later averts the death, the player
+            # survives out of combat.
+            _clear_conditions(hard)
+            hard.combat = None
             break
         if ended:
             # No living enemies remain (only reachable once allies can
@@ -1348,11 +1356,18 @@ def enter_combat(
         combat.current_index = player_idx
         combat.log.extend(combat_log)
 
+    # HP-based death is reported separately from an inline (scripted)
+    # game-over: the engine routes it through the ``player.died`` event,
+    # which lets rescue reactions avert the death.
+    player_died = hard.game_over is None and (
+        (hard.player.current_hp or 0) + (hard_changes.player_hp_delta or 0) <= 0
+    )
+
     return {
         "combat_log": combat_log,
         "hard_changes": hard_changes,
         "combat_triggered": True,
-        "game_over": game_over,
+        "player_died": player_died,
     }
 
 
@@ -1433,7 +1448,10 @@ def resolve_combat_turn(
     flee attempt (``MoveAction``), or a turn pass (``WaitAction``).
 
     Returns a dict with ``success``, ``hard_changes``, ``combat_log``,
-    ``game_over``, and ``error`` (if failure).
+    ``player_died``, and ``error`` (if failure).  ``player_died`` is True
+    when the player dropped to 0 HP without an inline (scripted)
+    game-over; the engine routes that through the ``player.died`` event,
+    which lets rescue reactions avert the death.
     """
     combat = hard.combat
     if combat is None or not combat.active:
@@ -1606,9 +1624,16 @@ def resolve_combat_turn(
         _clear_conditions(hard)
         hard.combat = None
 
+    # HP-based death is reported separately from an inline (scripted)
+    # game-over: the engine routes it through the ``player.died`` event,
+    # which lets rescue reactions avert the death.
+    player_died = hard.game_over is None and (
+        (hard.player.current_hp or 0) + (hard_changes.player_hp_delta or 0) <= 0
+    )
+
     return {
         "success": True,
         "hard_changes": hard_changes,
         "combat_log": combat_log,
-        "game_over": game_over,
+        "player_died": player_died,
     }

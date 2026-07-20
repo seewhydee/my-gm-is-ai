@@ -212,6 +212,7 @@ class Result(BaseModel):
     apply_condition: Optional[ApplyCondition] = None
     then_check: Optional[CheckResolution] = None
     player_damage: Optional[str] = None
+    player_heal: Optional[str] = None
     set_player_location: Optional[str] = None
     game_over: Optional[GameOverTrigger] = None
     start_combat: Optional[List[str]] = None
@@ -224,7 +225,7 @@ class Result(BaseModel):
                 "remove_item", "remove_item_count",
                 "set_flag", "alter_stat", "set_entity_state", "set_room_state",
                 "adjust_attitude", "reveals", "then_check",
-                "player_damage", "set_player_location",
+                "player_damage", "player_heal", "set_player_location",
             )
         ) or self.game_over is not None or self.start_combat is not None
 

@@ -156,6 +156,38 @@ an encounter".
 
 ---
 
+## Player death
+
+| Event         | Context keys | Emitted when                          |
+|---------------|--------------|---------------------------------------|
+| `player.died` | `new_hp`     | Player HP drops to 0 or below         |
+
+`player.died` fires once per turn pipeline, after all other reactions
+have settled (including `turn.end` reactions), whenever the player's HP
+is 0 or lower — regardless of the damage source (combat, traps, falls,
+or any other `player_damage`).  It is the player's "death moment".
+
+Reactions on `player.died` are **rescue hooks**: after the dispatch
+settles, the engine re-checks the player's HP.  If any reaction has
+restored HP above 0 (e.g., via `player_heal` in a [Result](corpus.md#result)),
+the death is averted and play continues, alongside whatever other
+effects the reaction applied (teleporting the player away, setting
+flags, etc.).  If the player is still at 0 HP or below, the game ends
+with `{ "type": "lose", "trigger": "player_death" }`.
+
+Notes:
+
+- When the player drops to 0 HP in combat, combat ends immediately
+  (no further hostile actions that round); `player.died` fires
+  afterward.  A rescue therefore also leaves the player out of combat.
+- `player.died` does not fire for scripted deaths: an inline
+  `game_over` in a [Result](corpus.md#result) is absolute and cannot be
+  averted.
+- If HP is not tracked (`current_hp` unset, e.g. a statless
+  adventure), the check is skipped entirely.
+
+---
+
 ## Lifecycle events
 
 | Event | Context | Emitted when |

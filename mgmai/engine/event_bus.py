@@ -436,8 +436,9 @@ def _resolve_reaction_encounter(
                     changes.merge(combat_entry["hard_changes"])
                 else:
                     state_manager.apply_hard_changes(combat_entry["hard_changes"])
-            if combat_entry.get("game_over"):
-                hard.game_over = GameOverState(type="lose", trigger="player_death")
+            # Player death by HP loss is handled later, at the engine's
+            # player.died poll; an inline encounter game-over was already
+            # applied to hard.game_over above.
             if combat_entry.get("combat_log") and combat_log is not None:
                 combat_log.extend(combat_entry["combat_log"])
             # Exit dialogue if active — combat and dialogue are mutually exclusive

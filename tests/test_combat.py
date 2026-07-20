@@ -743,7 +743,7 @@ class TestOnHitEffects:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
 
         result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
-        assert result["game_over"] is True
+        assert result["player_died"] is True
         assert any(entry.action == "death" for entry in result["combat_log"])
 
     def test_on_hit_log_entry_shape(self, combat_hard_state, combat_npc_corpus, monkeypatch):
@@ -811,7 +811,8 @@ class TestOnHitEffects:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
 
         result = resolve_combat_turn(self._player_action(), hard, corpus, soft=SoftGameState())
-        assert result["game_over"] is True
+        # Inline (scripted) game-over, not HP death: player_died is False.
+        assert result["player_died"] is False
         assert hard.game_over is not None
         assert hard.game_over.type == "lose"
 
@@ -1069,8 +1070,8 @@ class TestResolverIntegration:
 
     def test_player_death_during_flee_attempt(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         """A player killed by NPC turns after a failed flee attempt must
-        propagate game_over_trigger='player_death' (previously dropped by
-        the flee wrapper, so the game went on with a dead player)."""
+        propagate player_died (previously dropped by the flee wrapper, so
+        the game went on with a dead player)."""
         hard = combat_hard_state.model_copy(deep=True)
         hard.player.current_hp = 3
         hard.combat = CombatState(
@@ -1089,7 +1090,7 @@ class TestResolverIntegration:
         soft = SoftGameState()
         result = resolve_action(action, hard, soft, combat_npc_corpus)
         assert result.success
-        assert result.game_over_trigger == "player_death"
+        assert result.player_died is True
         assert any(
             e.actor == "player" and e.action == "death" for e in result.combat_log
         )
@@ -1301,7 +1302,7 @@ class TestCombatEndStates:
         )
         result = resolve_combat_turn(action, hard, combat_npc_corpus)
         assert result["success"]
-        assert result["game_over"] is False
+        assert result["player_died"] is False
         assert hard.combat is None
 
     def test_player_death_game_over(self, combat_hard_state, combat_npc_corpus, monkeypatch):
@@ -1326,7 +1327,7 @@ class TestCombatEndStates:
         )
         result = resolve_combat_turn(action, hard, combat_npc_corpus)
         assert result["success"]
-        assert result["game_over"] is True
+        assert result["player_died"] is True
         assert hard.combat is None
 
 
@@ -1444,7 +1445,7 @@ class TestNpcTargeting:
         )
         result = resolve_combat_turn(action, hard, two_goblin_corpus)
         assert result["success"]
-        assert result["game_over"] is True
+        assert result["player_died"] is True
         assert result["hard_changes"].player_hp_delta == -6
         deaths = [
             e for e in result["combat_log"]
@@ -1800,7 +1801,7 @@ class TestPartyCombat:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
         assert result["success"]
-        assert result["game_over"] is False
+        assert result["player_died"] is False
         goblin_attacks = [
             e for e in result["combat_log"]
             if e.action == "attack" and e.actor == "goblin"
@@ -1961,7 +1962,7 @@ class TestPartyCombat:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
         assert result["success"]
-        assert result["game_over"] is False
+        assert result["player_died"] is False
         companion_changes = result["hard_changes"].entity_state_changes["companion"]
         assert companion_changes["alive"] is False
         assert companion_changes["current_hp"] <= 0
@@ -2513,7 +2514,7 @@ class TestUseItem:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._use(), hard, corpus)
         assert result["success"]
-        assert result["game_over"] is False
+        assert result["player_died"] is False
         goblin_attack = next(
             e for e in result["combat_log"]
             if e.action == "attack" and e.actor == "goblin"
@@ -2660,7 +2661,7 @@ class TestMultiattack:
             if e.action == "attack" and e.actor == "wolf"
         ]
         assert [e.attack_id for e in attacks] == ["claw", "claw"]
-        assert result["game_over"] is True
+        assert result["player_died"] is True
         deaths = [
             e for e in result["combat_log"]
             if e.action == "death" and e.actor == "player"
