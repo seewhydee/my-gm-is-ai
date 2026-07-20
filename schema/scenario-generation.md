@@ -1753,12 +1753,15 @@ Rules:
 
 ### Step 4 validation checklist
 
-- [ ] Every mechanic referenced by a `trigger_encounter` exists in the block
-- [ ] Every `trigger` is unique across all mechanics
-- [ ] Game-over mechanics have `condition`, `narrative`, and `trigger`
-- [ ] Encounter mechanics have `rules` (not `condition`/`type`/`trigger`)
-- [ ] Mechanics with `reactions` but no `type` or `rules` are valid
-      (adventure-wide event watchers)
+- [ ] Every mechanic referenced by a `trigger_encounter` exists in the
+      block and has `rules` (or the reference is an NPC entity with an
+      `aggro` block, or `"self"` on an entity-scoped reaction)
+- [ ] Encounter mechanics have `rules`; reaction-only mechanics have
+      `reactions` and no `rules`
+- [ ] Every `game_over_conditions` entry has `type`, `condition`, and
+      `trigger_id`
+- [ ] Game-over `trigger_id`s are unique across all inline
+      `Result.game_over` outcomes and `game_over_conditions` entries
 - [ ] If stats block present: only stats actually used are defined
 - [ ] If stats block absent: no stat_check interactions or stat: conditions
       exist in rooms/entities
@@ -1894,6 +1897,13 @@ The soft state stores narrative-oriented mutable data. Most fields start empty.
 10. **`player_knowledge`** — `[]`. List of knowledge entries accumulated
     during play (from NPC dialogue revelations and `reveals` fields in
     Result objects). Starts empty.
+
+If the adventure directory contains a `hard-state.json` left over from
+a previous version of the corpus, delete it.  The initial world state
+is seeded from the corpus, so an override file is normally absent; a
+stale override keyed to old entity IDs or flags will fail cross-file
+validation.  Only author a `hard-state.json` when the scenario
+genuinely requires overriding the seeded initial state.
 
 ---
 

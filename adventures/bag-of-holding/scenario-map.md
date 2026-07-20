@@ -1041,3 +1041,129 @@ both attitude-shifting NPCs; Korbar's follower room blacklist
 10. **`game_over` trigger field.**  The engine model names the field
     `trigger_id`, not `trigger`; the JSON uses `trigger_id`
     throughout.
+
+---
+
+## Step 3 Revisions (deviations found while building the rooms block)
+
+1. **Drop stat loss uses fixed values.**  `alter_stat` only accepts
+   integer values (no dice expressions), so the `axe_head` drop's
+   "lose 1d4 DEX, 1d4 CON" is implemented as a fixed -2 DEX / -2 CON
+   (roughly the expected value of 1d4), alongside the `"3d6"` HP
+   damage, which does support dice.
+2. **"Armed" web-forcing DC implemented via `using_results`.**  The
+   engine has no way to lower a traversal DC automatically when the
+   player is armed, so the web gates use base STR DC 14 with a
+   `using_results` override keyed on `toenail_sword` (the adventure's
+   only `weapon`-tagged item) giving DC 10.  The player must explicitly
+   "use" the sword; other weapons would need their own override keys.
+   The override carries its own `success`/`failure` (with sword-specific
+   narration), which the traversal resolver honors.
+3. **`axe_handle_lower` on-examine split into two events.**  A single
+   Result cannot conditionally include Korbar's sounds, so the map's
+   combined "peer over the side" effect became `peer_over_side` (the
+   rubbish sighting) and `hear_korbar_below` (conditioned on Korbar
+   being alive and in `bag_floor`).  Both use WIS DC 11 repeatable with
+   `skip_check_if` on `room:bag_floor.visited`, so each can
+   independently auto-succeed after a visit.
+4. **`notice_spider_on_entry` uses `then_check`.**  Reaction effects
+   cannot roll checks directly, so the WIS DC 13 repeatable check is a
+   `then_check` inside the reaction's result; failure is omitted, so a
+   failed roll is silent (the player learns nothing).
+5. **`track_entry_direction` split across source rooms.**  Since
+   `room.entered` has no origin context, the reaction became two
+   `traversal.succeeded` reactions: on `axe_handle_upper` (exit
+   `down_handle` → `entered_from = "above"`) and on `bag_floor` (exit
+   `up_handle` → `entered_from = "below"`).  Known limitation: fleeing
+   combat by `move` skips `traversal.succeeded`, so a combat flee
+   *into* `axe_handle_lower` would leave `entered_from` stale.
+6. **`web_spider_attack` condition mirrors the web gating.**  The
+   immediate `traversal.attempted` reaction fires only when the
+   attempted traversal is actually web-gated (matching `web_cleared`
+   and `entered_from` per exit), per the map's "attempts a web-gated
+   traversal".  Its effect is `trigger_encounter: "spider"`; the
+   spider's aggro (§1G) supplies the narration, the
+   hidden/attitude/attitude_fixed changes, and combat start, and the
+   engine blocks the room transition when combat starts, canceling the
+   traversal as planned.
+
+---
+
+## Step 4 Revisions (deviations found while building mechanics, game-overs, and stats)
+
+1. **`heavy_key_movement` implemented as per-exit traversal checks, not
+   a reaction mechanic.**  The engine offers no way for a mechanic,
+   reaction, or encounter to cancel a pending room transition: a
+   reaction-triggered encounter only blocks the move if it starts
+   combat, and reaction results cannot roll gating checks.  The only
+   construct that cancels movement on a failed check is an exit's own
+   `traversal_check`.  Accordingly, every exit gained a gated
+   `traversal_check` implementing the rule: gating `tag:heavy`, STR DC
+   12 repeatable, `skip_check_if` Korbar is following, alive, and
+   conscious (she assists).  Only failure carries narration (emphasizing
+   the key's weight, per §1E); success is silent to avoid spamming
+   narration on every move.
+2. **`axe_handle_lower`'s `up_handle`/`down_handle` are exempted.**
+   Those exits already carry the web `traversal_check`, and an exit
+   supports only one.  When the web gates, its STR DC 14 dominates the
+   key's DC 12 anyway; but note the residual gap that those two exits
+   apply no key check even once the web is cleared.  All other exits
+   (including the drops and the flap, per Errata item 8) are covered.
+3. **`flap_up` has no `skip_check_if`.**  Korbar refuses to enter
+   `secret_pocket` (follower blacklist), so she can never be in the same
+   room when the player climbs back up through the flap; per §1E's
+   "same room" rule the assist skip cannot apply there.
+4. **Reserved `alive` works undeclared (after an engine fix).**  Per
+   corpus.md and the Step 2 guidance, reserved state fields need not be
+   declared, so `alive` is NOT declared on `fly`, `spider`, or `korbar`.
+   This initially broke at runtime: only *declared* fields were seeded
+   into the initial world state (an undeclared `alive` read as missing,
+   so `entity:<npc>.alive == true` conditions evaluated false), and
+   `set_entity_state` writes (including combat's automatic 0-HP death
+   and the fly-death reactions) went through validated
+   `apply_hard_changes`, which rejected undeclared fields.  This was
+   confirmed as an engine bug relative to the documented schema and
+   fixed in the engine: condition reads of undeclared reserved fields
+   now fall back to their documented defaults, and state validation
+   accepts reserved fields without a declaration.  (The Step 3
+   checklist item "State fields for `alive` are `true` for creatures
+   that start alive" still contradicts the Step 2 guidance; reported
+   as a doc inconsistency.)
+5. **`korbar_knocked_out`** was implemented as planned (§1E): a
+   reaction-only mechanic on `entity_state.changed`
+   (`event:entity_id == korbar`, `event:field == current_hp`,
+   `event:new_value <= 0`) whose result restores `alive: true` and sets
+   `unconscious: true`, `current_hp: 1`, `passive: true`.  It is not
+   `once`: if her HP is reduced again while unconscious she returns to
+   1 HP unconscious rather than being left at ≤ 0 HP.
+6. **`key_lost_game_over`** was implemented as planned (§1E): a
+   top-level `game_over_conditions` lose entry on
+   `flag:key_lost == true`, `trigger_id` `key_lost_game_over`.
+7. **Stats block:** all six 5e ability scores are defined (system
+   `"5e"`); all six are used by checks, saves, conditions, or
+   `alter_stat` results in the corpus.
+
+---
+
+## Step 5 Revisions (deviations found while building default-player.json)
+
+1. **Player attack/damage stats unspecified** (Errata item 11): the
+   engine's player model has no attack/damage fields — combat behavior
+   (unarmed damage, weapon proficiency) is engine-internal — so there
+   was nothing to supply.  The file carries exactly the scenario-given
+   values (§1A): Rogue L4, STR 10 / DEX 13 / CON 12 / INT 11 / WIS 10 /
+   CHA 10, HP 27/27, AC 11, proficiency +2, saves DEX/INT, location
+   `axe_head`, empty inventory and equipment.
+
+---
+
+## Step 6 Revisions (deviations found while building soft-state.json)
+
+1. **Soft state** is the standard null structure; no deviations.
+2. **Stale `hard-state.json` removed.**  The old file was an optional
+   world-state override keyed to the previous corpus (old entity IDs
+   such as `stuck_fly`, old flags); the validator rejected it wholesale.
+   The regenerated adventure relies on the corpus-seeded world state, so
+   no override is needed and the file was deleted (recoverable from
+   git).  The generation instructions have no step covering this file;
+   reported as an instruction gap.

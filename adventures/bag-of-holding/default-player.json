@@ -1,6 +1,9 @@
 {
   "system": "5e",
   "player": {
+    "location": "axe_head",
+    "inventory": {},
+    "equipped": [],
     "stats": {
       "STR": 10,
       "DEX": 13,
@@ -10,13 +13,13 @@
       "CHA": 10
     },
     "level": 4,
-    "max_hp": 27,
     "current_hp": 27,
+    "max_hp": 27,
     "ac": 11,
     "proficiency_bonus": 2,
-    "save_proficiencies": ["DEX", "INT"],
-    "inventory": {
-      "health_potion": 1
-    }
+    "save_proficiencies": [
+      "DEX",
+      "INT"
+    ]
   }
 }
