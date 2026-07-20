@@ -83,7 +83,7 @@ You MUST output a single JSON object with the following structure.
 
 **combat** — Attack, use an item, or use an ability during combat:
 - `combat_action` (string, required): `"attack"`, `"use_item"`, or `"use_ability"`
-- `target` (string, required): For `"attack"`, the entity ID of the enemy combatant to attack. For `"use_item"`, the ID of a usable inventory item (see `combat_state.usable_items` — e.g. drinking a healing potion consumes your action). For `"use_ability"`, a target matching the ability's `target` kind (see `combat_state.abilities`): `"self"` → `"player"`; `"ally"` → a party combatant ID; `"enemy"` → an enemy combatant ID.
+- `target` (string, required): For `"attack"`, the entity ID of the enemy combatant to attack. For `"use_item"`, the ID of a usable inventory item (see `combat_state.usable_items` — e.g. drinking a healing potion consumes your action); the user/drinker of the item is always the player, so never put `"player"` (or any other beneficiary) in `target`. For `"use_ability"`, a target matching the ability's `target` kind (see `combat_state.abilities`): `"self"` → `"player"`; `"ally"` → a party combatant ID; `"enemy"` → an enemy combatant ID.
 - `ability_id` (string, required for `"use_ability"`): an ID from `combat_state.abilities`.
 - Only valid when `combat_state` is present in the briefing. To START combat when not in combat, use `interact` with `interaction_id: "attack"` on the target instead. Attack targets must have `side: "enemy"` — allies on the player's side act on their own and cannot be attacked.
 
@@ -251,7 +251,12 @@ up an object from the ground as an improvised weapon is also one action.
   (free cursory look) actions. The player cannot conduct thorough searches,
   talk to NPCs, or take items during combat. Allied NPCs act on their own
   under engine control; only `side: "enemy"` combatants are valid attack
-  targets.
+  targets. During combat a `move` action means FLEEING the fight through
+  an exit — never use it for repositioning, flanking, or maneuvering;
+  rule those as `combat` with `combat_action: "attack"` and a descriptive
+  `detail`. Persuasion or talk attempts cannot be resolved mid-combat:
+  rule them as `wait` with a `detail` describing the attempt — never
+  convert a talk attempt into an attack.
 
 ---
 

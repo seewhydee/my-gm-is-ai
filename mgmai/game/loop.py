@@ -428,6 +428,7 @@ class GameLoop:
     # ------------------------------------------------------------------
 
     def _call_ruling(self, briefing):
+        from mgmai.llm.ruling_validation import validate_ruling_action
         from mgmai.templates.renderer import render_ruling
 
         system_prompt = render_ruling()
@@ -436,18 +437,34 @@ class GameLoop:
         raw = self._llm.call_ruling(system_prompt, user_prompt)
         log.debug("--- LLM Call 1 raw ---\n%s", raw)
 
+        error = None
+        action = None
         try:
-            return parse_player_action(raw)
+            action = parse_player_action(raw)
+            error = validate_ruling_action(action, briefing)
         except LLMOutputError:
-            log.debug("LLM Call 1 retry after parse error")
-            retry_prompt = (
-                user_prompt
-                + "\n\n[ERROR FROM PREVIOUS ATTEMPT: Your JSON was invalid. "
-                + "Please ensure valid JSON with a correct 'action_type' discriminator.]"
+            error = (
+                "Your JSON was invalid. "
+                "Please ensure valid JSON with a correct 'action_type' discriminator."
             )
-            raw = self._llm.call_ruling(system_prompt, retry_prompt)
-            log.debug("--- LLM Call 1 retry raw ---\n%s", raw)
-            return parse_player_action(raw)
+
+        if error is None:
+            return action
+
+        log.debug("LLM Call 1 retry after invalid ruling: %s", error)
+        retry_prompt = (
+            user_prompt
+            + "\n\n[ERROR FROM PREVIOUS ATTEMPT: " + error + "]"
+        )
+        raw = self._llm.call_ruling(system_prompt, retry_prompt)
+        log.debug("--- LLM Call 1 retry raw ---\n%s", raw)
+        action = parse_player_action(raw)
+        semantic_error = validate_ruling_action(action, briefing)
+        if semantic_error is not None:
+            raise LLMOutputError(
+                f"Ruling still semantically invalid after retry: {semantic_error}"
+            )
+        return action
 
     def _call_prose(self, briefing, action, result):
         from mgmai.templates.renderer import render_prose

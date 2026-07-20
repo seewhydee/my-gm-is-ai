@@ -1396,7 +1396,21 @@ def _resolve_use_item(
     normally.  Returns an error dict on failure, None on success.
     """
     if item_id not in hard.player.inventory:
-        return {"success": False, "error": f"Item '{item_id}' not in inventory"}
+        usable: list[str] = []
+        for inv_id, count in hard.player.inventory.items():
+            if count <= 0:
+                continue
+            inv_entity = corpus.entities.get(inv_id)
+            if inv_entity is not None and inv_entity.consumable is not None:
+                usable.append(f"{inv_id} x{count} ({inv_entity.name or inv_id})")
+        if usable:
+            suffix = ". Usable items in inventory: " + ", ".join(usable) + "."
+        else:
+            suffix = ". No usable items in inventory."
+        return {
+            "success": False,
+            "error": f"Item '{item_id}' not in inventory{suffix}",
+        }
     entity = corpus.entities.get(item_id)
     if entity is None or entity.consumable is None:
         return {"success": False, "error": f"Item '{item_id}' is not usable"}

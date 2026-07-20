@@ -2653,6 +2653,41 @@ class TestUseItem:
         assert result["success"] is False
         assert "not in inventory" in result["error"]
 
+    def test_use_item_error_lists_usable_inventory(
+        self, combat_npc_corpus, combat_hard_state
+    ):
+        """The not-in-inventory error lists the consumables the player CAN use."""
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
+        )
+        hard.player.inventory["potion"] = 2
+        # Non-consumable and zero-count items must not be listed.
+        corpus.entities["rock"] = Entity(
+            type="item", name="Rock", description="A rock.",
+        )
+        hard.player.inventory["rock"] = 1
+        hard.player.inventory["old_junk"] = 0
+        result = resolve_combat_turn(self._use(target="player"), hard, corpus)
+        assert result["success"] is False
+        assert "Item 'player' not in inventory" in result["error"]
+        assert "Usable items in inventory: potion x2 (Healing Potion)." \
+            in result["error"]
+        assert "rock" not in result["error"]
+        assert "old_junk" not in result["error"]
+
+    def test_use_item_error_no_usable_inventory(
+        self, combat_npc_corpus, combat_hard_state
+    ):
+        """With no consumables in inventory, the error says so plainly."""
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
+        )
+        del hard.player.inventory["potion"]
+        result = resolve_combat_turn(self._use(), hard, corpus)
+        assert result["success"] is False
+        assert "Item 'potion' not in inventory" in result["error"]
+        assert "No usable items in inventory." in result["error"]
+
     def test_use_item_not_usable(self, combat_npc_corpus, combat_hard_state):
         corpus, hard = self._setup(
             combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
