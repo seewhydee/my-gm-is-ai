@@ -63,7 +63,8 @@ class StatusSnapshot:
     combat_round: Optional[int]
     player_hp: Optional[int]
     player_max_hp: Optional[int]
-    # {combatant_id: {"hp": int, "max_hp": int, "side": "party"|"enemy", "alive": bool}}
+    # {combatant_id: {"hp", "max_hp", "side": "party"|"enemy", "alive",
+    #                 "conditions": {condition: rounds}, "fled": bool}}
     combatants: dict[str, dict[str, Any]] = field(default_factory=dict)
     active_flags: dict[str, bool] = field(default_factory=dict)
 
@@ -196,17 +197,23 @@ def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
                 hp = hard.player.current_hp or 0
                 max_hp = hard.player.max_hp or 0
                 side = "party"
+                conditions = dict(hard.player.conditions or {})
+                fled = False
             else:
                 state = hard.entity_states.get(cid, {})
                 hp = int(state.get("current_hp") or 0)
                 ent = corpus.entities.get(cid) if corpus else None
                 max_hp = (ent.combat.hp if ent and ent.combat else 0)
                 side = "party" if cid in allies else "enemy"
+                conditions = dict(state.get("conditions") or {})
+                fled = bool(state.get("fled"))
             combatants[cid] = {
                 "hp": hp,
                 "max_hp": max_hp,
                 "side": side,
                 "alive": hp > 0,
+                "conditions": conditions,
+                "fled": fled,
             }
 
     return StatusSnapshot(

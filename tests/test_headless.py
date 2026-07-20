@@ -325,6 +325,30 @@ class TestHeadlessSession:
         assert snap.location == state_manager.hard_state.player.location
         assert snap.in_combat is False
 
+    def test_snapshot_combatants_include_conditions_and_fled(
+        self, state_manager
+    ) -> None:
+        from mgmai.game.headless import _snapshot_status
+        from mgmai.models.combat import CombatState
+
+        state_manager.hard_state.combat = CombatState(
+            round_number=1,
+            initiative_order=["player", "spider"],
+            combatants=["player", "spider"],
+            active=True,
+        )
+        state_manager.hard_state.player.conditions = {"poisoned": 2}
+        state_manager.hard_state.entity_states["spider"] = {
+            "current_hp": 5,
+            "conditions": {"stunned": 1},
+            "fled": True,
+        }
+        snap = _snapshot_status(state_manager)
+        assert snap.combatants["player"]["conditions"] == {"poisoned": 2}
+        assert snap.combatants["player"]["fled"] is False
+        assert snap.combatants["spider"]["conditions"] == {"stunned": 1}
+        assert snap.combatants["spider"]["fled"] is True
+
     def test_adventure_dir_loading(self, tmp_path) -> None:
         """HeadlessSession can load an adventure directory directly."""
         from tests.helpers import TEST_DIR

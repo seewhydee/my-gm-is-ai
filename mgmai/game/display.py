@@ -161,114 +161,247 @@ class Display:
             print(f"  {' | '.join(parts)}")
 
     def _render_combat_status(self, hard: Any, state_loader: Any) -> None:
-        """Render a compact combat status panel between turns."""
+        """Render a compact combat status panel between turns.
+
+        Layout adapts to the terminal width: narrow terminals get a
+        single stacked column; wide ones (>= 100 cols) get a two-column
+        Party-vs-Enemies layout with a wider HP bar.  Rows show active
+        conditions and, for enemies, damage mitigations the party has
+        already discovered by landing hits (derived from the combat log,
+        so nothing the player hasn't learned is leaked).
+        """
         corpus = state_loader.corpus
         combat = hard.combat
 
-        hp_bar_width = 10
+        if RICH_AVAILABLE:
+            width = self._console.width
+        else:
+            import shutil
+            width = shutil.get_terminal_size().columns
+        wide = width >= 100
+        bar_width = 14 if wide else 10
 
         def _hp_bar(current: int, max_hp: int) -> str:
             if max_hp <= 0:
-                return " " * hp_bar_width
-            filled = max(0, min(hp_bar_width, round(current / max_hp * hp_bar_width)))
-            empty = hp_bar_width - filled
-            return "\u2588" * filled + "\u2591" * empty
+                return " " * bar_width
+            filled = max(0, min(bar_width, round(current / max_hp * bar_width)))
+            empty = bar_width - filled
+            return "█" * filled + "░" * empty
+
+        def _conditions_text(conditions: dict) -> str:
+            """e.g. 'poisoned 2, stunned 1'"""
+            return ", ".join(f"{c} {n}" for c, n in conditions.items())
+
+        def _row_data(cid: str) -> dict:
+            if cid == "player":
+                return {
+                    "name": "Player",
+                    "hp": hard.player.current_hp or 0,
+                    "max_hp": hard.player.max_hp or 0,
+                    "conditions": dict(hard.player.conditions or {}),
+                    "fled": False,
+                }
+            entity = corpus.entities.get(cid) if corpus else None
+            state = hard.entity_states.get(cid, {})
+            return {
+                "name": (entity.name or cid) if entity else cid,
+                "hp": int(state.get("current_hp") or 0),
+                "max_hp": (entity.combat.hp if entity and entity.combat else 0),
+                "conditions": dict(state.get("conditions") or {}),
+                "fled": bool(state.get("fled")),
+            }
+
+        # Damage mitigations the party has discovered by landing hits on
+        # each enemy (damage type -> mitigation), taken from the combat
+        # log so nothing unlearned is revealed.
+        discovered: dict[str, dict[str, str]] = {}
+        for entry in combat.log or []:
+            target = getattr(entry, "target", None)
+            mitigation = getattr(entry, "mitigation", None)
+            damage_type = getattr(entry, "damage_type", "") or ""
+            if target and target != "player" and mitigation and damage_type:
+                discovered.setdefault(target, {})[damage_type] = mitigation
+
+        def _mitigation_text(cid: str) -> str:
+            """e.g. 'resists piercing; vulnerable to fire'"""
+            parts: list[str] = []
+            for damage_type, mitigation in discovered.get(cid, {}).items():
+                if mitigation == "resisted":
+                    parts.append(f"resists {damage_type}")
+                elif mitigation == "vulnerable":
+                    parts.append(f"vulnerable to {damage_type}")
+                elif mitigation == "immune":
+                    parts.append(f"immune to {damage_type}")
+            return "; ".join(parts)
+
+        def _status_tag(d: dict) -> str:
+            if d["fled"]:
+                return "(fled)"
+            if d["hp"] <= 0:
+                return "†"
+            return ""
+
+        # Current actor in the initiative order.  The panel renders while
+        # awaiting the player's command, so this is normally the player.
+        current_cid = None
+        if 0 <= combat.current_index < len(combat.initiative_order):
+            current_cid = combat.initiative_order[combat.current_index]
+
+        party = [
+            c for c in combat.combatants
+            if c == "player" or c in combat.allies
+        ]
+        enemies = [c for c in combat.combatants if c not in party]
+
+        footer = self._combat_player_footer(hard, corpus, combat)
 
         if RICH_AVAILABLE:
+            from rich.console import Group
             from rich.panel import Panel
+            from rich.table import Table
             from rich.text import Text
 
-            lines: list[str] = []
-            lines.append(f"[bold]Combat: Round {combat.round_number}[/bold]")
-            lines.append("")
-
-            initiative_str = " \u2192 ".join(
-                f"[cyan]{c}[/cyan]" if c == "player" else c
-                for c in combat.initiative_order
-            )
-            lines.append(f"[dim]Initiative:[/dim] {initiative_str}")
-            lines.append("")
+            init_parts: list[str] = []
+            for c in combat.initiative_order:
+                label = c
+                if c == current_cid:
+                    label = f"[bold underline]{label}[/bold underline]"
+                if c == "player":
+                    label = f"[cyan]{label}[/cyan]"
+                init_parts.append(label)
+            initiative_str = " → ".join(init_parts)
 
             def _rich_row(cid: str) -> str:
+                d = _row_data(cid)
+                name = f"{d['name']} {_status_tag(d)}".strip()
+                padded = f"{name:<18}"
                 if cid == "player":
-                    name = f"[bold bright_white]{'Player':<15}[/bold bright_white]"
-                    current = hard.player.current_hp or 0
-                    max_hp = hard.player.max_hp or 0
-                else:
-                    entity = corpus.entities.get(cid) if corpus else None
-                    display_name = (entity.name or cid) if entity else cid
-                    name = f"{display_name:<15}"
-                    state = hard.entity_states.get(cid, {})
-                    current = state.get("current_hp") or 0
-                    max_hp = (entity.combat.hp if entity and entity.combat else 0)
-                bar = _hp_bar(current, max_hp)
-                return f"{name} HP {bar} {current}/{max_hp}"
+                    padded = f"[bold bright_white]{padded}[/bold bright_white]"
+                line = (
+                    f"{padded} HP {_hp_bar(d['hp'], d['max_hp'])} "
+                    f"{d['hp']}/{d['max_hp']}"
+                )
+                if d["conditions"]:
+                    line += f" [yellow]\\[{_conditions_text(d['conditions'])}][/yellow]"
+                mit = _mitigation_text(cid)
+                if mit:
+                    line += f" [dim]({mit})[/dim]"
+                if d["hp"] <= 0 or d["fled"]:
+                    line = f"[dim]{line}[/dim]"
+                return line
 
-            party = [
-                c for c in combat.combatants
-                if c == "player" or c in combat.allies
-            ]
-            enemies = [c for c in combat.combatants if c not in party]
-            if combat.allies:
-                lines.append("[bold]Party[/bold]")
-                for cid in party:
-                    lines.append(_rich_row(cid))
-                lines.append("")
-                lines.append("[bold]Enemies[/bold]")
-                for cid in enemies:
-                    lines.append(_rich_row(cid))
+            header = Text.from_markup(
+                f"[bold]Combat: Round {combat.round_number}[/bold]\n"
+                f"[dim]Initiative:[/dim] {initiative_str}"
+            )
+            footer_text = Text.from_markup(
+                f"[dim]{footer}[/dim]\n[dim italic]It's your turn.[/dim italic]"
+            )
+            party_lines = ["[bold]Party[/bold]"] + [_rich_row(c) for c in party]
+            enemy_lines = ["[bold]Enemies[/bold]"] + [_rich_row(c) for c in enemies]
+            if wide:
+                grid = Table.grid(padding=(0, 0, 0, 4))
+                grid.add_column()
+                grid.add_column()
+                grid.add_row(
+                    Text.from_markup("\n".join(party_lines)),
+                    Text.from_markup("\n".join(enemy_lines)),
+                )
+                body: Any = grid
             else:
-                for cid in combat.combatants:
-                    lines.append(_rich_row(cid))
-
-            lines.append("")
-            lines.append("[dim italic]It's your turn.[/dim italic]")
+                lines = party_lines + [""] + enemy_lines
+                body = Text.from_markup("\n".join(lines))
 
             self._console.print()
             self._console.print(
-                Panel("\n".join(lines), border_style="red", padding=(0, 1))
+                Panel(
+                    Group(header, "", body, "", footer_text),
+                    border_style="red",
+                    padding=(0, 1),
+                )
             )
             self._console.print()
         else:
             print()
             print(f"=== Combat: Round {combat.round_number} ===")
-            initiative_str = " -> ".join(combat.initiative_order)
+            initiative_str = " -> ".join(
+                f"»{c}«" if c == current_cid else c
+                for c in combat.initiative_order
+            )
             print(f"Initiative: {initiative_str}")
             print()
-            def _plain_row(cid: str) -> str:
-                if cid == "player":
-                    name = "Player"
-                    current = hard.player.current_hp or 0
-                    max_hp = hard.player.max_hp or 0
-                else:
-                    entity = corpus.entities.get(cid) if corpus else None
-                    name = (entity.name or cid) if entity else cid
-                    state = hard.entity_states.get(cid, {})
-                    current = state.get("current_hp") or 0
-                    max_hp = (entity.combat.hp if entity and entity.combat else 0)
-                bar = _hp_bar(current, max_hp)
-                return f"  {name:<15} HP {bar} {current}/{max_hp}"
 
-            party = [
-                c for c in combat.combatants
-                if c == "player" or c in combat.allies
-            ]
-            enemies = [c for c in combat.combatants if c not in party]
-            if combat.allies:
-                print("Party:")
-                for cid in party:
-                    print(_plain_row(cid))
-                print()
-                print("Enemies:")
-                for cid in enemies:
-                    print(_plain_row(cid))
-            else:
-                for cid in combat.combatants:
-                    print(_plain_row(cid))
+            def _plain_row(cid: str) -> str:
+                d = _row_data(cid)
+                name = f"{d['name']} {_status_tag(d)}".strip()
+                line = (
+                    f"  {name:<18} HP {_hp_bar(d['hp'], d['max_hp'])} "
+                    f"{d['hp']}/{d['max_hp']}"
+                )
+                if d["conditions"]:
+                    line += f" [{_conditions_text(d['conditions'])}]"
+                mit = _mitigation_text(cid)
+                if mit:
+                    line += f" ({mit})"
+                return line
+
+            print("Party:")
+            for cid in party:
+                print(_plain_row(cid))
             print()
+            print("Enemies:")
+            for cid in enemies:
+                print(_plain_row(cid))
+            print()
+            print(f"  {footer}")
             print("  It's your turn.")
             print()
 
+    def _combat_player_footer(self, hard: Any, corpus: Any, combat: Any) -> str:
+        """One-line summary of the player's combat-relevant resources:
+        AC, equipped weapon, ability uses left, and consumables."""
+        parts: list[str] = []
+        try:
+            from mgmai.engine.combat import compute_player_ac
+            ac = compute_player_ac(hard, corpus) if corpus else hard.player.ac
+        except Exception:  # noqa: BLE001 — display must never crash a turn
+            ac = hard.player.ac
+        if ac is not None:
+            parts.append(f"AC {ac}")
+        if corpus:
+            for item_id in hard.player.equipped:
+                entity = corpus.entities.get(item_id)
+                if (
+                    entity
+                    and entity.equip_block
+                    and "weapon" in entity.equip_block.equip_tags
+                ):
+                    dmg = entity.equip_block.damage_expr + (
+                        f" {entity.equip_block.damage_type}"
+                        if entity.equip_block.damage_type
+                        else ""
+                    )
+                    parts.append(f"{entity.name or item_id} ({dmg})")
+                    break
+            for aid in hard.player.abilities:
+                ability = corpus.abilities.get(aid)
+                if ability is None:
+                    continue
+                if ability.uses_per_combat < 0:
+                    parts.append(ability.name)
+                else:
+                    used = (combat.ability_uses.get("player", {}) or {}).get(aid, 0)
+                    remaining = ability.uses_per_combat - used
+                    parts.append(f"{ability.name} {remaining}/{ability.uses_per_combat}")
+            items: list[str] = []
+            for item_id, count in (hard.player.inventory or {}).items():
+                if count <= 0:
+                    continue
+                entity = corpus.entities.get(item_id)
+                if entity is not None and entity.consumable:
+                    items.append(f"{entity.name or item_id} x{count}")
+            parts.append("Items: " + (", ".join(items) if items else "none"))
+        return " · ".join(parts)
     def _render_character_sheet(self, state_loader: Any) -> None:
         hard = state_loader.hard_state
         corpus = state_loader.corpus

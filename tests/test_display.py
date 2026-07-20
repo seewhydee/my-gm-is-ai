@@ -121,3 +121,65 @@ class TestDisplayNoRich:
         room = type("Room", (), {"exits": []})()
         result = Display.format_exits(room)
         assert result == ""
+
+
+class TestCombatPanel:
+    """Tests for the extended combat status panel."""
+
+    def _setup_combat(self, state_manager) -> None:
+        from mgmai.models.combat import CombatLogEntry, CombatState
+        state_manager.hard_state.combat = CombatState(
+            round_number=2,
+            initiative_order=["spider", "player"],
+            combatants=["player", "spider", "wasp"],
+            current_index=1,
+            active=True,
+        )
+        state_manager.hard_state.player.current_hp = 8
+        state_manager.hard_state.player.max_hp = 10
+        state_manager.hard_state.player.conditions = {"poisoned": 2}
+        state_manager.hard_state.entity_states["spider"] = {
+            "current_hp": 5,
+            "conditions": {"stunned": 1},
+        }
+        state_manager.hard_state.entity_states["wasp"] = {"current_hp": 0}
+        # A landed hit that revealed the spider's piercing resistance.
+        state_manager.hard_state.combat.log.append(CombatLogEntry(
+            round=1, actor="player", action="attack", target="spider",
+            damage_type="piercing", mitigation="resisted",
+        ))
+
+    def test_plain_panel_shows_conditions_and_status(
+        self, state_manager, monkeypatch, capsys
+    ) -> None:
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        self._setup_combat(state_manager)
+        d = Display()
+        d.render_status(state_manager)
+        out = capsys.readouterr().out
+        assert "Round 2" in out
+        assert "poisoned 2" in out
+        assert "stunned 1" in out
+        assert "resists piercing" in out
+        assert "†" in out  # dead wasp marked, not silently dropped
+        assert "»player«" in out  # current actor marked in initiative
+        assert "Party:" in out and "Enemies:" in out
+        assert "Items:" in out  # player resource footer
+
+    def test_rich_panel_wide_and_narrow(self, state_manager) -> None:
+        import io
+
+        from rich.console import Console
+
+        self._setup_combat(state_manager)
+        for width in (80, 140):
+            d = Display()
+            d._console = Console(file=io.StringIO(), width=width, highlight=False)
+            d.render_status(state_manager)
+            # Rich wraps long rows; flatten whitespace before asserting.
+            text = " ".join(d._console.file.getvalue().split())
+            assert "Round 2" in text
+            assert "poisoned 2" in text
+            assert "stunned 1" in text
+            assert "resists piercing" in text
+            assert "Items:" in text

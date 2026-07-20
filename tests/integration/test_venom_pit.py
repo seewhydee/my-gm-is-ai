@@ -114,10 +114,14 @@ def test_poisoned_and_cured(
         f"see artifact: {result.artifacts_path}"
     )
 
-    # Every viper hit carries the CON-save poison on-hit effect.
+    # Every viper hit carries the CON-save poison on-hit effect — except
+    # the killing blow: the engine skips on-hit effects once the player
+    # is dead (poisoning a corpse is pointless).
     failed_save = False
     for e in viper_hits:
         effects = e.get("on_hit_effects") or []
+        if not effects and (e.get("remaining_hp") or 0) <= 0:
+            continue
         assert effects, (
             "Viper hit without on_hit_effects; see artifact: "
             f"{result.artifacts_path}"

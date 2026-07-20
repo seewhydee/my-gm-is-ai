@@ -470,18 +470,33 @@ on `CombatState` and reset when combat ends.
 
 ### Combat Status Panel
 
-Between combat turns, the console UI shows a status panel.  When allies
-are present, combatants are grouped under **Party** and **Enemies**
-headings:
+Between combat turns, the console UI shows a status panel.  Combatants
+are grouped under **Party** and **Enemies** headings; the current actor
+is marked in the initiative order, and each row shows active conditions
+(with remaining rounds) and status markers (`†` for the dead, `(fled)`
+for fled enemies).  For enemies, the panel also lists damage
+mitigations the party has already discovered by landing hits (derived
+from the combat log, so nothing unlearned is revealed).  A footer line
+summarises the player's resources: AC, equipped weapon, ability uses
+left, and consumables.
+
+The layout adapts to the terminal width: narrow terminals get a single
+stacked column, wide ones (≥ 100 columns) a two-column Party-vs-Enemies
+layout with a wider HP bar.
 
 ```
 ┌─ Combat: Round 2 ──────────────────────────────────────┐
-│ Initiative: Player → Spider → Goblin                    │
+│ Initiative: Spider → Player → Goblin                    │
 │                                                         │
-│ Player    HP ████████░░ 10/12                           │
-│ Spider    HP ██████████ 18/18                           │
-│ Goblin    HP ████░░░░░░  5/10                           │
+│ Party                                                   │
+│ Player              HP ████████░░ 10/12 [poisoned 2]    │
 │                                                         │
+│ Enemies                                                 │
+│ Spider              HP ██████████ 18/18                 │
+│ Goblin              HP ████░░░░░░  5/10                 │
+│ Wolf †              HP ░░░░░░░░░░  0/11                 │
+│                                                         │
+│ AC 14 · Longsword (1d8 slashing) · Items: Potion x2     │
 │ It's your turn.                                         │
 └─────────────────────────────────────────────────────────┘
 ```

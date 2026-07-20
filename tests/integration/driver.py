@@ -187,20 +187,35 @@ def _format_situation(session: HeadlessSession) -> str:
     parts.append(f"Turn {snap.turn_count}, location: {snap.location}.")
     if snap.in_combat:
         parts.append(f"In combat, round {snap.combat_round}.")
+
+        def _entry(cid: str, c: dict) -> str:
+            s = f"{cid} {c['hp']}/{c['max_hp']}"
+            conds = c.get("conditions") or {}
+            if conds:
+                s += " (" + ", ".join(f"{k}: {v} rounds" for k, v in conds.items()) + ")"
+            return s
+
         party = [
-            f"{cid} {c['hp']}/{c['max_hp']}"
+            _entry(cid, c)
             for cid, c in snap.combatants.items()
             if c["side"] == "party" and c["alive"]
         ]
         enemies = [
-            f"{cid} {c['hp']}/{c['max_hp']}"
+            _entry(cid, c)
             for cid, c in snap.combatants.items()
-            if c["side"] == "enemy" and c["alive"]
+            if c["side"] == "enemy" and c["alive"] and not c.get("fled")
+        ]
+        gone = [
+            f"{cid} ({'fled' if c.get('fled') else 'dead'})"
+            for cid, c in snap.combatants.items()
+            if c["side"] == "enemy" and (not c["alive"] or c.get("fled"))
         ]
         if party:
             parts.append("Party: " + ", ".join(party) + ".")
         if enemies:
             parts.append("Enemies: " + ", ".join(enemies) + ".")
+        if gone:
+            parts.append("Out of the fight: " + ", ".join(gone) + ".")
     else:
         parts.append(f"Not in combat. Player HP {snap.player_hp}/{snap.player_max_hp}.")
     if snap.active_flags:
@@ -221,6 +236,10 @@ def _format_situation(session: HeadlessSession) -> str:
                 usable.append(f"{ent.name} x{count}")
         if usable:
             parts.append("Usable items: " + ", ".join(usable) + ".")
+        elif snap.in_combat:
+            # Say so explicitly — a line that silently disappears is
+            # easy for the driver to miss mid-fight.
+            parts.append("No usable items left.")
 
     # Ability uses remaining this combat (only when in combat).
     combat = hard.combat
