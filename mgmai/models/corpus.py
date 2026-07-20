@@ -296,8 +296,6 @@ class UsingResultOverride(BaseModel):
         has_result = self.result is not None
         if has_check and has_result:
             raise ValueError("UsingResultOverride must have either check or result, not both")
-        if has_check and self.success is None:
-            raise ValueError("UsingResultOverride with 'check' must also have 'success'")
         return self
 
 

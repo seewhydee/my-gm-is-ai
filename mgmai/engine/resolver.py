@@ -346,27 +346,51 @@ def resolve_move(
                     item_origin="traversal",
                 )
         if should_check:
-            # Resolve using_results overrides (weapon-based DC reduction, etc.)
+            # Resolve using_results overrides (weapon-based DC reduction,
+            # etc.).  An override replaces what it specifies — check,
+            # success, failure — and inherits the rest from the parent
+            # GatedCheck.  A result-only override is an automatic success
+            # applying that result.
             effective_check = trav_check.check
+            success_result = trav_check.success
+            failure_result = trav_check.failure
             using_override: UsingResultOverride | None = None
             using_item = getattr(action, "using", None)
             if trav_check.using_results and using_item:
-                for item_id, override in trav_check.using_results.items():
-                    if item_id == using_item or item_id == "*":
-                        using_override = override
-                        break
-                if using_override is not None and using_override.check is not None:
-                    effective_check = using_override.check
+                using_override = trav_check.using_results.get(using_item)
+                if using_override is None:
+                    using_override = trav_check.using_results.get("*")
+                if using_override is not None:
+                    if using_override.check is not None:
+                        effective_check = using_override.check
+                    if using_override.success is not None:
+                        success_result = using_override.success
+                    if using_override.failure is not None:
+                        failure_result = using_override.failure
 
-            passed = _resolve_traversal_check(
-                effective_check, hard, soft, corpus,
-                traversal_changes, traversal_narrative, traversal_rolls,
-                state_manager, result, target_exit_id,
-            )
+            if using_override is not None and using_override.result is not None:
+                # Fixed-result override: the traversal automatically succeeds.
+                _apply_result_with_check(
+                    using_override.result,
+                    changes=traversal_changes, narrative=traversal_narrative,
+                    revealed_hints=traversal_hints, hard=hard, corpus=corpus,
+                    soft=soft, room_id=exit_data.target_room,
+                    rolls=traversal_rolls,
+                    state_manager=state_manager, resolution=result,
+                    source_id=target_exit_id, source_type="traversal",
+                    item_origin="traversal",
+                )
+                passed = True
+            else:
+                passed = _resolve_traversal_check(
+                    effective_check, hard, soft, corpus,
+                    traversal_changes, traversal_narrative, traversal_rolls,
+                    state_manager, result, target_exit_id,
+                )
             if not passed:
-                if trav_check.failure:
+                if failure_result:
                     _apply_result_with_check(
-                        trav_check.failure,
+                        failure_result,
                         changes=traversal_changes, narrative=traversal_narrative,
                         revealed_hints=traversal_hints, hard=hard, corpus=corpus,
                         soft=soft, room_id=room_id, rolls=traversal_rolls,
@@ -388,9 +412,11 @@ def resolve_move(
                 )
                 return result
             # Traversal succeeded: apply success Result (including any then_check)
-            if trav_check.success:
+            if passed and success_result and (
+                using_override is None or using_override.result is None
+            ):
                 _apply_result_with_check(
-                    trav_check.success,
+                    success_result,
                     changes=traversal_changes, narrative=traversal_narrative,
                     revealed_hints=traversal_hints, hard=hard, corpus=corpus,
                     soft=soft, room_id=exit_data.target_room,
@@ -406,17 +432,8 @@ def resolve_move(
     narrative: list[str] = list(traversal_narrative)
 
     room_states = hard.room_states.get(exit_data.target_room, {})
-    one_way_from = room_states.get("_one_way_from", {})
-    if one_way_from.get(room_id):
-        return ResolutionResult(
-            success=False,
-            error=f"Reverse traversal of one-way exit from '{exit_data.target_room}' to '{room_id}' is blocked",
-        )
-
     base_state = dict(room_states)
     base_state["visited"] = True
-    if exit_data.one_way:
-        base_state["_one_way_from"] = {**one_way_from, room_id: True}
     existing_changes = changes.room_state_changes.get(exit_data.target_room, {})
     changes.room_state_changes[exit_data.target_room] = {**base_state, **existing_changes}
 
@@ -1058,21 +1075,38 @@ def _resolve_interaction(
     """
     effective_source_id = source_id if source_id is not None else inter.id
 
-    if inter.check:
-        # Handle skip_check_if: bypass check and apply success Result
-        if inter.skip_check_if and evaluate(inter.skip_check_if, hard, soft, corpus):
-            if inter.success:
-                return _resolve_interaction_result(
-                    inter.success, hard, soft, corpus, room_id,
-                    encounter_trigger=None, state_manager=state_manager,
-                    resolution=resolution, source_id=effective_source_id,
-                    source_type=source_type,
-                )
-            return ResolutionResult(
-                success=True,
-                hard_changes=HardStateChanges(),
-                room_after_id=room_id,
+    # skip_check_if bypass takes precedence over using_results: the
+    # obstacle is gone, so tools are irrelevant.
+    if inter.check and inter.skip_check_if and evaluate(inter.skip_check_if, hard, soft, corpus):
+        if inter.success:
+            return _resolve_interaction_result(
+                inter.success, hard, soft, corpus, room_id,
+                encounter_trigger=None, state_manager=state_manager,
+                resolution=resolution, source_id=effective_source_id,
+                source_type=source_type,
             )
+        return ResolutionResult(
+            success=True,
+            hard_changes=HardStateChanges(),
+            room_after_id=room_id,
+        )
+
+    # A using_results override replaces the usual resolution: it carries
+    # either a fixed result, or its own check with success/failure
+    # branches (inheriting any it omits from the parent Resolvable).
+    if inter.using_results and action_using:
+        item_override = inter.using_results.get(action_using)
+        if item_override is None:
+            item_override = inter.using_results.get("*")
+        if item_override is not None:
+            return _resolve_using_override(
+                item_override, hard, soft, corpus, room_id,
+                encounter_trigger=None, state_manager=state_manager,
+                resolution=resolution, source_id=effective_source_id,
+                source_type=source_type, parent=inter,
+            )
+
+    if inter.check:
         return _resolve_interaction_check(
             inter, hard, soft, corpus, room_id,
             encounter_trigger=None, state_manager=state_manager,
@@ -1080,16 +1114,6 @@ def _resolve_interaction(
             source_id=effective_source_id,
             attempt_key=effective_source_id,
         )
-
-    if inter.using_results and action_using:
-        item_override = inter.using_results.get(action_using)
-        if item_override is not None:
-            return _resolve_using_override(
-                item_override, hard, soft, corpus, room_id,
-                encounter_trigger=None, state_manager=state_manager,
-                resolution=resolution, source_id=effective_source_id,
-                source_type=source_type,
-            )
 
     if inter.result:
         return _resolve_interaction_result(
@@ -1263,16 +1287,26 @@ def _resolve_using_override(
     resolution: ResolutionResult | None = None,
     source_id: str | None = None,
     source_type: str = "interaction",
+    parent: Resolvable | None = None,
 ) -> ResolutionResult:
-    """Resolve a using_results override, which may carry its own check."""
+    """Resolve a using_results override, which may carry its own check.
+
+    The override replaces what it specifies and inherits the rest from the
+    parent Resolvable: a check-only override resolves its own check but
+    falls back to the parent's success/failure branches.
+    """
     if override.check:
         # Build a synthetic Interaction from the override for check resolution
         synthetic_inter = Interaction(
             id=source_id or "_using_override",
             description="",
             check=override.check,
-            success=override.success,
-            failure=override.failure,
+            success=override.success if override.success is not None else (
+                parent.success if parent is not None else None
+            ),
+            failure=override.failure if override.failure is not None else (
+                parent.failure if parent is not None else None
+            ),
         )
         return _resolve_interaction_check(synthetic_inter, hard, soft, corpus, room_id, encounter_trigger, state_manager, resolution, source_type)
     if override.result:

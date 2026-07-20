@@ -548,13 +548,30 @@ Notes:
 A UsageOverride object, if placed in the optional `using_results`
 field of a GatedCheck or Resolvable, handles player commands of the
 form "[ACTION] using [ITEM]" for special items.  It maps each special
-item's [entity ID](#entity) to a resolution that overrides the usual
-GatedCheck or Resolvable.  Each resolution comprises either:
+item's [entity ID](#entity) — or the `"*"` wildcard, matching any item
+— to a resolution that overrides the usual GatedCheck or Resolvable.
+An exact item-ID match takes precedence over the wildcard.  Each
+resolution comprises either:
 
 - an object with `"result"` keyed to a fixed [Result](#result); OR
 
-- an object with `check`, `success`, and `failure` (optional),
+- an object with `check`, and optional `success` and `failure`,
   defining an alternative [Check](#check).
+
+An override replaces what it specifies and inherits what it omits:
+
+- A check-bearing override resolves its own `check`.  Its `success`
+  and `failure` branches, when present, replace the parent GatedCheck
+  or Resolvable's branches; when absent, the parent's branches apply.
+
+- A result-only override applies its `result` outright.  On a
+  `traversal_check`, this counts as a success: the traversal proceeds
+  and the result is applied.  On a Resolvable, the result replaces the
+  usual resolution.
+
+A Resolvable's `skip_check_if`, when present and true, takes
+precedence over `using_results`: the obstacle is gone, so tools are
+irrelevant.
 
 ---
 

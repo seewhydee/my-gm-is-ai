@@ -183,3 +183,29 @@ class TestAxeHandleLowerWebbing:
         result = resolve(action, sm)
         assert result.success is True
         assert result.combat_triggered is True
+
+    def test_one_way_drop_can_be_repeated(self):
+        """A one-way exit only lacks a reverse exit; the drop itself is repeatable."""
+        hard = make_webs_hard_state(location="axe_handle_lower")
+        sm = build_state_manager(make_webs_test_corpus(), hard_state=hard)
+        self._suppress_spider(sm)
+
+        action = MoveAction(
+            action_type="move",
+            target="exit_drop_from_lower",
+            detail="Drop over the side",
+        )
+        result = resolve(action, sm)
+        assert result.success is True
+        assert sm.hard_state.player.location == "bag_floor"
+
+        # Climb back up (simulated) and drop again.
+        sm.hard_state.player.location = "axe_handle_lower"
+        action = MoveAction(
+            action_type="move",
+            target="exit_drop_from_lower",
+            detail="Drop over the side again",
+        )
+        result = resolve(action, sm)
+        assert result.success is True
+        assert sm.hard_state.player.location == "bag_floor"

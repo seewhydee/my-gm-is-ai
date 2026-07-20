@@ -805,9 +805,12 @@ Notes:
 
 - If an interaction works differently if the player uses a tool,
   define `using_results` as shown in the above example.  The special
-  key `"*"` matches any `using` value not explicitly listed.  Any
-  matching override *replaces* the original check's `check`,
-  `success`, `failure`, and `result`; the effects do not merge.
+  key `"*"` matches any `using` value not explicitly listed.  An
+  override replaces what it specifies and inherits what it omits: a
+  check-bearing override resolves its own `check`, with `success` and
+  `failure` falling back to the parent's branches when not given; a
+  result-only override applies its `result` outright.  See the Usage
+  Override section of [corpus.md](corpus.md#usage-override).
 
 - For escalating consequences (e.g., a failed check triggers a
   follow-up saving throw), use `then_check` on the success/failure
