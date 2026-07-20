@@ -423,6 +423,13 @@ Revisit the entity list, and add the following to each entity:
   the entity) is managed entirely by the engine: never declare it,
   though you may reference it in conditions.
 
+  Avoid planning counter-style numeric fields (e.g., `rapport_count`)
+  that need to be incremented by interactions or dialogue paths:
+  Results cannot do arithmetic, so there is no way to add 1 to a
+  state field.  Instead, plan a short chain of boolean flags
+  (`rapport_1`, `rapport_2`, `rapport_3`) and gate successive
+  interactions on them.
+
 - **Reactions** — describe any consequential reaction tied to the
   entity.  Each reaction can occur only if the entity is in the
   current room (and, for an NPC, alive).
@@ -802,6 +809,13 @@ Notes:
   matching override *replaces* the original check's `check`,
   `success`, `failure`, and `result`; the effects do not merge.
 
+- For escalating consequences (e.g., a failed check triggers a
+  follow-up saving throw), use `then_check` on the success/failure
+  result.  Note that a `then_check` branch cannot carry `game_over`
+  directly: have the terminal branch set a flag (e.g., `key_lost`),
+  and add a top-level `game_over_conditions` entry watching that flag
+  in Step 4 (see Common Pitfalls, item 15).
+
 #### State fields
 
 Using the state fields planned in the Scenario Map, construct the
@@ -972,6 +986,22 @@ use `take_check.gating` with a flag that `success` sets:
 For a permanent one-attempt gate (failure locks you out), set
 `check.repeatable` to `false`.
 
+To make an item *untakeable* while some condition holds (e.g., armor
+worn by a living NPC), remember that `gating` only decides whether the
+check is *active* — when the gating is false, the take proceeds.  The
+idiom is to gate on the blocking condition and use a check that always
+fails, with an explanatory `failure` narrative:
+
+```json
+"take_check": {
+  "gating": { "all": [ "entity:blacksmith.alive == true", "entity:blacksmith.unconscious == false" ] },
+  "check": { "type": "roll", "threshold": 0.0, "repeatable": true },
+  "failure": {
+    "narrative": "The blacksmith is wearing the apron, and he is very much awake."
+  }
+}
+```
+
 ### 2D. Feature entities
 
 For every feature entity, `name` should be in lower case if not a
@@ -1106,6 +1136,20 @@ Any NPC with a `combat` block must also declare `current_hp` in
 `state_fields`; the engine initializes it to `combat.hp` when generating
 world state.  The validator requires the field to be present.
 
+If the scenario's stat block omits numbers the engine needs, derive
+5e-consistent defaults and note the omission in your report:
+`atk` = relevant ability modifier + proficiency bonus (e.g., STR 15
+and proficiency +2 gives `atk` 4); `initiative_mod` = DEX modifier;
+`flee_dc` defaults to 10 if unspecified.
+
+By default an NPC dies at 0 HP (the engine clears its `alive` field).
+If the Scenario Map specifies non-standard death behavior (e.g., the
+NPC falls unconscious instead), do NOT try to implement it as an
+entity-scoped reaction — those are disabled once `alive` is false.
+Plan a mechanic-scope reaction on `entity_state.changed` (see
+[corpus.md](corpus.md#combat)) and record it in the Scenario Map as a
+reaction mechanic for Step 4.
+
 If the NPC has non-standard aggro rules (i.e., anything other than
 going into combat when the player attacks), write an `aggro` block
 using the info in the Scenario Map.  Here is an example of an
@@ -1122,14 +1166,14 @@ encounter using immediate resolution rather than multi-turn combat:
     },
     "failure": {
       "narrative": "The goblin strikes back! Its cleaver goes through your neck.",
-      "game_over": { "type": "lose", "trigger": "goblin" }
+      "game_over": { "type": "lose", "trigger_id": "goblin" }
     }
   },
   {
     "condition": { "unless": "tag:weapon" },
     "result": {
       "narrative": "Bare-handed, you cannot fend off the goblin's attack. It quickly overcomes you.",
-      "game_over": { "type": "lose", "trigger": "goblin" }
+      "game_over": { "type": "lose", "trigger_id": "goblin" }
     }
   }
 ]
@@ -1200,8 +1244,20 @@ Example of a will_reveal structure:
 
 ### 2H. Cleanup
 
-> TBD: instructions to keep global flags up to date, and revise
-> Scenario Map to reflect updates...
+Before moving to Step 3, reconcile the Scenario Map with what you
+actually wrote:
+
+- Add every newly-introduced global flag to `flags_declared` **and**
+  to the Scenario Map's §1D list (with a note that it was added in
+  Step 2).
+- Record every deviation from the Scenario Map — split interactions,
+  replaced state fields, chosen defaults, effects deferred to later
+  steps — in a dedicated "Step 2 Revisions" section at the end of the
+  Scenario Map, and update the affected §1D–§1G entries in place so
+  that Steps 3–6 read a consistent document.
+- If you planned anything for Step 4 (reaction mechanics, game-over
+  conditions) while writing entities, record it in §1E now.
+- Surface all major deviations in your task report.
 
 ---
 
@@ -1225,6 +1281,11 @@ Example of a will_reveal structure:
       any, dialogue for `npc` only)
 - [ ] NPCs that die, flee, or change state when dialogue ends have a
       `dialogue.ended` reaction (not the removed `on_dialogue_exit` field)
+
+You may also run `python scripts/validate_adventure.py <adventure_dir>`
+at this stage.  Because `rooms` is still empty, expect exactly one
+residual error — "No room is marked as is_start_room" — until Step 3
+adds the rooms; any other reported issue should be fixed now.
 
 ---
 
@@ -1501,7 +1562,7 @@ There are two idioms; pick per-case:
     "condition": { "require": "flag:rip_squeeze_possible == true" },
     "result": {
       "narrative": "You tumble into the endless gray of the Astral Plane.",
-      "game_over": { "type": "lose", "trigger": "astral_plane" }
+      "game_over": { "type": "lose", "trigger_id": "astral_plane" }
     }
   }
   ```
@@ -1525,14 +1586,14 @@ There are two idioms; pick per-case:
         ]
       },
       "narrative": "You emerge into the morning light, the ancient artifact clutched to your chest. Your quest is complete.",
-      "trigger": "quest_complete"
+      "trigger_id": "quest_complete"
     },
     {
       "type": "lose",
       "note": "Player falls into the chasm.",
       "condition": { "require": "flag:fallen_into_chasm == true" },
       "narrative": "You lose your footing and tumble into the darkness below. The fall is long, and then there is nothing.",
-      "trigger": "chasm_fall"
+      "trigger_id": "chasm_fall"
     }
   ]
 ```
@@ -2007,7 +2068,9 @@ Supported ops: `== true`, `== false`, `== <string>`, `>= <number>`,
 - `topic:<id>` succeeds if the topic ID appears in
   `dialogue_state.topics_discussed`
 - `room:<id>.is_current` is a special value that checks if the player is
-  currently in that room (available in encounter rules)
+  currently in that room.  It works in any condition; it is especially
+  useful in encounter rules and for multi-room features whose behavior
+  differs per room.
 - `event:<key>` checks a value in the current event context. Only valid inside
   reaction conditions during dispatch. Outside dispatch, evaluates to `false`.
   Common keys: `exit_id`, `interaction_id`, `npc_id`, `flag_id`, `source_id`,
@@ -2073,7 +2136,7 @@ a top-level `game_over_conditions` entry:
     "note": "Player falls into the chasm.",
     "condition": { "require": "flag:fallen_into_chasm == true" },
     "narrative": "You lose your footing and tumble into the darkness below.",
-    "trigger": "chasm_fall"
+    "trigger_id": "chasm_fall"
   }
 ]
 ```

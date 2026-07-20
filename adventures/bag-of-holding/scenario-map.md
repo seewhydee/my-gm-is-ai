@@ -217,6 +217,24 @@ cumbersome for the player to wear.
   handkerchief on the rubbish pile covers a secret pocket in the
   floor.  Initial value: `false`.
 
+*(The following flags were added in Step 2; see "Step 2 Revisions"
+below.)*
+
+- **`key_lost`** — The giant key has slipped through the rip and is
+  gone forever.  Set by the `insert_key` failure cascade (a
+  `then_check` failure cannot carry `game_over` directly); a top-level
+  `game_over_conditions` entry (Step 4) watches it.  Initial value:
+  `false`.
+
+- **`toenail_freed`** — The toenail clipping has been pried loose
+  once; gates the `toenail_sword` take check so it applies only until
+  the first successful take.  Initial value: `false`.
+
+- **`rapport_1` / `rapport_2` / `rapport_3`** — Track Korbar's general
+  conversation-based attitude increases (cap 3).  Replaces the planned
+  `rapport_count` number field, because Results cannot increment
+  numeric state.  Initial values: `false`.
+
 ---
 
 ## 1E. Mechanics
@@ -255,6 +273,28 @@ should emphasize the difficulty of hauling the key.
   the `insert_key` failure cascade), and squeezing through the rip
   (`the_rip.squeeze_through`) — are recorded on `padlock` and
   `the_rip` in §1G.
+
+*(The following mechanics were identified during Step 2; see "Step 2
+Revisions" below.)*
+
+### `korbar_knocked_out` — Kind: Reaction mechanic (global rule)
+
+Trigger — Korbar's `current_hp` drops to 0 or below (an
+`entity_state.changed` event; the engine auto-clears her `alive`
+field, which disables entity-scoped reactions, so this must be a
+mechanic-scope reaction).  Consequences — she falls unconscious for
+the rest of the game instead of dying: set `korbar.alive = true`,
+`korbar.unconscious = true`, `korbar.current_hp = 1`, and
+`korbar.passive = true`; narrate her collapse.  Special rule replacing
+default NPC death (see Errata, item 13).  Implemented in Step 4.
+
+### `key_lost_game_over` — Kind: Global game-over condition
+
+Lose condition: `flag:key_lost == true` (set by the `insert_key`
+failure cascade; a `then_check` failure cannot carry `game_over`
+directly).  Narrative: the key has fallen through the rip; the player
+is trapped forever.  Implemented as a top-level
+`game_over_conditions` entry in Step 4.
 
 ---
 
@@ -649,15 +689,25 @@ should emphasize the difficulty of hauling the key.
   - `unconscious` (boolean, initial `false`) — knocked out at 0 HP for
     the rest of the game (special rule replacing default death; see
     Aggro).
-  - `rapport_count` (number, initial `0`) — how many general
-    conversation-based attitude increases have been applied (cap 3).
+  - `passive` (boolean, initial `true`) — she cowers and takes no
+    actions in combat; cleared when she is persuaded to fight or
+    aggros.  (Added in Step 2 to model "cowering in fear" via the
+    combat AI's `passive` entity state.)
   - `current_hp` (number, initial `29`) — declared as required for
     combat-capable NPCs; equals the stat block's HP.
+
+  *(The planned `rapport_count` field was dropped in Step 2 — Results
+  cannot increment numeric state; replaced by the `rapport_1/2/3`
+  flags, §1D.)*
 - **Attitude Limits:** minimum -10 (she attacks on reaching it); no
-  maximum specified by the scenario.  Ordinary shifts are at most ±1
-  per turn (general increases additionally capped at 3 total via
-  `rapport_count`).  The `convince_spider_dead` +3 is a special
-  one-off whose implementation must allow it past the per-turn cap.
+  maximum specified by the scenario (Step 2 chose maximum 10, since
+  the engine default of 0 would block all increases).  Ordinary shifts
+  are at most ±1 per turn; the `convince_spider_dead` +3 is a special
+  one-off that must pass the per-turn cap, so Step 2 set
+  `step_per_turn` to 3 — ordinary paths only ever adjust by ±1, so
+  the ±1/turn behavior is preserved.  (Replaces the earlier note about
+  `rapport_count`; the cap of 3 general increases is enforced by the
+  `rapport_1/2/3` flags gating the three rapport dialogue paths.)
 - **Follower Behavior:** enabled via dialogue path `convince_follow`.
   Refused rooms: `secret_pocket` (her armor can't squeeze through the
   flap).  While following: she helps lug the `key` (skips the
@@ -674,11 +724,15 @@ should emphasize the difficulty of hauling the key.
   nothing.  Her body is too heavy to haul anywhere.
 - **Reactions:** none beyond the Aggro rules above.
 - **Dialogue paths:**
-  - **`positive_rapport`** — availability: in dialogue, `rapport_count
-    < 3`.  The player engages positively — treats her respectfully,
-    commiserates with her plight.  Success gating: GM discretion —
-    only if the player makes an actual effort (not handed out like
-    candy).  On success: `attitude` +1 and `rapport_count` +1.
+  - **`positive_rapport`** — availability: in dialogue, fewer than 3
+    general increases applied (tracked by the `rapport_1/2/3` flags;
+    implemented in Step 2 as three paths `positive_rapport_first`,
+    `positive_rapport_second`, `positive_rapport_third`, gated by
+    those flags).  The player engages positively — treats her
+    respectfully, commiserates with her plight.  Success gating: GM
+    discretion — only if the player makes an actual effort (not handed
+    out like candy).  On success: `attitude` +1 and the next
+    `rapport_N` flag is set.
   - **`mock_korbar`** — availability: in dialogue.  The player
     engages negatively, e.g., makes fun of her.  Success gating: GM
     discretion.  Effect: `attitude` −1 per turn (minimum -10); at
@@ -916,3 +970,74 @@ both attitude-shifting NPCs; Korbar's follower room blacklist
     `secret_pocket` is recorded as a refused room under her Follower
     Behavior (the engine clears `following` if the player enters such
     a room).
+
+---
+
+## Step 2 Revisions (deviations found while building the entities block)
+
+1. **`rapport_count` replaced by flags.**  Results cannot increment
+   numeric state, so Korbar's planned `rapport_count` state field was
+   dropped.  The cap of 3 general attitude increases is enforced by
+   three new flags (`rapport_1/2/3`, §1D) gating three dialogue paths
+   (`positive_rapport_first/second/third`).
+2. **Attitude limits decided.**  Korbar: `max` 10 (scenario gave none;
+   the engine default of 0 would block all increases),
+   `step_per_turn` 3 (so the `convince_spider_dead` +3 passes the cap;
+   ordinary paths adjust only ±1, preserving the ±1/turn rule).
+   Spider: `min` -10 (scenario gave none).  Fly: `attitude` and
+   `attitude_limits` declared (validator requires them for any NPC
+   with dialogue) and locked at min 0 / max 0 — the fly's attitude
+   never shifts.
+3. **Split interactions/paths.**  Several scenario-map entries were
+   split into condition-exclusive variants because checks and DCs
+   cannot branch within a single Resolvable:
+   - `padlock.insert_key` → `insert_key` (STR DC 14, alone) and
+     `insert_key_assisted` (STR DC 10, Korbar present and following).
+   - `spider.persuade_passage` → `persuade_passage` (armed, CHA DC 12
+     non-repeatable) and `persuade_passage_unarmed` (no check; the
+     spider lies).
+   - `the_rip.squeeze_through` → `squeeze_through` (DEX DC 12
+     non-repeatable; success sets `squeeze_warned` and cancels) and
+     `squeeze_through_confirmed` (no check; game over).
+4. **`key_lost` flag and Step 4 follow-ups.**  A `then_check` failure
+   cannot carry `game_over` directly, so the `insert_key` failure
+   cascade sets `flag:key_lost` (and `key.location = null`); a
+   top-level `game_over_conditions` entry (`key_lost_game_over`, §1E)
+   is to be added in Step 4.  Likewise, Korbar's 0-HP unconscious
+   rescue cannot be an entity reaction (the engine clears her `alive`
+   field first, disabling entity-scoped reactions), so it is planned
+   as the reaction mechanic `korbar_knocked_out` (§1E) for Step 4.
+5. **Korbar `passive` state field added** (initial `true`): she joins
+   combat as an ally automatically when following, and the combat AI's
+   `passive` state models her cowering until `persuade_fight` (or her
+   own aggro) clears it.  Her aggro also gained a second rule: if
+   `unconscious`, attacking her simply kills her (no combat), per the
+   scenario's "the player may also kill her, but this accomplishes
+   nothing".
+6. **`plate_armor` take gate.**  To make stealing possible only when
+   Korbar is unconscious or dead, the take check is gated on
+   `korbar.alive == true && korbar.unconscious == false` and uses a
+   roll check with threshold 0.0 (always fails) with an explanatory
+   failure narrative.
+7. **Rip item drops.**  Results cannot reference the event's item ID,
+   so the generic "any item dropped through the rip disappears" rule
+   is not modeled; only the plot-critical case is: a reaction on
+   `item.lost` (`item_id == key`, `reason == transfer`) removes the
+   key and ends the game (lose).  Interpretation: any drop of the key
+   while in `axe_head` counts as losing it through the rip.  Other
+   items dropped in `axe_head` simply stay in the room (engine
+   default).
+8. **Combat defaults supplied** (scenario omissions; Errata item 11):
+   spider `initiative_mod` 3 (from DEX 16), `flee_dc` engine default
+   10; Korbar `atk` +4 (STR 15 plus proficiency +2),
+   `initiative_mod` 0 (DEX 10), `flee_dc` default.  Player attack
+   stats remain for Step 5.
+9. **Examination chaining.**  Verified against the engine: within one
+   examination, each `on_examine` event's condition is evaluated
+   against the pre-examination state, so chained discoveries (the
+   rip's INT 12 → INT 17; the rubbish pile's INT 8 → INT 14; toenail
+   notice → handkerchief notice) inherently require separate
+   examinations, matching the scenario.
+10. **`game_over` trigger field.**  The engine model names the field
+    `trigger_id`, not `trigger`; the JSON uses `trigger_id`
+    throughout.

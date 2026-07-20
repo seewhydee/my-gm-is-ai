@@ -170,6 +170,10 @@ Examples:
   holds for singleton (non-stackable) entities.
 - `entity:spider.location == null` holds iff `spider` is not located
   anywhere (i.e., has left the scene).
+- `room:cellar.is_current == true` holds iff the player is currently
+  in the room `cellar`.  This works in any condition — not only in
+  encounter rules — and is the standard way to give a multi-room
+  feature room-dependent behavior.
 - `topic:abandonment` holds iff `abandonment` has been discussed in
   the current dialogue.
 - `stat:STR >= 5` holds iff player's current STR stat is >= 5.
@@ -570,7 +574,7 @@ consists of an ordered array of EncounterRule objects of this form:
   "skip_check_if": { "require": "stat:CHA >= 14" },
   "success": { "narrative": "Brandishing your weapon, you hold the orc at bay." },
   "failure": { "narrative": "The orc overpowers you.",
-               "game_over": { "type": "lose", "trigger": "orc" } }
+               "game_over": { "type": "lose", "trigger_id": "orc" } }
 }
 ```
 
@@ -598,15 +602,15 @@ combat via `start_combat`, or game-over via `game_over`.
 A GameOver object specifies a win or loss outcome.
 
 ```json
-{ "type": "lose", "trigger": "fell_into_pit" }
+{ "type": "lose", "trigger_id": "fell_into_pit" }
 ```
 
-| Field     | Type   | Description                     |
-|-----------|--------|---------------------------------|
-| `type`    | string | `"win"` or `"lose"`             |
-| `trigger` | string | Descriptor of game-over trigger |
+| Field        | Type   | Description                     |
+|--------------|--------|---------------------------------|
+| `type`       | string | `"win"` or `"lose"`             |
+| `trigger_id` | string | Descriptor of game-over trigger |
 
-In the final copy of the hard game state, `trigger` is saved to
+In the final copy of the hard game state, `trigger_id` is saved to
 `game_over.trigger` for debugging and player review.
 
 ---
@@ -809,6 +813,15 @@ Notes:
 - `id`, `description`, and `using_results` need not be supplied, and
   their effects on examination actions are undefined.
 
+- When multiple `on_examine` events fire during a single examination,
+  each event's `condition` is evaluated against the state as it was
+  *before* the examination began: the effects of an earlier event in
+  the same examination (e.g., setting a flag) do not unlock a later
+  event.  Chained discoveries that are supposed to require a second
+  look therefore work naturally — gate the deeper discovery on the
+  flag or state set by the first one, and the player must examine
+  again to get it.
+
 ## Reaction
 
 **Reactions** are a flexible mechanism to change game state in
@@ -917,7 +930,7 @@ be omitted if the event lacks that particular detail).
 | `room_state.changed`    | `room_id`, `field`, `new_value`            |
 | `dialogue.[started\|ended]` | `npc_id`, `reason?`                    |
 | `combat.started`        | (none)                                     |
-| `combat.ended`          | `reason` (`victory\|defeat\|fled`)         |
+| `combat.ended` (not yet emitted) | `reason` (`victory\|defeat\|fled`) |
 | `item.acquired`         | `item_id`, `source`                        |
 | `item.lost`             | `item_id`, `reason`                        |
 | `equipment.changed`     | `added?`, `removed?`                       |
@@ -1320,6 +1333,12 @@ Notes:
   fields `min` (default 0), `max` (default 0), `initial` (default 0),
   and `step_per_turn` (default 1).  All fields are optional.
 
+  Warning: the defaults freeze the NPC's attitude — with `min` and
+  `max` both 0, no attitude change is possible.  Declare explicit
+  bounds for any NPC whose attitude can shift.  `step_per_turn` caps
+  the magnitude of each single attitude change (each GM proposal and
+  each `adjust_attitude` effect), not the number of changes per turn.
+
   Example: a troll whose hostility can vary, but never turns friendly:
   `"attitude_limits": { "min": -10, "max": -1 }`.
 
@@ -1368,6 +1387,9 @@ can share with the player.  It should be an object keyed by topic IDs
 | `set_flag`¹    | object   | `{ "<flag_id>": <value>, ... } `         |
 | `set_entity_state`¹ | object| `{ "<entity_id>": { "<field>": <value>, ...}, ...}` |
 > ¹ optional
+
+`conditions` may be an empty list, in which case the topic is always
+available for the GM to narrate when the conversation allows.
 
 When a topic's conditions are met, the engine marks it as available
 and surfaces it to the GM, which can decide to narrate the revelation
@@ -1497,6 +1519,14 @@ Notes:
   When an NPC's `current_hp` drops to 0, the engine automatically sets
   the `alive` state field to `false` and drops it out of combat.
 
+  To override this default death behavior — e.g., an NPC that falls
+  unconscious at 0 HP instead of dying — note that entity-scoped
+  reactions cannot fire once `alive` is `false`.  Use a mechanic-scope
+  (global) reaction on `entity_state.changed` watching
+  `event:entity_id`, `event:field == current_hp`, and
+  `event:new_value <= 0`, and have its result restore `alive: true`
+  along with whatever custom state applies.
+
 - When the player's HP drops to ≤ 0, combat ends immediately (no
   further hostile actions that round) and the `player.died` event
   fires (see [Events](events.md#player-death)): if no reaction
@@ -1601,7 +1631,7 @@ check (DC 10), the orc kills the player; otherwise, combat begins.
     "success": { "narrative": "Putting up your fists, you start to fight!",
 				 "start_combat": [] },
     "failure": { "narrative": "Without a weapon, the orc overpowers you.",
-                 "game_over": { "type": "lose", "trigger": "orc" } }
+                 "game_over": { "type": "lose", "trigger_id": "orc" } }
   }
 ]
 ```
@@ -1827,13 +1857,13 @@ objects with these fields:
 |---------------|-----------|-----------------------------------|
 | `condition`   | Condition | Predicate polled each turn        |
 | `type`        | string    | `"win"` or `"lose"`               |
-| `trigger`     | string    | Descriptor for game-over trigger  |
+| `trigger_id`  | string    | Descriptor for game-over trigger  |
 | `narrative`¹  | string    | Canonical ending narration        |
 > ¹ optional
 
 The engine polls `condition` once per turn, after all reactions have
 settled.  The first entry with `condition` evaluating to `true` ends
-the game using `type` and `trigger` as the [GameOver](#game-over)
+the game using `type` and `trigger_id` as the [GameOver](#game-over)
 parameters, and with `narrative` (optional) as the ending narration.
 
 Note: player death by HP loss needs no entry here.  Whenever the
@@ -1849,7 +1879,7 @@ Example:
   {
     "type": "win",
     "condition": { "require": "entity:dragon.alive == false" },
-    "trigger": "killed_dragon",
+    "trigger_id": "killed_dragon",
     "narrative": "The dragon is dead. You have defeated the boss!"
   }
 ]

@@ -110,6 +110,8 @@ For these events, the context keys are `exit_id` (the exit ID),
 
 - `combat.ended` – Combat ends.  Context key is `reason`, which should
   be one of the following: `"victory"`, `"defeat"`, or `"fled"`.
+  **Not yet emitted:** this event is not yet wired into the engine —
+  do not use it in reaction `on` fields.  See [Known gaps](#known-gaps).
 
 - `encounter.branched` – An Encounter Rule selects a success or
   failure branch (not emitted for `result`-only rules).  The context
@@ -220,6 +222,26 @@ Ordering and loop prevention:
 2. State-change events are derived once at the end of the turn from the complete state diff, after all action and reaction effects have been applied. They are dispatched in a single final pass; reactions triggered by that pass may mutate state, but no further state-change events are derived from those mutations.
 3. Maximum reaction dispatch recursion depth is 5. Exceeding this stops dispatch with a warning.
 4. Only one encounter can fire per turn (from the resolver or from reactions). Subsequent `trigger_encounter` effects are silently ignored.
+
+---
+
+## Known gaps
+
+- **`combat.ended` is not yet emitted.**  It is documented above for
+  completeness, but the engine does not currently fire it; do not use
+  it in reaction `on` fields.  To react to a combatant's death, use
+  `on: "entity_state.changed"` with a condition watching
+  `event:entity_id == <npc_id>`, `event:field == alive`, and
+  `event:new_value == false`.
+
+- **Results cannot reference event context values.**  Inside a
+  reaction's `result`, fields like `set_entity_state`,
+  `add_item`/`remove_item`, and `set_room_state` require concrete IDs
+  — there is no way to substitute the event's `item_id`, `entity_id`,
+  etc.  Rules of the form "any item dropped here is lost" therefore
+  cannot be written generically; handle each plot-relevant entity
+  individually (e.g., a reaction conditioned on `event:item_id ==
+  key`), or accept the engine's default handling for the rest.
 
 ---
 
