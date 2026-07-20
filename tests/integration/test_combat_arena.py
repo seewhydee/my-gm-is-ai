@@ -375,6 +375,7 @@ You are fighting a battle and must demonstrate your full arsenal.
 - If your HP drops below 14, drink a healing potion.  You start with 2.
 - Keep fighting until all enemies are defeated.  Switch to regular
   attacks when your abilities are exhausted.
+- Do NOT flee, even at low HP.  Fight to the end.
 """
 
 
