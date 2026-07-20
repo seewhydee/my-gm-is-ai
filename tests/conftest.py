@@ -108,9 +108,14 @@ def sample_soft_state() -> SoftGameState:
 
 @pytest.fixture
 def state_manager(sample_corpus, sample_hard_state, sample_soft_state):
-    """A fresh StateManager with sample data for each test function."""
+    """A fresh StateManager with sample data for each test function.
+
+    The corpus is deep-copied so that tests which mutate it (adding
+    reactions, interactions, mechanics, etc.) do not leak those mutations
+    into other tests via the session-scoped ``sample_corpus``.
+    """
     manager = StateManager()
-    manager.corpus = sample_corpus
+    manager.corpus = copy.deepcopy(sample_corpus)
     manager.hard_state = copy.deepcopy(sample_hard_state)
     manager.soft_state = copy.deepcopy(sample_soft_state)
     manager._adventure_dir = FIXTURES_DIR
