@@ -227,13 +227,6 @@ by one specific route are NOT listed here; they are recorded as
 game-over consequences on the owning room/entity (see `padlock` and
 `the_rip` in §1G).
 
-### `player_death` — Kind: Global game-over condition
-
-If the player's `current_hp` drops to ≤ 0 (spider bite, fall damage,
-Korbar's fists, etc.), the player dies: game over (lose).  Checked
-continuously (every turn).  *Not stated in the scenario; assumed as
-the standard complement of 5e combat — see Errata, item 1.*
-
 ### `heavy_key_movement` — Kind: Reaction mechanic (global rule)
 
 While the `key` (tag `heavy`) is in the player's inventory, any
@@ -247,6 +240,12 @@ should emphasize the difficulty of hauling the key.
 
 *Notes:*
 
+- Player death is NOT listed as a mechanic: the engine ends the game
+  (a loss) automatically whenever the player's HP drops to 0, from any
+  source, unless a `player.died` rescue reaction averts it by
+  restoring HP above 0.  This adventure has no rescue effects, so
+  reaching 0 HP is always lethal — note that the drop exits can
+  therefore kill a player weakened by the spider.
 - The spider ambush/attack encounter is deliberately **not** a global
   mechanic: it involves a single NPC, so per the §1E guidance it is
   NPC-scoped — see the `spider` entry (§1G) and the
@@ -849,9 +848,11 @@ both attitude-shifting NPCs; Korbar's follower room blacklist
 
 ### Errata (deviations and interpretations)
 
-1. **Added `player_death` game-over condition.**  The scenario never
-   states that the player loses at 0 HP; assumed as the standard
-   companion of 5e combat.
+1. **Player death handling.**  The scenario never states a lose
+   condition for the player's death.  It is not listed as a mechanic:
+   the engine handles it automatically (whenever the player's HP drops
+   to 0, from any source, the game ends unless a `player.died` rescue
+   reaction intervenes).
 2. **Scenario typos.**  "Axe Head (Upper)" (Dropping) and "Axe Head
    (Lower)" (Web) were read as `axe_handle_upper` / `axe_handle_lower`.
 3. **Win/loss scoping.**  Only `player_death` is a global game-over

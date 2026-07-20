@@ -203,11 +203,18 @@ examples follow.
   many different ways, make it a global game-over condition.
   Examples:
   - player wins on leaving the castle with the artifact
-  - player loses if HP drops to ≤ 0.
+  - player loses when the dark ritual is completed.
   Conversely, a game-over condition reached by a specific route (e.g.,
   falling into *this* pit) is NOT a mechanic: record it as a game-over
   consequence of the specific room/entity interaction, reaction, or
   encounter that causes it (§1F, §1G).
+
+  Note: player death at 0 HP is handled automatically by the engine —
+  whenever the player's HP drops to 0, from any source, the game ends
+  (a loss) unless a `player.died` reaction averts it by restoring HP
+  above 0.  Do NOT list HP death as a mechanic.  But DO list any
+  rescue effects (e.g., a life ward that saves the player once) as
+  reaction mechanics: they fire on the player's death moment.
 
 - **Encounters** – set-piece confrontations or action sequences, with
   branching outcomes and/or leading to combat – are usually encounter
