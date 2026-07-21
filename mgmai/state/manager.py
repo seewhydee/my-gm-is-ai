@@ -871,6 +871,17 @@ class StateManager:
             if stat_key not in corpus.stats.definitions:
                 raise ValueError(f"Player stat '{stat_key}' is not defined")
 
+        if hard.player.skill_proficiencies:
+            from mgmai.engine.systems import get_system_for_corpus
+
+            system = get_system_for_corpus(corpus)
+            for skill in hard.player.skill_proficiencies:
+                if not system.is_known_check_stat(skill):
+                    raise ValueError(
+                        f"Player skill proficiency '{skill}' is not a known "
+                        f"skill for system '{system.name}'"
+                    )
+
     def _init_player_combat_defaults(self) -> None:
         """Initialise player combat stats (HP, AC, prof) if not already set.
 

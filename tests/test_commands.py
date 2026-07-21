@@ -460,6 +460,46 @@ class TestCharCommand:
         assert "DEX" in output
         assert "CON" in output
 
+    def test_with_skill_proficiencies(self, state_manager, monkeypatch) -> None:
+        """Character display lists proficient skills with total modifiers."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.models.corpus import StatsBlock, StatDefinition
+        state_manager.corpus.stats = StatsBlock(
+            definitions={"DEX": StatDefinition(name="Dexterity")},
+            system="5e",
+        )
+        state_manager.hard_state.player.stats = {"DEX": 14}
+        state_manager.hard_state.player.proficiency_bonus = 2
+        state_manager.hard_state.player.skill_proficiencies = ["acrobatics"]
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/c")
+
+        output = "\n".join(rendered)
+        assert "Skills" in output
+        # DEX 14 -> +2, proficiency +2 -> +4
+        assert "Acrobatics (+4)" in output
+
+    def test_no_skills_line_without_proficiencies(self, state_manager, monkeypatch) -> None:
+        """No Skills line when the player has no skill proficiencies."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.models.corpus import StatsBlock, StatDefinition
+        state_manager.corpus.stats = StatsBlock(
+            definitions={"DEX": StatDefinition(name="Dexterity")},
+            system="5e",
+        )
+        state_manager.hard_state.player.stats = {"DEX": 14}
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/c")
+
+        output = "\n".join(rendered)
+        assert "Skills" not in output
+
     def test_no_game_loaded(self, render, exit_fn) -> None:
         """Char command when no game is loaded shows error."""
         state = MagicMock()

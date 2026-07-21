@@ -323,6 +323,102 @@ class TestFiveECombat:
 
 
 # ------------------------------------------------------------------
+# FiveESystem: skill checks
+# ------------------------------------------------------------------
+
+class TestFiveESkills:
+    def test_skill_table_has_18_srd_skills(self) -> None:
+        assert len(FiveESystem.SKILL_ABILITIES) == 18
+        assert FiveESystem.SKILL_ABILITIES["acrobatics"] == "DEX"
+        assert FiveESystem.SKILL_ABILITIES["athletics"] == "STR"
+        assert FiveESystem.SKILL_ABILITIES["sleight of hand"] == "DEX"
+
+    def test_stat_value_for_check_maps_skill_to_ability(self) -> None:
+        class FakePlayer:
+            stats = {"STR": 12, "DEX": 16}
+
+        s = FiveESystem()
+        assert s.stat_value_for_check("acrobatics", FakePlayer()) == 16
+        assert s.stat_value_for_check("athletics", FakePlayer()) == 12
+
+    def test_stat_value_for_check_skill_case_insensitive(self) -> None:
+        class FakePlayer:
+            stats = {"DEX": 14}
+
+        assert FiveESystem().stat_value_for_check("Acrobatics", FakePlayer()) == 14
+
+    def test_stat_value_for_check_skill_defaults_to_10(self) -> None:
+        class FakePlayer:
+            stats = {"STR": 12}
+
+        assert FiveESystem().stat_value_for_check("acrobatics", FakePlayer()) == 10
+
+    def test_stat_value_for_check_falls_back_to_stats(self) -> None:
+        class FakePlayer:
+            stats = {"STR": 12}
+
+        s = FiveESystem()
+        assert s.stat_value_for_check("STR", FakePlayer()) == 12
+        assert s.stat_value_for_check("LUCK", FakePlayer()) is None
+
+    def test_is_known_check_stat(self) -> None:
+        s = FiveESystem()
+        assert s.is_known_check_stat("acrobatics")
+        assert s.is_known_check_stat("Sleight of Hand")
+        assert not s.is_known_check_stat("STR")
+        assert not s.is_known_check_stat("luck")
+
+    def test_skill_modifier_proficient(self) -> None:
+        class FakePlayer:
+            skill_proficiencies = ["acrobatics", "Stealth"]
+            proficiency_bonus = 3
+
+        s = FiveESystem()
+        assert s.skill_modifier("acrobatics", FakePlayer()) == 3
+        assert s.skill_modifier("stealth", FakePlayer()) == 3  # case-insensitive
+        assert s.skill_modifier("perception", FakePlayer()) == 0
+
+    def test_skill_modifier_default_prof_bonus(self) -> None:
+        class FakePlayer:
+            skill_proficiencies = ["acrobatics"]
+            proficiency_bonus = None
+
+        assert FiveESystem().skill_modifier("acrobatics", FakePlayer()) == 2
+
+    def test_skill_modifier_ignores_non_skills(self) -> None:
+        class FakePlayer:
+            skill_proficiencies = ["acrobatics"]
+            proficiency_bonus = 3
+
+        assert FiveESystem().skill_modifier("STR", FakePlayer()) == 0
+
+    def test_proficiency_bonus_applies_to_skill_check(self) -> None:
+        class FakePlayer:
+            skill_proficiencies = ["acrobatics"]
+            proficiency_bonus = 3
+
+        check = StatCheck(stat="acrobatics", target=13, repeatable=True)
+        assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 3
+
+    def test_proficiency_bonus_skill_not_proficient(self) -> None:
+        class FakePlayer:
+            skill_proficiencies = []
+            proficiency_bonus = 3
+
+        check = StatCheck(stat="acrobatics", target=13, repeatable=True)
+        assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 0
+
+    def test_proficiency_bonus_save_branch_unaffected(self) -> None:
+        class FakePlayer:
+            save_proficiencies = ["CON"]
+            skill_proficiencies = ["acrobatics"]
+            proficiency_bonus = 3
+
+        check = StatCheck(stat="CON", target=10, proficiency="save", repeatable=True)
+        assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 3
+
+
+# ------------------------------------------------------------------
 # dice.parse_damage_dice (re-exported via combat)
 # ------------------------------------------------------------------
 

@@ -31,6 +31,9 @@ class PlayerState(BaseModel):
     ac: Optional[int] = None
     proficiency_bonus: Optional[int] = None
     save_proficiencies: list[str] = Field(default_factory=list)
+    # 5e skill names the player is proficient in (e.g. "acrobatics");
+    # matched case-insensitively by the resolution system.
+    skill_proficiencies: list[str] = Field(default_factory=list)
     # Active status effects (status effect id -> rounds remaining); combat-scoped.
     status_effects: Dict[str, int] = Field(default_factory=dict)
     # IDs of combat abilities the player knows (corpus.abilities keys).

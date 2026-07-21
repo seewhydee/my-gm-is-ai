@@ -492,6 +492,22 @@ class Commands:
         if hard.player.save_proficiencies:
             saves = ", ".join(hard.player.save_proficiencies)
             lines.append(f"  Saves:  {saves}")
+        if hard.player.skill_proficiencies:
+            from mgmai.engine.systems import get_system_for_corpus
+
+            sys_obj = get_system_for_corpus(corpus)
+            skill_parts = []
+            for skill in hard.player.skill_proficiencies:
+                value = sys_obj.stat_value_for_check(skill, hard.player)
+                if value is None:
+                    skill_parts.append(skill.title())
+                    continue
+                mod = sys_obj.compute_modifier(value) + sys_obj.skill_modifier(
+                    skill, hard.player
+                )
+                sign = "+" if mod >= 0 else ""
+                skill_parts.append(f"{skill.title()} ({sign}{mod})")
+            lines.append(f"  Skills: {', '.join(skill_parts)}")
 
         # --- Effective stats (only if gear changes them) ---
         from mgmai.engine.combat import compute_effective_stats

@@ -246,6 +246,7 @@ def _build_player_state(
             max_hp=hard.player.max_hp or get_player_max_hp(hard),
             ac=effective_ac,
             proficiency_bonus=hard.player.proficiency_bonus or 2,
+            skill_proficiencies=list(hard.player.skill_proficiencies),
         )
 
     return PlayerStateBriefing(

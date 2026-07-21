@@ -238,7 +238,7 @@ Stat Checks are [resolution system](#resolution-system) dependent.
 | Field        | Type    | Description                       |
 |--------------|---------|-----------------------------------|
 | `type`       | string  | `"stat_check"` — stat-based check |
-| `stat`       | string  | Stat key (e.g. `"STR"`, `"DEX"`)  |
+| `stat`       | string  | Stat key (e.g. `"STR"`, `"DEX"`) or a skill known to the active system (5e: e.g. `"acrobatics"`) |
 | `target`     | integer | Check target or difficulty class  |
 | `modifier`¹  | integer | Situational modifier (default 0)  |
 | `repeatable` | boolean | Whether check can be retried      |
@@ -261,6 +261,36 @@ If `proficiency` is `"save"`, the player's save proficiency bonus for
 `stat` is added to the check; this is the character's proficiency
 bonus when `stat` is listed in their `save_proficiencies`, as defined
 in the [hard state schema](hard-state.md).
+
+#### Skill Checks (5e)
+
+For the `5e` system, `stat` may also name one of the 18 SRD skills
+(matched case-insensitively). A skill check rolls against the player's
+score in the skill's governing ability, adding the player's
+proficiency bonus when the skill is listed in their
+[`skill_proficiencies`](hard-state.md) — no `proficiency` field is
+needed on the check itself:
+
+```json
+{
+  "type": "stat_check",
+  "stat": "acrobatics",
+  "target": 13,
+  "repeatable": true
+}
+```
+
+| Skill | Ability | Skill | Ability |
+|-------|---------|-------|---------|
+| Acrobatics | DEX | Medicine | WIS |
+| Animal Handling | WIS | Nature | INT |
+| Arcana | INT | Perception | WIS |
+| Athletics | STR | Performance | CHA |
+| Deception | CHA | Persuasion | CHA |
+| History | INT | Religion | INT |
+| Insight | WIS | Sleight of Hand | DEX |
+| Intimidation | CHA | Stealth | DEX |
+| Investigation | INT | Survival | WIS |
 
 ---
 

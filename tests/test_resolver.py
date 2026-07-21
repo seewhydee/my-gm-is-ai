@@ -18,6 +18,7 @@
 
 import copy
 import json
+import random
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,8 @@ from mgmai.models.corpus import (
 from mgmai.state.manager import StateManager
 from tests.helpers import (
     build_state_manager,
+    make_char_sheet_corpus,
+    make_char_sheet_state,
     make_encounter_trigger_corpus,
 )
 
@@ -821,6 +824,144 @@ class TestResolveInteract:
         result = resolve_interact(action, hard, soft, corpus)
         assert result.success is False
         assert "stat" in (result.error or "").lower()
+
+
+class TestSkillChecks:
+    """Skill stat checks (e.g. "stat": "acrobatics") via the resolver."""
+
+    def _manager_with_skills(self, skills):
+        corpus = make_char_sheet_corpus()
+        manager = build_state_manager(corpus, hard_state=make_char_sheet_state())
+        manager.hard_state.room_contains["axe_head"] = {"toenail_sword": 1}
+        manager.hard_state.player.skill_proficiencies = skills
+        return manager
+
+    def _add_acrobatics_interaction(self, corpus, target=12):
+        corpus.rooms["axe_head"].interactions.append(
+            Interaction(
+                id="tumble",
+                description="Test: acrobatics check",
+                check=StatCheck(stat="acrobatics", target=target, repeatable=True),
+                success=Result(narrative="You tumble through."),
+                failure=Result(narrative="You stumble."),
+            )
+        )
+
+    def _interact(self, manager):
+        action = InteractAction(
+            action_type="interact", target="toenail_sword",
+            interaction_id="tumble",
+            detail="Tumble past",
+        )
+        return resolve_interact(
+            action, manager.hard_state, manager.soft_state, manager.corpus
+        )
+
+    def test_skill_check_proficient_succeeds(self, monkeypatch):
+        manager = self._manager_with_skills(["acrobatics"])
+        self._add_acrobatics_interaction(manager.corpus, target=12)
+        # DEX 10 -> +0, proficiency +2; roll 10 -> total 12 >= 12
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        result = self._interact(manager)
+        assert result.success is True
+        roll = result.rolls[0]
+        assert roll["stat"] == "acrobatics"
+        assert roll["computed_mod"] == 0
+        assert roll["flat_mod"] == 2
+        assert roll["total"] == 12
+
+    def test_skill_check_not_proficient_fails(self, monkeypatch):
+        manager = self._manager_with_skills([])
+        self._add_acrobatics_interaction(manager.corpus, target=12)
+        # No proficiency: roll 10 + 0 = 10 < 12
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        result = self._interact(manager)
+        roll = result.rolls[0]
+        assert roll["stat"] == "acrobatics"
+        assert roll["flat_mod"] == 0
+        assert roll["total"] == 10
+        assert roll["success"] is False
+        assert "You stumble." in result.triggered_narration
+
+    def test_skill_check_case_insensitive(self, monkeypatch):
+        manager = self._manager_with_skills(["Acrobatics"])
+        self._add_acrobatics_interaction(manager.corpus, target=12)
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        result = self._interact(manager)
+        assert result.success is True
+        assert result.rolls[0]["flat_mod"] == 2
+
+    def test_unknown_stat_key_errors(self):
+        manager = self._manager_with_skills([])
+        manager.corpus.rooms["axe_head"].interactions.append(
+            Interaction(
+                id="luck_check",
+                description="Test: unknown stat",
+                check=StatCheck(stat="luck", target=10, repeatable=True),
+                success=Result(narrative="Lucky."),
+                failure=Result(narrative="Unlucky."),
+            )
+        )
+        action = InteractAction(
+            action_type="interact", target="toenail_sword",
+            interaction_id="luck_check",
+            detail="Push luck",
+        )
+        result = resolve_interact(
+            action, manager.hard_state, manager.soft_state, manager.corpus
+        )
+        assert result.success is False
+        assert "luck" in (result.error or "")
+
+    def test_traversal_skill_check(self, monkeypatch):
+        corpus = make_char_sheet_corpus()
+        manager = build_state_manager(corpus, hard_state=make_char_sheet_state())
+        manager.hard_state.player.skill_proficiencies = ["acrobatics"]
+        corpus.rooms["axe_head"].exits.append(
+            Exit(
+                id="exit_tumble",
+                direction="A narrow ledge",
+                target_room="bag_floor",
+                traversal_check=GatedCheck(
+                    check=StatCheck(stat="acrobatics", target=12, repeatable=True),
+                    failure=Result(narrative="You cannot cross."),
+                ),
+            )
+        )
+        # Proficient: 10 + 0 + 2 = 12 >= 12 -> traverse
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        action = MoveAction(action_type="move", target="exit_tumble", detail="Cross")
+        result = resolve_move(
+            action, manager.hard_state, manager.soft_state, corpus
+        )
+        assert result.hard_changes.player_location == "bag_floor"
+        roll = result.rolls[0]
+        assert roll["check_type"] == "stat_check"
+        assert roll["stat"] == "acrobatics"
+        assert roll["flat_mod"] == 2
+
+    def test_traversal_unknown_stat_passes(self, monkeypatch):
+        corpus = make_char_sheet_corpus()
+        manager = build_state_manager(corpus, hard_state=make_char_sheet_state())
+        corpus.rooms["axe_head"].exits.append(
+            Exit(
+                id="exit_luck",
+                direction="A strange exit",
+                target_room="bag_floor",
+                traversal_check=GatedCheck(
+                    check=StatCheck(stat="luck", target=30, repeatable=True),
+                    failure=Result(narrative="You cannot pass."),
+                ),
+            )
+        )
+        monkeypatch.setattr(random, "randint", lambda a, b: 1)
+        action = MoveAction(action_type="move", target="exit_luck", detail="Go")
+        result = resolve_move(
+            action, manager.hard_state, manager.soft_state, corpus
+        )
+        # Unknown stat keys are skipped (legacy behavior): traversal proceeds.
+        assert result.hard_changes.player_location == "bag_floor"
+        assert len(result.rolls) == 0
 
 
 class TestResolveAction:

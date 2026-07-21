@@ -1746,6 +1746,8 @@ If the scenario uses stat checks, add a `stats` block to the corpus:
 
 Rules:
 - Only declare stats actually used in stat_check interactions or stat: conditions
+- 5e skill checks (`"stat": "acrobatics"`, etc.) do **not** need to be
+  declared here — the 18 skills are built into the 5e resolution system
 - If no stat checks exist in the scenario, omit this block entirely
 - Resolution system is always `"5e"` for now
 
@@ -1856,6 +1858,11 @@ file:
    cannot derive multi-level HP from ability scores alone. If any are absent,
    choose reasonable defaults and note the omission.
 
+7. **`player.skill_proficiencies`** (optional) — if the scenario's stat checks
+   name 5e skills (e.g. `"stat": "acrobatics"`), list the skills the default
+   hero is proficient in here (5e skill names; matched case-insensitively).
+   Proficiency adds the proficiency bonus to those skill checks.
+
 Only fields that differ from the engine defaults need to be supplied;
 unknown fields are ignored for forward compatibility.
 
@@ -1871,6 +1878,8 @@ unknown fields are ignored for forward compatibility.
 - [ ] Every stat in `corpus.stats.definitions` has a key in `player.stats`
 - [ ] For multi-level characters, `max_hp`, `current_hp`, `ac`,
       `proficiency_bonus`, and `save_proficiencies` are explicit
+- [ ] Every entry in `skill_proficiencies` (if present) is one of the 18
+      5e skill names (see corpus.md — Skill Checks)
 - [ ] No entity in `player.inventory` also appears in a room's
       `contains` at start
 
@@ -2001,8 +2010,9 @@ optional world-state override, include it in the checks below.
 - [ ] Every `on_examine` event with a condition references an existing flag
 - [ ] Every `using_results` key is either an entity ID in corpus or `"*"`
 - [ ] Every stat check (`stat_check` type) references a stat key in
-  `corpus.stats.definitions` (if stats block exists; otherwise, no stat_check
-  should appear)
+  `corpus.stats.definitions` or a skill known to the resolution system
+  (5e: one of the 18 skill names — see corpus.md — Skill Checks).
+  (If no stats block exists, no stat_check should appear)
 - [ ] Every `alter_stat` result references a stat key in `stats.definitions`
   (if stats block exists; otherwise, no alter_stat should appear)
 - [ ] If `corpus.stats` is present, `default-player.json` exists and its

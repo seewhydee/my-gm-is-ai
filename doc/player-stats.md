@@ -37,6 +37,7 @@ format as `--char-sheet`:
     "ac": 11,
     "proficiency_bonus": 2,
     "save_proficiencies": ["DEX", "INT"],
+    "skill_proficiencies": ["acrobatics"],
     "abilities": ["fire_bolt", "cure_wounds"]
   }
 }
@@ -124,6 +125,36 @@ System-specific fields (e.g. `advantage` / `disadvantage` for `5e`) are
 accepted as extra top-level keys. The engine dispatches `stat_check` to the
 active resolution system, which computes the dice formula and produces a
 success/failure outcome.
+
+### Skill checks (5e)
+
+For the `5e` system, `stat` may also name one of the 18 SRD skills
+(Acrobatics, Athletics, Stealth, …; matched case-insensitively). The skill
+list and each skill's governing ability are built into `FiveESystem`
+(`SKILL_ABILITIES`); corpus authors do not declare skills in
+`stats.definitions`.
+
+A skill check rolls against the player's score in the governing ability
+(e.g. Acrobatics → DEX), adding the player's proficiency bonus when the
+skill appears in `hard.player.skill_proficiencies`:
+
+```json
+{ "type": "stat_check", "stat": "acrobatics", "target": 13, "repeatable": true }
+```
+
+Skills are not scores — a character's skill proficiencies are a list of
+skill names on the player state (mirroring `save_proficiencies`), settable
+via `default-player.json` or `--char-sheet`:
+
+```json
+"skill_proficiencies": ["acrobatics", "stealth"]
+```
+
+The resolution goes through the system's `stat_value_for_check(stat,
+player)` hook (skill → governing ability score) and `skill_modifier(stat,
+player)` hook (proficiency bonus when proficient); the default base-class
+implementations handle plain ability-score stats, so other systems are
+unaffected.
 
 ### Resolution system abstraction
 

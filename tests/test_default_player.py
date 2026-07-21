@@ -163,6 +163,39 @@ class TestDefaultPlayerCascade:
         assert sm.hard_state.player.location == "axe_head"
         assert sm.hard_state.player.stats is None
 
+    def test_skill_proficiencies_load(self, tmp_path: Path) -> None:
+        corpus = make_char_sheet_corpus()
+        work_dir = _write_corpus(tmp_path, corpus)
+        _write_default_player(work_dir, {
+            "system": "5e",
+            "player": {
+                "stats": {"STR": 10, "DEX": 14, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10},
+                "skill_proficiencies": ["acrobatics", "Sleight of Hand"],
+            },
+        })
+
+        sm = StateManager()
+        sm.load_all(work_dir)
+
+        assert sm.hard_state.player.skill_proficiencies == [
+            "acrobatics", "Sleight of Hand",
+        ]
+
+    def test_unknown_skill_proficiency_raises(self, tmp_path: Path) -> None:
+        corpus = make_char_sheet_corpus()
+        work_dir = _write_corpus(tmp_path, corpus)
+        _write_default_player(work_dir, {
+            "system": "5e",
+            "player": {
+                "stats": {"STR": 10, "DEX": 14, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10},
+                "skill_proficiencies": ["juggling"],
+            },
+        })
+
+        sm = StateManager()
+        with pytest.raises(ValueError, match="not a known skill"):
+            sm.load_all(work_dir)
+
 
 def _write_corpus(tmp_path: Path, corpus) -> Path:
     work_dir = tmp_path / "adventure"

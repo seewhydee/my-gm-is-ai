@@ -57,6 +57,31 @@ class FiveESystem(ResolutionSystem):
         "necrotic", "piercing", "poison", "radiant", "slashing", "thunder",
     })
 
+    #: The 18 skills (SRD 5.2.1 "Skills" table), lowercase name -> governing
+    #: ability score.  A stat check naming a skill uses the player's score in
+    #: the governing ability, plus the proficiency bonus when the player is
+    #: proficient in the skill (``player_state.skill_proficiencies``).
+    SKILL_ABILITIES = {
+        "acrobatics": "DEX",
+        "animal handling": "WIS",
+        "arcana": "INT",
+        "athletics": "STR",
+        "deception": "CHA",
+        "history": "INT",
+        "insight": "WIS",
+        "intimidation": "CHA",
+        "investigation": "INT",
+        "medicine": "WIS",
+        "nature": "INT",
+        "perception": "WIS",
+        "performance": "CHA",
+        "persuasion": "CHA",
+        "religion": "INT",
+        "sleight of hand": "DEX",
+        "stealth": "DEX",
+        "survival": "WIS",
+    }
+
     def apply_damage_modifiers(
         self,
         damage: int,
@@ -85,6 +110,16 @@ class FiveESystem(ResolutionSystem):
     # ------------------------------------------------------------------
     # Modifiers & dice
     # ------------------------------------------------------------------
+    def stat_value_for_check(self, stat: str, player_state: Any) -> int | None:
+        """5e: a skill key resolves to the governing ability score."""
+        ability = self.SKILL_ABILITIES.get(stat.lower())
+        if ability is not None:
+            return self._player_stat(getattr(player_state, "stats", None), ability)
+        return super().stat_value_for_check(stat, player_state)
+
+    def is_known_check_stat(self, stat: str) -> bool:
+        return stat.lower() in self.SKILL_ABILITIES
+
     def compute_modifier(self, stat_value: int) -> int:
         # 5e: (score - 10) // 2, floored.
         return (stat_value - 10) // 2
@@ -607,7 +642,7 @@ class FiveESystem(ResolutionSystem):
         )
 
     # ------------------------------------------------------------------
-    # Saving throw proficiency (for generic CheckResolution saves)
+    # Proficiency (saving throws for CheckResolution saves; skill checks)
     # ------------------------------------------------------------------
     def compute_save_modifier(self, stat: str, player_state: Any) -> int:
         """5e: proficient saves add the player's proficiency bonus."""
@@ -616,11 +651,23 @@ class FiveESystem(ResolutionSystem):
             return getattr(player_state, "proficiency_bonus", None) or 2
         return 0
 
+    def skill_modifier(self, stat: str, player_state: Any) -> int:
+        """5e: proficient skills add the player's proficiency bonus.
+
+        ``stat`` is a skill name (matched case-insensitively); proficiency is
+        a property of the player, not of the check."""
+        profs = getattr(player_state, "skill_proficiencies", []) or []
+        if stat.lower() in self.SKILL_ABILITIES and any(
+            p.lower() == stat.lower() for p in profs
+        ):
+            return getattr(player_state, "proficiency_bonus", None) or 2
+        return 0
+
     def proficiency_bonus(self, check, player_state: Any) -> int:
-        """5e: apply save proficiency when the check requests it."""
+        """5e: apply save or skill proficiency when it applies."""
         if getattr(check, "proficiency", None) == "save":
             return self.compute_save_modifier(check.stat, player_state)
-        return 0
+        return self.skill_modifier(check.stat, player_state)
 
     # get_equip_incompatibilities() — inherit default (two_handed is now
     # a conventional equip_tag with explicit incompatible_with entries).

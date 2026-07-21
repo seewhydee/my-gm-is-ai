@@ -1149,15 +1149,16 @@ def _resolve_traversal_check(
         stats_block = corpus.stats
         if stats_block is None:
             return True
-        player_stats = hard.player.stats
-        if player_stats is None or check.stat not in player_stats:
-            return True
 
         system = get_system_for_corpus(corpus)
+        stat_value = system.stat_value_for_check(check.stat, hard.player)
+        if stat_value is None:
+            return True
+
         flat_modifier = check.modifier + system.proficiency_bonus(check, hard.player)
         cr = system.roll_check(
             check.stat,
-            player_stats[check.stat],
+            stat_value,
             check.target,
             flat_modifier=flat_modifier,
             params=check.model_extra or {},
@@ -1614,16 +1615,16 @@ def _resolve_checkable(
             if resolution is not None:
                 resolution.error = "Adventure has no stats system defined"
             return False
-        player_stats = hard.player.stats
-        if player_stats is None or check.stat not in player_stats:
+        system = get_system_for_corpus(corpus)
+        stat_value = system.stat_value_for_check(check.stat, hard.player)
+        if stat_value is None:
             if resolution is not None:
                 resolution.error = f"Player has no '{check.stat}' stat"
             return False
-        system = get_system_for_corpus(corpus)
         flat_modifier = check.modifier + system.proficiency_bonus(check, hard.player)
         cr = system.roll_check(
             check.stat,
-            player_stats[check.stat],
+            stat_value,
             check.target,
             flat_modifier=flat_modifier,
             params=check.model_extra or {},

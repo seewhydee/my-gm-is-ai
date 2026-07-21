@@ -184,6 +184,13 @@ Soft State, for the ruling LLM (call 1).
       "INT": { "value": 10, "modifier": 0 },
       "WIS": { "value": 8, "modifier": -1 },
       "CHA": { "value": 16, "modifier": 3 }
+    },
+    "combat_stats": {
+      "current_hp": 27,
+      "max_hp": 27,
+      "ac": 14,
+      "proficiency_bonus": 2,
+      "skill_proficiencies": ["acrobatics"]
     }
   },
 
@@ -822,7 +829,7 @@ everything LLM Call 2 needs to narrate the outcome.
 | `soft_item_proposals`          | Proposals for examine/take/give of soft items produced by the engine. LLM Call 2 must adjudicate each one. |
 | `soft_item_adjudications`      | The subset of proposals accepted by LLM Call 2, after post-validation. Empty until post-validation runs. |
 | `soft_content_takes`           | Placed soft items mechanically retrieved this turn (source ID → item name → count). Their existence was verified when they were placed, so they need no adjudication; LLM Call 2 should narrate the retrieval naturally. Empty when no retrieval occurred. |
-| `rolls`                        | Any probabilistic rolls or stat checks the engine resolved. For `roll` checks: `{ outcome, roll, threshold }`. For `stat_check` checks: `{ check_type, stat, target, raw_roll, modifier, stat_modifier, total, margin, advantage, disadvantage }`. |
+| `rolls`                        | Any probabilistic rolls or stat checks the engine resolved. For `roll` checks: `{ outcome, roll, threshold }`. For `stat_check` checks: `{ check_type, stat, target, raw_roll, modifier, stat_modifier, total, margin, advantage, disadvantage }`. For 5e skill checks, `stat` is the skill name as written in the check (e.g. `"acrobatics"`) and `modifier` already includes any proficiency bonus. |
 | `encounter_outcome`            | If an encounter triggered, its resolution. |
 | `triggered_narration`          | Pre-written narrative blocks for specific events (e.g., spider fleeing, room entry). LLM Call 2 should incorporate or paraphrase these — they represent canonical prose for key moments. |
 | `game_over`                    | `null` or `{"type": "win"|"lose", "trigger": "string", "narrative": "string"}`. |

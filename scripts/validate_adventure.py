@@ -62,6 +62,19 @@ def _collect_status_effect_refs(obj, refs: set[str]) -> None:
             _collect_status_effect_refs(item, refs)
 
 
+def _collect_stat_check_stats(obj, stats: set[str]) -> None:
+    """Recursively collect ``stat`` keys of ``stat_check`` checks anywhere in
+    a serialized corpus."""
+    if isinstance(obj, dict):
+        if obj.get("type") == "stat_check" and isinstance(obj.get("stat"), str):
+            stats.add(obj["stat"])
+        for val in obj.values():
+            _collect_stat_check_stats(val, stats)
+    elif isinstance(obj, list):
+        for item in obj:
+            _collect_stat_check_stats(item, stats)
+
+
 def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
     """Load and validate an adventure directory.
 
@@ -349,6 +362,23 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
             f"Reference to undefined status effect '{effect_id}' (not in the "
             f"corpus status_effects block or the built-in defaults)"
         )
+
+    # 13. Stat-check stat keys: each must be a defined ability score or a
+    # check stat recognized by the declared resolution system (e.g. a 5e
+    # skill such as "acrobatics")
+    if corpus.stats is not None:
+        from mgmai.engine.systems import get_system_for_corpus
+
+        system = get_system_for_corpus(corpus)
+        stat_check_stats: set[str] = set()
+        _collect_stat_check_stats(corpus.model_dump(), stat_check_stats)
+        for st in sorted(stat_check_stats):
+            if st not in corpus.stats.definitions and not system.is_known_check_stat(st):
+                errors.append(
+                    f"stat_check references unknown stat '{st}' (not in "
+                    f"stats.definitions and not a known skill for system "
+                    f"'{system.name}')"
+                )
 
     return errors, warnings
 

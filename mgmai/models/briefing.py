@@ -93,6 +93,7 @@ class PlayerCombatStats(BaseModel):
     max_hp: int
     ac: int
     proficiency_bonus: int
+    skill_proficiencies: List[str] = Field(default_factory=list)
 
 
 class PlayerStateBriefing(BaseModel):

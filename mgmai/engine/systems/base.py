@@ -211,6 +211,29 @@ class ResolutionSystem(ABC):
         """Roll a single die, honouring advantage/disadvantage if the
         system supports it (5e: roll twice, keep higher/lower)."""
 
+    def stat_value_for_check(self, stat: str, player_state: Any) -> int | None:
+        """Score underlying a check stat key, or ``None`` if unknown.
+
+        Default: look up ``stat`` in ``player_state.stats``.  Systems with
+        derived check stats (e.g. 5e skills, which map to a governing
+        ability score) override this to resolve them.
+        """
+        stats = getattr(player_state, "stats", None)
+        if stats is None:
+            return None
+        return stats.get(stat)
+
+    def is_known_check_stat(self, stat: str) -> bool:
+        """True if this system recognizes ``stat`` as a check stat key in its
+        own right (e.g. a 5e skill), independent of the corpus's
+        ``stats.definitions``.  Default: False."""
+        return False
+
+    def skill_modifier(self, stat: str, player_state: Any) -> int:
+        """Extra modifier from the player's proficiency in a derived check
+        stat (e.g. a 5e skill).  Default: 0."""
+        return 0
+
     @abstractmethod
     def roll_check(
         self,

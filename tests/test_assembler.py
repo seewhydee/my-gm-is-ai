@@ -527,6 +527,29 @@ class TestPlayerState:
         )
         assert result.player_state.entity_notes == ["Marked with chalk"]
 
+    def test_combat_stats_include_skill_proficiencies(self):
+        from tests.helpers import (
+            build_state_manager,
+            make_char_sheet_corpus,
+            make_char_sheet_state,
+        )
+
+        manager = build_state_manager(
+            make_char_sheet_corpus(), hard_state=make_char_sheet_state()
+        )
+        manager.hard_state.player.current_hp = 10
+        manager.hard_state.player.skill_proficiencies = ["acrobatics", "stealth"]
+        result = assemble(
+            manager.corpus,
+            manager.hard_state,
+            manager.soft_state,
+            "look",
+        )
+        assert result.player_state.combat_stats is not None
+        assert result.player_state.combat_stats.skill_proficiencies == [
+            "acrobatics", "stealth",
+        ]
+
 
 class TestRecentHistory:
     """History filtering and capping."""
