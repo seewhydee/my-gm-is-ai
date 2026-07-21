@@ -15,6 +15,7 @@ def render_prose(
     *,
     include_combat: bool = False,
     include_dialogue: bool = False,
+    indicators: list[dict[str, str]] | None = None,
     **kwargs: Any,
 ) -> str:
     combat_section = ""
@@ -28,5 +29,6 @@ def render_prose(
     return _env.get_template("prose.j2").render(
         combat_section=combat_section,
         dialogue_section=dialogue_section,
+        indicators=indicators,
         **kwargs,
     )

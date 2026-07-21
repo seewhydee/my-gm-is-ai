@@ -70,11 +70,10 @@ atexit.register(_save_history)
 from mgmai.context.assembler import assemble
 from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
 from mgmai.engine.post_validate import apply_post_validation
-from mgmai.engine.stat_checks import (
-    format_stat_check_prefix,
-    format_stat_change_prefix,
-    format_combat_prefix,
-    format_hp_change_prefix,
+from mgmai.engine.narrative_indicators import (
+    build_indicators,
+    format_indicators_fallback,
+    process_narration,
 )
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
@@ -274,26 +273,14 @@ class GameLoop:
         )
 
         # 4. LLM Call 2 → ProseOutput
+        indicators = build_indicators(result, hard, corpus)
         try:
-            prose = self._call_prose(briefing, action, result)
+            prose = self._call_prose(briefing, action, result, indicators=indicators)
         except LLMOutputError:
             narration = result.triggered_narration[0] if result.triggered_narration else TURN_ERROR_NARRATION
-            check_prefix = format_stat_check_prefix(result.rolls)
-            if check_prefix:
-                narration = check_prefix + narration
-            hc = result.hard_state_changes
-            if hc and hc.player_hp_delta:
-                hp_prefix = format_hp_change_prefix(
-                    hc.player_hp_delta,
-                    hard.player.current_hp or 0,
-                    hard.player.max_hp or 0,
-                )
-                if hp_prefix:
-                    narration = hp_prefix + narration
-            if hc and hc.stat_modifiers:
-                stat_prefix = format_stat_change_prefix(hc.stat_modifiers, hc.old_stat_values)
-                if stat_prefix:
-                    narration = stat_prefix + narration
+            fallback_prefix = format_indicators_fallback(result, hard, corpus)
+            if fallback_prefix:
+                narration = fallback_prefix + narration
             return narration
 
         log.debug("--- ProseOutput ---\n%s", prose.model_dump_json(indent=2))
@@ -349,30 +336,7 @@ class GameLoop:
         # the narrator somehow produced an empty narration.
         if not narration.strip() and prose.npc_response:
             narration = prose.npc_response.strip()
-        check_prefix = format_stat_check_prefix(result.rolls)
-        if check_prefix:
-            narration = check_prefix + narration
-        hc = result.hard_state_changes
-        if hc and hc.player_hp_delta:
-            hp_prefix = format_hp_change_prefix(
-                hc.player_hp_delta,
-                hard.player.current_hp or 0,
-                hard.player.max_hp or 0,
-            )
-            if hp_prefix:
-                narration = hp_prefix + narration
-        if hc and hc.stat_modifiers:
-            stat_prefix = format_stat_change_prefix(hc.stat_modifiers, hc.old_stat_values)
-            if stat_prefix:
-                narration = stat_prefix + narration
-        # Prepend combat summary prefix
-        if result.combat_log:
-            combat_prefix = format_combat_prefix(
-                [e if isinstance(e, dict) else e.model_dump() for e in result.combat_log],
-                corpus,
-            )
-            if combat_prefix:
-                narration = combat_prefix + narration
+        narration = process_narration(narration, indicators)
         return narration
 
     # ------------------------------------------------------------------
@@ -466,7 +430,7 @@ class GameLoop:
             )
         return action
 
-    def _call_prose(self, briefing, action, result):
+    def _call_prose(self, briefing, action, result, *, indicators=None):
         from mgmai.templates.renderer import render_prose
 
         system_prompt = render_prose(
@@ -479,6 +443,10 @@ class GameLoop:
                 briefing.dialogue_context is not None
                 or result.dialogue_exited is not None
             ),
+            indicators=[
+                {"marker": ind.marker, "plain_description": ind.plain_description}
+                for ind in (indicators or [])
+            ],
         )
 
         user_data = {

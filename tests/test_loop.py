@@ -171,6 +171,65 @@ class TestExecuteTurn:
         assert narration.startswith("**[DEX check: success]**")
         assert "You dart past the trap." in narration
 
+    def test_marker_replacement_in_prose(self, state_manager, fake_display) -> None:
+        """When LLM uses markers inline, they are replaced with formatted text."""
+        from mgmai.models.actions import EngineResult
+
+        engine_result = EngineResult(
+            success=True,
+            action_type="interact",
+            target="statue",
+            rolls=[{"type": "stat_check", "stat": "STR", "target": 15, "success": False}],
+        )
+
+        prose_with_marker = (
+            "You try to lift the statue.\n\n"
+            "[MECH:check:0]\n\n"
+            "It's too heavy to budge."
+        )
+        llm = FakeLLMClient(
+            ruling_response=_wait_action_json(),
+            prose_response=_prose_json(prose_with_marker),
+        )
+        loop = GameLoop(state_manager, llm, display=fake_display)
+
+        with patch("mgmai.game.loop.resolve", return_value=engine_result):
+            narration = loop._execute_turn("lift statue", "lift statue", 0)
+
+        # Marker should be replaced, not prepended
+        assert "**[STR check: failed]**" in narration
+        assert "[MECH:check:0]" not in narration
+        assert narration == (
+            "You try to lift the statue.\n\n"
+            "**[STR check: failed]**\n\n"
+            "It's too heavy to budge."
+        )
+
+    def test_indicators_passed_to_prose_prompt(self, state_manager, fake_display) -> None:
+        """Mechanical indicators are included in the Call 2 system prompt."""
+        from mgmai.models.actions import EngineResult
+
+        engine_result = EngineResult(
+            success=True,
+            action_type="interact",
+            target="spider",
+            rolls=[{"type": "stat_check", "stat": "DEX", "target": 12, "success": True}],
+        )
+
+        llm = FakeLLMClient(
+            ruling_response=_wait_action_json(),
+            prose_response=_prose_json("You dodge."),
+        )
+        loop = GameLoop(state_manager, llm, display=fake_display)
+
+        with patch("mgmai.game.loop.resolve", return_value=engine_result):
+            loop._execute_turn("dodge", "dodge", 0)
+
+        # Check the prose system prompt contains the indicator
+        system_prompt = llm.prose_calls[0][0]
+        assert "[MECH:check:0]" in system_prompt
+        assert "DEX check: success" in system_prompt
+
     def test_debug_mode_logs_extra(self, state_manager, fake_display, caplog) -> None:
         llm = FakeLLMClient(
             ruling_response=_wait_action_json(),
