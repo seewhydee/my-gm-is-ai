@@ -595,7 +595,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "tag": "poison",
             "success": {"narrative": "You resist.", "player_damage": "half(1d8)"},
@@ -620,7 +620,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "tag": "poison",
             "success": {"narrative": "You resist.", "player_damage": "half(1d8)"},
@@ -642,7 +642,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "tag": "poison",
             "success": {"narrative": "You resist."},
@@ -661,7 +661,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "tag": "poison",
             "success": {"narrative": "You resist.", "player_damage": "1d8"},
@@ -679,7 +679,7 @@ class TestOnHitEffects:
         effect = {
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "success": {"player_damage": "half(1d8)"},
             "failure": {"player_damage": "1d8"},
@@ -699,7 +699,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "failure": {"set_flag": {"poisoned": True}},
             "success": {},
@@ -718,7 +718,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 8,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "success": {},
             "failure": {"player_damage": "1d8"},
@@ -738,7 +738,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "failure": {"player_damage": "1d8"},
             "success": {},
@@ -757,7 +757,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "tag": "poison",
             "success": {"player_damage": "half(1d8)"},
@@ -784,7 +784,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "failure": {"alter_stat": {"STR": {"value": -2}}},
             "success": {},
@@ -803,7 +803,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "failure": {
                 "narrative": "The venom stops your heart.",
@@ -828,7 +828,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "success": {},
             "failure": {
@@ -862,7 +862,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 14,
-                "modifier": 2, "proficiency": "save", "repeatable": False,
+                "modifier": 2, "save": True, "repeatable": False,
             },
             "success": {},
             "failure": {"player_damage": "1d8"},
@@ -883,7 +883,7 @@ class TestOnHitEffects:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "tag": "poison",
             "success": {"narrative": "You resist.", "player_damage": "half(1d8)"},
@@ -1126,7 +1126,7 @@ class TestResolverIntegration:
         data["entities"]["goblin"]["combat"]["on_hit_effects"] = [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "tag": "poison",
             "success": {"narrative": "You resist.", "player_damage": "half(1d8)"},
@@ -2528,7 +2528,7 @@ class TestConditions:
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
-                "proficiency": "save", "repeatable": False,
+                "save": True, "repeatable": False,
             },
             "success": {},
             "failure": {
@@ -3149,7 +3149,7 @@ class TestMultiattack:
                         "on_hit_effects": [{
                             "check": {
                                 "type": "stat_check", "stat": "CON", "target": 10,
-                                "proficiency": "save", "repeatable": False,
+                                "save": True, "repeatable": False,
                             },
                             "success": {},
                             "failure": {"player_damage": "1d4"},

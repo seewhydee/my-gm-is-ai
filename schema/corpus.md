@@ -252,15 +252,22 @@ success formula, and supports these additional optional fields:
 |----------------|---------|-----------------------------------|
 | `advantage`    | boolean | Roll 2d20 and keep the higher die |
 | `disadvantage` | boolean | Roll 2d20 and keep the lower die  |
-| `proficiency`  | string  | Proficiency used, e.g. `"save"`   |
+| `save`         | boolean | This check is a saving throw      |
 
 If both `advantage` and `disadvantage` are `true`, they cancel out and
 a single d20 is rolled.
 
-If `proficiency` is `"save"`, the player's save proficiency bonus for
-`stat` is added to the check; this is the character's proficiency
-bonus when `stat` is listed in their `save_proficiencies`, as defined
-in the [hard state schema](hard-state.md).
+If `save` is true, the check is a saving throw: the player's save
+proficiency bonus for `stat` is added to the check; this is the
+character's proficiency bonus when `stat` is listed in their
+`save_proficiencies`, as defined in the
+[hard state schema](hard-state.md).
+
+Advantage and disadvantage may also come from the player's active
+[status effects](#status-effects) (e.g. `poisoned` imposes disadvantage
+on ability checks); these combine with the authored fields above.
+Status-effect modifiers apply to ability checks — including skill
+checks — but never to saving throws (`save: true`).
 
 #### Skill Checks (5e)
 
@@ -268,8 +275,8 @@ For the `5e` system, `stat` may also name one of the 18 SRD skills
 (matched case-insensitively). A skill check rolls against the player's
 score in the skill's governing ability, adding the player's
 proficiency bonus when the skill is listed in their
-[`skill_proficiencies`](hard-state.md) — no `proficiency` field is
-needed on the check itself:
+[`skill_proficiencies`](hard-state.md) — proficiency is a property of
+the player, so no field on the check itself is needed:
 
 ```json
 {
@@ -1494,7 +1501,7 @@ the turn-based combat subsystem.
         "type": "stat_check",
         "stat": "CON",
         "target": 11,
-        "proficiency": "save",
+        "save": true,
         "repeatable": false
       },
       "tag": "poison",
@@ -1863,8 +1870,10 @@ each ID has one unambiguous lifetime.
 `system_effects` maps a system key (`"5e"`) to that system's roll
 modifiers.  For 5e the recognized keys are `disadvantage_on_attack`
 (attacker side of an attack roll), `advantage_against` (target side of
-an attack roll), and `disadvantage_on_ability_checks` (flee and other
-ability checks).
+an attack roll), and `advantage_on_ability_checks` /
+`disadvantage_on_ability_checks` (ability checks, including skill
+checks and flee checks — but not saving throws, which are not ability
+checks in 5e).
 
 `tick_effect` is a [Result](#result) applied on each of the status
 effect's ticks, but only when the afflicted target is the player

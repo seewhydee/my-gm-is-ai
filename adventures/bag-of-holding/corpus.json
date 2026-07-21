@@ -1216,7 +1216,7 @@
               "type": "stat_check",
               "stat": "CON",
               "target": 11,
-              "proficiency": "save",
+              "save": true,
               "repeatable": false
             },
             "tag": "poison",

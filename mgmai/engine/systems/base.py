@@ -234,6 +234,17 @@ class ResolutionSystem(ABC):
         stat (e.g. a 5e skill).  Default: 0."""
         return 0
 
+    def check_roll_mods(
+        self, is_save: bool, status_effects: dict, corpus: "ModuleCorpus"
+    ) -> tuple[bool, bool]:
+        """Return ``(advantage, disadvantage)`` for an ability/skill check
+        given the roller's active status effects and the corpus (whose
+        status-effect definitions carry the system effects).  ``is_save``
+        is True when the check is a saving throw; systems whose status
+        effects target ability checks only (5e) then apply nothing.
+        Default: neither."""
+        return False, False
+
     @abstractmethod
     def roll_check(
         self,
@@ -399,7 +410,7 @@ class ResolutionSystem(ABC):
 
         Default is 0. Override in subclasses for system-specific rules
         (e.g. 5e proficiency bonus on proficient saving throws when
-        ``check.proficiency == "save"``).
+        ``check.save`` is true, or on proficient skill checks).
         """
         return 0
 

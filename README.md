@@ -152,3 +152,5 @@ Licencse (GPL), version 3.0.  See [LICENSE](LICENSE).
 Dedicated to the memory of Logan Goh (1980-2026): programmer, gamer, dreamer.
 
 The sample adventure(s) in the `adventure/` folder are based on original works copyrighted by various authors, used and distributed under GPL-compatible (e.g., Creative Commons-type) licenses.  Refer to those files for copyright and licensing information.
+
+Some of the RPG mechanics implemented therein includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd.  The SRD 5.2.1 is licensed under the [Creative Commons Attribution 4 License](https://creativecommons.org/licenses/by/4.0/legalcode).

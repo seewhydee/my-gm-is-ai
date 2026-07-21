@@ -1258,7 +1258,7 @@ class TestCombatBlockOnHit:
                 "type": "stat_check",
                 "stat": "CON",
                 "target": 11,
-                "proficiency": "save",
+                "save": True,
                 "repeatable": False,
             },
             "tag": "poison",

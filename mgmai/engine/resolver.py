@@ -59,7 +59,7 @@ from mgmai.engine.dialogue import (
     enter_dialogue,
     exit_dialogue,
 )
-from mgmai.engine.utils import get_following_npc_ids, _is_stackable, _match_soft_content
+from mgmai.engine.utils import get_following_npc_ids, get_status_effects, _is_stackable, _match_soft_content
 from mgmai.engine.status_effects import apply_status_effect
 from mgmai.engine.systems import get_system_for_corpus
 
@@ -1132,6 +1132,28 @@ def _resolve_interaction(
     )
 
 
+def _stat_check_params(
+    check: StatCheck,
+    system: Any,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> dict:
+    """Roll params for a stat check: the check's authored extras
+    (``advantage`` / ``disadvantage``) merged with any modifiers the
+    player's active status effects impose on ability checks (5e: e.g.
+    poisoned).  Saving throws are unaffected (see
+    :meth:`ResolutionSystem.check_roll_mods`)."""
+    params = dict(check.model_extra or {})
+    status_adv, status_disadv = system.check_roll_mods(
+        check.save, get_status_effects("player", hard), corpus
+    )
+    if status_adv:
+        params["advantage"] = True
+    if status_disadv:
+        params["disadvantage"] = True
+    return params
+
+
 def _resolve_traversal_check(
     check: CheckType,
     hard: HardGameState,
@@ -1161,7 +1183,7 @@ def _resolve_traversal_check(
             stat_value,
             check.target,
             flat_modifier=flat_modifier,
-            params=check.model_extra or {},
+            params=_stat_check_params(check, system, hard, corpus),
         )
 
         roll_dict = cr.to_dict()
@@ -1627,7 +1649,7 @@ def _resolve_checkable(
             stat_value,
             check.target,
             flat_modifier=flat_modifier,
-            params=check.model_extra or {},
+            params=_stat_check_params(check, system, hard, corpus),
         )
         success_flag = cr.success
         roll_dict: dict[str, Any] = {

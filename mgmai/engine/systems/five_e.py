@@ -312,6 +312,26 @@ class FiveESystem(ResolutionSystem):
         )
         return advantage, disadvantage
 
+    def check_roll_mods(
+        self, is_save: bool, status_effects: dict, corpus: ModuleCorpus
+    ) -> tuple[bool, bool]:
+        """(advantage, disadvantage) for an ability/skill check (5e): ORs
+        ``advantage_on_ability_checks`` / ``disadvantage_on_ability_checks``
+        over the roller's status effects.  Saving throws are not ability
+        checks in 5e (SRD: Poisoned affects "attack rolls and ability
+        checks"), so ``is_save`` short-circuits to neither."""
+        if is_save:
+            return False, False
+        effect_defs = corpus.effective_status_effects()
+        effects = [
+            effect_defs[c].system_effects.get("5e", {})
+            for c in status_effects
+            if c in effect_defs
+        ]
+        advantage = any(e.get("advantage_on_ability_checks") for e in effects)
+        disadvantage = any(e.get("disadvantage_on_ability_checks") for e in effects)
+        return advantage, disadvantage
+
     def compute_player_damage_expr(
         self,
         hard: HardGameState,
@@ -550,16 +570,12 @@ class FiveESystem(ResolutionSystem):
         dex_mod = self.compute_modifier(
             self._player_stat(hard.player.stats, "DEX")
         )
-        # Conditions may impose disadvantage on ability checks (e.g. poisoned).
-        effect_defs = corpus.effective_status_effects()
-        disadvantage = any(
-            effect_defs[c].system_effects.get("5e", {}).get(
-                "disadvantage_on_ability_checks"
-            )
-            for c in get_status_effects("player", hard)
-            if c in effect_defs
+        # Conditions may impose advantage/disadvantage on ability checks
+        # (e.g. poisoned).
+        advantage, disadvantage = self.check_roll_mods(
+            False, get_status_effects("player", hard), corpus
         )
-        roll = self.roll_die(20, disadvantage=disadvantage)
+        roll = self.roll_die(20, advantage=advantage, disadvantage=disadvantage)
         total = roll + dex_mod
         success = total >= flee_dc
 
@@ -665,7 +681,7 @@ class FiveESystem(ResolutionSystem):
 
     def proficiency_bonus(self, check, player_state: Any) -> int:
         """5e: apply save or skill proficiency when it applies."""
-        if getattr(check, "proficiency", None) == "save":
+        if getattr(check, "save", False):
             return self.compute_save_modifier(check.stat, player_state)
         return self.skill_modifier(check.stat, player_state)
 

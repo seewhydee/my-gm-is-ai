@@ -143,7 +143,7 @@ half damage on a successful save, and applies the `poisoned` flag:
         "type": "stat_check",
         "stat": "CON",
         "target": 11,
-        "proficiency": "save",
+        "save": true,
         "repeatable": false
       },
       "tag": "poison",
@@ -161,8 +161,8 @@ half damage on a successful save, and applies the `poisoned` flag:
 }
 ```
 
-If `check.proficiency` is `"save"`, the player's save proficiency for
-that stat is added to the roll.  In 5e this means adding
+If `check.save` is true, the check is a saving throw: the player's save
+proficiency for that stat is added to the roll.  In 5e this means adding
 `proficiency_bonus` when the stat is listed in `save_proficiencies`.
 
 Damage expressions may use `half(expr)` to deal half of `expr` rounded

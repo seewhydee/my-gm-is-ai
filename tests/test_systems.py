@@ -297,7 +297,7 @@ class TestFiveECombat:
             save_proficiencies = ["CON"]
             proficiency_bonus = 3
 
-        check = StatCheck(stat="CON", target=10, proficiency="save", repeatable=True)
+        check = StatCheck(stat="CON", target=10, save=True, repeatable=True)
         assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 3
 
     def test_proficiency_bonus_ignored_without_marker(self) -> None:
@@ -313,7 +313,7 @@ class TestFiveECombat:
             save_proficiencies = []
             proficiency_bonus = 3
 
-        check = StatCheck(stat="CON", target=10, proficiency="save", repeatable=True)
+        check = StatCheck(stat="CON", target=10, save=True, repeatable=True)
         assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 0
 
     def test_default_damage_exprs(self) -> None:
@@ -414,8 +414,60 @@ class TestFiveESkills:
             skill_proficiencies = ["acrobatics"]
             proficiency_bonus = 3
 
-        check = StatCheck(stat="CON", target=10, proficiency="save", repeatable=True)
+        check = StatCheck(stat="CON", target=10, save=True, repeatable=True)
         assert FiveESystem().proficiency_bonus(check, FakePlayer()) == 3
+
+
+# ------------------------------------------------------------------
+# FiveESystem: status-effect modifiers on ability checks
+# ------------------------------------------------------------------
+
+class TestFiveECheckRollMods:
+    def test_poisoned_gives_disadvantage(self) -> None:
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        assert FiveESystem().check_roll_mods(
+            False, {"poisoned": 2}, corpus
+        ) == (False, True)
+
+    def test_save_unaffected_by_ability_check_effects(self) -> None:
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        assert FiveESystem().check_roll_mods(
+            True, {"poisoned": 2}, corpus
+        ) == (False, False)
+
+    def test_unrelated_condition_gives_neither(self) -> None:
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        # stunned only carries advantage_against (attack target side)
+        assert FiveESystem().check_roll_mods(
+            False, {"stunned": 1}, corpus
+        ) == (False, False)
+
+    def test_unknown_condition_ignored(self) -> None:
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        assert FiveESystem().check_roll_mods(
+            False, {"nonexistent": 1}, corpus
+        ) == (False, False)
+
+    def test_advantage_on_ability_checks(self) -> None:
+        from mgmai.models.corpus import StatusEffectDef
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        corpus.status_effects["blessed"] = StatusEffectDef.model_validate({
+            "name": "Blessed",
+            "system_effects": {"5e": {"advantage_on_ability_checks": True}},
+        })
+        assert FiveESystem().check_roll_mods(
+            False, {"blessed": 3}, corpus
+        ) == (True, False)
 
 
 # ------------------------------------------------------------------

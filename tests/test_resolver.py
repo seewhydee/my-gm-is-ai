@@ -963,6 +963,69 @@ class TestSkillChecks:
         assert result.hard_changes.player_location == "bag_floor"
         assert len(result.rolls) == 0
 
+    def test_status_effect_disadvantage_applies_to_checks(self, monkeypatch):
+        manager = self._manager_with_skills(["acrobatics"])
+        manager.hard_state.player.status_effects = {"poisoned": 2}
+        self._add_acrobatics_interaction(manager.corpus, target=12)
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        result = self._interact(manager)
+        roll = result.rolls[0]
+        assert roll["stat"] == "acrobatics"
+        assert roll["disadvantage"] is True
+        assert roll["advantage"] is False
+
+    def test_status_effect_disadvantage_skips_saves(self, monkeypatch):
+        manager = self._manager_with_skills([])
+        manager.hard_state.player.status_effects = {"poisoned": 2}
+        manager.corpus.rooms["axe_head"].interactions.append(
+            Interaction(
+                id="resist_toxin",
+                description="Test: CON save",
+                check=StatCheck(stat="CON", target=12, save=True, repeatable=True),
+                success=Result(narrative="You resist."),
+                failure=Result(narrative="It courses through you."),
+            )
+        )
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        action = InteractAction(
+            action_type="interact", target="toenail_sword",
+            interaction_id="resist_toxin",
+            detail="Resist",
+        )
+        result = resolve_interact(
+            action, manager.hard_state, manager.soft_state, manager.corpus
+        )
+        roll = result.rolls[0]
+        assert roll["disadvantage"] is False
+        assert roll["advantage"] is False
+
+    def test_authored_advantage_and_status_disadvantage_cancel(self, monkeypatch):
+        manager = self._manager_with_skills([])
+        manager.hard_state.player.status_effects = {"poisoned": 2}
+        manager.corpus.rooms["axe_head"].interactions.append(
+            Interaction(
+                id="lift",
+                description="Test: authored advantage",
+                check=StatCheck(
+                    stat="STR", target=12, repeatable=True, advantage=True,
+                ),
+                success=Result(narrative="Lifted."),
+                failure=Result(narrative="Too heavy."),
+            )
+        )
+        monkeypatch.setattr(random, "randint", lambda a, b: 10)
+        action = InteractAction(
+            action_type="interact", target="toenail_sword",
+            interaction_id="lift",
+            detail="Lift",
+        )
+        result = resolve_interact(
+            action, manager.hard_state, manager.soft_state, manager.corpus
+        )
+        roll = result.rolls[0]
+        assert roll["advantage"] is True
+        assert roll["disadvantage"] is True
+
 
 class TestResolveAction:
     def test_dispatches_correctly(self, state_manager):

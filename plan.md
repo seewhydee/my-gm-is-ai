@@ -141,12 +141,13 @@ bag-of-data state fields — while removing the hardcoded special-casing.
                                       "advantage_against": True}}
   ```
 
-- **Two system-effect keys for 5e, matching real 5e semantics.**
+- **System-effect keys for 5e, matching real 5e semantics.**
   `disadvantage_on_attack` (attacker side of an attack roll),
   `advantage_against` (target side of an attack roll), and
-  `disadvantage_on_ability_checks` (flee and future ability checks).
-  Poisoned declares both disadvantage keys; the flee check
-  (`five_e.py:504`) consults `disadvantage_on_ability_checks`.
+  `advantage_on_ability_checks` / `disadvantage_on_ability_checks`
+  (ability checks, including skill checks and flee — not saving throws).
+  Poisoned declares both disadvantage keys; all stat checks consult
+  these via `FiveESystem.check_roll_mods` (resolver and flee).
 
 - **Scope is per-definition; distinct scopes need distinct IDs.**  A
   combat poison and a trap poison are two definitions (e.g. `poisoned`

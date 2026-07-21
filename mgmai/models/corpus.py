@@ -312,7 +312,7 @@ class StatCheck(BaseModel):
     stat: str
     target: int
     modifier: int = 0
-    proficiency: Optional[str] = None
+    save: bool = False
     repeatable: bool
 
 

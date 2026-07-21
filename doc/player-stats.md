@@ -116,15 +116,19 @@ This check type exists alongside the `roll` (flat percentage) check:
 | Field | Description |
 |-------|-------------|
 | `type` | `"stat_check"` |
-| `stat` | Stat key (must be defined in corpus.stats.definitions) |
+| `stat` | Stat key (defined in corpus.stats.definitions, or a skill known to the system) |
 | `target` | Target number / difficulty class |
 | `modifier` | Flat situational modifier (default 0) |
+| `save` | 5e: this check is a saving throw (default false) |
 | `repeatable` | Whether the check can be retried |
 
 System-specific fields (e.g. `advantage` / `disadvantage` for `5e`) are
 accepted as extra top-level keys. The engine dispatches `stat_check` to the
 active resolution system, which computes the dice formula and produces a
-success/failure outcome.
+success/failure outcome. Advantage/disadvantage may also be imposed by the
+player's active status effects (5e: `advantage_on_ability_checks` /
+`disadvantage_on_ability_checks`); these apply to ability and skill checks
+but not to saving throws (`save: true`).
 
 ### Skill checks (5e)
 
