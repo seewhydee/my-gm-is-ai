@@ -527,3 +527,49 @@ class TestIntegrationFixtureSmoke:
         assert mule.combat.ai.passive is True
         mule_state = sm.hard_state.entity_states.get("pack_mule", {})
         assert mule_state.get("following") is True
+
+    def test_indicator_hall_loads(self):
+        """StateManager successfully loads the indicator_hall fixture."""
+        from pathlib import Path
+        from mgmai.state.manager import StateManager
+
+        fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "indicator_hall"
+        sm = StateManager(adventure_dir=str(fixture))
+
+        assert sm.hard_state is not None
+        assert sm.corpus is not None
+        assert sm.soft_state is not None
+
+        # Player starts in the hall with the cudgel equipped.
+        assert sm.hard_state.player.location == "hall"
+        assert sm.hard_state.player.equipped == ["cudgel"]
+
+        # The pillar's shove check always succeeds (target 3 vs STR 16),
+        # so the single-check scenario deterministically produces
+        # exactly one check indicator.
+        pillar = sm.corpus.entities["cracked_pillar"]
+        shove = next(i for i in pillar.interactions if i.id == "shove")
+        assert shove.check.stat == "STR"
+        assert shove.check.target == 3
+
+        # The bridge's cross check always fails (target 30 vs DEX 10)
+        # and chains into an always-failing CON check with damage, so
+        # the multi-indicator scenario deterministically produces two
+        # check indicators plus an hp indicator.
+        bridge = sm.corpus.entities["rickety_bridge"]
+        cross = next(i for i in bridge.interactions if i.id == "cross")
+        assert cross.check.stat == "DEX"
+        assert cross.check.target == 30
+        then = cross.failure.then_check
+        assert then.check.stat == "CON"
+        assert then.check.target == 30
+        assert then.failure.player_damage == "1d4"
+
+        # The golem is a durable sparring partner; the dummy dies to
+        # any hit (1 HP).
+        assert sm.corpus.entities["sparring_golem"].combat.hp == 40
+        dummy = sm.corpus.entities["battered_dummy"]
+        assert dummy.combat.hp == 1
+        dummy_state = sm.hard_state.entity_states.get("battered_dummy", {})
+        assert dummy_state.get("alive") is True
+        assert dummy_state.get("current_hp") == 1

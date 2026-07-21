@@ -255,9 +255,10 @@ If `chain_info` has a `follow_up` with no `termination_reason`,
 
 ## Mechanical Indicators
 
-The following mechanical events occurred this turn.  You MAY place each
-marker inside your narration at the narratively appropriate point —
-typically immediately before describing the consequence of that event.
+The following mechanical events occurred this turn.  You MUST place
+EVERY marker below inside your narration, each exactly once, at the
+narratively appropriate point — typically immediately before the text
+describing the consequence of that event.
 
 Place each marker on its own line, surrounded by blank lines (`\n\n`),
 like this:
@@ -270,8 +271,11 @@ You try to lift the statue.
 It's too heavy to budge.
 ```
 
-If you do not use a marker, the engine will prepend it to your narration
-automatically.  Use each marker at most once.
+Copy each marker verbatim — do not retype, renumber, or paraphrase it,
+and do not write out the mechanical text yourself.  The engine
+substitutes the canonical text wherever you place the marker; any
+marker you leave unused is prepended to your narration as a fallback,
+which is a degraded experience.
 
 {% if indicators %}
 {% for ind in indicators %}

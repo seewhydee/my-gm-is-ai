@@ -1,7 +1,10 @@
 # LLM Integration Tests
 
-These tests run a "driver" LLM as the player against the real GM LLM,
-verifying the full two-call pipeline (ruling → engine → prose).  An
+Most of these tests run a "driver" LLM as the player against the real GM
+LLM, verifying the full two-call pipeline (ruling → engine → prose).  The
+exception is `test_narrative_indicators.py`, which drives single fixed
+turns (no driver) to test the narrator's handling of mechanical
+indicators — see "The narrative-indicator scenarios" below.  An
 advisory LLM judge also reviews narration quality; its verdict is
 recorded in the artifact but never fails the test — deterministic
 assertions are the only gate.  Unlike the regular unit suite,
@@ -155,6 +158,50 @@ Three scenarios use the `ambush_alley` fixture (`test_ambush_alley.py`):
 | `targeting_and_frenzy` | Ambush, then fight howler-first | Every thug attack targets the player; `frenzy` entries only at/after the howler first dropped below half HP; pack mule a party combatant with zero attack entries |
 | `hold_and_talk_rejected` | Ambush, hold ground first turn, then try to talk, then fight | A `wait` player entry; no exceptions or empty narrations across the talk attempt; combat concluded |
 
+## The narrative-indicator scenarios
+
+`test_narrative_indicators.py` is a separate, smaller suite for the
+marker-based inline mechanical indicators (see
+`design-inline-indicators.md`).  It has **no driver LLM**: each
+scenario is a single fixed turn.  A hand-written `PlayerAction` is
+resolved by the real engine — Call 1 (ruling) is bypassed by design,
+so the engine-generated text is controlled by the scenario — the
+indicators built from the engine result are passed to the real GM
+prose call (Call 2, exactly as in production), and the marker-replaced
+narration is checked.  Only two LLM roles are involved: the GM
+(narrator) and the judge.
+
+Hard assertions (the gate) cover player-facing output correctness:
+
+- the engine produced the expected indicator set for the scenario;
+- the final player-facing narration contains no leftover marker
+  syntax (a mangled, paraphrased, or duplicated marker would survive
+  replacement and leak to the player);
+- each indicator's canonical text appears exactly once (nothing
+  dropped, no duplicated mechanical summaries) — and so does each
+  indicator's plain description, which catches the narrator writing
+  out the mechanical text itself in addition to placing the marker.
+
+Marker *placement* (how many markers the narrator placed inline, and
+where) is model-quality behaviour that varies between runs; it is
+recorded in the artifact and surfaced as a warning, never a gate —
+the fallback keeps the player-facing output correct regardless.  An
+advisory judge (`indicator_judge.py`) scores marker placement
+quality, mechanical fidelity, cleanliness, and narration quality; the
+verdict is recorded in the artifact and surfaced as a warning, never
+a test failure.
+
+Four scenarios use the `indicator_hall` fixture:
+
+| Scenario | Fixed action | Expected indicators |
+|----------|--------------|---------------------|
+| `indicator_single_check` | Shove the cracked pillar (STR check vs target 3, STR 16 — always succeeds) | Exactly one `check` indicator |
+| `indicator_multi_check_hp` | Cross the rickety bridge (DEX then CON checks vs target 30 — both always fail, the second dealing 1d4 damage) | Two `check` indicators + one `hp` indicator in one turn |
+| `indicator_combat_round` | Attack the sparring golem mid-combat (preset combat state, seeded dice) | Two `combat` indicators (player attack + golem retaliation) + one `hp` indicator |
+| `indicator_attack_death` | Attack the 1-HP battered dummy mid-combat (preset combat state, seeded dice) | Two `combat` indicators (attack + death); combat ends |
+
+Each run costs 1 GM call + 1 judge call per scenario.
+
 ## The combat arena fixture
 
 Located at `tests/integration/fixtures/combat_arena/`, validated by a
@@ -216,6 +263,29 @@ non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 - All three gang members share the `alley_gang` combat group
 - **Rooms**: Market Alley (start, all combatants, exit east) → Dead-End
   Court
+
+## The indicator hall fixture
+
+Located at `tests/integration/fixtures/indicator_hall/`, validated by a
+non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
+Built for the narrative-indicator scenarios: every check target is
+authored unreachable or pass-everything, so the engine outcome (and
+thus the indicator set) of each fixed action is deterministic.
+
+- **Player** (level 2): training cudgel (1d6 bludgeoning, +5 hit),
+  HP 24, AC 14, STR 16 / DEX 10 / CON 10
+- **Cracked pillar** (feature): `shove` interaction — STR check vs
+  target 3, always succeeds (one `check` indicator)
+- **Rickety bridge** (feature): `cross` interaction — DEX check vs
+  target 30, always fails, chaining into a CON check vs target 30 that
+  also always fails and deals 1d4 damage (two `check` indicators + one
+  `hp` indicator)
+- **Sparring golem**: HP 40, AC 8, 1d4 bludgeoning — durable enough to
+  guarantee a full combat round (player attack + retaliation)
+- **Battered dummy**: HP 1, AC 1 — dies to any hit (attack + death
+  indicators, ending combat)
+- **Rooms**: Proving Hall (start, pillar + bridge, exit east) →
+  Sparring Chamber (golem + dummy)
 
 ## How to modify
 
