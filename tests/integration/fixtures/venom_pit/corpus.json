@@ -81,7 +81,7 @@
       "name": "Antidote",
       "description": "A bitter draught that purges venom. Drinking it removes the poisoned condition.",
       "consumable": {
-        "cure_conditions": ["poisoned"],
+        "cure_status_effects": ["poisoned"],
         "destroy": true
       }
     },
@@ -149,7 +149,7 @@
             "failure": {
               "narrative": "Venom burns through your veins — you are poisoned!",
               "player_damage": "1d6",
-              "apply_condition": { "id": "poisoned", "rounds": 2 }
+              "apply_status_effect": { "id": "poisoned", "rounds": 2 }
             }
           }
         ]
@@ -190,7 +190,7 @@
                 },
                 "failure": {
                   "narrative": "Your limbs seize up — you are stunned!",
-                  "apply_condition": { "id": "stunned", "rounds": 2 }
+                  "apply_status_effect": { "id": "stunned", "rounds": 2 }
                 }
               }
             ]

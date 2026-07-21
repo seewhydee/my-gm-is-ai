@@ -239,10 +239,11 @@ class ResolutionSystem(ABC):
         """True if a raw attack roll is an automatic miss."""
 
     def attack_roll_mods(
-        self, attacker_conds: dict, target_conds: dict
+        self, attacker_status_effects: dict, target_status_effects: dict, corpus: "ModuleCorpus"
     ) -> tuple[bool, bool]:
         """Return ``(advantage, disadvantage)`` for an attack roll given
-        the attacker's and target's condition maps.  Default: neither."""
+        the attacker's and target's status-effect maps and the corpus (whose
+        status-effect definitions carry the system effects).  Default: neither."""
         return False, False
 
     @abstractmethod

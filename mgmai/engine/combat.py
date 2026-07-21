@@ -36,7 +36,12 @@ from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
-from mgmai.engine.utils import get_conditions, get_following_npc_ids
+from mgmai.engine.utils import get_status_effects, get_following_npc_ids
+from mgmai.engine.status_effects import (
+    apply_status_effect,
+    emit_status_effect_event,
+    remove_status_effect,
+)
 from mgmai.engine.systems import get_system, get_system_for_corpus
 from mgmai.engine.systems.dice import parse_damage_dice
 
@@ -199,6 +204,7 @@ def _resolve_npc_on_hits(
     *,
     round_number: int,
     on_hit_effects: list,
+    events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[CombatLogEntry], bool]:
     """Resolve an NPC's on-hit ``CheckResolution`` effects.
 
@@ -206,7 +212,7 @@ def _resolve_npc_on_hits(
     *hard_changes.player_hp_delta*. Returns ``(on_hit_log_entries,
     death_log_entries, game_over)``.
     """
-    from mgmai.engine.resolver import _resolve_checkable
+    from mgmai.engine.resolver import _resolve_checkable, ResolutionResult
 
     entity = corpus.entities.get(npc_id)
     if entity is None or entity.combat is None:
@@ -226,6 +232,11 @@ def _resolve_npc_on_hits(
         hp_before = hard_changes.player_hp_delta or 0
         rolls_before = len(rolls)
 
+        # A throwaway ResolutionResult collects events emitted by the
+        # effect; only status-effect events (e.g. status_effect.applied from
+        # apply_status_effect) are forwarded — check events keep their
+        # historical no-event behavior for combat on-hits.
+        on_hit_resolution = ResolutionResult(success=True) if events is not None else None
         passed = _resolve_checkable(
             effect,
             hard=hard,
@@ -237,10 +248,15 @@ def _resolve_npc_on_hits(
             revealed_hints=revealed_hints,
             rolls=rolls,
             state_manager=state_manager,
-            resolution=None,
+            resolution=on_hit_resolution,
             source_id=npc_id,
             source_type="combat",
         )
+        if events is not None:
+            events.extend(
+                ev for ev in on_hit_resolution.events
+                if ev[0].startswith("status_effect.")
+            )
 
         # Identify the primary check roll among any rolls added by the
         # resolution (nested then_checks may add further rolls).
@@ -450,27 +466,80 @@ def _attack_sequence(entity: Any) -> list:
 # Conditions
 # ------------------------------------------------------------------
 
-def _tick_conditions(combatant_id: str, hard: HardGameState) -> None:
-    """Start-of-turn condition processing for one combatant.
+def _tick_status_effects(
+    combatant_id: str,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+) -> None:
+    """Start-of-turn status-effect processing for one combatant.
 
-    Prone combatants automatically stand (prone is removed); other
-    conditions tick down one round and expire at zero.
+    Behaviour is driven by each status effect's definition (see
+    ``ModuleCorpus.effective_status_effects``): ``until_turn_start``
+    status effects (e.g. prone) auto-clear; combat-scoped ``rounds``
+    status effects tick down one round and expire at zero; persistent and
+    ``until_cleared`` status effects are left alone.  Unknown IDs behave
+    like the legacy defaults (combat-scoped, round-based).
     """
-    conditions = get_conditions(combatant_id, hard)
-    if not conditions:
+    status_effects = get_status_effects(combatant_id, hard)
+    if not status_effects:
         return
-    conditions.pop("prone", None)
-    for cond_id in list(conditions):
-        conditions[cond_id] -= 1
-        if conditions[cond_id] <= 0:
-            del conditions[cond_id]
+    effect_defs = corpus.effective_status_effects()
+    for effect_id in list(status_effects):
+        cdef = effect_defs.get(effect_id)
+        duration = cdef.duration if cdef is not None else "rounds"
+        scope = cdef.scope if cdef is not None else "combat"
+        if duration == "until_turn_start":
+            remove_status_effect(
+                combatant_id, effect_id, hard, corpus, "auto_clear", events
+            )
+        elif duration == "rounds" and scope == "combat":
+            status_effects[effect_id] -= 1
+            expired = status_effects[effect_id] <= 0
+            if expired:
+                remove_status_effect(
+                    combatant_id, effect_id, hard, corpus, "expired", events
+                )
+            emit_status_effect_event(events, "status_effect.ticked", {
+                "target_id": combatant_id,
+                "status_effect_id": effect_id,
+                "remaining_rounds": status_effects.get(effect_id, 0),
+                "expired": expired,
+            })
 
 
-def _clear_conditions(hard: HardGameState) -> None:
-    """Clear all conditions (conditions are combat-scoped)."""
-    hard.player.conditions.clear()
-    for state in hard.entity_states.values():
-        state.pop("conditions", None)
+def _clear_status_effects(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+) -> None:
+    """Clear combat-scoped status effects at combat end (persistent survive)."""
+    effect_defs = corpus.effective_status_effects()
+
+    def _is_combat_scoped(effect_id: str) -> bool:
+        cdef = effect_defs.get(effect_id)
+        return cdef.scope == "combat" if cdef is not None else True
+
+    for effect_id in [c for c in hard.player.status_effects if _is_combat_scoped(c)]:
+        remove_status_effect("player", effect_id, hard, corpus, "combat_end", events)
+    for entity_id, state in hard.entity_states.items():
+        status_effects = state.get("status_effects") or {}
+        for effect_id in [c for c in status_effects if _is_combat_scoped(c)]:
+            remove_status_effect(
+                entity_id, effect_id, hard, corpus, "combat_end", events
+            )
+        if not status_effects:
+            state.pop("status_effects", None)
+
+
+def _skips_turn(combatant_id: str, hard: HardGameState, corpus: ModuleCorpus) -> bool:
+    """True if any of the combatant's status effects has ``skip_turn`` set."""
+    effect_defs = corpus.effective_status_effects()
+    return any(
+        effect_defs[c].skip_turn
+        for c in get_status_effects(combatant_id, hard)
+        if c in effect_defs
+    )
 
 
 # ------------------------------------------------------------------
@@ -643,7 +712,7 @@ def _resolve_attack_ability(
     atk = ability.attack
     target_ac = _target_ac(target_id, hard, corpus)
     adv, disadv = system.attack_roll_mods(
-        get_conditions(caster_id, hard), get_conditions(target_id, hard)
+        get_status_effects(caster_id, hard), get_status_effects(target_id, hard), corpus
     )
     attack_roll = system.roll_die(20, advantage=adv, disadvantage=disadv)
     attack_total = attack_roll + atk_bonus
@@ -699,10 +768,11 @@ def _resolve_save_ability(
     corpus: ModuleCorpus,
     hard_changes: HardStateChanges,
     combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> bool:
     """Resolve a save ability: the target saves (player with proficiency
     rules, NPCs with their ``save_bonus``), taking half or no damage on
-    success and possibly a condition on failure.  Returns True when the
+    success and possibly a status effect on failure.  Returns True when the
     target died."""
     system = get_system_for_corpus(corpus)
     save = ability.save
@@ -738,16 +808,13 @@ def _resolve_save_ability(
             damage, save.damage_type, target_id, hard, corpus
         )
 
-    applied_cond: str | None = None
-    if not save_success and save.apply_condition_on_failure is not None:
-        cond = save.apply_condition_on_failure
-        if target_id == "player":
-            hard.player.conditions[cond.id] = cond.rounds
-        else:
-            hard.entity_states.setdefault(target_id, {}).setdefault(
-                "conditions", {}
-            )[cond.id] = cond.rounds
-        applied_cond = cond.id
+    applied_effect: str | None = None
+    if not save_success and save.apply_status_effect_on_failure is not None:
+        effect = save.apply_status_effect_on_failure
+        apply_status_effect(
+            target_id, effect.id, effect.rounds, hard, corpus, "save_failure", events
+        )
+        applied_effect = effect.id
 
     died = False
     if damage:
@@ -765,8 +832,8 @@ def _resolve_save_ability(
         "damage": damage,
         "damage_type": save.damage_type or None,
     }
-    if applied_cond:
-        save_dict["condition"] = applied_cond
+    if applied_effect:
+        save_dict["status_effect"] = applied_effect
     combat_log.append(
         CombatLogEntry(
             round=combat.round_number,
@@ -869,6 +936,7 @@ def _use_npc_ability(
     corpus: ModuleCorpus,
     hard_changes: HardStateChanges,
     combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> bool:
     """Resolve an NPC's chosen ability; returns True when the player died."""
     combat.ability_uses[actor_id][aid] = (
@@ -895,7 +963,7 @@ def _use_npc_ability(
     if ability.save is not None:
         died = _resolve_save_ability(
             actor_id, aid, ability, target_id,
-            combat, hard, corpus, hard_changes, combat_log,
+            combat, hard, corpus, hard_changes, combat_log, events,
         )
         return died and target_id == "player"
     return False
@@ -908,6 +976,7 @@ def _resolve_player_ability(
     hard_changes: HardStateChanges,
     combat_log: list[CombatLogEntry],
     combat: CombatState,
+    events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> dict[str, Any] | None:
     """Resolve the player's ``use_ability`` combat action.
 
@@ -989,7 +1058,7 @@ def _resolve_player_ability(
     if ability.save is not None:
         _resolve_save_ability(
             "player", aid, ability, target_id,
-            combat, hard, corpus, hard_changes, combat_log,
+            combat, hard, corpus, hard_changes, combat_log, events,
         )
         return None
 
@@ -1005,12 +1074,13 @@ def _resolve_npc_turn(
     state_manager: Any | None,
     hard_changes: HardStateChanges,
     combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> tuple[bool, bool]:
     """Resolve one NPC combatant's turn (attack plus on-hit effects).
 
     HP deltas and death bookkeeping are accumulated into *hard_changes*
     (player HP as a delta, NPC HP as absolute sets) and *combat*; log
-    entries are appended to *combat_log*.  End-of-combat conditions are
+    entries are appended to *combat_log*.  End-of-combat status effects are
     checked after the action.  Returns ``(game_over, combat_ended)`` —
     game_over when the player dropped to 0 HP or an inline (scripted)
     game-over occurred, combat_ended when no living enemies remain.
@@ -1027,9 +1097,10 @@ def _resolve_npc_turn(
     if (npc_state.get("current_hp") or 0) <= 0:
         return False, False
 
-    # Start-of-turn condition processing; stunned combatants lose the turn.
-    _tick_conditions(actor_id, hard)
-    if "stunned" in get_conditions(actor_id, hard):
+    # Start-of-turn status-effect processing; combatants with a skip_turn
+    # status effect (e.g. stunned) lose the turn.
+    _tick_status_effects(actor_id, hard, corpus, events)
+    if _skips_turn(actor_id, hard, corpus):
         combat_log.append(
             CombatLogEntry(
                 round=combat.round_number, actor=actor_id, action="stunned",
@@ -1076,7 +1147,7 @@ def _resolve_npc_turn(
         aid, ability, ability_target = chosen
         game_over = _use_npc_ability(
             actor_id, entity, aid, ability, ability_target,
-            combat, hard, corpus, hard_changes, combat_log,
+            combat, hard, corpus, hard_changes, combat_log, events,
         )
         return game_over, not _living_enemies(combat, hard)
 
@@ -1149,6 +1220,7 @@ def _resolve_npc_turn(
                     attack_def.on_hit_effects if attack_def is not None
                     else entity.combat.on_hit_effects
                 ),
+                events=events,
             )
             if attack_entry is not None:
                 attack_entry.on_hit_effects.extend(on_hit_entries)
@@ -1283,13 +1355,17 @@ def enter_combat(
     """Initialize combat state, roll initiative, resolve pre-player NPC turns.
 
     Returns a dict with ``combat_log``, ``hard_changes``, ``combat_triggered``,
-    ``player_died``, and ``combat_ended_reason``.  ``player_died`` is True
+    ``player_died``, ``combat_ended_reason``, and ``events``.  ``player_died``
+    is True
     when the player dropped to 0 HP without an inline (scripted) game-over;
     the engine routes that through the ``player.died`` event, which lets
     rescue reactions avert the death.  ``combat_ended_reason`` is ``None``
     when combat continues, or one of ``"victory"`` / ``"defeat"`` when
     pre-player NPC turns already ended combat (the caller should emit a
-    ``combat.ended`` event in that case).
+    ``combat.ended`` event in that case).  ``events`` carries the status-effect
+    events (``status_effect.applied`` / ``status_effect.ticked`` /
+    ``status_effect.cleared``) raised during pre-player NPC turns, for the
+    caller to dispatch.
     """
     system = get_system_for_corpus(corpus)
 
@@ -1329,6 +1405,7 @@ def enter_combat(
     # Resolve NPC turns before the player's first turn
     hard_changes = HardStateChanges()
     combat_log: list[CombatLogEntry] = []
+    events: list[tuple[str, dict[str, Any]]] = []
     combat_ended_reason: str | None = None
 
     player_idx = initiative_order.index("player")
@@ -1338,21 +1415,21 @@ def enter_combat(
             continue
         go, ended = _resolve_npc_turn(
             actor_id, combat, hard, corpus, soft, state_manager,
-            hard_changes, combat_log,
+            hard_changes, combat_log, events,
         )
         if go:
             combat_ended_reason = "defeat"
             # Combat ends the moment the player drops; if a rescue
             # reaction (player.died) later averts the death, the player
             # survives out of combat.
-            _clear_conditions(hard)
+            _clear_status_effects(hard, corpus, events)
             hard.combat = None
             break
         if ended:
             # No living enemies remain (only reachable once allies can
             # fight, Phase 2); combat is over before the player's turn.
             combat_ended_reason = "victory"
-            _clear_conditions(hard)
+            _clear_status_effects(hard, corpus, events)
             hard.combat = None
             break
 
@@ -1373,6 +1450,7 @@ def enter_combat(
         "combat_triggered": True,
         "player_died": player_died,
         "combat_ended_reason": combat_ended_reason,
+        "events": events,
     }
 
 
@@ -1388,6 +1466,7 @@ def _resolve_use_item(
     hard_changes: HardStateChanges,
     combat_log: list[CombatLogEntry],
     round_number: int,
+    events: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> dict[str, Any] | None:
     """Resolve a ``use_item`` combat action (drink a potion, …).
 
@@ -1430,8 +1509,8 @@ def _resolve_use_item(
                 (hard_changes.player_hp_delta or 0) + healed
             )
 
-    for cond_id in block.cure_conditions:
-        hard.player.conditions.pop(cond_id, None)
+    for effect_id in block.cure_status_effects:
+        remove_status_effect("player", effect_id, hard, corpus, "consumable", events)
 
     if block.destroy:
         hard_changes.inventory_removed[item_id] = (
@@ -1467,13 +1546,17 @@ def resolve_combat_turn(
     flee attempt (``MoveAction``), or a turn pass (``WaitAction``).
 
     Returns a dict with ``success``, ``hard_changes``, ``combat_log``,
-    ``player_died``, ``combat_ended_reason``, and ``error`` (if failure).
+    ``player_died``, ``combat_ended_reason``, ``events``, and ``error``
+    (if failure).
     ``player_died`` is True when the player dropped to 0 HP without an
     inline (scripted) game-over; the engine routes that through the
     ``player.died`` event, which lets rescue reactions avert the death.
     ``combat_ended_reason`` is ``None`` when combat continues, or one of
     ``"victory"``, ``"defeat"``, or ``"fled"`` when combat ended this turn;
     the caller should emit a ``combat.ended`` event in that case.
+    ``events`` carries the status-effect events (``status_effect.applied`` /
+    ``status_effect.ticked`` / ``status_effect.cleared``) raised during the turn,
+    for the caller to dispatch.
     """
     combat = hard.combat
     if combat is None or not combat.active:
@@ -1483,14 +1566,16 @@ def resolve_combat_turn(
 
     hard_changes = HardStateChanges()
     combat_log: list[CombatLogEntry] = []
+    events: list[tuple[str, dict[str, Any]]] = []
     game_over = False
     combat_ended = False
     combat_end_reason: str | None = None
 
-    # Start-of-turn condition processing for the player; a stunned player
-    # loses the action but the turn (and NPC turns) still proceeds.
-    _tick_conditions("player", hard)
-    if "stunned" in get_conditions("player", hard):
+    # Start-of-turn status-effect processing for the player; a player with a
+    # skip_turn status effect (e.g. stunned) loses the action but the turn
+    # (and NPC turns) still proceeds.
+    _tick_status_effects("player", hard, corpus, events)
+    if _skips_turn("player", hard, corpus):
         combat_log.append(
             CombatLogEntry(
                 round=combat.round_number, actor="player", action="stunned",
@@ -1499,7 +1584,7 @@ def resolve_combat_turn(
     elif isinstance(action, CombatAction) and action.combat_action == "use_ability":
         # --- Use a combat ability ---
         err = _resolve_player_ability(
-            action, hard, corpus, hard_changes, combat_log, combat,
+            action, hard, corpus, hard_changes, combat_log, combat, events,
         )
         if err is not None:
             return err
@@ -1510,7 +1595,7 @@ def resolve_combat_turn(
         # --- Use a consumable item ---
         err = _resolve_use_item(
             action.target, hard, corpus, system,
-            hard_changes, combat_log, combat.round_number,
+            hard_changes, combat_log, combat.round_number, events,
         )
         if err is not None:
             return err
@@ -1623,7 +1708,7 @@ def resolve_combat_turn(
             if actor_id != "player":
                 go, ended = _resolve_npc_turn(
                     actor_id, combat, hard, corpus, soft, state_manager,
-                    hard_changes, combat_log,
+                    hard_changes, combat_log, events,
                 )
                 if go:
                     game_over = True
@@ -1646,10 +1731,10 @@ def resolve_combat_turn(
     combat.log.extend(combat_log)
 
     if combat_ended:
-        _clear_conditions(hard)
+        _clear_status_effects(hard, corpus, events)
         hard.combat = None
     elif game_over:
-        _clear_conditions(hard)
+        _clear_status_effects(hard, corpus, events)
         hard.combat = None
 
     # HP-based death is reported separately from an inline (scripted)
@@ -1665,4 +1750,5 @@ def resolve_combat_turn(
         "combat_log": combat_log,
         "player_died": player_died,
         "combat_ended_reason": combat_end_reason,
+        "events": events,
     }

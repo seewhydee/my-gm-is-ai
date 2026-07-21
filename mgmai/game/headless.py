@@ -64,7 +64,9 @@ class StatusSnapshot:
     player_hp: Optional[int]
     player_max_hp: Optional[int]
     # {combatant_id: {"hp", "max_hp", "side": "party"|"enemy", "alive",
-    #                 "conditions": {condition: rounds}, "fled": bool}}
+    #                 "status_effects": {status_effect: rounds},
+    #                 "status_effect_names": {status_effect: display name},
+    #                 "fled": bool}}
     combatants: dict[str, dict[str, Any]] = field(default_factory=dict)
     active_flags: dict[str, bool] = field(default_factory=dict)
 
@@ -191,13 +193,19 @@ def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
     combat = hard.combat
     combatants: dict[str, dict[str, Any]] = {}
     if combat is not None:
+        effect_defs = corpus.effective_status_effects() if corpus else {}
+
+        def _effect_label(c: str) -> str:
+            cdef = effect_defs.get(c)
+            return cdef.name if cdef is not None and cdef.name else c
+
         allies = set(combat.allies)
         for cid in combat.combatants:
             if cid == "player":
                 hp = hard.player.current_hp or 0
                 max_hp = hard.player.max_hp or 0
                 side = "party"
-                conditions = dict(hard.player.conditions or {})
+                status_effects = dict(hard.player.status_effects or {})
                 fled = False
             else:
                 state = hard.entity_states.get(cid, {})
@@ -205,14 +213,15 @@ def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
                 ent = corpus.entities.get(cid) if corpus else None
                 max_hp = (ent.combat.hp if ent and ent.combat else 0)
                 side = "party" if cid in allies else "enemy"
-                conditions = dict(state.get("conditions") or {})
+                status_effects = dict(state.get("status_effects") or {})
                 fled = bool(state.get("fled"))
             combatants[cid] = {
                 "hp": hp,
                 "max_hp": max_hp,
                 "side": side,
                 "alive": hp > 0,
-                "conditions": conditions,
+                "status_effects": status_effects,
+                "status_effect_names": {c: _effect_label(c) for c in status_effects},
                 "fled": fled,
             }
 

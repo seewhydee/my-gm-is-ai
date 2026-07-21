@@ -46,12 +46,31 @@ def _collect_addable_from_result(result, addable_entities: set[str]) -> None:
         addable_entities.update(result.add_item_count.keys())
 
 
-def validate_adventure(adventure_dir: Path) -> list[str]:
+def _collect_status_effect_refs(obj, refs: set[str]) -> None:
+    """Recursively collect status-effect IDs referenced by ``apply_status_effect``
+    and ``cure_status_effects`` anywhere in a serialized corpus."""
+    if isinstance(obj, dict):
+        for key, val in obj.items():
+            if key == "apply_status_effect" and isinstance(val, dict) and "id" in val:
+                refs.add(val["id"])
+            elif key == "cure_status_effects" and isinstance(val, list):
+                refs.update(v for v in val if isinstance(v, str))
+            else:
+                _collect_status_effect_refs(val, refs)
+    elif isinstance(obj, list):
+        for item in obj:
+            _collect_status_effect_refs(item, refs)
+
+
+def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
     """Load and validate an adventure directory.
 
-    Returns a list of error messages (empty if valid).
+    Returns a ``(errors, warnings)`` pair.  Errors are structural
+    problems; warnings are suspicious but legal (e.g. references to
+    condition IDs the adventure may forward-declare).
     """
     errors: list[str] = []
+    warnings: list[str] = []
 
     # 1. Required files exist
     corpus_path = adventure_dir / "corpus.json"
@@ -67,7 +86,7 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
             errors.append(f"Missing required file: {label}")
 
     if errors:
-        return errors
+        return errors, warnings
 
     # 2. Load and validate via StateManager.
     #    hard-state.json is optional (world-state override); default-player.json
@@ -77,16 +96,16 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
         state_manager.load_all(adventure_dir)
     except ValueError as e:
         errors.append(f"Cross-reference validation failed: {e}")
-        return errors
+        return errors, warnings
     except Exception as e:
         errors.append(f"Failed to load adventure: {e}")
-        return errors
+        return errors, warnings
 
     corpus = state_manager.corpus
     hard = state_manager.hard_state
     if corpus is None or hard is None:
         errors.append("State loaded but corpus or hard state is None")
-        return errors
+        return errors, warnings
 
     if corpus.stats is not None and not default_player_path.is_file() and not hard_path.is_file():
         errors.append(
@@ -320,7 +339,18 @@ def validate_adventure(adventure_dir: Path) -> list[str]:
                         f"but does not list it in abilities"
                     )
 
-    return errors
+    # 12. Status-effect references (warning only — adventures may
+    # forward-declare status-effect IDs; runtime application still works)
+    defined_status_effects = set(corpus.effective_status_effects())
+    status_effect_refs: set[str] = set()
+    _collect_status_effect_refs(corpus.model_dump(), status_effect_refs)
+    for effect_id in sorted(status_effect_refs - defined_status_effects):
+        warnings.append(
+            f"Reference to undefined status effect '{effect_id}' (not in the "
+            f"corpus status_effects block or the built-in defaults)"
+        )
+
+    return errors, warnings
 
 
 def _find_reachable_rooms(start_room: str, corpus) -> set[str]:
@@ -357,7 +387,12 @@ def main() -> None:
         sys.exit(1)
 
     print(f"Validating adventure: {adventure_dir}")
-    errors = validate_adventure(adventure_dir)
+    errors, warnings = validate_adventure(adventure_dir)
+
+    if warnings:
+        print(f"\n{len(warnings)} warning(s):")
+        for i, warn in enumerate(warnings, 1):
+            print(f"  {i}. Warning: {warn}")
 
     if errors:
         print(f"\nFound {len(errors)} issue(s):")

@@ -265,7 +265,7 @@ player's action:
     "description": "A small vial of red liquid.",
     "consumable": {
       "heal": "2d4+2",
-      "cure_conditions": ["poisoned"],
+      "cure_status_effects": ["poisoned"],
       "destroy": true
     }
   }
@@ -275,7 +275,7 @@ player's action:
 | Field             | Type      | Default | Description |
 |-------------------|-----------|---------|-------------|
 | `heal`            | `string`  | `""`    | Healing dice expression (e.g. `"2d4+2"`); clamped to max HP. Empty = no healing. |
-| `cure_conditions` | `[string]`| `[]`    | Combat conditions removed on use (e.g. `["poisoned"]`). |
+| `cure_status_effects` | `[string]`| `[]`    | Status effects removed on use (e.g. `["poisoned"]`); works for any defined status effect, in or out of combat. |
 | `destroy`         | `bool`    | `true`  | Consume one count of the item on use. |
 
 The combat briefing lists the player's usable consumables under

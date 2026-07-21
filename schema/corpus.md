@@ -18,6 +18,7 @@ actions and apply game mechanics.
   "game_over_conditions": [ { /* global game-over condition */ } ],
   "stats":        { /* stat definitions (optional) */ },
   "abilities":    { "<ability_id>": { /* combat ability (optional) */ } },
+  "status_effects": { "<status_effect_id>": { /* status effect definition (optional) */ } },
 }
 ```
 
@@ -146,6 +147,7 @@ Condition strings have one of two forms:
 | `topic`     | Topic ID of a topic discussed in current dialogue     |
 | `stat`      | Stat name; value is the value of that player stat     |
 | `event`     | Value in current event dispatch context (see below)   |
+| `status_effect` | Status effect ID, with optional entity/rounds segment |
 
 Notes:
 
@@ -157,6 +159,14 @@ Notes:
 
 - The `event` domain is used in [Reaction dispatch](#reaction).
   It evaluates to `false` outside event dispatch.
+
+- The `status_effect` domain queries active status effects (see
+  [Status Effects](#status-effects)).  `status_effect:poisoned` holds iff the
+  player has the status effect; `status_effect:rat.poisoned` holds iff the
+  entity `rat` has it (`status_effect:player.poisoned` is equivalent to the
+  bare form).  Both presence forms are operator-free.  The reserved
+  second segment `rounds` compares the player's remaining rounds:
+  `status_effect:poisoned.rounds >= 2` (operator required).
 
 Examples:
 - `flag:daytime == true` holds iff the `daytime` flag is true.
@@ -177,6 +187,10 @@ Examples:
 - `topic:abandonment` holds iff `abandonment` has been discussed in
   the current dialogue.
 - `stat:STR >= 5` holds iff player's current STR stat is >= 5.
+- `status_effect:poisoned` holds iff the player is poisoned.
+- `status_effect:poisoned.rounds >= 2` holds iff the player has at least 2
+  rounds of poison remaining.
+- `status_effect:spider.stunned` holds iff the `spider` entity is stunned.
 
 ---
 
@@ -284,7 +298,7 @@ ALL fields in a Result object are optional.
 | `set_player_location`| string  | Relocate player to given Room ID    |
 | `player_damage`     | string   | Deal damage to player, e.g. `"1d4"` |
 | `player_heal`       | string   | Heal player (clamped to max HP), e.g. `"2d4+2"` |
-| `apply_condition`   | object   | Apply a combat condition to the player: `{ "id": "poisoned", "rounds": 3 }` |
+| `apply_status_effect`   | object   | Apply status effect: `{ "id": "poisoned", "rounds": 3, "target": "player" }` |
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Update player knowledge (see below) |
 | `then_check` | CheckResolution | Follow-up check (see below)         |
@@ -337,13 +351,12 @@ Notes:
 - `player_damage` supports the normal damage syntax, plus `half(expr)`
   to deal half of `expr` rounded down (minimum 1), like `"half(1d8)"`.
 
-- `apply_condition` applies a combat condition to the player (see
-  [Combat](#combat)): `{ "id": "poisoned", "rounds": 3 }`.  Recognized
-  conditions are `poisoned` (disadvantage on own attacks and ability
-  checks), `stunned` (loses turns; attacks against have advantage), and
-  `prone` (attacks against have advantage; auto-stands at turn start).
-  Conditions are combat-scoped: durations tick at the start of the
-  afflicted combatant's turn and all conditions clear when combat ends.
+- `apply_status_effect` applies a status effect to the `target` (`"player"` by
+  default, or an entity ID): `{ "id": "poisoned", "rounds": 3 }`.  The
+  status effect's behavior — duration, scope, and effects — comes from its
+  definition in the [Status Effects](#status-effects) block (or the built-in
+  defaults `poisoned`, `stunned`, `prone`).  Reapplication keeps the
+  maximum of the existing and new remaining rounds.
 
 ```json
 "success": { "narrative": "You resist the poison", "player_damage": "half(1d8)" },
@@ -1213,9 +1226,9 @@ Notes:
   sets the inventory count; if omitted, there is no cap.
 
 - `consumable`, if present, marks the item as usable (potion, scroll,
-  food).  It holds `{ "heal": "2d4+2", "cure_conditions": ["poisoned"],
+  food).  It holds `{ "heal": "2d4+2", "cure_status_effects": ["poisoned"],
   "destroy": true }`: `heal` is a dice expression of HP restored
-  (clamped to max HP), `cure_conditions` lists combat conditions removed
+  (clamped to max HP), `cure_status_effects` lists combat status effects removed
   on use, and `destroy` (default `true`) consumes one count per use.
   In combat the player uses consumables via the `use_item` combat
   action.
@@ -1468,31 +1481,33 @@ the turn-based combat subsystem.
 }
 ```
 
-| Field            | Type          | Description                       |
-|------------------|---------------|-----------------------------------|
-| `hp`             | integer       | Maximum hit points (must be >= 1) |
-| `ac`             | integer       | Armor class (must be >= 0)        |
-| `initiative_mod`¹| integer       | Initiative modifier; default `0`  |
-| `flee_dc`¹       | integer       | DC for player flee; default `10`  |
-| `atk`            | integer       | Attack bonus for the NPC's attack |
-| `dmg`¹           | string        | Damage expression; default `"1d6"`|
-| `dmg_type`¹      | string        | Damage type of the NPC's damage (e.g. `"piercing"`); default untyped |
-| `resistances`¹   | string[]      | Damage types halved against this NPC (rounded down) |
-| `vulnerabilities`¹| string[]     | Damage types doubled against this NPC |
-| `immunities`¹    | string[]      | Damage types reduced to 0 against this NPC |
+| Field            | Type       | Description                          |
+|------------------|------------|--------------------------------------|
+| `hp`             | integer    | Maximum hit points (must be >= 1)    |
+| `ac`             | integer    | Armor class (must be >= 0)           |
+| `initiative_mod`¹| integer    | Initiative modifier; default `0`     |
+| `flee_dc`¹       | integer    | DC for player flee; default `10`     |
+| `atk`            | integer    | Attack bonus for the NPC's attack    |
+| `dmg`¹           | string     | Damage expression; default `"1d6"`   |
+| `dmg_type`¹      | string     | E.g. `"piercing"`; default untyped   |
+| `resistances`¹   | string[]   | Damage types the NPC resists         |
+| `vulnerabilities`¹| string[]  | Damage types the NPC is weak to      |
+| `immunities`¹    | string[]   | Damage types the NPC is immune to    |
 | `on_hit_effects`¹| CheckResolution[] | On-hit effects; default `[]`  |
-| `attacks`¹       | AttackDef[]  | Named attack options (see below)    |
-| `multiattack`¹   | string[]     | Ordered attack ids used each turn   |
-| `abilities`¹     | string[]     | IDs of [Abilities](#abilities) the NPC can use |
-| `save_bonus`¹    | integer      | Flat save modifier against save abilities (NPCs have no ability scores); default `0` |
-| `ai`¹            | CombatAI      | Rule-of-thumb combat AI; see below |
+| `attacks`¹       | AttackDef[]| Named attack options (see below)     |
+| `multiattack`¹   | string[]   | Ordered attack ids used each turn    |
+| `abilities`¹     | string[]   | IDs of NPC's [Abilities](#abilities) |
+| `save_bonus`¹    | integer    | Flat save modifier; default `0`      |
+| `ai`¹            | CombatAI   | Rule-of-thumb combat AI; see below   |
 > ¹ optional
 
-Damage types use the 5e vocabulary: acid, bludgeoning, cold, fire,
-force, lightning, necrotic, piercing, poison, radiant, slashing,
-thunder.  Mitigation applies to typed damage from player weapons
-(`EquipBlock.damage_type`) and from NPC attackers alike; untyped damage
-is never mitigated.
+Damage types are identified by name; 5e by default uses acid,
+bludgeoning, cold, fire, force, lightning, necrotic, piercing, poison,
+radiant, slashing, and thunder.  Damage type resistance halves damgage
+(rounded down); vulnerability doubles damage; and immunity reduces all
+damage to 0.  These modifiers apply to typed damage from player
+weapons (`EquipBlock.damage_type`) and from NPC attackers alike;
+untyped damage is never mitigated.
 
 #### Attack definitions and multiattack
 
@@ -1729,7 +1744,7 @@ AI).  Each ability has exactly one effect: `attack`, `save`, or
     "save": {
       "stat": "CON", "dc": 12, "damage": "1d12", "damage_type": "poison",
       "half_on_success": true,
-      "apply_condition_on_failure": { "id": "poisoned", "rounds": 3 }
+      "apply_status_effect_on_failure": { "id": "poisoned", "rounds": 3 }
     }
   },
   "cure_wounds": {
@@ -1759,11 +1774,89 @@ fumbles, and damage-type mitigation apply as for weapon attacks.
 
 **Save effects**: `{ "stat": "CON", "dc": 12, "damage": "1d12",
 "damage_type": "poison", "half_on_success": true,
-"apply_condition_on_failure": { "id": "poisoned", "rounds": 3 } }`.
+"apply_status_effect_on_failure": { "id": "poisoned", "rounds": 3 } }`.
 The target saves — the player with the usual stat modifier and save
 proficiencies, NPCs with `d20 + save_bonus`.  On success the damage is
 halved (`half_on_success`) or negated; on failure the full damage
-(`""` = no damage) and any condition apply.
+(`""` = no damage) and any status effect apply.
+
+## Status Effects
+
+The top-level `status_effects` block defines **status effects** —
+poison, stun, curses, and similar effects — declared per-status-effect
+rather than hardcoded.  The block maps status effect IDs to definitions;
+the dict key is the canonical ID used by `apply_status_effect`,
+`cure_status_effects`, events, and queries (`name` is a cosmetic display
+name).
+
+```json
+"status_effects": {
+  "trap_poison": {
+    "name": "Trap Poison",
+    "description": "Weakness from a poisoned needle; ticks down per turn.",
+    "scope": "persistent",
+    "duration": "rounds",
+    "tick_effect": { "player_damage": "1" },
+    "system_effects": { "5e": { "disadvantage_on_attack": true } }
+  }
+}
+```
+
+| Field             | Type    | Description |
+|-------------------|---------|-------------|
+| `name`¹           | string  | Display name (the dict key is the canonical ID) |
+| `description`¹    | string  | Flavor/mechanics text for briefings |
+| `scope`¹          | string  | `"combat"` (default) or `"persistent"` |
+| `duration`¹       | string  | `"rounds"` (default), `"until_cleared"`, or `"until_turn_start"` |
+| `skip_turn`¹      | boolean | Afflicted combatant loses its turn (default `false`) |
+| `tick_effect`¹    | Result  | Applied on each tick (player only; see below) |
+| `system_effects`¹ | object  | Per-RPG-system roll modifiers (see below) |
+
+Scope and duration combine into the status effect's lifetime:
+
+- `scope: "combat"` — ticks at the start of the afflicted combatant's
+  turn; cleared when combat ends.
+- `scope: "persistent"` — ticks on `turn.end`, i.e. once per
+  turn-costing player action (not during dialogue or free actions);
+  survives combat end.
+- `duration: "rounds"` — decrements on each tick, expires at zero.
+- `duration: "until_turn_start"` — removed on the afflicted's first
+  tick (legacy `prone` behavior).
+- `duration: "until_cleared"` — never ticks down; removed only by
+  curing (`cure_status_effects`), combat end (combat-scoped), or a manual
+  Result.
+
+Scope is per-definition: a combat poison and a trap poison are two
+definitions with distinct IDs (e.g. `poisoned` vs. `trap_poison`), so
+each ID has one unambiguous lifetime.
+
+`system_effects` maps a system key (`"5e"`) to that system's roll
+modifiers.  For 5e the recognized keys are `disadvantage_on_attack`
+(attacker side of an attack roll), `advantage_against` (target side of
+an attack roll), and `disadvantage_on_ability_checks` (flee and other
+ability checks).
+
+`tick_effect` is a [Result](#result) applied on each of the status
+effect's ticks, but only when the afflicted target is the player
+(`Result` has player-targeted damage/heal fields only); a
+`tick_effect` on an entity-afflicted status effect is ignored.
+
+Three **built-in defaults** are always present; a corpus entry with
+the same ID replaces the default wholesale (no field-level merge):
+
+| ID        | Scope  | Duration           | skip_turn | 5e system effects |
+|-----------|--------|--------------------|-----------|-------------------|
+| `poisoned` | combat | `rounds`          | no        | `disadvantage_on_attack`, `disadvantage_on_ability_checks` |
+| `stunned`  | combat | `rounds`          | yes       | `advantage_against` |
+| `prone`    | combat | `until_turn_start` | no       | `disadvantage_on_attack`, `advantage_against` |
+
+Applying a status effect the target already has sets its remaining rounds
+to the maximum of the existing and new values.  Applying an undefined
+status effect ID works at runtime (adventures may forward-declare), but
+the validator warns about it.  Status-effect changes emit
+`status_effect.applied` / `status_effect.ticked` / `status_effect.cleared` events
+(see [events.md](events.md)); `entity_state.changed` does not fire for
+them.
 
 ## Mechanic
 

@@ -20,7 +20,16 @@
         }
       ],
       "contains": [],
-      "interactions": [],
+      "interactions": [
+        {
+          "id": "inhale_smoke",
+          "description": "Breathe in the acrid torch smoke.",
+          "result": {
+            "narrative": "The smoke sears your lungs.",
+            "apply_status_effect": { "id": "smoke_inhalation", "rounds": 3 }
+          }
+        }
+      ],
       "on_examine": [],
       "is_start_room": true
     },
@@ -50,6 +59,16 @@
     }
   },
   "mechanics": {},
+  "status_effects": {
+    "smoke_inhalation": {
+      "name": "Smoke Inhalation",
+      "description": "Lungs seared by torch smoke; damages the player each turn.",
+      "scope": "persistent",
+      "duration": "rounds",
+      "tick_effect": { "player_damage": "1" },
+      "system_effects": { "5e": { "disadvantage_on_attack": true } }
+    }
+  },
   "stats": {
     "definitions": {
       "STR": { "name": "Strength", "description": "Physical power" },

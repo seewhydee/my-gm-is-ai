@@ -27,9 +27,9 @@ from mgmai.models.corpus import (
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import ConditionStatus
-from mgmai.engine.utils import get_entity_location
+from mgmai.engine.utils import get_status_effects, get_entity_location
 
-DOMAINS = "flag|inventory|tag|entity|room|topic|stat|equipped|event"
+DOMAINS = "flag|inventory|tag|entity|room|topic|stat|equipped|event|status_effect"
 CONDITION_RE = re.compile(
     rf"^({DOMAINS}):([\w.-]+)"
     rf"(?:\s*(==|!=|>=|>|<=|<)\s*(.+))?$"
@@ -68,7 +68,9 @@ def parse_condition_string(
     Returns the operator and value as ``None`` for presence-only domains
     (``tag`` and ``equipped``). ``inventory`` supports operators for
     quantity comparisons (e.g. ``inventory:coins >= 30``); without an
-    operator it checks presence (count > 0).
+    operator it checks presence (count > 0).  ``condition`` is
+    presence-only except for the reserved ``<id>.rounds`` form, which
+    requires an operator.
     """
     match = CONDITION_RE.match(raw)
     if match is None:
@@ -213,7 +215,46 @@ def evaluate_condition_string(
             return False
         return _compare(ctx_val, op, value)
 
+    if domain == "status_effect":
+        return _eval_status_effect_domain(raw, key, op, value, hard_state)
+
     raise ValueError(f"Unknown condition domain: {domain}")
+
+
+def _eval_status_effect_domain(
+    raw: str,
+    key: str,
+    op: str | None,
+    value: str | None,
+    hard_state: HardGameState,
+) -> bool:
+    """Evaluate a ``status_effect:`` condition string.
+
+    - ``status_effect:poisoned`` — true iff the player has the status effect.
+    - ``status_effect:poisoned.rounds >= 2`` — numeric comparison of the
+      player's remaining rounds (operator required; ``rounds`` is a
+      reserved second segment).
+    - ``status_effect:rat.poisoned`` — true iff entity ``rat`` has the
+      status effect (``player`` is also valid and equivalent to the bare
+      form).  Presence-only, no operator.
+    """
+    if "." in key:
+        first, second = key.split(".", 1)
+        if second == "rounds":
+            if op is None or value is None:
+                raise ValueError(
+                    f"status_effect '.rounds' requires operator and value: {raw!r}"
+                )
+            rounds = get_status_effects("player", hard_state).get(first, 0)
+            return _compare(rounds, op, value)
+        target_id, effect_id = first, second
+    else:
+        target_id, effect_id = "player", key
+    if op is not None:
+        raise ValueError(
+            f"status_effect presence check must not have operator: {raw!r}"
+        )
+    return effect_id in get_status_effects(target_id, hard_state)
 
 
 def _compare(actual: object, op: str, expected: str) -> bool:
@@ -426,6 +467,22 @@ def get_condition_detail(
     elif domain == "event":
         ctx_val = (event_ctx or {}).get(key)
         detail = f"event {key} = {ctx_val}"
+
+    elif domain == "status_effect":
+        if "." in key:
+            first, second = key.split(".", 1)
+            if second == "rounds":
+                current_rounds = get_status_effects("player", hard_state).get(first, 0)
+                detail = f"player status effect '{first}' rounds = {current_rounds}"
+            else:
+                present = second in get_status_effects(first, hard_state)
+                detail = f"entity {first} has status effect '{second}': {present}"
+        else:
+            effects = get_status_effects("player", hard_state)
+            detail = (
+                f"player has status effect '{key}': {key in effects} "
+                f"(rounds = {effects.get(key, 0)})"
+            )
 
     else:
         detail = f"unknown domain '{domain}' for '{raw}'"

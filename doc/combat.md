@@ -180,31 +180,50 @@ The player gains optional combat fields on `HardGameState.player`:
 | `ac` | int? | `None` | Armour Class (computed from DEX if absent) |
 | `proficiency_bonus` | int? | `None` | Proficiency bonus (defaults to `2`) |
 | `save_proficiencies` | list[str]? | `[]` | Ability scores the player is proficient in for saving throws (e.g. `["DEX","INT"]`) |
-| `conditions` | dict[str,int] | `{}` | Active combat conditions (condition id → rounds remaining); combat-scoped |
+| `status_effects` | dict[str,int] | `{}` | Active status effects (status effect id → rounds remaining); combat-scoped entries clear at combat end, persistent ones survive |
 
-### Conditions
+### Status Effects
 
-Three conditions from the 5e SRD are implemented in simplified,
-combat-scoped form.  The player's conditions live on
-`PlayerState.conditions`; NPC conditions live in
-`entity_states[id]["conditions"]`.  Durations tick down at the start of
-the afflicted combatant's turn and everything clears when combat ends.
+Status effects are declared in the corpus top-level `status_effects`
+block (see [schema/corpus.md — Status Effects](../schema/corpus.md#status-effects)),
+overlaid on three built-in defaults (`poisoned`, `stunned`, `prone`).
+The player's status effects live on `PlayerState.status_effects`; NPC
+status effects live in `entity_states[id]["status_effects"]`.  Both map a
+status effect ID to its remaining rounds.
 
-| Condition | Effect (simplified) |
+Each definition's `scope` and `duration` drive its lifetime:
+
+- `scope: "combat"` — ticks at the start of the afflicted combatant's
+  turn; cleared when combat ends.
+- `scope: "persistent"` — ticks once per turn-costing player action
+  (`turn.end` fires only when the action costs a turn); survives
+  combat end.
+- `duration: "rounds"` — decrements on each tick, expires at zero.
+- `duration: "until_turn_start"` — removed on the afflicted's first
+  tick (legacy `prone` behavior).
+- `duration: "until_cleared"` — removed only by curing, combat end
+  (combat-scoped), or a manual Result.
+
+The built-in defaults reproduce the legacy 5e SRD behavior:
+
+| Status effect | Effect (simplified) |
 |-----------|---------------------|
 | `poisoned` | Disadvantage on own attack rolls and ability checks (including the flee check). |
 | `stunned` | The combatant loses its turn; attack rolls against it have advantage. |
 | `prone` | Attack rolls against it have advantage; it automatically stands at the start of its turn. |
 
-Advantage and disadvantage cancel each other as usual.  Conditions are
-applied to the player through the `apply_condition` field of combat-safe
+Custom status effects declare their roll modifiers per system via
+`system_effects` (e.g. `{ "5e": { "disadvantage_on_attack": true } }`),
+`skip_turn` for turn loss, and `tick_effect` for per-tick damage.
+Advantage and disadvantage cancel each other as usual.  Status effects are
+applied to the player through the `apply_status_effect` field of combat-safe
 Results (typically on-hit effects):
 
 ```json
 "failure": {
   "narrative": "The venom courses through you.",
   "player_damage": "1d8",
-  "apply_condition": { "id": "poisoned", "rounds": 3 }
+  "apply_status_effect": { "id": "poisoned", "rounds": 3 }
 }
 ```
 
@@ -434,7 +453,7 @@ exactly one effect:
   crit, fumble, and damage-type mitigation rules.
 - **`save`** — the target makes a saving throw (the player with normal
   proficiency rules; NPCs with `d20 + save_bonus`), taking half or no
-  damage on success and possibly a condition on failure.
+  damage on success and possibly a status effect on failure.
 - **`heal`** — a healing dice expression, clamped to the target's max
   HP.  Heal abilities target `self` or `ally` only.
 
@@ -472,7 +491,7 @@ on `CombatState` and reset when combat ends.
 
 Between combat turns, the console UI shows a status panel.  Combatants
 are grouped under **Party** and **Enemies** headings; the current actor
-is marked in the initiative order, and each row shows active conditions
+is marked in the initiative order, and each row shows active status effects
 (with remaining rounds) and status markers (`†` for the dead, `(fled)`
 for fled enemies).  For enemies, the panel also lists damage
 mitigations the party has already discovered by landing hits (derived
@@ -596,7 +615,7 @@ These may be added in future phases.
 
 > Note: the *engine* is already system-agnostic through the
 > `ResolutionSystem` interface; the limitations above concern combat
-> *features* (gear, conditions, spells, …), not system portability.  Player
+> *features* (gear, status effects, spells, …), not system portability.  Player
 > and NPC attacks are resolved by `ResolutionSystem.resolve_player_attack` and
 > `ResolutionSystem.resolve_npc_attack`; the latter takes a `target_id`
 > (player or NPC combatant) and reports `target_hp_delta` / `target_died`,

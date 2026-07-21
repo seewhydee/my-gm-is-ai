@@ -159,15 +159,45 @@ class StatModifier(BaseModel):
     value: int
 
 
-class ApplyCondition(BaseModel):
-    """Apply a combat condition (e.g. poisoned) to the player.
+class ApplyStatusEffect(BaseModel):
+    """Apply a status effect (e.g. poisoned) to a target.
 
-    Conditions are combat-scoped: ``rounds`` ticks down at the start of
-    the afflicted combatant's turn, and all conditions clear when combat
-    ends.
+    The status effect's definition (scope, duration, system effects) comes
+    from the corpus ``status_effects`` block, overlaid on the engine's
+    built-in defaults (see ``StatusEffectDef``).  ``target`` is ``"player"``
+    or an entity ID.
     """
     id: str
     rounds: int = 1
+    target: str = "player"
+
+
+class StatusEffectDef(BaseModel):
+    """Definition of a status effect (e.g. poisoned, stunned).
+
+    Status effects live in the top-level corpus ``status_effects`` block,
+    keyed by status effect ID (the key is canonical; ``name`` is cosmetic).
+    The three legacy status effects are built-in engine defaults
+    (``DEFAULT_STATUS_EFFECTS``); a corpus entry with the same ID replaces the
+    default wholesale.
+
+    - ``scope: "combat"`` — ticks at the start of the afflicted
+      combatant's turn; cleared at combat end.
+    - ``scope: "persistent"`` — ticks on ``turn.end`` (turn-costing
+      actions only); survives combat end.
+    - ``duration: "rounds"`` — decrements on each tick, expires at zero.
+    - ``duration: "until_turn_start"`` — removed on the afflicted's
+      first tick (legacy ``prone`` behavior).
+    - ``duration: "until_cleared"`` — never ticks down; removed only by
+      curing, combat end (combat-scoped), or a manual Result.
+    """
+    name: str = ""
+    description: str = ""
+    scope: Literal["combat", "persistent"] = "combat"
+    duration: Literal["rounds", "until_cleared", "until_turn_start"] = "rounds"
+    skip_turn: bool = False
+    tick_effect: Optional[Result] = None
+    system_effects: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
 
 class EquipBlock(BaseModel):
@@ -224,7 +254,7 @@ class ConsumableBlock(BaseModel):
     ``use_item`` combat action, which consumes the player's action.
     """
     heal: str = ""                              # dice expression, e.g. "2d4+2"
-    cure_conditions: list[str] = Field(default_factory=list)
+    cure_status_effects: list[str] = Field(default_factory=list)
     destroy: bool = True                        # consume one count on use
 
     def effects_summary(self) -> str:
@@ -232,8 +262,8 @@ class ConsumableBlock(BaseModel):
         parts: list[str] = []
         if self.heal:
             parts.append(f"heals {self.heal}")
-        if self.cure_conditions:
-            parts.append(f"cures {', '.join(self.cure_conditions)}")
+        if self.cure_status_effects:
+            parts.append(f"cures {', '.join(self.cure_status_effects)}")
         return ", ".join(parts)
 
 
@@ -249,7 +279,7 @@ class Result(BaseModel):
     set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
     adjust_attitude: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
-    apply_condition: Optional[ApplyCondition] = None
+    apply_status_effect: Optional[ApplyStatusEffect] = None
     then_check: Optional[CheckResolution] = None
     player_damage: Optional[str] = None
     player_heal: Optional[str] = None
@@ -585,7 +615,7 @@ class AbilitySave(BaseModel):
     damage: str = ""                 # dice expr; "" = no damage
     damage_type: str = ""
     half_on_success: bool = True     # successful save halves damage
-    apply_condition_on_failure: Optional[ApplyCondition] = None
+    apply_status_effect_on_failure: Optional[ApplyStatusEffect] = None
 
 
 class Ability(BaseModel):
@@ -907,6 +937,15 @@ class ModuleCorpus(BaseModel):
     flags_declared: Optional[List[FlagDecl]] = None
     stats: Optional[StatsBlock] = None
     abilities: Dict[str, Ability] = Field(default_factory=dict)
+    status_effects: Dict[str, StatusEffectDef] = Field(default_factory=dict)
+
+    def effective_status_effects(self) -> Dict[str, StatusEffectDef]:
+        """Built-in default status effects overlaid by the corpus block.
+
+        A corpus entry replaces the built-in default of the same ID
+        wholesale (no field-level merge).
+        """
+        return {**DEFAULT_STATUS_EFFECTS, **self.status_effects}
 
     @field_validator("flags_declared", mode="before")
     @classmethod
@@ -952,3 +991,39 @@ class ModuleCorpus(BaseModel):
             else:
                 result.update(item)
         return result
+
+
+# Built-in default status effects, overlaid wholesale by corpus entries of the
+# same ID (see ModuleCorpus.effective_status_effects).  Defined at the end of
+# the module because ``StatusEffectDef.tick_effect`` references ``Result``,
+# whose own forward references only resolve once the module is complete.
+StatusEffectDef.model_rebuild()
+DEFAULT_STATUS_EFFECTS: Dict[str, StatusEffectDef] = {
+    "poisoned": StatusEffectDef(
+        name="Poisoned",
+        description="Disadvantage on attack rolls and ability checks.",
+        system_effects={
+            "5e": {
+                "disadvantage_on_attack": True,
+                "disadvantage_on_ability_checks": True,
+            }
+        },
+    ),
+    "stunned": StatusEffectDef(
+        name="Stunned",
+        description="Loses turns; attacks against have advantage.",
+        skip_turn=True,
+        system_effects={"5e": {"advantage_against": True}},
+    ),
+    "prone": StatusEffectDef(
+        name="Prone",
+        description=(
+            "Disadvantage on attack rolls; attacks against have advantage; "
+            "auto-stands at turn start."
+        ),
+        duration="until_turn_start",
+        system_effects={
+            "5e": {"disadvantage_on_attack": True, "advantage_against": True}
+        },
+    ),
+}

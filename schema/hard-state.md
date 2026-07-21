@@ -162,7 +162,7 @@ set of system-specific fields.
   "ac": null,
   "proficiency_bonus": 2,
   "save_proficiencies": ["STR", "CON"],
-  "conditions": { "poisoned": 2 },
+  "status_effects": { "poisoned": 2 },
   "abilities": ["fire_bolt", "cure_wounds"]
 }
 ```
@@ -175,7 +175,7 @@ set of system-specific fields.
 | `ac`                 | integer  | Explicit AC, if not computed   |
 | `proficiency_bonus`¹ | integer  | Proficiency bonus              |
 | `save_proficiencies` | string[] | Saving throw proficiency stats |
-| `conditions`         | object   | Active combat conditions (condition ID → rounds remaining); combat-scoped, cleared at combat end |
+| `status_effects`    | object   | Active status effects (status effect ID → rounds remaining).  IDs are defined in the corpus [`status_effects` block](corpus.md#status-effects) (or the built-in defaults); combat-scoped entries clear at combat end, persistent entries survive |
 | `abilities`          | string[] | IDs of [Abilities](corpus.md#abilities) the player knows |
 
 When `ac` is `null`, AC is computed from base (10 + DEX mod) plus

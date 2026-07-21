@@ -36,7 +36,7 @@ LLM-vs-LLM runs:
 | Layer | What's tested |
 |-------|---------------|
 | **Engine combat** | Player attacks, NPC attacks, save abilities, consumable use, healing, friendly NPC ally, NPC flee AI, resistance/vulnerability, cooldown management |
-| **Conditions & on-hit effects** | NPC on-hit saves (poison, stun), condition application, consumable `cure_conditions` (antidote), conditions cleared at combat end |
+| **Status effects & on-hit effects** | NPC on-hit saves (poison, stun), status-effect application, consumable `cure_status_effects` (antidote), status effects cleared at combat end |
 | **Attack variety** | NPC `multiattack` with named attacks, damage **immunity**, mid-combat weapon swap (`equip` + `unequip_targets`), player attack-roll and heal abilities |
 | **Combat AI** | `player` targeting, HP-gated NPC abilities (`use_below_own_hp_pct`), passive NPCs (join combat, never act) |
 | **Encounter-driven combat** | Combat started by an encounter (`trigger_encounter` → `start_combat`) instead of a direct attack; the player's `wait` action; out-of-bounds talk attempts handled gracefully |
@@ -142,7 +142,7 @@ Four scenarios use the `venom_pit` fixture (`test_venom_pit.py`):
 
 | Scenario | Directive | Key assertions |
 |----------|-----------|----------------|
-| `poisoned_and_cured` | Attack the viper; drink an antidote if poisoned (Willa made passive so the viper always targets the player) | Viper hits carry CON-save poison on-hit effects; on a failed save, a `use_item` antidote entry; no conditions linger after combat |
+| `poisoned_and_cured` | Attack the viper; drink an antidote if poisoned (Willa made passive so the viper always targets the player) | Viper hits carry CON-save poison on-hit effects; on a failed save, a `use_item` antidote entry; no status effects linger after combat |
 | `multiattack_and_stun` | Fight the carrion crawler | Some round has both `tentacles` and `bite` attack entries; on a failed tentacle save, a `stunned` player turn is logged |
 | `immunity_weapon_swap` | Attack the jelly with the sword, then swap to the war hammer | A player attack with `mitigation="immune"` and 0 damage; later bludgeoning attacks; war hammer equipped at the end (no swap → jelly unkillable → turn-cap failure, the intended signal) |
 | `player_abilities` | Power Strike the crawler; Healing Hands on Willa below half HP | ≥1 and ≤2 `power_strike` attack entries; a `heal` entry targeting Willa when she was hurt |

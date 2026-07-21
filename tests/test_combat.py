@@ -24,6 +24,7 @@ import pytest
 
 from mgmai.models.actions import (
     CombatAction,
+    ExamineAction,
     HardStateChanges,
     InteractAction,
     MoveAction,
@@ -35,6 +36,7 @@ from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import (
     CombatAIBlock,
     CombatBlock,
+    StatusEffectDef,
     ConsumableBlock,
     EncounterRule,
     Entity,
@@ -54,8 +56,12 @@ from mgmai.engine.combat import (
 )
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.systems.five_e import FiveESystem
+from mgmai.engine.engine import resolve
 from mgmai.engine.resolver import ResolutionResult, resolve_action
 from mgmai.engine.stat_checks import format_combat_prefix
+from mgmai.engine.status_effects import apply_status_effect
+from mgmai.engine.utils import get_status_effects
+from tests.helpers import build_state_manager
 
 
 # ------------------------------------------------------------------
@@ -1720,6 +1726,38 @@ class TestBriefingMultiEnemy:
         enemy_ids = {c["id"] for c in briefing.combatants if c["id"] != "player"}
         assert enemy_ids == {"goblin", "goblin2"}
 
+    def test_briefing_conditions_include_descriptions(self, combat_hard_state, combat_npc_corpus):
+        """Active status effects carry their StatusEffectDef.description so the GM
+        LLM knows what each one does."""
+        from mgmai.context.assembler import _build_combat_state
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.status_effects = {"poisoned": 2}
+        combat_npc_corpus.status_effects["frightened"] = StatusEffectDef.model_validate({
+            "name": "Frightened",
+            "description": "Too scared to fight well.",
+        })
+        hard.entity_states["goblin"]["status_effects"] = {"frightened": 1}
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+        briefing = _build_combat_state(hard, combat_npc_corpus)
+        assert briefing is not None
+        by_id = {c["id"]: c for c in briefing.combatants}
+        assert by_id["player"]["status_effects"] == [{
+            "id": "poisoned",
+            "rounds": 2,
+            "description": "Disadvantage on attack rolls and ability checks.",
+        }]
+        assert by_id["goblin"]["status_effects"] == [{
+            "id": "frightened",
+            "rounds": 1,
+            "description": "Too scared to fight well.",
+        }]
+
 
 # ------------------------------------------------------------------
 # 14. Party combat (allies + combat AI)
@@ -2404,7 +2442,7 @@ class TestConditions:
 
     def test_poisoned_player_attacks_with_disadvantage(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         hard = combat_hard_state.model_copy(deep=True)
-        hard.player.conditions = {"poisoned": 2}
+        hard.player.status_effects = {"poisoned": 2}
         self._combat_state(hard)
         # tick: 2 -> 1, still poisoned; attack rolls twice, keeps lower (3)
         rand_vals = iter([15, 3, 1])
@@ -2413,11 +2451,11 @@ class TestConditions:
         entry = result["combat_log"][0]
         assert entry.attack_roll == 3
         assert entry.hit is False
-        assert hard.player.conditions == {"poisoned": 1}
+        assert hard.player.status_effects == {"poisoned": 1}
 
     def test_poison_expires_at_turn_start(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         hard = combat_hard_state.model_copy(deep=True)
-        hard.player.conditions = {"poisoned": 1}
+        hard.player.status_effects = {"poisoned": 1}
         self._combat_state(hard)
         # tick removes poison (1 -> 0); single attack roll 15 -> hit
         rand_vals = iter([15, 4, 1])
@@ -2429,7 +2467,7 @@ class TestConditions:
 
     def test_stunned_player_loses_action(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         hard = combat_hard_state.model_copy(deep=True)
-        hard.player.conditions = {"stunned": 2}
+        hard.player.status_effects = {"stunned": 2}
         self._combat_state(hard)
         # player skips; goblin attacks the stunned player WITH ADVANTAGE
         # (keeps 12), hits for 3+2=5
@@ -2450,7 +2488,7 @@ class TestConditions:
 
     def test_stunned_npc_loses_turn(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         hard = combat_hard_state.model_copy(deep=True)
-        hard.entity_states["goblin"]["conditions"] = {"stunned": 2}
+        hard.entity_states["goblin"]["status_effects"] = {"stunned": 2}
         self._combat_state(hard)
         # player attacks the stunned goblin WITH ADVANTAGE (keeps 15),
         # dmg 1+3=4 (goblin hp 7 -> 3); goblin stunned, skips
@@ -2469,7 +2507,7 @@ class TestConditions:
 
     def test_attacks_against_prone_have_advantage(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         hard = combat_hard_state.model_copy(deep=True)
-        hard.entity_states["goblin"]["conditions"] = {"prone": 5}
+        hard.entity_states["goblin"]["status_effects"] = {"prone": 5}
         self._combat_state(hard)
         # player attacks with advantage (keeps 15), dmg 1+3=4 (hp 7 -> 3);
         # goblin auto-stands at its turn start and attacks normally
@@ -2479,14 +2517,14 @@ class TestConditions:
         entry = result["combat_log"][0]
         assert entry.attack_roll == 15
         assert entry.hit is True
-        assert "prone" not in hard.entity_states["goblin"].get("conditions", {})
+        assert "prone" not in hard.entity_states["goblin"].get("status_effects", {})
         goblin_attacks = [
             e for e in result["combat_log"]
             if e.action == "attack" and e.actor == "goblin"
         ]
         assert len(goblin_attacks) == 1
 
-    def test_apply_condition_from_on_hit(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+    def test_apply_status_effect_from_on_hit(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         corpus = self._add_on_hit(combat_npc_corpus, [{
             "check": {
                 "type": "stat_check", "stat": "CON", "target": 10,
@@ -2495,7 +2533,7 @@ class TestConditions:
             "success": {},
             "failure": {
                 "narrative": "Venom burns through you.",
-                "apply_condition": {"id": "poisoned", "rounds": 3},
+                "apply_status_effect": {"id": "poisoned", "rounds": 3},
             },
         }])
         hard = combat_hard_state.model_copy(deep=True)
@@ -2505,12 +2543,12 @@ class TestConditions:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), hard, corpus, soft=SoftGameState())
         assert result["success"]
-        assert hard.player.conditions == {"poisoned": 3}
+        assert hard.player.status_effects == {"poisoned": 3}
 
     def test_conditions_cleared_at_combat_end(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         hard = combat_hard_state.model_copy(deep=True)
-        hard.player.conditions = {"poisoned": 9}
-        hard.entity_states["goblin"]["conditions"] = {"stunned": 9}
+        hard.player.status_effects = {"poisoned": 9}
+        hard.entity_states["goblin"]["status_effects"] = {"stunned": 9}
         self._combat_state(hard)
         # player crits: 2*(1d6)+3 = 15 -> goblin dead -> combat ends
         rand_vals = iter([20, 6, 6])
@@ -2518,12 +2556,12 @@ class TestConditions:
         result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
         assert result["success"]
         assert hard.combat is None
-        assert hard.player.conditions == {}
-        assert "conditions" not in hard.entity_states["goblin"]
+        assert hard.player.status_effects == {}
+        assert "status_effect" not in hard.entity_states["goblin"]
 
     def test_poisoned_flee_with_disadvantage(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         hard = combat_hard_state.model_copy(deep=True)
-        hard.player.conditions = {"poisoned": 2}
+        hard.player.status_effects = {"poisoned": 2}
         self._combat_state(hard)
         # flee rolls twice, keeps lower (5): 5+2=7 < 10 -> fail; goblin misses
         rand_vals = iter([12, 5, 1])
@@ -2533,6 +2571,280 @@ class TestConditions:
         assert result["success"]
         assert result["hard_changes"].player_location is None
         assert hard.combat is not None  # still in combat
+
+
+class TestCustomConditions:
+    """Corpus-defined status effects: system_effects, scope, duration, skip_turn."""
+
+    def _combat_state(self, hard):
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            current_index=0,
+            round_number=1,
+        )
+
+    def _attack(self):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target="goblin", detail="Attack!",
+        )
+
+    def _corpus_with(self, combat_npc_corpus, status_effects: dict) -> ModuleCorpus:
+        corpus = combat_npc_corpus.model_copy(deep=True)
+        for cid, cdef in status_effects.items():
+            corpus.status_effects[cid] = StatusEffectDef.model_validate(cdef)
+        return corpus
+
+    def test_custom_condition_disadvantage_on_attack(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A corpus status effect with 5e disadvantage_on_attack behaves like
+        the built-in poisoned default."""
+        corpus = self._corpus_with(combat_npc_corpus, {
+            "frightened": {
+                "name": "Frightened",
+                "system_effects": {"5e": {"disadvantage_on_attack": True}},
+            },
+        })
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.status_effects = {"frightened": 2}
+        self._combat_state(hard)
+        # tick: 2 -> 1, still frightened; attack rolls twice, keeps lower (3)
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 3
+        assert entry.hit is False
+        assert hard.player.status_effects == {"frightened": 1}
+
+    def test_corpus_override_replaces_builtin_wholesale(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A corpus entry with a built-in ID replaces the default wholesale:
+        no field-level merge, so the 5e disadvantage is gone."""
+        corpus = self._corpus_with(combat_npc_corpus, {
+            "poisoned": {"description": "Custom mild poison."},
+        })
+        assert corpus.effective_status_effects()["poisoned"].system_effects == {}
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.status_effects = {"poisoned": 2}
+        self._combat_state(hard)
+        # tick: 2 -> 1, still poisoned but NO disadvantage: single roll 15,
+        # dmg 1+3=4 (hp 7 -> 3); goblin misses (1)
+        rand_vals = iter([15, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 15
+        assert entry.hit is True
+        assert hard.player.status_effects == {"poisoned": 1}
+
+    def test_until_turn_start_reproduces_prone_behavior(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A custom until_turn_start status effect auto-clears on the
+        afflicted's first tick, like legacy prone."""
+        corpus = self._corpus_with(combat_npc_corpus, {
+            "knocked_down": {
+                "duration": "until_turn_start",
+                "system_effects": {"5e": {"advantage_against": True}},
+            },
+        })
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.entity_states["goblin"]["status_effects"] = {"knocked_down": 5}
+        self._combat_state(hard)
+        # player attacks with advantage (keeps 15), dmg 1+3=4 (hp 7 -> 3);
+        # goblin gets up at its turn start and attacks normally
+        rand_vals = iter([3, 15, 1, 12, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 15
+        assert entry.hit is True
+        assert "knocked_down" not in hard.entity_states["goblin"].get("status_effects", {})
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert len(goblin_attacks) == 1
+
+    def test_skip_turn_custom_condition(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        """A custom status effect with skip_turn makes the player lose the
+        action, like the built-in stunned default."""
+        corpus = self._corpus_with(combat_npc_corpus, {
+            "paralyzed": {"skip_turn": True},
+        })
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.status_effects = {"paralyzed": 2}
+        self._combat_state(hard)
+        # player skips; goblin attacks (12+4 vs AC 14) for 5+2=7
+        rand_vals = iter([12, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        skipped = [e for e in result["combat_log"] if e.action == "stunned"]
+        assert len(skipped) == 1
+        assert skipped[0].actor == "player"
+        player_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "player"
+        ]
+        assert player_attacks == []
+        assert result["hard_changes"].player_hp_delta == -7
+
+    def test_combat_end_clears_combat_scope_keeps_persistent(self, combat_hard_state, combat_npc_corpus, monkeypatch):
+        corpus = self._corpus_with(combat_npc_corpus, {
+            "curse": {"scope": "persistent", "duration": "rounds"},
+        })
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.status_effects = {"poisoned": 9, "curse": 9}
+        hard.entity_states["goblin"]["status_effects"] = {"stunned": 9}
+        self._combat_state(hard)
+        # player crits: 2*(1d6)+3 = 15 -> goblin dead -> combat ends
+        rand_vals = iter([20, 6, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), hard, corpus)
+        assert result["success"]
+        assert hard.combat is None
+        assert hard.player.status_effects == {"curse": 9}
+        assert "status_effect" not in hard.entity_states["goblin"]
+
+    def test_reapplication_takes_max(self, combat_hard_state, combat_npc_corpus):
+        hard = combat_hard_state.model_copy(deep=True)
+        apply_status_effect("player", "poisoned", 3, hard, combat_npc_corpus, "result")
+        apply_status_effect("player", "poisoned", 1, hard, combat_npc_corpus, "result")
+        assert get_status_effects("player", hard) == {"poisoned": 3}
+        apply_status_effect("player", "poisoned", 5, hard, combat_npc_corpus, "result")
+        assert get_status_effects("player", hard) == {"poisoned": 5}
+
+
+class TestPersistentConditions:
+    """Persistent (out-of-combat) status effects applied from plain Results."""
+
+    def _corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Persistent Test", "introduction": "Test."},
+            "rooms": {
+                "start": {
+                    "name": "Start Room",
+                    "description": "A room.",
+                    "contains": ["slime", "goblin"],
+                    "is_start_room": True,
+                },
+            },
+            "entities": {
+                "slime": {
+                    "type": "feature",
+                    "description": "A glistening slime mold.",
+                    "interactions": [
+                        {
+                            "id": "touch",
+                            "description": "Touch the slime.",
+                            "result": {
+                                "narrative": "It burns!",
+                                "apply_status_effect": {
+                                    "id": "slime_burn", "rounds": 2,
+                                },
+                            },
+                        },
+                        {
+                            "id": "splash",
+                            "description": "Fling slime at the goblin.",
+                            "result": {
+                                "narrative": "The goblin is splashed!",
+                                "apply_status_effect": {
+                                    "id": "poisoned", "rounds": 2,
+                                    "target": "goblin",
+                                },
+                            },
+                        },
+                    ],
+                },
+                "goblin": {
+                    "type": "npc",
+                    "description": "A scrawny goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Is alive"},
+                    },
+                },
+            },
+            "status_effects": {
+                "slime_burn": {
+                    "name": "Slime Burn",
+                    "description": "Burning slime residue.",
+                    "scope": "persistent",
+                    "duration": "rounds",
+                    "tick_effect": {"player_damage": "2"},
+                },
+            },
+        })
+
+    def _hard(self, hp: int = 10) -> HardGameState:
+        return HardGameState.model_validate({
+            "player": {
+                "location": "start",
+                "inventory": {},
+                "stats": {
+                    "STR": 10, "DEX": 10, "CON": 10,
+                    "INT": 10, "WIS": 10, "CHA": 10,
+                },
+                "level": 1,
+                "current_hp": hp,
+                "max_hp": 10,
+                "ac": 10,
+                "proficiency_bonus": 2,
+            },
+            "flags": {},
+            "room_states": {"start": {"visited": True}},
+            "entity_states": {"goblin": {"alive": True}},
+            "turn_count": 0,
+            "game_over": None,
+        })
+
+    def _interact(self, interaction_id: str) -> InteractAction:
+        return InteractAction(
+            action_type="interact", target="slime",
+            interaction_id=interaction_id, detail="Go for it.",
+        )
+
+    def test_persistent_ticks_on_turn_end_and_expires(self):
+        sm = build_state_manager(self._corpus(), hard_state=self._hard(hp=10))
+        result = resolve(self._interact("touch"), sm)
+        assert result.success
+        # Applied for 2 rounds, then ticked once by this turn's turn.end.
+        assert sm.hard_state.player.status_effects == {"slime_burn": 1}
+        assert sm.hard_state.player.current_hp == 8  # tick_effect: 2 dmg
+
+        # A free (non-turn-costing) action does not tick.
+        result = resolve(
+            ExamineAction(
+                action_type="examine", target="slime", detail="Look closer."
+            ),
+            sm,
+        )
+        assert result.success
+        assert sm.hard_state.player.status_effects == {"slime_burn": 1}
+        assert sm.hard_state.player.current_hp == 8
+
+        # The next turn-costing action ticks it to expiry.
+        resolve(WaitAction(action_type="wait", detail="wait"), sm)
+        assert sm.hard_state.player.status_effects == {}
+        assert sm.hard_state.player.current_hp == 6
+
+        # No further ticking once expired.
+        resolve(WaitAction(action_type="wait", detail="wait"), sm)
+        assert sm.hard_state.player.current_hp == 6
+
+    def test_lethal_tick_damage_triggers_death_check(self):
+        sm = build_state_manager(self._corpus(), hard_state=self._hard(hp=2))
+        result = resolve(self._interact("touch"), sm)
+        # tick_effect deals 2 -> 0 HP -> player.died poll -> game over.
+        assert result.game_over is not None
+        assert result.game_over.type == "lose"
+        assert result.game_over.trigger == "player_death"
+
+    def test_apply_status_effect_target_npc(self):
+        sm = build_state_manager(self._corpus(), hard_state=self._hard())
+        result = resolve(self._interact("splash"), sm)
+        assert result.success
+        assert get_status_effects("goblin", sm.hard_state) == {"poisoned": 2}
+        assert sm.hard_state.player.status_effects == {}
 
 
 # ------------------------------------------------------------------
@@ -2623,15 +2935,15 @@ class TestUseItem:
     def test_cure_conditions(self, combat_npc_corpus, combat_hard_state, monkeypatch):
         corpus, hard = self._setup(
             combat_npc_corpus, combat_hard_state,
-            ConsumableBlock(cure_conditions=["poisoned"]),
+            ConsumableBlock(cure_status_effects=["poisoned"]),
         )
-        hard.player.conditions = {"poisoned": 3}
+        hard.player.status_effects = {"poisoned": 3}
         # tick: 3 -> 2; use_item then cures it; goblin misses (1)
         rand_vals = iter([1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._use(), hard, corpus)
         assert result["success"]
-        assert hard.player.conditions == {}
+        assert hard.player.status_effects == {}
 
     def test_destroy_false_keeps_item(self, combat_npc_corpus, combat_hard_state, monkeypatch):
         corpus, hard = self._setup(

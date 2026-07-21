@@ -190,9 +190,9 @@ def _format_situation(session: HeadlessSession) -> str:
 
         def _entry(cid: str, c: dict) -> str:
             s = f"{cid} {c['hp']}/{c['max_hp']}"
-            conds = c.get("conditions") or {}
-            if conds:
-                s += " (" + ", ".join(f"{k}: {v} rounds" for k, v in conds.items()) + ")"
+            effects = c.get("status_effects") or {}
+            if effects:
+                s += " (" + ", ".join(f"{k}: {v} rounds" for k, v in effects.items()) + ")"
             return s
 
         party = [

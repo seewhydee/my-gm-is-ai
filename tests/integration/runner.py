@@ -213,11 +213,11 @@ def run_scenario(
                 eid: dict(state) for eid, state in hard.entity_states.items()
             }
             # Augment with the player sheet so tests can inspect post-combat
-            # conditions, equipment, and abilities.
+            # status effects, equipment, and abilities.
             final_snapshot["player"] = {
                 "current_hp": hard.player.current_hp,
                 "max_hp": hard.player.max_hp,
-                "conditions": dict(hard.player.conditions),
+                "status_effects": dict(hard.player.status_effects),
                 "equipped": list(hard.player.equipped),
                 "abilities": list(hard.player.abilities),
             }

@@ -14,12 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""LLM integration test: conditions, on-hit effects, multiattack,
+"""LLM integration test: status effects, on-hit effects, multiattack,
 immunity, and player abilities in the venom pit.
 
 A driver LLM plays the player against the real GM LLM on the
 ``venom_pit`` fixture.  Hard assertions verify the engine mechanics
-(on-hit saves, conditions, multiattack sequences, damage immunity,
+(on-hit saves, status effects, multiattack sequences, damage immunity,
 attack/heal abilities); an advisory LLM judge records a
 narration-quality verdict in the artifact (it does not gate the test).
 
@@ -152,11 +152,11 @@ def test_poisoned_and_cured(
             stacklevel=2,
         )
 
-    # Conditions are combat-scoped: none may linger after combat.
+    # Status effects are combat-scoped: none may linger after combat.
     player_final = (result.final_status or {}).get("player", {})
-    assert player_final.get("conditions", {}) == {}, (
-        f"Player conditions linger after combat: "
-        f"{player_final.get('conditions')}; see artifact: {result.artifacts_path}"
+    assert player_final.get("status_effects", {}) == {}, (
+        f"Player status effects linger after combat: "
+        f"{player_final.get('status_effects')}; see artifact: {result.artifacts_path}"
     )
 
     # Advisory judge verdict (recorded in the artifact; not a gate).

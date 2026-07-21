@@ -166,7 +166,7 @@ class Display:
         Layout adapts to the terminal width: narrow terminals get a
         single stacked column; wide ones (>= 100 cols) get a two-column
         Party-vs-Enemies layout with a wider HP bar.  Rows show active
-        conditions and, for enemies, damage mitigations the party has
+        status effects and, for enemies, damage mitigations the party has
         already discovered by landing hits (derived from the combat log,
         so nothing the player hasn't learned is leaked).
         """
@@ -188,9 +188,14 @@ class Display:
             empty = bar_width - filled
             return "█" * filled + "░" * empty
 
-        def _conditions_text(conditions: dict) -> str:
-            """e.g. 'poisoned 2, stunned 1'"""
-            return ", ".join(f"{c} {n}" for c, n in conditions.items())
+        effect_defs = corpus.effective_status_effects() if corpus else {}
+
+        def _status_effects_text(status_effects: dict) -> str:
+            """e.g. 'poisoned 2, stunned 1' (StatusEffectDef.name when set)"""
+            def _label(c: str) -> str:
+                cdef = effect_defs.get(c)
+                return cdef.name if cdef is not None and cdef.name else c
+            return ", ".join(f"{_label(c)} {n}" for c, n in status_effects.items())
 
         def _row_data(cid: str) -> dict:
             if cid == "player":
@@ -198,7 +203,7 @@ class Display:
                     "name": "Player",
                     "hp": hard.player.current_hp or 0,
                     "max_hp": hard.player.max_hp or 0,
-                    "conditions": dict(hard.player.conditions or {}),
+                    "status_effects": dict(hard.player.status_effects or {}),
                     "fled": False,
                 }
             entity = corpus.entities.get(cid) if corpus else None
@@ -207,7 +212,7 @@ class Display:
                 "name": (entity.name or cid) if entity else cid,
                 "hp": int(state.get("current_hp") or 0),
                 "max_hp": (entity.combat.hp if entity and entity.combat else 0),
-                "conditions": dict(state.get("conditions") or {}),
+                "status_effects": dict(state.get("status_effects") or {}),
                 "fled": bool(state.get("fled")),
             }
 
@@ -281,8 +286,8 @@ class Display:
                     f"{padded} HP {_hp_bar(d['hp'], d['max_hp'])} "
                     f"{d['hp']}/{d['max_hp']}"
                 )
-                if d["conditions"]:
-                    line += f" [yellow]\\[{_conditions_text(d['conditions'])}][/yellow]"
+                if d["status_effects"]:
+                    line += f" [yellow]\\[{_status_effects_text(d['status_effects'])}][/yellow]"
                 mit = _mitigation_text(cid)
                 if mit:
                     line += f" [dim]({mit})[/dim]"
@@ -338,8 +343,8 @@ class Display:
                     f"  {name:<18} HP {_hp_bar(d['hp'], d['max_hp'])} "
                     f"{d['hp']}/{d['max_hp']}"
                 )
-                if d["conditions"]:
-                    line += f" [{_conditions_text(d['conditions'])}]"
+                if d["status_effects"]:
+                    line += f" [{_status_effects_text(d['status_effects'])}]"
                 mit = _mitigation_text(cid)
                 if mit:
                     line += f" ({mit})"

@@ -49,11 +49,13 @@ from mgmai.engine.conditions import evaluate, get_condition_detail
 from mgmai.engine.resolver import resolve_action, ResolutionResult
 from mgmai.engine.utils import (
     inject_following_npcs,
+    get_status_effects,
     get_following_npc_ids,
     is_exit_visible,
     present_entity_ids,
     _is_stackable,
 )
+from mgmai.engine.status_effects import emit_status_effect_event, remove_status_effect
 from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
 from mgmai.engine.encounters import resolve_encounter
 from mgmai.engine.dialogue import (
@@ -297,6 +299,7 @@ def resolve(
                         "combat.started",
                         {"combatant_ids": enemies},
                     ))
+                    resolution.events.extend(combat_entry.get("events") or [])
                     if combat_entry.get("combat_ended_reason"):
                         resolution.events.append((
                             "combat.ended",
@@ -523,6 +526,23 @@ def resolve(
 
     # 10. turn.end reactions (state changes apply directly, no second derivation).
     if resolution.costs_turn:
+        # Persistent status effects tick once per turn-costing action, before
+        # turn.end reactions fire.  tick_effect damage applies immediately,
+        # so a lethal tick still reaches the player.died poll below.
+        status_effect_events: list[tuple[str, dict[str, Any]]] = []
+        _tick_persistent_status_effects(
+            hard, soft, corpus, state_manager,
+            resolution.triggered_narration, status_effect_events,
+        )
+        if status_effect_events:
+            _dispatch_events(
+                status_effect_events, hard, soft, corpus, state_manager, changes=None,
+                triggered_narration=resolution.triggered_narration,
+                revealed_hints=resolution.revealed_hints,
+                rolls=reaction_rolls,
+                encounter_fired_ref=encounter_fired_ref,
+                combat_log=reaction_combat_log,
+            )
         _dispatch_events(
             [("turn.end", {"turn_number": hard.turn_count})],
             hard, soft, corpus, state_manager, changes=None,
@@ -968,6 +988,73 @@ def _check_game_over_conditions(
 # ------------------------------------------------------------------
 # Event dispatch helpers
 # ------------------------------------------------------------------
+
+
+def _tick_persistent_status_effects(
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    state_manager: Any,
+    triggered_narration: list[str] | None,
+    events: list[tuple[str, dict[str, Any]]],
+) -> None:
+    """Tick persistent status effects at turn end (turn-costing actions only).
+
+    For the player and every entity with a status-effects map: persistent
+    ``rounds`` status effects decrement once per turn-costing player action
+    and expire at zero.  ``tick_effect`` applies only when the afflicted
+    target is the player (``Result`` has player-targeted damage/heal
+    fields only; entity-targeted tick effects are ignored).  Events are
+    appended to *events* for the caller to dispatch before ``turn.end``.
+    """
+    from mgmai.engine.resolver import _apply_result
+
+    effect_defs = corpus.effective_status_effects()
+    target_ids = ["player"] + [
+        eid for eid, state in hard.entity_states.items()
+        if state.get("status_effects")
+    ]
+    for target_id in target_ids:
+        status_effects = get_status_effects(target_id, hard)
+        for effect_id in list(status_effects):
+            cdef = effect_defs.get(effect_id)
+            if (
+                cdef is None
+                or cdef.scope != "persistent"
+                or cdef.duration != "rounds"
+            ):
+                continue
+            if target_id != "player" and cdef.tick_effect is not None:
+                log.debug(
+                    "tick_effect of status effect '%s' ignored for non-player "
+                    "target '%s'",
+                    effect_id, target_id,
+                )
+            status_effects[effect_id] -= 1
+            expired = status_effects[effect_id] <= 0
+            if expired:
+                remove_status_effect(
+                    target_id, effect_id, hard, corpus, "expired", events
+                )
+            emit_status_effect_event(events, "status_effect.ticked", {
+                "target_id": target_id,
+                "status_effect_id": effect_id,
+                "remaining_rounds": status_effects.get(effect_id, 0),
+                "expired": expired,
+            })
+            if target_id == "player" and cdef.tick_effect is not None:
+                # Apply as a Result through the resolver's mechanism; the
+                # changes apply immediately (same as turn.end reactions),
+                # so lethal tick damage reaches the player.died poll.
+                tick_changes = HardStateChanges()
+                tick_narration: list[str] = []
+                _apply_result(
+                    cdef.tick_effect, tick_changes, tick_narration, [],
+                    hard, corpus, soft, state_manager, None, effect_id,
+                )
+                state_manager.apply_hard_changes(tick_changes)
+                if triggered_narration is not None:
+                    triggered_narration.extend(tick_narration)
 
 
 def _derive_state_events(

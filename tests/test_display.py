@@ -137,10 +137,10 @@ class TestCombatPanel:
         )
         state_manager.hard_state.player.current_hp = 8
         state_manager.hard_state.player.max_hp = 10
-        state_manager.hard_state.player.conditions = {"poisoned": 2}
+        state_manager.hard_state.player.status_effects = {"poisoned": 2}
         state_manager.hard_state.entity_states["spider"] = {
             "current_hp": 5,
-            "conditions": {"stunned": 1},
+            "status_effects": {"stunned": 1},
         }
         state_manager.hard_state.entity_states["wasp"] = {"current_hp": 0}
         # A landed hit that revealed the spider's piercing resistance.
@@ -158,8 +158,9 @@ class TestCombatPanel:
         d.render_status(state_manager)
         out = capsys.readouterr().out
         assert "Round 2" in out
-        assert "poisoned 2" in out
-        assert "stunned 1" in out
+        # StatusEffectDef.name labels (falling back to the raw ID when unset)
+        assert "Poisoned 2" in out
+        assert "Stunned 1" in out
         assert "resists piercing" in out
         assert "†" in out  # dead wasp marked, not silently dropped
         assert "»player«" in out  # current actor marked in initiative
@@ -179,7 +180,7 @@ class TestCombatPanel:
             # Rich wraps long rows; flatten whitespace before asserting.
             text = " ".join(d._console.file.getvalue().split())
             assert "Round 2" in text
-            assert "poisoned 2" in text
-            assert "stunned 1" in text
+            assert "Poisoned 2" in text
+            assert "Stunned 1" in text
             assert "resists piercing" in text
             assert "Items:" in text

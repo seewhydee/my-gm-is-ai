@@ -36,7 +36,7 @@ from mgmai.engine.systems.base import (
     ResolutionSystem,
 )
 from mgmai.engine.systems.dice import parse_damage_dice
-from mgmai.engine.utils import get_conditions
+from mgmai.engine.utils import get_status_effects
 from mgmai.models.combat import CombatLogEntry
 
 if TYPE_CHECKING:
@@ -251,15 +251,30 @@ class FiveESystem(ResolutionSystem):
         return weapon.damage_type if weapon else ""
 
     def attack_roll_mods(
-        self, attacker_conds: dict, target_conds: dict
+        self, attacker_status_effects: dict, target_status_effects: dict, corpus: ModuleCorpus
     ) -> tuple[bool, bool]:
-        """(advantage, disadvantage) from combat conditions (5e, simplified):
+        """(advantage, disadvantage) from status-effect system effects (5e):
 
-        - attacker poisoned or prone -> disadvantage on the attack roll
-        - target stunned or prone -> advantage on the attack roll
+        - attacker side ORs ``disadvantage_on_attack`` over the attacker's
+          status effects
+        - target side ORs ``advantage_against`` over the target's
+          status effects
         """
-        advantage = "stunned" in target_conds or "prone" in target_conds
-        disadvantage = "poisoned" in attacker_conds or "prone" in attacker_conds
+        effect_defs = corpus.effective_status_effects()
+
+        def _effects(active: dict) -> list[dict]:
+            return [
+                effect_defs[c].system_effects.get("5e", {})
+                for c in active
+                if c in effect_defs
+            ]
+
+        advantage = any(
+            e.get("advantage_against") for e in _effects(target_status_effects)
+        )
+        disadvantage = any(
+            e.get("disadvantage_on_attack") for e in _effects(attacker_status_effects)
+        )
         return advantage, disadvantage
 
     def compute_player_damage_expr(
@@ -321,7 +336,7 @@ class FiveESystem(ResolutionSystem):
 
         atk_bonus = self.compute_player_attack_bonus(hard, corpus)
         adv, disadv = self.attack_roll_mods(
-            get_conditions("player", hard), get_conditions(target_id, hard)
+            get_status_effects("player", hard), get_status_effects(target_id, hard), corpus
         )
         attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
         attack_total = attack_roll + atk_bonus
@@ -418,7 +433,7 @@ class FiveESystem(ResolutionSystem):
         )
 
         adv, disadv = self.attack_roll_mods(
-            get_conditions(npc_id, hard), get_conditions(target_id, hard)
+            get_status_effects(npc_id, hard), get_status_effects(target_id, hard), corpus
         )
         attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
         attack_total = attack_roll + atk_bonus
@@ -500,8 +515,15 @@ class FiveESystem(ResolutionSystem):
         dex_mod = self.compute_modifier(
             self._player_stat(hard.player.stats, "DEX")
         )
-        # Poisoned: disadvantage on ability checks.
-        disadvantage = "poisoned" in get_conditions("player", hard)
+        # Conditions may impose disadvantage on ability checks (e.g. poisoned).
+        effect_defs = corpus.effective_status_effects()
+        disadvantage = any(
+            effect_defs[c].system_effects.get("5e", {}).get(
+                "disadvantage_on_ability_checks"
+            )
+            for c in get_status_effects("player", hard)
+            if c in effect_defs
+        )
         roll = self.roll_die(20, disadvantage=disadvantage)
         total = roll + dex_mod
         success = total >= flee_dc

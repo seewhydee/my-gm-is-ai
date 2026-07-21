@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
@@ -374,6 +374,26 @@ def _build_dialogue_context(soft: SoftGameState,
         revealed_topics=revealed_topics)
 
 
+def _status_effect_briefs(
+    status_effects: dict[str, int], corpus: ModuleCorpus
+) -> list[dict[str, Any]]:
+    """Briefing entries for active status effects, with def descriptions.
+
+    Each entry carries the status effect ID and remaining rounds; when the
+    status effect's StatusEffectDef has a ``description``, it is included so the
+    GM LLM knows what it does.
+    """
+    effect_defs = corpus.effective_status_effects()
+    briefs: list[dict[str, Any]] = []
+    for cid in sorted(status_effects):
+        entry: dict[str, Any] = {"id": cid, "rounds": status_effects[cid]}
+        cdef = effect_defs.get(cid)
+        if cdef is not None and cdef.description:
+            entry["description"] = cdef.description
+        briefs.append(entry)
+    return briefs
+
+
 def _build_combat_state(
     hard: HardGameState,
     corpus: ModuleCorpus,
@@ -399,7 +419,7 @@ def _build_combat_state(
                 "side": "party",
                 "current_hp": hard.player.current_hp or 0,
                 "max_hp": hard.player.max_hp or 0,
-                "conditions": sorted(hard.player.conditions),
+                "status_effects": _status_effect_briefs(hard.player.status_effects, corpus),
             })
         else:
             entity = corpus.entities.get(cid)
@@ -411,7 +431,9 @@ def _build_combat_state(
                 "side": "party" if cid in combat.allies else "enemy",
                 "current_hp": state.get("current_hp") or 0,
                 "max_hp": (entity.combat.hp if entity and entity.combat else 0),
-                "conditions": sorted(state.get("conditions", {}) or {}),
+                "status_effects": _status_effect_briefs(
+                    state.get("status_effects", {}) or {}, corpus
+                ),
             })
 
     usable_items: list[dict[str, Any]] = []

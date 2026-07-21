@@ -121,6 +121,34 @@ For these events, the context keys are `exit_id` (the exit ID),
   (the source ID of the encounter: the NPC's entity ID for `aggro`
   encounters, or the mechanic ID for encounter mechanics).
 
+### Status Effects
+
+- `status_effect.applied` – A status effect is applied to a target.  The
+  context keys are `target_id` (`"player"` or an entity ID),
+  `status_effect_id`, `rounds` (remaining rounds after application —
+  reapplication keeps the maximum of existing and new), and `source`
+  (`"result"`, `"save_failure"`, `"reaction"`, …).
+
+- `status_effect.ticked` – A `rounds`-duration status effect ticks down.  The
+  context keys are `target_id`, `status_effect_id`, `remaining_rounds`
+  (after the decrement), and `expired` (boolean — true when the
+  status effect reached zero and was removed).  Combat-scoped status effects
+  tick at the start of the afflicted combatant's turn; persistent
+  status effects tick on `turn.end` (turn-costing actions only), before
+  `turn.end` reactions dispatch.
+
+- `status_effect.cleared` – A status effect is removed.  The context keys are
+  `target_id`, `status_effect_id`, and `reason`, one of `"expired"`
+  (ticked to zero), `"combat_end"` (combat-scoped status effects clear
+  when combat ends), `"consumable"` (cured by `cure_status_effects`),
+  `"auto_clear"` (`until_turn_start` duration, e.g. prone), or
+  `"manual"`.
+
+Note: `entity_state.changed` does **not** fire for status-effect changes —
+status effects live in a reserved sub-object managed by the engine, and
+the `status_effect.*` family above replaces `entity_state.changed` for
+this case.
+
 ### Inventory
 
 - `item.acquired` – An item enters the player's inventory
@@ -140,8 +168,7 @@ or `"equip"`).
 |--------------------|----------------------|--------------------------|
 | `flag.set`         | `flag_id`            | A flag becomes `true`    |
 | `flag.cleared`     | `flag_id`            | A flag becomes `false`   |
-| `entity_state.changed`| `entity_id`, `field`, `new_value` | An entity state field changes    |
-| `room_state.changed`  | `room_id`, `field`, `new_value`   | A room state field changes       |
+| `entity_state.changed`| `entity_id`, `field`, `new_value` | An entity state field changes    || `room_state.changed`  | `room_id`, `field`, `new_value`   | A room state field changes       |
 | `attitude.changed`    | `npc_id`, `old_value`, `new_value`, `delta` | An NPC's attitude changes |
 | `stat.changed`     | `stat_name`, `old_value`, `new_value`, `delta` | A player stat changes  |
 | `equipment.changed`| `added?`, `removed?` | Equipped gear changes    |
@@ -151,6 +178,10 @@ or `"equip"`).
 These events are **derived once at the end of the turn**, after all
 action and reaction effects have been applied. They are dispatched in
 a single pass.
+
+`entity_state.changed` does **not** fire for status-effect changes, even
+though NPC status effects are stored in the entity's state sub-object;
+use the `status_effect.*` events (see [Status Effects](#status-effects)) instead.
 
 As an exception, reaction effects that mutate state do not emit
 state-change events *during* dispatch.  They do eventually produce

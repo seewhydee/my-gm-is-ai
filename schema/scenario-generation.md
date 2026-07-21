@@ -472,7 +472,7 @@ Revisit the entity list, and add the following to each entity:
   after the item has been taken once.
 
 - **Consumable?** (optional) — if the item can be used up (potion,
-  scroll, food), note its effects: HP restored, conditions cured, and
+  scroll, food), note its effects: HP restored, status effects cured, and
   whether it is destroyed on use.
 
 #### Additional things to note for NPC entities
@@ -1749,6 +1749,38 @@ Rules:
 - If no stat checks exist in the scenario, omit this block entirely
 - Resolution system is always `"5e"` for now
 
+### 4E. Status Effects block (if applicable)
+
+If the scenario applies status effects beyond the three built-in
+defaults (`poisoned`, `stunned`, `prone`) — a trap that poisons the
+player outside combat, a fear aura, a curse — declare each one in the
+top-level `status_effects` block (see
+[corpus.md — Status Effects](corpus.md#status-effects)):
+
+```json
+"status_effects": {
+  "trap_poison": {
+    "name": "Trap Poison",
+    "description": "Weakness from a poisoned needle; ticks down per turn.",
+    "scope": "persistent",
+    "duration": "rounds",
+    "tick_effect": { "player_damage": "1" },
+    "system_effects": { "5e": { "disadvantage_on_attack": true } }
+  }
+}
+```
+
+Rules:
+- Scope is per-definition: a combat poison and a trap poison need
+  **distinct IDs** (e.g. `poisoned` vs. `trap_poison`) — one combat-scoped
+  definition that clears at combat end, one persistent definition that
+  ticks once per turn-costing player action and survives combat.
+- A corpus entry with the same ID as a built-in default replaces that
+  default wholesale (no field-level merge).
+- Every status effect ID referenced by `apply_status_effect` or
+  `cure_status_effects` should be declared here (or be a built-in default);
+  the validator warns about undeclared IDs.
+
 ---
 
 ### Step 4 validation checklist
@@ -1765,6 +1797,10 @@ Rules:
 - [ ] If stats block present: only stats actually used are defined
 - [ ] If stats block absent: no stat_check interactions or stat: conditions
       exist in rooms/entities
+- [ ] Every status effect ID referenced by `apply_status_effect` or
+      `cure_status_effects` is declared in the `status_effects` block or is a
+      built-in default (`poisoned`, `stunned`, `prone`); status effects
+      needed both in and out of combat use distinct IDs per scope
 - [ ] Mechanic `reactions` use valid event types (see
       [`events.md`](events.md)) and effect fields
 

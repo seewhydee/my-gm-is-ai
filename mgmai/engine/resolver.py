@@ -60,6 +60,7 @@ from mgmai.engine.dialogue import (
     exit_dialogue,
 )
 from mgmai.engine.utils import get_following_npc_ids, _is_stackable, _match_soft_content
+from mgmai.engine.status_effects import apply_status_effect
 from mgmai.engine.systems import get_system_for_corpus
 
 MAX_THEN_CHECK_DEPTH = 3
@@ -959,6 +960,7 @@ def resolve_interact(
             events: list[tuple[str, dict[str, Any]]] = [
                 ("combat.started", {"combatant_ids": enemies}),
             ]
+            events.extend(entry.get("events") or [])
             if entry.get("combat_ended_reason"):
                 events.append(("combat.ended", {
                     "reason": entry["combat_ended_reason"],
@@ -1496,10 +1498,14 @@ def _apply_result(
             heal_total = max(0, min(heal_total, max_hp - effective_hp))
         existing = changes.player_hp_delta or 0
         changes.player_hp_delta = existing + heal_total
-    if result.apply_condition is not None and hard is not None:
+    if result.apply_status_effect is not None and hard is not None:
         # Engine-owned runtime state (like combat state): mutate directly.
-        hard.player.conditions[result.apply_condition.id] = (
-            result.apply_condition.rounds
+        apply_status_effect(
+            result.apply_status_effect.target,
+            result.apply_status_effect.id,
+            result.apply_status_effect.rounds,
+            hard, corpus, "result",
+            events=resolution.events if resolution is not None else None,
         )
     if result.reveals:
         revealed_hints.append(result.reveals)
@@ -1833,7 +1839,7 @@ def _resolve_combat_action(
             error=result.get("error"),
         )
 
-    events: list[tuple[str, dict[str, Any]]] = []
+    events: list[tuple[str, dict[str, Any]]] = list(result.get("events") or [])
     if result.get("combat_ended_reason"):
         events.append(("combat.ended", {
             "reason": result["combat_ended_reason"],
@@ -1866,7 +1872,7 @@ def _resolve_combat_pass(
             error=result.get("error"),
         )
 
-    events: list[tuple[str, dict[str, Any]]] = []
+    events: list[tuple[str, dict[str, Any]]] = list(result.get("events") or [])
     if result.get("combat_ended_reason"):
         events.append(("combat.ended", {
             "reason": result["combat_ended_reason"],
@@ -1899,7 +1905,7 @@ def _resolve_combat_flee(
             error=result.get("error"),
         )
 
-    events: list[tuple[str, dict[str, Any]]] = []
+    events: list[tuple[str, dict[str, Any]]] = list(result.get("events") or [])
     if result.get("combat_ended_reason"):
         events.append(("combat.ended", {
             "reason": result["combat_ended_reason"],

@@ -337,17 +337,24 @@ class TestHeadlessSession:
             combatants=["player", "spider"],
             active=True,
         )
-        state_manager.hard_state.player.conditions = {"poisoned": 2}
+        state_manager.hard_state.player.status_effects = {"poisoned": 2}
         state_manager.hard_state.entity_states["spider"] = {
             "current_hp": 5,
-            "conditions": {"stunned": 1},
+            "status_effects": {"stunned": 1},
             "fled": True,
         }
         snap = _snapshot_status(state_manager)
-        assert snap.combatants["player"]["conditions"] == {"poisoned": 2}
+        assert snap.combatants["player"]["status_effects"] == {"poisoned": 2}
         assert snap.combatants["player"]["fled"] is False
-        assert snap.combatants["spider"]["conditions"] == {"stunned": 1}
+        assert snap.combatants["spider"]["status_effects"] == {"stunned": 1}
         assert snap.combatants["spider"]["fled"] is True
+        # Display names come from StatusEffectDef.name (raw IDs are the keys).
+        assert snap.combatants["player"]["status_effect_names"] == {
+            "poisoned": "Poisoned"
+        }
+        assert snap.combatants["spider"]["status_effect_names"] == {
+            "stunned": "Stunned"
+        }
 
     def test_adventure_dir_loading(self, tmp_path) -> None:
         """HeadlessSession can load an adventure directory directly."""
@@ -459,13 +466,13 @@ class TestIntegrationFixtureSmoke:
         effect = viper.combat.on_hit_effects[0]
         assert effect.check.stat == "CON"
         assert effect.tag == "poison"
-        assert effect.failure.apply_condition.id == "poisoned"
+        assert effect.failure.apply_status_effect.id == "poisoned"
 
         # Crawler has a multiattack sequence with a stun on-hit effect.
         crawler = sm.corpus.entities["carrion_crawler"]
         assert crawler.combat.multiattack == ["tentacles", "bite"]
         tentacles = next(a for a in crawler.combat.attacks if a.id == "tentacles")
-        assert tentacles.on_hit_effects[0].failure.apply_condition.id == "stunned"
+        assert tentacles.on_hit_effects[0].failure.apply_status_effect.id == "stunned"
 
         # Jelly is immune to slashing.
         jelly = sm.corpus.entities["ochre_jelly"]
@@ -478,7 +485,7 @@ class TestIntegrationFixtureSmoke:
 
         # Antidote cures poisoned.
         antidote = sm.corpus.entities["antidote"]
-        assert antidote.consumable.cure_conditions == ["poisoned"]
+        assert antidote.consumable.cure_status_effects == ["poisoned"]
 
     def test_ambush_alley_loads(self):
         """StateManager successfully loads the ambush_alley fixture."""

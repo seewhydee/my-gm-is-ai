@@ -451,6 +451,7 @@ def _resolve_reaction_encounter(
                     "reason": "combat",
                 }))
             events.append(("combat.started", {"combatant_ids": enemies}))
+            events.extend(combat_entry.get("events") or [])
             if combat_entry.get("combat_ended_reason"):
                 events.append(("combat.ended", {
                     "reason": combat_entry["combat_ended_reason"],

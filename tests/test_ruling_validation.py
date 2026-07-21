@@ -60,11 +60,11 @@ def _combat_briefing(
             current_actor="player",
             combatants=[
                 {"id": "player", "name": "Player", "side": "party",
-                 "current_hp": 10, "max_hp": 10, "conditions": []},
+                 "current_hp": 10, "max_hp": 10, "status_effects": []},
                 {"id": "korbar", "name": "Korbar", "side": "party",
-                 "current_hp": 20, "max_hp": 20, "conditions": []},
+                 "current_hp": 20, "max_hp": 20, "status_effects": []},
                 {"id": "goblin", "name": "Goblin", "side": "enemy",
-                 "current_hp": 7, "max_hp": 7, "conditions": []},
+                 "current_hp": 7, "max_hp": 7, "status_effects": []},
             ],
             usable_items=(
                 [{"id": "health_potion", "name": "Healing Potion",

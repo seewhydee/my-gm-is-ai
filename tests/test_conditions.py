@@ -1060,3 +1060,76 @@ def _make_location_corpus() -> ModuleCorpus:
             "sword": {"type": "item", "name": "Sword", "description": "A sword."},
         },
     })
+
+
+class TestEvaluateConditionStringStatusEffect:
+    """The ``status_effect:`` domain queries active status effects."""
+
+    def _states(self):
+        hs = make_hard_state()
+        hs.player.status_effects = {"poisoned": 3}
+        hs.entity_states["spider"]["status_effects"] = {"stunned": 1}
+        ss = make_soft_state()
+        return hs, ss
+
+    def test_player_presence(self) -> None:
+        hs, ss = self._states()
+        assert evaluate_condition_string("status_effect:poisoned", hs, ss, None)
+
+    def test_player_presence_missing(self) -> None:
+        hs, ss = self._states()
+        assert not evaluate_condition_string("status_effect:stunned", hs, ss, None)
+
+    def test_player_rounds_comparison(self) -> None:
+        hs, ss = self._states()
+        assert evaluate_condition_string("status_effect:poisoned.rounds >= 2", hs, ss, None)
+        assert evaluate_condition_string("status_effect:poisoned.rounds == 3", hs, ss, None)
+        assert not evaluate_condition_string("status_effect:poisoned.rounds < 2", hs, ss, None)
+
+    def test_player_rounds_absent_is_zero(self) -> None:
+        hs, ss = self._states()
+        assert evaluate_condition_string("status_effect:stunned.rounds == 0", hs, ss, None)
+        assert not evaluate_condition_string("status_effect:stunned.rounds >= 1", hs, ss, None)
+
+    def test_entity_form(self) -> None:
+        hs, ss = self._states()
+        assert evaluate_condition_string("status_effect:spider.stunned", hs, ss, None)
+        assert not evaluate_condition_string("status_effect:spider.poisoned", hs, ss, None)
+
+    def test_entity_form_unknown_entity(self) -> None:
+        hs, ss = self._states()
+        assert not evaluate_condition_string("status_effect:dragon.stunned", hs, ss, None)
+
+    def test_player_entity_form_equivalent_to_bare(self) -> None:
+        hs, ss = self._states()
+        assert evaluate_condition_string("status_effect:player.poisoned", hs, ss, None)
+        assert not evaluate_condition_string("status_effect:player.stunned", hs, ss, None)
+
+    def test_presence_with_operator_raises(self) -> None:
+        hs, ss = self._states()
+        with pytest.raises(ValueError, match="must not have operator"):
+            evaluate_condition_string("status_effect:poisoned >= 1", hs, ss, None)
+
+    def test_entity_form_with_operator_raises(self) -> None:
+        hs, ss = self._states()
+        with pytest.raises(ValueError, match="must not have operator"):
+            evaluate_condition_string("status_effect:spider.stunned == true", hs, ss, None)
+
+    def test_rounds_without_operator_raises(self) -> None:
+        hs, ss = self._states()
+        with pytest.raises(ValueError, match="requires operator and value"):
+            evaluate_condition_string("status_effect:poisoned.rounds", hs, ss, None)
+
+    def test_detail_player_presence(self) -> None:
+        hs, ss = self._states()
+        status = get_condition_detail("status_effect:poisoned", hs, ss, None)
+        assert status.met is True
+        assert "poisoned" in status.detail
+        assert "rounds = 3" in status.detail
+
+    def test_detail_entity_form(self) -> None:
+        hs, ss = self._states()
+        status = get_condition_detail("status_effect:spider.stunned", hs, ss, None)
+        assert status.met is True
+        assert "spider" in status.detail
+        assert "stunned" in status.detail
