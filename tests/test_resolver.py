@@ -699,8 +699,10 @@ class TestResolveInteract:
         assert result.success is False
         assert "dead" in result.error.lower()
 
-    def test_attack_on_combat_group_member_pulls_band(self, state_manager):
+    def test_attack_on_combat_group_member_pulls_band(self, state_manager, monkeypatch):
         """Direct attack on a combat_group member enters combat with the band."""
+        monkeypatch.setattr("random.randint", lambda a, b: 1)
+        monkeypatch.setattr("random.random", lambda: 0.5)
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus

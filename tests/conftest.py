@@ -16,6 +16,7 @@
 
 import copy
 import json
+import random
 from pathlib import Path
 
 import pytest
@@ -104,6 +105,11 @@ def sample_hard_state() -> HardGameState:
 def sample_soft_state() -> SoftGameState:
     path = FIXTURES_DIR / "soft-state.json"
     return SoftGameState.model_validate(json.loads(path.read_text()))
+
+
+@pytest.fixture(autouse=True)
+def _pin_random_state():
+    random.seed(424242)
 
 
 @pytest.fixture

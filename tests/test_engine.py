@@ -919,7 +919,9 @@ class TestSoftContentFlow:
 class TestMultiCombatantEncounters:
     """Multi-enemy combat entry and empty-set reconciliation."""
 
-    def test_encounter_start_combat_multi_enemy_combat(self):
+    def test_encounter_start_combat_multi_enemy_combat(self, monkeypatch):
+        monkeypatch.setattr("random.randint", lambda a, b: 1)
+        monkeypatch.setattr("random.random", lambda: 0.5)
         from tests.helpers import _mk_npc_entity, CombatBlock
         corpus = make_encounter_trigger_corpus(
             mechanic_id="ambush",
