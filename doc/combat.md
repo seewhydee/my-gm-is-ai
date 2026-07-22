@@ -186,7 +186,9 @@ The player gains optional combat fields on `HardGameState.player`:
 
 Status effects are declared in the corpus top-level `status_effects`
 block (see [schema/corpus.md — Status Effects](../schema/corpus.md#status-effects)),
-overlaid on three built-in defaults (`poisoned`, `stunned`, `prone`).
+overlaid on the built-in SRD condition list (`poisoned`, `stunned`,
+`prone`, `blinded`, `invisible`, the exhaustion levels, …), which ships
+with the engine as a data pack (`mgmai/data/srd_5e/conditions.json`).
 The player's status effects live on `PlayerState.status_effects`; NPC
 status effects live in `entity_states[id]["status_effects"]`.  Both map a
 status effect ID to its remaining rounds.
@@ -204,13 +206,20 @@ Each definition's `scope` and `duration` drive its lifetime:
 - `duration: "until_cleared"` — removed only by curing, combat end
   (combat-scoped), or a manual Result.
 
-The built-in defaults reproduce the legacy 5e SRD behavior:
+The built-in defaults reproduce the 5e SRD conditions:
 
 | Status effect | Effect (simplified) |
 |-----------|---------------------|
 | `poisoned` | Disadvantage on own attack rolls and ability checks (including the flee check). |
-| `stunned` | The combatant loses its turn; attack rolls against it have advantage. |
+| `stunned` | The combatant loses its turn; attack rolls against it have advantage; it auto-fails STR and DEX saves. |
 | `prone` | Attack rolls against it have advantage; it automatically stands at the start of its turn. |
+| `blinded` | Attack rolls against it have advantage; its own attack rolls have disadvantage. |
+| `frightened` | Disadvantage on own attack rolls and ability checks. |
+| `invisible` | Its attack rolls have advantage; attack rolls against it have disadvantage. |
+| `incapacitated` / `paralyzed` / `petrified` / `unconscious` | The combatant loses its turn; `paralyzed`/`petrified`/`unconscious` also grant advantage to attackers and auto-fail STR and DEX saves. |
+| `restrained` | Disadvantage on own attack rolls; attack rolls against it have advantage. |
+| `charmed` / `deafened` / `grappled` | No roll modifiers; adjudicated by the GM from the description. |
+| `exhaustion-1` … `exhaustion-6` | Persistent; −2 × level on all of the combatant's d20 rolls (attacks, checks, saves). |
 
 Custom status effects declare their roll modifiers per system via
 `system_effects` (e.g. `{ "5e": { "disadvantage_on_attack": true } }`),

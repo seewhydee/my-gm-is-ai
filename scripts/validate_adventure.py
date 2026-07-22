@@ -120,6 +120,12 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
         errors.append("State loaded but corpus or hard state is None")
         return errors, warnings
 
+    # The corpus as authored on disk — state_manager.corpus has SRD
+    # data-pack gear materialized into its entities, so checks about
+    # authored content (unused entities, pack redefinitions) must use
+    # this instead.
+    authored_corpus = StateManager.load_corpus(corpus_path)
+
     if corpus.stats is not None and not default_player_path.is_file() and not hard_path.is_file():
         errors.append(
             "Adventure has a stat system but neither default-player.json nor "
@@ -207,7 +213,10 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
             _collect_addable_from_result(event.result, addable_entities)
             _collect_addable_from_result(event.success, addable_entities)
 
-    for entity_id, entity in corpus.entities.items():
+    # Unused-entity check: authored entities only — pack gear is
+    # materialized into the corpus and is expected to be mostly
+    # unreferenced by any single adventure.
+    for entity_id, entity in authored_corpus.entities.items():
         if entity_id in referenced_entities:
             continue
         if entity_id == "player":
@@ -246,7 +255,7 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
                 )
 
     # 9. CombatBlock validation
-    from mgmai.engine.combat import parse_damage_dice
+    from mgmai.engine.systems.dice import parse_damage_dice
     from mgmai.engine.systems.five_e import FiveESystem
     for entity_id, entity in corpus.entities.items():
         if entity.combat is None:
@@ -361,6 +370,21 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
         warnings.append(
             f"Reference to undefined status effect '{effect_id}' (not in the "
             f"corpus status_effects block or the built-in defaults)"
+        )
+    # A corpus entry replacing a built-in default is legal (wholesale
+    # replace), but worth surfacing.  Compare against the *authored*
+    # corpus (state_manager.corpus already has pack gear materialized).
+    from mgmai.models.corpus import DEFAULT_GEAR, DEFAULT_STATUS_EFFECTS
+
+    for effect_id in sorted(set(corpus.status_effects) & set(DEFAULT_STATUS_EFFECTS)):
+        warnings.append(
+            f"Status effect '{effect_id}' redefines a built-in default "
+            f"(the corpus entry replaces it wholesale)"
+        )
+    for gear_id in sorted(set(authored_corpus.entities) & set(DEFAULT_GEAR)):
+        warnings.append(
+            f"Item entity '{gear_id}' redefines an SRD data-pack gear entry "
+            f"(the corpus entry replaces it wholesale)"
         )
 
     # 13. Stat-check stat keys: each must be a defined ability score or a

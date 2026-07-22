@@ -245,6 +245,22 @@ class ResolutionSystem(ABC):
         Default: neither."""
         return False, False
 
+    def d20_test_modifier(
+        self, status_effects: dict, corpus: "ModuleCorpus"
+    ) -> int:
+        """Flat modifier applied to all d20 rolls (attacks, ability checks,
+        saving throws) from the roller's active status effects (5e:
+        exhaustion).  Default: 0."""
+        return 0
+
+    def save_auto_fail(
+        self, stat: str, status_effects: dict, corpus: "ModuleCorpus"
+    ) -> bool:
+        """True when the roller's active status effects force a saving throw
+        against ``stat`` to fail without a roll (5e: paralyzed, petrified,
+        stunned, unconscious vs STR/DEX saves).  Default: False."""
+        return False
+
     @abstractmethod
     def roll_check(
         self,

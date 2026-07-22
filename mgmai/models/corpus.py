@@ -18,6 +18,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
+from mgmai.datapack import load_pack
+
 IMMEDIATE_ALLOWED_EVENTS = frozenset({
     "interaction.used",
     "traversal.attempted",
@@ -177,9 +179,9 @@ class StatusEffectDef(BaseModel):
 
     Status effects live in the top-level corpus ``status_effects`` block,
     keyed by status effect ID (the key is canonical; ``name`` is cosmetic).
-    The three legacy status effects are built-in engine defaults
-    (``DEFAULT_STATUS_EFFECTS``); a corpus entry with the same ID replaces the
-    default wholesale.
+    The SRD conditions are built-in engine defaults (``DEFAULT_STATUS_EFFECTS``,
+    loaded from the bundled data pack); a corpus entry with the same ID
+    replaces the default wholesale.
 
     - ``scope: "combat"`` — ticks at the start of the afflicted
       combatant's turn; cleared at combat end.
@@ -947,6 +949,20 @@ class ModuleCorpus(BaseModel):
         """
         return {**DEFAULT_STATUS_EFFECTS, **self.status_effects}
 
+    def effective_gear(self) -> Dict[str, "Entity"]:
+        """The full gear catalog: SRD data-pack items overlaid by corpus
+        item entities.
+
+        A corpus item entity whose ID matches a pack entry replaces the
+        pack entry wholesale (no field-level merge).  Corpus item
+        entities with non-pack IDs are included as-is.
+        """
+        gear = dict(DEFAULT_GEAR)
+        for eid, entity in self.entities.items():
+            if entity.type == "item":
+                gear[eid] = entity
+        return gear
+
     @field_validator("flags_declared", mode="before")
     @classmethod
     def _validate_flags_declared(cls, v: Any) -> Optional[List[FlagDecl]]:
@@ -994,36 +1010,25 @@ class ModuleCorpus(BaseModel):
 
 
 # Built-in default status effects, overlaid wholesale by corpus entries of the
-# same ID (see ModuleCorpus.effective_status_effects).  Defined at the end of
-# the module because ``StatusEffectDef.tick_effect`` references ``Result``,
-# whose own forward references only resolve once the module is complete.
+# same ID (see ModuleCorpus.effective_status_effects).  Loaded from the
+# engine-bundled SRD data pack (mgmai/data/srd_5e/conditions.json, keyed by
+# system ID) rather than hardcoded, so the pack is read and validated with the
+# same models as corpus files.  Defined at the end of the module because
+# ``StatusEffectDef.tick_effect`` references ``Result``, whose own forward
+# references only resolve once the module is complete.
 StatusEffectDef.model_rebuild()
 DEFAULT_STATUS_EFFECTS: Dict[str, StatusEffectDef] = {
-    "poisoned": StatusEffectDef(
-        name="Poisoned",
-        description="Disadvantage on attack rolls and ability checks.",
-        system_effects={
-            "5e": {
-                "disadvantage_on_attack": True,
-                "disadvantage_on_ability_checks": True,
-            }
-        },
-    ),
-    "stunned": StatusEffectDef(
-        name="Stunned",
-        description="Loses turns; attacks against have advantage.",
-        skip_turn=True,
-        system_effects={"5e": {"advantage_against": True}},
-    ),
-    "prone": StatusEffectDef(
-        name="Prone",
-        description=(
-            "Disadvantage on attack rolls; attacks against have advantage; "
-            "auto-stands at turn start."
-        ),
-        duration="until_turn_start",
-        system_effects={
-            "5e": {"disadvantage_on_attack": True, "advantage_against": True}
-        },
-    ),
+    effect_id: StatusEffectDef.model_validate(entry)
+    for effect_id, entry in load_pack("5e", "conditions").items()
+}
+
+# Built-in SRD gear (weapons, armor, standard consumables) as item-entity
+# templates, loaded from the engine-bundled data pack
+# (mgmai/data/srd_5e/gear.json).  Templates are minted into
+# ``corpus.entities`` at load time (StateManager._materialize_pack_gear);
+# a corpus entity with the same ID replaces the pack template wholesale
+# (see ModuleCorpus.effective_gear).
+DEFAULT_GEAR: Dict[str, Entity] = {
+    gear_id: Entity.model_validate(entry)
+    for gear_id, entry in load_pack("5e", "gear").items()
 }

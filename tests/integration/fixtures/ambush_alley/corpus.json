@@ -44,27 +44,6 @@
     }
   },
   "entities": {
-    "longsword": {
-      "type": "item",
-      "name": "Longsword",
-      "description": "A standard steel longsword, well-balanced and sharp.",
-      "tags": ["weapon"],
-      "equip_block": {
-        "equip_tags": ["weapon"],
-        "damage_expr": "1d8",
-        "hit_bonus": 0,
-        "damage_type": "slashing"
-      }
-    },
-    "health_potion": {
-      "type": "item",
-      "name": "Healing Potion",
-      "description": "A vial of crimson liquid that heals 2d4+2 HP when drunk.",
-      "consumable": {
-        "heal": "2d4+2",
-        "destroy": true
-      }
-    },
     "pack_mule": {
       "type": "npc",
       "name": "Pack Mule",

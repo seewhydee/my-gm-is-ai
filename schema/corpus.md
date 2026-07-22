@@ -1274,7 +1274,19 @@ Notes:
 
 **Equipment** refers to item that can be equipped – worn, wielded,
 etc.  An item is equipment if its `equip_block` contains an Equip
-Block object, which specifies the parameters of the equipment:
+Block object, which specifies the parameters of the equipment.
+
+Standard SRD gear — the full SRD 5.2.1 weapon table (e.g. `longsword`,
+`greataxe`, `light_crossbow`), armor table (`leather_armor`,
+`chain_mail`, `plate_armor`, `shield`), and the four tiers of healing
+potion (`potion_of_healing` … `potion_of_supreme_healing`) — ships with
+the engine as a data pack (`mgmai/data/srd_5e/gear.json`) and needs no
+declaration: rooms, inventories, and character sheets can reference
+those IDs directly.  A corpus item entity with the same ID replaces the
+pack entry wholesale; the validator warns when it does.
+
+For custom (non-pack) equipment, the Equip Block specifies the
+parameters of the equipment:
 
 ```json
 {
@@ -1868,26 +1880,57 @@ definitions with distinct IDs (e.g. `poisoned` vs. `trap_poison`), so
 each ID has one unambiguous lifetime.
 
 `system_effects` maps a system key (`"5e"`) to that system's roll
-modifiers.  For 5e the recognized keys are `disadvantage_on_attack`
-(attacker side of an attack roll), `advantage_against` (target side of
-an attack roll), and `advantage_on_ability_checks` /
-`disadvantage_on_ability_checks` (ability checks, including skill
-checks and flee checks — but not saving throws, which are not ability
-checks in 5e).
+modifiers.  For 5e the recognized keys are:
+
+- `disadvantage_on_attack` / `advantage_on_attack` — attacker side of an
+  attack roll (e.g. `poisoned`, `invisible`).
+- `advantage_against` / `disadvantage_against` — target side of an
+  attack roll (e.g. `stunned`, `invisible`).
+- `advantage_on_ability_checks` / `disadvantage_on_ability_checks` —
+  ability checks, including skill checks and flee checks — but not
+  saving throws, which are not ability checks in 5e.
+- `auto_fail_str_dex_saves` — the afflicted combatant automatically
+  fails Strength and Dexterity saving throws, without a roll (e.g.
+  `paralyzed`, `stunned`).
+- `d20_test_modifier` — flat modifier (usually negative) applied to all
+  of the afflicted combatant's d20 rolls: attack rolls, ability checks,
+  and saving throws (e.g. the exhaustion levels).
 
 `tick_effect` is a [Result](#result) applied on each of the status
 effect's ticks, but only when the afflicted target is the player
 (`Result` has player-targeted damage/heal fields only); a
 `tick_effect` on an entity-afflicted status effect is ignored.
 
-Three **built-in defaults** are always present; a corpus entry with
-the same ID replaces the default wholesale (no field-level merge):
+The full SRD 5.2.1 condition list is built in as **defaults**, shipped
+with the engine as a data pack (`mgmai/data/srd_5e/conditions.json`); a
+corpus entry with the same ID replaces the default wholesale (no
+field-level merge), and the validator warns when it does:
 
-| ID        | Scope  | Duration           | skip_turn | 5e system effects |
-|-----------|--------|--------------------|-----------|-------------------|
-| `poisoned` | combat | `rounds`          | no        | `disadvantage_on_attack`, `disadvantage_on_ability_checks` |
-| `stunned`  | combat | `rounds`          | yes       | `advantage_against` |
-| `prone`    | combat | `until_turn_start` | no       | `disadvantage_on_attack`, `advantage_against` |
+| ID | Scope | Duration | skip_turn | 5e system effects |
+|----|-------|----------|-----------|-------------------|
+| `blinded` | combat | `rounds` | no | `advantage_against`, `disadvantage_on_attack` |
+| `charmed` | combat | `rounds` | no | — (GM-adjudicated) |
+| `deafened` | combat | `rounds` | no | — (GM-adjudicated) |
+| `frightened` | combat | `rounds` | no | `disadvantage_on_attack`, `disadvantage_on_ability_checks` |
+| `grappled` | combat | `rounds` | no | — (GM-adjudicated) |
+| `incapacitated` | combat | `rounds` | yes | — |
+| `invisible` | combat | `rounds` | no | `advantage_on_attack`, `disadvantage_against` |
+| `paralyzed` | combat | `rounds` | yes | `advantage_against`, `auto_fail_str_dex_saves` |
+| `petrified` | combat | `rounds` | yes | `advantage_against`, `auto_fail_str_dex_saves` |
+| `poisoned` | combat | `rounds` | no | `disadvantage_on_attack`, `disadvantage_on_ability_checks` |
+| `prone` | combat | `until_turn_start` | no | `disadvantage_on_attack`, `advantage_against` |
+| `restrained` | combat | `rounds` | no | `disadvantage_on_attack`, `advantage_against` |
+| `stunned` | combat | `rounds` | yes | `advantage_against`, `auto_fail_str_dex_saves` |
+| `unconscious` | combat | `rounds` | yes | `advantage_against`, `auto_fail_str_dex_saves` |
+| `exhaustion-1` … `exhaustion-6` | persistent | `until_cleared` | no | `d20_test_modifier` −2 × level |
+
+SRD exhaustion is leveled (1–6, −2 to d20 tests per level); since
+active status effects don't stack, each level is a distinct ID and
+raising/lowering exhaustion means applying the new level's ID (curing
+removes one level: remove the current ID and apply the next lower one).
+Rules the engine can't model (sight/hearing-gated checks, movement,
+charmer-specific behavior, petrified's damage resistance) are noted in
+each entry's `description` for the GM to adjudicate narratively.
 
 Applying a status effect the target already has sets its remaining rounds
 to the maximum of the existing and new values.  Applying an undefined

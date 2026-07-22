@@ -17,7 +17,7 @@
     "save_proficiencies": ["STR", "DEX"],
     "inventory": {
       "longsword": 1,
-      "health_potion": 2
+      "potion_of_healing": 2
     },
     "equipped": ["longsword"],
     "abilities": ["flame_strike"]

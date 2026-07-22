@@ -24,6 +24,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from mgmai.models.corpus import (
+    DEFAULT_GEAR,
     Entity,
     ModuleCorpus,
     RESERVED_ENTITY_STATE_FIELDS,
@@ -110,6 +111,7 @@ class StateManager:
         soft_path = adventure_dir / "soft-state.json"
 
         self.corpus = self.load_corpus(corpus_path)
+        self._materialize_pack_gear()
         self.soft_state = self.load_soft_state(soft_path)
 
         start_room = self._find_start_room()
@@ -135,6 +137,20 @@ class StateManager:
         self._validate_player_stats()
         self._init_player_combat_defaults()
         self._init_contains_from_corpus()
+
+    def _materialize_pack_gear(self) -> None:
+        """Mint item entities from the bundled gear data pack.
+
+        Every pack gear ID not defined by the corpus is added as an item
+        entity, so rooms, inventories, and character sheets can reference
+        SRD gear (``longsword``, ``potion_of_healing``, …) without
+        re-authoring it.  A corpus entity with the same ID wins wholesale
+        (overlay semantics; see ``ModuleCorpus.effective_gear``).
+        """
+        assert self.corpus is not None
+        for gear_id, template in DEFAULT_GEAR.items():
+            if gear_id not in self.corpus.entities:
+                self.corpus.entities[gear_id] = template.model_copy(deep=True)
 
     def _find_start_room(self) -> str:
         """Return the id of the unique room marked as the start room."""

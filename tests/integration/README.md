@@ -207,8 +207,9 @@ Each run costs 1 GM call + 1 judge call per scenario.
 Located at `tests/integration/fixtures/combat_arena/`, validated by a
 non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 
-- **Player** (level 2): longsword (1d8 slashing), 2 healing potions
-  (2d4+2), flame strike ability (2 uses/combat, 2d6 fire DEX save DC
+- **Player** (level 2): longsword (1d8 slashing), 2 potions of healing
+  (2d4+2) — both from the SRD data pack, not declared in the fixture —
+  flame strike ability (2 uses/combat, 2d6 fire DEX save DC
   13), HP 24, AC 14
 - **Korbar** (ally): warhammer (1d10+3 bludgeoning), HP 22, AC 16
 - **Goblin grunt**: HP 11, AC 13, rusty shortsword (1d6 slashing)
@@ -226,11 +227,13 @@ non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 Located at `tests/integration/fixtures/venom_pit/`, validated by a
 non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 
-- **Player** (level 3): longsword (1d8 slashing) equipped, war hammer
-  (1d6 bludgeoning) in inventory, 2 healing potions, 2 antidotes
+- **Player** (level 3): longsword (1d8 slashing) equipped, warhammer
+  (1d8 bludgeoning) in inventory, 2 potions of healing, 2 antidotes
   (cure `poisoned`), power strike ability (2 uses/combat, 2d6 slashing
   attack), healing hands ability (2 uses/combat, 2d4+2 heal on ally),
-  HP 28, AC 14; save proficiencies deliberately exclude CON
+  HP 28, AC 14; save proficiencies deliberately exclude CON.  The
+  longsword, warhammer, and potions come from the SRD data pack; the
+  antidote is a fixture-custom item
 - **Willa** (ally): short blade (1d6 slashing), HP 16, AC 12
 - **Pit viper**: HP 20, AC 12, bite (1d4 piercing) with a poison on-hit
   effect (CON save DC 13: 1d6 poison + `poisoned` 2 rounds on failure,
@@ -248,8 +251,8 @@ non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 Located at `tests/integration/fixtures/ambush_alley/`, validated by a
 non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 
-- **Player** (level 2): longsword (1d8 slashing), 2 healing potions,
-  HP 28, AC 14
+- **Player** (level 2): longsword (1d8 slashing), 2 potions of healing
+  — both from the SRD data pack — HP 28, AC 14
 - **Pack mule** (ally): `ai.passive` — joins combat on the player's
   side but never acts
 - **Cutpurse**: HP 10, AC 13, knife (1d4 piercing); declares a

@@ -61,7 +61,7 @@ from mgmai.engine.dialogue import (
 )
 from mgmai.engine.utils import get_following_npc_ids, get_status_effects, _is_stackable, _match_soft_content
 from mgmai.engine.status_effects import apply_status_effect
-from mgmai.engine.systems import get_system_for_corpus
+from mgmai.engine.systems import CheckResult, get_system_for_corpus
 
 MAX_THEN_CHECK_DEPTH = 3
 
@@ -1154,6 +1154,48 @@ def _stat_check_params(
     return params
 
 
+def _roll_stat_check(
+    check: StatCheck,
+    system: Any,
+    stat_value: int,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> CheckResult:
+    """Roll a StatCheck, honouring status-effect modifiers: the flat d20
+    modifier (5e: exhaustion) and, for saving throws, forced failure
+    without a roll (5e: ``auto_fail_str_dex_saves``, e.g. paralyzed)."""
+    status = get_status_effects("player", hard)
+    flat_modifier = (
+        check.modifier
+        + system.proficiency_bonus(check, hard.player)
+        + system.d20_test_modifier(status, corpus)
+    )
+    if check.save and system.save_auto_fail(check.stat, status, corpus):
+        computed_mod = system.compute_modifier(stat_value)
+        total_mod = computed_mod + flat_modifier
+        # raw_roll 0 marks a save that failed without a roll.
+        return CheckResult(
+            stat=check.stat,
+            target=check.target,
+            computed_mod=computed_mod,
+            flat_mod=flat_modifier,
+            modifier=total_mod,
+            raw_roll=0,
+            total=total_mod,
+            margin=total_mod - check.target,
+            success=False,
+            advantage=False,
+            disadvantage=False,
+        )
+    return system.roll_check(
+        check.stat,
+        stat_value,
+        check.target,
+        flat_modifier=flat_modifier,
+        params=_stat_check_params(check, system, hard, corpus),
+    )
+
+
 def _resolve_traversal_check(
     check: CheckType,
     hard: HardGameState,
@@ -1177,14 +1219,7 @@ def _resolve_traversal_check(
         if stat_value is None:
             return True
 
-        flat_modifier = check.modifier + system.proficiency_bonus(check, hard.player)
-        cr = system.roll_check(
-            check.stat,
-            stat_value,
-            check.target,
-            flat_modifier=flat_modifier,
-            params=_stat_check_params(check, system, hard, corpus),
-        )
+        cr = _roll_stat_check(check, system, stat_value, hard, corpus)
 
         roll_dict = cr.to_dict()
         roll_dict["source_id"] = source_id
@@ -1643,14 +1678,7 @@ def _resolve_checkable(
             if resolution is not None:
                 resolution.error = f"Player has no '{check.stat}' stat"
             return False
-        flat_modifier = check.modifier + system.proficiency_bonus(check, hard.player)
-        cr = system.roll_check(
-            check.stat,
-            stat_value,
-            check.target,
-            flat_modifier=flat_modifier,
-            params=_stat_check_params(check, system, hard, corpus),
-        )
+        cr = _roll_stat_check(check, system, stat_value, hard, corpus)
         success_flag = cr.success
         roll_dict: dict[str, Any] = {
             "source_id": source_id or "",

@@ -773,11 +773,18 @@ def _resolve_save_ability(
     target died."""
     system = get_system_for_corpus(corpus)
     save = ability.save
-    if target_id == "player":
+    target_effects = get_status_effects(target_id, hard)
+    if system.save_auto_fail(save.stat, target_effects, corpus):
+        # e.g. paralyzed: STR/DEX saves fail without a roll.
+        save_success = False
+        save_roll, save_total = None, None
+    elif target_id == "player":
         stat_value = (
             hard.player.stats.get(save.stat, 10) if hard.player.stats else 10
         )
-        flat = system.compute_save_modifier(save.stat, hard.player)
+        flat = system.compute_save_modifier(
+            save.stat, hard.player
+        ) + system.d20_test_modifier(target_effects, corpus)
         check = system.roll_check(
             save.stat, stat_value, save.dc, flat_modifier=flat
         )
@@ -791,7 +798,9 @@ def _resolve_save_ability(
             else 0
         )
         save_roll = system.roll_die(20)
-        save_total = save_roll + save_bonus
+        save_total = (
+            save_roll + save_bonus + system.d20_test_modifier(target_effects, corpus)
+        )
         save_success = save_total >= save.dc
 
     damage = 0

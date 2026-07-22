@@ -406,21 +406,26 @@ class TestIntegrationFixtureSmoke:
         assert sm.hard_state.player.location == "arena"
         assert sm.hard_state.player.current_hp == 24
         assert sm.hard_state.player.max_hp == 24
-        assert sm.hard_state.player.inventory.get("health_potion") == 2
+        assert sm.hard_state.player.inventory.get("potion_of_healing") == 2
         assert "flame_strike" in sm.hard_state.player.abilities
+
+        # The player's longsword and potions come from the SRD data pack
+        # (not declared in the fixture corpus).
+        assert sm.corpus.entities["longsword"].equip_block.damage_expr == "1d8"
+        assert sm.corpus.entities["potion_of_healing"].consumable.heal == "2d4+2"
 
         # Four enemies and one ally are defined.
         assert "goblin_grunt" in sm.corpus.entities
         assert "goblin_runner" in sm.corpus.entities
         assert "goblin_shaman" in sm.corpus.entities
         assert "bugbear" in sm.corpus.entities
-        assert "gargan" in sm.corpus.entities
+        assert "korbar" in sm.corpus.entities
 
-        # Gargan is a follower with HP 22 and alive.
-        gargan_state = sm.hard_state.entity_states.get("gargan", {})
-        assert gargan_state.get("alive") is True
-        assert gargan_state.get("following") is True
-        assert gargan_state.get("current_hp") == 22
+        # Korbar is a follower with HP 22 and alive.
+        korbar_state = sm.hard_state.entity_states.get("korbar", {})
+        assert korbar_state.get("alive") is True
+        assert korbar_state.get("following") is True
+        assert korbar_state.get("current_hp") == 22
 
         # Bugbear has piercing resistance, fire vulnerability.
         bugbear = sm.corpus.entities["bugbear"]
@@ -455,10 +460,16 @@ class TestIntegrationFixtureSmoke:
         assert sm.hard_state.player.current_hp == 28
         assert sm.hard_state.player.max_hp == 28
         assert sm.hard_state.player.inventory.get("antidote") == 2
-        assert sm.hard_state.player.inventory.get("war_hammer") == 1
+        assert sm.hard_state.player.inventory.get("warhammer") == 1
         assert sm.hard_state.player.equipped == ["longsword"]
         assert "power_strike" in sm.hard_state.player.abilities
         assert "healing_hands" in sm.hard_state.player.abilities
+
+        # The player's weapons and healing potions come from the SRD
+        # data pack (not declared in the fixture corpus).
+        assert sm.corpus.entities["longsword"].equip_block.damage_expr == "1d8"
+        assert sm.corpus.entities["warhammer"].equip_block.damage_type == "bludgeoning"
+        assert sm.hard_state.player.inventory.get("potion_of_healing") == 2
 
         # Viper has a poison on-hit effect.
         viper = sm.corpus.entities["pit_viper"]

@@ -40,6 +40,41 @@ The player can then equip it via the LLM ("I draw the sword") and unequip it ("I
 
 ---
 
+## SRD Data Pack
+
+The full SRD 5.2.1 weapon and armor tables, plus the four tiers of
+healing potion, ship with the engine as a data pack
+(`mgmai/data/srd_5e/gear.json`).  At load time every pack item is
+minted as an item entity, so rooms, inventories, and character sheets
+can reference pack IDs — `longsword`, `plate_armor`, `shield`,
+`potion_of_healing`, … — without declaring them:
+
+```json
+"inventory": { "longsword": 1, "potion_of_healing": 2 },
+"equipped": ["longsword"]
+```
+
+A corpus item entity with the same ID replaces the pack entry wholesale
+(no field-level merge); the validator warns when an adventure does
+this.  Unknown item IDs remain load-time validation errors.
+
+Pack conventions:
+
+- **Weapons** — `damage_expr` is the one-handed die (versatile
+  two-handed dice are not modeled); `properties` carries the SRD
+  property list, of which the engine acts on `finesse` and `ranged`
+  (thrown/ammunition/loading/reach are data only).  Two-handed weapons
+  use the `two_handed` equip tag and conflict with `shield`.
+- **Armor** — light armor is `ac_bonus` (+1/+1/+2, exact for
+  `N + DEX`); medium armor is `ac_bonus` (+2…+5, the SRD `max 2` Dex
+  cap is **not** modeled); heavy armor is a flat `ac_override`
+  (14/16/17/18); `shield` is `ac_bonus` +2.  Strength requirements and
+  Stealth disadvantage are noted in descriptions for GM adjudication.
+- **Potions** — `potion_of_healing` (2d4+2) through
+  `potion_of_supreme_healing` (10d4+20) as `consumable` items.
+
+---
+
 ## Data Model: `EquipBlock`
 
 The `EquipBlock` object sits on item-type entities in `corpus.json`.  Items

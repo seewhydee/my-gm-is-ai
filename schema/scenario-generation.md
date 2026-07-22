@@ -965,6 +965,14 @@ in your task report.  Note that `equip_block.equip_tags` drive the
 equipment system (what can be equipped, damage expressions, AC, etc.),
 and are *not* the same as semantic tags.
 
+**Standard SRD gear must not be re-authored.**  The engine's SRD data
+pack (`mgmai/data/srd_5e/gear.json`) already defines the full weapon
+and armor tables and standard healing potions — reference pack IDs
+(`longsword`, `chain_shirt`, `potion_of_healing`, …) in rooms,
+inventories, and character sheets without declaring an entity.  Only
+declare an item entity for custom or renamed gear, or to deliberately
+override a pack entry (which the validator will warn about).
+
 If a mechanic or reaction is used to gate the player picking up the
 item (e.g., STR check to pull a sword from a stone), use `take_check`
 on the item entity.  The engine resolves that check when the player
@@ -1753,10 +1761,12 @@ Rules:
 
 ### 4E. Status Effects block (if applicable)
 
-If the scenario applies status effects beyond the three built-in
-defaults (`poisoned`, `stunned`, `prone`) — a trap that poisons the
-player outside combat, a fear aura, a curse — declare each one in the
-top-level `status_effects` block (see
+If the scenario applies status effects beyond the built-in SRD
+condition list (`poisoned`, `stunned`, `prone`, `blinded`, `invisible`,
+`exhaustion-1`…`exhaustion-6`, … — see
+[corpus.md — Status Effects](corpus.md#status-effects)) — a trap that
+poisons the player outside combat, a fear aura, a curse — declare each
+one in the top-level `status_effects` block (see
 [corpus.md — Status Effects](corpus.md#status-effects)):
 
 ```json
@@ -1801,7 +1811,8 @@ Rules:
       exist in rooms/entities
 - [ ] Every status effect ID referenced by `apply_status_effect` or
       `cure_status_effects` is declared in the `status_effects` block or is a
-      built-in default (`poisoned`, `stunned`, `prone`); status effects
+      built-in SRD condition (`poisoned`, `stunned`, `blinded`,
+      `exhaustion-1`, …); status effects
       needed both in and out of combat use distinct IDs per scope
 - [ ] Mechanic `reactions` use valid event types (see
       [`events.md`](events.md)) and effect fields

@@ -16,8 +16,8 @@
     "proficiency_bonus": 2,
     "save_proficiencies": ["STR", "DEX"],
     "inventory": {
-      "war_hammer": 1,
-      "health_potion": 2,
+      "warhammer": 1,
+      "potion_of_healing": 2,
       "antidote": 2
     },
     "equipped": ["longsword"],

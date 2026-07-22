@@ -1,0 +1,638 @@
+{
+  "club": {
+    "type": "item",
+    "name": "Club",
+    "description": "Simple melee weapon, 1d4 bludgeoning, light. A stout length of wood.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d4",
+      "damage_type": "bludgeoning",
+      "properties": ["light"]
+    }
+  },
+  "dagger": {
+    "type": "item",
+    "name": "Dagger",
+    "description": "Simple melee weapon, 1d4 piercing, finesse, light, thrown (range 20/60).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d4",
+      "damage_type": "piercing",
+      "properties": ["finesse", "light", "thrown"]
+    }
+  },
+  "greatclub": {
+    "type": "item",
+    "name": "Greatclub",
+    "description": "Simple melee weapon, 1d8 bludgeoning, two-handed. An oversize club.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d8",
+      "damage_type": "bludgeoning",
+      "properties": ["two-handed"]
+    }
+  },
+  "handaxe": {
+    "type": "item",
+    "name": "Handaxe",
+    "description": "Simple melee weapon, 1d6 slashing, light, thrown (range 20/60).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d6",
+      "damage_type": "slashing",
+      "properties": ["light", "thrown"]
+    }
+  },
+  "javelin": {
+    "type": "item",
+    "name": "Javelin",
+    "description": "Simple melee weapon, 1d6 piercing, thrown (range 30/120).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d6",
+      "damage_type": "piercing",
+      "properties": ["thrown"]
+    }
+  },
+  "light_hammer": {
+    "type": "item",
+    "name": "Light Hammer",
+    "description": "Simple melee weapon, 1d4 bludgeoning, light, thrown (range 20/60).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d4",
+      "damage_type": "bludgeoning",
+      "properties": ["light", "thrown"]
+    }
+  },
+  "mace": {
+    "type": "item",
+    "name": "Mace",
+    "description": "Simple melee weapon, 1d6 bludgeoning. A flanged metal head on a haft.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d6",
+      "damage_type": "bludgeoning"
+    }
+  },
+  "quarterstaff": {
+    "type": "item",
+    "name": "Quarterstaff",
+    "description": "Simple melee weapon, 1d6 bludgeoning, versatile (1d8 two-handed — the engine always rolls the one-handed die).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d6",
+      "damage_type": "bludgeoning",
+      "properties": ["versatile"]
+    }
+  },
+  "sickle": {
+    "type": "item",
+    "name": "Sickle",
+    "description": "Simple melee weapon, 1d4 slashing, light. A reaping tool with a curved blade.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d4",
+      "damage_type": "slashing",
+      "properties": ["light"]
+    }
+  },
+  "spear": {
+    "type": "item",
+    "name": "Spear",
+    "description": "Simple melee weapon, 1d6 piercing, thrown (range 20/60), versatile (1d8 two-handed — the engine always rolls the one-handed die).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d6",
+      "damage_type": "piercing",
+      "properties": ["thrown", "versatile"]
+    }
+  },
+  "light_crossbow": {
+    "type": "item",
+    "name": "Light Crossbow",
+    "description": "Simple ranged weapon, 1d8 piercing, ammunition (range 80/320; bolt), loading, two-handed. Range and loading are not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d8",
+      "damage_type": "piercing",
+      "properties": ["ranged", "ammunition", "loading", "two-handed"]
+    }
+  },
+  "dart": {
+    "type": "item",
+    "name": "Dart",
+    "description": "Simple ranged weapon, 1d4 piercing, finesse, thrown (range 20/60).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d4",
+      "damage_type": "piercing",
+      "properties": ["finesse", "thrown"]
+    }
+  },
+  "shortbow": {
+    "type": "item",
+    "name": "Shortbow",
+    "description": "Simple ranged weapon, 1d6 piercing, ammunition (range 80/320; arrow), two-handed. Range is not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d6",
+      "damage_type": "piercing",
+      "properties": ["ranged", "ammunition", "two-handed"]
+    }
+  },
+  "sling": {
+    "type": "item",
+    "name": "Sling",
+    "description": "Simple ranged weapon, 1d4 bludgeoning, ammunition (range 30/120; bullet). Range is not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d4",
+      "damage_type": "bludgeoning",
+      "properties": ["ranged", "ammunition"]
+    }
+  },
+  "battleaxe": {
+    "type": "item",
+    "name": "Battleaxe",
+    "description": "Martial melee weapon, 1d8 slashing, versatile (1d10 two-handed — the engine always rolls the one-handed die).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d8",
+      "damage_type": "slashing",
+      "properties": ["versatile"]
+    }
+  },
+  "flail": {
+    "type": "item",
+    "name": "Flail",
+    "description": "Martial melee weapon, 1d8 bludgeoning. A spiked ball on a chain.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d8",
+      "damage_type": "bludgeoning"
+    }
+  },
+  "glaive": {
+    "type": "item",
+    "name": "Glaive",
+    "description": "Martial melee weapon, 1d10 slashing, heavy, reach, two-handed. Reach is not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d10",
+      "damage_type": "slashing",
+      "properties": ["heavy", "reach", "two-handed"]
+    }
+  },
+  "greataxe": {
+    "type": "item",
+    "name": "Greataxe",
+    "description": "Martial melee weapon, 1d12 slashing, heavy, two-handed.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d12",
+      "damage_type": "slashing",
+      "properties": ["heavy", "two-handed"]
+    }
+  },
+  "greatsword": {
+    "type": "item",
+    "name": "Greatsword",
+    "description": "Martial melee weapon, 2d6 slashing, heavy, two-handed.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "2d6",
+      "damage_type": "slashing",
+      "properties": ["heavy", "two-handed"]
+    }
+  },
+  "halberd": {
+    "type": "item",
+    "name": "Halberd",
+    "description": "Martial melee weapon, 1d10 slashing, heavy, reach, two-handed. Reach is not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d10",
+      "damage_type": "slashing",
+      "properties": ["heavy", "reach", "two-handed"]
+    }
+  },
+  "lance": {
+    "type": "item",
+    "name": "Lance",
+    "description": "Martial melee weapon, 1d10 piercing, heavy, reach, two-handed (unless mounted). Reach and mounted use are not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d10",
+      "damage_type": "piercing",
+      "properties": ["heavy", "reach", "two-handed"]
+    }
+  },
+  "longsword": {
+    "type": "item",
+    "name": "Longsword",
+    "description": "Martial melee weapon, 1d8 slashing, versatile (1d10 two-handed — the engine always rolls the one-handed die). A classic straight, double-edged blade.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d8",
+      "damage_type": "slashing",
+      "properties": ["versatile"]
+    }
+  },
+  "maul": {
+    "type": "item",
+    "name": "Maul",
+    "description": "Martial melee weapon, 2d6 bludgeoning, heavy, two-handed. A massive two-handed hammer.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "2d6",
+      "damage_type": "bludgeoning",
+      "properties": ["heavy", "two-handed"]
+    }
+  },
+  "morningstar": {
+    "type": "item",
+    "name": "Morningstar",
+    "description": "Martial melee weapon, 1d8 piercing. A spiked steel ball on a haft.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d8",
+      "damage_type": "piercing"
+    }
+  },
+  "pike": {
+    "type": "item",
+    "name": "Pike",
+    "description": "Martial melee weapon, 1d10 piercing, heavy, reach, two-handed. Reach is not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d10",
+      "damage_type": "piercing",
+      "properties": ["heavy", "reach", "two-handed"]
+    }
+  },
+  "rapier": {
+    "type": "item",
+    "name": "Rapier",
+    "description": "Martial melee weapon, 1d8 piercing, finesse. A slender, sharply pointed dueling blade.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d8",
+      "damage_type": "piercing",
+      "properties": ["finesse"]
+    }
+  },
+  "scimitar": {
+    "type": "item",
+    "name": "Scimitar",
+    "description": "Martial melee weapon, 1d6 slashing, finesse, light. A curved single-edged blade.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d6",
+      "damage_type": "slashing",
+      "properties": ["finesse", "light"]
+    }
+  },
+  "shortsword": {
+    "type": "item",
+    "name": "Shortsword",
+    "description": "Martial melee weapon, 1d6 piercing, finesse, light.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d6",
+      "damage_type": "piercing",
+      "properties": ["finesse", "light"]
+    }
+  },
+  "trident": {
+    "type": "item",
+    "name": "Trident",
+    "description": "Martial melee weapon, 1d8 piercing, thrown (range 20/60), versatile (1d10 two-handed — the engine always rolls the one-handed die).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d8",
+      "damage_type": "piercing",
+      "properties": ["thrown", "versatile"]
+    }
+  },
+  "war_pick": {
+    "type": "item",
+    "name": "War Pick",
+    "description": "Martial melee weapon, 1d8 piercing, versatile (1d10 two-handed — the engine always rolls the one-handed die).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d8",
+      "damage_type": "piercing",
+      "properties": ["versatile"]
+    }
+  },
+  "warhammer": {
+    "type": "item",
+    "name": "Warhammer",
+    "description": "Martial melee weapon, 1d8 bludgeoning, versatile (1d10 two-handed — the engine always rolls the one-handed die).",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d8",
+      "damage_type": "bludgeoning",
+      "properties": ["versatile"]
+    }
+  },
+  "whip": {
+    "type": "item",
+    "name": "Whip",
+    "description": "Martial melee weapon, 1d4 slashing, finesse, reach. Reach is not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d4",
+      "damage_type": "slashing",
+      "properties": ["finesse", "reach"]
+    }
+  },
+  "blowgun": {
+    "type": "item",
+    "name": "Blowgun",
+    "description": "Martial ranged weapon, 1 piercing, ammunition (range 25/100; needle), loading. Range and loading are not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1",
+      "damage_type": "piercing",
+      "properties": ["ranged", "ammunition", "loading"]
+    }
+  },
+  "hand_crossbow": {
+    "type": "item",
+    "name": "Hand Crossbow",
+    "description": "Martial ranged weapon, 1d6 piercing, ammunition (range 30/120; bolt), light, loading. Range and loading are not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d6",
+      "damage_type": "piercing",
+      "properties": ["ranged", "ammunition", "light", "loading"]
+    }
+  },
+  "heavy_crossbow": {
+    "type": "item",
+    "name": "Heavy Crossbow",
+    "description": "Martial ranged weapon, 1d10 piercing, ammunition (range 100/400; bolt), heavy, loading, two-handed. Range and loading are not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d10",
+      "damage_type": "piercing",
+      "properties": ["ranged", "ammunition", "heavy", "loading", "two-handed"]
+    }
+  },
+  "longbow": {
+    "type": "item",
+    "name": "Longbow",
+    "description": "Martial ranged weapon, 1d8 piercing, ammunition (range 150/600; arrow), heavy, two-handed. Range is not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d8",
+      "damage_type": "piercing",
+      "properties": ["ranged", "ammunition", "heavy", "two-handed"]
+    }
+  },
+  "musket": {
+    "type": "item",
+    "name": "Musket",
+    "description": "Martial ranged weapon, 1d12 piercing, ammunition (range 40/120; bullet), loading, two-handed. Range and loading are not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon", "two_handed"],
+      "incompatible_with": ["shield", "handwear"],
+      "damage_expr": "1d12",
+      "damage_type": "piercing",
+      "properties": ["ranged", "ammunition", "loading", "two-handed"]
+    }
+  },
+  "pistol": {
+    "type": "item",
+    "name": "Pistol",
+    "description": "Martial ranged weapon, 1d10 piercing, ammunition (range 30/90; bullet), loading. Range and loading are not modeled.",
+    "tags": ["weapon"],
+    "equip_block": {
+      "equip_tags": ["weapon"],
+      "damage_expr": "1d10",
+      "damage_type": "piercing",
+      "properties": ["ranged", "ammunition", "loading"]
+    }
+  },
+  "padded_armor": {
+    "type": "item",
+    "name": "Padded Armor",
+    "description": "Light armor, AC 11 + Dex modifier (modeled as +1 over the 10+DEX base). SRD: disadvantage on Dexterity (Stealth) checks (GM-adjudicated).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "light"],
+      "ac_bonus": 1
+    }
+  },
+  "leather_armor": {
+    "type": "item",
+    "name": "Leather Armor",
+    "description": "Light armor, AC 11 + Dex modifier (modeled as +1 over the 10+DEX base).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "light"],
+      "ac_bonus": 1
+    }
+  },
+  "studded_leather_armor": {
+    "type": "item",
+    "name": "Studded Leather Armor",
+    "description": "Light armor, AC 12 + Dex modifier (modeled as +2 over the 10+DEX base).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "light"],
+      "ac_bonus": 2
+    }
+  },
+  "hide_armor": {
+    "type": "item",
+    "name": "Hide Armor",
+    "description": "Medium armor, AC 12 + Dex modifier (max 2); modeled as +2 over the uncapped 10+DEX base — the Dex cap is not modeled.",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "medium"],
+      "ac_bonus": 2
+    }
+  },
+  "chain_shirt": {
+    "type": "item",
+    "name": "Chain Shirt",
+    "description": "Medium armor, AC 13 + Dex modifier (max 2); modeled as +3 over the uncapped 10+DEX base — the Dex cap is not modeled.",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "medium"],
+      "ac_bonus": 3
+    }
+  },
+  "scale_mail": {
+    "type": "item",
+    "name": "Scale Mail",
+    "description": "Medium armor, AC 14 + Dex modifier (max 2); modeled as +4 over the uncapped 10+DEX base — the Dex cap is not modeled. SRD: disadvantage on Stealth checks (GM-adjudicated).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "medium"],
+      "ac_bonus": 4
+    }
+  },
+  "breastplate": {
+    "type": "item",
+    "name": "Breastplate",
+    "description": "Medium armor, AC 14 + Dex modifier (max 2); modeled as +4 over the uncapped 10+DEX base — the Dex cap is not modeled.",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "medium"],
+      "ac_bonus": 4
+    }
+  },
+  "half_plate_armor": {
+    "type": "item",
+    "name": "Half Plate Armor",
+    "description": "Medium armor, AC 15 + Dex modifier (max 2); modeled as +5 over the uncapped 10+DEX base — the Dex cap is not modeled. SRD: disadvantage on Stealth checks (GM-adjudicated).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "medium"],
+      "ac_bonus": 5
+    }
+  },
+  "ring_mail": {
+    "type": "item",
+    "name": "Ring Mail",
+    "description": "Heavy armor, AC 14 (no Dex modifier). SRD: disadvantage on Stealth checks (GM-adjudicated).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "heavy"],
+      "ac_override": 14
+    }
+  },
+  "chain_mail": {
+    "type": "item",
+    "name": "Chain Mail",
+    "description": "Heavy armor, AC 16 (no Dex modifier). SRD: requires Str 13 and gives disadvantage on Stealth checks (GM-adjudicated).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "heavy"],
+      "ac_override": 16
+    }
+  },
+  "splint_armor": {
+    "type": "item",
+    "name": "Splint Armor",
+    "description": "Heavy armor, AC 17 (no Dex modifier). SRD: requires Str 15 and gives disadvantage on Stealth checks (GM-adjudicated).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "heavy"],
+      "ac_override": 17
+    }
+  },
+  "plate_armor": {
+    "type": "item",
+    "name": "Plate Armor",
+    "description": "Heavy armor, AC 18 (no Dex modifier). SRD: requires Str 15 and gives disadvantage on Stealth checks (GM-adjudicated).",
+    "tags": ["armor"],
+    "equip_block": {
+      "equip_tags": ["armor", "heavy"],
+      "ac_override": 18
+    }
+  },
+  "shield": {
+    "type": "item",
+    "name": "Shield",
+    "description": "Shield, +2 AC while wielded. Occupies one hand (two-handed weapons conflict with it).",
+    "tags": ["shield"],
+    "equip_block": {
+      "equip_tags": ["shield"],
+      "ac_bonus": 2
+    }
+  },
+  "potion_of_healing": {
+    "type": "item",
+    "name": "Potion of Healing",
+    "description": "A small vial of red liquid that glimmers when agitated. Drinking it restores 2d4+2 hit points.",
+    "tags": ["potion"],
+    "consumable": {
+      "heal": "2d4+2",
+      "destroy": true
+    }
+  },
+  "potion_of_greater_healing": {
+    "type": "item",
+    "name": "Potion of Greater Healing",
+    "description": "A vial of bright red liquid. Drinking it restores 4d4+4 hit points.",
+    "tags": ["potion"],
+    "consumable": {
+      "heal": "4d4+4",
+      "destroy": true
+    }
+  },
+  "potion_of_superior_healing": {
+    "type": "item",
+    "name": "Potion of Superior Healing",
+    "description": "A vial of vivid red liquid. Drinking it restores 8d4+8 hit points.",
+    "tags": ["potion"],
+    "consumable": {
+      "heal": "8d4+8",
+      "destroy": true
+    }
+  },
+  "potion_of_supreme_healing": {
+    "type": "item",
+    "name": "Potion of Supreme Healing",
+    "description": "A vial of brilliant red liquid. Drinking it restores 10d4+20 hit points.",
+    "tags": ["potion"],
+    "consumable": {
+      "heal": "10d4+20",
+      "destroy": true
+    }
+  }
+}

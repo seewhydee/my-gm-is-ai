@@ -8,7 +8,7 @@
     "corridor": {"visited": false}
   },
   "entity_states": {
-    "gargan": {
+    "korbar": {
       "alive": true,
       "following": true,
       "attitude": 5,

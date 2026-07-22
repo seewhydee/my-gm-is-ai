@@ -342,8 +342,8 @@ def test_immunity_weapon_swap(
         )
         player_final = (result.final_status or {}).get("player", {})
         equipped = player_final.get("equipped", [])
-        assert "war_hammer" in equipped and "longsword" not in equipped, (
-            f"Expected war_hammer equipped after the swap, got {equipped}; "
+        assert "warhammer" in equipped and "longsword" not in equipped, (
+            f"Expected warhammer equipped after the swap, got {equipped}; "
             f"see artifact: {result.artifacts_path}"
         )
 

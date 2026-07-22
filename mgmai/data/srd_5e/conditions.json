@@ -1,0 +1,178 @@
+{
+  "blinded": {
+    "name": "Blinded",
+    "description": "Can't see; automatically fails ability checks that require sight. Attack rolls against it have advantage, and its own attack rolls have disadvantage.",
+    "system_effects": {
+      "5e": {
+        "advantage_against": true,
+        "disadvantage_on_attack": true
+      }
+    }
+  },
+  "charmed": {
+    "name": "Charmed",
+    "description": "Can't attack the charmer or target the charmer with harmful abilities or magical effects; the charmer has advantage on social ability checks with it. (Adjudicated by the GM; no roll modifiers.)"
+  },
+  "deafened": {
+    "name": "Deafened",
+    "description": "Can't hear; automatically fails ability checks that require hearing. (Adjudicated by the GM; no roll modifiers.)"
+  },
+  "frightened": {
+    "name": "Frightened",
+    "description": "Disadvantage on ability checks and attack rolls while the source of its fear is within line of sight; can't willingly move closer to the source.",
+    "system_effects": {
+      "5e": {
+        "disadvantage_on_attack": true,
+        "disadvantage_on_ability_checks": true
+      }
+    }
+  },
+  "grappled": {
+    "name": "Grappled",
+    "description": "Speed 0; ends when the grappler is incapacitated or the target is removed from the grappler's reach. (No movement model; adjudicated by the GM.)"
+  },
+  "incapacitated": {
+    "name": "Incapacitated",
+    "description": "Can't take actions, bonus actions, or reactions; loses its turns.",
+    "skip_turn": true
+  },
+  "invisible": {
+    "name": "Invisible",
+    "description": "Can't be seen without special sense; its attack rolls have advantage, and attack rolls against it have disadvantage.",
+    "system_effects": {
+      "5e": {
+        "advantage_on_attack": true,
+        "disadvantage_against": true
+      }
+    }
+  },
+  "paralyzed": {
+    "name": "Paralyzed",
+    "description": "Incapacitated and can't move or speak; loses its turns. Automatically fails Strength and Dexterity saving throws. Attack rolls against it have advantage (a hit from within 5 ft. is a critical hit — no positioning model, adjudicated by the GM).",
+    "skip_turn": true,
+    "system_effects": {
+      "5e": {
+        "advantage_against": true,
+        "auto_fail_str_dex_saves": true
+      }
+    }
+  },
+  "petrified": {
+    "name": "Petrified",
+    "description": "Transformed to stone: incapacitated, can't move or speak, unaware of its surroundings; loses its turns. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage; resistant to all damage and immune to poison (damage resistance not modeled per-effect — adjudicated by the GM).",
+    "skip_turn": true,
+    "system_effects": {
+      "5e": {
+        "advantage_against": true,
+        "auto_fail_str_dex_saves": true
+      }
+    }
+  },
+  "poisoned": {
+    "name": "Poisoned",
+    "description": "Disadvantage on attack rolls and ability checks.",
+    "system_effects": {
+      "5e": {
+        "disadvantage_on_attack": true,
+        "disadvantage_on_ability_checks": true
+      }
+    }
+  },
+  "prone": {
+    "name": "Prone",
+    "description": "Disadvantage on attack rolls; attacks against have advantage; auto-stands at turn start. (SRD: attackers have advantage within 5 ft., disadvantage from farther away — no positioning model, so advantage applies flatly.)",
+    "duration": "until_turn_start",
+    "system_effects": {
+      "5e": {
+        "disadvantage_on_attack": true,
+        "advantage_against": true
+      }
+    }
+  },
+  "restrained": {
+    "name": "Restrained",
+    "description": "Speed 0. Attack rolls against it have advantage, and its own attack rolls and Dexterity saving throws have disadvantage. (DEX-save disadvantage not modeled; adjudicated by the GM.)",
+    "system_effects": {
+      "5e": {
+        "disadvantage_on_attack": true,
+        "advantage_against": true
+      }
+    }
+  },
+  "stunned": {
+    "name": "Stunned",
+    "description": "Incapacitated, can't move, speaks only falteringly; loses its turns. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage.",
+    "skip_turn": true,
+    "system_effects": {
+      "5e": {
+        "advantage_against": true,
+        "auto_fail_str_dex_saves": true
+      }
+    }
+  },
+  "unconscious": {
+    "name": "Unconscious",
+    "description": "Incapacitated, prone, can't move or speak, unaware of its surroundings; loses its turns and drops what it's holding. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage (a hit from within 5 ft. is a critical hit — adjudicated by the GM).",
+    "skip_turn": true,
+    "system_effects": {
+      "5e": {
+        "advantage_against": true,
+        "auto_fail_str_dex_saves": true
+      }
+    }
+  },
+  "exhaustion-1": {
+    "name": "Exhaustion (Level 1)",
+    "description": "Exhaustion level 1: -2 on all d20 tests (attack rolls, ability checks, saving throws). SRD: speed also reduced; death at level 6 (adjudicated by the GM).",
+    "scope": "persistent",
+    "duration": "until_cleared",
+    "system_effects": {
+      "5e": { "d20_test_modifier": -2 }
+    }
+  },
+  "exhaustion-2": {
+    "name": "Exhaustion (Level 2)",
+    "description": "Exhaustion level 2: -4 on all d20 tests. SRD: speed also reduced; death at level 6 (adjudicated by the GM).",
+    "scope": "persistent",
+    "duration": "until_cleared",
+    "system_effects": {
+      "5e": { "d20_test_modifier": -4 }
+    }
+  },
+  "exhaustion-3": {
+    "name": "Exhaustion (Level 3)",
+    "description": "Exhaustion level 3: -6 on all d20 tests. SRD: speed also reduced; death at level 6 (adjudicated by the GM).",
+    "scope": "persistent",
+    "duration": "until_cleared",
+    "system_effects": {
+      "5e": { "d20_test_modifier": -6 }
+    }
+  },
+  "exhaustion-4": {
+    "name": "Exhaustion (Level 4)",
+    "description": "Exhaustion level 4: -8 on all d20 tests. SRD: speed also reduced; death at level 6 (adjudicated by the GM).",
+    "scope": "persistent",
+    "duration": "until_cleared",
+    "system_effects": {
+      "5e": { "d20_test_modifier": -8 }
+    }
+  },
+  "exhaustion-5": {
+    "name": "Exhaustion (Level 5)",
+    "description": "Exhaustion level 5: -10 on all d20 tests. SRD: speed also reduced; death at level 6 (adjudicated by the GM).",
+    "scope": "persistent",
+    "duration": "until_cleared",
+    "system_effects": {
+      "5e": { "d20_test_modifier": -10 }
+    }
+  },
+  "exhaustion-6": {
+    "name": "Exhaustion (Level 6)",
+    "description": "Exhaustion level 6: -12 on all d20 tests. SRD: a creature dies at exhaustion level 6 (adjudicated by the GM).",
+    "scope": "persistent",
+    "duration": "until_cleared",
+    "system_effects": {
+      "5e": { "d20_test_modifier": -12 }
+    }
+  }
+}

@@ -290,10 +290,12 @@ class FiveESystem(ResolutionSystem):
     ) -> tuple[bool, bool]:
         """(advantage, disadvantage) from status-effect system effects (5e):
 
-        - attacker side ORs ``disadvantage_on_attack`` over the attacker's
-          status effects
-        - target side ORs ``advantage_against`` over the target's
-          status effects
+        - advantage: ``advantage_against`` ORed over the target's status
+          effects (e.g. stunned), or ``advantage_on_attack`` ORed over the
+          attacker's (e.g. invisible)
+        - disadvantage: ``disadvantage_on_attack`` ORed over the attacker's
+          status effects (e.g. poisoned), or ``disadvantage_against`` ORed
+          over the target's (e.g. invisible)
         """
         effect_defs = corpus.effective_status_effects()
 
@@ -304,13 +306,44 @@ class FiveESystem(ResolutionSystem):
                 if c in effect_defs
             ]
 
-        advantage = any(
-            e.get("advantage_against") for e in _effects(target_status_effects)
+        attacker_effects = _effects(attacker_status_effects)
+        target_effects = _effects(target_status_effects)
+        advantage = any(e.get("advantage_against") for e in target_effects) or any(
+            e.get("advantage_on_attack") for e in attacker_effects
         )
         disadvantage = any(
-            e.get("disadvantage_on_attack") for e in _effects(attacker_status_effects)
-        )
+            e.get("disadvantage_on_attack") for e in attacker_effects
+        ) or any(e.get("disadvantage_against") for e in target_effects)
         return advantage, disadvantage
+
+    def d20_test_modifier(
+        self, status_effects: dict, corpus: ModuleCorpus
+    ) -> int:
+        """Flat d20 modifier from the roller's status effects (5e): sums the
+        ``d20_test_modifier`` keys of the roller's active effects (the
+        exhaustion conditions).  Applies to every d20 test — attack rolls,
+        ability checks, and saving throws."""
+        effect_defs = corpus.effective_status_effects()
+        return sum(
+            effect_defs[c].system_effects.get("5e", {}).get("d20_test_modifier", 0)
+            for c in status_effects
+            if c in effect_defs
+        )
+
+    def save_auto_fail(
+        self, stat: str, status_effects: dict, corpus: ModuleCorpus
+    ) -> bool:
+        """5e: ``auto_fail_str_dex_saves`` (paralyzed, petrified, stunned,
+        unconscious) forces STR and DEX saving throws to fail without a
+        roll."""
+        if stat.upper() not in ("STR", "DEX"):
+            return False
+        effect_defs = corpus.effective_status_effects()
+        return any(
+            effect_defs[c].system_effects.get("5e", {}).get("auto_fail_str_dex_saves")
+            for c in status_effects
+            if c in effect_defs
+        )
 
     def check_roll_mods(
         self, is_save: bool, status_effects: dict, corpus: ModuleCorpus
@@ -390,11 +423,14 @@ class FiveESystem(ResolutionSystem):
             raise ValueError(f"Invalid combat target '{target_id}'")
 
         atk_bonus = self.compute_player_attack_bonus(hard, corpus)
+        player_effects = get_status_effects("player", hard)
         adv, disadv = self.attack_roll_mods(
-            get_status_effects("player", hard), get_status_effects(target_id, hard), corpus
+            player_effects, get_status_effects(target_id, hard), corpus
         )
         attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
-        attack_total = attack_roll + atk_bonus
+        attack_total = (
+            attack_roll + atk_bonus + self.d20_test_modifier(player_effects, corpus)
+        )
         critical = self.is_critical(attack_roll)
         miss = self.is_fumble(attack_roll)
         hit = critical or (not miss and attack_total >= target_ac)
@@ -487,11 +523,14 @@ class FiveESystem(ResolutionSystem):
             else combat_block.dmg_type
         )
 
+        npc_effects = get_status_effects(npc_id, hard)
         adv, disadv = self.attack_roll_mods(
-            get_status_effects(npc_id, hard), get_status_effects(target_id, hard), corpus
+            npc_effects, get_status_effects(target_id, hard), corpus
         )
         attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
-        attack_total = attack_roll + atk_bonus
+        attack_total = (
+            attack_roll + atk_bonus + self.d20_test_modifier(npc_effects, corpus)
+        )
         critical = self.is_critical(attack_roll)
         miss = self.is_fumble(attack_roll)
         hit = critical or (not miss and attack_total >= target_ac)
@@ -571,12 +610,11 @@ class FiveESystem(ResolutionSystem):
             self._player_stat(hard.player.stats, "DEX")
         )
         # Conditions may impose advantage/disadvantage on ability checks
-        # (e.g. poisoned).
-        advantage, disadvantage = self.check_roll_mods(
-            False, get_status_effects("player", hard), corpus
-        )
+        # (e.g. poisoned) or a flat d20 penalty (e.g. exhaustion).
+        player_effects = get_status_effects("player", hard)
+        advantage, disadvantage = self.check_roll_mods(False, player_effects, corpus)
         roll = self.roll_die(20, advantage=advantage, disadvantage=disadvantage)
-        total = roll + dex_mod
+        total = roll + dex_mod + self.d20_test_modifier(player_effects, corpus)
         success = total >= flee_dc
 
         log_entry = CombatLogEntry(

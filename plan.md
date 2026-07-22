@@ -53,7 +53,9 @@ history for the archived text.
       ability rules, healer logic), death of NPCs
 - [x] Equipment: `EquipBlock` (damage, hit bonus, AC override/bonus,
       stat effects), equip/unequip with slot conflicts, consumables
-      (`heal`, `cure_status_effects`), improvised weapons
+      (`heal`, `cure_status_effects`), improvised weapons; full SRD
+      weapon/armor/potion catalog built in via the data pack
+      (`mgmai/data/srd_5e/gear.json`)
 
 ### Partially implemented (known gaps)
 
@@ -67,9 +69,13 @@ history for the archived text.
       (`five_e.py:94-97`)
 - [~] **Player 0 HP** — instant death via `player.died` event; no
       unconsciousness, death saving throws, or stabilization
-- [~] **Conditions** — 3 of ~15 SRD conditions built in; the
-      machinery supports the rest, data and a few `system_effects`
-      keys are missing
+- [x] **Conditions** — full SRD condition list built in via the data
+      pack (`mgmai/data/srd_5e/conditions.json`): all 14 conditions plus
+      six exhaustion levels, backed by new `system_effects` keys
+      (`advantage_on_attack`, `disadvantage_against`,
+      `auto_fail_str_dex_saves`, `d20_test_modifier`).  A few rules stay
+      GM-adjudicated (sight/hearing-gated checks, movement, petrified's
+      damage resistance) — noted in each entry's description
 - [~] **Checks** — single-roll vs DC only; no passive scores,
       contested checks, group checks; NPCs have no ability scores and
       never make checks
@@ -97,25 +103,29 @@ history for the archived text.
 
 ### Recommended next work (lowest-hanging fruit first)
 
-1. **SRD data pack infrastructure** (Part 2) — prerequisite for most
-   of the below; small, self-contained.
-2. **Full SRD condition list as built-in defaults** — pure data plus a
-   handful of new `system_effects` keys (e.g. `advantage_on_attack`
-   for invisible, `auto_fail_str_dex_saves` for stunned/paralyzed).
-   Builds directly on the just-completed status-effect rework.
-3. **Standard SRD gear catalog** (weapons/armor with proper
-   properties) — data-only once the pack exists; immediately removes
-   the biggest per-adventure duplication.
+1. ~~**SRD data pack infrastructure** (Part 2)~~ — **done (Phase A)**:
+   loader (`mgmai/datapack.py`), pack dir `mgmai/data/srd_5e/`,
+   `DEFAULT_STATUS_EFFECTS` now loaded from `conditions.json`.
+2. ~~**Full SRD condition list as built-in defaults**~~ — **done
+   (Phase A)**, including the new `system_effects` keys
+   (`advantage_on_attack`, `disadvantage_against`,
+   `auto_fail_str_dex_saves`, `d20_test_modifier`).
+3. ~~**Standard SRD gear catalog**~~ — **done (Phase B)**: full SRD
+   weapon and armor tables plus four healing-potion tiers in
+   `mgmai/data/srd_5e/gear.json`, minted as item entities at load
+   (`StateManager._materialize_pack_gear`); integration fixtures now
+   use pack items.
 4. **Weapon properties round 2** — versatile/two-handed damage dice,
    thrown + ammunition, weapon proficiency gating (currently every
    attack gets the proficiency bonus).
 5. **Player 0 HP: unconsciousness + death saves** — medium engine
    work, high rules-fidelity payoff; also unlocks player-side
-   damage mitigation as a natural companion.
+   damage mitigation as a natural companion.  (`unconscious` now
+   exists as a condition to build on.)
 6. **Short/long rests** — per-rest recharge for abilities, hit dice,
    spell-slot recovery hook. Medium.
 7. **Spellcasting proper** — slots by level, spell attack/save DC
-   derivation, concentration. The big one; do only after 1–4.
+   derivation, concentration. The big one; do only after 3–4.
 
 ### Housekeeping
 
@@ -126,6 +136,12 @@ history for the archived text.
       longer "(in future)"; limitations section current).
       `pyproject.toml` gained the `package-data` config needed to ship
       data packs in wheels.
+- [x] `scripts/validate_adventure.py` — fixed stale pre-existing import
+      (`parse_damage_dice` lives in `mgmai.engine.systems.dice`, not
+      `mgmai.engine.combat`); gained a warning when a corpus status
+      effect or item entity redefines a built-in/pack ID; the
+      unused-entity check now only considers authored entities (pack
+      gear is materialized but expected to be mostly unreferenced).
 - [ ] `doc/npcs.md:87` — `on_meeting` field is unused mechanically;
       either wire it up or drop it.
 
@@ -162,8 +178,8 @@ effective = {**ENGINE_DEFAULTS, **corpus_entries}   # corpus entry replaces defa
    carrying the SRD 5.2.1 CC-BY-4.0 attribution (the README already
    attributes; the pack needs it next to the data). Load lazily via
    `importlib.resources`, keyed by system ID (`"5e"`). Requires
-   `[tool.setuptools.package-data]` in `pyproject.toml` — currently
-   absent, so JSON wouldn't ship in wheels without it.
+   `[tool.setuptools.package-data]` in `pyproject.toml` (already
+   present), so JSON ships in wheels.
    Rationale for JSON over Python literals: authors and LLM
    assistants can read/validate the pack with the same pydantic models
    as corpus files; a future non-5e system ships its own pack without
@@ -193,23 +209,45 @@ effective = {**ENGINE_DEFAULTS, **corpus_entries}   # corpus entry replaces defa
 
 5. **What goes in the pack, phased:**
 
-   - **Phase A — infrastructure + conditions.** Loader, package-data
-     config, `effective_*` accessor pattern; move
-     `DEFAULT_STATUS_EFFECTS` out of `corpus.py` into
-     `conditions.json` expanded to the full SRD condition list
-     (blinded, charmed, deafened, frightened, grappled, incapacitated,
-     invisible, paralyzed, petrified, poisoned, prone, restrained,
-     stunned, unconscious + exhaustion levels), adding whatever
-     `system_effects` keys their mechanics need. Also move the six
-     ability-score names, `SKILL_ABILITIES`, and `DAMAGE_TYPES` into
-     the pack (or keep in code — they're tiny and load-bearing; the
-     pack is for *chunky* content).
-   - **Phase B — gear catalog.** SRD weapons (with damage dice,
-     damage type, properties), armor (ac_override/ac_bonus model),
-     and standard consumables (e.g. Potion of Healing `2d4+2`). Needs
-     the "gear template → entity instantiation" step in the loader:
-     referencing `longsword` in a room or sheet mints an item entity
-     from the template.
+   - **Phase A — infrastructure + conditions.** ✅ **Done.** Loader
+     (`mgmai/datapack.py`, lazy `importlib.resources` access keyed by
+     system ID, package-data config), `mgmai/data/srd_5e/` with
+     `conditions.json` + `NOTICE`; `DEFAULT_STATUS_EFFECTS` moved out
+     of `corpus.py` into `conditions.json`, expanded to the full SRD
+     condition list (blinded, charmed, deafened, frightened, grappled,
+     incapacitated, invisible, paralyzed, petrified, poisoned, prone,
+     restrained, stunned, unconscious + exhaustion levels 1–6 as
+     `exhaustion-1`…`exhaustion-6`, since active status effects don't
+     stack), with new `system_effects` keys: `advantage_on_attack` and
+     `disadvantage_against` (invisible), `auto_fail_str_dex_saves`
+     (paralyzed/petrified/stunned/unconscious), and `d20_test_modifier`
+     (exhaustion; applies to attacks, checks, and saves).  The six
+     ability-score names, `SKILL_ABILITIES`, and `DAMAGE_TYPES` stay in
+     code — tiny and load-bearing; the pack is for *chunky* content.
+     Validator warns when a corpus redefines a built-in condition ID.
+   - **Phase B — gear catalog.** ✅ **Done.** Full SRD 5.2.1 weapon
+     table (37 weapons, verified against the SRD PDF), armor table
+     (12 armor + shield), and four healing-potion tiers in
+     `mgmai/data/srd_5e/gear.json` as `Entity`-shaped templates.
+     Instantiation: `StateManager._materialize_pack_gear` mints pack
+     items into `corpus.entities` at load (deep copies; corpus IDs win
+     wholesale), so rooms, inventories, and character sheets reference
+     pack IDs directly and unknown IDs stay load-time errors.
+     `ModuleCorpus.effective_gear()` mirrors the conditions accessor.
+     Armor model: light = `ac_bonus` (exact), medium = `ac_bonus`
+     (Dex cap unmodeled), heavy = flat `ac_override`, shield =
+     `ac_bonus` +2; versatile dice, range, ammunition, loading,
+     strength requirements, and Stealth disadvantage are data/
+     description only.  The `combat_arena`, `ambush_alley`, and
+     `venom_pit` integration fixtures were migrated to pack
+     `longsword`/`warhammer`/`potion_of_healing` (custom items like the
+     `antidote` and the +5 `cudgel` stay authored).  Migration surfaced
+     a ruling-robustness issue: a fixture item whose ID nearly collides
+     with a pack ID (`war_hammer` vs pack `warhammer`) gives the ruling
+     LLM a wrong-but-valid equip target to confuse — prefer pack IDs
+     over near-duplicate custom ones.  Also fixed a pre-existing
+     fixture/test mismatch: the arena ally is `korbar` again (was
+     `gargan`, which broke `test_ally_death_scenario`).
    - **Phase C — spells.** Only after spellcasting engine support
      (slots, DC derivation) lands. Spell entries extend the existing
      `Ability` shape with `spell_level`, `concentration`, etc. —
