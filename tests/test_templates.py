@@ -87,8 +87,10 @@ class TestProseTemplateConditional:
 
     _COMBAT_HEADING = "## Narration During Combat"
     _DIALOGUE_HEADING = "## Dialogue with NPCs"
+    _SOFT_ITEMS_HEADING = "## Soft Item Adjudication"
     _COMBAT_FIELDS = ("combat_triggered", "combat_log")
     _DIALOGUE_FIELDS = ("dialogue_exited", "npc_attitude_limits")
+    _SOFT_ITEMS_FIELDS = ("soft_item_proposals", "soft_item_adjudications")
 
     # -- default mode (neither combat nor dialogue) --
 
@@ -102,6 +104,12 @@ class TestProseTemplateConditional:
         output = render_prose()
         assert self._DIALOGUE_HEADING not in output
         for field in self._DIALOGUE_FIELDS:
+            assert field not in output, f"'{field}' should be absent"
+
+    def test_soft_items_excluded_by_default(self) -> None:
+        output = render_prose()
+        assert self._SOFT_ITEMS_HEADING not in output
+        for field in self._SOFT_ITEMS_FIELDS:
             assert field not in output, f"'{field}' should be absent"
 
     # -- combat mode --
@@ -120,6 +128,14 @@ class TestProseTemplateConditional:
         for field in self._DIALOGUE_FIELDS:
             assert field in output, f"'{field}' should be present"
 
+    # -- soft items mode --
+
+    def test_soft_items_included_when_requested(self) -> None:
+        output = render_prose(include_soft_items=True)
+        assert self._SOFT_ITEMS_HEADING in output
+        for field in self._SOFT_ITEMS_FIELDS:
+            assert field in output, f"'{field}' should be present"
+
     # -- both modes --
 
     def test_both_included_when_both_requested(self) -> None:
@@ -136,12 +152,14 @@ class TestProseTemplateConditional:
 
     def test_default_smaller_than_full(self) -> None:
         default = render_prose()
-        full = render_prose(include_combat=True, include_dialogue=True)
+        full = render_prose(
+            include_combat=True, include_dialogue=True, include_soft_items=True
+        )
         assert len(default) < len(full)
 
     def test_core_sections_always_present(self) -> None:
         output = render_prose()
         assert "## Adventure Context" in output
         assert "## Output Format" in output
-        assert "## General Narration Rules" in output
+        assert "## Important Narration Rules" in output
         assert "## General Style Guidelines" in output

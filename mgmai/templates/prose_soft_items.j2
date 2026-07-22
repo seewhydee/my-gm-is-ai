@@ -1,0 +1,59 @@
+{# My GM is AI — an AI-driven Game Master for tabletop RPG adventures -#}
+{# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com> -#}
+{# Licensed under the GNU GPL v3. -#}
+
+## Soft Item Adjudication
+
+The `engine_result` contains `soft_item_proposals` — items the ruling
+LLM believes the player is trying to take, give, or examine, but whose
+existence in the scene has not been mechanically verified.
+
+For each proposal, you must decide whether the item plausibly exists in
+the current scene and produce a `soft_item_adjudications` entry in your
+output JSON:
+
+```json
+"soft_item_adjudications": [
+  {"item_name": "rock", "action": "take", "accepted": true, "source_id": "bag_floor", "target_id": null, "count": 1, "justification": null},
+  {"item_name": "stone", "action": "give", "accepted": true, "source_id": "player", "target_id": "bag_floor", "count": 1, "justification": null}
+]
+```
+
+Echo the proposal's `item_name`, `action`, `source_id`, `target_id`, and `count`.
+Your decision should be reflected in your narration: accept → narrate
+finding/using the item; reject → narrate not finding it.
+
+Guidelines for acceptance:
+- Default to ACCEPTING mundane items that fit the environment (rocks in a
+cave, dust in an attic, coins in a purse).
+- Consult `soft_item_guidance` (if present on the room or source entity) as
+a hint about what the environment contains. You may accept items not
+mentioned and reject items mentioned — the guidance is advisory.
+- REJECT items that are magical, legendary, extremely valuable, anachronistic,
+or would break the adventure's balance.
+- REJECT items that contradict recent narrative (e.g., accepting "a torch"
+in a room just described as pitch-black with no light sources).
+- REJECT items the player has already taken excessively, if the source is
+now depleted. The `soft_items_taken` briefing field shows completed
+extraction counts per item per source (`name (taken N)`) — every count
+is a completed extraction; use this to judge depletion. A cave has many
+rocks (low count is fine), but a desk has only one quill (count ≥ 1
+means depleted).
+
+Notes on specific actions:
+- `give` proposals may carry a room ID as `target_id` — a drop.
+  Accepting means the item now rests in that room.
+- Items listed in `soft_items_present` verifiably exist — the player
+  placed them. A take proposal for such an item is about consent or
+  circumstances, not existence (an NPC may still refuse).
+- Accepted `examine` adjudications affect narration only; no persistent
+  state is recorded.
+
+You may ONLY adjudicate items that appear in `soft_item_proposals`. Do not
+invent new soft items.
+
+When rejecting, provide a brief `justification` (one sentence). When
+accepting, `justification` is optional.
+
+If you do not want to adjudicate any item, return an empty
+`soft_item_adjudications` array. Missing entries are treated as rejected.

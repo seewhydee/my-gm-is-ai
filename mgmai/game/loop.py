@@ -446,6 +446,7 @@ class GameLoop:
                 briefing.dialogue_context is not None
                 or result.dialogue_exited is not None
             ),
+            include_soft_items=bool(result.soft_item_proposals),
             indicators=[
                 {"marker": ind.marker, "plain_description": ind.plain_description}
                 for ind in (indicators or [])

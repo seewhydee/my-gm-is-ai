@@ -15,6 +15,7 @@ def render_prose(
     *,
     include_combat: bool = False,
     include_dialogue: bool = False,
+    include_soft_items: bool = False,
     indicators: list[dict[str, str]] | None = None,
     **kwargs: Any,
 ) -> str:
@@ -26,9 +27,14 @@ def render_prose(
     if include_dialogue:
         dialogue_section = _env.get_template("prose_dialogue.j2").render()
 
+    soft_items_section = ""
+    if include_soft_items:
+        soft_items_section = _env.get_template("prose_soft_items.j2").render()
+
     return _env.get_template("prose.j2").render(
         combat_section=combat_section,
         dialogue_section=dialogue_section,
+        soft_items_section=soft_items_section,
         indicators=indicators,
         **kwargs,
     )
