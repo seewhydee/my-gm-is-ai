@@ -716,6 +716,14 @@ deviations, and revise the Scenario Map at the end of Step 2 (§2H)
 before going to Step 3.  Major deviations must be surfaced in your
 task report.
 
+**Note: standard gear need not be re-authored.** For the `5e` RPG
+system, a set of weapon and armor tables, along with standard usable
+items, is defined in the SRD data pack `mgmai/data/srd_5e/gear.json`.
+You may reference their IDs (`longsword`, `chain_shirt`, etc.) without
+declaring an entity; the standard SRD definition will be pulled in.
+If you define an entity with an ID in the SRD data pack, that
+overrides the latter.
+
 #### Description
 
 When generating each entity's `description`, do not just translate the
@@ -950,6 +958,10 @@ to be uncovered by examining a single entity.
 
 ### 2C. Item entities
 
+As previously noted, when using the `5e` system, standard gear (e.g.,
+longswords) are already pre-defined in the SRD data pack; you only
+need to declare item entities for items not in the data pack.
+
 For every item entity, `name` is required and should be a noun/phrase
 referring unambiguously, module-wide, to the item.  It is used for
 player commands, inventory, etc.  If not a proper name, use lower
@@ -964,14 +976,6 @@ incomplete item stats, use your best judgment, and surface the issue
 in your task report.  Note that `equip_block.equip_tags` drive the
 equipment system (what can be equipped, damage expressions, AC, etc.),
 and are *not* the same as semantic tags.
-
-**Standard SRD gear must not be re-authored.**  The engine's SRD data
-pack (`mgmai/data/srd_5e/gear.json`) already defines the full weapon
-and armor tables and standard healing potions — reference pack IDs
-(`longsword`, `chain_shirt`, `potion_of_healing`, …) in rooms,
-inventories, and character sheets without declaring an entity.  Only
-declare an item entity for custom or renamed gear, or to deliberately
-override a pack entry (which the validator will warn about).
 
 If a mechanic or reaction is used to gate the player picking up the
 item (e.g., STR check to pull a sword from a stone), use `take_check`
