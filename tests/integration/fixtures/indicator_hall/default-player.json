@@ -1,0 +1,24 @@
+{
+  "system": "5e",
+  "player": {
+    "stats": {
+      "STR": 16,
+      "DEX": 10,
+      "CON": 10,
+      "INT": 10,
+      "WIS": 10,
+      "CHA": 10
+    },
+    "level": 2,
+    "max_hp": 24,
+    "current_hp": 24,
+    "ac": 14,
+    "proficiency_bonus": 2,
+    "save_proficiencies": ["STR"],
+    "inventory": {
+      "cudgel": 1
+    },
+    "equipped": ["cudgel"],
+    "abilities": []
+  }
+}

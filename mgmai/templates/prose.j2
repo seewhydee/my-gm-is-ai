@@ -250,6 +250,41 @@ If `chain_info` has a `follow_up` with no `termination_reason`,
 
 ---
 {{ dialogue_section }}
+
+---
+
+## Mechanical Indicators
+
+The following mechanical events occurred this turn.  You MUST place
+EVERY marker below inside your narration, each exactly once, at the
+narratively appropriate point — typically immediately before the text
+describing the consequence of that event.
+
+Place each marker on its own line, surrounded by blank lines (`\n\n`),
+like this:
+
+```
+You try to lift the statue.
+
+[MECH:check:0]
+
+It's too heavy to budge.
+```
+
+Copy each marker verbatim — do not retype, renumber, or paraphrase it,
+and do not write out the mechanical text yourself.  The engine
+substitutes the canonical text wherever you place the marker; any
+marker you leave unused is prepended to your narration as a fallback,
+which is a degraded experience.
+
+{% if indicators %}
+{% for ind in indicators %}
+- `{{ ind.marker }}` — {{ ind.plain_description }}
+{% endfor %}
+{% else %}
+_There are no mechanical indicators for this turn._
+{% endif %}
+
 ---
 
 ## Examples

@@ -1,0 +1,170 @@
+{
+  "adventure": {
+    "id": "indicator_hall",
+    "title": "The Proving Hall",
+    "introduction": "You stand in an ancient dwarven proving hall, its flagstones worn by centuries of trials. A cracked pillar leans precariously against the wall, a rickety plank bridge spans a dark chasm, and an archway east leads to the sparring chamber.",
+    "atmosphere": {
+      "setting": "an ancient dwarven proving hall",
+      "tone": "sturdy and perilous"
+    }
+  },
+  "rooms": {
+    "hall": {
+      "id": "hall",
+      "name": "The Proving Hall",
+      "description": "A vaulted hall of worn flagstones. A cracked pillar leans against the north wall, ready to topple. A rickety plank bridge sways over a chasm of jagged rocks. An archway east opens into the sparring chamber.",
+      "exits": [
+        {
+          "id": "exit_east",
+          "direction": "East through the archway to the sparring chamber",
+          "target_room": "sparring"
+        }
+      ],
+      "contains": [
+        "cracked_pillar",
+        "rickety_bridge"
+      ],
+      "interactions": [],
+      "is_start_room": true
+    },
+    "sparring": {
+      "id": "sparring",
+      "name": "The Sparring Chamber",
+      "description": "A low-ceilinged training chamber. A padded sparring golem waits to trade blows, and a battered straw dummy slumps in the corner, one solid hit from falling apart.",
+      "exits": [
+        {
+          "id": "exit_west",
+          "direction": "West back to the proving hall",
+          "target_room": "hall"
+        }
+      ],
+      "contains": [
+        "sparring_golem",
+        "battered_dummy"
+      ]
+    }
+  },
+  "entities": {
+    "cudgel": {
+      "type": "item",
+      "name": "Training Cudgel",
+      "description": "A heavy oak cudgel used for the proving hall's trials. Deals bludgeoning damage.",
+      "tags": ["weapon"],
+      "equip_block": {
+        "equip_tags": ["weapon"],
+        "damage_expr": "1d6",
+        "hit_bonus": 5,
+        "damage_type": "bludgeoning"
+      }
+    },
+    "cracked_pillar": {
+      "type": "feature",
+      "name": "Cracked Pillar",
+      "description": "A massive stone pillar split by a deep crack. A determined shove would bring it crashing down.",
+      "interactions": [
+        {
+          "id": "shove",
+          "description": "Plant your shoulder against the cracked pillar and shove it over.",
+          "check": {
+            "type": "stat_check",
+            "stat": "STR",
+            "target": 3,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "The pillar groans, tilts, and crashes down in a thunder of stone and dust."
+          },
+          "failure": {
+            "narrative": "The pillar shifts a hair's breadth and settles back into place."
+          }
+        }
+      ]
+    },
+    "rickety_bridge": {
+      "type": "feature",
+      "name": "Rickety Bridge",
+      "description": "A plank bridge swaying over a chasm of jagged rocks. Crossing it in full gear is asking for a fall.",
+      "interactions": [
+        {
+          "id": "cross",
+          "description": "Pick your way across the swaying planks.",
+          "check": {
+            "type": "stat_check",
+            "stat": "DEX",
+            "target": 30,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "You pick your way across without incident."
+          },
+          "failure": {
+            "narrative": "A plank snaps under your foot and you pitch sideways toward the rocks.",
+            "then_check": {
+              "check": {
+                "type": "stat_check",
+                "stat": "CON",
+                "target": 30,
+                "repeatable": true
+              },
+              "success": {
+                "narrative": "You catch a guide rope and haul yourself back, shaken but unhurt."
+              },
+              "failure": {
+                "narrative": "You slam against the cliff face before catching yourself, ribs aching.",
+                "player_damage": "1d4"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sparring_golem": {
+      "type": "npc",
+      "name": "Sparring Golem",
+      "description": "A padded training construct that trades slow, deliberate blows. It is far too sturdy for a single cudgel strike to fell.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 40,
+        "ac": 8,
+        "atk": 3,
+        "dmg": "1d4",
+        "dmg_type": "bludgeoning",
+        "initiative_mod": 0,
+        "flee_dc": 10
+      }
+    },
+    "battered_dummy": {
+      "type": "npc",
+      "name": "Battered Dummy",
+      "description": "A straw-stuffed training dummy, already split and leaking stuffing. One solid hit will finish it.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 1,
+        "ac": 1,
+        "atk": 0,
+        "dmg": "1d4",
+        "dmg_type": "bludgeoning",
+        "initiative_mod": -5,
+        "flee_dc": 10
+      }
+    }
+  },
+  "abilities": {},
+  "stats": {
+    "definitions": {
+      "STR": {"name": "Strength"},
+      "DEX": {"name": "Dexterity"},
+      "CON": {"name": "Constitution"},
+      "INT": {"name": "Intelligence"},
+      "WIS": {"name": "Wisdom"},
+      "CHA": {"name": "Charisma"}
+    },
+    "system": "5e"
+  }
+}

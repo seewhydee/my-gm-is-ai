@@ -122,3 +122,9 @@ def venom_pit_dir() -> Path:
 def ambush_alley_dir() -> Path:
     """Path to the ambush_alley fixture adventure."""
     return FIXTURES_DIR / "ambush_alley"
+
+
+@pytest.fixture
+def indicator_hall_dir() -> Path:
+    """Path to the indicator_hall fixture adventure."""
+    return FIXTURES_DIR / "indicator_hall"

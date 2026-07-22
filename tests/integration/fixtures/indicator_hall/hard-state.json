@@ -1,0 +1,22 @@
+{
+  "player": {
+    "location": "hall"
+  },
+  "flags": {},
+  "room_states": {
+    "hall": {"visited": false},
+    "sparring": {"visited": false}
+  },
+  "entity_states": {
+    "sparring_golem": {
+      "alive": true,
+      "current_hp": 40
+    },
+    "battered_dummy": {
+      "alive": true,
+      "current_hp": 1
+    }
+  },
+  "turn_count": 0,
+  "game_over": null
+}
