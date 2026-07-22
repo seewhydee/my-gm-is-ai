@@ -10,7 +10,7 @@ dialogue mode: when active, the set of valid player actions narrows to
 
 All system-specific maths — ability modifiers, the d20 roll,
 advantage/disadvantage, attack/crit/fumble rules, AC and HP formulas,
-initiative, and (in future) saving throws — live behind a
+initiative, and saving throws — live behind a
 `ResolutionSystem` interface in `mgmai.engine.systems`.  The combat loop,
 the action resolver, and the encounter engine are system-agnostic: they
 orchestrate turns and state, then call the active system for every die
@@ -602,16 +602,19 @@ of the old one-shot resolution.
 
 ---
 
-## Limitations (Phase 1)
+## Limitations
 
-The minimum viable combat system deliberately excludes:
+The combat system deliberately excludes:
 
-- Gear / equipment (beyond weapon tag detection)
 - Movement / positioning / tactical maps
-- Death saving throws
+- Death saving throws (player 0 HP is death unless a rescue reaction intervenes)
 - Reactions, opportunity attacks
+- Bonus actions and the 5e action/movement split (one action per turn)
 
-These may be added in future phases.
+Gear and equipment are supported — see [gear.md](gear.md).  Status
+effects, abilities, and saving throws are supported; see the sections
+above.  The remaining exclusions may be added in future phases (see
+`plan.md`).
 
 > Note: the *engine* is already system-agnostic through the
 > `ResolutionSystem` interface; the limitations above concern combat

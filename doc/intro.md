@@ -73,17 +73,20 @@ In the future, we might turn to a vector database, but for now lookups are deter
 
 ### LLM Call 1 and player actions
 
-LLM Call 1, which runs at a moderately low temperature, receives the GMBriefing + verbatim player input and is tasked with interpreting the player's input.  It cannot propose hard-state changes (those are the engine's domain).  Instead, it is tasked with producing a structured PlayerAction in JSON, consisting of exactly one of seven types:
+LLM Call 1, which runs at a moderately low temperature, receives the GMBriefing + verbatim player input and is tasked with interpreting the player's input.  It cannot propose hard-state changes (those are the engine's domain).  Instead, it is tasked with producing a structured PlayerAction in JSON, consisting of exactly one of ten types:
 
 | Type | Purpose | Key fields |
 |------|---------|------------|
-| `move` | Travel to an adjacent room via an exit | `target` (exit ID), optional `style` (crawl, etc.) |
+| `move` | Travel to an adjacent room via an exit; in combat, attempt to flee | `target` (exit ID), optional `style` (crawl, etc.) |
 | `examine` | Look at a room, entity, or soft item | `target`, optional `rigorous` (deep search), optional `using` |
 | `interact` | Perform a named interaction on an entity | `target`, `interaction_id`, optional `using` |
 | `talk` | Start or continue dialogue with an NPC | `target` (NPC ID), optional `utterance`, optional `ends_dialogue` |
 | `transfer` | Give/take items between player and entity/room | `target`, `given_items`[], `taken_items`[] |
-| `wait` | Pass time, catch-all for below-threshold actions | `detail` describing intent |
+| `wait` | Pass time, catch-all for below-threshold actions; in combat, pass the turn | `detail` describing intent |
+| `combat` | Combat action: attack, use a consumable, or use an ability | `combat_action` (`attack`/`use_item`/`use_ability`), `target`, optional `ability_id` |
 | `ooc_discussion` | Out-of-character question to the GM | `detail` with the question |
+| `equip` | Equip an item from inventory | `target`, optional `unequip_targets`[] |
+| `unequip` | Unequip an item | `target` |
 
 Every action includes a `detail` field (natural-language description), optional `soft_state_patches`, and optional `follow_up` for chained actions (see below).
 

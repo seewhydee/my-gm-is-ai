@@ -648,6 +648,40 @@ rule questions, or meta-discussion.
 
 ---
 
+#### `combat` -- Combat action (attack / use item / use ability)
+
+```json
+{
+  "action_type": "combat",
+  "combat_action": "attack",
+  "target": "spider",
+  "detail": "Player swings the toenail sword at the spider.",
+  "follow_up": null,
+  "soft_state_patches": []
+}
+```
+
+| Field           | Type   | Required | Description |
+|-----------------|--------|----------|-------------|
+| `combat_action` | string | yes      | One of `attack`, `use_item`, `use_ability`. |
+| `target`        | string | yes      | For `attack`: an enemy combatant. For `use_item`: an item entity ID in `player.inventory` with a `consumable` block. For `use_ability`: the ability's target (enemy or ally/self, per the ability definition). |
+| `ability_id`    | string | only for `use_ability` | ID of an ability the player knows (`player.abilities`) with uses remaining. |
+
+This is the player's one action per combat round; after it resolves, the
+remaining combatants act and the round advances.  See `doc/combat.md`.
+
+**Engine validation:**
+- `attack`: `target` must be a living enemy combatant.  Out of combat,
+  `attack` is routed to the generic `interact`/`attack` interaction,
+  which starts combat with the target.
+- `use_item`: `target` must be in `player.inventory` and have a
+  `consumable` block; the item is consumed on use.
+- `use_ability`: `ability_id` must be in `player.abilities`, have uses
+  remaining (`uses_per_combat`), and `target` must be a valid combatant
+  for the ability's `target` type (`self`/`ally`/`enemy`).
+
+---
+
 ### 2.2 Follow-up: Chained actions
 
 Players often describe multi-step plans in a single input (e.g., "I pick up
@@ -699,6 +733,7 @@ whether to continue the chain:
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
 | `equip`           | entity_id of item in inventory                  | must have `equip_block`; validates tag conflicts and `max_equipped` |
 | `unequip`         | entity_id of item in equipped                   | must be currently equipped                 |
+| `combat`          | combat target (enemy, item, or ability target)  | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack` |
 
 ---
 
@@ -1046,10 +1081,10 @@ direction, the LLM should adapt.
   The engine must validate the field exists and values are in range.
 - **New entity types**: Add to the `type` enum in the corpus schema. Update
   the engine's entity resolver.
-- **Combat phase**: The current `interact`-based attack uses kill-or-be-killed
-  resolution. A future combat phase will support iterative rounds, HP tracking,
-  and damage rolls. The `attack` interaction ID will route to the new combat
-  engine.
+- **Combat phase**: Fully implemented — iterative rounds, initiative,
+  HP tracking, damage rolls, status effects, and abilities, via the
+  `combat` action (Section 2.1).  The `interact`/`attack` interaction
+  remains as the way to *enter* combat.  See `doc/combat.md`.
 - **Semantic search / RAG**: Once adventures grow beyond the five-room scale,
   deterministic ID lookups can be augmented with vector embeddings for entity
   descriptions and player queries.

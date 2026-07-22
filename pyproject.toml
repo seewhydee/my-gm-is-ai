@@ -26,6 +26,10 @@ mgmai = "mgmai.cli:main"
 [tool.setuptools.packages.find]
 include = ["mgmai*"]
 
+# Ship bundled data packs (e.g. SRD content under mgmai/data/) in wheels.
+[tool.setuptools.package-data]
+mgmai = ["data/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
