@@ -31,7 +31,7 @@ import warnings
 import pytest
 
 from tests.integration.judge import judge_scenario, format_verdict_for_failure, JudgeError
-from tests.integration.runner import run_scenario
+from tests.integration.runner import run_scenario, ScenarioResult
 
 pytestmark = pytest.mark.llm
 

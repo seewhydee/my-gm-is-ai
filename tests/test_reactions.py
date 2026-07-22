@@ -10,7 +10,6 @@ import pytest
 from pydantic import ValidationError
 
 from mgmai.models.corpus import (
-    GameOverTrigger,
     Mechanic,
     Reaction,
     ReactionEffects,

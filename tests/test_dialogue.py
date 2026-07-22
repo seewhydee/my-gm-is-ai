@@ -16,9 +16,7 @@
 
 """Tests for engine/dialogue.py."""
 
-import copy
 
-import pytest
 
 from mgmai.engine.dialogue import (
     enter_dialogue,

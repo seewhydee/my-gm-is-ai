@@ -16,7 +16,6 @@
 
 """Tests for equipment (equip/unequip) system."""
 
-import copy
 import json
 from pathlib import Path
 

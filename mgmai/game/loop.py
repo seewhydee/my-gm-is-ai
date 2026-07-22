@@ -23,6 +23,23 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+from mgmai.context.assembler import assemble
+from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
+from mgmai.engine.post_validate import apply_post_validation
+from mgmai.engine.stat_checks import (
+    format_stat_check_prefix,
+    format_stat_change_prefix,
+    format_combat_prefix,
+    format_hp_change_prefix,
+)
+from mgmai.llm.client import LLMClient
+from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
+from mgmai.logging import format_state_snapshot
+from mgmai.game.commands import Commands
+from mgmai.game.display import Display
+from mgmai.game.input_normalizer import normalize_player_input
+from mgmai.state.manager import StateManager
+
 try:
     import readline
 
@@ -66,23 +83,6 @@ def _save_history() -> None:
 
 
 atexit.register(_save_history)
-
-from mgmai.context.assembler import assemble
-from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
-from mgmai.engine.post_validate import apply_post_validation
-from mgmai.engine.stat_checks import (
-    format_stat_check_prefix,
-    format_stat_change_prefix,
-    format_combat_prefix,
-    format_hp_change_prefix,
-)
-from mgmai.llm.client import LLMClient
-from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
-from mgmai.logging import format_state_snapshot
-from mgmai.game.commands import Commands
-from mgmai.game.display import Display
-from mgmai.game.input_normalizer import normalize_player_input
-from mgmai.state.manager import StateManager
 
 
 FALLBACK_NARRATION = (

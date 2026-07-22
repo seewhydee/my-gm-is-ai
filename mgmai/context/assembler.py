@@ -19,8 +19,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-log = logging.getLogger(__name__)
-
 from mgmai.models.briefing import (
     BriefingEntity,
     BriefingExit,
@@ -48,6 +46,8 @@ from mgmai.engine.utils import (
     is_exit_visible,
     _is_stackable,
 )
+
+log = logging.getLogger(__name__)
 
 
 def assemble(corpus: ModuleCorpus,

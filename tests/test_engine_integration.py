@@ -76,7 +76,6 @@ class TestOptionBTurnBoundary:
 
     def test_turn_start_reaction_runs_before_action(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
 
         # A turn.start reaction sets a flag that the action's interaction
@@ -118,7 +117,6 @@ class TestReactionTriggerEncounter:
 
     def test_deferred_trigger_encounter_runs_mechanic_rules(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
@@ -182,7 +180,6 @@ class TestReactionGameOver:
 
     def test_reaction_game_over_sets_hard_state(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
@@ -254,7 +251,6 @@ class TestTalkPathSourceType:
 
     def test_dialogue_path_check_source_type(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
@@ -294,7 +290,6 @@ class TestReactionChainCheckEvents:
 
     def test_then_check_in_reaction_emits_event(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
@@ -336,7 +331,6 @@ class TestReactionCombatLogPropagation:
 
     def test_reaction_encounter_combat_log_propagated(self, state_manager, monkeypatch):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
@@ -515,7 +509,6 @@ class TestTalkPathThenCheck:
 
     def test_dialogue_path_result_then_check_emits_event(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
@@ -736,7 +729,6 @@ class TestEncounterBranchedEvent:
 
     def test_deferred_encounter_branch_emits_event(self, state_manager, monkeypatch):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 
@@ -782,7 +774,6 @@ class TestEncounterBranchedEvent:
     def test_encounter_branched_context_carries_branch(self, state_manager, monkeypatch):
         """The encounter.branched event context identifies which branch."""
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
 

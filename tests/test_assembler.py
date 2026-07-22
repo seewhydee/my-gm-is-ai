@@ -16,22 +16,13 @@
 
 """Tests for context/assembler.py — Context Assembler."""
 
-import copy
 
 import pytest
 
 from mgmai.context.assembler import assemble
 from mgmai.models.briefing import (
-    BriefingContainsEntry,
     BriefingEntity,
-    BriefingExit,
-    BriefingHistoryEntry,
-    BriefingInteraction,
-    BriefingRoom,
-    DialogueActiveNpc,
-    DialogueContext,
     GMBriefing,
-    PlayerStateBriefing,
 )
 from mgmai.engine.utils import build_contains
 from mgmai.models.soft_state import (

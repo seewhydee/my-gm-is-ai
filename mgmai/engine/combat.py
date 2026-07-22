@@ -43,7 +43,6 @@ from mgmai.engine.status_effects import (
     remove_status_effect,
 )
 from mgmai.engine.systems import get_system, get_system_for_corpus
-from mgmai.engine.systems.dice import parse_damage_dice
 
 
 # ------------------------------------------------------------------
@@ -85,8 +84,6 @@ def compute_effective_stats(
     first, then delta modifiers from each equipped item's stat_effects.
     Returns None if the player has no stats block.
     """
-    from mgmai.models.corpus import StatModifier
-    from copy import deepcopy
 
     base = hard_state.player.stats
     if base is None:

@@ -6,7 +6,6 @@
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 
-import pytest
 
 from mgmai.engine.event_bus import (
     _resolve_self,

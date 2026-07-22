@@ -28,6 +28,7 @@ import os
 from pathlib import Path
 
 import pytest
+from platformdirs import user_config_dir
 
 from mgmai.config import load_credentials, resolve_api_key_for_model
 from mgmai.llm.client import LLMClient
@@ -42,7 +43,6 @@ ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 # The user config dir is under the conventional XDG path, not a
 # temporary sandbox, so the same models.json and credentials.json
 # used by the normal REPL are also used by integration tests.
-from platformdirs import user_config_dir
 _USER_CONFIG_DIR = user_config_dir("mgmai")
 _CUSTOM_MODELS = load_custom_models(_USER_CONFIG_DIR)
 _CREDENTIALS = load_credentials(_USER_CONFIG_DIR)

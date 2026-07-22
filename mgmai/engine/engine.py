@@ -20,8 +20,6 @@ import copy
 import logging
 from typing import Any
 
-log = logging.getLogger(__name__)
-
 from mgmai.models.actions import (
     AttitudeLimitsCurrent,
     ChainInfo,
@@ -41,7 +39,7 @@ from mgmai.models.briefing import (
     BriefingInteraction,
     BriefingRoom,
 )
-from mgmai.models.corpus import ModuleCorpus
+from mgmai.models.corpus import ModuleCorpus, Reaction
 from mgmai.models.hard_state import HardGameState, GameOverState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from mgmai.state.manager import StateManager
@@ -60,10 +58,11 @@ from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
 from mgmai.engine.encounters import resolve_encounter
 from mgmai.engine.dialogue import (
     check_room_change_exit,
-    enter_dialogue,
     exit_dialogue,
     increment_stall,
 )
+
+log = logging.getLogger(__name__)
 
 MAX_CHAIN_LENGTH = 10
 

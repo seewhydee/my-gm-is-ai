@@ -16,10 +16,7 @@
 
 """Tests for engine/engine.py — main orchestrator."""
 
-import json
-from pathlib import Path
 
-import pytest
 
 from mgmai.engine.engine import resolve
 from mgmai.engine.utils import present_entity_ids
@@ -42,7 +39,6 @@ from mgmai.models.corpus import (
     Result,
     StatModifier,
 )
-from mgmai.state.manager import StateManager
 from tests.helpers import (
     build_state_manager,
     make_encounter_trigger_corpus,

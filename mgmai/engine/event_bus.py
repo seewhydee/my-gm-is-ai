@@ -19,8 +19,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-log = logging.getLogger(__name__)
-
 from mgmai.models.corpus import (
     ModuleCorpus,
     Reaction,
@@ -31,6 +29,8 @@ from mgmai.models.soft_state import SoftGameState
 from mgmai.models.actions import HardStateChanges
 from mgmai.models.combat import CombatLogEntry
 from mgmai.engine.conditions import evaluate
+
+log = logging.getLogger(__name__)
 
 MAX_RECURSION_DEPTH = 5
 
@@ -345,7 +345,7 @@ def _resolve_self_in_result(
     owner_id: str,
 ) -> Any:
     """Replace ``"self"`` keys in result's entity/attitude fields."""
-    from mgmai.models.corpus import Result, StatModifier
+    from mgmai.models.corpus import Result
 
     kwargs = dict(result.__dict__) if result.__dict__ else {}
     pydantic_fields = result.model_dump(exclude_unset=True, exclude_defaults=False)

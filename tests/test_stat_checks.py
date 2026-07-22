@@ -18,13 +18,10 @@
 
 from __future__ import annotations
 
-import random
-from unittest.mock import patch
 
 import pytest
 
 from mgmai.engine.stat_checks import compute_5e_modifier, compute_modifier, format_stat_check_prefix, roll_d20
-from mgmai.models.corpus import ModuleCorpus, StatCheck, StatsBlock, StatDefinition, RollCheck, CheckType
 
 
 class TestCompute5eModifier:

@@ -16,7 +16,6 @@
 
 """Tests for web-traversal mechanics using an in-memory test corpus."""
 
-import pytest
 
 from mgmai.engine.engine import resolve
 from mgmai.models.actions import MoveAction

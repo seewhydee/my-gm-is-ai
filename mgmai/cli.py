@@ -34,7 +34,6 @@ from pathlib import Path
 from mgmai.config import (
     AppConfig,
     Credentials,
-    get_autosave_path,
     get_config_dir,
     load_app_config,
     load_credentials,

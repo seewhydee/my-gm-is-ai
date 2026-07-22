@@ -151,7 +151,6 @@ def _archive_and_exit(
         f"Conversation summary: {summary}"
     )
 
-    npc_entity = corpus.entities.get(npc_id)
     exit_narrative = None
 
     soft.dialogue_state.active_npc = None

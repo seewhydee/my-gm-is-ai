@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from mgmai.engine.conditions import evaluate
 from mgmai.engine.utils import is_exit_visible
 
 try:

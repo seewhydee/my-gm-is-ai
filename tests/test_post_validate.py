@@ -19,7 +19,6 @@
 import json
 from pathlib import Path
 
-import pytest
 
 from mgmai.engine.post_validate import (
     post_validate_knowledge_tags,
@@ -28,7 +27,6 @@ from mgmai.engine.post_validate import (
 )
 from mgmai.models.actions import EngineResult, HardStateChanges
 from mgmai.models.narration import AttitudeChange
-from mgmai.models.soft_state import KnowledgeEntry
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -266,7 +264,6 @@ class TestPostValidateAttitudeChanges:
 class TestApplyPostValidation:
     def test_full_post_validation(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         hard.player.location = "bag_floor"
         hard.entity_states["korbar"]["attitude"] = 5
 
@@ -302,7 +299,6 @@ class TestApplyPostValidation:
 
     def test_without_base_result_returns_minimal_engine_result(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         hard.player.location = "bag_floor"
         hard.entity_states["korbar"]["attitude"] = 5
 

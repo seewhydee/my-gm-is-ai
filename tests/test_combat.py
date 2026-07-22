@@ -16,8 +16,6 @@
 
 """Tests for the combat system: models, dice, initiative, turns, and integration."""
 
-import copy
-import json
 import random
 
 import pytest
@@ -38,13 +36,12 @@ from mgmai.models.corpus import (
     CombatBlock,
     StatusEffectDef,
     ConsumableBlock,
-    EncounterRule,
     Entity,
     EquipBlock,
     ModuleCorpus,
     NPCAttackDef,
 )
-from mgmai.models.hard_state import HardGameState, PlayerState
+from mgmai.models.hard_state import HardGameState
 from mgmai.engine.combat import (
     enter_combat,
     get_player_ac,
@@ -57,7 +54,7 @@ from mgmai.engine.combat import (
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.systems.five_e import FiveESystem
 from mgmai.engine.engine import resolve
-from mgmai.engine.resolver import ResolutionResult, resolve_action
+from mgmai.engine.resolver import resolve_action
 from mgmai.engine.stat_checks import format_combat_prefix
 from mgmai.engine.status_effects import apply_status_effect
 from mgmai.engine.utils import get_status_effects
@@ -324,7 +321,7 @@ class TestCombatEntry:
         hard = combat_hard_state.model_copy(deep=True)
         # Remove pre-existing current_hp to test initialization
         hard.entity_states["goblin"].pop("current_hp", None)
-        result = enter_combat(["goblin"], hard, combat_npc_corpus)
+        enter_combat(["goblin"], hard, combat_npc_corpus)
         assert hard.entity_states["goblin"]["current_hp"] == 7
 
     def test_enter_combat_inits_player_hp(self, combat_npc_corpus, monkeypatch):
@@ -347,7 +344,7 @@ class TestCombatEntry:
             },
             "entity_states": {"goblin": {"alive": True}},
         })
-        result = enter_combat(["goblin"], hard, combat_npc_corpus)
+        enter_combat(["goblin"], hard, combat_npc_corpus)
         # CON 14 → mod +2, 8+2 = 10, set as current_hp
         assert hard.player.current_hp == 10
         assert hard.player.max_hp == 10
@@ -359,7 +356,7 @@ class TestCombatEntry:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rolls))
         monkeypatch.setattr(random, "random", lambda: 0.5)
         hard = combat_hard_state.model_copy(deep=True)
-        result = enter_combat(["goblin"], hard, combat_npc_corpus)
+        enter_combat(["goblin"], hard, combat_npc_corpus)
         assert hard.combat.current_index == 0  # player is first
 
 

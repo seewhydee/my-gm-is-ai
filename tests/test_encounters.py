@@ -16,25 +16,19 @@
 
 """Tests for engine/encounters.py."""
 
-import copy
 import json
 from pathlib import Path
 
-import pytest
 
 from mgmai.engine.encounters import resolve_encounter, _game_over_dict
 from mgmai.models.corpus import (
     ConditionExpression,
-    EncounterRule,
     GameOverTrigger,
-    ModuleCorpus,
-    Result,
-    StatCheck,
     StatDefinition,
     StatsBlock,
     StatModifier
 )
-from mgmai.models.hard_state import HardGameState, GameOverState
+from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from tests.helpers import _mk_encounter_rule
 

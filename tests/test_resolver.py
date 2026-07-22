@@ -16,7 +16,6 @@
 
 """Tests for engine/resolver.py."""
 
-import copy
 import json
 import random
 from pathlib import Path
@@ -57,9 +56,9 @@ from mgmai.models.corpus import (
     Result,
     RollCheck,
     StatCheck,
-    StatModifier,
 )
-from mgmai.state.manager import StateManager
+from mgmai.models.hard_state import HardGameState
+from mgmai.models.soft_state import SoftGameState
 from tests.helpers import (
     build_state_manager,
     make_char_sheet_corpus,
@@ -80,10 +79,6 @@ def _load_soft():
     return SoftGameState.model_validate(
         json.loads((FIXTURES_DIR / "soft-state.json").read_text())
     )
-
-
-from mgmai.models.hard_state import HardGameState
-from mgmai.models.soft_state import SoftGameState
 
 
 class TestResolveWait:
@@ -1511,7 +1506,6 @@ class TestResolveTransferCounts:
     def test_non_stackable_duplicate_add_skipped(self, state_manager):
         """_apply_result skips adding a duplicate non-stackable item."""
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.inventory["toenail_sword"] = 1
         from mgmai.engine.resolver import _apply_result
@@ -1523,7 +1517,6 @@ class TestResolveTransferCounts:
     def test_remove_shortfall_skipped(self, state_manager):
         """_apply_result skips removing more than currently held."""
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.inventory["rusty_key"] = 1
         from mgmai.engine.resolver import _apply_result

@@ -19,13 +19,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from mgmai.game.loop import GameLoop, FALLBACK_NARRATION, TURN_ERROR_NARRATION
-from mgmai.llm.parser import LLMOutputError
 
 
 class FakeLLMClient:

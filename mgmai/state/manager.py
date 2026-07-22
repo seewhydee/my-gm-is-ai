@@ -23,8 +23,6 @@ from typing import Any
 
 from pydantic import ValidationError
 
-log = logging.getLogger(__name__)
-
 from mgmai.models.corpus import (
     Entity,
     ModuleCorpus,
@@ -36,6 +34,8 @@ from mgmai.models.corpus import (
 from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from mgmai.models.actions import HardStateChanges
+
+log = logging.getLogger(__name__)
 
 
 class StateNotLoadedError(RuntimeError):
@@ -401,14 +401,12 @@ class StateManager:
             Checkable,
             ConditionExpression,
             EncounterRule,
-            Entity,
             Exit,
             GatedCheck,
             Interaction,
             Mechanic,
             OnExamineEvent,
             Reaction,
-            ReactionEffects,
             Result,
             Room,
             UsingResultOverride,
@@ -696,7 +694,6 @@ class StateManager:
         from mgmai.models.corpus import (
             Checkable,
             EncounterRule,
-            Entity,
             GatedCheck,
             Interaction,
             Mechanic,

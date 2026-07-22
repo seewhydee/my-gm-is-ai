@@ -16,7 +16,6 @@
 
 """Tests for NPC follower mechanic."""
 
-import copy
 import json
 from pathlib import Path
 
@@ -150,7 +149,6 @@ class TestFindEntityInRoomFollowers:
 
     def test_finds_follower_not_in_contains(self, _setup):
         hard, corpus = _setup
-        room = corpus.rooms["axe_head"]
         result = _find_entity_in_room_followers("korbar", "axe_head", hard, corpus)
         assert result is not None
         assert result.type == "npc"

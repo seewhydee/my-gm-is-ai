@@ -34,7 +34,7 @@ from pathlib import Path
 parent = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(parent))
 
-from mgmai.state.manager import StateManager
+from mgmai.state.manager import StateManager  # noqa: E402
 
 
 def _collect_addable_from_result(result, addable_entities: set[str]) -> None:

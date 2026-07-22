@@ -22,7 +22,6 @@ import copy
 from pathlib import Path
 from typing import Any
 
-from mgmai.models.actions import HardStateChanges
 from mgmai.models.corpus import (
     Adventure,
     Atmosphere,
@@ -39,11 +38,9 @@ from mgmai.models.corpus import (
     ReactionEffects,
     Result,
     Room,
-    StatCheck,
     StatDefinition,
     StatModifier,
     StatsBlock,
-    UsingResultOverride,
 )
 from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.models.soft_state import SoftGameState

@@ -331,7 +331,7 @@ class Commands:
         except ValueError:
             default_url = ""
 
-        self._render(f"\n[bold]Base URL[/bold]")
+        self._render("\n[bold]Base URL[/bold]")
         if default_url:
             self._render(f"  Default: [dim]{default_url}[/dim]")
             self._render("  (leave blank to use default)")

@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import random
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from mgmai.models.actions import (
     CombatAction,
@@ -38,6 +38,7 @@ from mgmai.models.actions import (
 )
 from mgmai.models.corpus import (
     CheckResolution,
+    CheckType,
     EncounterRule,
     GatedCheck,
     Interaction,
@@ -45,7 +46,6 @@ from mgmai.models.corpus import (
     OnExamineEvent,
     Resolvable,
     Result,
-    RollCheck,
     StatCheck,
     StatModifier,
     UsingResultOverride,

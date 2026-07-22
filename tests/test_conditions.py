@@ -26,7 +26,7 @@ from mgmai.engine.conditions import (
     get_condition_detail,
 )
 from mgmai.models.corpus import ConditionExpression, ModuleCorpus
-from mgmai.models.hard_state import HardGameState, PlayerState
+from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 
 
