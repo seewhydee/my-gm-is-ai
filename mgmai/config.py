@@ -73,6 +73,7 @@ class AppConfig:
     base_url: str | None = None
     ruling_temperature: float | None = None
     prose_temperature: float | None = None
+    prose_validation_enabled: bool = True
     adventure_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -85,6 +86,8 @@ class AppConfig:
             d["ruling_temperature"] = self.ruling_temperature
         if self.prose_temperature is not None:
             d["prose_temperature"] = self.prose_temperature
+        if self.prose_validation_enabled:
+            d["prose_validation_enabled"] = self.prose_validation_enabled
         if self.adventure_path is not None:
             d["adventure_path"] = self.adventure_path
         return d
@@ -96,6 +99,7 @@ class AppConfig:
             base_url=data.get("base_url"),
             ruling_temperature=data.get("ruling_temperature"),
             prose_temperature=data.get("prose_temperature"),
+            prose_validation_enabled=data.get("prose_validation_enabled", True),
             adventure_path=data.get("adventure_path"),
         )
 

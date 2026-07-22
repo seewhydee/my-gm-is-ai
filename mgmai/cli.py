@@ -207,7 +207,8 @@ def main(argv: list[str] | None = None) -> None:
     llm_client = LLMClient(api_key=api_key, config=config)
 
     loop = GameLoop(state_manager, llm_client, debug=debug,
-                    display=display, config_dir=config_dir)
+                    display=display, config_dir=config_dir,
+                    prose_validation_enabled=app_config.prose_validation_enabled)
     loop.start()
 
 

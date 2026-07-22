@@ -104,6 +104,7 @@ class GameLoop:
         debug: bool = False,
         display: Optional[Display] = None,
         config_dir: Optional[str | Path] = None,
+        prose_validation_enabled: bool = True,
     ):
         self._state = state_manager
         self._llm = llm_client
@@ -111,6 +112,7 @@ class GameLoop:
         self._running = False
         self._chat_log: list[dict[str, str]] = []
         self._config_dir = Path(config_dir) if config_dir else None
+        self._prose_validation_enabled = prose_validation_enabled
         self._commands = Commands(
             state_loader=state_manager,
             render=self._display.print,
@@ -432,6 +434,7 @@ class GameLoop:
 
     def _call_prose(self, briefing, action, result, *, indicators=None):
         from mgmai.templates.renderer import render_prose
+        from mgmai.llm.prose_validation import validate_prose_output
 
         system_prompt = render_prose(
             include_combat=(
@@ -475,7 +478,27 @@ class GameLoop:
         raw = self._llm.call_prose(system_prompt, user_prompt)
         log.debug("--- LLM Call 2 raw ---\n%s", raw)
 
-        return parse_prose_output(raw)
+        prose = parse_prose_output(raw)
+
+        if self._prose_validation_enabled and indicators:
+            error = validate_prose_output(prose, indicators, result)
+            if error is not None:
+                log.debug("LLM Call 2 retry after invalid prose: %s", error)
+                retry_prompt = (
+                    user_prompt
+                    + "\n\n[ERROR FROM PREVIOUS ATTEMPT: " + error + "]"
+                )
+                raw = self._llm.call_prose(system_prompt, retry_prompt)
+                log.debug("--- LLM Call 2 retry raw ---\n%s", raw)
+                prose = parse_prose_output(raw)
+                retry_error = validate_prose_output(prose, indicators, result)
+                if retry_error is not None:
+                    log.warning(
+                        "LLM Call 2 prose still invalid after retry: %s",
+                        retry_error,
+                    )
+
+        return prose
 
     # --- internal ---
 
