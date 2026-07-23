@@ -1280,8 +1280,8 @@ Standard SRD gear — the full SRD 5.2.1 weapon table (e.g. `longsword`,
 `greataxe`, `light_crossbow`), armor table (`leather_armor`,
 `chain_mail`, `plate_armor`, `shield`), and the four tiers of healing
 potion (`potion_of_healing` … `potion_of_supreme_healing`) — ships with
-the engine as a data pack (`mgmai/data/srd_5e/gear.json`) and needs no
-declaration: rooms, inventories, and character sheets can reference
+the engine as a data pack; see `srd-5e-pack.md` for the full list of
+available IDs.  Rooms, inventories, and character sheets can reference
 those IDs directly.  A corpus item entity with the same ID replaces the
 pack entry wholesale; the validator warns when it does.
 
@@ -1902,8 +1902,8 @@ effect's ticks, but only when the afflicted target is the player
 `tick_effect` on an entity-afflicted status effect is ignored.
 
 The full SRD 5.2.1 condition list is built in as **defaults**, shipped
-with the engine as a data pack (`mgmai/data/srd_5e/conditions.json`); a
-corpus entry with the same ID replaces the default wholesale (no
+with the engine as a data pack; see `srd-5e-pack.md` for the full list.
+A corpus entry with the same ID replaces the default wholesale (no
 field-level merge), and the validator warns when it does:
 
 | ID | Scope | Duration | skip_turn | 5e system effects |

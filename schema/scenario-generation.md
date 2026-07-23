@@ -718,11 +718,11 @@ task report.
 
 **Note: standard gear need not be re-authored.** For the `5e` RPG
 system, a set of weapon and armor tables, along with standard usable
-items, is defined in the SRD data pack `mgmai/data/srd_5e/gear.json`.
-You may reference their IDs (`longsword`, `chain_shirt`, etc.) without
-declaring an entity; the standard SRD definition will be pulled in.
-If you define an entity with an ID in the SRD data pack, that
-overrides the latter.
+items, is defined in the SRD data pack — see `srd-5e-pack.md` for the
+full list of available IDs.  You may reference their IDs (`longsword`,
+`chain_shirt`, etc.) without declaring an entity; the standard SRD
+definition will be pulled in.  If you define an entity with an ID in
+the SRD data pack, that overrides the latter.
 
 #### Description
 
