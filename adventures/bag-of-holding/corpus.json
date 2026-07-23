@@ -1106,7 +1106,6 @@
       },
       "dialogue": {
         "guidelines": "The fly speaks in a weak nasally whine. It is mortally wounded and dying. It has no useful information about this place or anything else — after all, it's a fly (albeit one that talks).",
-        "on_meeting": "In a weak nasally whine, the fly warns of a giant spider that is out for blood.",
         "attitude_limits": {
           "min": 0,
           "max": 0
@@ -1482,7 +1481,6 @@
       ],
       "dialogue": {
         "guidelines": "Korbar is cynical, tired, drunk, and miserable, but willing to converse. Her adventuring party stuffed her into this place during a stealth mission, then forgot about her; she is unsure how long ago — time, like space, functions strangely in here. The giant battleaxe was her weapon when she was full-sized outside. Her armor clatters every time she moves; she is unarmed. She is very afraid of spiders and refuses to fight the spider unless persuaded (see persuade_fight).",
-        "on_meeting": "A drunk, miserable dwarf woman sits amid the rubbish under an overturned soup ladle; she is astonished to see another person in here.",
         "attitude_limits": {
           "min": -10,
           "max": 10,

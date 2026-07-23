@@ -41,20 +41,7 @@ The `dialogue` block defines an NPC's conversational personality, attitude dynam
 ```json
 {
   "dialogue": {
-    "personality": "Gruff, miserable, but secretly lonely. Speaks in short, clipped sentences.",
-    "on_meeting": "Korbar looks up from her bottle. 'Another one, eh? How'd you get here?'",
-    "can": [
-      "Talk about the bag's interior and its dangers",
-      "Discuss the spider"
-    ],
-    "cannot": [
-      "Reveal personal history before trust is earned",
-      "Discuss escape methods before the spider is dealt with"
-    ],
-    "knows": [
-		"The player and Korbor are trapped in a bag of holding, a magical item that is bigger on the inside than the outside",
-		"Jumping out through a hole in the bag walls is a bad idea, since you'll end up in the Astral Plane"
-    ],
+    "guidelines": "Gruff, miserable, but secretly lonely. Speaks in short, clipped sentences. Will talk about the bag's interior and its dangers, and discuss the spider. Will not reveal personal history before trust is earned, or discuss escape methods before the spider is dealt with. Knows that the player and Korbor are trapped in a bag of holding, a magical item that is bigger on the inside than the outside, and that jumping out through a hole in the bag walls is a bad idea, since you'll end up in the Astral Plane.",
     "attitude_limits": {
       "min": -5,
       "max": 10,
@@ -83,11 +70,7 @@ The `dialogue` block defines an NPC's conversational personality, attitude dynam
 
 | Field | Description |
 |-------|-------------|
-| `personality` | Natural-language description of the NPC's personality and speech patterns. Sent to both LLM calls for character-consistent dialogue. |
-| `on_meeting` | Optional text describing the NPC's initial behaviour when the player first sees them (not yet used mechanically). |
-| `can` | Topics and actions the NPC is allowed to discuss or perform. Advisory for the LLM. |
-| `cannot` | Topics and actions the NPC must never discuss or perform. Advisory for the LLM. |
-| `knows` | Knowledge the NPC possesses (which may or may not be revealed depending on conditions). Advisory for the LLM. |
+| `guidelines` | Freeform prose describing the NPC's conversational personality, permitted and forbidden topics, and possessed knowledge. Sent to both LLM calls for character-consistent dialogue. |
 | `attitude_limits` | Mechanical bounds on the NPC's attitude (see below). |
 | `will_reveal` | Topics the NPC can reveal, gated by conditions, with optional side effects (see below). |
 | `dialogue_paths` | Special conversation paths with mechanical effects (see below). |

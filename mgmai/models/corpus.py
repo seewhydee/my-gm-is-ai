@@ -552,7 +552,6 @@ class WillRevealEntry(BaseModel):
 
 class DialogueGuidelines(BaseModel):
     guidelines: str
-    on_meeting: str = ""
     attitude_limits: AttitudeLimits = Field(default_factory=AttitudeLimits)
     will_reveal: Dict[str, WillRevealEntry] = Field(default_factory=dict)
     dialogue_paths: Dict[str, Resolvable] = Field(default_factory=dict)

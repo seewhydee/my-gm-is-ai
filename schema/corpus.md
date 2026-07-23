@@ -1370,7 +1370,6 @@ The `dialogue` field on an NPC entity specifies how the NPC converses.
 ```json
 {
   "guidelines": "The Jester speaks in riddles, puns, and jibes. He gamely offers himself as the butt of jokes. Yet he's smarter than he looks, and knows much about the goings-on at court. He is fundamentally loyal to the King and will never agree to betray him.",
-  "on_meeting": "The Jester hoots when he sees the player, waving and laughing hysterically",
   "attitude_limits": {
     "min": -5,
     "max": 10,
@@ -1391,7 +1390,7 @@ The `dialogue` field on an NPC entity specifies how the NPC converses.
 |-------------------|--------|-------------------------------------|
 | `guidelines`      | string | Tone, demeanor, constraints, etc.   |
 | `attitude_limits`¹| object | NPC's attitude bounds (see below)   |
-| `on_meeting`¹     | string | Describes behavior on first meeting |
+
 | `will_reveal`¹    | object | See [NPC Knowledge](#npc-knowledge) |
 | `dialogue_paths`¹ | Resolvable[] | See [Dialogue Path](#dialogue-path) |
 > ¹ optional
@@ -1402,10 +1401,6 @@ Notes:
   how the NPC should act in conversation throughout the adventure:
   tone, demeanor, what they know, what they will and will not agree
   to, what bits of knowledge they do and do not know, etc.
-
-- `on_meeting`, if present, describes the NPC's canonical reaction
-  when first encountered.  The GM may not use this verbatim, but will
-  not contradict it.
 
 - `attitude_limits`, if present, sets the NPC's engine-enforced
   numerical attitude limits.  This should be an object with supported

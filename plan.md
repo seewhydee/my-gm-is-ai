@@ -80,6 +80,13 @@ history for the archived text.
       contested checks, group checks; NPCs have no ability scores and
       never make checks
 
+- [~] **SRD data pack** - Stores chunky data for items, spells, etc.
+      Done: loader (`mgmai/datapack.py`), pack (`mgmai/data/srd_5e/`),
+      `DEFAULT_STATUS_EFFECTS` now loaded from `conditions.json`,
+      condition list as built-in defaults.  Also, standard weapons,
+      armor, and healing potions; integration tests now use these.  No
+      spells or spell-like abilities yet.
+
 ### Not implemented
 
 - [ ] **Spellcasting** — no spell slots, spell levels, spell lists,
@@ -101,49 +108,22 @@ history for the archived text.
 - [ ] **Shops/currency** — stackable `coins` work in conditions, but
       no buy/sell action
 
-### Recommended next work (lowest-hanging fruit first)
+### Recommended next work
 
-1. ~~**SRD data pack infrastructure** (Part 2)~~ — **done (Phase A)**:
-   loader (`mgmai/datapack.py`), pack dir `mgmai/data/srd_5e/`,
-   `DEFAULT_STATUS_EFFECTS` now loaded from `conditions.json`.
-2. ~~**Full SRD condition list as built-in defaults**~~ — **done
-   (Phase A)**, including the new `system_effects` keys
-   (`advantage_on_attack`, `disadvantage_against`,
-   `auto_fail_str_dex_saves`, `d20_test_modifier`).
-3. ~~**Standard SRD gear catalog**~~ — **done (Phase B)**: full SRD
-   weapon and armor tables plus four healing-potion tiers in
-   `mgmai/data/srd_5e/gear.json`, minted as item entities at load
-   (`StateManager._materialize_pack_gear`); integration fixtures now
-   use pack items.
-4. **Weapon properties round 2** — versatile/two-handed damage dice,
-   thrown + ammunition, weapon proficiency gating (currently every
-   attack gets the proficiency bonus).
-5. **Player 0 HP: unconsciousness + death saves** — medium engine
-   work, high rules-fidelity payoff; also unlocks player-side
-   damage mitigation as a natural companion.  (`unconscious` now
-   exists as a condition to build on.)
-6. **Short/long rests** — per-rest recharge for abilities, hit dice,
-   spell-slot recovery hook. Medium.
-7. **Spellcasting proper** — slots by level, spell attack/save DC
-   derivation, concentration. The big one; do only after 3–4.
+- **Weapon properties round 2** — versatile/two-handed damage dice,
+  thrown + ammunition, weapon proficiency gating (currently every
+  attack gets the proficiency bonus).
 
-### Housekeeping
+- **Player 0 HP: unconsciousness + death saves** — medium engine work,
+  high rules-fidelity payoff; also unlocks player-side damage
+  mitigation as a natural companion.  (`unconscious` now exists as a
+  condition to build on.)
 
-- [x] Stale docs fixed: `README.md` intro (combat/inventory exist),
-      `schema/actions.md` (combat action documented; combat no longer
-      described as a future phase), `doc/intro.md` (action list
-      updated to all ten types), `doc/combat.md` (saving throws no
-      longer "(in future)"; limitations section current).
-      `pyproject.toml` gained the `package-data` config needed to ship
-      data packs in wheels.
-- [x] `scripts/validate_adventure.py` — fixed stale pre-existing import
-      (`parse_damage_dice` lives in `mgmai.engine.systems.dice`, not
-      `mgmai.engine.combat`); gained a warning when a corpus status
-      effect or item entity redefines a built-in/pack ID; the
-      unused-entity check now only considers authored entities (pack
-      gear is materialized but expected to be mostly unreferenced).
-- [ ] `doc/npcs.md:87` — `on_meeting` field is unused mechanically;
-      either wire it up or drop it.
+- **Short/long rests** — per-rest recharge for abilities, hit dice,
+  spell-slot recovery hook. Medium.
+
+- **Spellcasting proper** — slots by level, spell attack/save DC
+  derivation, concentration. The big one; do only after 3–4.
 
 ---
 
