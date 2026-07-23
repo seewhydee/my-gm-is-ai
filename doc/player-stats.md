@@ -38,6 +38,7 @@ format as `--char-sheet`:
     "proficiency_bonus": 2,
     "save_proficiencies": ["DEX", "INT"],
     "skill_proficiencies": ["acrobatics"],
+    "weapon_proficiencies": ["simple", "martial"],
     "abilities": ["fire_bolt", "cure_wounds"]
   }
 }
@@ -159,6 +160,55 @@ player)` hook (skill → governing ability score) and `skill_modifier(stat,
 player)` hook (proficiency bonus when proficient); the default base-class
 implementations handle plain ability-score stats, so other systems are
 unaffected.
+
+### Weapon proficiencies (5e)
+
+A player's weapon proficiencies determine whether the proficiency bonus is
+added to a weapon's **attack roll**.  They live on the player state as a
+list whose entries are combined with OR (the player is proficient if any
+entry matches the weapon).  Each entry is one of:
+
+- a weapon-category name (`"simple"` or `"martial"`), or
+- an individual weapon entity ID, or
+- a **property-filtered clause** object
+  `{"category": "...", "properties": [...]}` granting proficiency with
+  weapons of that category whose `properties` include at least one of the
+  listed properties (OR within the list).
+
+```json
+"weapon_proficiencies": ["simple", "martial", "longsword"]
+```
+
+The clause form models class proficiencies that the bare categories
+cannot express — e.g. the Rogue's "Simple weapons and Martial weapons
+that have the Finesse or Light property", or the Monk's "…Martial
+weapons that have the Light property":
+
+```json
+"weapon_proficiencies": [
+  "simple",
+  {"category": "martial", "properties": ["finesse", "light"]}
+]
+```
+
+- The two categories are `"simple"` and `"martial"` (matching the SRD
+  weapon tables).  Each SRD pack weapon carries its category as an
+  `equip_tag` (see [gear](gear.md#data-model-equipblock)).
+- An individual weapon entity ID grants proficiency with that weapon
+  alone (used for racial or class grants outside the two categories,
+  e.g. an elf's longsword proficiency or a custom weapon with no
+  category).
+- A clause grants proficiency with any weapon in `category` that shares
+  at least one property with `properties`.  Property names match the
+  weapon's `properties` list (e.g. `"finesse"`, `"light"`, `"thrown"`).
+- A weapon the player is **not** proficient with may still be used — it
+  simply does not add the proficiency bonus to the attack roll (the
+  ability modifier and the weapon's `hit_bonus` still apply).
+- **Unarmed strikes are always proficient**, regardless of the list.
+
+The check is performed by `FiveESystem._player_proficient_with_weapon`
+and applied in `compute_player_attack_bonus`.  Unknown categories or IDs
+are rejected at load time (see [hard state](../schema/hard-state.md)).
 
 ### Resolution system abstraction
 

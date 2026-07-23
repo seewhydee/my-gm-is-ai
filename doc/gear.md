@@ -23,8 +23,10 @@ To make an item equippable, add an `equip_block` to its entity definition:
     "description": "A giant toenail clipping, curved and razor-sharp...",
     "tags": ["weapon"],
     "equip_block": {
-      "equip_tags": ["weapon"],
+      "equip_tags": ["weapon", "martial"],
       "damage_expr": "1d6",
+      "damage_type": "piercing",
+      "properties": ["finesse", "light"],
       "hit_bonus": 0
     }
   }
@@ -63,8 +65,12 @@ Pack conventions:
 - **Weapons** — `damage_expr` is the one-handed die (versatile
   two-handed dice are not modeled); `properties` carries the SRD
   property list, of which the engine acts on `finesse` and `ranged`
-  (thrown/ammunition/loading/reach are data only).  Two-handed weapons
-  use the `two_handed` equip tag and conflict with `shield`.
+  (thrown/ammunition/loading/reach are data only).  Each weapon also
+  carries a `"simple"` or `"martial"` proficiency category in
+  `equip_tags` (gates the proficiency bonus on attack rolls; see
+  [weapon proficiencies](player-stats.md#weapon-proficiencies-5e)).
+  Two-handed weapons use the `two_handed` equip tag and conflict with
+  `shield`.
 - **Armor** — light armor is `ac_bonus` (+1/+1/+2, exact for
   `N + DEX`); medium armor is `ac_bonus` (+2…+5, the SRD `max 2` Dex
   cap is **not** modeled); heavy armor is a flat `ac_override`
@@ -82,7 +88,7 @@ without an `equip_block` cannot be equipped (keys, potions, quest items, etc.).
 
 | Field               | Type        | Default  | Description |
 |---------------------|-------------|----------|-------------|
-| `equip_tags`        | `[string]`  | required | Category tags describing what this item "is" when worn/wielded.  The first element is the **slot** (controls default incompatibility and `max_equipped` caps); remaining elements are sub-tags.  Examples: `["headwear"]`, `["weapon", "two_handed"]`, `["armor", "heavy"]`, `["shield"]`, `["ring"]`. |
+| `equip_tags`        | `[string]`  | required | Category tags describing what this item "is" when worn/wielded.  The first element is the **slot** (controls default incompatibility and `max_equipped` caps); remaining elements are sub-tags.  Examples: `["headwear"]`, `["weapon", "martial"]`, `["weapon", "two_handed"]`, `["armor", "heavy"]`, `["shield"]`, `["ring"]`.  For weapons, include a proficiency category tag (`"simple"` or `"martial"`) so the engine can gate the proficiency bonus (see [weapon proficiencies](player-stats.md#weapon-proficiencies-5e)). |
 | `incompatible_with` | `[string]`  | `[]`     | Tags that conflict with this item.  When equipping, the engine checks all already-equipped items: if any of *their* `equip_tags` intersects this list, the equip is rejected.  Default (empty) means items conflict with anything sharing the same slot tag (the first element of `equip_tags`). |
 | `stat_effects`      | `{string: {mode, value}}` | `{}` | Stat changes applied while equipped.  Keys are stat names (e.g. `"STR"`, `"DEX"`), values follow the `StatModifier` format: `{"mode": "delta"|"set", "value": int}`.  Set modifiers apply first (e.g. "belt of giant strength sets STR to 21"), then delta modifiers (e.g. "gauntlets give +1 STR"). |
 | `max_equipped`      | `int|null`  | `1`      | How many items of this slot can be equipped simultaneously.  `1` = standard (one helmet, one armour).  `2` = rings (two ring slots).  `null` = unlimited (artifacts, auras).  The engine uses the **highest** value among all items sharing the same slot tag. |
@@ -101,10 +107,10 @@ system recognises the following extras:
 
 ### Examples
 
-**Longsword** — a standard one-handed weapon:
+**Longsword** — a standard one-handed martial weapon:
 ```json
 {
-  "equip_tags": ["weapon"],
+  "equip_tags": ["weapon", "martial"],
   "damage_expr": "1d8",
   "hit_bonus": 0
 }
@@ -128,10 +134,10 @@ system recognises the following extras:
 }
 ```
 
-**Greatsword** — two-handed:
+**Greatsword** — two-handed martial:
 ```json
 {
-  "equip_tags": ["weapon", "two_handed", "heavy"],
+  "equip_tags": ["weapon", "martial", "two_handed", "heavy"],
   "incompatible_with": ["shield", "handwear"],
   "damage_expr": "2d6",
   "hit_bonus": 0
@@ -247,7 +253,11 @@ priority:
 `FiveESystem.compute_player_attack_bonus(hard, corpus)` sums:
 - The weapon's attack ability modifier: STR by default, DEX for `ranged`
   weapons, the better of STR or DEX for `finesse` weapons.
-- Proficiency bonus.
+- Proficiency bonus — **only when the player is proficient with the
+  weapon** (via `weapon_proficiencies`; see
+  [player stats](player-stats.md#weapon-proficiencies-5e)). A
+  non-proficient weapon is still usable without it. Unarmed strikes are
+  always proficient.
 - `hit_bonus` from all equipped weapons.
 
 ---
@@ -401,7 +411,7 @@ visible in `player_state`:
         "id": "toenail_sword",
         "name": "Giant Toenail Clipping",
         "description": "A giant toenail clipping, curved and razor-sharp...",
-        "equip_tags": ["weapon"],
+        "equip_tags": ["weapon", "martial"],
         "effects_summary": "1d6 damage"
       }
     ],

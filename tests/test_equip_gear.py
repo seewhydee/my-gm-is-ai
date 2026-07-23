@@ -626,7 +626,11 @@ class TestCombatEquipmentStats:
         corpus = state_manager.corpus
         system = FiveESystem()
 
-        # No stats, STR = 10, mod = 0, prof = 2
+        # Proficient with the toenail_sword by individual ID (it has no
+        # simple/martial category), exercising ID-based proficiency.
+        hard.player.weapon_proficiencies = ["toenail_sword"]
+
+        # No stats, STR = 10, mod = 0, prof = 2 (unarmed is always proficient)
         base_bonus = system.compute_player_attack_bonus(hard, corpus)
         assert base_bonus == 2  # prof only
 

@@ -21,7 +21,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from mgmai.models.corpus import (
     DEFAULT_GEAR,
@@ -399,10 +399,15 @@ class StateManager:
         for field, value in overrides.items():
             if field not in PlayerState.model_fields:
                 continue  # forward compatibility: ignore unknown fields
+            # Validate against the field annotation so complex types are
+            # coerced (e.g. a {"category", "properties"} dict becomes a
+            # WeaponProfClause); plain setattr would store the raw value.
+            annotation = PlayerState.model_fields[field].annotation
             try:
-                setattr(player, field, value)
+                value = TypeAdapter(annotation).validate_python(value)
             except ValidationError as e:
                 raise ValueError(f"Invalid value for '{field}': {e}") from e
+            setattr(player, field, value)
 
     # ------------------------------------------------------------------
     # Validation
@@ -893,6 +898,33 @@ class StateManager:
                     raise ValueError(
                         f"Player skill proficiency '{skill}' is not a known "
                         f"skill for system '{system.name}'"
+                    )
+
+        if hard.player.weapon_proficiencies:
+            from mgmai.engine.systems import get_system_for_corpus
+            from mgmai.models.hard_state import WeaponProfClause
+
+            system = get_system_for_corpus(corpus)
+            categories = getattr(system, "WEAPON_PROFICIENCY_CATEGORIES", ())
+            gear = corpus.effective_gear()
+            for entry in hard.player.weapon_proficiencies:
+                # Object-form clauses are already validated by the model
+                # (category is a known literal, properties non-empty); the
+                # property names are free-form and matched at runtime.
+                if isinstance(entry, WeaponProfClause):
+                    continue
+                if entry in categories:
+                    continue
+                ent = gear.get(entry)
+                if (
+                    ent is None
+                    or ent.equip_block is None
+                    or "weapon" not in ent.equip_block.equip_tags
+                ):
+                    raise ValueError(
+                        f"Player weapon proficiency '{entry}' is not a known "
+                        f"weapon category ({sorted(categories)}) or weapon "
+                        f"entity ID"
                     )
 
     def _init_player_combat_defaults(self) -> None:

@@ -508,6 +508,15 @@ class Commands:
                 sign = "+" if mod >= 0 else ""
                 skill_parts.append(f"{skill.title()} ({sign}{mod})")
             lines.append(f"  Skills: {', '.join(skill_parts)}")
+        if hard.player.weapon_proficiencies:
+            parts = []
+            for w in hard.player.weapon_proficiencies:
+                if isinstance(w, str):
+                    parts.append(w.title() if w in ("simple", "martial") else w)
+                else:
+                    props = "/".join(w.properties)
+                    parts.append(f"{w.category.title()} ({props})")
+            lines.append(f"  Weapons:{', '.join(parts)}")
 
         # --- Effective stats (only if gear changes them) ---
         from mgmai.engine.combat import compute_effective_stats

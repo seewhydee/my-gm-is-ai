@@ -541,6 +541,56 @@ class TestPlayerState:
             "acrobatics", "stealth",
         ]
 
+    def test_combat_stats_include_weapon_proficiencies(self):
+        from tests.helpers import (
+            build_state_manager,
+            make_char_sheet_corpus,
+            make_char_sheet_state,
+        )
+
+        manager = build_state_manager(
+            make_char_sheet_corpus(), hard_state=make_char_sheet_state()
+        )
+        manager.hard_state.player.current_hp = 10
+        manager.hard_state.player.weapon_proficiencies = ["simple", "martial"]
+        result = assemble(
+            manager.corpus,
+            manager.hard_state,
+            manager.soft_state,
+            "look",
+        )
+        assert result.player_state.combat_stats is not None
+        assert result.player_state.combat_stats.weapon_proficiencies == [
+            "simple", "martial",
+        ]
+
+    def test_combat_stats_serialize_weapon_proficiency_clause(self):
+        """Clauses are serialized to dicts for the LLM-facing briefing."""
+        from tests.helpers import (
+            build_state_manager,
+            make_char_sheet_corpus,
+            make_char_sheet_state,
+        )
+        from mgmai.models.hard_state import WeaponProfClause
+
+        manager = build_state_manager(
+            make_char_sheet_corpus(), hard_state=make_char_sheet_state()
+        )
+        manager.hard_state.player.current_hp = 10
+        manager.hard_state.player.weapon_proficiencies = [
+            "simple",
+            WeaponProfClause(category="martial", properties=["finesse", "light"]),
+        ]
+        result = assemble(
+            manager.corpus,
+            manager.hard_state,
+            manager.soft_state,
+            "look",
+        )
+        profs = result.player_state.combat_stats.weapon_proficiencies
+        assert profs[0] == "simple"
+        assert profs[1] == {"category": "martial", "properties": ["finesse", "light"]}
+
 
 class TestRecentHistory:
     """History filtering and capping."""

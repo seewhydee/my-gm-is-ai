@@ -15,6 +15,7 @@
     "ac": 14,
     "proficiency_bonus": 2,
     "save_proficiencies": ["STR", "DEX"],
+    "weapon_proficiencies": ["simple", "martial"],
     "inventory": {
       "longsword": 1,
       "potion_of_healing": 2

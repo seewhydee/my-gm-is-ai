@@ -975,7 +975,11 @@ textual description in the Scenario Map.  If the scenario provides
 incomplete item stats, use your best judgment, and surface the issue
 in your task report.  Note that `equip_block.equip_tags` drive the
 equipment system (what can be equipped, damage expressions, AC, etc.),
-and are *not* the same as semantic tags.
+and are *not* the same as semantic tags.  For weapons, include a
+proficiency category tag — `"simple"` or `"martial"` — in `equip_tags`
+(e.g. `["weapon", "martial"]`) so the engine can gate the proficiency
+bonus; custom weapons without a category grant proficiency only via
+their individual ID.
 
 If a mechanic or reaction is used to gate the player picking up the
 item (e.g., STR check to pull a sword from a stone), use `take_check`
@@ -1846,7 +1850,8 @@ file:
     "max_hp": 27,
     "ac": 11,
     "proficiency_bonus": 2,
-    "save_proficiencies": ["DEX", "INT"]
+    "save_proficiencies": ["DEX", "INT"],
+    "weapon_proficiencies": ["simple", "martial"]
   }
 }
 ```
@@ -1878,6 +1883,18 @@ file:
    hero is proficient in here (5e skill names; matched case-insensitively).
    Proficiency adds the proficiency bonus to those skill checks.
 
+8. **`player.weapon_proficiencies`** (optional) — list the weapon
+   proficiencies of the default hero.  Each entry is a weapon-category
+   name (`"simple"`, `"martial"`), an individual weapon entity ID, or a
+   property-filtered clause `{"category": ..., "properties": [...]}`
+   (proficient with weapons of that category sharing at least one listed
+   property — e.g. the Rogue's `{"category": "martial", "properties":
+   ["finesse", "light"]}`).  Entries are OR-combined.  A proficient
+   weapon adds the proficiency bonus to the player's attack roll; a
+   non-proficient weapon may still be used without the bonus.  Unarmed
+   strikes are always proficient.  If the hero starts with or can obtain
+   a weapon, list the matching entry so attack rolls behave as intended.
+
 Only fields that differ from the engine defaults need to be supplied;
 unknown fields are ignored for forward compatibility.
 
@@ -1895,6 +1912,9 @@ unknown fields are ignored for forward compatibility.
       `proficiency_bonus`, and `save_proficiencies` are explicit
 - [ ] Every entry in `skill_proficiencies` (if present) is one of the 18
       5e skill names (see corpus.md — Skill Checks)
+- [ ] Every entry in `weapon_proficiencies` (if present) is `"simple"`,
+      `"martial"`, a weapon entity ID defined in the corpus or the SRD
+      data pack, or a `{"category", "properties"}` clause
 - [ ] No entity in `player.inventory` also appears in a room's
       `contains` at start
 

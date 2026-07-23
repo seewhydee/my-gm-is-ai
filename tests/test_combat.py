@@ -2240,7 +2240,7 @@ class TestWeaponProperties:
             description="A rapier.",
             tags=["weapon"],
             equip_block=EquipBlock(
-                equip_tags=["weapon"],
+                equip_tags=["weapon", "martial"],
                 damage_expr="1d8",
                 properties=properties,
             ),
@@ -2251,6 +2251,7 @@ class TestWeaponProperties:
         hard = combat_hard_state.model_copy(deep=True)
         hard.player.stats = stats
         hard.player.equipped = ["rapier"]
+        hard.player.weapon_proficiencies = ["martial"]
         return hard
 
     def test_finesse_uses_dex_when_higher(self, combat_npc_corpus, combat_hard_state):
@@ -2300,7 +2301,7 @@ class TestDamageTypes:
             description="A burning sword.",
             tags=["weapon"],
             equip_block=EquipBlock(
-                equip_tags=["weapon"], damage_expr="1d8", damage_type=damage_type,
+                equip_tags=["weapon", "martial"], damage_expr="1d8", damage_type=damage_type,
             ),
         )
         cb = corpus.entities["goblin"].combat
@@ -2308,6 +2309,7 @@ class TestDamageTypes:
             setattr(cb, key, value)
         hard = combat_hard_state.model_copy(deep=True)
         hard.player.equipped = ["flame_sword"]
+        hard.player.weapon_proficiencies = ["martial"]
         hard.combat = CombatState(
             active=True,
             combatants=["player", "goblin"],

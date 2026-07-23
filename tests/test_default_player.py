@@ -196,6 +196,82 @@ class TestDefaultPlayerCascade:
         with pytest.raises(ValueError, match="not a known skill"):
             sm.load_all(work_dir)
 
+    def test_weapon_proficiencies_load(self, tmp_path: Path) -> None:
+        corpus = make_char_sheet_corpus()
+        work_dir = _write_corpus(tmp_path, corpus)
+        _write_default_player(work_dir, {
+            "system": "5e",
+            "player": {
+                "stats": {"STR": 10, "DEX": 14, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10},
+                "weapon_proficiencies": ["simple", "martial", "longsword"],
+            },
+        })
+
+        sm = StateManager()
+        sm.load_all(work_dir)
+
+        assert sm.hard_state.player.weapon_proficiencies == [
+            "simple", "martial", "longsword",
+        ]
+
+    def test_unknown_weapon_proficiency_raises(self, tmp_path: Path) -> None:
+        corpus = make_char_sheet_corpus()
+        work_dir = _write_corpus(tmp_path, corpus)
+        _write_default_player(work_dir, {
+            "system": "5e",
+            "player": {
+                "stats": {"STR": 10, "DEX": 14, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10},
+                "weapon_proficiencies": ["excalibur"],
+            },
+        })
+
+        sm = StateManager()
+        with pytest.raises(ValueError, match="not a known weapon"):
+            sm.load_all(work_dir)
+
+    def test_weapon_proficiency_clause_loads(self, tmp_path: Path) -> None:
+        corpus = make_char_sheet_corpus()
+        work_dir = _write_corpus(tmp_path, corpus)
+        _write_default_player(work_dir, {
+            "system": "5e",
+            "player": {
+                "stats": {"STR": 10, "DEX": 14, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10},
+                "weapon_proficiencies": [
+                    "simple",
+                    {"category": "martial", "properties": ["finesse", "light"]},
+                ],
+            },
+        })
+
+        sm = StateManager()
+        sm.load_all(work_dir)
+
+        from mgmai.models.hard_state import WeaponProfClause
+        profs = sm.hard_state.player.weapon_proficiencies
+        assert profs[0] == "simple"
+        assert isinstance(profs[1], WeaponProfClause)
+        assert profs[1].category == "martial"
+        assert profs[1].properties == ["finesse", "light"]
+
+    def test_weapon_proficiency_clause_bad_category_raises(
+        self, tmp_path: Path
+    ) -> None:
+        corpus = make_char_sheet_corpus()
+        work_dir = _write_corpus(tmp_path, corpus)
+        _write_default_player(work_dir, {
+            "system": "5e",
+            "player": {
+                "stats": {"STR": 10, "DEX": 14, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10},
+                "weapon_proficiencies": [
+                    {"category": "exotic", "properties": ["light"]},
+                ],
+            },
+        })
+
+        sm = StateManager()
+        with pytest.raises(ValueError, match="category"):
+            sm.load_all(work_dir)
+
 
 def _write_corpus(tmp_path: Path, corpus) -> Path:
     work_dir = tmp_path / "adventure"

@@ -56,6 +56,20 @@ history for the archived text.
       (`heal`, `cure_status_effects`), improvised weapons; full SRD
       weapon/armor/potion catalog built in via the data pack
       (`mgmai/data/srd_5e/gear.json`)
+- [x] **Conditions** — full SRD condition list built in via the data
+      pack (`mgmai/data/srd_5e/conditions.json`): all 14 conditions plus
+      six exhaustion levels, backed by new `system_effects` keys
+      (`advantage_on_attack`, `disadvantage_against`,
+      `auto_fail_str_dex_saves`, `d20_test_modifier`).  A few rules stay
+      GM-adjudicated (sight/hearing-gated checks, movement, petrified's
+      damage resistance) — noted in each entry's description
+- [x] **Weapon proficiencies** — `PlayerState.weapon_proficiencies`
+      (category names `simple`/`martial` and/or individual weapon IDs);
+      each pack weapon carries its category in `equip_tags`.  The
+      proficiency bonus is added to the attack roll only when the player
+      is proficient with the equipped weapon; non-proficient weapons are
+      still usable without the bonus.  Unarmed strikes are always
+      proficient.  Load-time validation rejects unknown categories/IDs.
 
 ### Partially implemented (known gaps)
 
@@ -69,17 +83,9 @@ history for the archived text.
       (`five_e.py:94-97`)
 - [~] **Player 0 HP** — instant death via `player.died` event; no
       unconsciousness, death saving throws, or stabilization
-- [x] **Conditions** — full SRD condition list built in via the data
-      pack (`mgmai/data/srd_5e/conditions.json`): all 14 conditions plus
-      six exhaustion levels, backed by new `system_effects` keys
-      (`advantage_on_attack`, `disadvantage_against`,
-      `auto_fail_str_dex_saves`, `d20_test_modifier`).  A few rules stay
-      GM-adjudicated (sight/hearing-gated checks, movement, petrified's
-      damage resistance) — noted in each entry's description
 - [~] **Checks** — single-roll vs DC only; no passive scores,
       contested checks, group checks; NPCs have no ability scores and
       never make checks
-
 - [~] **SRD data pack** - Stores chunky data for items, spells, etc.
       Done: loader (`mgmai/datapack.py`), pack (`mgmai/data/srd_5e/`),
       `DEFAULT_STATUS_EFFECTS` now loaded from `conditions.json`,
@@ -111,8 +117,8 @@ history for the archived text.
 ### Recommended next work
 
 - **Weapon properties round 2** — versatile/two-handed damage dice,
-  thrown + ammunition, weapon proficiency gating (currently every
-  attack gets the proficiency bonus).
+  thrown + ammunition (weapon proficiency gating is now implemented;
+  see the Implemented section above).
 
 - **Player 0 HP: unconsciousness + death saves** — medium engine work,
   high rules-fidelity payoff; also unlocks player-side damage

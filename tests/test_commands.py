@@ -500,6 +500,55 @@ class TestCharCommand:
         output = "\n".join(rendered)
         assert "Skills" not in output
 
+    def test_weapon_proficiencies_line(self, state_manager, monkeypatch) -> None:
+        """Character display lists weapon proficiencies (categories title-cased)."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.models.corpus import StatsBlock, StatDefinition
+        state_manager.corpus.stats = StatsBlock(
+            definitions={"STR": StatDefinition(name="Strength")},
+            system="5e",
+        )
+        state_manager.hard_state.player.stats = {"STR": 12}
+        state_manager.hard_state.player.weapon_proficiencies = [
+            "simple", "martial", "longsword",
+        ]
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/c")
+
+        output = "\n".join(rendered)
+        assert "Weapons" in output
+        assert "Simple" in output
+        assert "Martial" in output
+        assert "longsword" in output
+
+    def test_weapon_proficiencies_clause_line(self, state_manager, monkeypatch) -> None:
+        """Clauses render as 'Category (prop/prop)'."""
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        from mgmai.models.corpus import StatsBlock, StatDefinition
+        from mgmai.models.hard_state import WeaponProfClause
+        state_manager.corpus.stats = StatsBlock(
+            definitions={"STR": StatDefinition(name="Strength")},
+            system="5e",
+        )
+        state_manager.hard_state.player.stats = {"STR": 12}
+        state_manager.hard_state.player.weapon_proficiencies = [
+            "simple",
+            WeaponProfClause(category="martial", properties=["finesse", "light"]),
+        ]
+
+        from mgmai.game.commands import Commands
+        rendered: list[str] = []
+        cmds = Commands(state_manager, rendered.append, lambda: None)
+        cmds.handle("/c")
+
+        output = "\n".join(rendered)
+        assert "Weapons" in output
+        assert "Simple" in output
+        assert "Martial (finesse/light)" in output
+
     def test_no_game_loaded(self, render, exit_fn) -> None:
         """Char command when no game is loaded shows error."""
         state = MagicMock()

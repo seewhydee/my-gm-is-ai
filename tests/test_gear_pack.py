@@ -75,6 +75,26 @@ class TestGearPack:
             assert block.damage_expr, gear_id
             assert block.damage_type, gear_id
 
+    def test_every_weapon_has_one_proficiency_category(self) -> None:
+        # Each SRD weapon carries exactly one of "simple"/"martial" in its
+        # equip_tags, so weapon proficiency gating can key off it.
+        for gear_id in WEAPON_IDS:
+            etags = DEFAULT_GEAR[gear_id].equip_block.equip_tags
+            cats = {"simple", "martial"} & set(etags)
+            assert len(cats) == 1, f"{gear_id} must have one category, got {etags}"
+
+    def test_weapon_category_counts_match_srd(self) -> None:
+        from collections import Counter
+        counts = Counter()
+        for gear_id in WEAPON_IDS:
+            etags = set(DEFAULT_GEAR[gear_id].equip_block.equip_tags)
+            if "martial" in etags:
+                counts["martial"] += 1
+            else:
+                counts["simple"] += 1
+        # SRD: 24 martial, 14 simple weapons.
+        assert counts == {"martial": 24, "simple": 14}
+
     def test_full_srd_armor_table(self) -> None:
         assert ARMOR_IDS <= set(DEFAULT_GEAR)
         for gear_id in ARMOR_IDS:

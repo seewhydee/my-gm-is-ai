@@ -15,9 +15,23 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, model_validator
 from mgmai.models.combat import CombatState
+
+
+class WeaponProfClause(BaseModel):
+    """A property-filtered weapon proficiency (5e).
+
+    Proficient with any weapon whose proficiency category is ``category``
+    (``"simple"`` or ``"martial"``) and whose ``properties`` include at
+    least one of the listed ``properties`` (OR semantics).  This models
+    class proficiencies such as the Rogue's "Martial weapons that have
+    the Finesse or Light property" or the Monk's "Martial weapons that
+    have the Light property".
+    """
+    category: Literal["simple", "martial"]
+    properties: List[str] = Field(min_length=1)
 
 
 class PlayerState(BaseModel):
@@ -34,6 +48,18 @@ class PlayerState(BaseModel):
     # 5e skill names the player is proficient in (e.g. "acrobatics");
     # matched case-insensitively by the resolution system.
     skill_proficiencies: list[str] = Field(default_factory=list)
+    # 5e weapon proficiencies.  Each entry is either:
+    #   - a weapon-category name ("simple", "martial"), or
+    #   - an individual weapon entity ID, or
+    #   - a WeaponProfClause ({"category", "properties"}) granting
+    #     proficiency with weapons of that category that have at least
+    #     one of the listed properties (OR).
+    # A weapon the player is not proficient with can still be used, but
+    # grants no proficiency bonus to the attack roll.  Unarmed strikes
+    # are always proficient.
+    weapon_proficiencies: List[Union[str, WeaponProfClause]] = Field(
+        default_factory=list
+    )
     # Active status effects (status effect id -> rounds remaining); combat-scoped.
     status_effects: Dict[str, int] = Field(default_factory=dict)
     # IDs of combat abilities the player knows (corpus.abilities keys).

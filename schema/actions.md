@@ -169,7 +169,7 @@ Soft State, for the ruling LLM (call 1).
         "id": "toenail_sword",
         "name": "Giant Toenail Clipping",
         "description": "A giant toenail clipping, curved and razor-sharp...",
-        "equip_tags": ["weapon"],
+        "equip_tags": ["weapon", "martial"],
         "effects_summary": "1d6 damage"
       }
     ],
@@ -190,7 +190,8 @@ Soft State, for the ruling LLM (call 1).
       "max_hp": 27,
       "ac": 14,
       "proficiency_bonus": 2,
-      "skill_proficiencies": ["acrobatics"]
+      "skill_proficiencies": ["acrobatics"],
+      "weapon_proficiencies": ["simple", "martial"]
     }
   },
 

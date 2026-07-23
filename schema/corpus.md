@@ -1290,7 +1290,7 @@ parameters of the equipment:
 
 ```json
 {
-  "equip_tags": ["weapon"],
+  "equip_tags": ["weapon", "martial"],
   "incompatible_with": ["shield"],
   "stat_effects": { "STR": { "mode": "delta", "value": 1 } },
   "max_equipped": 1,
@@ -1322,6 +1322,13 @@ Notes:
   Common equipment tags include: `"weapon"`, `"shield"`, `"armor"`,
   `"ring"`, `"headwear"`, `"handwear"`, `"boots"`, `"two_handed"`.
 
+  Weapons also carry a **proficiency category** tag — `"simple"` or
+  `"martial"` (matching the SRD weapon tables) — e.g.
+  `["weapon", "martial"]`.  The category gates the player's
+  proficiency bonus on attack rolls (see
+  [weapon proficiencies](hard-state.md)); a weapon without a category
+  can only grant proficiency via its individual entity ID.
+
   Unlike the semantic `tags` in the [Entity](#entity) block, equipment
   tags only describe the item's features **as equipment**.  Only items
   with the `"weapon"` equipment tag can be wielded as weapons.
@@ -1332,8 +1339,8 @@ Notes:
   rejected.  The default (empty) means the item conflicts with
   anything in the same slot (e.g., can't wear two helmets).
 
-  For two-handed weapons, `"equip_tags": ["two_handed"]` can be paired
-  with (say) `"incompatible_with": ["shield", "handwear"]`.
+  For two-handed weapons, `"equip_tags": ["weapon", "martial", "two_handed"]`
+  can be paired with (say) `"incompatible_with": ["shield", "handwear"]`.
 
 - `stat_effects` stores stat changes applied while the item is
   equipped, in the form `{stat_key: {mode, value}}`.  Any `"set"`

@@ -14,7 +14,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -59,12 +58,19 @@ def _classify_gear(gear: dict) -> dict[str, list[tuple[str, str]]]:
             else:
                 buckets["Light Armor"].append((gid, name))
         elif "weapon" in etags:
-            is_martial = "martial" in desc.lower()
+            is_martial = "martial" in etags
+            is_simple = "simple" in etags
+            # ``ranged`` is an engine property (DEX-forced attack stat);
+            # the dart is an SRD ranged weapon but is thrown/finesse, so
+            # fall back to the description for the presentational split.
             is_ranged = "ranged" in props or "ranged" in desc.lower()
             if is_martial:
                 key = "Martial Ranged Weapons" if is_ranged else "Martial Melee Weapons"
-            else:
+            elif is_simple:
                 key = "Simple Ranged Weapons" if is_ranged else "Simple Melee Weapons"
+            else:
+                # No proficiency category — not part of the SRD weapon tables.
+                continue
             buckets[key].append((gid, name))
     return {k: v for k, v in buckets.items() if v}
 

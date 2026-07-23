@@ -247,6 +247,10 @@ def _build_player_state(
             ac=effective_ac,
             proficiency_bonus=hard.player.proficiency_bonus or 2,
             skill_proficiencies=list(hard.player.skill_proficiencies),
+            weapon_proficiencies=[
+                c if isinstance(c, str) else c.model_dump()
+                for c in hard.player.weapon_proficiencies
+            ],
         )
 
     return PlayerStateBriefing(

@@ -37,7 +37,7 @@ from mgmai.engine.systems import (
 from mgmai.engine.systems.dice import parse_damage_dice
 from mgmai.models.combat import CombatLogEntry
 from mgmai.models.corpus import EquipBlock, ModuleCorpus, StatCheck
-from mgmai.models.hard_state import HardGameState
+from mgmai.models.hard_state import HardGameState, WeaponProfClause
 
 
 # ------------------------------------------------------------------
@@ -627,3 +627,195 @@ class TestFiveEEquipmentExtras:
         assert sys.get_equip_incompatibilities(eb) == set()
         eb2 = EquipBlock(equip_tags=["weapon", "two_handed"])
         assert sys.get_equip_incompatibilities(eb2) == set()
+
+
+# ------------------------------------------------------------------
+# FiveESystem: weapon proficiency gating
+# ------------------------------------------------------------------
+
+def _corpus_with_weapon(
+    item_id: str,
+    equip_tags: list[str],
+    properties: list[str] | None = None,
+    hit_bonus: int = 0,
+) -> ModuleCorpus:
+    """Minimal corpus with one weapon item entity."""
+    return ModuleCorpus.model_validate({
+        "adventure": {"title": "T", "introduction": "T"},
+        "rooms": {"room1": {"name": "R", "description": "D"}},
+        "entities": {
+            item_id: {
+                "type": "item",
+                "name": item_id,
+                "description": "D",
+                "tags": ["weapon"],
+                "equip_block": {
+                    "equip_tags": equip_tags,
+                    "damage_expr": "1d8",
+                    "damage_type": "slashing",
+                    "hit_bonus": hit_bonus,
+                    "properties": properties or [],
+                },
+            },
+        },
+    })
+
+
+class TestFiveEWeaponProficiency:
+    """Proficiency gating on compute_player_attack_bonus."""
+
+    def test_proficient_by_category(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(stats={"STR": 16}, equipped=["longsword"])
+        hard.player.weapon_proficiencies = ["martial"]
+        corpus = _corpus_with_weapon("longsword", ["weapon", "martial"])
+        # STR +3, proficiency +2 -> +5
+        assert s.compute_player_attack_bonus(hard, corpus) == 5
+
+    def test_proficient_by_id(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(stats={"STR": 16}, equipped=["longsword"])
+        hard.player.weapon_proficiencies = ["longsword"]
+        corpus = _corpus_with_weapon("longsword", ["weapon", "martial"])
+        assert s.compute_player_attack_bonus(hard, corpus) == 5
+
+    def test_non_proficient_gets_no_proficiency_bonus(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(stats={"STR": 16}, equipped=["longsword"])
+        # Proficient only with simple weapons; longsword is martial.
+        hard.player.weapon_proficiencies = ["simple"]
+        corpus = _corpus_with_weapon("longsword", ["weapon", "martial"])
+        # STR +3 only — proficiency withheld.
+        assert s.compute_player_attack_bonus(hard, corpus) == 3
+
+    def test_non_proficient_weapon_still_adds_hit_bonus(self) -> None:
+        s = FiveESystem()
+        hard = _hard_player(stats={"STR": 16}, equipped=["longsword"])
+        hard.player.weapon_proficiencies = ["simple"]
+        corpus = _corpus_with_weapon(
+            "longsword", ["weapon", "martial"], hit_bonus=1
+        )
+        # STR +3, magic hit_bonus +1, no proficiency -> +4
+        assert s.compute_player_attack_bonus(hard, corpus) == 4
+
+    def test_unarmed_always_proficient(self) -> None:
+        s = FiveESystem()
+        # No weapon equipped and no weapon proficiencies at all.
+        hard = _hard_player(stats={"STR": 16}, equipped=[])
+        hard.player.weapon_proficiencies = []
+        corpus = _corpus_with_weapon("longsword", ["weapon", "martial"])
+        # Unarmed: STR +3 + proficiency +2 (always proficient) -> +5
+        assert s.compute_player_attack_bonus(hard, corpus) == 5
+
+    def test_proficient_with_weapon_helper(self) -> None:
+        s = FiveESystem()
+        corpus = _corpus_with_weapon("longsword", ["weapon", "martial"])
+
+        proficient = _hard_player(stats={"STR": 16}, equipped=["longsword"])
+        proficient.player.weapon_proficiencies = ["martial"]
+        assert s._player_proficient_with_weapon(proficient, corpus) is True
+
+        by_id = _hard_player(stats={"STR": 16}, equipped=["longsword"])
+        by_id.player.weapon_proficiencies = ["longsword"]
+        assert s._player_proficient_with_weapon(by_id, corpus) is True
+
+        nonprof = _hard_player(stats={"STR": 16}, equipped=["longsword"])
+        nonprof.player.weapon_proficiencies = ["simple"]
+        assert s._player_proficient_with_weapon(nonprof, corpus) is False
+
+        unarmed = _hard_player(stats={"STR": 16}, equipped=[])
+        unarmed.player.weapon_proficiencies = []
+        # No equipped weapon -> unarmed -> always proficient.
+        assert s._player_proficient_with_weapon(unarmed, corpus) is True
+
+    # -- property-filtered clauses (Rogue / Monk style) ----------------
+
+    def _rogue_corpus(self) -> ModuleCorpus:
+        """A corpus with several martial weapons of differing properties."""
+        specs = [
+            ("shortsword", ["weapon", "martial"], ["finesse", "light"]),
+            ("rapier", ["weapon", "martial"], ["finesse"]),
+            ("scimitar", ["weapon", "martial"], ["finesse", "light"]),
+            ("longsword", ["weapon", "martial"], ["versatile"]),
+            ("club", ["weapon", "simple"], ["light"]),
+        ]
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "T", "introduction": "T"},
+            "rooms": {"room1": {"name": "R", "description": "D"}},
+            "entities": {
+                wid: {
+                    "type": "item",
+                    "name": wid,
+                    "description": "D",
+                    "tags": ["weapon"],
+                    "equip_block": {
+                        "equip_tags": et,
+                        "damage_expr": "1d8",
+                        "damage_type": "slashing",
+                        "properties": props,
+                    },
+                }
+                for wid, et, props in specs
+            },
+        })
+
+    def test_rogue_clause_finesse_or_light(self) -> None:
+        # Rogue: simple + martial(finesse OR light).
+        s = FiveESystem()
+        corpus = self._rogue_corpus()
+        rogue = [
+            "simple",
+            WeaponProfClause(category="martial", properties=["finesse", "light"]),
+        ]
+        for proficient in ("shortsword", "rapier", "scimitar", "club"):
+            hard = _hard_player(stats={"STR": 16}, equipped=[proficient])
+            hard.player.weapon_proficiencies = rogue
+            assert s._player_proficient_with_weapon(hard, corpus) is True, proficient
+            # STR +3, prof +2 -> +5
+            assert s.compute_player_attack_bonus(hard, corpus) == 5, proficient
+        # longsword is martial but has neither finesse nor light -> not proficient.
+        hard = _hard_player(stats={"STR": 16}, equipped=["longsword"])
+        hard.player.weapon_proficiencies = rogue
+        assert s._player_proficient_with_weapon(hard, corpus) is False
+        assert s.compute_player_attack_bonus(hard, corpus) == 3  # STR only
+
+    def test_monk_clause_light_only(self) -> None:
+        # Monk: simple + martial(light).
+        s = FiveESystem()
+        corpus = self._rogue_corpus()
+        monk = ["simple", WeaponProfClause(category="martial", properties=["light"])]
+        # shortsword/scimitar have light -> proficient.
+        for proficient in ("shortsword", "scimitar", "club"):
+            hard = _hard_player(stats={"STR": 16}, equipped=[proficient])
+            hard.player.weapon_proficiencies = monk
+            assert s._player_proficient_with_weapon(hard, corpus) is True, proficient
+        # rapier is martial+finesse but NOT light -> not proficient.
+        hard = _hard_player(stats={"STR": 16}, equipped=["rapier"])
+        hard.player.weapon_proficiencies = monk
+        assert s._player_proficient_with_weapon(hard, corpus) is False
+
+    def test_clause_wrong_category_does_not_match(self) -> None:
+        # A martial+light clause must not match a simple+light weapon via the
+        # clause (the simple weapon is covered only by the "simple" entry).
+        s = FiveESystem()
+        corpus = self._rogue_corpus()
+        only_clause = [WeaponProfClause(category="martial", properties=["light"])]
+        # club is simple+light: clause category is martial -> no match.
+        hard = _hard_player(stats={"STR": 16}, equipped=["club"])
+        hard.player.weapon_proficiencies = only_clause
+        assert s._player_proficient_with_weapon(hard, corpus) is False
+
+    def test_clause_parses_from_dict(self) -> None:
+        from mgmai.models.hard_state import PlayerState
+        p = PlayerState.model_validate({
+            "location": "room1",
+            "weapon_proficiencies": [
+                "simple",
+                {"category": "martial", "properties": ["finesse", "light"]},
+            ],
+        })
+        assert p.weapon_proficiencies[0] == "simple"
+        clause = p.weapon_proficiencies[1]
+        assert isinstance(clause, WeaponProfClause)
+        assert clause.category == "martial"
+        assert clause.properties == ["finesse", "light"]

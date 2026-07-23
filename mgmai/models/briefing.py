@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 from mgmai.models.corpus import DialogueGuidelines
 
@@ -94,6 +94,11 @@ class PlayerCombatStats(BaseModel):
     ac: int
     proficiency_bonus: int
     skill_proficiencies: List[str] = Field(default_factory=list)
+    # Each entry is a bare string (category or weapon ID) or a dict
+    # {"category": ..., "properties": [...]} (a WeaponProfClause, serialized).
+    weapon_proficiencies: List[Union[str, Dict[str, Any]]] = Field(
+        default_factory=list
+    )
 
 
 class PlayerStateBriefing(BaseModel):

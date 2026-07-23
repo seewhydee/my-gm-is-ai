@@ -163,6 +163,7 @@ set of system-specific fields.
   "proficiency_bonus": 2,
   "save_proficiencies": ["STR", "CON"],
   "skill_proficiencies": ["acrobatics", "stealth"],
+  "weapon_proficiencies": ["simple", "martial"],
   "status_effects": { "poisoned": 2 },
   "abilities": ["fire_bolt", "cure_wounds"]
 }
@@ -177,6 +178,7 @@ set of system-specific fields.
 | `proficiency_bonus`¹ | integer  | Proficiency bonus              |
 | `save_proficiencies` | string[] | Saving throw proficiency stats |
 | `skill_proficiencies` | string[] | Skills the player is proficient in (5e skill names, matched case-insensitively). A [skill check](corpus.md#skill-checks-5e) against a listed skill adds the proficiency bonus to the governing ability's modifier |
+| `weapon_proficiencies` | (see below) | Weapon proficiencies (list of entries, OR-combined): a category name (`"simple"`, `"martial"`), an individual weapon entity ID, or a property-filtered clause `{"category": ..., "properties": [...]}` (proficient with weapons of that category sharing at least one listed property). A player attack with a proficient weapon adds the proficiency bonus to the attack roll; a non-proficient weapon may still be used but gains no proficiency bonus. Unarmed strikes are always proficient (see [player stats](../doc/player-stats.md#weapon-proficiencies-5e)) |
 | `status_effects`    | object   | Active status effects (status effect ID → rounds remaining).  IDs are defined in the corpus [`status_effects` block](corpus.md#status-effects) (or the built-in defaults); combat-scoped entries clear at combat end, persistent entries survive |
 | `abilities`          | string[] | IDs of [Abilities](corpus.md#abilities) the player knows |
 

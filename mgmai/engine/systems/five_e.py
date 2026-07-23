@@ -38,6 +38,7 @@ from mgmai.engine.systems.base import (
 from mgmai.engine.systems.dice import parse_damage_dice
 from mgmai.engine.utils import get_status_effects
 from mgmai.models.combat import CombatLogEntry
+from mgmai.models.hard_state import WeaponProfClause
 
 if TYPE_CHECKING:
     from mgmai.models.corpus import EquipBlock, ModuleCorpus, NPCAttackDef
@@ -56,6 +57,12 @@ class FiveESystem(ResolutionSystem):
         "acid", "bludgeoning", "cold", "fire", "force", "lightning",
         "necrotic", "piercing", "poison", "radiant", "slashing", "thunder",
     })
+
+    #: Weapon proficiency categories (SRD 5.2.1).  A weapon carries one of
+    #: these as an ``equip_tag``; a player proficient in the category (or in
+    #: the weapon's individual ID) adds their proficiency bonus to attack
+    #: rolls with it.  Unarmed strikes are always proficient.
+    WEAPON_PROFICIENCY_CATEGORIES = ("simple", "martial")
 
     #: The 18 skills (SRD 5.2.1 "Skills" table), lowercase name -> governing
     #: ability score.  A stat check naming a skill uses the player's score in
@@ -226,10 +233,11 @@ class FiveESystem(ResolutionSystem):
             return 10
         return stats.get(key, 10)
 
-    def _equipped_weapon_block(
+    def _equipped_weapon(
         self, hard: HardGameState, corpus: ModuleCorpus
-    ) -> "EquipBlock | None":
-        """Return the EquipBlock of the first equipped weapon, else None."""
+    ) -> "tuple[str, EquipBlock] | None":
+        """Return ``(item_id, EquipBlock)`` of the first equipped weapon,
+        else ``None``."""
         for item_id in hard.player.equipped:
             entity = corpus.entities.get(item_id)
             if (
@@ -237,8 +245,55 @@ class FiveESystem(ResolutionSystem):
                 and entity.equip_block
                 and "weapon" in entity.equip_block.equip_tags
             ):
-                return entity.equip_block
+                return item_id, entity.equip_block
         return None
+
+    def _equipped_weapon_block(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> "EquipBlock | None":
+        """Return the EquipBlock of the first equipped weapon, else None."""
+        equipped = self._equipped_weapon(hard, corpus)
+        return equipped[1] if equipped is not None else None
+
+    def _player_proficient_with_weapon(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> bool:
+        """Whether the player is proficient with the equipped weapon.
+
+        Unarmed (no equipped weapon) is always proficient — everyone is
+        proficient with unarmed strikes.  Otherwise each entry in the
+        player's ``weapon_proficiencies`` is tested (the list is an OR of
+        clauses); a clause matches when:
+
+        - it is a bare string equal to the weapon's entity ID, or to one
+          of :attr:`WEAPON_PROFICIENCY_CATEGORIES` present in the
+          weapon's ``equip_tags``; or
+        - it is a :class:`~mgmai.models.hard_state.WeaponProfClause`
+          whose ``category`` matches one of the weapon's category tags
+          and whose ``properties`` share at least one element with the
+          weapon's ``properties`` (OR within the list) — e.g. the
+          Rogue's "martial weapons that have the Finesse or Light
+          property".
+
+        A non-proficient weapon may still be used, but grants no
+        proficiency bonus to the attack roll.
+        """
+        equipped = self._equipped_weapon(hard, corpus)
+        if equipped is None:
+            return True
+        item_id, block = equipped
+        profs = getattr(hard.player, "weapon_proficiencies", None) or []
+        weapon_cats = set(block.equip_tags) & set(self.WEAPON_PROFICIENCY_CATEGORIES)
+        weapon_props = set(block.properties)
+        for clause in profs:
+            if isinstance(clause, WeaponProfClause):
+                if clause.category in weapon_cats and (
+                    weapon_props & set(clause.properties)
+                ):
+                    return True
+            elif clause == item_id or clause in weapon_cats:
+                return True
+        return False
 
     def _weapon_attack_stat(self, hard: HardGameState, corpus: ModuleCorpus) -> str:
         """Ability score for the equipped weapon's attack and damage rolls.
@@ -260,12 +315,20 @@ class FiveESystem(ResolutionSystem):
     def compute_player_attack_bonus(
         self, hard: HardGameState, corpus: ModuleCorpus
     ) -> int:
-        """5e attack bonus: weapon ability mod + proficiency + weapon bonuses."""
+        """5e attack bonus: weapon ability mod + proficiency (when
+        proficient with the weapon) + weapon bonuses.
+
+        A non-proficient weapon still hits with the ability modifier and
+        the weapon's ``hit_bonus``; only the proficiency bonus is withheld.
+        Unarmed strikes are always proficient.
+        """
         stats = hard.player.stats
         stat_mod = self.compute_modifier(
             self._player_stat(stats, self._weapon_attack_stat(hard, corpus))
         )
-        prof = getattr(hard.player, "proficiency_bonus", None) or 2
+        prof = 0
+        if self._player_proficient_with_weapon(hard, corpus):
+            prof = getattr(hard.player, "proficiency_bonus", None) or 2
         weapon_bonus = 0
         for item_id in hard.player.equipped:
             entity = corpus.entities.get(item_id)

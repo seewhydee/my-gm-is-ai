@@ -20,6 +20,7 @@
     "save_proficiencies": [
       "DEX",
       "INT"
-    ]
+    ],
+    "weapon_proficiencies": ["simple", "martial"]
   }
 }

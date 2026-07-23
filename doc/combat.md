@@ -180,6 +180,7 @@ The player gains optional combat fields on `HardGameState.player`:
 | `ac` | int? | `None` | Armour Class (computed from DEX if absent) |
 | `proficiency_bonus` | int? | `None` | Proficiency bonus (defaults to `2`) |
 | `save_proficiencies` | list[str]? | `[]` | Ability scores the player is proficient in for saving throws (e.g. `["DEX","INT"]`) |
+| `weapon_proficiencies` | list[str]? | `[]` | Weapon proficiency categories (`"simple"`, `"martial"`) and/or weapon entity IDs. The proficiency bonus is added to a weapon's attack roll only when proficient; unarmed strikes are always proficient (see [player stats](player-stats.md#weapon-proficiencies-5e)) |
 | `status_effects` | dict[str,int] | `{}` | Active status effects (status effect id → rounds remaining); combat-scoped entries clear at combat end, persistent ones survive |
 
 ### Status Effects
@@ -329,7 +330,13 @@ engine while combat is active.
 
 **Player attack:**
 
-- Attack roll: `d20 + STR_modifier + proficiency_bonus` (melee only).
+- Attack roll: `d20 + weapon_ability_modifier + proficiency_bonus (if
+  proficient) + weapon_hit_bonus`.  The weapon ability is STR by default,
+  DEX for `ranged` weapons, the better of STR/DEX for `finesse` weapons.
+  The proficiency bonus is added only when the player is proficient with
+  the equipped weapon (see [weapon proficiencies](player-stats.md#weapon-proficiencies-5e));
+  a non-proficient weapon is still usable without it.  Unarmed strikes
+  (no equipped weapon) are always proficient.
   - Natural 1: auto-miss.
   - Natural 20: auto-hit and critical.
 - Compare total vs target's `CombatBlock.ac`.
@@ -604,7 +611,8 @@ of the old one-shot resolution.
     "current_hp": 10,
     "max_hp": 10,
     "ac": 14,
-    "proficiency_bonus": 2
+    "proficiency_bonus": 2,
+    "weapon_proficiencies": ["simple", "martial"]
   }
 }
 ```

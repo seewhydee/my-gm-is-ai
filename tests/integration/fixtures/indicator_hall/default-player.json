@@ -15,6 +15,7 @@
     "ac": 14,
     "proficiency_bonus": 2,
     "save_proficiencies": ["STR"],
+    "weapon_proficiencies": ["simple", "martial"],
     "inventory": {
       "cudgel": 1
     },

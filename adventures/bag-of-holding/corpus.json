@@ -1762,12 +1762,10 @@
         }
       },
       "equip_block": {
-        "equip_tags": [
-          "weapon"
-        ],
+        "equip_tags": ["weapon", "martial"],
         "damage_expr": "1d6",
         "damage_type": "piercing",
-        "note": "Wielded in one hand like a shortsword: 1d6 piercing, finesse, light."
+        "properties": ["finesse", "light"]
       },
       "take_check": {
         "gating": {

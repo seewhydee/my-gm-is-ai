@@ -51,7 +51,7 @@
       "description": "A heavy oak cudgel used for the proving hall's trials. Deals bludgeoning damage.",
       "tags": ["weapon"],
       "equip_block": {
-        "equip_tags": ["weapon"],
+        "equip_tags": ["weapon", "simple"],
         "damage_expr": "1d6",
         "hit_bonus": 5,
         "damage_type": "bludgeoning"
