@@ -1245,6 +1245,29 @@ class TestCombatPrefix:
         prefix = format_combat_prefix(log)
         assert "fail" in prefix.lower()
 
+    def test_opportunity_attack_prefix(self):
+        log = [{"actor": "goblin", "action": "opportunity_attack",
+                "target": "player", "hit": True, "damage": 3}]
+        prefix = format_combat_prefix(log)
+        assert "goblin makes an opportunity attack on you: hit" in prefix
+        assert "3 damage" in prefix
+
+    def test_reposition_prefix(self):
+        log = [{"actor": "player", "action": "reposition", "target": "goblin"}]
+        prefix = format_combat_prefix(log)
+        assert "You reposition relative to goblin" in prefix
+
+    def test_maneuver_prefix(self):
+        log = [{"actor": "player", "action": "maneuver"}]
+        prefix = format_combat_prefix(log)
+        assert "disengage" in prefix.lower()
+
+    def test_impeded_prefix(self):
+        log = [{"actor": "goblin", "action": "impeded"}]
+        prefix = format_combat_prefix(log)
+        assert "goblin" in prefix
+        assert "closing in" in prefix
+
 
 # ------------------------------------------------------------------
 # 12. Save/load with CombatState
@@ -1917,11 +1940,20 @@ class TestPartyCombat:
         self._combat_state(party_hard)
         party_hard.entity_states["goblin"]["current_hp"] = 20
         # player hits for 6; companion hits for 6 (last attacker = companion);
-        # goblin retaliates: 12+4=16 vs companion AC 14 -> hit, dmg 3+2=5
-        rand_vals = iter([15, 3, 10, 4, 12, 3])
+        # goblin retaliates at the companion: breaking its engagement with
+        # the player provokes a player OA (15+5=20 vs 12 -> hit, 1+3=4),
+        # then 12+4=16 vs companion AC 14 -> hit, dmg 3+2=5
+        rand_vals = iter([15, 3, 10, 4, 15, 1, 12, 3])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
         assert result["success"]
+        oas = [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ]
+        assert len(oas) == 1
+        assert oas[0].actor == "player"
+        assert oas[0].target == "goblin"
         goblin_attacks = [
             e for e in result["combat_log"]
             if e.action == "attack" and e.actor == "goblin"
@@ -1937,8 +1969,10 @@ class TestPartyCombat:
         )
         self._combat_state(party_hard)
         party_hard.entity_states["goblin"]["current_hp"] = 20
-        # player hits; companion hits (last attacker); goblin still hits player
-        rand_vals = iter([15, 3, 10, 4, 12, 3])
+        # player hits; companion hits (last attacker); goblin still attacks
+        # the player — breaking engagement with the companion provokes a
+        # companion OA (1 -> miss), then the goblin hits the player
+        rand_vals = iter([15, 3, 10, 4, 1, 12, 3])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
         goblin_attacks = [
@@ -1954,8 +1988,10 @@ class TestPartyCombat:
         )
         self._combat_state(party_hard)
         party_hard.entity_states["companion"]["current_hp"] = 5
-        # player misses; companion attacks and misses; goblin picks companion (5 < 10)
-        rand_vals = iter([1, 1, 12, 3])
+        # player misses; companion attacks and misses; goblin picks companion
+        # (5 < 10) — breaking engagement with the player provokes a player
+        # OA (1 -> miss), then the goblin hits the companion
+        rand_vals = iter([1, 1, 1, 12, 3])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
         goblin_attacks = [
@@ -1972,7 +2008,9 @@ class TestPartyCombat:
         self._combat_state(party_hard)
         party_hard.entity_states["goblin"]["current_hp"] = 20
         # player misses; companion hits; goblin picks opponents[1] = companion
-        rand_vals = iter([1, 10, 4, 1, 12, 3])
+        # — breaking engagement with the player provokes a player OA
+        # (1 -> miss), then the goblin hits the companion
+        rand_vals = iter([1, 10, 4, 1, 1, 12, 3])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
         goblin_attacks = [
@@ -2041,8 +2079,10 @@ class TestPartyCombat:
         party_hard.entity_states["goblin"]["current_hp"] = 20
         party_hard.entity_states["companion"]["current_hp"] = 5
         # player misses; companion hits goblin (last attacker); goblin
-        # retaliates: 15+4=19 vs AC 14 -> hit, dmg 6+2=8 -> companion dead
-        rand_vals = iter([1, 10, 4, 15, 6])
+        # retaliates — breaking engagement with the player provokes a
+        # player OA (1 -> miss) — 15+4=19 vs AC 14 -> hit, dmg 6+2=8 ->
+        # companion dead
+        rand_vals = iter([1, 10, 4, 1, 15, 6])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), party_hard, party_corpus)
         assert result["success"]
@@ -2469,8 +2509,9 @@ class TestConditions:
         hard.player.status_effects = {"stunned": 2}
         self._combat_state(hard)
         # player skips; goblin attacks the stunned player WITH ADVANTAGE
-        # (keeps 12), hits for 3+2=5
-        rand_vals = iter([12, 5, 3])
+        # (keeps 12) — engaged with the stunned player, the hit is an
+        # automatic critical: 3+3+2=8
+        rand_vals = iter([12, 5, 3, 3])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
         assert result["success"] is True
@@ -2482,16 +2523,22 @@ class TestConditions:
             if e.action == "attack" and e.actor == "player"
         ]
         assert player_attacks == []
-        assert result["hard_changes"].player_hp_delta == -5
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert goblin_attacks[0].critical is True
+        assert result["hard_changes"].player_hp_delta == -8
         assert hard.combat.round_number == 2
 
     def test_stunned_npc_loses_turn(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         hard = combat_hard_state.model_copy(deep=True)
         hard.entity_states["goblin"]["status_effects"] = {"stunned": 2}
         self._combat_state(hard)
-        # player attacks the stunned goblin WITH ADVANTAGE (keeps 15),
-        # dmg 1+3=4 (goblin hp 7 -> 3); goblin stunned, skips
-        rand_vals = iter([3, 15, 1])
+        # player attacks the stunned goblin WITH ADVANTAGE (keeps 15) —
+        # engaged with the stunned goblin, the hit is an automatic
+        # critical: 1+1+3=5 (goblin hp 7 -> 2); goblin stunned, skips
+        rand_vals = iter([3, 15, 1, 1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack(), hard, combat_npc_corpus)
         stunned = [e for e in result["combat_log"] if e.action == "stunned"]
@@ -3447,8 +3494,9 @@ class TestAbilities:
         self._combat_state(ability_hard, order=("player", "medic", "goblin"), allies=["medic"])
         ability_hard.entity_states["medic"]["current_hp"] = 5
         # player cures medic 4+2=6 (5 -> 11); medic finds everyone healthy
-        # and attacks the goblin (miss); goblin misses
-        rand_vals = iter([4, 1, 1])
+        # and attacks the goblin (miss); goblin attacks the player —
+        # breaking engagement with the medic provokes a medic OA (1 -> miss)
+        rand_vals = iter([4, 1, 1, 1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._ability("cure_wounds", "medic"), ability_hard, ability_corpus)
         assert result["success"]
@@ -3522,8 +3570,10 @@ class TestAbilities:
             ability_hard, order=("player", "medic", "goblin"), allies=["medic"],
         )
         # everyone at full HP: medic falls back to its basic attack
-        # player hits goblin for 5; medic attacks goblin (miss); goblin misses
-        rand_vals = iter([15, 2, 1, 1])
+        # player hits goblin for 5; medic attacks goblin (miss); goblin
+        # attacks the player — breaking engagement with the medic provokes
+        # a medic OA (1 -> miss), then the goblin misses
+        rand_vals = iter([15, 2, 1, 1, 1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         result = resolve_combat_turn(self._attack_goblin(), ability_hard, ability_corpus)
         assert result["success"]
@@ -3577,3 +3627,686 @@ class TestAbilities:
         prefix = format_combat_prefix(log)
         assert "cure wounds" in prefix.lower()
         assert "healed 6" in prefix.lower()
+
+
+# ------------------------------------------------------------------
+# 18. Positioning: engagement, opportunity attacks, Disengage, impede
+# ------------------------------------------------------------------
+
+class TestPositioning:
+    """Theater-of-the-mind engagement: auto-engage, OAs, Disengage, impede."""
+
+    @pytest.fixture
+    def pos_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Positioning", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1",
+                    "description": "A room.",
+                    "contains": ["goblin", "goblin2", "archer"],
+                    "exits": [
+                        {"id": "exit_north", "direction": "north", "target_room": "room2"},
+                    ],
+                },
+                "room2": {"name": "Room 2", "description": "Another room."},
+            },
+            "entities": {
+                "goblin": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6+2", "flee_dc": 10},
+                },
+                "goblin2": {
+                    "type": "npc",
+                    "description": "Another goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6+2", "flee_dc": 10},
+                },
+                "archer": {
+                    "type": "npc",
+                    "description": "A goblin archer.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    # Block-level ``ranged`` must still apply through the
+                    # per-attack override pattern (the def sets no flag).
+                    "combat": {
+                        "hp": 7, "ac": 12, "ranged": True,
+                        "attacks": [
+                            {"id": "shot", "name": "shoots", "atk": 4, "dmg": "1d6+2"},
+                        ],
+                    },
+                },
+                "bow": {
+                    "type": "item",
+                    "name": "Shortbow",
+                    "description": "A shortbow.",
+                    "tags": ["weapon"],
+                    "equip_block": {
+                        "equip_tags": ["weapon", "martial"],
+                        "damage_expr": "1d8",
+                        "properties": ["ranged"],
+                    },
+                },
+            },
+            "abilities": {
+                "fire_bolt": {
+                    "name": "Fire Bolt",
+                    "target": "enemy",
+                    "attack": {"stat": "INT", "damage": "1d10"},
+                },
+            },
+        })
+
+    @pytest.fixture
+    def pos_hard(self, combat_hard_state) -> HardGameState:
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.entity_states = {
+            "goblin": {"alive": True, "current_hp": 7},
+            "goblin2": {"alive": True, "current_hp": 7},
+            "archer": {"alive": True, "current_hp": 7},
+        }
+        hard.room_contains = {"room1": {"goblin": 1, "goblin2": 1, "archer": 1}}
+        return hard
+
+    def _combat_state(self, hard, order=("player", "goblin", "goblin2")):
+        hard.combat = CombatState(
+            active=True,
+            combatants=list(order),
+            initiative_order=list(order),
+            current_index=0,
+            round_number=1,
+        )
+
+    def _attack(self, target="goblin", positioning=None):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target=target, detail="Attack!", positioning=positioning,
+        )
+
+    def _wait(self, positioning=None):
+        return WaitAction(
+            action_type="wait", detail="Wait.", positioning=positioning,
+        )
+
+    def _pairs(self, combat):
+        return {tuple(p) for p in combat.engagement}
+
+    # -- Engagement formation -------------------------------------------
+
+    def test_player_melee_attack_forms_engagement(self, pos_hard, pos_corpus, monkeypatch):
+        self._combat_state(pos_hard)
+        # player hits goblin (15, dmg 3+3=6); goblin and goblin2 miss
+        rand_vals = iter([15, 3, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        assert result["success"]
+        assert self._pairs(pos_hard.combat) == {
+            ("goblin", "player"), ("goblin2", "player"),
+        }
+
+    def test_npc_melee_attack_forms_engagement(self, pos_hard, pos_corpus, monkeypatch):
+        self._combat_state(pos_hard)
+        # player waits; both goblins attack (miss), engaging the player
+        rand_vals = iter([1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._wait(), pos_hard, pos_corpus)
+        assert result["success"]
+        assert self._pairs(pos_hard.combat) == {
+            ("goblin", "player"), ("goblin2", "player"),
+        }
+
+    def test_direct_attack_combat_entry_engages(self, pos_hard, pos_corpus, monkeypatch):
+        monkeypatch.setattr(random, "randint", lambda a, b: b)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+        enter_combat(["goblin"], pos_hard, pos_corpus, engage_source="goblin")
+        assert pos_hard.combat.engagement == [["goblin", "player"]]
+
+    def test_ranged_combat_entry_does_not_engage(self, pos_hard, pos_corpus, monkeypatch):
+        pos_hard.player.equipped = ["bow"]
+        pos_hard.player.weapon_proficiencies = ["martial"]
+        monkeypatch.setattr(random, "randint", lambda a, b: b)
+        monkeypatch.setattr(random, "random", lambda: 0.5)
+        enter_combat(["goblin"], pos_hard, pos_corpus, engage_source="goblin")
+        assert pos_hard.combat.engagement == []
+
+    # -- Auto-disengage on target switch ---------------------------------
+
+    def test_target_switch_provokes_oa(self, pos_hard, pos_corpus, monkeypatch):
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        # player switches to goblin2: goblin OA hits (12+4=16 vs 14,
+        # 3+2=5), player hits goblin2 (15, 3+3=6); goblins miss
+        rand_vals = iter([12, 3, 15, 3, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._attack(target="goblin2"), pos_hard, pos_corpus,
+        )
+        assert result["success"]
+        oas = [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ]
+        assert len(oas) == 1
+        assert oas[0].actor == "goblin"
+        assert oas[0].target == "player"
+        assert result["hard_changes"].player_hp_delta == -5
+        # The goblin pair was broken (the OA proves it); the goblin then
+        # re-engaged by attacking on its own turn.
+        assert self._pairs(pos_hard.combat) == {
+            ("goblin", "player"), ("goblin2", "player"),
+        }
+
+    def test_llm_engage_assertion_preserves_pair(self, pos_hard, pos_corpus, monkeypatch):
+        """A positioning assertion re-asserting an existing pair prevents
+        the last-target auto-disengage (no OA)."""
+        from mgmai.models.actions import PositioningAssertion
+
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        # player attacks goblin2 while explicitly staying engaged with
+        # goblin: no OA; both pairs engaged afterwards
+        rand_vals = iter([15, 3, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = self._attack(
+            target="goblin2",
+            positioning=PositioningAssertion(engage=[["player", "goblin"]]),
+        )
+        result = resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert result["success"]
+        assert [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ] == []
+        assert self._pairs(pos_hard.combat) == {
+            ("goblin", "player"), ("goblin2", "player"),
+        }
+
+    # -- Close-combat Disadvantage ---------------------------------------
+
+    def test_player_ranged_disadvantage_when_engaged(self, pos_hard, pos_corpus, monkeypatch):
+        pos_hard.player.equipped = ["bow"]
+        pos_hard.player.weapon_proficiencies = ["martial"]
+        self._combat_state(pos_hard, order=("player", "goblin"))
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        # ranged attack while engaged: rolls twice, keeps lower (3) -> miss
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 3
+        assert entry.hit is False
+
+    def test_npc_ranged_disadvantage_when_engaged(self, pos_hard, pos_corpus, monkeypatch):
+        """Block-level ``ranged`` applies through the per-attack override
+        pattern (the attack def sets no flag of its own)."""
+        self._combat_state(pos_hard, order=("player", "archer"))
+        pos_hard.combat.engagement = [["archer", "player"]]
+        # archer ranged attack while engaged: keeps lower (5) -> 5+4=9 miss
+        rand_vals = iter([12, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._wait(), pos_hard, pos_corpus)
+        entry = next(
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "archer"
+        )
+        assert entry.attack_roll == 5
+        assert entry.hit is False
+
+    def test_npc_ranged_per_attack_flag(self, pos_hard, pos_corpus, monkeypatch):
+        """A per-attack ``ranged`` flag works with a melee block default."""
+        corpus = pos_corpus.model_copy(deep=True)
+        corpus.entities["archer"].combat.ranged = False
+        corpus.entities["archer"].combat.attacks[0].ranged = True
+        self._combat_state(pos_hard, order=("player", "archer"))
+        pos_hard.combat.engagement = [["archer", "player"]]
+        rand_vals = iter([12, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._wait(), pos_hard, corpus)
+        entry = next(
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "archer"
+        )
+        assert entry.attack_roll == 5
+        assert entry.hit is False
+
+    # -- LLM disengage assertions and OA direction ------------------------
+
+    def test_disengage_assertion_provokes_directional_oa(self, pos_hard, pos_corpus, monkeypatch):
+        """[mover, stationary]: the stationary party gets the OA."""
+        from mgmai.models.actions import PositioningAssertion
+
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"], ["goblin2", "player"]]
+        # player steps away from goblin2 (mover=player): goblin2 OA hits
+        # (12+4=16, 3+2=5); player attacks goblin (15, 3+3=6); goblins miss
+        rand_vals = iter([12, 3, 15, 3, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = self._attack(
+            positioning=PositioningAssertion(disengage=[["player", "goblin2"]]),
+        )
+        result = resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert result["success"]
+        oas = [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ]
+        assert len(oas) == 1
+        assert oas[0].actor == "goblin2"
+        assert oas[0].target == "player"
+        repos = [
+            e for e in result["combat_log"] if e.action == "reposition"
+        ]
+        assert (repos[0].actor, repos[0].target) == ("player", "goblin2")
+        # The goblin2 pair was broken (reposition + OA prove it); goblin2
+        # then re-engaged by attacking on its own turn.
+        assert self._pairs(pos_hard.combat) == {
+            ("goblin", "player"), ("goblin2", "player"),
+        }
+
+    def test_enemy_mover_provokes_player_oa(self, pos_hard, pos_corpus, monkeypatch):
+        """An assertion moving an enemy away from the player gives the
+        player the OA."""
+        from mgmai.models.actions import PositioningAssertion
+
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        # goblin backs off (mover=goblin): player OA hits (15, 3+3=6,
+        # goblin 7 -> 1); player finishes it (15, 3+3=6 -> dead); goblin2
+        # misses
+        rand_vals = iter([15, 3, 15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = self._attack(
+            positioning=PositioningAssertion(disengage=[["goblin", "player"]]),
+        )
+        result = resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert result["success"]
+        oas = [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ]
+        assert len(oas) == 1
+        assert oas[0].actor == "player"
+        assert oas[0].target == "goblin"
+        assert pos_hard.entity_states["goblin"]["alive"] is False
+
+    # -- Disengage maneuver -----------------------------------------------
+
+    def test_disengage_maneuver_avoids_oa(self, pos_hard, pos_corpus, monkeypatch):
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"], ["goblin2", "player"]]
+        # player Disengages (no OAs); goblins re-engage by attacking (miss)
+        rand_vals = iter([1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = CombatAction(
+            action_type="combat", combat_action="maneuver",
+            maneuver="disengage", detail="Back away carefully.",
+        )
+        result = resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert result["success"]
+        maneuvers = [
+            e for e in result["combat_log"] if e.action == "maneuver"
+        ]
+        assert len(maneuvers) == 1
+        assert maneuvers[0].actor == "player"
+        assert [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ] == []
+
+    def test_disengage_maneuver_strips_positioning_disengage(
+        self, pos_hard, pos_corpus, monkeypatch
+    ):
+        """A Disengage maneuver's no-OA guarantee is not sabotaged by
+        contradictory ``disengage`` entries in the positioning block: the
+        entries are stripped with a warning, impede entries still apply,
+        and no opportunity attacks are provoked."""
+        from mgmai.models.actions import PositioningAssertion
+
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"], ["goblin2", "player"]]
+        # goblins re-engage by attacking (miss); goblin is impeded (skips)
+        rand_vals = iter([1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = CombatAction(
+            action_type="combat", combat_action="maneuver",
+            maneuver="disengage", detail="Back away carefully.",
+            positioning=PositioningAssertion(
+                engage=[["player", "goblin2"]],
+                disengage=[["player", "goblin"], ["player", "goblin2"]],
+                impede=["goblin"],
+            ),
+        )
+        result = resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert result["success"]
+        # No OAs — the disengage entries were stripped.
+        assert [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ] == []
+        # No reposition entries from the positioning block.
+        assert [
+            e for e in result["combat_log"] if e.action == "reposition"
+        ] == []
+        # The maneuver still ran.
+        assert any(
+            e.action == "maneuver" and e.actor == "player"
+            for e in result["combat_log"]
+        )
+        # The impede entry survived (independent of engagement).
+        assert pos_hard.combat.impede_used == ["goblin"]
+        # A warning explains the strip.
+        assert any(
+            "Disengage maneuver" in w for w in result["warnings"]
+        ), result["warnings"]
+
+    def test_maneuver_needs_no_target_but_attack_does(self):
+        action = validate_player_action({
+            "action_type": "combat", "combat_action": "maneuver",
+            "maneuver": "disengage", "detail": "Back off.",
+        })
+        assert isinstance(action, CombatAction)
+        assert action.target is None
+        with pytest.raises(ValueError, match="requires a target"):
+            validate_player_action({
+                "action_type": "combat", "combat_action": "attack",
+                "detail": "Swing!",
+            })
+
+    # -- Prone / unconscious rules hooks ----------------------------------
+
+    def test_prone_advantage_when_engaged(self, pos_hard, pos_corpus, monkeypatch):
+        pos_hard.entity_states["goblin"]["status_effects"] = {"prone": 5}
+        self._combat_state(pos_hard, order=("player", "goblin"))
+        # melee attack auto-engages: prone + engaged -> advantage (keeps 15)
+        rand_vals = iter([3, 15, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 15
+        assert entry.hit is True
+
+    def test_prone_disadvantage_when_unengaged(self, pos_hard, pos_corpus, monkeypatch):
+        pos_hard.player.equipped = ["bow"]
+        pos_hard.player.weapon_proficiencies = ["martial"]
+        pos_hard.entity_states["goblin"]["status_effects"] = {"prone": 5}
+        self._combat_state(pos_hard, order=("player", "goblin"))
+        # ranged attack does not engage: prone + unengaged -> disadvantage
+        # (keeps 3) -> miss
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 3
+        assert entry.hit is False
+
+    def test_unconscious_auto_crit_when_engaged(self, pos_hard, pos_corpus, monkeypatch):
+        pos_hard.entity_states["goblin"]["status_effects"] = {"unconscious": 9}
+        self._combat_state(pos_hard, order=("player", "goblin"))
+        # melee attack auto-engages: advantage (keeps 15), hit auto-crits:
+        # 1+1+3=5 (hp 7 -> 2); goblin loses its turn
+        rand_vals = iter([3, 15, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        entry = result["combat_log"][0]
+        assert entry.hit is True
+        assert entry.critical is True
+        assert entry.damage == 5
+
+    def test_unconscious_no_auto_crit_when_unengaged(self, pos_hard, pos_corpus, monkeypatch):
+        pos_hard.player.equipped = ["bow"]
+        pos_hard.player.weapon_proficiencies = ["martial"]
+        pos_hard.entity_states["goblin"]["status_effects"] = {"unconscious": 9}
+        self._combat_state(pos_hard, order=("player", "goblin"))
+        # ranged attack does not engage: advantage (keeps 15) but no
+        # auto-crit; dmg 1+2=3
+        rand_vals = iter([3, 15, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        entry = result["combat_log"][0]
+        assert entry.hit is True
+        assert not entry.critical
+        assert entry.damage == 3
+
+    # -- Pruning ----------------------------------------------------------
+
+    def test_engagement_pruned_on_death(self, pos_hard, pos_corpus, monkeypatch):
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        # player crits (20): 6+6+3=15 -> goblin dead, pair pruned;
+        # goblin2 misses (engaging the player)
+        rand_vals = iter([20, 6, 6, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        assert result["success"]
+        assert self._pairs(pos_hard.combat) == {("goblin2", "player")}
+
+    def test_positioning_pruned_on_flee(self, pos_hard, pos_corpus, monkeypatch):
+        corpus = pos_corpus.model_copy(deep=True)
+        corpus.entities["goblin"].combat.ai = CombatAIBlock(flee_below_hp_pct=50)
+        pos_hard.entity_states["goblin"]["current_hp"] = 3  # 43% < 50%
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        pos_hard.combat.impeded = ["goblin"]
+        pos_hard.combat.impede_used = ["goblin"]
+        # player waits; goblin flees (flee check runs before impede
+        # consumption); goblin2 misses
+        rand_vals = iter([1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._wait(), pos_hard, corpus)
+        assert result["success"]
+        assert pos_hard.entity_states["goblin"]["fled"] is True
+        combat = pos_hard.combat
+        assert self._pairs(combat) == {("goblin2", "player")}
+        assert "goblin" not in combat.impeded
+        assert "goblin" not in combat.impede_used
+
+    def test_positioning_dropped_at_combat_end(self, pos_hard, pos_corpus, monkeypatch):
+        self._combat_state(pos_hard, order=("player", "goblin"))
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        pos_hard.combat.impeded = ["goblin"]
+        pos_hard.combat.impede_used = ["goblin"]
+        # player crits (20): 6+6+3=15 -> goblin dead -> combat ends
+        rand_vals = iter([20, 6, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        assert result["success"]
+        assert pos_hard.combat is None  # whole state (incl. positioning) dropped
+
+    # -- OA suppression ----------------------------------------------------
+
+    def test_skip_turn_suppresses_oa(self, pos_hard, pos_corpus, monkeypatch):
+        pos_hard.entity_states["goblin"]["status_effects"] = {"stunned": 2}
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        # player switches to goblin2: the stunned goblin cannot OA;
+        # goblin skips its turn; goblin2 misses
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._attack(target="goblin2"), pos_hard, pos_corpus,
+        )
+        assert result["success"]
+        assert [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ] == []
+        assert self._pairs(pos_hard.combat) == {("goblin2", "player")}
+
+    # -- Impede ------------------------------------------------------------
+
+    def test_impede_consumption_skips_attack_and_engages(self, pos_hard, pos_corpus, monkeypatch):
+        from mgmai.models.actions import PositioningAssertion
+
+        self._combat_state(pos_hard)
+        # player hits goblin2 (15, 3+3=6) and impedes goblin; goblin spends
+        # its turn closing in (no attack, engages its AI target = player);
+        # goblin2 misses
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = self._attack(
+            target="goblin2",
+            positioning=PositioningAssertion(impede=["goblin"]),
+        )
+        result = resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert result["success"]
+        impeded = [e for e in result["combat_log"] if e.action == "impeded"]
+        assert len(impeded) == 1
+        assert impeded[0].actor == "goblin"
+        goblin_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "goblin"
+        ]
+        assert goblin_attacks == []
+        combat = pos_hard.combat
+        assert ("goblin", "player") in self._pairs(combat)
+        assert combat.impeded == []
+        assert combat.impede_used == ["goblin"]
+
+    def test_impede_once_per_combat(self, pos_hard, pos_corpus, monkeypatch):
+        from mgmai.models.actions import PositioningAssertion
+
+        self._combat_state(pos_hard)
+        # turn 1: impede goblin (consumed on its turn)
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = self._attack(
+            target="goblin2",
+            positioning=PositioningAssertion(impede=["goblin"]),
+        )
+        resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert pos_hard.combat.impede_used == ["goblin"]
+        # turn 2: re-impeding the same enemy is dropped with a warning
+        rand_vals = iter([1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._wait(positioning=PositioningAssertion(impede=["goblin"])),
+            pos_hard, pos_corpus,
+        )
+        assert result["success"]
+        assert any("already impeded" in w for w in result["warnings"])
+        assert pos_hard.combat.impeded == []
+
+    def test_impede_counts_toward_change_cap(self, pos_hard, pos_corpus, monkeypatch):
+        from mgmai.models.actions import PositioningAssertion
+
+        # goblin2 acts before goblin, so goblin's impede flag is still
+        # pending when goblin2 breaks the asserted goblin pair (no OA).
+        self._combat_state(pos_hard, order=("player", "goblin2", "goblin"))
+        # 3 engages + 2 impedes = 5 changes; the cap is 4, so the second
+        # impede is dropped with a warning
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = self._attack(
+            positioning=PositioningAssertion(
+                engage=[
+                    ["player", "goblin"],
+                    ["player", "goblin2"],
+                    ["goblin", "goblin2"],
+                ],
+                impede=["goblin", "goblin2"],
+            ),
+        )
+        result = resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert result["success"]
+        assert any("at most 4 changes" in w for w in result["warnings"])
+        combat = pos_hard.combat
+        assert "goblin" in combat.impede_used
+        assert "goblin2" not in combat.impede_used
+
+    def test_pending_impede_suppresses_oa(self, pos_hard, pos_corpus, monkeypatch):
+        self._combat_state(pos_hard)
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        pos_hard.combat.impeded = ["goblin"]
+        pos_hard.combat.impede_used = ["goblin"]
+        # player switches to goblin2: the impeded goblin cannot OA, then
+        # spends its turn closing in; goblin2 misses
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._attack(target="goblin2"), pos_hard, pos_corpus,
+        )
+        assert result["success"]
+        assert [
+            e for e in result["combat_log"]
+            if e.action == "opportunity_attack"
+        ] == []
+
+    def test_pending_impede_suppresses_close_combat_disadvantage(
+        self, pos_hard, pos_corpus, monkeypatch
+    ):
+        pos_hard.player.equipped = ["bow"]
+        pos_hard.player.weapon_proficiencies = ["martial"]
+        self._combat_state(pos_hard, order=("player", "goblin"))
+        pos_hard.combat.engagement = [["goblin", "player"]]
+        pos_hard.combat.impeded = ["goblin"]
+        pos_hard.combat.impede_used = ["goblin"]
+        # ranged attack engaged only with an impeded enemy: single roll
+        # (15) -> hit, dmg 1+2=3; goblin spends its turn closing in
+        rand_vals = iter([15, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
+        entry = result["combat_log"][0]
+        assert entry.attack_roll == 15
+        assert entry.hit is True
+
+    def test_skip_turn_defers_impede_consumption(self, pos_hard, pos_corpus, monkeypatch):
+        pos_hard.entity_states["goblin"]["status_effects"] = {"stunned": 2}
+        self._combat_state(pos_hard, order=("player", "goblin"))
+        pos_hard.combat.impeded = ["goblin"]
+        pos_hard.combat.impede_used = ["goblin"]
+        monkeypatch.setattr(random, "randint", lambda a, b: 1)
+        # turn 1: goblin is stunned; the impede flag persists
+        result = resolve_combat_turn(self._wait(), pos_hard, pos_corpus)
+        assert [
+            e for e in result["combat_log"] if e.action == "impeded"
+        ] == []
+        assert pos_hard.combat.impeded == ["goblin"]
+        # turn 2: stun expires; the flag is consumed and the goblin closes in
+        result = resolve_combat_turn(self._wait(), pos_hard, pos_corpus)
+        impeded = [e for e in result["combat_log"] if e.action == "impeded"]
+        assert len(impeded) == 1
+        assert pos_hard.combat.impeded == []
+        assert ("goblin", "player") in self._pairs(pos_hard.combat)
+
+    # -- Graceful degradation ----------------------------------------------
+
+    def test_invalid_positioning_entries_dropped_with_warning(
+        self, pos_hard, pos_corpus, monkeypatch
+    ):
+        from mgmai.models.actions import PositioningAssertion
+
+        self._combat_state(pos_hard)
+        # engage with an unknown id, disengage a pair that is not engaged,
+        # impede the player: all dropped with warnings; impede goblin2 is
+        # valid and applies.  The core attack proceeds normally.
+        rand_vals = iter([15, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = self._attack(
+            positioning=PositioningAssertion(
+                engage=[["player", "nonexistent"]],
+                disengage=[["player", "goblin2"]],
+                impede=["player", "goblin2"],
+            ),
+        )
+        result = resolve_combat_turn(action, pos_hard, pos_corpus)
+        assert result["success"]
+        assert len(result["warnings"]) == 3
+        player_attacks = [
+            e for e in result["combat_log"]
+            if e.action == "attack" and e.actor == "player"
+        ]
+        assert len(player_attacks) == 1  # core action proceeded
+        impeded = [e for e in result["combat_log"] if e.action == "impeded"]
+        assert len(impeded) == 1
+        assert impeded[0].actor == "goblin2"
+        assert pos_hard.combat.impede_used == ["goblin2"]

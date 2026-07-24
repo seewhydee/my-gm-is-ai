@@ -43,6 +43,7 @@ LLM-vs-LLM runs:
 | **Attack variety** | NPC `multiattack` with named attacks, damage **immunity**, mid-combat weapon swap (`equip` + `unequip_targets`), player attack-roll and heal abilities |
 | **Combat AI** | `player` targeting, HP-gated NPC abilities (`use_below_own_hp_pct`), passive NPCs (join combat, never act) |
 | **Encounter-driven combat** | Combat started by an encounter (`trigger_encounter` → `start_combat`) instead of a direct attack; the player's `wait` action; out-of-bounds talk attempts handled gracefully |
+| **Combat positioning** | Engagement auto-forms on melee attacks and is exposed in status snapshots; scripted `positioning` rulings (engage/disengage/impede) produce `reposition` / `opportunity_attack` / `maneuver` / `impeded` log entries and indicator lines; the Disengage maneuver; impede turn-consumption; graceful degradation of invalid positioning blocks |
 | **GM rulings** | LLM Call 1 correctly classifies player commands in natural language as combat actions, ability uses, item uses, and flee attempts |
 | **GM prose** | LLM Call 2 produces a coherent narration that reflects the engine outcome, without hallucinating hits/misses/KOs that didn't happen |
 | **Narration quality** | No verbatim repetition, no degenerate loops, consistent HP tracking across turns (advisory judge) |
@@ -127,8 +128,9 @@ even broken runs.
 
 Each game turn makes 2 GM LLM calls (ruling + prose) plus 1 driver
 call.  With `stop_when`, a typical fight is ~10 turns ≈ 30 calls.  A
-full `pytest tests/integration` run (11 scenarios) is roughly 300–400
-calls, plus 11 judge calls.
+full `pytest tests/integration` run (12 driver scenarios) is roughly
+350–450 calls, plus the scripted single-turn scenarios (1 GM call
+each) and one judge call per scenario.
 
 ## Scenarios
 
@@ -201,6 +203,37 @@ Four scenarios use the `indicator_hall` fixture:
 | `indicator_attack_death` | Attack the 1-HP battered dummy mid-combat (preset combat state, seeded dice) | Two `combat` indicators (attack + death); combat ends |
 
 Each run costs 1 GM call + 1 judge call per scenario.
+
+## The combat-positioning scenarios
+
+`test_combat_positioning.py` covers theater-of-the-mind positioning
+(engagement, opportunity attacks, Disengage, impede — see
+`combat-positioning-plan.md`) in two styles.
+
+Five **scripted** scenarios reuse the single-turn indicator harness
+(`run_indicator_turn`) against the `combat_arena` fixture with a
+preset `CombatState` (player acting first against the goblin grunt and
+the bugbear) and pinned dice (`seed=7`, making the combat log,
+indicator texts, and post-turn engagement state deterministic — the
+expectations were derived by running the engine locally with that
+seed).  The hand-written actions carry `positioning` assertion blocks
+exactly as the ruling LLM would emit them.  Each run costs 1 GM call +
+1 judge call:
+
+| Scenario | Fixed action | Key assertions |
+|----------|--------------|----------------|
+| `positioning_engagement_exposure` | Attack the grunt (no assertion) | Melee attacks auto-engage attacker ↔ target; the headless status snapshot carries `engaged_with` (sorted ids) and `impeded` on every combatant |
+| `positioning_opportunity_attack` | Attack the grunt with `{"engage": [["player", "goblin_grunt"]], "disengage": [["player", "bugbear"]]}` | `reposition` entries for both changes; one `opportunity_attack` entry (bugbear → player, seeded hit for 5) resolving *before* the declared attack; the OA indicator line appears in the player-facing narration |
+| `positioning_disengage_maneuver` | `{"combat_action": "maneuver", "maneuver": "disengage"}` (no target; grunt preset stunned so it cannot re-engage) | `maneuver` log entry; zero opportunity attacks; the grunt's pair stays broken while the bugbear re-engages on its own attack; "You disengage, carefully withdrawing from melee." indicator |
+| `positioning_impede` | Attack the grunt with `{"impede": ["bugbear"]}` | The bugbear's turn is consumed closing in (`impeded` entry, no attack); it ends engaged with its AI target; `impede_used == ["bugbear"]` persists after the pending flag is consumed; "held up by an obstacle" indicator |
+| `positioning_soft_fail` | Attack the grunt with an invalid block (unknown id, non-engaged disengage pair, impeding the player) | Every malformed entry dropped with a `positioning ... dropped: ...` warning in `result.warnings`; no reposition/OA/impede effects; the core attack still lands |
+
+One **playtest** scenario uses the driver-vs-GM harness
+(`run_scenario`, same as `test_combat_arena.py`):
+
+| Scenario | Directive | Key assertions |
+|----------|-----------|----------------|
+| `positioning_playtest` | Defeat all enemies while fighting mobile: switch targets mid-fight, create an obstacle to slow an enemy, withdraw when surrounded | Hard gates: combat concludes cleanly; every in-combat status snapshot exposes `engaged_with`/`impeded` on every combatant and at least one snapshot shows a live engagement pair.  Whether the GM actually asserts positioning blocks (reposition/OA/maneuver/impeded entries) depends on its rulings, so it is surfaced as a warning, never a gate |
 
 ## The combat arena fixture
 

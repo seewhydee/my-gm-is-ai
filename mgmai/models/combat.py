@@ -72,3 +72,12 @@ class CombatState(BaseModel):
     # combat}, and NPC id -> {ability id -> rounds until usable again}.
     ability_uses: dict[str, dict[str, int]] = Field(default_factory=dict)
     npc_cooldowns: dict[str, dict[str, int]] = Field(default_factory=dict)
+    # Positioning: sorted symmetric "within melee reach" pairs of combatant
+    # ids ([["goblin", "player"]]).  Pairs involving dead/fled combatants
+    # are pruned immediately; the whole state is dropped at combat end.
+    engagement: list[list[str]] = Field(default_factory=list)
+    # Impede bookkeeping: enemy ids with a pending impede flag (consumed at
+    # their next turn), and ids already impeded this combat (each enemy can
+    # be impeded at most once per combat).
+    impeded: list[str] = Field(default_factory=list)
+    impede_used: list[str] = Field(default_factory=list)

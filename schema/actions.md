@@ -649,7 +649,7 @@ rule questions, or meta-discussion.
 
 ---
 
-#### `combat` -- Combat action (attack / use item / use ability)
+#### `combat` -- Combat action (attack / use item / use ability / maneuver)
 
 ```json
 {
@@ -664,9 +664,11 @@ rule questions, or meta-discussion.
 
 | Field           | Type   | Required | Description |
 |-----------------|--------|----------|-------------|
-| `combat_action` | string | yes      | One of `attack`, `use_item`, `use_ability`. |
-| `target`        | string | yes      | For `attack`: an enemy combatant. For `use_item`: an item entity ID in `player.inventory` with a `consumable` block. For `use_ability`: the ability's target (enemy or ally/self, per the ability definition). |
+| `combat_action` | string | yes      | One of `attack`, `use_item`, `use_ability`, `maneuver`. |
+| `target`        | string | yes, except for `maneuver` | For `attack`: an enemy combatant. For `use_item`: an item entity ID in `player.inventory` with a `consumable` block. For `use_ability`: the ability's target (enemy or ally/self, per the ability definition). Ignored for `maneuver`. |
 | `ability_id`    | string | only for `use_ability` | ID of an ability the player knows (`player.abilities`) with uses remaining. |
+| `maneuver`      | string | only for `maneuver` | The maneuver to perform; currently only `"disengage"` — the player breaks all engagement pairs without provoking opportunity attacks, at the cost of the action. |
+| `positioning`   | object | no       | Optional engagement assertion (combat only, on `combat` and `wait` actions): `{"engage": [[a, b], ...], "disengage": [[mover, stationary], ...], "impede": [enemy_id, ...]}`. See `doc/combat.md` — *Positioning*. |
 
 This is the player's one action per combat round; after it resolves, the
 remaining combatants act and the round advances.  See `doc/combat.md`.
@@ -680,6 +682,14 @@ remaining combatants act and the round advances.  See `doc/combat.md`.
 - `use_ability`: `ability_id` must be in `player.abilities`, have uses
   remaining (`uses_per_combat`), and `target` must be a valid combatant
   for the ability's `target` type (`self`/`ally`/`enemy`).
+- `maneuver`: no target; breaks the player's engagement pairs and
+  consumes the action.
+- `positioning`: ids must be living combatants; `engage`/`disengage`
+  pairs are two distinct combatants, may not appear in both lists, and
+  `disengage` pairs must be currently engaged; `impede` names living
+  enemy combatants not already impeded this combat; at most 4 entries
+  total.  Malformed entries are dropped with a warning — the core
+  action always proceeds (graceful degradation, never a hard failure).
 
 ---
 
@@ -734,7 +744,7 @@ whether to continue the chain:
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
 | `equip`           | entity_id of item in inventory                  | must have `equip_block`; validates tag conflicts and `max_equipped` |
 | `unequip`         | entity_id of item in equipped                   | must be currently equipped                 |
-| `combat`          | combat target (enemy, item, or ability target)  | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack` |
+| `combat`          | combat target (enemy, item, or ability target; none for `maneuver`) | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack`; `positioning` assertion optional on `combat`/`wait` |
 
 ---
 

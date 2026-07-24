@@ -184,3 +184,77 @@ class TestCombatPanel:
             assert "Stunned 1" in text
             assert "resists piercing" in text
             assert "Items:" in text
+
+
+class TestPositioningMarkers:
+    """Engagement (⚔) and pending-impede markers in combat views."""
+
+    def _setup_positioning(self, state_manager) -> None:
+        from mgmai.models.combat import CombatState
+        from mgmai.models.corpus import CombatBlock
+
+        state_manager.corpus.entities["spider"].combat = CombatBlock(
+            hp=15, ac=12, atk=4, dmg="1d4+2",
+        )
+        hard = state_manager.hard_state
+        hard.player.current_hp = 8
+        hard.player.max_hp = 10
+        hard.entity_states["spider"] = {"current_hp": 15}
+        hard.combat = CombatState(
+            round_number=1,
+            initiative_order=["player", "spider"],
+            combatants=["player", "spider"],
+            current_index=0,
+            active=True,
+            engagement=[["player", "spider"]],
+            impeded=["spider"],
+        )
+
+    def test_plain_panel_shows_markers(
+        self, state_manager, monkeypatch, capsys
+    ) -> None:
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        self._setup_positioning(state_manager)
+        d = Display()
+        d.render_status(state_manager)
+        out = capsys.readouterr().out
+        assert "⚔ spider" in out  # engagement partner, display name
+        assert "(impeded)" in out  # pending impede flag
+
+    def test_rich_panel_shows_markers(self, state_manager) -> None:
+        import io
+
+        from rich.console import Console
+
+        self._setup_positioning(state_manager)
+        d = Display()
+        d._console = Console(file=io.StringIO(), width=80, highlight=False)
+        d.render_status(state_manager)
+        text = " ".join(d._console.file.getvalue().split())
+        assert "⚔ spider" in text
+        assert "(impeded)" in text
+
+    def test_no_markers_without_positioning(
+        self, state_manager, monkeypatch, capsys
+    ) -> None:
+        monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
+        self._setup_positioning(state_manager)
+        combat = state_manager.hard_state.combat
+        combat.engagement = []
+        combat.impeded = []
+        d = Display()
+        d.render_status(state_manager)
+        out = capsys.readouterr().out
+        assert "⚔" not in out
+        assert "(impeded)" not in out
+
+    def test_headless_snapshot_shows_markers(self, state_manager) -> None:
+        from mgmai.game.headless import _snapshot_status
+
+        self._setup_positioning(state_manager)
+        snapshot = _snapshot_status(state_manager)
+        combatants = snapshot.combatants
+        assert combatants["player"]["engaged_with"] == ["spider"]
+        assert combatants["player"]["impeded"] is False
+        assert combatants["spider"]["engaged_with"] == ["player"]
+        assert combatants["spider"]["impeded"] is True

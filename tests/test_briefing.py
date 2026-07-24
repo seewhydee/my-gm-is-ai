@@ -399,3 +399,70 @@ class TestGMBriefingPlayerStats:
             "player_input": "Hello.",
         })
         assert b.player_state.player_stats is None
+
+
+class TestCombatBriefingPositioning:
+    """The combat briefing exposes the positioning map (engagement pairs
+    and impede flags) so the ruling LLM can adjudicate positioning."""
+
+    def _enter_combat(
+        self,
+        state_manager,
+        *,
+        engagement: list[list[str]] | None = None,
+        impeded: list[str] | None = None,
+        impede_used: list[str] | None = None,
+    ):
+        from mgmai.models.combat import CombatState
+        from mgmai.models.corpus import CombatBlock
+
+        state_manager.corpus.entities["spider"].combat = CombatBlock(
+            hp=15, ac=12, atk=4, dmg="1d4+2",
+        )
+        hard = state_manager.hard_state
+        hard.entity_states.setdefault("spider", {})["current_hp"] = 15
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "spider"],
+            initiative_order=["player", "spider"],
+            current_index=0,
+            round_number=1,
+            engagement=engagement or [],
+            impeded=impeded or [],
+            impede_used=impede_used or [],
+        )
+
+    @staticmethod
+    def _briefing(state_manager):
+        from mgmai.context.assembler import assemble
+
+        briefing = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "I attack the spider.",
+        )
+        assert briefing.combat_state is not None
+        return {c["id"]: c for c in briefing.combat_state.combatants}
+
+    def test_engaged_with_exposed(self, state_manager) -> None:
+        self._enter_combat(state_manager, engagement=[["player", "spider"]])
+        combatants = self._briefing(state_manager)
+        assert combatants["player"]["engaged_with"] == ["spider"]
+        assert combatants["spider"]["engaged_with"] == ["player"]
+
+    def test_impede_flags_exposed(self, state_manager) -> None:
+        self._enter_combat(
+            state_manager, impeded=["spider"], impede_used=["spider"]
+        )
+        combatants = self._briefing(state_manager)
+        assert combatants["spider"]["impeded"] is True
+        assert combatants["spider"]["impede_used"] is True
+
+    def test_defaults_without_positioning(self, state_manager) -> None:
+        self._enter_combat(state_manager)
+        combatants = self._briefing(state_manager)
+        for entry in combatants.values():
+            assert entry["engaged_with"] == []
+            assert entry["impeded"] is False
+            assert entry["impede_used"] is False

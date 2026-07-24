@@ -956,7 +956,7 @@ def resolve_interact(
                     ),
                     room_after_id=room_id,
                 )
-            entry = enter_combat(enemies, hard, corpus, soft=soft, state_manager=state_manager)
+            entry = enter_combat(enemies, hard, corpus, soft=soft, state_manager=state_manager, engage_source=target_id)
             events: list[tuple[str, dict[str, Any]]] = [
                 ("combat.started", {"combatant_ids": enemies}),
             ]
@@ -1901,6 +1901,7 @@ def _resolve_combat_action(
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
         player_died=result.get("player_died", False),
+        warnings=list(result.get("warnings") or []),
         room_after_id=hard.player.location,
         events=events,
     )
@@ -1934,6 +1935,7 @@ def _resolve_combat_pass(
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
         player_died=result.get("player_died", False),
+        warnings=list(result.get("warnings") or []),
         room_after_id=hard.player.location,
         events=events,
     )
@@ -1967,6 +1969,7 @@ def _resolve_combat_flee(
         hard_changes=result["hard_changes"],
         combat_log=result["combat_log"],
         player_died=result.get("player_died", False),
+        warnings=list(result.get("warnings") or []),
         room_after_id=(
             result["hard_changes"].player_location
             if result["hard_changes"] and result["hard_changes"].player_location

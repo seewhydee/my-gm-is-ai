@@ -45,12 +45,17 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
         name = _entity_name(actor, corpus)
         return f"**{name} is dead!**"
 
-    if action == "attack":
+    if action in ("attack", "opportunity_attack"):
         hit = entry.get("hit")
         damage = entry.get("damage")
         crit = entry.get("critical")
 
-        if actor == "player":
+        if action == "opportunity_attack":
+            if actor == "player":
+                name = "You make an opportunity attack on"
+            else:
+                name = f"{_entity_name(actor, corpus)} makes an opportunity attack on"
+        elif actor == "player":
             if entry.get("attack_name"):
                 name = f"You use {entry['attack_name']} on"
             else:
@@ -96,6 +101,31 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
         if entry.get("hit"):
             return "**You break away from combat!**"
         return "**You fail to escape!**"
+
+    if action == "reposition":
+        # Engagement change: actor and target close to melee reach or
+        # break away from each other (asserted or automatic).
+        if actor == "player":
+            return f"**You reposition relative to {_entity_name(target, corpus)}.**"
+        if target == "player":
+            return f"**{_entity_name(actor, corpus)} repositions relative to you.**"
+        return (
+            f"**{_entity_name(actor, corpus)} repositions relative to "
+            f"{_entity_name(target, corpus)}.**"
+        )
+
+    if action == "maneuver":
+        # Disengage: the actor breaks all engagement without provoking.
+        if actor == "player":
+            return "**You disengage, carefully withdrawing from melee.**"
+        return f"**{_entity_name(actor, corpus)} disengages.**"
+
+    if action == "impeded":
+        # A pending impede flag consumed the actor's turn closing in.
+        return (
+            f"**{_entity_name(actor, corpus)} is held up by an obstacle "
+            f"and spends its turn closing in.**"
+        )
 
     if action == "stunned":
         if actor == "player":

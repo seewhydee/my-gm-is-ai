@@ -417,6 +417,18 @@ def _build_combat_state(
 
     combatants: list[dict[str, Any]] = []
     for cid in combat.combatants:
+        # Positioning: engagement partners ("within melee reach") and
+        # impede flags, so the ruling LLM sees the current map.
+        engaged_with = sorted(
+            p[1] if p[0] == cid else p[0]
+            for p in combat.engagement
+            if cid in p
+        )
+        positioning = {
+            "engaged_with": engaged_with,
+            "impeded": cid in combat.impeded,
+            "impede_used": cid in combat.impede_used,
+        }
         if cid == "player":
             combatants.append({
                 "id": "player",
@@ -425,6 +437,7 @@ def _build_combat_state(
                 "current_hp": hard.player.current_hp or 0,
                 "max_hp": hard.player.max_hp or 0,
                 "status_effects": _status_effect_briefs(hard.player.status_effects, corpus),
+                **positioning,
             })
         else:
             entity = corpus.entities.get(cid)
@@ -439,6 +452,7 @@ def _build_combat_state(
                 "status_effects": _status_effect_briefs(
                     state.get("status_effects", {}) or {}, corpus
                 ),
+                **positioning,
             })
 
     usable_items: list[dict[str, Any]] = []

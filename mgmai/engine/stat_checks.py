@@ -118,12 +118,17 @@ def format_combat_prefix(
             else:
                 name = _entity_name(actor, corpus)
                 summaries.append(f"**{name} is dead!**")
-        elif action == "attack":
+        elif action in ("attack", "opportunity_attack"):
             hit = entry.get("hit")
             damage = entry.get("damage")
             crit = entry.get("critical")
 
-            if actor == "player":
+            if action == "opportunity_attack":
+                if actor == "player":
+                    name = "You make an opportunity attack on"
+                else:
+                    name = f"{_entity_name(actor, corpus)} makes an opportunity attack on"
+            elif actor == "player":
                 if entry.get("attack_name"):
                     # Player ability attacks read "You use Fire Bolt on …"
                     name = f"You use {entry['attack_name']} on"
@@ -173,6 +178,36 @@ def format_combat_prefix(
                 summaries.append("**You break away from combat!**")
             else:
                 summaries.append("**You fail to escape!**")
+        elif action == "reposition":
+            # Engagement change: actor and target close to melee reach or
+            # break away from each other (asserted or automatic).
+            if actor == "player":
+                summaries.append(
+                    f"**You reposition relative to {_entity_name(target, corpus)}.**"
+                )
+            elif target == "player":
+                summaries.append(
+                    f"**{_entity_name(actor, corpus)} repositions relative to you.**"
+                )
+            else:
+                summaries.append(
+                    f"**{_entity_name(actor, corpus)} repositions relative to "
+                    f"{_entity_name(target, corpus)}.**"
+                )
+        elif action == "maneuver":
+            # Disengage: the actor breaks all engagement without provoking.
+            if actor == "player":
+                summaries.append(
+                    "**You disengage, carefully withdrawing from melee.**"
+                )
+            else:
+                summaries.append(f"**{_entity_name(actor, corpus)} disengages.**")
+        elif action == "impeded":
+            # A pending impede flag consumed the actor's turn closing in.
+            summaries.append(
+                f"**{_entity_name(actor, corpus)} is held up by an obstacle "
+                f"and spends its turn closing in.**"
+            )
         elif action == "stunned":
             if actor == "player":
                 summaries.append("**You are stunned and cannot act!**")

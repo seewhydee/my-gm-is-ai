@@ -1,14 +1,26 @@
 # My GM is AI
 
-An experimental AI-driven Game Master (GM) for single-player RPGs.  The goal: replicate the tabletop RPG experience without friends.
+An experimental AI-driven Game Master (GM) for single-player RPGs.
+The goal: replicate the tabletop RPG experience without friends.
 
-Unlike freeform AI roleplay chatbots, this AI GM system is not optimized for crafting naturalistic interlocutors with emotional depth, nor does it create open-ended adventures.  Instead, the AI GM runs a pre-generated adventure module faithfully.  You, the player, can attempt anything, and the GM decides (a) if it's possible, (b) what rules apply, and (c) how to describe what happens.  Like a human GM, the AI GM aims to strike a balance between creativity and rules adherence.
+Unlike freeform AI roleplay chatbots, this AI GM system is not
+optimized for crafting naturalistic interlocutors with emotional
+depth, nor does it create open-ended adventures.  Instead, the AI GM
+runs a pre-generated adventure module faithfully.  You, the player,
+can attempt anything, and the GM decides (a) if it's possible, (b)
+what rules apply, and (c) how to describe what happens.  Like a human
+GM, the AI GM aims to strike a balance between creativity and rules
+adherence.
 
-This is a work in progress.  There is a short sample adventure (a handwritten 5-room scenario) that can be played through.  Combat (initiative, multi-enemy encounters, NPC AI, status effects), inventory/equipment, dialogue, and a D&D 5e-inspired resolution system are implemented; see `plan.md` for what parts of 5e are covered and what is still missing.
+This is a work in progress.  There is a short sample adventure (a
+handwritten 5-room scenario) that can be played through.  A reasonable
+subset of 5e SRD has been implemented thus far, including core player
+stats, standard equipment, and basic combat rules.
 
 ## Installation and setup
 
-Requires Python 3 with some standard packages (pydantic, rich, openai, jinja2, platformdirs).  You can install them all via `pip`:
+Requires Python 3 with some standard packages (pydantic, rich, openai,
+jinja2, platformdirs).  You can install them all via `pip`:
 
 ```bash
 pip install -e .
@@ -16,8 +28,8 @@ pip install -e .
 
 ### Model configuration
 
-The AI GM requires API access to an LLM via an OpenAI-compatible API.
-There are three ways to set your credentials:
+The AI GM requires API access to an large language model (LLM) via an
+OpenAI-compatible API.  There are three ways to set your credentials:
 
 1. Using environmental variables, e.g.:
 ```bash
@@ -26,13 +38,11 @@ export MGMAI_BASE_URL="https://api.deepseek.com"
 export MGMAI_API_KEY="<your_api_key>"
 ```
 2. Alternatively, on first launch you will be prompted for the above
-   information, which will also be saved to `~/.config/mgmai/` for
-   future sessions.
+   information, which is saved to `~/.config/mgmai/` for future sessions.
 3. You can also specify model details directly in your config files
    (see below).
 
-The system supports switching between different models with the
-`--model <model_id>` command-line option:
+You can switch between models with the `--model <model_id>` option:
 
 ```bash
 mgmai adventures/bag-of-holding --model kimi-k2.6
@@ -58,26 +68,27 @@ API keys are stored in `~/.config/mgmai/credentials.json`:
 }
 ```
 
-The provider IDs (keys for `api_keys`) are derived from the base URL
+Provider IDs (keys for `api_keys`) are derived from the base URL
 hostname by default.  You can also specify custom model parameters in
 `~/.config/mgmai/models.json`.  See the [Models doc](doc/models.md)
 for details.
 
 ## Usage
 
-If you installed the package with `pip install -e .`, you can use the `mgmai` command:
+If you installed the package with `pip install -e .`, run it like
+this:
 
 ```bash
 mgmai adventures/bag-of-holding
 ```
 
-To run directly from the source directory without installing, use:
+To run directly from the source directory without installing:
 
 ```bash
 python -m mgmai.cli adventures/bag-of-holding
 ```
 
-Resume a saved game:
+To resume a saved game:
 
 ```bash
 mgmai adventures/bag-of-holding --load save.json
@@ -97,40 +108,33 @@ Use `/help` during play for a list of special commands.
 
 ## How It Works
 
-Each turn, the player's natural language input flows through a three-stage pipeline:
+Each turn, the player's natural language input flows through a
+three-stage pipeline:
 
-1. **Ruling** — A large language mode (LLM) call interprets your intent and produces a structured action.
-2. **Engine resolution** — A deterministic engine validates the action against the adventure module's rules and the current game state, rolls virtual dice, etc.
+1. **Ruling** — An LLM call interprets your intent and produces a structured action.
+2. **Engine resolution** — A gameplay engine validates the action against the adventure module's rules and the current game state, rolls virtual dice, etc.
 3. **Prose narration** — A second LLM call weaves the outcome into natural prose, respecting narrative requirements like keeping secrets hidden.
 
-The adventures are generated from handwritten RPG scenarios, converted into game logic with the help of LLM assistants.  This setup is done ahead of time, just as a human GM prepares adventure modules before each play session.  In time, it is hoped that the conversion process becomes powerful enough to accommodate complex adventure modules written for tabletop play.
+Adventure rules are generated ahead of time (usually using LLMs), just as a human GM prepares modules before each play session.  In time, it is hoped that the system will be powerful enough to run converted tabletop modules.
 
 ## Scenario Generation
 
-To construct a playable scenario, write up a "scenario file" in natural language, describing the adventure as systematically as possible, and save it in `adventures/SCENARIO-ID/scenario.md`. See `adventures/bag-of-holding/scenario.md` for an example.
+To construct a playable adventure, write up a "scenario file" in natural language, and save it in `adventures/SCENARIO-ID/scenario.md`. See `adventures/bag-of-holding/scenario.md` for an example.
 
-Then fire up an LLM of your choice and instruct it to follow the steps in `schema/scenario-generation.md`.  This will convert your scenario file into JSON.
+Then fire up an LLM of your choice and instruct it to follow the steps in `schema/scenario-generation.md`.  This converts your scenario file into JSON. Finally, playtest extensively, and ask the LLM to fix the scenario's JSON files until it works satisfactorily (or not).
 
-Finally, playtest extensively, and ask the LLM to fix the scenario's JSON files until it works satisfactorily (or not).
+In future, it will be interesting to try constructing playable scenarios from other sources, such as scanned PDFs, by using multimodal LLMs. Success/failure reports are welcome.
 
 ## Testing
 
-The regular test suite is deterministic and uses fake LLM clients — it runs in a few seconds with no network access:
+The regular test suite uses fake LLM clients, with no network access needed:
 
 ```bash
 pytest                  # run the full unit suite (fast, no API calls)
 pytest tests/test_combat.py -k "flee"   # run a specific subset
 ```
 
-### LLM integration tests
-
-A separate suite of **LLM-driven integration tests** lives in `tests/integration/`.  These run a "driver" LLM as the player against the real GM LLM, verifying the full two-call pipeline (ruling → engine → prose) plus narration quality via an LLM judge.
-
-See [tests/integration/README.md](tests/integration/README.md) for details on the test architecture, scenarios, configuration, and how to modify or extend them.
-
-### Headless harness
-
-The integration tests are built on `mgmai.game.headless.HeadlessSession`, a programmatic entry point that composes `StateManager` + `GameLoop` + a recording display.  It bypasses the interactive REPL and captures every turn's narration, status, and combat log — useful for automation and scripting beyond testing.
+There is also a separate suite of LLM-driven integration tests, which run a LLM as the player against the real GM LLM, along with an LLM judge.  See [tests/integration/README.md](tests/integration/README.md) for details.
 
 ## Documentation
 

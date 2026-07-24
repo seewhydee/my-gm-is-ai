@@ -113,6 +113,7 @@ class GameLoop:
         self._chat_log: list[dict[str, str]] = []
         self._config_dir = Path(config_dir) if config_dir else None
         self._prose_validation_enabled = prose_validation_enabled
+        self._positioning_warning: Optional[str] = None
         self._commands = Commands(
             state_loader=state_manager,
             render=self._display.print,
@@ -264,6 +265,11 @@ class GameLoop:
             chain_depth=chain_depth,
             player_input_echo=original_input,
         )
+        # Surface a stripped positioning assertion as a result warning so
+        # the ruling model can learn from the mistake on a later turn.
+        if self._positioning_warning is not None:
+            result.warnings.append(self._positioning_warning)
+            self._positioning_warning = None
         self._last_result = result
         self._last_action = action
 
@@ -394,11 +400,15 @@ class GameLoop:
     # ------------------------------------------------------------------
 
     def _call_ruling(self, briefing):
-        from mgmai.llm.ruling_validation import validate_ruling_action
+        from mgmai.llm.ruling_validation import (
+            validate_positioning_assertion,
+            validate_ruling_action,
+        )
         from mgmai.templates.renderer import render_ruling
 
         system_prompt = render_ruling()
         user_prompt = briefing.model_dump_json(indent=2)
+        self._positioning_warning = None
 
         raw = self._llm.call_ruling(system_prompt, user_prompt)
         log.debug("--- LLM Call 1 raw ---\n%s", raw)
@@ -415,7 +425,9 @@ class GameLoop:
             )
 
         if error is None:
-            return action
+            return self._strip_invalid_positioning(
+                action, briefing, validate_positioning_assertion
+            )
 
         log.debug("LLM Call 1 retry after invalid ruling: %s", error)
         retry_prompt = (
@@ -430,6 +442,27 @@ class GameLoop:
             raise LLMOutputError(
                 f"Ruling still semantically invalid after retry: {semantic_error}"
             )
+        return self._strip_invalid_positioning(
+            action, briefing, validate_positioning_assertion
+        )
+
+    def _strip_invalid_positioning(self, action, briefing, validate_fn):
+        """Soft-fail for the optional ``positioning`` embellishment.
+
+        A ``positioning`` assertion that fails validation is an optional
+        extra, not a required field: it must never trigger the corrective
+        retry or raise ``LLMOutputError``.  The invalid block is stripped,
+        the core action proceeds, and a warning is stashed so the turn's
+        EngineResult can surface it (the model learns from it next turn).
+        """
+        if getattr(action, "positioning", None) is None:
+            return action
+        error = validate_fn(action, briefing)
+        if error is None:
+            return action
+        log.warning("Stripping invalid positioning assertion: %s", error)
+        action.positioning = None
+        self._positioning_warning = f"positioning assertion ignored: {error}"
         return action
 
     def _call_prose(self, briefing, action, result, *, indicators=None):

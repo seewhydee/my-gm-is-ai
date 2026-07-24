@@ -24,10 +24,28 @@ from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
 from mgmai.models.soft_state import SoftStatePatch
 
 
+class PositioningAssertion(BaseModel):
+    """LLM-asserted positioning changes attached to a combat/wait action.
+
+    ``engage`` entries are symmetric pairs ``[a, b]`` (the two combatants
+    are now within melee reach of each other); ``disengage`` entries are
+    directional pairs ``[mover, stationary]`` (the mover leaves the
+    stationary party's reach, provoking an opportunity attack from the
+    stationary party); ``impede`` entries are enemy combatant ids delayed
+    by an obstacle (they spend their next turn closing in).  The engine
+    re-validates every entry at apply time and drops malformed ones with
+    a warning; the core action always proceeds.
+    """
+    engage: List[List[str]] = Field(default_factory=list)
+    disengage: List[List[str]] = Field(default_factory=list)
+    impede: List[str] = Field(default_factory=list)
+
+
 class _BaseAction(BaseModel):
     detail: str
     follow_up: Optional[str] = None
     soft_state_patches: List[SoftStatePatch] = Field(default_factory=list)
+    positioning: Optional[PositioningAssertion] = None
 
 
 class MoveAction(_BaseAction):
@@ -97,9 +115,20 @@ class WaitAction(_BaseAction):
 
 class CombatAction(_BaseAction):
     action_type: Literal["combat"]
-    combat_action: Literal["attack", "use_item", "use_ability"]
-    target: str
+    combat_action: Literal["attack", "use_item", "use_ability", "maneuver"]
+    target: Optional[str] = None
     ability_id: Optional[str] = None
+    maneuver: Optional[Literal["disengage"]] = None
+
+    @model_validator(mode="after")
+    def check_target_requirement(self) -> CombatAction:
+        # Maneuvers (e.g. Disengage) have no target; every other combat
+        # action requires one.
+        if self.combat_action != "maneuver" and not self.target:
+            raise ValueError(
+                f"combat action '{self.combat_action}' requires a target"
+            )
+        return self
 
 
 class OocDiscussionAction(_BaseAction):

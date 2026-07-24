@@ -856,6 +856,7 @@ class NPCAttackDef(BaseModel):
     atk: int
     dmg: str = "1d6"
     dmg_type: str = ""
+    ranged: bool = False
     on_hit_effects: list[CheckResolution] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -880,6 +881,7 @@ class CombatBlock(BaseModel):
     atk: Optional[int] = None
     dmg: str = "1d6"
     dmg_type: str = ""
+    ranged: bool = False
     initiative_mod: int = 0
     flee_dc: int = 10
     resistances: list[str] = Field(default_factory=list)

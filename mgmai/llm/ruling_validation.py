@@ -30,8 +30,13 @@ from __future__ import annotations
 
 from typing import Optional
 
-from mgmai.models.actions import CombatAction, MoveAction
+from mgmai.models.actions import CombatAction, MoveAction, WaitAction
 from mgmai.models.briefing import GMBriefing
+
+#: Maximum positioning changes (engage + disengage + impede entries) the
+#: engine applies from a single action's assertion block.  Mirrors
+#: ``_MAX_POSITIONING_CHANGES`` in ``mgmai.engine.combat``.
+_MAX_POSITIONING_CHANGES = 4
 
 
 def _enemy_ids(briefing: GMBriefing) -> list[str]:
@@ -139,10 +144,10 @@ def _validate_move(action: MoveAction, briefing: GMBriefing) -> Optional[str]:
         f"Invalid move target '{action.target}'. During combat, a 'move' "
         f"action means FLEEING the fight through an exit, so 'target' must "
         f"be an exit ID from current_room.exits_available. Valid exit IDs: "
-        f"{', '.join(exit_ids) if exit_ids else 'none'}. Repositioning, "
-        f"flanking, or maneuvering within the fight must instead be ruled "
-        f"as a 'combat' action with combat_action \"attack\" and an "
-        f"appropriate 'detail'."
+        f"{', '.join(exit_ids) if exit_ids else 'none'}. Repositioning "
+        f"within the fight is expressed with the optional 'positioning' "
+        f"field on a 'combat' or 'wait' action, or with combat_action "
+        f"\"maneuver\" (Disengage)."
     )
 
 
@@ -164,4 +169,120 @@ def validate_ruling_action(action, briefing: GMBriefing) -> Optional[str]:
             return _validate_use_ability(action, briefing)
     elif isinstance(action, MoveAction):
         return _validate_move(action, briefing)
+    return None
+
+
+def validate_positioning_assertion(action, briefing: GMBriefing) -> Optional[str]:
+    """Soft-fail check for the optional ``positioning`` embellishment.
+
+    Mirrors the engine's apply-time validation
+    (``mgmai.engine.combat._apply_positioning_assertions``) so malformed
+    assertions are caught before resolution.  Unlike
+    :func:`validate_ruling_action`, an error here must never trigger the
+    corrective retry or raise ``LLMOutputError``: the caller strips the
+    ``positioning`` block and lets the core action proceed.
+
+    Returns ``None`` when the assertion is consistent with the briefing
+    (or when the briefing lacks the data needed to judge it); otherwise a
+    short error string addressed to the model.
+    """
+    positioning = getattr(action, "positioning", None)
+    if positioning is None:
+        return None
+    combat = briefing.combat_state
+    if combat is None:
+        return (
+            "Invalid 'positioning' field: positioning assertions are only "
+            "valid during combat (combat_state is not present in the "
+            "briefing). Omit 'positioning' outside combat."
+        )
+    if not isinstance(action, (CombatAction, WaitAction)):
+        return (
+            f"Invalid 'positioning' field on action_type "
+            f"'{action.action_type}': positioning assertions are only "
+            f"valid on 'combat' and 'wait' actions."
+        )
+
+    combatants: dict[str, dict] = {
+        str(c.get("id")): c
+        for c in combat.combatants
+        if c.get("id") is not None
+    }
+    valid_ids = ", ".join(sorted(combatants)) or "none"
+    # The briefing exposes the engagement map via each combatant's
+    # engaged_with list; when it is absent (older/hand-built briefings),
+    # skip the currently-engaged check rather than guessing.
+    engagement_known = all("engaged_with" in c for c in combatants.values())
+
+    def _pair_error(pair, kind: str) -> Optional[str]:
+        if not isinstance(pair, list) or len(pair) != 2 or pair[0] == pair[1]:
+            return (
+                f"Invalid positioning.{kind} entry {pair!r}: each entry "
+                f"must be a pair of two distinct combatant IDs."
+            )
+        for cid in pair:
+            if not isinstance(cid, str) or cid not in combatants:
+                return (
+                    f"Invalid positioning.{kind} entry {pair!r}: '{cid}' "
+                    f"is not a living combatant. Valid combatant IDs: "
+                    f"{valid_ids}."
+                )
+        return None
+
+    engage_pairs = set()
+    for pair in positioning.engage:
+        error = _pair_error(pair, "engage")
+        if error is not None:
+            return error
+        engage_pairs.add(frozenset(pair))
+
+    for pair in positioning.disengage:
+        error = _pair_error(pair, "disengage")
+        if error is not None:
+            return error
+        if frozenset(pair) in engage_pairs:
+            return (
+                f"Invalid positioning: the pair {sorted(pair)} appears in "
+                f"both 'engage' and 'disengage'. A pair may change in only "
+                f"one direction per turn."
+            )
+        if engagement_known:
+            mover, stationary = pair
+            partners = combatants[mover].get("engaged_with") or []
+            if stationary not in partners:
+                return (
+                    f"Invalid positioning.disengage entry {pair!r}: the "
+                    f"pair is not currently engaged (see each combatant's "
+                    f"engaged_with list in combat_state.combatants)."
+                )
+
+    seen_impede: set[str] = set()
+    for cid in positioning.impede:
+        entry = combatants.get(cid) if isinstance(cid, str) else None
+        if entry is None or entry.get("side") != "enemy":
+            return (
+                f"Invalid positioning.impede entry {cid!r}: 'impede' may "
+                f"only name living enemy combatants (side \"enemy\" from "
+                f"combat_state.combatants) — not the player or allies. "
+                f"Valid combatant IDs: {valid_ids}."
+            )
+        if entry.get("impeded") or entry.get("impede_used") or cid in seen_impede:
+            return (
+                f"Invalid positioning.impede entry {cid!r}: '{cid}' was "
+                f"already impeded this combat (each enemy can be impeded "
+                f"at most once per combat)."
+            )
+        seen_impede.add(cid)
+
+    changes = (
+        len(positioning.engage)
+        + len(positioning.disengage)
+        + len(positioning.impede)
+    )
+    if changes > _MAX_POSITIONING_CHANGES:
+        return (
+            f"Too many positioning changes ({changes}): at most "
+            f"{_MAX_POSITIONING_CHANGES} entries total across 'engage', "
+            f"'disengage', and 'impede' per turn."
+        )
     return None

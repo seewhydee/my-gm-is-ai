@@ -289,12 +289,22 @@ class ResolutionSystem(ABC):
         """True if a raw attack roll is an automatic miss."""
 
     def attack_roll_mods(
-        self, attacker_status_effects: dict, target_status_effects: dict, corpus: "ModuleCorpus"
+        self, attacker_status_effects: dict, target_status_effects: dict, corpus: "ModuleCorpus",
+        engaged: bool = False,
     ) -> tuple[bool, bool]:
         """Return ``(advantage, disadvantage)`` for an attack roll given
         the attacker's and target's status-effect maps and the corpus (whose
-        status-effect definitions carry the system effects).  Default: neither."""
+        status-effect definitions carry the system effects).  ``engaged``
+        says whether the attacker is within melee reach of the target
+        (theater-of-the-mind positioning).  Default: neither."""
         return False, False
+
+    def player_attack_is_ranged(
+        self, hard: "HardGameState", corpus: "ModuleCorpus"
+    ) -> bool:
+        """Whether the player's attack with the equipped weapon is ranged.
+        Default: False (melee/unarmed)."""
+        return False
 
     @abstractmethod
     def roll_damage(self, expr: str, critical: bool = False) -> tuple[int, str]:

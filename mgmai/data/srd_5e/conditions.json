@@ -48,12 +48,13 @@
   },
   "paralyzed": {
     "name": "Paralyzed",
-    "description": "Incapacitated and can't move or speak; loses its turns. Automatically fails Strength and Dexterity saving throws. Attack rolls against it have advantage (a hit from within 5 ft. is a critical hit — no positioning model, adjudicated by the GM).",
+    "description": "Incapacitated and can't move or speak; loses its turns. Automatically fails Strength and Dexterity saving throws. Attack rolls against it have advantage, and a hit from within reach (engaged) is a critical hit.",
     "skip_turn": true,
     "system_effects": {
       "5e": {
         "advantage_against": true,
-        "auto_fail_str_dex_saves": true
+        "auto_fail_str_dex_saves": true,
+        "auto_crit_against_engaged": true
       }
     }
   },
@@ -80,12 +81,13 @@
   },
   "prone": {
     "name": "Prone",
-    "description": "Disadvantage on attack rolls; attacks against have advantage; auto-stands at turn start. (SRD: attackers have advantage within 5 ft., disadvantage from farther away — no positioning model, so advantage applies flatly.)",
+    "description": "Disadvantage on attack rolls; attacks against it have advantage from within reach (engaged) and disadvantage from farther away; auto-stands at turn start.",
     "duration": "until_turn_start",
     "system_effects": {
       "5e": {
         "disadvantage_on_attack": true,
-        "advantage_against": true
+        "advantage_against_engaged": true,
+        "disadvantage_against_unengaged": true
       }
     }
   },
@@ -101,23 +103,25 @@
   },
   "stunned": {
     "name": "Stunned",
-    "description": "Incapacitated, can't move, speaks only falteringly; loses its turns. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage.",
+    "description": "Incapacitated, can't move, speaks only falteringly; loses its turns. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage, and a hit from within reach (engaged) is a critical hit.",
     "skip_turn": true,
     "system_effects": {
       "5e": {
         "advantage_against": true,
-        "auto_fail_str_dex_saves": true
+        "auto_fail_str_dex_saves": true,
+        "auto_crit_against_engaged": true
       }
     }
   },
   "unconscious": {
     "name": "Unconscious",
-    "description": "Incapacitated, prone, can't move or speak, unaware of its surroundings; loses its turns and drops what it's holding. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage (a hit from within 5 ft. is a critical hit — adjudicated by the GM).",
+    "description": "Incapacitated, prone, can't move or speak, unaware of its surroundings; loses its turns and drops what it's holding. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage, and a hit from within reach (engaged) is a critical hit.",
     "skip_turn": true,
     "system_effects": {
       "5e": {
         "advantage_against": true,
-        "auto_fail_str_dex_saves": true
+        "auto_fail_str_dex_saves": true,
+        "auto_crit_against_engaged": true
       }
     }
   },

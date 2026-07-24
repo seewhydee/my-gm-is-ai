@@ -223,6 +223,14 @@ def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
                 "status_effects": status_effects,
                 "status_effect_names": {c: _effect_label(c) for c in status_effects},
                 "fled": fled,
+                # Positioning: engagement partners (combatant ids) and
+                # the pending impede flag.
+                "engaged_with": sorted(
+                    p[1] if p[0] == cid else p[0]
+                    for p in (combat.engagement or [])
+                    if cid in p
+                ),
+                "impeded": cid in (combat.impeded or []),
             }
 
     return StatusSnapshot(

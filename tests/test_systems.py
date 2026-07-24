@@ -819,3 +819,211 @@ class TestFiveEWeaponProficiency:
         assert isinstance(clause, WeaponProfClause)
         assert clause.category == "martial"
         assert clause.properties == ["finesse", "light"]
+
+
+# ------------------------------------------------------------------
+# FiveESystem: positioning-aware attack roll modifiers
+# ------------------------------------------------------------------
+
+class TestAttackRollModsEngaged:
+    """The engaged-aware system_effects keys (prone split)."""
+
+    def test_prone_engaged_grants_advantage(self) -> None:
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        assert FiveESystem().attack_roll_mods(
+            {}, {"prone": 1}, corpus, engaged=True
+        ) == (True, False)
+
+    def test_prone_unengaged_imposes_disadvantage(self) -> None:
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        assert FiveESystem().attack_roll_mods(
+            {}, {"prone": 1}, corpus, engaged=False
+        ) == (False, True)
+
+    def test_engaged_defaults_to_false(self) -> None:
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        assert FiveESystem().attack_roll_mods(
+            {}, {"prone": 1}, corpus
+        ) == (False, True)
+
+    def test_engaged_keys_read_target_effects_only(self) -> None:
+        """The prone attacker's own Disadvantage is unaffected by the
+        engaged split keys (those read the target's effects)."""
+        from tests.helpers import make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        assert FiveESystem().attack_roll_mods(
+            {"prone": 1}, {}, corpus, engaged=True
+        ) == (False, True)
+
+
+# ------------------------------------------------------------------
+# FiveESystem: close-combat Disadvantage (ranged attacks while engaged)
+# ------------------------------------------------------------------
+
+def _pos_corpus() -> ModuleCorpus:
+    """Corpus with a melee goblin, a ranged archer, a bow, and an ability."""
+    return ModuleCorpus.model_validate({
+        "adventure": {"title": "T", "introduction": "T"},
+        "rooms": {"room1": {"name": "R", "description": "D"}},
+        "entities": {
+            "goblin": {
+                "type": "npc",
+                "description": "A goblin.",
+                "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+            },
+            "archer": {
+                "type": "npc",
+                "description": "An archer.",
+                "combat": {"hp": 7, "ac": 12, "atk": 4, "dmg": "1d6+2", "ranged": True},
+            },
+            "bow": {
+                "type": "item",
+                "name": "Shortbow",
+                "description": "A bow.",
+                "equip_block": {
+                    "equip_tags": ["weapon", "martial"],
+                    "damage_expr": "1d8",
+                    "properties": ["ranged"],
+                },
+            },
+        },
+        "abilities": {
+            "fire_bolt": {
+                "name": "Fire Bolt",
+                "target": "enemy",
+                "attack": {"stat": "INT", "damage": "1d10"},
+            },
+        },
+    })
+
+
+def _pos_hard() -> HardGameState:
+    from mgmai.models.combat import CombatState
+
+    hard = HardGameState.model_validate({
+        "player": {
+            "location": "room1",
+            "stats": {"STR": 16, "DEX": 14, "CON": 12},
+            "current_hp": 10,
+            "max_hp": 10,
+            "ac": 14,
+            "proficiency_bonus": 2,
+        },
+        "entity_states": {
+            "goblin": {"alive": True, "current_hp": 7},
+            "archer": {"alive": True, "current_hp": 7},
+        },
+    })
+    hard.combat = CombatState(
+        active=True,
+        combatants=["player", "goblin", "archer"],
+        initiative_order=["player", "goblin", "archer"],
+        current_index=0,
+        round_number=1,
+    )
+    return hard
+
+
+class TestCloseCombatDisadvantage:
+    """A ranged attack engaged with a living, non-incapacitated enemy
+    rolls with Disadvantage; melee and ability attacks are exempt."""
+
+    def test_ranged_weapon_engaged_rolls_with_disadvantage(self, monkeypatch) -> None:
+        hard = _pos_hard()
+        hard.player.equipped = ["bow"]
+        hard.player.weapon_proficiencies = ["martial"]
+        hard.combat.engagement = [["goblin", "player"]]
+        # rolls twice, keeps lower (5)
+        rand_vals = iter([12, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_player_attack(hard, _pos_corpus(), "goblin", 12, 1)
+        assert result.attack_roll == 5
+
+    def test_ranged_weapon_unengaged_rolls_normally(self, monkeypatch) -> None:
+        hard = _pos_hard()
+        hard.player.equipped = ["bow"]
+        hard.player.weapon_proficiencies = ["martial"]
+        # not engaged with anyone: single roll (hits, damage die follows)
+        rand_vals = iter([12, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_player_attack(hard, _pos_corpus(), "goblin", 12, 1)
+        assert result.attack_roll == 12
+
+    def test_unarmed_engaged_rolls_normally(self, monkeypatch) -> None:
+        hard = _pos_hard()
+        hard.combat.engagement = [["goblin", "player"]]
+        # unarmed is melee: single roll even while engaged (hits)
+        rand_vals = iter([12, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_player_attack(hard, _pos_corpus(), "goblin", 12, 1)
+        assert result.attack_roll == 12
+
+    def test_npc_ranged_engaged_rolls_with_disadvantage(self, monkeypatch) -> None:
+        hard = _pos_hard()
+        hard.combat.engagement = [["archer", "player"]]
+        rand_vals = iter([12, 5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_npc_attack(
+            "archer", hard, _pos_corpus(), "player", 14, 1,
+        )
+        assert result.attack_roll == 5
+
+    def test_npc_melee_engaged_rolls_normally(self, monkeypatch) -> None:
+        hard = _pos_hard()
+        hard.combat.engagement = [["goblin", "player"]]
+        rand_vals = iter([12, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_npc_attack(
+            "goblin", hard, _pos_corpus(), "player", 14, 1,
+        )
+        assert result.attack_roll == 12
+
+    def test_stunned_engaged_enemy_imposes_no_disadvantage(self, monkeypatch) -> None:
+        """An engaged enemy with a skip_turn status cannot punish ranged
+        attacks (SRD: 'isn't incapacitated')."""
+        hard = _pos_hard()
+        hard.player.equipped = ["bow"]
+        hard.player.weapon_proficiencies = ["martial"]
+        hard.combat.engagement = [["goblin", "player"]]
+        hard.entity_states["goblin"]["status_effects"] = {"stunned": 2}
+        # advantage against the stunned goblin (keeps 12, not 3), hit is an
+        # auto-crit (engaged): two damage dice — but no disadvantage.
+        rand_vals = iter([12, 3, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = FiveESystem().resolve_player_attack(hard, _pos_corpus(), "goblin", 12, 1)
+        assert result.attack_roll == 12
+
+    def test_ability_attacks_not_ranged_by_default(self, monkeypatch) -> None:
+        """Ability attack effects do not count as ranged: no close-combat
+        Disadvantage even while engaged (melee-touch abilities stay safe;
+        a per-ability opt-in flag is future work)."""
+        from mgmai.engine.combat import resolve_combat_turn
+        from mgmai.models.actions import CombatAction
+
+        corpus = _pos_corpus()
+        hard = _pos_hard()
+        hard.player.abilities = ["fire_bolt"]
+        hard.combat.combatants = ["player", "goblin"]
+        hard.combat.initiative_order = ["player", "goblin"]
+        hard.combat.engagement = [["goblin", "player"]]
+        # ability attack while engaged: single roll (15) -> hit, dmg 1;
+        # goblin misses
+        rand_vals = iter([15, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        action = CombatAction(
+            action_type="combat", combat_action="use_ability",
+            target="goblin", ability_id="fire_bolt", detail="Hurl fire!",
+        )
+        result = resolve_combat_turn(action, hard, corpus)
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.attack_id == "fire_bolt"
+        assert entry.attack_roll == 15
+        assert entry.hit is True

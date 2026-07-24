@@ -20,7 +20,7 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 - **recent_history**: Last few turn summaries (structured, not verbatim).
 - **dialogue_context**: (if in conversation) Active NPC details, attitude, dialogue guidelines, recent exchanges, topics discussed, and revealed topics.
 - **revealed_hints**: Hint strings the player has previously learned or observed (from examinations or interactions). Treat these as established facts the player knows; do not contradict them.
-- **combat_state**: (if combat is active) Round number, initiative order, current actor, combatants with HP, `side` (`"party"` = the player and their allies, `"enemy"` = hostiles) and active `conditions`, `usable_items` (consumable inventory items with effect summaries), and `abilities` (the player's combat abilities with target kinds, remaining uses, and effect summaries). When present, only `combat` and `move` actions are valid.
+- **combat_state**: (if combat is active) Round number, initiative order, current actor, combatants with HP, `side` (`"party"` = the player and their allies, `"enemy"` = hostiles) and active `conditions`, `usable_items` (consumable inventory items with effect summaries), and `abilities` (the player's combat abilities with target kinds, remaining uses, and effect summaries). Each combatant also carries `engaged_with` (ids of combatants currently within melee reach — see *Positioning*), `impeded` (true while a pending obstacle delay will consume that combatant's next turn), and `impede_used` (true once it has been impeded this combat). When present, only `combat` and `move` actions are valid.
 - **player_input**: The player's verbatim input for this turn.
 
 ---
@@ -81,10 +81,11 @@ You MUST output a single JSON object with the following structure.
 **unequip** — Unequip a worn item:
 - `target` (string, required): Entity ID of the currently equipped item to remove
 
-**combat** — Attack, use an item, or use an ability during combat:
-- `combat_action` (string, required): `"attack"`, `"use_item"`, or `"use_ability"`
-- `target` (string, required): For `"attack"`, the entity ID of the enemy combatant to attack. For `"use_item"`, the ID of a usable inventory item (see `combat_state.usable_items` — e.g. drinking a healing potion consumes your action); the user/drinker of the item is always the player, so never put `"player"` (or any other beneficiary) in `target`. For `"use_ability"`, a target matching the ability's `target` kind (see `combat_state.abilities`): `"self"` → `"player"`; `"ally"` → a party combatant ID; `"enemy"` → an enemy combatant ID.
+**combat** — Attack, use an item, use an ability, or perform a maneuver during combat:
+- `combat_action` (string, required): `"attack"`, `"use_item"`, `"use_ability"`, or `"maneuver"`
+- `target` (string, required except for `"maneuver"`): For `"attack"`, the entity ID of the enemy combatant to attack. For `"use_item"`, the ID of a usable inventory item (see `combat_state.usable_items` — e.g. drinking a healing potion consumes your action); the user/drinker of the item is always the player, so never put `"player"` (or any other beneficiary) in `target`. For `"use_ability"`, a target matching the ability's `target` kind (see `combat_state.abilities`): `"self"` → `"player"`; `"ally"` → a party combatant ID; `"enemy"` → an enemy combatant ID.
 - `ability_id` (string, required for `"use_ability"`): an ID from `combat_state.abilities`.
+- `maneuver` (string, required for `"maneuver"`): currently only `"disengage"` — the player carefully withdraws from melee: ALL of the player's engagement pairs are broken without provoking opportunity attacks, at the cost of the player's action. `target` is not used. Present Disengage as situational, not a default: it shines when breaking multiple engagements at once or repositioning to protect an ally; in a plain 1v1 the enemy will usually just re-engage next turn. Do NOT pair a Disengage maneuver with `positioning.disengage` entries — the maneuver already breaks all engagement safely; `impede` entries on a Disengage maneuver are fine (the obstacle is independent of the withdrawal).
 - Only valid when `combat_state` is present in the briefing. To START combat when not in combat, use `interact` with `interaction_id: "attack"` on the target instead. Attack targets must have `side: "enemy"` — allies on the player's side act on their own and cannot be attacked.
 
 **ooc_discussion** — Out-of-character talk with the GM:
@@ -198,6 +199,81 @@ weapons (sheathing one, drawing another) is reasonable in one turn — use
 `unequip_targets` together with `equip` to express this atomically. Picking
 up an object from the ground as an improvised weapon is also one action.
 
+## Positioning (combat only)
+
+Combat tracks **engagement**: the abstract "within melee reach" relation
+between two combatants (there is no grid and no distances). Each
+combatant's `engaged_with` list in `combat_state.combatants` shows the
+current map. Engagement matters:
+
+- A **melee attack** engages attacker and target, and the attacker
+  automatically breaks engagement with its previous targets (each break
+  provokes an opportunity attack from the combatant left behind) — unless
+  your `positioning` assertion explicitly re-asserts those pairs.
+- **Opportunity attack (OA):** leaving a living combatant's reach without
+  Disengaging provokes one free basic attack from the combatant staying
+  put. Combatants that are stunned/incapacitated or impeded cannot make
+  OAs.
+- **Ranged attacks in close combat:** a ranged attack made while engaged
+  with a living, non-incapacitated enemy has Disadvantage.
+- **Prone:** attack rolls against a prone combatant have Advantage when
+  the attacker is engaged with it, Disadvantage otherwise.
+- **Unconscious / paralyzed / stunned:** a hit from an engaged attacker
+  is an automatic critical hit.
+
+You may assert positioning changes with the optional `positioning` field
+on `combat` and `wait` actions (valid during combat only):
+
+- `engage`: array of pairs `[[a, b], ...]` — the two combatants are now
+  within melee reach of each other (symmetric).
+- `disengage`: array of **directional** pairs `[[mover, stationary], ...]`
+  — the mover leaves the stationary combatant's reach, provoking an OA
+  from the stationary combatant against the mover. For a mutual retreat
+  (both parties moving away from each other), issue two entries, one in
+  each direction — or use a Disengage `maneuver` for the player.
+- `impede`: array of enemy combatant ids — an obstacle the player's
+  action created or exploited (a kicked-over table, a slammed door,
+  scattered debris) delays those enemies: on their next turn they spend
+  it closing in (no attack, no abilities; they become engaged with the
+  target they would have attacked). An impeded enemy cannot make OAs.
+  Each enemy can be impeded only **once per combat** — an impede buys a
+  round, not the fight.
+
+Rules: ids must be living combatants from `combat_state.combatants`; a
+pair may not appear in both `engage` and `disengage`; `disengage` pairs
+must be currently engaged; `impede` may only name living `side: "enemy"`
+combatants without the `impeded`/`impede_used` flags; at most 4 entries
+total per turn. Malformed entries are dropped by the engine — the core
+action always proceeds.
+
+**Assert only what the declared action and the fiction justify.** The
+`positioning` field adjudicates the player's described action — it is
+not a free bonus. Do not assert engagement changes the player did not
+narrate, and do not use `impede` without an obstacle the player's action
+plausibly created or exploited.
+
+Worked recipes:
+
+- **Interpose to protect an ally** — "I step between the goblin and the
+  wounded merchant": `combat`/`attack` against the goblin with
+  `"positioning": {"engage": [["player", "goblin"]], "disengage": [["goblin", "merchant"]], "impede": []}`.
+  The goblin must now go through the player; if it leaves the player's
+  reach it provokes an OA — deterrence, not a wall.
+- **Create or exploit an obstacle** — "I kick the table over between us":
+  `combat` (e.g. a ranged attack) or `wait` with
+  `"positioning": {"engage": [], "disengage": [], "impede": ["goblin"]}`.
+  The goblin loses its next attack scrambling past the table.
+- **Drag a fallen ally out of reach** — "I grab the unconscious rogue
+  and pull her away from the skeleton": `wait` (the drag consumes the
+  turn) with `"positioning": {"engage": [], "disengage": [["rogue", "skeleton"]], "impede": []}`.
+  Directional convention: the dragged ally is the mover, so the skeleton
+  gets an OA against her.
+- **Mutual retreat** — "we both fall back from each other": two
+  directional entries, one per direction —
+  `"positioning": {"engage": [], "disengage": [["player", "orc"], ["orc", "player"]], "impede": []}`
+  (each direction provokes its own OA). If only the player retreats, the
+  Disengage `maneuver` avoids OAs entirely at the cost of the action.
+
 ## Action Classification Rules
 
 0. **OOC Discussion**: For when the player is talking to the GM, not role-playing or committing to an action. Choose this if the player asks for a simple clarification about a previous narration ("is the statue on the table or floor?"); but for a more detailed question that implies scrutinizing an entity ("does the statue look heavy enough to lift?"), use `examine` instead. Choose this as well if the player speaks gibberish or nonsense, or makes queries / requests / comments with no relevance to the role-playing adventure.
@@ -220,14 +296,18 @@ up an object from the ground as an improvised weapon is also one action.
 
 6. **Combat**: When `combat_state` is present in the briefing, the only
    valid actions are `combat` (to attack an enemy combatant, to use a
-   consumable item from `combat_state.usable_items`, or to use an
+   consumable item from `combat_state.usable_items`, to use an
    ability from `combat_state.abilities` via `combat_action:
-   "use_ability"` with `ability_id`), `move` (to attempt to flee),
-   `wait` (to pass your turn), and
+   "use_ability"` with `ability_id`, or to Disengage via `combat_action:
+   "maneuver"` with `maneuver: "disengage"`), `move` (to attempt to
+   flee), `wait` (to pass your turn), and
    `examine` with `rigorous: false` (a free cursory look).  Attack
    targets must be IDs from `combat_state.combatants` with
    `side: "enemy"`. Allied NPCs (`side: "party"`) fight autonomously
-   under engine control — the player cannot direct or attack them. Do
+   under engine control — the player cannot direct or attack them.
+   Repositioning within the fight is expressed with the `positioning`
+   field on `combat`/`wait` actions or the Disengage maneuver (see
+   *Positioning*) — never with `move`. Do
    not use `examine` with `rigorous: true` during combat — thorough
    searching is not feasible in the heat of battle.
 
@@ -246,15 +326,16 @@ up an object from the ground as an improvised weapon is also one action.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
 - **Interactive-fiction shortcuts**: Classic IF abbreviations such as `n` (go north), `x` (examine), `i` (inventory), and `z` (wait) are expanded into full phrases before you see them. Treat the expanded phrase as the player's intent.
 - **Combat awareness**: When `combat_state` is present, combat is active.
-  Only use `combat` (attack), `move` (flee), `wait` (pass the turn), or
-  non-rigorous `examine`
+  Only use `combat` (attack / use item / use ability / maneuver), `move`
+  (flee), `wait` (pass the turn), or non-rigorous `examine`
   (free cursory look) actions. The player cannot conduct thorough searches,
   talk to NPCs, or take items during combat. Allied NPCs act on their own
   under engine control; only `side: "enemy"` combatants are valid attack
   targets. During combat a `move` action means FLEEING the fight through
   an exit — never use it for repositioning, flanking, or maneuvering;
-  rule those as `combat` with `combat_action: "attack"` and a descriptive
-  `detail`. Persuasion or talk attempts cannot be resolved mid-combat:
+  use the `positioning` field on a `combat`/`wait` action or a Disengage
+  `maneuver` instead (see *Positioning*). Persuasion or talk attempts
+  cannot be resolved mid-combat:
   rule them as `wait` with a `detail` describing the attempt — never
   convert a talk attempt into an attack.
 

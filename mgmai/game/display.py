@@ -197,6 +197,14 @@ class Display:
             return ", ".join(f"{_label(c)} {n}" for c, n in status_effects.items())
 
         def _row_data(cid: str) -> dict:
+            # Positioning: engagement partners (display names) and the
+            # pending impede flag, shown as row markers.
+            engaged_with = sorted(
+                _cid_name(p[1] if p[0] == cid else p[0])
+                for p in (combat.engagement or [])
+                if cid in p
+            )
+            impeded = cid in (combat.impeded or [])
             if cid == "player":
                 return {
                     "name": "Player",
@@ -204,6 +212,8 @@ class Display:
                     "max_hp": hard.player.max_hp or 0,
                     "status_effects": dict(hard.player.status_effects or {}),
                     "fled": False,
+                    "engaged_with": engaged_with,
+                    "impeded": impeded,
                 }
             entity = corpus.entities.get(cid) if corpus else None
             state = hard.entity_states.get(cid, {})
@@ -213,7 +223,26 @@ class Display:
                 "max_hp": (entity.combat.hp if entity and entity.combat else 0),
                 "status_effects": dict(state.get("status_effects") or {}),
                 "fled": bool(state.get("fled")),
+                "engaged_with": engaged_with,
+                "impeded": impeded,
             }
+
+        def _cid_name(pid: str) -> str:
+            """Display name for a combatant id (engagement partners)."""
+            if pid == "player":
+                return "Player"
+            ent = corpus.entities.get(pid) if corpus else None
+            return (ent.name or pid) if ent else pid
+
+        def _positioning_text(d: dict) -> str:
+            """e.g. '⚔ Goblin, Wolf (impeded)' — engagement partners and
+            the pending impede flag."""
+            parts: list[str] = []
+            if d["engaged_with"]:
+                parts.append(f"⚔ {', '.join(d['engaged_with'])}")
+            if d["impeded"]:
+                parts.append("(impeded)")
+            return " ".join(parts)
 
         # Damage mitigations the party has discovered by landing hits on
         # each enemy (damage type -> mitigation), taken from the combat
@@ -290,6 +319,9 @@ class Display:
                 mit = _mitigation_text(cid)
                 if mit:
                     line += f" [dim]({mit})[/dim]"
+                pos = _positioning_text(d)
+                if pos:
+                    line += f" [dim]{pos}[/dim]"
                 if d["hp"] <= 0 or d["fled"]:
                     line = f"[dim]{line}[/dim]"
                 return line
@@ -347,6 +379,9 @@ class Display:
                 mit = _mitigation_text(cid)
                 if mit:
                     line += f" ({mit})"
+                pos = _positioning_text(d)
+                if pos:
+                    line += f" {pos}"
                 return line
 
             print("Party:")

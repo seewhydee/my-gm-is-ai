@@ -83,11 +83,12 @@ That's it.  When the player uses an `interact` action with
 | `initiative_mod` | int | `0` | DEX-like modifier for initiative rolls |
 | `flee_dc` | int | `10` | Difficulty class for the player to flee |
 | `dmg_type` | str | `""` | Damage type of the NPC's damage (untyped if empty) |
+| `ranged` | bool | `false` | The NPC's attacks are ranged: no auto-engagement when it attacks, and it suffers close-combat Disadvantage while engaged (see *Positioning*) |
 | `resistances` | list[str] | `[]` | Damage types halved (rounded down) against this NPC |
 | `vulnerabilities` | list[str] | `[]` | Damage types doubled against this NPC |
 | `immunities` | list[str] | `[]` | Damage types reduced to 0 against this NPC |
 | `on_hit_effects` | list[CheckResolution] | `[]` | Secondary effects that trigger on a successful hit (saving throws + damage) |
-| `attacks` | list[NPCAttackDef] | `[]` | Named attack options (`{id, name?, atk, dmg, dmg_type?, on_hit_effects?}`) |
+| `attacks` | list[NPCAttackDef] | `[]` | Named attack options (`{id, name?, atk, dmg, dmg_type?, ranged?, on_hit_effects?}`); per-attack `ranged` falls back to the block-level flag |
 | `multiattack` | list[str] | `[]` | Ordered attack ids performed each turn (repeats allowed) |
 | `ai` | CombatAIBlock? | `null` | Rule-of-thumb combat AI configuration (see [Party Combat and Combat AI](#party-combat-and-combat-ai)) |
 
@@ -212,12 +213,12 @@ The built-in defaults reproduce the 5e SRD conditions:
 | Status effect | Effect (simplified) |
 |-----------|---------------------|
 | `poisoned` | Disadvantage on own attack rolls and ability checks (including the flee check). |
-| `stunned` | The combatant loses its turn; attack rolls against it have advantage; it auto-fails STR and DEX saves. |
-| `prone` | Attack rolls against it have advantage; it automatically stands at the start of its turn. |
+| `stunned` | The combatant loses its turn; attack rolls against it have advantage; a hit from an engaged attacker is an automatic critical; it auto-fails STR and DEX saves. |
+| `prone` | Attack rolls against it have advantage when the attacker is engaged with it, disadvantage otherwise; it automatically stands at the start of its turn. |
 | `blinded` | Attack rolls against it have advantage; its own attack rolls have disadvantage. |
 | `frightened` | Disadvantage on own attack rolls and ability checks. |
 | `invisible` | Its attack rolls have advantage; attack rolls against it have disadvantage. |
-| `incapacitated` / `paralyzed` / `petrified` / `unconscious` | The combatant loses its turn; `paralyzed`/`petrified`/`unconscious` also grant advantage to attackers and auto-fail STR and DEX saves. |
+| `incapacitated` / `paralyzed` / `petrified` / `unconscious` | The combatant loses its turn; `paralyzed`/`petrified`/`unconscious` also grant advantage to attackers and auto-fail STR and DEX saves; a hit from an engaged attacker against a `paralyzed` or `unconscious` combatant is an automatic critical. |
 | `restrained` | Disadvantage on own attack rolls; attack rolls against it have advantage. |
 | `charmed` / `deafened` / `grappled` | No roll modifiers; adjudicated by the GM from the description. |
 | `exhaustion-1` … `exhaustion-6` | Persistent; −2 × level on all of the combatant's d20 rolls (attacks, checks, saves). |
@@ -255,6 +256,9 @@ engine computes defaults at combat-start time:
 | `current_index` | int | Index into `initiative_order` of next actor |
 | `round_number` | int | Current round (starts at 1) |
 | `log` | list[CombatLogEntry] | Per-round event log |
+| `engagement` | list[list[str]] | Sorted symmetric pairs of combatant ids within melee reach of each other (see *Positioning*) |
+| `impeded` | list[str] | Enemy ids with a pending impede flag (consumed at their next turn) |
+| `impede_used` | list[str] | Enemy ids already impeded this combat (each enemy at most once) |
 
 ---
 
@@ -319,9 +323,15 @@ When combat is active, the following action types are valid:
 |--------|-------------|
 | `combat` (`combat_action: "attack"`) | Attack a combatant.  `target` must be an enemy entity ID in `combatants`. |
 | `combat` (`combat_action: "use_item"`) | Use a consumable item.  `target` must be an inventory item with a `consumable` block (healing clamps to max HP; consumes the player's action). |
+| `combat` (`combat_action: "use_ability"`) | Use an ability.  `ability_id` plus a `target` matching the ability's target kind. |
+| `combat` (`combat_action: "maneuver"`) | Maneuver: Disengage (`maneuver: "disengage"`).  Breaks all of the player's engagement pairs without provoking opportunity attacks; consumes the action; no `target`. |
 | `move` | Attempt to flee (see below). |
 | `wait` | Pass the turn: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply. NPC turns proceed and the round advances. |
 | `examine` | Free cursory look (non-rigorous only). Rigorous examine is not allowed during combat. |
+
+A `combat` or `wait` action may also carry an optional `positioning`
+assertion (LLM-adjudicated engagement changes) — see *Positioning*
+below.
 
 All other actions (`talk`, `transfer`, `interact`) are rejected by the
 engine while combat is active.
@@ -390,6 +400,99 @@ When the player uses `move` during combat:
    turns are resolved normally — if the player drops to 0 HP, combat
    ends and, unless a `player.died` rescue reaction intervenes, the
    game is over (a loss).
+
+---
+
+## Positioning
+
+Combat has abstract, theater-of-the-mind positioning — no grid and no
+distances.  The single concept is **engagement**: a symmetric "within
+melee reach" relation between two combatants, stored as sorted pairs on
+`CombatState.engagement`.  Pairs involving dead or fled combatants are
+pruned immediately, and the whole state drops when combat ends.
+
+### Engagement lifecycle
+
+- A **melee attack** (player with an equipped weapon without the
+  `ranged` property, or unarmed; NPC attack not flagged `ranged`)
+  engages attacker ↔ target
+  and automatically **disengages the attacker from its previous
+  targets** — each break provokes an opportunity attack — unless the
+  same ruling's `positioning` assertion explicitly re-asserts those
+  pairs.
+- Combat entry via a direct `interact`/`attack` engages the player with
+  the source NPC when the player's weapon is not ranged.  Encounter or
+  ambush starts have no initial pairs; enemies engage by attacking.
+- Engagement otherwise breaks only via the Disengage maneuver, a
+  validated `positioning` assertion, death, flee, or combat end.
+- **Fleeing is unchanged** — the DEX check abstracts the getaway and
+  never provokes opportunity attacks (documented simplification).
+
+### Opportunity attacks (OA-lite)
+
+Breaking engagement with a living combatant other than via Disengage
+provokes **one free basic attack** from the combatant staying put
+against the mover (no multiattack, no abilities).  Enemy OAs use the
+block-level `atk`/`dmg` (or the first attack def); player OAs use the
+equipped weapon.  A combatant with a `skip_turn` status effect
+(stunned, incapacitated, …) or a pending impede flag cannot make OAs.
+OAs are logged as `CombatLogEntry(action="opportunity_attack")`.
+
+### Disengage
+
+The `combat` action with `combat_action: "maneuver"` and
+`maneuver: "disengage"` consumes the player's action to break **all** of
+the player's engagement pairs without provoking OAs (logged as
+`action="maneuver"`).  It is situational: strongest when breaking
+multiple engagements at once or repositioning to protect an ally; in a
+plain 1v1 the enemy will usually re-engage on its next turn.
+
+### The `positioning` assertion (LLM adjudication)
+
+The ruling LLM may attach an optional `positioning` block to `combat`
+and `wait` actions (valid during combat only):
+
+- `engage`: pairs `[a, b]` — the two combatants are now within melee
+  reach of each other (symmetric).
+- `disengage`: **directional** pairs `[mover, stationary]` — the mover
+  leaves the stationary combatant's reach, provoking an OA from the
+  stationary combatant.  A mutual retreat is two entries, one per
+  direction.
+- `impede`: enemy ids delayed by an obstacle the player's action
+  created or exploited (see below).
+
+Validation (in `ruling_validation`, mirrored by the engine at apply
+time): ids must be living combatants; a pair may not appear in both
+lists; `disengage` pairs must be currently engaged; `impede` may only
+name living enemies not already impeded this combat; at most 4 entries
+total per turn.  Malformed assertions degrade gracefully — individual
+entries (or the whole block) are dropped with a warning in
+`result.warnings`; the core action always proceeds and
+`LLMOutputError` is never raised for positioning alone.
+
+### Impede (obstacle delay)
+
+An `impede` assertion flags the named enemies: on their next combat
+turn they spend it closing in — no attack, no abilities — establishing
+engagement with the target their AI would have attacked (entering
+reach this way provokes no OA), logged as `action="impeded"`.  A
+pending impede also suppresses the enemy's OAs and its close-combat
+Disadvantage pressure.  The NPC flee check runs first, a `skip_turn`
+status defers consumption, and each enemy can be impeded **at most once
+per combat** (`CombatState.impeded` / `impede_used`) — an impede buys a
+round, not the fight.  Disengage does **not** auto-impede pursuers.
+
+### Engagement-based attack modifiers (5e)
+
+- **Ranged attacks in close combat:** a ranged attack (player weapon
+  with the `ranged` property; NPC attack with the `ranged` flag) made
+  while the attacker is engaged with a living, non-incapacitated,
+  non-impeded enemy has **Disadvantage**.  Ability `attack` effects do
+  not count as ranged (a per-ability opt-in flag is future work).
+- **Prone:** attack rolls against a prone combatant have **Advantage**
+  when the attacker is engaged with it, **Disadvantage** otherwise.
+- **Unconscious / paralyzed / stunned:** a hit from an engaged attacker
+  is an **automatic critical** (double damage dice).
 
 ---
 
@@ -623,9 +726,21 @@ of the old one-shot resolution.
 
 The combat system deliberately excludes:
 
-- Movement / positioning / tactical maps
+- Distance bands, ranges, zones, cover, flanking, and facing — the only
+  spatial relation is engagement (see *Positioning*)
+- A full reaction economy — OA-lite is automatic, one basic attack, no
+  player opt-out; other reactions (Shield, Counterspell, …) don't exist
+- Opportunity attacks on fleeing — the flee DEX check abstracts the
+  getaway
+- A guard/bodyguard mechanic — protective play works via OA deterrence
+  only; chokepoint blocking has no mechanical form
+- Auto-impede on Disengage (rejected as not SRD-faithful — in 5e the
+  enemy simply moves and attacks)
+- A per-ability `ranged` flag — ability `attack` effects are exempt
+  from close-combat Disadvantage for now
+- NPC-initiated repositioning — enemies engage by attacking and never
+  voluntarily move
 - Death saving throws (player 0 HP is death unless a rescue reaction intervenes)
-- Reactions, opportunity attacks
 - Bonus actions and the 5e action/movement split (one action per turn)
 
 Gear and equipment are supported — see [gear.md](gear.md).  Status

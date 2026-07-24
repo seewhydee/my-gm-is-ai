@@ -364,3 +364,46 @@ class TestFormatSingleCombatEntry:
     def test_unknown_action(self):
         entry = {"actor": "player", "action": "dance", "target": None}
         assert _format_single_combat_entry(entry) == ""
+
+    def test_opportunity_attack_player_hit(self):
+        entry = {
+            "actor": "player",
+            "action": "opportunity_attack",
+            "target": "goblin",
+            "hit": True,
+            "damage": 5,
+        }
+        result = _format_single_combat_entry(entry)
+        assert "You make an opportunity attack on goblin: hit" in result
+        assert "5 damage" in result
+
+    def test_opportunity_attack_npc_miss(self):
+        entry = {
+            "actor": "spider",
+            "action": "opportunity_attack",
+            "target": "player",
+            "hit": False,
+        }
+        result = _format_single_combat_entry(entry)
+        assert "spider makes an opportunity attack on you: miss" in result
+
+    def test_reposition_player(self):
+        entry = {"actor": "player", "action": "reposition", "target": "goblin"}
+        result = _format_single_combat_entry(entry)
+        assert "You reposition relative to goblin" in result
+
+    def test_reposition_npc(self):
+        entry = {"actor": "spider", "action": "reposition", "target": "player"}
+        result = _format_single_combat_entry(entry)
+        assert "spider repositions relative to you" in result
+
+    def test_maneuver_player(self):
+        entry = {"actor": "player", "action": "maneuver", "target": None}
+        result = _format_single_combat_entry(entry)
+        assert "disengage" in result.lower()
+
+    def test_impeded_npc(self):
+        entry = {"actor": "spider", "action": "impeded", "target": None}
+        result = _format_single_combat_entry(entry)
+        assert "spider" in result
+        assert "closing in" in result

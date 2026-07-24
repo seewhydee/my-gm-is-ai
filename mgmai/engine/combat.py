@@ -460,6 +460,402 @@ def _attack_sequence(entity: Any) -> list:
 
 
 # ------------------------------------------------------------------
+# Positioning (theater-of-the-mind engagement)
+# ------------------------------------------------------------------
+# Engagement is a symmetric "within melee reach" relation between two
+# combatants, stored as sorted pairs on ``CombatState.engagement``.  A
+# melee attack engages attacker <-> target and automatically disengages
+# the attacker from previous targets (provoking opportunity attacks);
+# the ruling LLM may also assert explicit changes via a ``positioning``
+# block on combat/wait actions, which the engine re-validates at apply
+# time (malformed entries are dropped with a warning, never fatal).
+
+#: Maximum positioning changes (engage + disengage + impede entries)
+#: applied from a single action's assertion block.
+_MAX_POSITIONING_CHANGES = 4
+
+
+def _engaged_with(combat: CombatState, cid: str) -> set[str]:
+    """Return the ids of all combatants engaged with *cid*."""
+    return {
+        p[1] if p[0] == cid else p[0]
+        for p in combat.engagement
+        if cid in p
+    }
+
+
+def _is_engaged(combat: CombatState, a: str, b: str) -> bool:
+    """True if *a* and *b* are within melee reach of each other."""
+    pair = sorted((a, b))
+    return any(sorted(p) == pair for p in combat.engagement)
+
+
+def _set_engagement(combat: CombatState, a: str, b: str, on: bool) -> None:
+    """Set or clear the engagement pair between *a* and *b* (stored sorted)."""
+    pair = sorted((a, b))
+    combat.engagement = [p for p in combat.engagement if sorted(p) != pair]
+    if on and a != b:
+        combat.engagement.append(pair)
+
+
+def _prune_positioning(combat: CombatState, cid: str) -> None:
+    """Drop engagement pairs and impede flags involving a dead/fled
+    combatant (pruned immediately; the whole state drops at combat end)."""
+    combat.engagement = [p for p in combat.engagement if cid not in p]
+    if cid in combat.impeded:
+        combat.impeded.remove(cid)
+    if cid in combat.impede_used:
+        combat.impede_used.remove(cid)
+
+
+def _npc_attack_is_ranged(entity: Any, attack_def: Any | None) -> bool:
+    """True if the NPC attack is ranged: per-attack flag, falling back to
+    the block-level flag (same override pattern as atk/dmg/dmg_type)."""
+    cb = entity.combat
+    return (attack_def.ranged or cb.ranged) if attack_def is not None else cb.ranged
+
+
+def _can_make_opportunity_attack(
+    stationary_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> bool:
+    """True if the stationary party can make an opportunity attack.
+
+    A combatant with a ``skip_turn`` status effect (stunned,
+    incapacitated, …) or a pending impede flag cannot make OAs (SRD:
+    the OA'ing creature must see you and not be incapacitated).
+    """
+    if stationary_id not in combat.combatants:
+        return False
+    if stationary_id != "player":
+        if (hard.entity_states.get(stationary_id, {}).get("current_hp") or 0) <= 0:
+            return False
+        entity = corpus.entities.get(stationary_id)
+        if entity is None or entity.combat is None:
+            return False
+    if stationary_id in combat.impeded:
+        return False
+    return not _skips_turn(stationary_id, hard, corpus)
+
+
+def _resolve_opportunity_attack(
+    mover_id: str,
+    stationary_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: SoftGameState | None,
+    state_manager: Any | None,
+    system: Any,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+) -> bool:
+    """Resolve one opportunity attack: a single basic attack from
+    *stationary_id* against *mover_id* (OA-lite).
+
+    Player OAs use the equipped weapon; NPC OAs use the block-level
+    fields or the first attack def (no multiattack, no abilities, no
+    on-hit effects beyond the basic attack's own).  Logged as
+    ``action="opportunity_attack"``.  Returns True when the mover is the
+    player and dropped to 0 HP (game over).
+    """
+    if mover_id not in combat.combatants:
+        return False
+    if not _can_make_opportunity_attack(stationary_id, combat, hard, corpus):
+        return False
+    mover_ac = _target_ac(mover_id, hard, corpus)
+    if mover_ac is None:
+        return False
+
+    entity = corpus.entities.get(stationary_id)
+    attack_def = None
+    if stationary_id == "player":
+        result = system.resolve_player_attack(
+            hard, corpus, mover_id, mover_ac, combat.round_number
+        )
+    else:
+        if entity.combat.attacks:
+            attack_def = entity.combat.attacks[0]
+        result = system.resolve_npc_attack(
+            stationary_id, hard, corpus, mover_id, mover_ac,
+            combat.round_number, attack=attack_def,
+            player_hp_pending=hard_changes.player_hp_delta or 0,
+        )
+
+    for entry in result.log_entries:
+        if entry.action == "attack":
+            entry.action = "opportunity_attack"
+    combat_log.extend(result.log_entries)
+
+    if not result.hit:
+        return False
+
+    combat.last_attacker[mover_id] = stationary_id
+    if mover_id == "player":
+        hard_changes.player_hp_delta = (
+            (hard_changes.player_hp_delta or 0) + result.target_hp_delta
+        )
+        # The basic attack's own on-hit effects (player target only).
+        if stationary_id != "player" and soft is not None:
+            attack_entry = next(
+                (e for e in result.log_entries if e.action == "opportunity_attack"),
+                None,
+            )
+            on_hit_narrative: list[str] = []
+            on_hit_hints: list[str] = []
+            on_hit_rolls: list[dict[str, Any]] = []
+            on_hit_entries, death_entries, on_hit_game_over = _resolve_npc_on_hits(
+                stationary_id, hard, soft, corpus, state_manager,
+                hard_changes, on_hit_narrative, on_hit_hints, on_hit_rolls,
+                round_number=combat.round_number,
+                on_hit_effects=(
+                    attack_def.on_hit_effects if attack_def is not None
+                    else entity.combat.on_hit_effects
+                ),
+                events=events,
+            )
+            if attack_entry is not None:
+                attack_entry.on_hit_effects.extend(on_hit_entries)
+            combat_log.extend(death_entries)
+            if on_hit_game_over:
+                return True
+        effective_hp = (hard.player.current_hp or 0) + (
+            hard_changes.player_hp_delta or 0
+        )
+        if effective_hp <= 0:
+            if not any(
+                e.action == "death" and e.actor == "player"
+                for e in result.log_entries
+            ):
+                combat_log.append(
+                    CombatLogEntry(
+                        round=combat.round_number, actor="player", action="death",
+                    )
+                )
+            return True
+        return False
+
+    # Mover is an NPC: apply damage with the same live-mutation
+    # bookkeeping as regular attacks.
+    new_hp = (
+        hard.entity_states.get(mover_id, {}).get("current_hp") or 0
+    ) + result.target_hp_delta
+    tgt_state = hard.entity_states.setdefault(mover_id, {})
+    tgt_state["current_hp"] = new_hp
+    tgt_changes = hard_changes.entity_state_changes.setdefault(mover_id, {})
+    tgt_changes["current_hp"] = new_hp
+    if new_hp <= 0:
+        tgt_state["alive"] = False
+        tgt_changes["alive"] = False
+        if mover_id in combat.combatants:
+            combat.combatants.remove(mover_id)
+        if mover_id in combat.allies:
+            combat.allies.remove(mover_id)
+        _prune_positioning(combat, mover_id)
+    return False
+
+
+def _auto_engage_on_melee(
+    attacker_id: str,
+    target_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: SoftGameState | None,
+    state_manager: Any | None,
+    system: Any,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+    preserved: set[frozenset] | None = None,
+) -> bool:
+    """Engage attacker <-> target for a melee attack.
+
+    The attacker automatically disengages from all previous targets —
+    each break provokes an opportunity attack from the previous target
+    (mover = attacker, stationary = previous target) — unless a pair is
+    in *preserved* (frozensets of combatant ids explicitly re-asserted
+    by the same action's positioning block).  Returns True when the
+    player died to a provoked OA.
+    """
+    preserved = preserved or set()
+    for other in sorted(_engaged_with(combat, attacker_id)):
+        if other == target_id or frozenset((attacker_id, other)) in preserved:
+            continue
+        _set_engagement(combat, attacker_id, other, False)
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number,
+                actor=attacker_id,
+                action="reposition",
+                target=other,
+            )
+        )
+        if _resolve_opportunity_attack(
+            attacker_id, other, combat, hard, corpus, soft, state_manager,
+            system, hard_changes, combat_log, events,
+        ):
+            return True
+        if attacker_id not in combat.combatants:
+            return False  # attacker died to the opportunity attack
+    _set_engagement(combat, attacker_id, target_id, True)
+    return False
+
+
+def _apply_positioning_assertions(
+    action: CombatAction | WaitAction,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: SoftGameState | None,
+    state_manager: Any | None,
+    system: Any,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]],
+    warnings: list[str],
+) -> bool:
+    """Apply the action's LLM positioning assertion, engine-re-validated.
+
+    Graceful degradation: malformed individual entries are dropped with a
+    warning appended to *warnings* and at most
+    ``_MAX_POSITIONING_CHANGES`` changes are applied; the core action
+    always proceeds.  Disengage entries are directional
+    ``[mover, stationary]`` and provoke OAs from the stationary party,
+    resolved after all pair changes (a lethal OA cancels the declared
+    action).  Returns True when the player died to a provoked OA.
+    """
+    positioning = action.positioning
+    assert positioning is not None
+
+    # A Disengage maneuver breaks all of the player's engagement pairs
+    # without provoking OAs.  Engaging via the assertion would be
+    # immediately undone by the maneuver; disengaging via the assertion
+    # would provoke OAs the maneuver is meant to prevent.  Strip both
+    # with a warning; impede entries are independent and still apply.
+    if (
+        isinstance(action, CombatAction)
+        and action.combat_action == "maneuver"
+        and action.maneuver == "disengage"
+        and (positioning.engage or positioning.disengage)
+    ):
+        warnings.append(
+            "positioning engage/disengage entries ignored on a Disengage "
+            "maneuver: the maneuver breaks all engagement safely (no OAs)"
+        )
+        positioning = positioning.model_copy(
+            update={"engage": [], "disengage": []}
+        )
+
+    def _living_combatant(cid: str) -> bool:
+        if cid == "player":
+            return cid in combat.combatants
+        return (
+            cid in combat.combatants
+            and (hard.entity_states.get(cid, {}).get("current_hp") or 0) > 0
+        )
+
+    changes = 0
+    provoked: list[tuple[str, str]] = []  # (mover, stationary)
+
+    def _over_budget() -> bool:
+        if changes >= _MAX_POSITIONING_CHANGES:
+            warnings.append(
+                f"positioning entry dropped: at most "
+                f"{_MAX_POSITIONING_CHANGES} changes per turn"
+            )
+            return True
+        return False
+
+    def _valid_pair(pair: Any, kind: str) -> bool:
+        if (
+            not isinstance(pair, list)
+            or len(pair) != 2
+            or pair[0] == pair[1]
+            or not all(isinstance(cid, str) and _living_combatant(cid) for cid in pair)
+        ):
+            warnings.append(
+                f"positioning {kind} entry {pair!r} dropped: "
+                f"not a pair of distinct living combatants"
+            )
+            return False
+        return True
+
+    for pair in positioning.engage:
+        if _over_budget():
+            continue
+        if not _valid_pair(pair, "engage"):
+            continue
+        changes += 1
+        a, b = pair
+        if not _is_engaged(combat, a, b):
+            _set_engagement(combat, a, b, True)
+            combat_log.append(
+                CombatLogEntry(
+                    round=combat.round_number, actor=a,
+                    action="reposition", target=b,
+                )
+            )
+
+    for pair in positioning.disengage:
+        if _over_budget():
+            continue
+        if not _valid_pair(pair, "disengage"):
+            continue
+        mover, stationary = pair
+        if not _is_engaged(combat, mover, stationary):
+            warnings.append(
+                f"positioning disengage entry {pair!r} dropped: "
+                f"the pair is not currently engaged"
+            )
+            continue
+        changes += 1
+        _set_engagement(combat, mover, stationary, False)
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor=mover,
+                action="reposition", target=stationary,
+            )
+        )
+        provoked.append((mover, stationary))
+
+    for cid in positioning.impede:
+        if _over_budget():
+            continue
+        if (
+            not isinstance(cid, str)
+            or not _living_combatant(cid)
+            or _side_of(combat, cid) != "enemy"
+        ):
+            warnings.append(
+                f"positioning impede entry {cid!r} dropped: "
+                f"not a living enemy combatant"
+            )
+            continue
+        if cid in combat.impede_used or cid in combat.impeded:
+            warnings.append(
+                f"positioning impede entry {cid!r} dropped: "
+                f"'{cid}' was already impeded this combat"
+            )
+            continue
+        changes += 1
+        combat.impeded.append(cid)
+        combat.impede_used.append(cid)
+
+    # Provoked OAs resolve after all pair changes, before the action.
+    for mover, stationary in provoked:
+        if _resolve_opportunity_attack(
+            mover, stationary, combat, hard, corpus, soft, state_manager,
+            system, hard_changes, combat_log, events,
+        ):
+            return True
+    return False
+
+
+# ------------------------------------------------------------------
 # Conditions
 # ------------------------------------------------------------------
 
@@ -580,6 +976,7 @@ def _apply_damage_to_target(
             combat.combatants.remove(target_id)
         if target_id in combat.allies:
             combat.allies.remove(target_id)
+        _prune_positioning(combat, target_id)
         return True
     return False
 
@@ -1134,6 +1531,7 @@ def _resolve_npc_turn(
         hp = npc_state.get("current_hp") or 0
         if 100 * hp < ai.flee_below_hp_pct * entity.combat.hp:
             combat.combatants.remove(actor_id)
+            _prune_positioning(combat, actor_id)
             # ``fled`` is engine-owned runtime state, set by direct
             # mutation (same as current_hp initialisation in enter_combat).
             hard.entity_states.setdefault(actor_id, {})["fled"] = True
@@ -1143,6 +1541,24 @@ def _resolve_npc_turn(
                 )
             )
             return False, not _living_enemies(combat, hard)
+
+    # Impede: a pending impede flag consumes the enemy's turn — it spends
+    # the turn closing in (no attack, no abilities), establishing
+    # engagement with the target its AI would have attacked (entering
+    # reach provokes no OA).  A skip_turn status defers consumption: the
+    # check above returns first, so the flag persists until a turn on
+    # which the enemy could act.
+    if actor_id in combat.impeded:
+        combat.impeded.remove(actor_id)
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor=actor_id, action="impeded",
+            )
+        )
+        impede_target = _choose_npc_target(actor_id, combat, hard, corpus)
+        if impede_target is not None:
+            _set_engagement(combat, actor_id, impede_target, True)
+        return False, not _living_enemies(combat, hard)
 
     # Abilities take precedence over basic attacks: the NPC's first
     # usable ability (uses, cooldown, AI rules) wins.
@@ -1168,6 +1584,17 @@ def _resolve_npc_turn(
 
     game_over = False
     for attack_def in _attack_sequence(entity):
+        # A melee attack engages the NPC with its target; switching
+        # targets breaks its previous engagements (provoking OAs).
+        if not _npc_attack_is_ranged(entity, attack_def):
+            if _auto_engage_on_melee(
+                actor_id, target_id, combat, hard, corpus, soft,
+                state_manager, system, hard_changes, combat_log, events,
+            ):
+                game_over = True
+                break
+            if actor_id not in combat.combatants:
+                break  # killed by a provoked opportunity attack
         npc_result = system.resolve_npc_attack(
             actor_id, hard, corpus, target_id, target_ac,
             combat.round_number, attack=attack_def,
@@ -1205,6 +1632,7 @@ def _resolve_npc_turn(
                         combat.combatants.remove(target_id)
                     if target_id in combat.allies:
                         combat.allies.remove(target_id)
+                    _prune_positioning(combat, target_id)
 
         # On-hit effects resolve only against the player (they reference
         # player stats and saves); they no-op internally if the player is
@@ -1357,8 +1785,15 @@ def enter_combat(
     corpus: ModuleCorpus,
     soft: SoftGameState | None = None,
     state_manager: Any | None = None,
+    engage_source: str | None = None,
 ) -> dict[str, Any]:
     """Initialize combat state, roll initiative, resolve pre-player NPC turns.
+
+    ``engage_source`` is the directly-attacked NPC when combat starts via
+    the player's own attack: the player starts engaged with it (within
+    melee reach) unless the player's equipped weapon is ranged.
+    Encounter/ambush starts pass no source and begin unengaged; enemies
+    engage by attacking.
 
     Returns a dict with ``combat_log``, ``hard_changes``, ``combat_triggered``,
     ``player_died``, ``combat_ended_reason``, and ``events``.  ``player_died``
@@ -1407,6 +1842,15 @@ def enter_combat(
         log=[],
     )
     hard.combat = combat
+
+    # Direct-attack combat entry: the player starts engaged with the
+    # source NPC unless wielding a ranged weapon.
+    if (
+        engage_source is not None
+        and engage_source in combat.combatants
+        and not system.player_attack_is_ranged(hard, corpus)
+    ):
+        _set_engagement(combat, "player", engage_source, True)
 
     # Resolve NPC turns before the player's first turn
     hard_changes = HardStateChanges()
@@ -1552,8 +1996,8 @@ def resolve_combat_turn(
     flee attempt (``MoveAction``), or a turn pass (``WaitAction``).
 
     Returns a dict with ``success``, ``hard_changes``, ``combat_log``,
-    ``player_died``, ``combat_ended_reason``, ``events``, and ``error``
-    (if failure).
+    ``player_died``, ``combat_ended_reason``, ``events``, ``warnings``,
+    and ``error`` (if failure).
     ``player_died`` is True when the player dropped to 0 HP without an
     inline (scripted) game-over; the engine routes that through the
     ``player.died`` event, which lets rescue reactions avert the death.
@@ -1573,6 +2017,7 @@ def resolve_combat_turn(
     hard_changes = HardStateChanges()
     combat_log: list[CombatLogEntry] = []
     events: list[tuple[str, dict[str, Any]]] = []
+    warnings: list[str] = []
     game_over = False
     combat_ended = False
     combat_end_reason: str | None = None
@@ -1581,12 +2026,34 @@ def resolve_combat_turn(
     # skip_turn status effect (e.g. stunned) loses the action but the turn
     # (and NPC turns) still proceeds.
     _tick_status_effects("player", hard, corpus, events)
-    if _skips_turn("player", hard, corpus):
+    player_skips = _skips_turn("player", hard, corpus)
+    if not player_skips:
+        # LLM positioning assertions (engagement changes) apply before the
+        # declared action: engage/disengage pairs first, then provoked
+        # opportunity attacks (a lethal OA cancels the action).  Invalid
+        # entries degrade gracefully to warnings — never to a lost turn.
+        positioning = getattr(action, "positioning", None)
+        if positioning is not None:
+            if isinstance(action, (CombatAction, WaitAction)):
+                if _apply_positioning_assertions(
+                    action, combat, hard, corpus, soft, state_manager,
+                    system, hard_changes, combat_log, events, warnings,
+                ):
+                    game_over = True
+                    combat_end_reason = "defeat"
+            else:
+                warnings.append(
+                    "positioning assertion ignored: only valid on "
+                    "combat and wait actions"
+                )
+    if player_skips:
         combat_log.append(
             CombatLogEntry(
                 round=combat.round_number, actor="player", action="stunned",
             )
         )
+    elif game_over:
+        pass  # player died to a provoked OA; NPC turns are skipped below
     elif isinstance(action, CombatAction) and action.combat_action == "use_ability":
         # --- Use a combat ability ---
         err = _resolve_player_ability(
@@ -1605,6 +2072,17 @@ def resolve_combat_turn(
         )
         if err is not None:
             return err
+    elif isinstance(action, CombatAction) and action.combat_action == "maneuver":
+        # --- Maneuver: Disengage ---
+        # Breaks all of the player's engagement pairs without provoking
+        # opportunity attacks; consumes the action.  NPC turns proceed.
+        for other in sorted(_engaged_with(combat, "player")):
+            _set_engagement(combat, "player", other, False)
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor="player", action="maneuver",
+            )
+        )
     elif isinstance(action, CombatAction):
         # --- Player attack ---
         target_id = action.target
@@ -1626,11 +2104,31 @@ def resolve_combat_turn(
             return {"success": False, "error": f"Target '{target_id}' is already dead"}
 
         combat.player_last_target = target_id
-        target_ac = entity.combat.ac
-        pa_result = system.resolve_player_attack(hard, corpus, target_id, target_ac, combat.round_number)
-        combat_log.extend(pa_result.log_entries)
+        # Melee attacks engage the player with the target; switching
+        # targets breaks the player's previous engagements (provoking
+        # opportunity attacks from the previous targets) unless the
+        # action's positioning assertion explicitly preserved them.
+        if not system.player_attack_is_ranged(hard, corpus):
+            preserved = {
+                frozenset(p)
+                for p in (action.positioning.engage if action.positioning else [])
+                if isinstance(p, list) and len(p) == 2
+            }
+            if _auto_engage_on_melee(
+                "player", target_id, combat, hard, corpus, soft,
+                state_manager, system, hard_changes, combat_log, events,
+                preserved=preserved,
+            ):
+                game_over = True
+                combat_end_reason = "defeat"
 
-        if pa_result.hit:
+        pa_result = None
+        if not game_over:
+            target_ac = entity.combat.ac
+            pa_result = system.resolve_player_attack(hard, corpus, target_id, target_ac, combat.round_number)
+            combat_log.extend(pa_result.log_entries)
+
+        if pa_result is not None and pa_result.hit:
             combat.last_attacker[target_id] = "player"
             new_hp = (npc_state.get("current_hp") or 0) + pa_result.target_hp_delta
             # Mutate hard entity state directly (fresh mid-turn reads for
@@ -1652,9 +2150,10 @@ def resolve_combat_turn(
                 # via entity_state_changes, but we track it locally too
                 if target_id in combat.combatants:
                     combat.combatants.remove(target_id)
+                _prune_positioning(combat, target_id)
 
         # Check if all enemies are dead
-        if not _living_enemies(combat, hard):
+        if not game_over and not _living_enemies(combat, hard):
             combat_ended = True
             combat_end_reason = "victory"
 
@@ -1757,4 +2256,5 @@ def resolve_combat_turn(
         "player_died": player_died,
         "combat_ended_reason": combat_end_reason,
         "events": events,
+        "warnings": warnings,
     }

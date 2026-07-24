@@ -299,8 +299,7 @@ class FiveESystem(ResolutionSystem):
         """Ability score for the equipped weapon's attack and damage rolls.
 
         ``ranged`` weapons use DEX; ``finesse`` weapons use the better of
-        STR and DEX; everything else uses STR.  (No positioning exists, so
-        "ranged" only changes the ability score.)
+        STR and DEX; everything else uses STR.
         """
         weapon = self._equipped_weapon_block(hard, corpus)
         props = weapon.properties if weapon else []
@@ -311,6 +310,13 @@ class FiveESystem(ResolutionSystem):
             dex_mod = self.compute_modifier(self._player_stat(hard.player.stats, "DEX"))
             return "DEX" if dex_mod > str_mod else "STR"
         return "STR"
+
+    def player_attack_is_ranged(self, hard: HardGameState, corpus: ModuleCorpus) -> bool:
+        """Whether the player's attack with the equipped weapon is ranged
+        (5e: the weapon's ``properties`` carry ``ranged``).  Unarmed and
+        improvised weapons count as melee."""
+        weapon = self._equipped_weapon_block(hard, corpus)
+        return weapon is not None and "ranged" in weapon.properties
 
     def compute_player_attack_bonus(
         self, hard: HardGameState, corpus: ModuleCorpus
@@ -349,16 +355,24 @@ class FiveESystem(ResolutionSystem):
         return weapon.damage_type if weapon else ""
 
     def attack_roll_mods(
-        self, attacker_status_effects: dict, target_status_effects: dict, corpus: ModuleCorpus
+        self, attacker_status_effects: dict, target_status_effects: dict, corpus: ModuleCorpus,
+        engaged: bool = False,
     ) -> tuple[bool, bool]:
         """(advantage, disadvantage) from status-effect system effects (5e):
 
         - advantage: ``advantage_against`` ORed over the target's status
           effects (e.g. stunned), or ``advantage_on_attack`` ORed over the
-          attacker's (e.g. invisible)
+          attacker's (e.g. invisible), or ``advantage_against_engaged``
+          ORed over the target's when the attacker is engaged with it
+          (e.g. prone, within reach)
         - disadvantage: ``disadvantage_on_attack`` ORed over the attacker's
           status effects (e.g. poisoned), or ``disadvantage_against`` ORed
-          over the target's (e.g. invisible)
+          over the target's (e.g. invisible), or
+          ``disadvantage_against_unengaged`` ORed over the target's when
+          the attacker is not engaged with it (e.g. prone, at a distance)
+
+        ``engaged`` is attacker <-> target engagement (theater-of-the-mind
+        positioning) and defaults to False.
         """
         effect_defs = corpus.effective_status_effects()
 
@@ -371,13 +385,77 @@ class FiveESystem(ResolutionSystem):
 
         attacker_effects = _effects(attacker_status_effects)
         target_effects = _effects(target_status_effects)
-        advantage = any(e.get("advantage_against") for e in target_effects) or any(
-            e.get("advantage_on_attack") for e in attacker_effects
+        advantage = (
+            any(e.get("advantage_against") for e in target_effects)
+            or any(e.get("advantage_on_attack") for e in attacker_effects)
+            or (engaged and any(e.get("advantage_against_engaged") for e in target_effects))
         )
-        disadvantage = any(
-            e.get("disadvantage_on_attack") for e in attacker_effects
-        ) or any(e.get("disadvantage_against") for e in target_effects)
+        disadvantage = (
+            any(e.get("disadvantage_on_attack") for e in attacker_effects)
+            or any(e.get("disadvantage_against") for e in target_effects)
+            or (not engaged and any(
+                e.get("disadvantage_against_unengaged") for e in target_effects
+            ))
+        )
         return advantage, disadvantage
+
+    # ------------------------------------------------------------------
+    # Positioning (theater-of-the-mind engagement)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _pair_engaged(hard: HardGameState, a: str, b: str) -> bool:
+        """True if combatants *a* and *b* are engaged (within melee reach)."""
+        combat = getattr(hard, "combat", None)
+        if combat is None:
+            return False
+        pair = sorted((a, b))
+        return any(sorted(p) == pair for p in combat.engagement)
+
+    @staticmethod
+    def _has_system_effect(status_effects: dict, corpus: ModuleCorpus, key: str) -> bool:
+        """True if any active status effect sets the given 5e system key."""
+        effect_defs = corpus.effective_status_effects()
+        return any(
+            effect_defs[c].system_effects.get("5e", {}).get(key)
+            for c in status_effects
+            if c in effect_defs
+        )
+
+    def _close_combat_threat(
+        self, attacker_id: str, hard: HardGameState, corpus: ModuleCorpus
+    ) -> bool:
+        """True if the attacker is engaged with at least one living enemy
+        able to punish a ranged attack (no ``skip_turn`` status effect and
+        no pending impede flag — SRD: "can see you and isn't
+        incapacitated")."""
+        combat = getattr(hard, "combat", None)
+        if combat is None:
+            return False
+        effect_defs = corpus.effective_status_effects()
+        allies = set(combat.allies)
+        attacker_side = attacker_id == "player" or attacker_id in allies
+        for pair in combat.engagement:
+            if attacker_id not in pair:
+                continue
+            other = pair[0] if pair[1] == attacker_id else pair[1]
+            other_side = other == "player" or other in allies
+            if attacker_side == other_side:
+                continue  # not an enemy of the attacker
+            if other != "player":
+                if other not in combat.combatants:
+                    continue
+                if (hard.entity_states.get(other, {}).get("current_hp") or 0) <= 0:
+                    continue
+            if other in combat.impeded:
+                continue
+            if any(
+                effect_defs[c].skip_turn
+                for c in get_status_effects(other, hard)
+                if c in effect_defs
+            ):
+                continue
+            return True
+        return False
 
     def d20_test_modifier(
         self, status_effects: dict, corpus: ModuleCorpus
@@ -487,9 +565,17 @@ class FiveESystem(ResolutionSystem):
 
         atk_bonus = self.compute_player_attack_bonus(hard, corpus)
         player_effects = get_status_effects("player", hard)
+        target_effects = get_status_effects(target_id, hard)
+        engaged_with_target = self._pair_engaged(hard, "player", target_id)
         adv, disadv = self.attack_roll_mods(
-            player_effects, get_status_effects(target_id, hard), corpus
+            player_effects, target_effects, corpus, engaged=engaged_with_target
         )
+        # Ranged attacks in close combat: Disadvantage while within reach
+        # of a living, non-incapacitated enemy.
+        if self.player_attack_is_ranged(hard, corpus) and self._close_combat_threat(
+            "player", hard, corpus
+        ):
+            disadv = True
         attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
         attack_total = (
             attack_roll + atk_bonus + self.d20_test_modifier(player_effects, corpus)
@@ -497,6 +583,15 @@ class FiveESystem(ResolutionSystem):
         critical = self.is_critical(attack_roll)
         miss = self.is_fumble(attack_roll)
         hit = critical or (not miss and attack_total >= target_ac)
+        # A hit from within reach against e.g. an unconscious target is an
+        # automatic critical.
+        if (
+            hit
+            and not critical
+            and engaged_with_target
+            and self._has_system_effect(target_effects, corpus, "auto_crit_against_engaged")
+        ):
+            critical = True
 
         log_entry = CombatLogEntry(
             round=round_number,
@@ -585,11 +680,25 @@ class FiveESystem(ResolutionSystem):
             if attack is not None
             else combat_block.dmg_type
         )
+        # Per-attack override, falling back to the block-level flag (same
+        # pattern as dmg_type) so block-level ``ranged`` is not silently
+        # ignored when an ``attacks`` list is present.
+        is_ranged = (
+            (attack.ranged or combat_block.ranged)
+            if attack is not None
+            else combat_block.ranged
+        )
 
         npc_effects = get_status_effects(npc_id, hard)
+        target_effects = get_status_effects(target_id, hard)
+        engaged_with_target = self._pair_engaged(hard, npc_id, target_id)
         adv, disadv = self.attack_roll_mods(
-            npc_effects, get_status_effects(target_id, hard), corpus
+            npc_effects, target_effects, corpus, engaged=engaged_with_target
         )
+        # Ranged attacks in close combat: Disadvantage while within reach
+        # of a living, non-incapacitated enemy.
+        if is_ranged and self._close_combat_threat(npc_id, hard, corpus):
+            disadv = True
         attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
         attack_total = (
             attack_roll + atk_bonus + self.d20_test_modifier(npc_effects, corpus)
@@ -597,6 +706,15 @@ class FiveESystem(ResolutionSystem):
         critical = self.is_critical(attack_roll)
         miss = self.is_fumble(attack_roll)
         hit = critical or (not miss and attack_total >= target_ac)
+        # A hit from within reach against e.g. an unconscious target is an
+        # automatic critical.
+        if (
+            hit
+            and not critical
+            and engaged_with_target
+            and self._has_system_effect(target_effects, corpus, "auto_crit_against_engaged")
+        ):
+            critical = True
 
         log_entry = CombatLogEntry(
             round=round_number,

@@ -25,6 +25,11 @@ During combat, the player's `action_type` is usually `combat`, with a
   (the briefing's ability list gives its name and description), and
   `target` is who it affects — `"player"`, an ally, or an enemy, per
   the ability's target kind.
+- `"maneuver"` — a combat maneuver; currently only Disengage
+  (`maneuver: "disengage"`): the player carefully withdraws from melee,
+  breaking all engagement without provoking opportunity attacks. Narrate
+  it as a controlled, defensive repositioning — not a retreat from the
+  fight.
 
 A `move` action during combat is an attempt to flee (see rule 3 below).
 If `success` is false, the action failed before taking effect — narrate
@@ -43,8 +48,16 @@ the `error` naturally, and do not narrate any log entries for it.
    `combat_log` entries into a narrative of hits, misses, deaths, etc.
    Each entry has `round`, `actor` ("player" or NPC id), and `action`:
    `"attack"`, `"use_item"`, `"heal"`, `"ability_save"`, `"flee"`,
-   `"death"`, or `"stunned"` (the actor lost their turn to a status
-   effect).  Attack entries carry `hit`, `critical`, `damage`, and
+   `"death"`, `"stunned"` (the actor lost their turn to a status
+   effect), `"reposition"` (the actor and `target` closed to melee
+   reach or broke away from each other — engagement is the abstract
+   "within melee reach" relation; weave it in as movement within the
+   fight), `"opportunity_attack"` (a free basic attack punished the
+   `target` for leaving the actor's reach — same fields as `"attack"`),
+   `"maneuver"` (the actor Disengaged, withdrawing from melee safely),
+   or `"impeded"` (an obstacle delayed the actor, who spent its turn
+   closing in instead of attacking).  Attack entries carry `hit`,
+   `critical`, `damage`, and
    `remaining_hp`; for `"use_item"` and `"heal"` entries, `damage` is
    the amount of HP restored.  Abilities and named attacks set
    `attack_name` — refer to it ("your guiding bolt") rather than the

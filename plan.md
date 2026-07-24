@@ -39,8 +39,9 @@ history for the archived text.
 - [x] Initiative (d20 + DEX mod / `initiative_mod`, tie-breaks)
 - [x] Fleeing (player DEX check vs max enemy `flee_dc`; NPC flee via
       `ai.flee_below_hp_pct`)
-- [x] Weapon properties: `finesse`, `ranged` (affect ability score
-      only — no range semantics)
+- [x] Weapon properties: `finesse`, `ranged` (ability score for the
+      attack roll; `ranged` also drives close-combat Disadvantage and
+      engagement behaviour — no range bands)
 - [x] Multiattack (NPC named attacks sequenced per turn)
 - [x] First-class status effects: corpus-definable, three built-ins
       (`poisoned`, `stunned`, `prone`), combat/persistent scopes,
@@ -70,6 +71,17 @@ history for the archived text.
       is proficient with the equipped weapon; non-proficient weapons are
       still usable without the bonus.  Unarmed strikes are always
       proficient.  Load-time validation rejects unknown categories/IDs.
+- [x] **Positioning (TotM engagement)** — abstract "within melee
+      reach" pairs on `CombatState.engagement`; melee attacks
+      auto-engage and auto-disengage from previous targets; LLM
+      `positioning` assertions (`engage`/`disengage`/`impede`) on
+      combat/wait actions, validated with graceful degradation; OA-lite
+      when leaving reach; the Disengage `maneuver` combat action;
+      close-combat Disadvantage for ranged attacks; the prone
+      engaged/unengaged split; engaged auto-crit against
+      unconscious/paralyzed/stunned; obstacle `impede` delay (once per
+      combat per enemy).  See `combat-positioning-plan.md` and
+      `doc/combat.md` — *Positioning*.
 
 ### Partially implemented (known gaps)
 
@@ -92,6 +104,10 @@ history for the archived text.
       condition list as built-in defaults.  Also, standard weapons,
       armor, and healing potions; integration tests now use these.  No
       spells or spell-like abilities yet.
+- [~] **Action economy** — one action per turn; no bonus actions,
+      full reaction economy, movement-vs-action split, or
+      Dodge/Dash/Ready.  (OA-lite and the Disengage maneuver are
+      implemented — see Positioning above.)
 
 ### Not implemented
 
@@ -103,11 +119,6 @@ history for the archived text.
       recharge
 - [ ] **Character creation / classes / species** — no class field, no
       class features, no XP/leveling, no per-level HP derivation
-- [ ] **Action economy** — one action per turn; no bonus actions,
-      reactions, opportunity attacks, movement-vs-action split,
-      Dodge/Disengage/Dash/Ready
-- [ ] **Positioning** — no range, reach, cover, or grid; no
-      ranged-in-melee disadvantage or prone-at-range rules
 - [ ] **Condition immunities** (separate from damage immunities)
 - [ ] **Entity-targeted tick effects** for status effects (player-only
       today)
@@ -119,6 +130,13 @@ history for the archived text.
 - **Weapon properties round 2** — versatile/two-handed damage dice,
   thrown + ammunition (weapon proficiency gating is now implemented;
   see the Implemented section above).
+
+- **Positioning extensions** — possible follow-ups to the engagement
+  system (see "Possible later extensions" in
+  `combat-positioning-plan.md`): mover-constraint validation of LLM
+  assertions, ranged-NPC fallback AI, a guard/bodyguard assertion,
+  auto-impede on Disengage, a "Step" maneuver, Ready/shove/grapple,
+  and a per-ability `ranged` flag.
 
 - **Player 0 HP: unconsciousness + death saves** — medium engine work,
   high rules-fidelity payoff; also unlocks player-side damage
