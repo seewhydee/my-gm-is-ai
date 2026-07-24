@@ -187,3 +187,199 @@ interface change to `ResolutionSystem` call sites beyond an optional param:
   maneuvers).
 - Ability attacks treated as ranged for close-combat Disadvantage (no
   per-ability flag yet).
+
+## Issues
+
+The following concerns were surfaced during a review of the above plan:
+
+### 1. OA directionality is underspecified
+
+The assertion is a symmetric pair: `disengage: [["goblin", "player"]]`
+(`:57`). It says "these two are no longer engaged" but carries **no mover**.
+Yet the OA rule is directional:
+
+- `:75-78` — breaking engagement provokes an OA *from the other party* (the
+  enemy gets a free attack on whoever left).
+- `:79-81` — "an enemy leaving the player's reach … provokes one automatic
+  player OA."
+
+Since assertions ride on the player's `combat`/`wait` action (`:60-61`), the
+turn's actor is the player. So "player moves away from goblin" → goblin OA's
+player is inferrable. But "goblin moves away from player" → player OA's goblin
+is **not inferrable from a symmetric pair**, and it's happening on the
+*player's* turn, which is strange timing for enemy movement.
+
+As written, the engine cannot distinguish the two cases the plan promises.
+Either:
+
+- the assertion must carry a mover (e.g. directional `[mover, stationary]`,
+  or a separate `mover` field), or
+- player-side OAs effectively never fire in v1 (contradicting `:79-81`).
+
+This needs a decision before implementation. It's the one place the design is
+internally inconsistent rather than merely opinionated.
+
+### 2. The feature is asymmetric in a player-unfavorable way
+
+"NPC AI never voluntarily repositions" is a stated non-goal (`:186-187`), and
+assertions only happen on the player's turn. Consequences:
+
+- Enemies auto-engage by attacking (free) and **never pay OAs**, because they
+  never move.
+- The player pays OAs to leave engagement, or burns a full action on
+  Disengage.
+- Enemy ranged attackers, once engaged, just eat disadvantage forever — they
+  never Disengage to kite. (This part *helps* the player, but makes enemies
+  tactically inert.)
+
+Net: the close-combat-disadvantage and OA rules bite the **player** far more
+than enemies. A ranged player wading into a scrum will be disadvantaged and
+will pay OAs to get out; enemies pay nothing. That's SRD-faithful in letter
+but produces a play feel where positioning is mostly a tax on the player.
+Without at least *some* NPC repositioning (or LLM-adjudicated enemy movement
+on enemy turns), the "creative play" upside is lopsided.
+
+### 3. Engagement is sticky and accumulative — fine, but only if the LLM actively manages it
+
+"Attacking a new target *adds* engagement; it never breaks existing pairs"
+(`:41-44`). Pairs are only shed by death/flee/Disengage/explicit LLM
+assertion. So after a round or two of switching targets, a melee player is
+engaged with everyone they've touched, and ranged-in-melee disadvantage
+becomes near-universal *for the player* until they actively extract.
+
+This is internally consistent (the OA-on-leave rule is the pressure release,
+and "you're in the thick of it" is a legitimate TotM model), but it
+**delegates graph hygiene to the LLM**. LLMs are not reliably proactive about
+maintaining auxiliary state. If the LLM passively lets pairs accumulate,
+ranged characters suffer silently. The 4-pair-changes/turn cap (`:64`) is a
+double-edged guard: enough to churn, possibly not enough to clean up a
+snarled graph in a big fight. There's no deterministic decay (e.g. "only
+engaged with last melee target") as a fallback. Worth at least deciding
+whether you trust the LLM here, or adding a minimal deterministic rule so the
+state can't silently rot.
+
+### 4. A bad positioning assertion could tank the whole turn
+
+The corrective-retry loop gives **one** retry, then a semantically-still-
+invalid ruling raises `LLMOutputError` and the turn falls back to
+`FALLBACK_NARRATION` (`loop.py:420-433`). For a required field that's
+acceptable; for an *optional* embellishment like `positioning`, it's
+disproportionate. A malformed `positioning` shouldn't cost the player their
+turn.
+
+The plan should specify **graceful degradation**: if `positioning` fails
+validation (even after retry), drop the positioning and proceed with the core
+`combat`/`wait` action. Right now the plan folds positioning validation into
+the same fail-the-turn loop (`:62-63`), which is the wrong severity.
+
+### 5. Movement vocabulary is narrow and costly
+
+The only way to reposition without eating an OA is Disengage — a full action,
+no attack (and it breaks *all* the player's pairs at once, `:93`). There's no
+5-foot-step / shift / partial movement. That's faithful to 5e, but in TotM —
+where the whole pitch is fluid spatial imagination — "I want to slide over to
+guard the wizard" costing your entire action (or an OA) is a real constraint
+on creative flow. The plan is honest about this in non-goals, but if
+"flexible creative play" is the goal, this is the place it's most constrained.
+A lite "reposition to an adjacent engagement (no OA, no attack)" maneuver
+would materially change the feel — worth at least considering as a future
+add, not necessarily v1.
+
+### 6. Disengage has weak value in solo combat
+
+Without movement positioning being mechanically meaningful (no blocking
+paths, no zone-to-zone movement, no cover to reach, no ally to protect),
+the benefit of Disengage reduces to: avoid OAs and clear close-combat
+Disadvantage for *one* future ranged attack. But the enemies will almost
+certainly re-engage on their next turns. In 5e tabletop, Disengage +
+move gets you *somewhere* (behind cover, farther from threats, closer to
+an objective). Here, there is no "somewhere." The primary value
+proposition — tactical repositioning — is toothless without spatial
+semantics.
+
+This becomes more worthwhile once there's multi-enemy management
+(breaking engagement with 3 enemies in one action) and once ally combat
+(disengaging from threats to protect a wounded follower) is in play. The
+plan should explicitly discuss when Disengage is worth using vs. when it
+is a trap option.
+
+### 7. "Ability attacks treated as ranged" may be the wrong default
+
+The plan says all ability `attack` effects get close-combat Disadvantage
+when engaged, with a note that this can be refined later with a
+per-ability flag. But melee-range abilities (Shocking Grasp, Inflict
+Wounds, vampire's drain touch) are explicitly melee in 5e and should not
+suffer this penalty. The current default will feel wrong immediately if
+anyone adds such an ability. I'd recommend defaulting to *not* applying
+close-combat Disadvantage to ability attacks, with an opt-in
+`ranged: true` flag on the ability definition for the ones that actually
+are ranged. That's a smaller change and avoids a known-wrong behavior
+from day one.
+
+### 8. No error-handling path for invalid positioning assertions
+
+The plan mentions validation in `ruling_validation.py` (with the
+corrective-retry loop) and re-validation at the engine level, but
+doesn't specify what happens when an assertion *fails* engine validation.
+Presumably the invalid `positioning` block is stripped and the turn
+proceeds without it, but this should be explicit: does the player's
+action still resolve? Does the LLM get informed? An invalid positioning
+block is a minor error, not a reason to reject the entire action — but
+the LLM should know so it doesn't repeat the mistake next turn.
+
+### 9. No ally↔enemy OA handling spelled out
+
+The plan covers player↔enemy OAs both ways, and the general rule
+("Breaking engagement with a living enemy other than via Disengage
+provokes one basic melee attack from that enemy") covers ally↔enemy
+cases. But the implementation section only calls out "an enemy leaving
+the player's reach provokes one automatic player OA." Party combat is
+implemented, so followers can be engaged with enemies and the LLM could
+disengage them. The plan should explicitly note that ally OAs (both
+dealt and received) are in scope.
+
+### 10. Fleeing vs. Disengage asymmetry could confuse players
+
+Fleeing (DEX check, change rooms) avoids OAs entirely. Disengage
+(costs your action, stay in combat) avoids OAs but leaves you in the
+fight. A player might reasonably ask: "If I want to break engagement
+but stay in the fight, why does it cost more (my action + enemies will
+re-engage) than fleeing (one check, escape cleanly)?" The plan
+documents this as a simplification, which is fine, but it'll feel
+arbitrary in play unless the LLM can narratively justify it.  It's
+worth checking what the SRD says about this, and maybe updating the
+fleeing rules accordingly.
+
+## Minor notes
+
+- **SRD-fidelity gap:** `auto_crit_against_engaged` is scoped to
+  `unconscious` only (`:119-121`), but SRD grants melee auto-crit to
+  `paralyzed` and `stunned` too (`conditions.json:49-58, 102-111`
+  descriptions both reference it). Either intentional (document it) or an
+  omission.
+- **Headless display** (`mgmai/game/headless.py:194-235`) builds its own
+  combatants view and isn't in the plan's exposure list (`:124-137`).
+  Integration tests run through headless, so engagement markers won't show
+  there unless updated.
+- **`ranged` override plumbing:** `resolve_npc_attack` does per-attack-
+  overrides-block for `atk`/`dmg`/`dmg_type` (`five_e.py:581-587`); the new
+  `ranged` must follow the same pattern or block-level `ranged` is silently
+  ignored whenever an `attacks` list is present. Implementation detail, but
+  the plan doesn't call it out.
+- **Prone inversion:** flat Advantage → engaged/unengaged split (`:108-111`)
+  is correct SRD but flips the current "prone = easier to hit" intuition for
+  any ranged/non-engaged attacker. Real play-experience shift, not just a
+  fixture concern.
+- **No concept of "you can't engage through obstacles."** If there's a
+  chasm or a wall of fire between two combatants, the LLM can simply not
+  assert engagement between them, but there's no mechanical or
+  briefing-level enforcement. The LLM has to remember the narrative
+  obstacle. This is probably OK for v1 but might cause issues in complex
+  encounter spaces.
+- **No consideration of AoE positioning.** What if the player uses
+  Burning Hands ("a 15-foot cone") and the LLM narrates it catching
+  multiple enemies? The engagement model doesn't capture relative
+  positions among NPCs, so the LLM can't mechanically reason about which
+  NPCs are in the cone. It'll have to guess based on narrative
+  consistency. This isn't a plan flaw (AoE is a spellcasting feature
+  that doesn't exist yet) but it's a future tension to note.
