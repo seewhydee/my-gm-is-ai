@@ -103,24 +103,37 @@ are deterministic.
 
 ### LLM Call 1 and player actions
 
-LLM Call 1, which runs at a moderately low temperature, receives the GMBriefing + verbatim player input and is tasked with interpreting the player's input.  It cannot propose hard-state changes (those are the engine's domain).  Instead, it is tasked with producing a structured PlayerAction in JSON, consisting of exactly one of ten types:
+LLM Call 1, which runs at a moderately low temperature, receives the
+GMBriefing + verbatim player input and is tasked with interpreting the
+player's input.  It cannot propose hard-state changes (those are the
+engine's domain).  Instead, it is tasked with producing a structured
+PlayerAction in JSON, consisting of exactly one of these types:
 
-| Type | Purpose | Key fields |
-|------|---------|------------|
-| `move` | Travel to an adjacent room via an exit; in combat, attempt to flee | `target` (exit ID), optional `style` (crawl, etc.) |
-| `examine` | Look at a room, entity, or soft item | `target`, optional `rigorous` (deep search), optional `using` |
-| `interact` | Perform a named interaction on an entity | `target`, `interaction_id`, optional `using` |
-| `talk` | Start or continue dialogue with an NPC | `target` (NPC ID), optional `utterance`, optional `ends_dialogue` |
-| `transfer` | Give/take items between player and entity/room | `target`, `given_items`[], `taken_items`[] |
-| `wait` | Pass time, catch-all for below-threshold actions; in combat, pass the turn | `detail` describing intent |
-| `combat` | Combat action: attack, use a consumable, or use an ability | `combat_action` (`attack`/`use_item`/`use_ability`), `target`, optional `ability_id` |
-| `ooc_discussion` | Out-of-character question to the GM | `detail` with the question |
-| `equip` | Equip an item from inventory | `target`, optional `unequip_targets`[] |
-| `unequip` | Unequip an item | `target` |
+- `move`: travel to another room via an exit; in combat, try to flee
+- `examine`: inspect a room, entity, or soft item
+- `interact`: perform a named interaction on a room or entity
+- `talk`: start or continue dialogue with an NPC
+- `transfer`: give/take items between inventory and entity/room
+- `equip`: equip a gear item from inventory
+- `unequip`: remove a gear item
+- `wait`: catch-all for below-threshold actions, or pass time or combat turn
+- `combat`: combat action: attack, use consumable, or use ability
+- `ooc_discussion`: out-of-character question to GM
 
-Every action includes a `detail` field (natural-language description), optional `soft_state_patches`, and optional `follow_up` for chained actions (see below).
+Every action has a `detail` field with a natural-language description
+of what the player does, optional `soft_state_patches`, optional
+`follow_up` for chained actions (see below), plus action-specific
+fields (e.g., `move` has a `target` field for the exit ID).
 
-Only one action occurs per turn.  Multi-step inputs ("I pick up the key and unlock the door") are handled by constructing **chained actions**.  The LLM extracts the first action ("I pick up the key") and stores the rest in the `follow_up` field ("unlock the door").  After the first action is processed, the engine injects the follow-up as a new turn, *without waiting for further player input*.  This follow-up can itself be broken up, thereby extending the chain.  The chain terminates if any step fails validation, or if the length exceeds a maximum value.
+Only one action can occur per turn.  Multi-step inputs ("I pick up the
+key and unlock the door") are handled via **chained actions**.  The
+LLM extracts the first action ("I pick up the key") and stores the
+rest in the `follow_up` field ("unlock the door").  After the first
+action is processed, the engine injects the follow-up as a new turn
+without further player input.  This follow-up can itself be broken up,
+thereby extending the chain.  The chain terminates if any step fails
+validation, or the LLM decides it is narratively invalidated, or the
+chain length exceeds a maximum.
 
 ### Engine resolution
 
@@ -133,17 +146,18 @@ The engine is the system's source of truth.  It receives the PlayerAction and:
 5. **Checks for game-over**.
 6. **Produces an EngineResult** containing the full outcome: stat check success/failure, a diff of state changes, etc.
 
-### LLM Call 2: Prose narration (moderate temperature)
+### LLM Call 2: Prose narration
 
-LLM Call 2 runs at a moderately high temperature.  It receives the GMBriefing, PlayerAction, EngineResult, and a verbatim chat log.  Its task is to weave the outcome into natural prose, subject to these constraints:
+LLM Call 2 receives the GMBriefing, PlayerAction, EngineResult, and a
+verbatim chat log.  Its task is to weave the outcome into natural
+prose, while obeying the engine: it is instructed never to contradict
+the engine result, respect game-over triggers, etc.
 
-1. **Do not contradict the engine result** — if the engine says the spider fled, do not narrate it attacking.
-2. **Do not invent game state** — no adding items, changing rooms, or killing entities.
-3. **Incorporate triggered narrations** — weave canonical prose blocks into the narrative, don't replace them.
-4. **Respect hidden information** — secret exits, gated NPC knowledge, and unrevealed mechanics must not be divulged.
-5. **Respect game-over** — if `game_over` is set, narrate the ending and stop.
-
-Optionally, the LLM may also propose `knowledge_tags` (which topic IDs an NPC revealed) and `attitude_changes` (NPC attitude shifts from this turn's events).  Both are checked against corpus-defined constraints in the post-validation step.  See [npcs.md](npcs.md) for details.
+However, LLM Call 2 is not a pure narrator, and it also has leeway to
+affect the game's soft state to fit the narrative.  It helps
+adjudicate the insertion of soft items into the narrative, as well as
+managing the topics NPCs reveal in conversation and changes in NPC
+attitude; see [npcs.md](npcs.md) for details.
 
 ### Dialogue mode
 
@@ -161,65 +175,52 @@ Dialogue ends when the player moves rooms (away from the NPC), the NPC dies/flee
 
 After each non-chain turn, the system saves hard state + soft state as a JSON file.  The GMBriefing is reconstructed from scratch on load; no LLM context is persisted.
 
-## Technology Stack
-
-| Component | Choice | Rationale |
-|-----------|--------|-----------|
-| Language | Python 3.12+ | Best ecosystem for LLM work; modern typing support |
-| Schema / validation | Pydantic v2 | Discriminated unions, model validation, JSON serialization |
-| LLM client | `openai` package | Supports `base_url` for Deepseek; `response_format` for JSON mode |
-| Prompt templates | Jinja2 | Clean separation of prompt text from code |
-| Console UI | `rich` | Markdown rendering, colored panels |
-| Testing | pytest | Standard; parametrized tests, mock LLM |
-| CLI entry | argparse | Built-in, sufficient |
-
 ## Directory Structure
 
 ```
 mgmai/
-├── cli.py                       # Entry point, argument parsing, game start
-├── models/                      # Pydantic models — all structured data
-│   ├── corpus.py                # Module Corpus
-│   ├── hard_state.py            # Hard Game State
-│   ├── soft_state.py            # Soft Game State
-│   ├── actions.py               # PlayerAction, EngineResult
-│   ├── briefing.py              # GMBriefing, dialogue_context
-│   └── narration.py             # NarrationOutput, AttitudeChange, KnowledgeTags
-├── engine/                      # Deterministic game engine
-│   ├── conditions.py            # Condition evaluator
-│   ├── resolver.py              # Action resolvers (move, examine, interact, etc.)
-│   ├── encounters.py            # Encounter resolution
-│   ├── combat.py                # Turn-based combat loop (system-agnostic)
-│   ├── stat_checks.py           # Backward-compat shims + narrative prefixes
-│   ├── systems/                 # Resolution-system abstraction
-│   │   ├── base.py              # ResolutionSystem ABC + CheckResult/SaveResult/PlayerAttackResult/NPCAttackResult
-│   │   ├── five_e.py            # D&D 5e implementation
-│   │   └── dice.py              # Dice-expression parsing
-│   ├── dialogue.py              # Dialogue lifecycle (enter, exit, stall, archive)
-│   ├── engine.py                # Main engine pipeline
-│   └── post_validate.py         # Post-validation of knowledge_tags + attitude_changes
+├── cli.py               # Entry point, argument parsing, game start
+├── models/              # Pydantic models — all structured data
+│   ├── corpus.py        # Module Corpus
+│   ├── hard_state.py    # Hard Game State
+│   ├── soft_state.py    # Soft Game State
+│   ├── actions.py       # PlayerAction, EngineResult
+│   ├── briefing.py      # GMBriefing, dialogue_context
+│   └── narration.py     # NarrationOutput, AttitudeChange, KnowledgeTags
+├── engine/              # Deterministic game engine
+│   ├── conditions.py    # Condition evaluator
+│   ├── resolver.py      # Action resolvers (move, examine, interact, etc.)
+│   ├── encounters.py    # Encounter resolution
+│   ├── combat.py        # Turn-based combat loop (system-agnostic)
+│   ├── stat_checks.py   # Backward-compat shims + narrative prefixes
+│   ├── systems/         # Resolution-system abstraction
+│   │   ├── base.py      # ResolutionSystem base
+│   │   ├── five_e.py    # D&D 5e implementation
+│   │   └── dice.py      # Dice-expression parsing
+│   ├── dialogue.py      # Dialogue lifecycle
+│   ├── engine.py        # Main engine pipeline
+│   └── post_validate.py # Post-validation of knowledge, attitude
 ├── state/
-│   └── manager.py               # Load/save corpus and game state
+│   └── manager.py       # Load/save corpus and game state
 ├── context/
-│   └── assembler.py             # Build GMBriefing from corpus + state
+│   └── assembler.py     # Build GMBriefing from corpus + state
 ├── llm/
-│   ├── client.py                # OpenAI-compatible LLM client wrapper
-│   ├── model_config.py          # Model configuration and selection
-│   └── parser.py                # Parse structured JSON from LLM output
+│   ├── client.py        # OpenAI-compatible LLM client wrapper
+│   ├── model_config.py  # Model configuration and selection
+│   └── parser.py        # Parse structured JSON from LLM output
 ├── game/
-│   ├── loop.py                  # Main turn loop
-│   └── display.py               # Console UI (Rich-based)
+│   ├── loop.py          # Main turn loop
+│   └── display.py       # Console UI (Rich-based)
 ├── templates/
-│   ├── ruling.j2                # System prompt for LLM Call 1
-│   └── prose.j2                 # System prompt for LLM Call 2
-├── tests/                       # pytest unit tests
+│   ├── ruling.j2        # System prompt for LLM Call 1
+│   └── prose.j2         # System prompt for LLM Call 2
+├── tests/               # pytest unit tests
 ├── scripts/
-│   ├── validate.py              # Runtime validation tool (LLM-in-the-loop)
-│   └── validate_adventure.py    # Static adventure corpus validation
+│   ├── validate.py      # Runtime validation tool
+│   └── validate_adventure.py # Static adventure corpus validation
 └── adventures/
-    └── bag-of-holding/          # Sample adventure (5 rooms)
+    └── bag-of-holding/       # Sample adventure
         ├── corpus.json
-        ├── hard-state.json
         └── soft-state.json
 ```
 
