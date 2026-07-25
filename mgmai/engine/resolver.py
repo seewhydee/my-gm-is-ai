@@ -24,8 +24,8 @@ from typing import Any, Literal
 from mgmai.models.actions import (
     CombatAction,
     DialogueExitedResult,
-    EquipAction,
     ExamineAction,
+    GearAction,
     HardStateChanges,
     InteractAction,
     MoveAction,
@@ -33,7 +33,6 @@ from mgmai.models.actions import (
     SoftItemProposal,
     TalkAction,
     TransferAction,
-    UnequipAction,
     WaitAction,
 )
 from mgmai.models.corpus import (
@@ -1979,29 +1978,32 @@ def _resolve_combat_flee(
     )
 
 
-def resolve_equip(
-    action: EquipAction,
+def resolve_gear(
+    action: GearAction,
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
     state_manager: Any | None = None,
 ) -> ResolutionResult:
-    """Resolve an equip action with tag conflict validation.
+    """Resolve a gear action (equip and/or unequip) with tag conflict
+    validation.
 
-    Logic per plan.md §4a:
-    0. Unequip targets first (atomically).
-    1. Validate target in inventory.
-    2. Look up EquipBlock from corpus.
-    3. Reject if equip_block is None.
-    4. Build incompatible tag set.
-    5. Check each already-equipped item for conflicts.
-    6. Check max_equipped for the slot tag group.
-    7. On success: move from inventory to equipped.
+    Logic:
+    0. Validate every unequip target is currently equipped.
+    1. For each equip target, in order:
+       a. Validate target in inventory.
+       b. Look up EquipBlock from corpus; reject if None.
+       c. Build incompatible tag set.
+       d. Check conflicts against the evolving equipped set (which includes
+          any items already equipped by this same action).
+       e. Check max_equipped for the slot tag group.
+    2. On success: move equip targets from inventory to equipped, unequip
+       targets from equipped to inventory.  The whole action is atomic: any
+       failure rejects everything.
     """
-    target = action.target
     room_id = hard.player.location
 
-    # Step 0: Validate and process unequip_targets
+    # Step 0: Validate unequip_targets
     for uid in action.unequip_targets:
         if uid not in hard.player.equipped:
             return ResolutionResult(
@@ -2009,85 +2011,88 @@ def resolve_equip(
                 error=f"Cannot unequip '{uid}': not currently equipped",
             )
 
-    # Step 1: Validate target in inventory
-    if target not in hard.player.inventory:
-        return ResolutionResult(
-            success=False,
-            error=f"Item '{target}' is not in your inventory",
-        )
-
-    # Step 2-3: Look up EquipBlock
-    item_entity = corpus.entities.get(target)
-    if item_entity is None:
-        return ResolutionResult(
-            success=False,
-            error=f"Item '{target}' not found in corpus",
-        )
-    eb = item_entity.equip_block
-    if eb is None:
-        return ResolutionResult(
-            success=False,
-            error=f"Item '{target}' cannot be equipped (no equip_block)",
-        )
-
-    # Build post-unequip state for conflict checking
-    # (conceptually remove unequip_targets from equipped)
+    # Post-unequip equipped set; grows as each equip target is validated so
+    # that items equipped together conflict-check against each other.
     still_equipped = [eid for eid in hard.player.equipped if eid not in action.unequip_targets]
 
-    # Step 4: Build incompatible tags
-    incompatible = set(eb.incompatible_with)
-    if not incompatible and eb.equip_tags:
-        # Default: conflicts with items sharing the same slot tag
-        incompatible.add(eb.equip_tags[0])
-
-    # Step 5: Check conflicts with already-equipped items
-    for eid in still_equipped:
-        eq_entity = corpus.entities.get(eid)
-        if eq_entity is None or eq_entity.equip_block is None:
-            continue
-        eq_tags = set(eq_entity.equip_block.equip_tags)
-        if eq_tags & incompatible:
+    # Step 1: Validate each equip target against the evolving equipped set
+    for target in action.equip_targets:
+        if target not in hard.player.inventory:
             return ResolutionResult(
                 success=False,
-                error=f"Cannot equip '{target}': conflicts with equipped item '{eid}' "
-                      f"(tags: {eq_tags & incompatible})",
+                error=f"Item '{target}' is not in your inventory",
             )
 
-    # Step 6: Check max_equipped
-    if eb.equip_tags:
-        slot_tag = eb.equip_tags[0]
-        # Collect max_equipped from all items sharing this slot tag
-        max_limit = eb.max_equipped
+        item_entity = corpus.entities.get(target)
+        if item_entity is None:
+            return ResolutionResult(
+                success=False,
+                error=f"Item '{target}' not found in corpus",
+            )
+        eb = item_entity.equip_block
+        if eb is None:
+            return ResolutionResult(
+                success=False,
+                error=f"Item '{target}' cannot be equipped (no equip_block)",
+            )
+
+        # Build incompatible tags
+        incompatible = set(eb.incompatible_with)
+        if not incompatible and eb.equip_tags:
+            # Default: conflicts with items sharing the same slot tag
+            incompatible.add(eb.equip_tags[0])
+
+        # Check conflicts with equipped items
         for eid in still_equipped:
             eq_entity = corpus.entities.get(eid)
-            if eq_entity and eq_entity.equip_block:
-                if eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == slot_tag:
-                    other_max = eq_entity.equip_block.max_equipped
-                    if other_max is None:
-                        max_limit = None
-                    elif max_limit is not None:
-                        max_limit = max(max_limit, other_max)
-        if max_limit is not None:
-            current_count = sum(
-                1 for eid in still_equipped
-                if (_e := corpus.entities.get(eid)) and _e.equip_block
-                and _e.equip_block.equip_tags and _e.equip_block.equip_tags[0] == slot_tag
-            )
-            if current_count >= max_limit:
+            if eq_entity is None or eq_entity.equip_block is None:
+                continue
+            eq_tags = set(eq_entity.equip_block.equip_tags)
+            if eq_tags & incompatible:
                 return ResolutionResult(
                     success=False,
-                    error=f"Cannot equip '{target}': slot '{slot_tag}' limit "
-                          f"({max_limit}) would be exceeded (currently {current_count})",
+                    error=f"Cannot equip '{target}': conflicts with equipped item '{eid}' "
+                          f"(tags: {eq_tags & incompatible})",
                 )
 
-    # Step 7: Success — move one target from inventory to equipped
+        # Check max_equipped
+        if eb.equip_tags:
+            slot_tag = eb.equip_tags[0]
+            # Collect max_equipped from all items sharing this slot tag
+            max_limit = eb.max_equipped
+            for eid in still_equipped:
+                eq_entity = corpus.entities.get(eid)
+                if eq_entity and eq_entity.equip_block:
+                    if eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == slot_tag:
+                        other_max = eq_entity.equip_block.max_equipped
+                        if other_max is None:
+                            max_limit = None
+                        elif max_limit is not None:
+                            max_limit = max(max_limit, other_max)
+            if max_limit is not None:
+                current_count = sum(
+                    1 for eid in still_equipped
+                    if (_e := corpus.entities.get(eid)) and _e.equip_block
+                    and _e.equip_block.equip_tags and _e.equip_block.equip_tags[0] == slot_tag
+                )
+                if current_count >= max_limit:
+                    return ResolutionResult(
+                        success=False,
+                        error=f"Cannot equip '{target}': slot '{slot_tag}' limit "
+                              f"({max_limit}) would be exceeded (currently {current_count})",
+                    )
+
+        still_equipped.append(target)
+
+    # Step 2: Success — apply all movements
     changes = HardStateChanges()
-    changes.inventory_removed[target] = 1
-    changes.inventory_removed_reasons[target] = "equip"
-    changes.equipped_added.append(target)
+    for target in action.equip_targets:
+        changes.inventory_removed[target] = changes.inventory_removed.get(target, 0) + 1
+        changes.inventory_removed_reasons[target] = "equip"
+        changes.equipped_added.append(target)
     for uid in action.unequip_targets:
         changes.equipped_removed.append(uid)
-        changes.inventory_added[uid] = 1
+        changes.inventory_added[uid] = changes.inventory_added.get(uid, 0) + 1
         changes.inventory_added_sources[uid] = "unequip"
     changes.equipment_changed = True
 
@@ -2098,44 +2103,7 @@ def resolve_equip(
     )
     _emit_event(
         "equipment.changed",
-        {"added": [target], "removed": action.unequip_targets},
-        hard, soft, corpus, state_manager, result,
-    )
-    return result
-
-
-def resolve_unequip(
-    action: UnequipAction,
-    hard: HardGameState,
-    soft: SoftGameState,
-    corpus: ModuleCorpus,
-    state_manager: Any | None = None,
-) -> ResolutionResult:
-    """Resolve an unequip action per plan.md §4b."""
-    target = action.target
-    room_id = hard.player.location
-
-    # Validate target is equipped
-    if target not in hard.player.equipped:
-        return ResolutionResult(
-            success=False,
-            error=f"Item '{target}' is not currently equipped",
-        )
-
-    changes = HardStateChanges()
-    changes.equipped_removed.append(target)
-    changes.inventory_added[target] = 1
-    changes.inventory_added_sources[target] = "unequip"
-    changes.equipment_changed = True
-
-    result = ResolutionResult(
-        success=True,
-        hard_changes=changes,
-        room_after_id=room_id,
-    )
-    _emit_event(
-        "equipment.changed",
-        {"removed": [target]},
+        {"added": action.equip_targets, "removed": action.unequip_targets},
         hard, soft, corpus, state_manager, result,
     )
     return result
@@ -2172,10 +2140,8 @@ def resolve_action(
         return _resolve_combat_action(action, hard, corpus, soft, state_manager)
     elif action_type == "wait":
         return resolve_wait(action, hard, soft, corpus)
-    elif action_type == "equip":
-        return resolve_equip(action, hard, soft, corpus, state_manager)
-    elif action_type == "unequip":
-        return resolve_unequip(action, hard, soft, corpus, state_manager)
+    elif action_type == "gear":
+        return resolve_gear(action, hard, soft, corpus, state_manager)
     elif action_type == "ooc_discussion":
         return resolve_ooc(action, hard, soft, corpus)
     else:

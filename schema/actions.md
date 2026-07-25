@@ -582,12 +582,12 @@ rule questions, or meta-discussion.
 
 ---
 
-#### `equip` -- Equip an item
+#### `gear` -- Equip and/or unequip items
 
 ```json
 {
-  "action_type": "equip",
-  "target": "toenail_sword",
+  "action_type": "gear",
+  "equip_targets": ["toenail_sword"],
   "unequip_targets": [],
   "detail": "Player draws the toenail sword and holds it ready.",
   "follow_up": null,
@@ -597,43 +597,27 @@ rule questions, or meta-discussion.
 
 | Field              | Type     | Required | Description |
 |--------------------|----------|----------|-------------|
-| `target`           | string   | yes      | Entity ID of the item to equip. Must be in `player.inventory` and must have an `equip_block`. |
-| `unequip_targets`  | string[] | no       | Items to unequip as part of the same action (for weapon swaps). Each must be in `player.equipped`. The engine unequips them before checking conflicts for the new item. |
+| `equip_targets`    | string[] | no       | Entity IDs of items to equip. Each must be in `player.inventory` and must have an `equip_block`. |
+| `unequip_targets`  | string[] | no       | Items to unequip as part of the same action (for weapon swaps). Each must be in `player.equipped`. The engine unequips them before checking conflicts for the new items. |
+
+At least one of the two fields must be non-empty; duplicates within a field
+are rejected.
 
 **Engine validation** (in order):
 1. Each `unequip_target` must be in `player.equipped`.
-2. `target` must be in `player.inventory`.
-3. `target` must have a non-null `equip_block`.
-4. Build the incompatible tag set from `incompatible_with` and the
-   default self-conflict for items sharing the same slot tag.
-5. Check each already-equipped item (post-unequip) for tag conflicts — reject
-   if any overlap.
-6. Check `max_equipped` for the slot tag group.
-7. On success: move `target` from `inventory` → `equipped`; move
-   `unequip_targets` from `equipped` → `inventory`.
-
----
-
-#### `unequip` -- Unequip an item
-
-```json
-{
-  "action_type": "unequip",
-  "target": "toenail_sword",
-  "detail": "Player sheathes the toenail sword.",
-  "follow_up": null,
-  "soft_state_patches": []
-}
-```
-
-| Field    | Type   | Required | Description |
-|----------|--------|----------|-------------|
-| `target` | string | yes      | Entity ID of the item to unequip. Must be in `player.equipped`. |
-
-**Engine validation:**
-- `target` must be in `player.equipped`.
-- On success: move `target` from `equipped` → `inventory`. Set
-  `equipment_changed: true`.
+2. For each `equip_target`, in order:
+   a. It must be in `player.inventory`.
+   b. It must have a non-null `equip_block`.
+   c. Build the incompatible tag set from `incompatible_with` and the
+      default self-conflict for items sharing the same slot tag.
+   d. Check each already-equipped item (post-unequip, plus any items already
+      equipped by this same action) for tag conflicts — reject if any
+      overlap.
+   e. Check `max_equipped` for the slot tag group.
+3. On success: move each `equip_target` from `inventory` → `equipped`; move
+   each `unequip_target` from `equipped` → `inventory`. Set
+   `equipment_changed: true`. The action is atomic: any failure rejects the
+   whole change.
 
 ---
 
@@ -730,8 +714,7 @@ whether to continue the chain:
 | `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source; soft items become proposals |
 | `wait`            | null (no target)                                | none; advances turn counter                |
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
-| `equip`           | entity_id of item in inventory                  | must have `equip_block`; validates tag conflicts and `max_equipped` |
-| `unequip`         | entity_id of item in equipped                   | must be currently equipped                 |
+| `gear`            | n/a (targets in `equip_targets`/`unequip_targets`) | each equip target must be in inventory with an `equip_block`; each unequip target must be equipped; validates tag conflicts and `max_equipped` |
 | `combat`          | combat target (enemy, item, or ability target; none for `maneuver`) | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack`; `positioning` assertion optional on `combat`/`wait` |
 
 ---

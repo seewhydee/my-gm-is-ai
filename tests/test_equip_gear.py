@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Tests for equipment (equip/unequip) system."""
+"""Tests for equipment (gear) system."""
 
 import json
 from pathlib import Path
@@ -22,13 +22,11 @@ from pathlib import Path
 import pytest
 
 from mgmai.engine.resolver import (
-    resolve_equip,
-    resolve_unequip,
+    resolve_gear,
     resolve_action,
 )
 from mgmai.models.actions import (
-    EquipAction,
-    UnequipAction,
+    GearAction,
     HardStateChanges,
 )
 from mgmai.models.corpus import (
@@ -114,10 +112,35 @@ class TestEquipBlockModel:
 
 
 # ------------------------------------------------------------------
-# Resolve Equip
+# GearAction Model Validation
 # ------------------------------------------------------------------
 
-class TestResolveEquip:
+class TestGearActionModel:
+    def test_requires_a_non_empty_field(self):
+        """A gear action with both lists empty should be rejected."""
+        with pytest.raises(ValueError, match="at least one of"):
+            GearAction(action_type="gear", detail="do nothing")
+
+    def test_rejects_duplicate_targets(self):
+        with pytest.raises(ValueError, match="duplicates"):
+            GearAction(
+                action_type="gear",
+                equip_targets=["sword", "sword"],
+                detail="dup",
+            )
+        with pytest.raises(ValueError, match="duplicates"):
+            GearAction(
+                action_type="gear",
+                unequip_targets=["helm", "helm"],
+                detail="dup",
+            )
+
+
+# ------------------------------------------------------------------
+# Resolve Gear
+# ------------------------------------------------------------------
+
+class TestResolveGear:
     def test_equip_valid_item(self, state_manager):
         """Equipping a valid item from inventory should succeed."""
         hard = state_manager.hard_state
@@ -127,12 +150,12 @@ class TestResolveEquip:
         # Place the item in inventory
         hard.player.inventory["toenail_sword"] = 1
 
-        action = EquipAction(
-            action_type="equip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword"],
             detail="Equipping the toenail sword",
         )
-        result = resolve_equip(action, hard, soft, corpus)
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is True
         assert result.hard_changes is not None
         assert "toenail_sword" in result.hard_changes.equipped_added
@@ -145,12 +168,12 @@ class TestResolveEquip:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
-        action = EquipAction(
-            action_type="equip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword"],
             detail="Equipping nonexistent item",
         )
-        result = resolve_equip(action, hard, soft, corpus)
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is False
         assert "not in your inventory" in (result.error or "")
 
@@ -162,31 +185,35 @@ class TestResolveEquip:
 
         hard.player.inventory["rusty_key"] = 1
 
-        action = EquipAction(
-            action_type="equip",
-            target="rusty_key",
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["rusty_key"],
             detail="Equipping rusty key",
         )
-        result = resolve_equip(action, hard, soft, corpus)
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is False
         assert "cannot be equipped" in (result.error or "").lower()
 
     def test_equip_with_unequip_targets(self, state_manager):
-        """Equipping a weapon with unequip_targets should succeed."""
+        """Equipping a weapon while unequipping another should succeed."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
         hard.player.inventory["toenail_sword"] = 1
+        hard.player.equipped.append("old_sword")
 
-        action = EquipAction(
-            action_type="equip",
-            target="toenail_sword",
-            unequip_targets=[],
-            detail="Equipping sword",
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword"],
+            unequip_targets=["old_sword"],
+            detail="Swapping swords",
         )
-        result = resolve_equip(action, hard, soft, corpus)
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is True
+        assert "toenail_sword" in result.hard_changes.equipped_added
+        assert "old_sword" in result.hard_changes.equipped_removed
+        assert result.hard_changes.inventory_added["old_sword"] == 1
 
     def test_equip_invalid_unequip_target(self, state_manager):
         """Unequip target that isn't equipped should fail."""
@@ -196,13 +223,13 @@ class TestResolveEquip:
 
         hard.player.inventory["toenail_sword"] = 1
 
-        action = EquipAction(
-            action_type="equip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword"],
             unequip_targets=["nonexistent_item"],
             detail="Equipping with bad unequip",
         )
-        result = resolve_equip(action, hard, soft, corpus)
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is False
         assert "not currently equipped" in (result.error or "")
 
@@ -215,22 +242,66 @@ class TestResolveEquip:
         # Although toenail_sword is non-stackable, the resolver decrements by 1.
         hard.player.inventory["toenail_sword"] = 3
 
-        action = EquipAction(
-            action_type="equip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword"],
             detail="Equipping one sword from a stack",
         )
-        result = resolve_equip(action, hard, soft, corpus)
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is True
         assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
         assert hard.player.inventory.get("toenail_sword") == 3  # resolver does not mutate hard state
 
+    def test_multi_equip(self, state_manager):
+        """Equipping several non-conflicting items in one action succeeds."""
+        from tests.helpers import _mk_item_entity
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
 
-# ------------------------------------------------------------------
-# Resolve Unequip
-# ------------------------------------------------------------------
+        corpus.entities["iron_helm"] = _mk_item_entity(
+            "iron_helm", description="An iron helm."
+        )
+        corpus.entities["iron_helm"].equip_block = EquipBlock(
+            equip_tags=["headwear"],
+        )
+        hard.player.inventory["toenail_sword"] = 1
+        hard.player.inventory["iron_helm"] = 1
 
-class TestResolveUnequip:
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword", "iron_helm"],
+            detail="Donning helm and drawing sword",
+        )
+        result = resolve_gear(action, hard, soft, corpus)
+        assert result.success is True
+        assert set(result.hard_changes.equipped_added) == {"toenail_sword", "iron_helm"}
+
+    def test_multi_equip_conflicting_items_rejected(self, state_manager):
+        """Two items sharing a slot tag cannot be equipped together."""
+        from tests.helpers import _mk_item_entity
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+
+        corpus.entities["steel_sword"] = _mk_item_entity(
+            "steel_sword", description="A steel sword."
+        )
+        corpus.entities["steel_sword"].equip_block = EquipBlock(
+            equip_tags=["weapon"],
+        )
+        hard.player.inventory["toenail_sword"] = 1
+        hard.player.inventory["steel_sword"] = 1
+
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword", "steel_sword"],
+            detail="Dual wielding incompatible swords",
+        )
+        result = resolve_gear(action, hard, soft, corpus)
+        assert result.success is False
+        assert "conflicts with equipped item" in (result.error or "")
+
     def test_unequip_valid_item(self, state_manager):
         """Unequipping a currently equipped item should succeed."""
         hard = state_manager.hard_state
@@ -239,12 +310,12 @@ class TestResolveUnequip:
 
         hard.player.equipped.append("toenail_sword")
 
-        action = UnequipAction(
-            action_type="unequip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            unequip_targets=["toenail_sword"],
             detail="Unequipping the toenail sword",
         )
-        result = resolve_unequip(action, hard, soft, corpus)
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is True
         assert result.hard_changes is not None
         assert "toenail_sword" in result.hard_changes.equipped_removed
@@ -257,12 +328,12 @@ class TestResolveUnequip:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
-        action = UnequipAction(
-            action_type="unequip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            unequip_targets=["toenail_sword"],
             detail="Unequipping nonexistent item",
         )
-        result = resolve_unequip(action, hard, soft, corpus)
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is False
         assert "not currently equipped" in (result.error or "")
 
@@ -272,34 +343,34 @@ class TestResolveUnequip:
 # ------------------------------------------------------------------
 
 class TestResolveActionDispatch:
-    def test_equip_dispatch(self, state_manager):
-        """resolve_action should dispatch equip to resolve_equip."""
+    def test_gear_equip_dispatch(self, state_manager):
+        """resolve_action should dispatch gear to resolve_gear."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
         hard.player.inventory["toenail_sword"] = 1
 
-        action = EquipAction(
-            action_type="equip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword"],
             detail="Equipping sword",
         )
         result = resolve_action(action, hard, soft, corpus)
         assert result.success is True
         assert result.hard_changes.equipment_changed is True
 
-    def test_unequip_dispatch(self, state_manager):
-        """resolve_action should dispatch unequip to resolve_unequip."""
+    def test_gear_unequip_dispatch(self, state_manager):
+        """resolve_action should dispatch gear unequip to resolve_gear."""
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
         hard.player.equipped.append("toenail_sword")
 
-        action = UnequipAction(
-            action_type="unequip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            unequip_targets=["toenail_sword"],
             detail="Unequipping sword",
         )
         result = resolve_action(action, hard, soft, corpus)
@@ -355,8 +426,8 @@ class TestStateManagerEquipment:
         )
         hard.player.inventory["magic_sword"] = 2
 
-        equip_result = resolve_equip(
-            EquipAction(action_type="equip", target="magic_sword", detail="Equip one"),
+        equip_result = resolve_gear(
+            GearAction(action_type="gear", equip_targets=["magic_sword"], detail="Equip one"),
             hard, state_manager.soft_state, corpus,
         )
         assert equip_result.success is True
@@ -364,8 +435,8 @@ class TestStateManagerEquipment:
         assert hard.player.inventory.get("magic_sword") == 1
         assert "magic_sword" in hard.player.equipped
 
-        unequip_result = resolve_unequip(
-            UnequipAction(action_type="unequip", target="magic_sword", detail="Unequip"),
+        unequip_result = resolve_gear(
+            GearAction(action_type="gear", unequip_targets=["magic_sword"], detail="Unequip"),
             hard, state_manager.soft_state, corpus,
         )
         assert unequip_result.success is True

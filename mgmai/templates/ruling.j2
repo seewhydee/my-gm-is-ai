@@ -72,14 +72,12 @@ You MUST output a single JSON object with the following structure.
 - No additional fields. Use `detail` to describe what the player does (e.g. "checking inventory contents").
 - During combat, `wait` passes your combat turn (no attack, item, or ability): NPC turns proceed and the round advances. `detail` still describes what the player does (catching their breath, sizing up an enemy, checking their gear), and soft-state patches apply as usual.
 
-**equip** — Equip an item from inventory:
-- `target` (string, required): Entity ID of the item to equip
-- `unequip_targets` (array of strings, optional): Items to unequip first (e.g., swapping weapons)
-- The item must have an `equip_block` in the corpus — not all items are equippable
-- In combat, only quick weapon swaps are valid (one weapon for another, using `unequip_targets`; see *Gear in combat*). Changing armour in combat is never allowed — armour doffing takes minutes.
-
-**unequip** — Unequip a worn item:
-- `target` (string, required): Entity ID of the currently equipped item to remove
+**gear** — Equip and/or unequip items:
+- `equip_targets` (array of strings, optional): Entity IDs of items to equip from inventory
+- `unequip_targets` (array of strings, optional): Entity IDs of currently equipped items to remove
+- At least one of the two fields must be non-empty
+- Equippable items must have an `equip_block` in the corpus — not all items are equippable
+- In combat, only quick weapon swaps are valid (one weapon for another; see *Gear in combat*). Changing armour in combat is never allowed — armour doffing takes minutes.
 
 **combat** — Attack, use an item, use an ability, or perform a maneuver during combat:
 - `combat_action` (string, required): `"attack"`, `"use_item"`, `"use_ability"`, or `"maneuver"`
@@ -168,15 +166,18 @@ categories cannot both be worn — you can't wear two helmets, or plate mail
 under a robe.
 
 When the player asks to equip something:
-- If it makes sense, propose an `equip` action with the item's entity ID.
-- If something must be unequipped first, propose `unequip_targets` in the
-  `equip` action (this unequips the conflicting item and equips the new one
-  in one turn).
+- If it makes sense, propose a `gear` action with the item's entity ID in
+  `equip_targets`.
+- If something must be unequipped first (e.g. a weapon swap), also list the
+  conflicting item in `unequip_targets` — the whole change happens in one
+  turn.
+- Equipping several items at once (donning a helmet and drawing a sword) is
+  fine — list them all in `equip_targets`.
 - If the request is nonsensical ("I wear the rusty key as a hat"), fall back
   to `wait` with a brief explanation.
 
 When the player asks to remove something they're wearing:
-- Propose an `unequip` action with the item's entity ID.
+- Propose a `gear` action with the item's entity ID in `unequip_targets`.
 
 Currently equipped items are listed in `player_state.equipped_items`. Each has
 an `id`, `name`, `description`, `equip_tags`, and `effects_summary`.
@@ -195,8 +196,9 @@ setting `set_improvised_weapon` to `null`.
 
 Use common sense for equipment changes during combat. Doffing armor is never
 allowed during combat (it takes minutes by tabletop convention). Swapping
-weapons (sheathing one, drawing another) is reasonable in one turn — use
-`unequip_targets` together with `equip` to express this atomically. Picking
+weapons (sheathing one, drawing another) is reasonable in one turn — use a
+single `gear` action with both `equip_targets` and `unequip_targets` to
+express this atomically. Picking
 up an object from the ground as an improvised weapon is also one action.
 
 ## Positioning (combat only)

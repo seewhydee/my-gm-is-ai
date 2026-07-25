@@ -30,35 +30,40 @@ from pathlib import Path
 import pytest
 from platformdirs import user_config_dir
 
-from mgmai.config import load_credentials, resolve_api_key_for_model
+from mgmai.config import load_app_config, load_credentials, resolve_api_key_for_model
 from mgmai.llm.client import LLMClient
 from mgmai.llm.model_config import get_model_config, load_custom_models
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 
-# Load once: custom models (user's ~/.config/mgmai/models.json) and
-# credentials (user's ~/.config/mgmai/credentials.json).
+# Load once: app config (user's ~/.config/mgmai/config.json),
+# custom models (models.json), and credentials (credentials.json).
 #
 # The user config dir is under the conventional XDG path, not a
-# temporary sandbox, so the same models.json and credentials.json
-# used by the normal REPL are also used by integration tests.
+# temporary sandbox, so the same config files used by the normal
+# REPL are also used by integration tests.
 _USER_CONFIG_DIR = user_config_dir("mgmai")
+_APP_CONFIG = load_app_config(_USER_CONFIG_DIR)
 _CUSTOM_MODELS = load_custom_models(_USER_CONFIG_DIR)
 _CREDENTIALS = load_credentials(_USER_CONFIG_DIR)
 
 
 def _resolve_model(request, opt_name: str) -> str:
-    """Resolve a model name from CLI option or MGMAI_MODEL env var."""
+    """Resolve a model name from CLI option, MGMAI_MODEL env var, or config.json."""
     val = request.config.getoption(opt_name)
     if val:
         return val
     env = os.environ.get("MGMAI_MODEL")
-    if not env:
-        raise RuntimeError(
-            f"No model configured: pass --{opt_name.replace('_', '-')} or set MGMAI_MODEL"
-        )
-    return env
+    if env:
+        return env
+    default = _APP_CONFIG.model_name
+    if default:
+        return default
+    raise RuntimeError(
+        f"No model configured: pass --{opt_name.replace('_', '-')}, "
+        f"set MGMAI_MODEL, or set model_name in config.json"
+    )
 
 
 def _make_client(request, opt_name: str) -> LLMClient:

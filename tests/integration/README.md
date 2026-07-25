@@ -40,7 +40,7 @@ LLM-vs-LLM runs:
 |-------|---------------|
 | **Engine combat** | Player attacks, NPC attacks, save abilities, consumable use, healing, friendly NPC ally, NPC flee AI, resistance/vulnerability, cooldown management |
 | **Status effects & on-hit effects** | NPC on-hit saves (poison, stun), status-effect application, consumable `cure_status_effects` (antidote), status effects cleared at combat end |
-| **Attack variety** | NPC `multiattack` with named attacks, damage **immunity**, mid-combat weapon swap (`equip` + `unequip_targets`), player attack-roll and heal abilities |
+| **Attack variety** | NPC `multiattack` with named attacks, damage **immunity**, mid-combat weapon swap (`gear` with `equip_targets` + `unequip_targets`), player attack-roll and heal abilities |
 | **Combat AI** | `player` targeting, HP-gated NPC abilities (`use_below_own_hp_pct`), passive NPCs (join combat, never act) |
 | **Encounter-driven combat** | Combat started by an encounter (`trigger_encounter` → `start_combat`) instead of a direct attack; the player's `wait` action; out-of-bounds talk attempts handled gracefully |
 | **Combat positioning** | Engagement auto-forms on melee attacks and is exposed in status snapshots; scripted `positioning` rulings (engage/disengage/impede) produce `reposition` / `opportunity_attack` / `maneuver` / `impeded` log entries and indicator lines; the Disengage maneuver; impede turn-consumption; graceful degradation of invalid positioning blocks |
