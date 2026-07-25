@@ -139,3 +139,9 @@ def lever_room_dir() -> Path:
 def indicator_hall_dir() -> Path:
     """Path to the indicator_hall fixture adventure."""
     return FIXTURES_DIR / "indicator_hall"
+
+
+@pytest.fixture
+def spell_arena_dir() -> Path:
+    """Path to the spell_arena fixture adventure."""
+    return FIXTURES_DIR / "spell_arena"

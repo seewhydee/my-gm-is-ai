@@ -584,3 +584,36 @@ class TestIntegrationFixtureSmoke:
         dummy_state = sm.hard_state.entity_states.get("battered_dummy", {})
         assert dummy_state.get("alive") is True
         assert dummy_state.get("current_hp") == 1
+
+    def test_spell_arena_loads(self):
+        """StateManager successfully loads the spell_arena fixture."""
+        from pathlib import Path
+        from mgmai.state.manager import StateManager
+
+        fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "spell_arena"
+        sm = StateManager(adventure_dir=str(fixture))
+
+        assert sm.hard_state is not None
+        assert sm.corpus is not None
+        assert sm.soft_state is not None
+
+        # The player is a 1st-level wizard with two 1st-level slots.
+        player = sm.hard_state.player
+        assert player.location == "arena"
+        assert player.spellcasting_ability == "INT"
+        assert player.spell_slots == {1: 2}
+        assert player.abilities == ["fire_bolt", "mage_armor", "magic_missile"]
+
+        # The spells come from the SRD spell pack (not declared in the
+        # fixture corpus), minted into corpus.abilities at load time.
+        assert sm.corpus.abilities["fire_bolt"].spell_level == 0
+        magic_missile = sm.corpus.abilities["magic_missile"]
+        assert magic_missile.spell_level == 1
+        assert magic_missile.auto_damage.damage == "3d4+3"
+        mage_armor = sm.corpus.abilities["mage_armor"]
+        assert mage_armor.on_cast is not None
+        assert mage_armor.on_cast.id == "mage_armor"
+
+        # Two enemies are defined.
+        assert sm.corpus.entities["goblin_grunt"].combat.hp == 11
+        assert sm.corpus.entities["hobgoblin"].combat.hp == 18

@@ -25,6 +25,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from mgmai.models.corpus import (
     DEFAULT_GEAR,
+    DEFAULT_SPELLS,
     Entity,
     ModuleCorpus,
     RESERVED_ENTITY_STATE_FIELDS,
@@ -112,6 +113,7 @@ class StateManager:
 
         self.corpus = self.load_corpus(corpus_path)
         self._materialize_pack_gear()
+        self._materialize_pack_spells()
         self.soft_state = self.load_soft_state(soft_path)
 
         start_room = self._find_start_room()
@@ -151,6 +153,20 @@ class StateManager:
         for gear_id, template in DEFAULT_GEAR.items():
             if gear_id not in self.corpus.entities:
                 self.corpus.entities[gear_id] = template.model_copy(deep=True)
+
+    def _materialize_pack_spells(self) -> None:
+        """Mint abilities from the bundled spells data pack.
+
+        Every pack spell ID not defined by the corpus is added to
+        ``corpus.abilities``, so character sheets and NPC combat blocks can
+        reference SRD spells (``fire_bolt``, ``magic_missile``, …) without
+        re-authoring them.  A corpus ability with the same ID wins
+        wholesale (overlay semantics; see ``ModuleCorpus.effective_spells``).
+        """
+        assert self.corpus is not None
+        for spell_id, template in DEFAULT_SPELLS.items():
+            if spell_id not in self.corpus.abilities:
+                self.corpus.abilities[spell_id] = template.model_copy(deep=True)
 
     def _find_start_room(self) -> str:
         """Return the id of the unique room marked as the start room."""

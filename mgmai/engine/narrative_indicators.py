@@ -148,6 +148,24 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
         outcome = "resists" if oh.get("save_success") else "fails to resist"
         return f"**{caster} uses {abil}: {tgt} {outcome} — {dmg} damage.**"
 
+    if action == "ability_auto":
+        caster = "You" if actor == "player" else _entity_name(actor, corpus)
+        abil = entry.get("attack_name") or "an ability"
+        tgt = "you" if target == "player" else _entity_name(target, corpus)
+        dmg = entry.get("damage") or 0
+        return (
+            f"**{caster} uses {abil}: {tgt} takes {dmg} damage "
+            f"(no attack roll or save).**"
+        )
+
+    if action == "ability_on_cast":
+        caster = "You" if actor == "player" else _entity_name(actor, corpus)
+        abil = entry.get("attack_name") or "an ability"
+        tgt = "you" if target == "player" else _entity_name(target, corpus)
+        oh = (entry.get("on_hit_effects") or [{}])[0]
+        effect = oh.get("status_effect") or "a magical effect"
+        return f"**{caster} casts {abil}: {tgt} gains {effect}.**"
+
     if action == "heal":
         caster = "You" if actor == "player" else _entity_name(actor, corpus)
         abil = entry.get("attack_name") or "an ability"

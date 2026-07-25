@@ -1,7 +1,7 @@
 # SRD 5e Data-Pack Manifest
 This file is **auto-generated** by `scripts/generate_datapack_manifest.py`.  Do not edit by hand.
 Adventure-module authors can reference any ID listed below in their corpus, rooms, inventories, and character sheets without re-defining the item.  The engine pulls the full definition from its built-in data pack.
-**55 gear items** and **20 conditions** are currently available.
+**55 gear items**, **22 conditions**, and **7 spells** are currently available.
 ---
 ## Gear
 Each ID below is a valid reference for items, equipment, and consumables.
@@ -113,11 +113,13 @@ Each ID below is a valid reference for status effects and the `status_effects` b
 |-----|------|
 | `blinded` | Blinded |
 | `charmed` | Charmed |
+| `concentrating` | Concentrating |
 | `deafened` | Deafened |
 | `frightened` | Frightened |
 | `grappled` | Grappled |
 | `incapacitated` | Incapacitated |
 | `invisible` | Invisible |
+| `mage_armor` | Mage Armor |
 | `paralyzed` | Paralyzed |
 | `petrified` | Petrified |
 | `poisoned` | Poisoned |
@@ -136,3 +138,22 @@ Each ID below is a valid reference for status effects and the `status_effects` b
 | `exhaustion-4` | Exhaustion (Level 4) |
 | `exhaustion-5` | Exhaustion (Level 5) |
 | `exhaustion-6` | Exhaustion (Level 6) |
+---
+## Spells
+Each ID below is a valid reference in the corpus `abilities` block and in player character sheets' `abilities` lists.
+### Cantrips
+
+| ID | Name |
+|-----|------|
+| `fire_bolt` | Fire Bolt |
+| `sacred_flame` | Sacred Flame |
+
+### Leveled Spells
+
+| ID | Name |
+|-----|------|
+| `cure_wounds` | Cure Wounds |
+| `magic_missile` | Magic Missile |
+| `healing_word` | Healing Word |
+| `mage_armor` | Mage Armor |
+| `sleep` | Sleep |

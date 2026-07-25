@@ -232,6 +232,22 @@ def format_combat_prefix(
             summaries.append(
                 f"**{caster} uses {abil}: {tgt} {outcome} — {dmg} damage.**"
             )
+        elif action == "ability_auto":
+            caster = "You" if actor == "player" else _entity_name(actor, corpus)
+            abil = entry.get("attack_name") or "an ability"
+            tgt = "you" if target == "player" else _entity_name(target, corpus)
+            dmg = entry.get("damage") or 0
+            summaries.append(
+                f"**{caster} uses {abil}: {tgt} takes {dmg} damage "
+                f"(no attack roll or save).**"
+            )
+        elif action == "ability_on_cast":
+            caster = "You" if actor == "player" else _entity_name(actor, corpus)
+            abil = entry.get("attack_name") or "an ability"
+            tgt = "you" if target == "player" else _entity_name(target, corpus)
+            oh = (entry.get("on_hit_effects") or [{}])[0]
+            effect = oh.get("status_effect") or "a magical effect"
+            summaries.append(f"**{caster} casts {abil}: {tgt} gains {effect}.**")
         elif action == "heal":
             caster = "You" if actor == "player" else _entity_name(actor, corpus)
             abil = entry.get("attack_name") or "an ability"

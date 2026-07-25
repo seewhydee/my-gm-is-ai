@@ -39,6 +39,7 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.engine.conditions import evaluate
+from mgmai.engine.systems import get_system_for_corpus
 from mgmai.engine.utils import (
     get_following_npc_ids,
     inject_following_npcs,
@@ -265,6 +266,22 @@ def _build_player_state(
             ],
         )
 
+    # Abilities (same entry shape as the combat briefing), spell slots,
+    # and active status effects, so the GM LLM can rule out-of-combat
+    # ability use (e.g. casting Mage Armor before a fight).
+    abilities: list[dict[str, Any]] = []
+    system = get_system_for_corpus(corpus)
+    for aid in hard.player.abilities:
+        ability = corpus.abilities.get(aid)
+        if ability is None:
+            continue
+        # uses_per_combat counters are combat-scoped: outside combat an
+        # ability shows its full per-combat allotment (null = unlimited).
+        remaining = None if ability.uses_per_combat < 0 else ability.uses_per_combat
+        abilities.append(
+            _ability_briefing_entry(aid, ability, system, hard, remaining)
+        )
+
     return PlayerStateBriefing(
         location=hard.player.location,
         hard_inventory=dict(hard.player.inventory),
@@ -275,7 +292,11 @@ def _build_player_state(
         active_flags=active_flags,
         entity_notes=list(player_entity_notes),
         player_stats=player_stats,
-        combat_stats=combat_stats)
+        combat_stats=combat_stats,
+        abilities=abilities,
+        spell_slots=dict(hard.player.spell_slots),
+        status_effects=_status_effect_briefs(hard.player.status_effects, corpus),
+    )
 
 
 def _build_player_stats(hard: HardGameState,
@@ -411,6 +432,45 @@ def _status_effect_briefs(
     return briefs
 
 
+def _ability_briefing_entry(
+    aid: str,
+    ability: Any,
+    system: Any,
+    hard: HardGameState,
+    uses_remaining: Optional[int],
+) -> dict[str, Any]:
+    """Briefing entry for one player ability (shared by the combat and
+    player-state briefings).  Spell entries carry their slot cost and
+    (for save spells) the player's derived save DC."""
+    if ability.attack is not None:
+        effect_kind = "attack"
+    elif ability.save is not None:
+        effect_kind = "save"
+    elif ability.heal:
+        effect_kind = "heal"
+    elif ability.auto_damage is not None:
+        effect_kind = "auto_damage"
+    else:
+        effect_kind = "on_cast"
+    entry: dict[str, Any] = {
+        "id": aid,
+        "name": ability.name,
+        "description": ability.description,
+        "target": ability.target,
+        "uses_remaining": uses_remaining,  # null = unlimited
+        "effect": ability.effect_summary(),
+        "effect_kind": effect_kind,
+    }
+    if ability.spell_level is not None:
+        entry["spell_level"] = ability.spell_level
+        entry["concentration"] = ability.concentration
+        entry["slot_level"] = ability.spell_level
+        entry["casting_time"] = ability.casting_time
+        if ability.save is not None:
+            entry["save_dc"] = system.compute_spell_save_dc(hard)
+    return entry
+
+
 def _build_combat_state(
     hard: HardGameState,
     soft: SoftGameState,
@@ -479,6 +539,7 @@ def _build_combat_state(
             })
 
     abilities: list[dict[str, Any]] = []
+    system = get_system_for_corpus(corpus)
     for aid in hard.player.abilities:
         ability = corpus.abilities.get(aid)
         if ability is None:
@@ -489,14 +550,9 @@ def _build_combat_state(
             if ability.uses_per_combat < 0
             else max(0, ability.uses_per_combat - used)
         )
-        abilities.append({
-            "id": aid,
-            "name": ability.name,
-            "description": ability.description,
-            "target": ability.target,
-            "uses_remaining": remaining,  # null = unlimited
-            "effect": ability.effect_summary(),
-        })
+        abilities.append(
+            _ability_briefing_entry(aid, ability, system, hard, remaining)
+        )
 
     # Interactions the player may use mid-combat via `interact`: same
     # source as the room briefing, minus the generic "attack" id (attack
@@ -516,5 +572,6 @@ def _build_combat_state(
         combatants=combatants,
         usable_items=usable_items,
         abilities=abilities,
+        spell_slots=dict(hard.player.spell_slots),
         interactions_available=interactions_available,
     )

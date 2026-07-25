@@ -832,7 +832,10 @@ class FiveESystem(ResolutionSystem):
         Per plan.md §4c:
         1. Base AC = 10 + DEX mod (or hard.player.ac if explicitly set).
         2. Apply ac_override from equipped items (highest wins).
-        3. Add all ac_bonus values from equipped items.
+        3. A status effect carrying an ``ac_base`` system effect (e.g.
+           Mage Armor's 13) replaces the base/override AC with
+           ``ac_base + DEX mod``.
+        4. Add all ac_bonus values from equipped items.
         """
         # Step 1: Base AC
         if hard.player.ac is not None:
@@ -852,7 +855,23 @@ class FiveESystem(ResolutionSystem):
 
         effective_ac = ac_override if ac_override is not None else base_ac
 
-        # Step 3: Add all ac_bonus values
+        # Step 3: Status effects with an ac_base (e.g. Mage Armor) replace
+        # the base/gear-override AC with ac_base + DEX mod; ac_bonus items
+        # (e.g. a shield) still accumulate on top.
+        effect_defs = corpus.effective_status_effects()
+        ac_bases = [
+            effect_defs[c].system_effects.get("5e", {}).get("ac_base")
+            for c in hard.player.status_effects
+            if c in effect_defs
+            and effect_defs[c].system_effects.get("5e", {}).get("ac_base")
+            is not None
+        ]
+        if ac_bases:
+            effective_ac = max(ac_bases) + self.compute_modifier(
+                self._player_stat(hard.player.stats, "DEX")
+            )
+
+        # Step 4: Add all ac_bonus values
         for item_id in hard.player.equipped:
             entity = corpus.entities.get(item_id)
             if entity and entity.equip_block:
@@ -903,6 +922,33 @@ class FiveESystem(ResolutionSystem):
         if getattr(check, "save", False):
             return self.compute_save_modifier(check.stat, player_state)
         return self.skill_modifier(check.stat, player_state)
+
+    # ------------------------------------------------------------------
+    # Spellcasting (save DC / attack bonus from the casting ability)
+    # ------------------------------------------------------------------
+    def compute_spell_save_dc(self, hard: HardGameState) -> int:
+        """5e: 8 + proficiency bonus + casting ability modifier.
+
+        Returns 0 when the player has no ``spellcasting_ability``."""
+        ability = hard.player.spellcasting_ability
+        if not ability:
+            return 0
+        prof = hard.player.proficiency_bonus or 2
+        mod = self.compute_modifier(self._player_stat(hard.player.stats, ability))
+        return 8 + prof + mod
+
+    def compute_spell_attack_bonus(self, hard: HardGameState) -> int:
+        """5e: casting ability modifier + proficiency bonus.
+
+        Returns 0 when the player has no ``spellcasting_ability``."""
+        ability = hard.player.spellcasting_ability
+        if not ability:
+            return 0
+        prof = hard.player.proficiency_bonus or 2
+        return (
+            self.compute_modifier(self._player_stat(hard.player.stats, ability))
+            + prof
+        )
 
     # get_equip_incompatibilities() — inherit default (two_handed is now
     # a conventional equip_tag with explicit incompatible_with entries).

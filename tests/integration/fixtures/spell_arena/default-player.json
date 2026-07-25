@@ -1,0 +1,28 @@
+{
+  "system": "5e",
+  "player": {
+    "stats": {
+      "STR": 8,
+      "DEX": 14,
+      "CON": 14,
+      "INT": 16,
+      "WIS": 12,
+      "CHA": 10
+    },
+    "level": 1,
+    "max_hp": 8,
+    "current_hp": 8,
+    "ac": 12,
+    "proficiency_bonus": 2,
+    "save_proficiencies": ["INT", "WIS"],
+    "weapon_proficiencies": ["simple"],
+    "spellcasting_ability": "INT",
+    "spell_slots": {"1": 2},
+    "inventory": {
+      "quarterstaff": 1,
+      "potion_of_healing": 1
+    },
+    "equipped": ["quarterstaff"],
+    "abilities": ["fire_bolt", "mage_armor", "magic_missile"]
+  }
+}

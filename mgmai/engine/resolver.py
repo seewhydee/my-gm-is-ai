@@ -1873,7 +1873,9 @@ def _resolve_combat_action(
     ``interact``/``attack`` interaction: it starts combat with the
     target.  (LLM Call 1 naturally emits ``combat``/``attack`` for
     out-of-combat attack commands, and the engine already knows
-    exactly what that means.)
+    exactly what that means.)  Out of combat, ``use_ability`` resolves
+    self/ally abilities (heals, on-cast buffs like Mage Armor) without
+    a CombatState.
     """
     from mgmai.engine.combat import resolve_combat_turn
 
@@ -1892,7 +1894,16 @@ def _resolve_combat_action(
             hard, soft, corpus, state_manager,
         )
 
-    result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
+    if combat is None or not combat.active:
+        if action.combat_action == "use_ability":
+            from mgmai.engine.combat import resolve_out_of_combat_ability
+            result = resolve_out_of_combat_ability(action, hard, corpus)
+        else:
+            result = resolve_combat_turn(
+                action, hard, corpus, soft=soft, state_manager=state_manager
+            )
+    else:
+        result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
     if not result["success"]:
         return ResolutionResult(
             success=False,

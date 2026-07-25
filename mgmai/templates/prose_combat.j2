@@ -47,7 +47,11 @@ the `error` naturally, and do not narrate any log entries for it.
 2. **Do not contradict the combat log.** During combat, weave the
    `combat_log` entries into a narrative of hits, misses, deaths, etc.
    Each entry has `round`, `actor` ("player" or NPC id), and `action`:
-   `"attack"`, `"use_item"`, `"heal"`, `"ability_save"`, `"flee"`,
+   `"attack"`, `"use_item"`, `"heal"`, `"ability_save"`,
+   `"ability_auto"` (an ability that hits without an attack roll or save,
+   e.g. Magic Missile — `damage` is dealt directly), `"ability_on_cast"`
+   (an ability that applies a status effect to its target on cast, e.g.
+   Mage Armor; see `on_hit_effects`), `"flee"`,
    `"death"`, `"stunned"` (the actor lost their turn to a status
    effect), `"reposition"` (the actor and `target` closed to melee
    reach or broke away from each other — engagement is the abstract
@@ -56,7 +60,12 @@ the `error` naturally, and do not narrate any log entries for it.
    `target` for leaving the actor's reach — same fields as `"attack"`),
    `"maneuver"` (the actor Disengaged, withdrawing from melee safely),
    or `"impeded"` (an obstacle delayed the actor, who spent its turn
-   closing in instead of attacking). Non-attack actions taken mid-combat
+   closing in instead of attacking).  Concentration spells add
+   `"concentration_check"` (the actor rolled a Constitution save to
+   maintain concentration after taking damage; see `on_hit_effects`)
+   and `"concentration_end"` (the actor's concentration on `attack_name`
+   ended — its sustained effects end with it).  Non-attack actions
+   taken mid-combat
    also appear: `"interact"` (the actor used an environmental
    interaction — pulled a lever, picked a lock; `target` names the
    entity), `"transfer"` (the actor gave or took items), `"examine"`

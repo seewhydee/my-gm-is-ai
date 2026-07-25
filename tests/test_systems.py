@@ -323,6 +323,58 @@ class TestFiveECombat:
 
 
 # ------------------------------------------------------------------
+# FiveESystem: spellcasting (save DC / attack bonus)
+# ------------------------------------------------------------------
+
+def _caster_hard(int_score: int = 16, prof=2, casting="INT") -> HardGameState:
+    """Minimal HardGameState for a player caster (INT-based by default)."""
+    return HardGameState.model_validate({
+        "player": {
+            "location": "room1",
+            "stats": {"INT": int_score},
+            "proficiency_bonus": prof,
+            "spellcasting_ability": casting,
+        },
+    })
+
+
+class TestFiveESpellcasting:
+    def test_spell_save_dc(self) -> None:
+        # 8 + prof 2 + INT 16 mod (+3) = 13
+        assert FiveESystem().compute_spell_save_dc(_caster_hard()) == 13
+
+    def test_spell_save_dc_default_proficiency(self) -> None:
+        # proficiency_bonus None defaults to 2 (as in manager init)
+        assert FiveESystem().compute_spell_save_dc(_caster_hard(prof=None)) == 13
+
+    def test_spell_save_dc_tracks_casting_stat(self) -> None:
+        # INT 8 -> mod -1 -> 8 + 2 - 1 = 9
+        assert FiveESystem().compute_spell_save_dc(_caster_hard(int_score=8)) == 9
+
+    def test_spell_save_dc_no_spellcasting_ability(self) -> None:
+        assert FiveESystem().compute_spell_save_dc(_caster_hard(casting=None)) == 0
+
+    def test_spell_attack_bonus(self) -> None:
+        # INT 16 mod (+3) + prof 2 = 5
+        assert FiveESystem().compute_spell_attack_bonus(_caster_hard()) == 5
+
+    def test_spell_attack_bonus_no_spellcasting_ability(self) -> None:
+        hard = _caster_hard(casting=None)
+        assert FiveESystem().compute_spell_attack_bonus(hard) == 0
+
+    def test_base_system_defaults_to_zero(self) -> None:
+        # Non-5e systems no-op: the ResolutionSystem defaults return 0.
+        class MinimalSystem(ResolutionSystem):
+            name = "minimal"
+
+        MinimalSystem.__abstractmethods__ = frozenset()
+        s = MinimalSystem()
+        hard = _caster_hard()
+        assert s.compute_spell_save_dc(hard) == 0
+        assert s.compute_spell_attack_bonus(hard) == 0
+
+
+# ------------------------------------------------------------------
 # FiveESystem: skill checks
 # ------------------------------------------------------------------
 

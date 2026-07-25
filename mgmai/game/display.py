@@ -426,7 +426,13 @@ class Display:
                 ability = corpus.abilities.get(aid)
                 if ability is None:
                     continue
-                if ability.uses_per_combat < 0:
+                if ability.spell_level is not None and ability.spell_level >= 1:
+                    # Leveled spells draw on the slot pool, not uses.
+                    slots = hard.player.spell_slots.get(ability.spell_level, 0)
+                    parts.append(
+                        f"{ability.name} (level {ability.spell_level} slots: {slots})"
+                    )
+                elif ability.uses_per_combat < 0:
                     parts.append(ability.name)
                 else:
                     used = (combat.ability_uses.get("player", {}) or {}).get(aid, 0)

@@ -1,0 +1,22 @@
+{
+  "player": {
+    "location": "arena"
+  },
+  "flags": {},
+  "room_states": {
+    "arena": {"visited": false},
+    "corridor": {"visited": false}
+  },
+  "entity_states": {
+    "goblin_grunt": {
+      "alive": true,
+      "current_hp": 11
+    },
+    "hobgoblin": {
+      "alive": true,
+      "current_hp": 18
+    }
+  },
+  "turn_count": 0,
+  "game_over": null
+}

@@ -619,12 +619,24 @@ class AbilitySave(BaseModel):
     apply_status_effect_on_failure: Optional[ApplyStatusEffect] = None
 
 
+class AbilityAutoDamage(BaseModel):
+    """Damage with no attack roll and no save (e.g. Magic Missile)."""
+    damage: str
+    damage_type: str
+
+
 class Ability(BaseModel):
     """A named combat ability (spell, class feature, monster power).
 
     Exactly one effect: ``attack`` (attack roll), ``save`` (target saves),
-    or ``heal`` (dice expression).  ``uses_per_combat`` of -1 means
-    unlimited use (cantrip-style).
+    ``heal`` (dice expression), ``auto_damage`` (no roll, no save), or
+    ``on_cast`` (apply a status effect to the target).  ``uses_per_combat``
+    of -1 means unlimited use (cantrip-style).
+
+    The ``spell_*``/school/concentration/… fields mark the ability as a
+    spell: ``spell_level`` of ``None`` (default) means "not a spell",
+    ``0`` a cantrip, ``1``-``9`` a leveled spell.  A spell is just an
+    ability with extra metadata — the same resolvers handle it.
     """
     name: str
     description: str = ""
@@ -633,6 +645,23 @@ class Ability(BaseModel):
     attack: Optional[AbilityAttack] = None
     save: Optional[AbilitySave] = None
     heal: str = ""
+    auto_damage: Optional[AbilityAutoDamage] = None
+    on_cast: Optional[ApplyStatusEffect] = None
+    # Spell metadata (all default to "not a spell").  ``spell_level``
+    # drives slot consumption and DC/attack-bonus derivation in combat;
+    # the rest are data/flavor until later spellcasting phases.
+    spell_level: Optional[int] = None
+    school: str = ""
+    casting_time: Literal["action", "bonus_action", "reaction", "long"] = "action"
+    range: str = ""
+    duration: str = ""
+    components: str = ""
+    concentration: bool = False
+    ritual: bool = False
+    # Status-effect IDs the spell sustains on its targets while the caster
+    # concentrates on it (Sleep -> incapacitated); removed from all
+    # combatants when the caster's concentration on this spell ends.
+    sustained_status_effects: List[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check_shape(self) -> "Ability":
@@ -640,10 +669,13 @@ class Ability(BaseModel):
             self.attack is not None,
             self.save is not None,
             bool(self.heal),
+            self.auto_damage is not None,
+            self.on_cast is not None,
         ])
         if kinds != 1:
             raise ValueError(
-                "Ability must have exactly one effect: attack, save, or heal"
+                "Ability must have exactly one effect: attack, save, heal, "
+                "auto_damage, or on_cast"
             )
         if self.heal and self.target == "enemy":
             raise ValueError("heal abilities must target self or ally")
@@ -651,14 +683,28 @@ class Ability(BaseModel):
 
     def effect_summary(self) -> str:
         """Compact plain-English summary for briefings."""
+        prefix = ""
+        if self.spell_level is not None:
+            level = "cantrip" if self.spell_level == 0 else f"level {self.spell_level} spell"
+            prefix = level
+            if self.school:
+                prefix += f", {self.school}"
+            if self.concentration:
+                prefix += ", concentration"
+            prefix += ": "
         if self.attack is not None:
             dtype = f" {self.attack.damage_type}" if self.attack.damage_type else ""
-            return f"attack ({self.attack.stat}) for {self.attack.damage}{dtype} damage"
+            return prefix + f"attack ({self.attack.stat}) for {self.attack.damage}{dtype} damage"
         if self.save is not None:
             half = ", half on success" if self.save.half_on_success else ""
             dmg = f"{self.save.damage} damage" if self.save.damage else "no damage"
-            return f"{self.save.stat} save DC {self.save.dc}: {dmg}{half}"
-        return f"heals {self.heal}"
+            return prefix + f"{self.save.stat} save DC {self.save.dc}: {dmg}{half}"
+        if self.auto_damage is not None:
+            dtype = f" {self.auto_damage.damage_type}" if self.auto_damage.damage_type else ""
+            return prefix + f"{self.auto_damage.damage}{dtype} damage (no attack roll or save)"
+        if self.on_cast is not None:
+            return prefix + f"applies status '{self.on_cast.id}'"
+        return prefix + f"heals {self.heal}"
 
 
 class FollowerConfig(BaseModel):
@@ -964,6 +1010,22 @@ class ModuleCorpus(BaseModel):
                 gear[eid] = entity
         return gear
 
+    def effective_spells(self) -> Dict[str, "Ability"]:
+        """The full spell catalog: SRD data-pack spells overlaid by corpus
+        spell abilities (abilities with ``spell_level`` set).
+
+        A corpus ability whose ID matches a pack entry replaces the pack
+        entry wholesale (no field-level merge).  Corpus spell abilities
+        with non-pack IDs are included as-is.  Spells live in the regular
+        ``abilities`` dict — this is a filtered view for the pack
+        overlay/validator, not a separate registry.
+        """
+        spells = dict(DEFAULT_SPELLS)
+        for aid, ability in self.abilities.items():
+            if ability.spell_level is not None:
+                spells[aid] = ability
+        return spells
+
     @field_validator("flags_declared", mode="before")
     @classmethod
     def _validate_flags_declared(cls, v: Any) -> Optional[List[FlagDecl]]:
@@ -1032,4 +1094,18 @@ DEFAULT_STATUS_EFFECTS: Dict[str, StatusEffectDef] = {
 DEFAULT_GEAR: Dict[str, Entity] = {
     gear_id: Entity.model_validate(entry)
     for gear_id, entry in load_pack("5e", "gear").items()
+}
+
+# Built-in SRD spells, loaded from the engine-bundled data pack
+# (mgmai/data/srd_5e/spells.json).  Templates are minted into
+# ``corpus.abilities`` at load time (StateManager._materialize_pack_spells);
+# a corpus ability with the same ID replaces the pack template wholesale
+# (see ModuleCorpus.effective_spells).
+#
+# Note: existing test corpora deliberately define abilities named
+# ``fire_bolt``/``cure_wounds`` (tests/test_combat.py); the corpus-wins
+# wholesale semantics keep those fixtures untouched by the pack.
+DEFAULT_SPELLS: Dict[str, Ability] = {
+    spell_id: Ability.model_validate(entry)
+    for spell_id, entry in load_pack("5e", "spells").items()
 }

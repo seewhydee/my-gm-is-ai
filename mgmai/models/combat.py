@@ -47,6 +47,9 @@ class CombatLogEntry(BaseModel):
     # Named attack used (NPC attack definitions / multiattack)
     attack_id: Optional[str] = None
     attack_name: Optional[str] = None
+    # Spell identity (set when the resolved ability is a spell)
+    spell_id: Optional[str] = None
+    spell_level: Optional[int] = None
 
 
 class CombatState(BaseModel):
@@ -76,6 +79,10 @@ class CombatState(BaseModel):
     # combat}, and NPC id -> {ability id -> rounds until usable again}.
     ability_uses: dict[str, dict[str, int]] = Field(default_factory=dict)
     npc_cooldowns: dict[str, dict[str, int]] = Field(default_factory=dict)
+    # Concentration: caster id -> spell id (one concentration spell per
+    # caster).  Needs no explicit clearing — the map dies with
+    # ``hard.combat = None`` at combat end.
+    concentration: dict[str, str] = Field(default_factory=dict)
     # Positioning: sorted symmetric "within melee reach" pairs of combatant
     # ids ([["goblin", "player"]]).  Pairs involving dead/fled combatants
     # are pruned immediately; the whole state is dropped at combat end.
@@ -85,3 +92,14 @@ class CombatState(BaseModel):
     # be impeded at most once per combat).
     impeded: list[str] = Field(default_factory=list)
     impede_used: list[str] = Field(default_factory=list)
+    # Bonus-action economy: set when the player casts a bonus-action spell
+    # this turn (one per turn; reset at the start of each player turn), and
+    # when a leveled spell (slot) was cast this turn — a bonus-action
+    # leveled spell and a main-action leveled spell can't coexist.
+    bonus_action_used: bool = False
+    slot_cast_this_turn: bool = False
+    # Set by the bonus-action cast branch so the follow-up
+    # resolve_combat_turn call for the player's main action skips
+    # start-of-turn processing (status effects tick once per round);
+    # cleared when the turn ends in _end_player_turn.
+    turn_continuation: bool = False

@@ -1776,8 +1776,15 @@ The top-level `abilities` block defines named **combat abilities** —
 spells, class features, and monster powers — usable by the player (via
 the `use_ability` combat action when listed in the character sheet's
 `abilities`) and by NPCs (via `CombatBlock.abilities` and the combat
-AI).  Each ability has exactly one effect: `attack`, `save`, or
-`heal`.
+AI).  Each ability has exactly one effect: `attack`, `save`, `heal`,
+`auto_damage`, or `on_cast`.
+
+A **spell** is just an ability with `spell_level` set; it lives in the
+same `abilities` block.  The engine ships a small SRD spell pack
+(`fire_bolt`, `sacred_flame`, `cure_wounds`, `magic_missile`,
+`healing_word`, `mage_armor`, `sleep`) whose entries are minted into
+the corpus at load time unless the corpus defines the same ID — see the
+[data-pack manifest](srd-5e-pack.md).
 
 ```json
 "abilities": {
@@ -1803,6 +1810,21 @@ AI).  Each ability has exactly one effect: `attack`, `save`, or
     "target": "ally",
     "uses_per_combat": 2,
     "heal": "1d8+2"
+  },
+  "magic_missile": {
+    "name": "Magic Missile",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "evocation",
+    "auto_damage": { "damage": "3d4+3", "damage_type": "force" }
+  },
+  "mage_armor": {
+    "name": "Mage Armor",
+    "target": "self",
+    "spell_level": 1,
+    "school": "abjuration",
+    "duration": "8 hours",
+    "on_cast": { "id": "mage_armor", "rounds": 1 }
   }
 }
 ```
@@ -1816,6 +1838,17 @@ AI).  Each ability has exactly one effect: `attack`, `save`, or
 | `attack`¹         | object  | Attack-roll effect (exactly one effect allowed) |
 | `save`¹           | object  | Save-based effect |
 | `heal`¹           | string  | Healing dice expression (only for `self`/`ally` targets) |
+| `auto_damage`¹    | object  | Damage with no attack roll and no save |
+| `on_cast`¹        | object  | Status effect applied to the target on cast |
+| `spell_level`¹    | integer | `null` (default) = not a spell; `0` = cantrip; `1`-`9` = leveled spell |
+| `school`¹         | string  | Spell school (evocation, abjuration, …) — data/flavor |
+| `casting_time`¹   | string  | `"action"` (default), `"bonus_action"`, `"reaction"`, or `"long"` — `"bonus_action"` is enforced in combat (one bonus action per turn, cast without ending the turn; see [doc/spellcasting.md](../doc/spellcasting.md)); the rest are data-only |
+| `range`¹          | string  | E.g. `"120 feet"`, `"Touch"`, `"Self"` — data/flavor |
+| `duration`¹       | string  | E.g. `"Instantaneous"`, `"Concentration, up to 1 minute"` — data/flavor (the `concentration` flag drives mechanics) |
+| `components`¹     | string  | E.g. `"V, S, M (...)"` — data/flavor |
+| `concentration`¹  | boolean | The spell requires concentration (default `false`) |
+| `sustained_status_effects`¹ | string[] | Status IDs the spell sustains on its targets; removed from all combatants when the caster's concentration on this spell ends |
+| `ritual`¹         | boolean | The spell can be cast as a ritual (default `false`; data-only) |
 
 **Attack effects**: `{ "stat": "INT", "proficient": true, "damage":
 "1d10", "damage_type": "fire" }`.  Player casters roll with the named
@@ -1830,6 +1863,26 @@ The target saves — the player with the usual stat modifier and save
 proficiencies, NPCs with `d20 + save_bonus`.  On success the damage is
 halved (`half_on_success`) or negated; on failure the full damage
 (`""` = no damage) and any status effect apply.
+
+**Auto-damage effects**: `{ "damage": "3d4+3", "damage_type": "force" }`.
+Damage applied to the target with no attack roll and no save
+(e.g. Magic Missile).
+
+**On-cast effects**: `{ "id": "mage_armor", "rounds": 1 }` — a status
+effect (see [Status Effects](#status-effects)) applied to the ability's
+target when cast (self/ally buffs).
+
+**Concentration**: when a spell with `concentration: true` is cast in
+combat, the caster begins concentrating on it — tracked on
+`CombatState.concentration`, one concentration spell per caster, with a
+`concentrating` status on the caster.  Taking damage forces a
+Constitution save (DC `max(10, damage // 2)`, capped at 30; players make
+a full CON save, NPCs use their flat `save_bonus`); on failure, or when
+the caster is incapacitated or dies, concentration ends and the spell's
+`sustained_status_effects` are removed from every combatant —
+unconditionally, so two sources granting the same status both lose it (a
+known simplification).  See [doc/spellcasting.md](../doc/spellcasting.md)
+for the full mechanics.
 
 ## Status Effects
 

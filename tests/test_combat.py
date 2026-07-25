@@ -3630,6 +3630,1393 @@ class TestAbilities:
 
 
 # ------------------------------------------------------------------
+# 21. Spellcasting in combat (slots, derived DCs, new effect kinds)
+# ------------------------------------------------------------------
+
+class TestSpellcasting:
+    """Player spellcasting: cantrips, slot consumption, derived save DCs,
+    auto_damage (Magic Missile), on_cast (Mage Armor), heal bonuses."""
+
+    @pytest.fixture
+    def spell_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Spell Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1", "description": "A room.",
+                    "contains": ["goblin", "acolyte"],
+                },
+            },
+            "abilities": {
+                "fire_bolt": {
+                    "name": "Fire Bolt",
+                    "description": "A mote of fire.",
+                    "target": "enemy",
+                    "spell_level": 0,
+                    "school": "evocation",
+                    "attack": {
+                        "stat": "INT", "proficient": True,
+                        "damage": "1d10", "damage_type": "fire",
+                    },
+                },
+                "sacred_flame": {
+                    "name": "Sacred Flame",
+                    "description": "Flame-like radiance.",
+                    "target": "enemy",
+                    "spell_level": 0,
+                    "school": "evocation",
+                    "save": {
+                        "stat": "DEX", "dc": 12, "damage": "1d8",
+                        "damage_type": "radiant", "half_on_success": False,
+                    },
+                },
+                "magic_missile": {
+                    "name": "Magic Missile",
+                    "description": "Three unerring darts.",
+                    "target": "enemy",
+                    "spell_level": 1,
+                    "school": "evocation",
+                    "auto_damage": {"damage": "3d4+3", "damage_type": "force"},
+                },
+                "cure_wounds": {
+                    "name": "Cure Wounds",
+                    "description": "Healing touch.",
+                    "target": "ally",
+                    "spell_level": 1,
+                    "school": "abjuration",
+                    "heal": "2d8",
+                },
+                "mage_armor": {
+                    "name": "Mage Armor",
+                    "description": "Protective magical force.",
+                    "target": "self",
+                    "spell_level": 1,
+                    "school": "abjuration",
+                    "on_cast": {"id": "mage_armor", "rounds": 1},
+                },
+            },
+            "entities": {
+                "goblin": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 30, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+                "acolyte": {
+                    "type": "npc",
+                    "description": "A cult fanatic.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {
+                        "hp": 18, "ac": 12, "atk": 4, "dmg": "1d6+1",
+                        "abilities": ["sacred_flame"],
+                    },
+                },
+            },
+        })
+
+    @pytest.fixture
+    def spell_hard(self) -> HardGameState:
+        """Hard state for an INT-based caster with two 1st-level slots."""
+        return HardGameState.model_validate({
+            "player": {
+                "location": "room1",
+                "inventory": {},
+                "stats": {
+                    "STR": 10, "DEX": 14, "CON": 12,
+                    "INT": 16, "WIS": 10, "CHA": 10,
+                },
+                "level": 1,
+                "current_hp": 20,
+                "max_hp": 20,
+                "ac": 12,
+                "proficiency_bonus": 2,
+                "spellcasting_ability": "INT",
+                "spell_slots": {1: 2},
+                "abilities": [
+                    "fire_bolt", "sacred_flame", "magic_missile",
+                    "cure_wounds", "mage_armor",
+                ],
+            },
+            "flags": {},
+            "room_states": {"room1": {"visited": True}},
+            "entity_states": {
+                "goblin": {"alive": True, "current_hp": 30},
+                "acolyte": {"alive": True, "current_hp": 18},
+            },
+            "room_contains": {"room1": {"goblin": 1, "acolyte": 1}},
+            "turn_count": 0,
+        })
+
+    def _combat_state(self, hard, order=("player", "goblin"), allies=()):
+        hard.combat = CombatState(
+            active=True,
+            combatants=list(order),
+            allies=list(allies),
+            initiative_order=list(order),
+            current_index=0,
+            round_number=1,
+        )
+
+    def _ability(self, ability_id, target):
+        return CombatAction(
+            action_type="combat", combat_action="use_ability",
+            target=target, ability_id=ability_id, detail="Cast a spell!",
+        )
+
+    # -- Cantrips ------------------------------------------------------
+
+    def test_fire_bolt_cantrip_attack(self, spell_hard, spell_corpus, monkeypatch):
+        self._combat_state(spell_hard)
+        # spell attack bonus = INT mod (+3) + prof 2 = +5:
+        # 7 + 5 = 12 vs AC 12 -> hit; 1d10 = 6 fire; goblin misses
+        rand_vals = iter([7, 6, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("fire_bolt", "goblin"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.action == "attack"
+        assert entry.attack_total == 12
+        assert entry.hit is True
+        assert entry.damage == 6
+        assert entry.spell_id == "fire_bolt"
+        assert entry.spell_level == 0
+        # cantrip: no slot consumed
+        assert spell_hard.player.spell_slots == {1: 2}
+        assert result["hard_changes"].entity_state_changes["goblin"]["current_hp"] == 24
+
+    def test_sacred_flame_derived_dc(self, spell_hard, spell_corpus, monkeypatch):
+        self._combat_state(spell_hard)
+        # derived DC = 8 + prof 2 + INT mod 3 = 13 (not the authored 12);
+        # goblin save 12 < 13 -> fail -> full 1d8 = 5; goblin misses
+        rand_vals = iter([12, 5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sacred_flame", "goblin"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.action == "ability_save"
+        save_dict = entry.on_hit_effects[0]
+        assert save_dict["save_dc"] == 13
+        assert save_dict["save_success"] is False
+        assert entry.damage == 5
+        assert entry.spell_id == "sacred_flame"
+        assert entry.spell_level == 0
+        assert spell_hard.player.spell_slots == {1: 2}
+
+    def test_derived_dc_changes_with_casting_stat(
+        self, spell_hard, spell_corpus, monkeypatch
+    ):
+        self._combat_state(spell_hard)
+        spell_hard.player.stats["INT"] = 8  # mod -1 -> DC 8 + 2 - 1 = 9
+        # goblin save 10 >= 9 -> success -> no damage (half_on_success
+        # False); the damage die is still rolled; goblin misses
+        rand_vals = iter([10, 5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sacred_flame", "goblin"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.on_hit_effects[0]["save_dc"] == 9
+        assert entry.on_hit_effects[0]["save_success"] is True
+        assert entry.damage == 0
+        assert spell_hard.entity_states["goblin"]["current_hp"] == 30
+
+    # -- Leveled spells: slots, auto_damage, on_cast, heal -------------
+
+    def test_magic_missile_auto_damage(self, spell_hard, spell_corpus, monkeypatch):
+        self._combat_state(spell_hard)
+        # no attack roll, no save: 3d4+3 = 2+2+2+3 = 9 force; goblin misses
+        rand_vals = iter([2, 2, 2, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("magic_missile", "goblin"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.action == "ability_auto"
+        assert entry.attack_roll is None
+        assert entry.damage == 9
+        assert entry.damage_type == "force"
+        assert entry.spell_id == "magic_missile"
+        assert entry.spell_level == 1
+        # one level-1 slot consumed
+        assert spell_hard.player.spell_slots == {1: 1}
+        assert result["hard_changes"].entity_state_changes["goblin"]["current_hp"] == 21
+
+    def test_cure_wounds_heal_plus_casting_mod(
+        self, spell_hard, spell_corpus, monkeypatch
+    ):
+        self._combat_state(spell_hard)
+        spell_hard.player.current_hp = 10
+        # 2d8 = 3+3 = 6, + INT mod 3 = 9 healed; goblin misses
+        rand_vals = iter([3, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("cure_wounds", "player"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        assert result["hard_changes"].player_hp_delta == 9
+        entry = result["combat_log"][0]
+        assert entry.action == "heal"
+        assert entry.damage == 9
+        assert entry.spell_id == "cure_wounds"
+        assert spell_hard.player.spell_slots == {1: 1}
+
+    def test_mage_armor_on_cast(self, spell_hard, spell_corpus, monkeypatch):
+        self._combat_state(spell_hard)
+        # no roll for the cast; goblin misses
+        rand_vals = iter([1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("mage_armor", "player"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.action == "ability_on_cast"
+        assert entry.target == "player"
+        assert entry.spell_id == "mage_armor"
+        assert entry.spell_level == 1
+        assert entry.on_hit_effects[0]["status_effect"] == "mage_armor"
+        assert spell_hard.player.status_effects.get("mage_armor") == 1
+        assert spell_hard.player.spell_slots == {1: 1}
+
+    def test_slot_exhaustion_blocks_leveled_spell_not_cantrip(
+        self, spell_hard, spell_corpus, monkeypatch
+    ):
+        self._combat_state(spell_hard)
+        # two Magic Missiles (darts 1+1+1+3 = 6 each; goblin misses twice),
+        # then a third is rejected without a roll; Fire Bolt still works
+        # (15 + 5 = 20 -> hit, 5 damage; goblin misses)
+        rand_vals = iter([1, 1, 1, 1, 1, 1, 1, 1, 15, 5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        for _ in range(2):
+            result = resolve_combat_turn(
+                self._ability("magic_missile", "goblin"), spell_hard, spell_corpus
+            )
+            assert result["success"]
+        assert spell_hard.player.spell_slots == {1: 0}
+
+        result = resolve_combat_turn(
+            self._ability("magic_missile", "goblin"), spell_hard, spell_corpus
+        )
+        assert result["success"] is False
+        assert "No level-1 spell slots remaining" in result["error"]
+        assert spell_hard.player.spell_slots == {1: 0}
+
+        result = resolve_combat_turn(
+            self._ability("fire_bolt", "goblin"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        assert result["combat_log"][0].hit is True
+
+    # -- NPC casters ----------------------------------------------------
+
+    def test_npc_caster_uses_authored_dc(self, spell_hard, spell_corpus, monkeypatch):
+        self._combat_state(spell_hard, order=("player", "acolyte"))
+        # player Fire Bolt: 15 + 5 = 20 -> hit, 4 damage (acolyte 18 -> 14);
+        # acolyte casts Sacred Flame back at the player with the *authored*
+        # DC 12 (not the player's derived 13): DEX save 9 + 2 = 11 < 12
+        # -> fail -> full 1d8 = 4
+        rand_vals = iter([15, 4, 9, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("fire_bolt", "acolyte"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        saves = [e for e in result["combat_log"] if e.action == "ability_save"]
+        assert len(saves) == 1
+        assert saves[0].actor == "acolyte"
+        assert saves[0].spell_id == "sacred_flame"
+        assert saves[0].on_hit_effects[0]["save_dc"] == 12
+        assert saves[0].on_hit_effects[0]["save_success"] is False
+        assert result["hard_changes"].player_hp_delta == -4
+
+    # -- Briefing & persistence ----------------------------------------
+
+    def test_briefing_lists_spell_fields(self, spell_hard, spell_corpus):
+        from mgmai.context.assembler import _build_combat_state
+        self._combat_state(spell_hard)
+        briefing = _build_combat_state(spell_hard, SoftGameState(), spell_corpus)
+        assert briefing is not None
+        assert briefing.spell_slots == {1: 2}
+        by_id = {a["id"]: a for a in briefing.abilities}
+        fb = by_id["fire_bolt"]
+        assert fb["spell_level"] == 0
+        assert fb["slot_level"] == 0
+        assert fb["concentration"] is False
+        assert "save_dc" not in fb  # attack spell: no derived DC entry
+        sf = by_id["sacred_flame"]
+        assert sf["save_dc"] == 13  # 8 + prof 2 + INT mod 3
+        mm = by_id["magic_missile"]
+        assert mm["spell_level"] == 1
+        assert mm["slot_level"] == 1
+
+    def test_slot_mutation_survives_save_load_round_trip(
+        self, spell_hard, spell_corpus, monkeypatch, tmp_path
+    ):
+        from mgmai.state.manager import StateManager
+        self._combat_state(spell_hard)
+        rand_vals = iter([2, 2, 2, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("magic_missile", "goblin"), spell_hard, spell_corpus
+        )
+        assert result["success"]
+        assert spell_hard.player.spell_slots == {1: 1}
+
+        sm = build_state_manager(spell_corpus, spell_hard)
+        sm._adventure_dir = tmp_path
+        save_path = sm.save_state(tmp_path)
+        sm2 = StateManager()
+        sm2.load_save(save_path)
+        assert sm2.hard_state.player.spell_slots == {1: 1}
+
+    def test_ability_auto_prefix(self):
+        log = [{
+            "actor": "player", "action": "ability_auto", "target": "goblin",
+            "attack_name": "Magic Missile", "damage": 9,
+        }]
+        prefix = format_combat_prefix(log)
+        assert "magic missile" in prefix.lower()
+        assert "9 damage" in prefix.lower()
+
+
+# ------------------------------------------------------------------
+# 21b. Bonus-action casting (Phase 5)
+# ------------------------------------------------------------------
+
+class TestBonusActionCasting:
+    """Bonus-action spells: the cast does not end the player's turn, one
+    bonus action per turn, and one leveled (slot) spell per turn."""
+
+    @pytest.fixture
+    def ba_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "BA Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1", "description": "A room.",
+                    "contains": ["goblin", "sword"],
+                },
+            },
+            "abilities": {
+                "healing_word": {
+                    "name": "Healing Word",
+                    "description": "A word of healing.",
+                    "target": "ally",
+                    "spell_level": 1,
+                    "school": "abjuration",
+                    "casting_time": "bonus_action",
+                    "heal": "2d4",
+                },
+                "quick_missile": {
+                    "name": "Quick Missile",
+                    "description": "A swift dart.",
+                    "target": "enemy",
+                    "spell_level": 1,
+                    "school": "evocation",
+                    "casting_time": "bonus_action",
+                    "auto_damage": {"damage": "3d4+3", "damage_type": "force"},
+                },
+                "fire_bolt": {
+                    "name": "Fire Bolt",
+                    "description": "A mote of fire.",
+                    "target": "enemy",
+                    "spell_level": 0,
+                    "attack": {
+                        "stat": "INT", "proficient": True,
+                        "damage": "1d10", "damage_type": "fire",
+                    },
+                },
+                "magic_missile": {
+                    "name": "Magic Missile",
+                    "description": "Three unerring darts.",
+                    "target": "enemy",
+                    "spell_level": 1,
+                    "auto_damage": {"damage": "3d4+3", "damage_type": "force"},
+                },
+            },
+            "entities": {
+                "goblin": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 30, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+                "sword": {
+                    "type": "item",
+                    "name": "Sword",
+                    "description": "A plain sword.",
+                    "equip_block": {
+                        "equip_tags": ["weapon", "martial"],
+                        "damage_expr": "1d8", "damage_type": "slashing",
+                    },
+                },
+            },
+        })
+
+    @pytest.fixture
+    def ba_hard(self) -> HardGameState:
+        """Hard state for an INT-based caster with three 1st-level slots."""
+        return HardGameState.model_validate({
+            "player": {
+                "location": "room1",
+                "inventory": {"sword": 1},
+                "equipped": ["sword"],
+                "weapon_proficiencies": ["martial"],
+                "stats": {
+                    "STR": 10, "DEX": 14, "CON": 12,
+                    "INT": 16, "WIS": 10, "CHA": 10,
+                },
+                "level": 1,
+                "current_hp": 10,
+                "max_hp": 20,
+                "ac": 12,
+                "proficiency_bonus": 2,
+                "spellcasting_ability": "INT",
+                "spell_slots": {1: 3},
+                "abilities": [
+                    "healing_word", "quick_missile", "fire_bolt",
+                    "magic_missile",
+                ],
+            },
+            "flags": {},
+            "room_states": {"room1": {"visited": True}},
+            "entity_states": {
+                "goblin": {"alive": True, "current_hp": 30},
+            },
+            "room_contains": {"room1": {"goblin": 1, "sword": 1}},
+            "turn_count": 0,
+        })
+
+    def _combat_state(self, hard, order=("player", "goblin")):
+        hard.combat = CombatState(
+            active=True,
+            combatants=list(order),
+            initiative_order=list(order),
+            current_index=0,
+            round_number=1,
+        )
+
+    def _ability(self, ability_id, target):
+        return CombatAction(
+            action_type="combat", combat_action="use_ability",
+            target=target, ability_id=ability_id, detail="Cast a spell!",
+        )
+
+    def _attack(self, target="goblin"):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target=target, detail="Strike!",
+        )
+
+    # -- The turn does not end ------------------------------------------
+
+    def test_ba_cast_then_attack_same_turn(self, ba_hard, ba_corpus, monkeypatch):
+        self._combat_state(ba_hard)
+        # BA Healing Word: 2d4 = 3 + 2 = 5, + INT mod 3 = 8 healed.
+        rand_vals = iter([3, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert result["success"]
+        assert result["combat_ended_reason"] is None
+        assert result["hard_changes"].player_hp_delta == 8
+        # The turn continues: no round advance, no NPC turn, one slot spent.
+        combat = ba_hard.combat
+        assert combat.round_number == 1
+        assert combat.bonus_action_used is True
+        assert ba_hard.player.spell_slots == {1: 2}
+        assert [e.action for e in combat.log] == ["heal"]
+
+        # Main action: a sword attack in the same round.
+        # 10 + 2 (prof) = 12 vs AC 12 -> hit; 1d8 = 5; goblin misses back.
+        rand_vals = iter([10, 5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._attack(), ba_hard, ba_corpus
+        )
+        assert result["success"]
+        assert ba_hard.combat.round_number == 2
+        assert ba_hard.entity_states["goblin"]["current_hp"] == 25
+        # Both the BA cast and the attack appear in the combat log.
+        actions = [e.action for e in ba_hard.combat.log]
+        assert actions[0] == "heal"
+        assert "attack" in actions
+
+    def test_ba_status_effects_tick_once_per_round(
+        self, ba_hard, ba_corpus, monkeypatch
+    ):
+        self._combat_state(ba_hard)
+        ba_hard.player.status_effects = {"bless": 3}
+        rand_vals = iter([3, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r1 = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert r1["success"]
+        assert ba_hard.player.status_effects["bless"] == 2
+        # The follow-up call for the main action must not tick again.
+        rand_vals = iter([1])  # goblin misses
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r2 = resolve_combat_turn(
+            WaitAction(action_type="wait", detail="Hold."),
+            ba_hard, ba_corpus,
+        )
+        assert r2["success"]
+        assert ba_hard.player.status_effects["bless"] == 2
+        ticks = [
+            ev for ev in r1["events"] + r2["events"]
+            if ev[0] == "status_effect.ticked"
+        ]
+        assert len(ticks) == 1
+
+    def test_ba_cast_kill_ends_combat(self, ba_hard, ba_corpus, monkeypatch):
+        self._combat_state(ba_hard)
+        ba_hard.entity_states["goblin"]["current_hp"] = 5
+        ba_hard.player.status_effects = {"bless": 3}
+        # 3d4+3 = 1+1+1+3 = 6 force damage -> the last enemy drops.
+        rand_vals = iter([1, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("quick_missile", "goblin"), ba_hard, ba_corpus
+        )
+        assert result["success"]
+        # The combat-end epilogue ran even though the turn never ended.
+        assert result["combat_ended_reason"] == "victory"
+        assert ba_hard.combat is None
+        assert ba_hard.player.status_effects == {}
+        assert result["combat_log"][0].action == "ability_auto"
+
+    # -- One leveled spell per turn --------------------------------------
+
+    def test_ba_leveled_then_main_leveled_rejected(
+        self, ba_hard, ba_corpus, monkeypatch
+    ):
+        self._combat_state(ba_hard)
+        rand_vals = iter([3, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r1 = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert r1["success"]
+        r2 = resolve_combat_turn(
+            self._ability("magic_missile", "goblin"), ba_hard, ba_corpus
+        )
+        assert not r2["success"]
+        assert "leveled spell" in r2["error"]
+        # Rejection cost nothing: no second slot, and the turn continues.
+        assert ba_hard.player.spell_slots == {1: 2}
+        assert ba_hard.combat.round_number == 1
+
+    def test_main_leveled_then_ba_leveled_next_round_allowed(
+        self, ba_hard, ba_corpus, monkeypatch
+    ):
+        self._combat_state(ba_hard)
+        # Round 1: main-action Magic Missile ends the turn (3d4+3 = 9);
+        # goblin misses back.
+        rand_vals = iter([2, 2, 2, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r1 = resolve_combat_turn(
+            self._ability("magic_missile", "goblin"), ba_hard, ba_corpus
+        )
+        assert r1["success"]
+        assert ba_hard.combat.round_number == 2
+        # Round 2: the per-turn slot flag reset, so a BA leveled spell is
+        # legal again.
+        rand_vals = iter([3, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r2 = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert r2["success"]
+        assert ba_hard.player.spell_slots == {1: 1}
+
+    def test_ba_leveled_then_cantrip_allowed(self, ba_hard, ba_corpus, monkeypatch):
+        self._combat_state(ba_hard)
+        rand_vals = iter([3, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r1 = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert r1["success"]
+        # Cantrip main action: 7 + 5 = 12 vs AC 12 -> hit, 1d10 = 6;
+        # goblin misses back.
+        rand_vals = iter([7, 6, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r2 = resolve_combat_turn(
+            self._ability("fire_bolt", "goblin"), ba_hard, ba_corpus
+        )
+        assert r2["success"]
+        assert ba_hard.entity_states["goblin"]["current_hp"] == 24
+        assert ba_hard.combat.round_number == 2
+
+    # -- One bonus action per turn ---------------------------------------
+
+    def test_second_bonus_action_rejected(self, ba_hard, ba_corpus, monkeypatch):
+        self._combat_state(ba_hard)
+        rand_vals = iter([3, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r1 = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert r1["success"]
+        r2 = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert not r2["success"]
+        assert "bonus action" in r2["error"].lower()
+        assert ba_hard.player.spell_slots == {1: 2}  # only one cast
+
+    def test_bonus_action_resets_next_round(self, ba_hard, ba_corpus, monkeypatch):
+        self._combat_state(ba_hard)
+        rand_vals = iter([3, 2])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r1 = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert r1["success"]
+        assert ba_hard.combat.bonus_action_used is True
+        # End the turn with a wait; goblin misses.
+        rand_vals = iter([1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r2 = resolve_combat_turn(
+            WaitAction(action_type="wait", detail="Hold."),
+            ba_hard, ba_corpus,
+        )
+        assert r2["success"]
+        assert ba_hard.combat.turn_continuation is False
+        # Next round the bonus action is available again (the flag resets
+        # at the start of the player's turn).
+        rand_vals = iter([4, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        r3 = resolve_combat_turn(
+            self._ability("healing_word", "player"), ba_hard, ba_corpus
+        )
+        assert r3["success"]
+        assert ba_hard.player.spell_slots == {1: 1}
+
+
+# ------------------------------------------------------------------
+# 22. Out-of-combat casting (self/ally heal & on_cast spells)
+# ------------------------------------------------------------------
+
+class TestOutOfCombatSpellcasting:
+    """Casting outside combat: heal and on_cast spells resolve without a
+    CombatState; enemy targets and attack/save effects are rejected."""
+
+    @pytest.fixture
+    def ooc_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "OOC Spell Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1", "description": "A room.",
+                    "contains": ["goblin", "medic"],
+                },
+            },
+            "abilities": {
+                "fire_bolt": {
+                    "name": "Fire Bolt",
+                    "description": "A mote of fire.",
+                    "target": "enemy",
+                    "spell_level": 0,
+                    "attack": {
+                        "stat": "INT", "proficient": True,
+                        "damage": "1d10", "damage_type": "fire",
+                    },
+                },
+                "sacred_flame": {
+                    "name": "Sacred Flame",
+                    "description": "Flame-like radiance.",
+                    "target": "enemy",
+                    "spell_level": 0,
+                    "save": {
+                        "stat": "DEX", "dc": 12, "damage": "1d8",
+                        "damage_type": "radiant", "half_on_success": False,
+                    },
+                },
+                "warding_flare": {
+                    # Ally-targeted save effect: exercises the effect-kind
+                    # rejection (the enemy spells fail on target first).
+                    "name": "Warding Flare",
+                    "description": "A burst of light around an ally.",
+                    "target": "ally",
+                    "spell_level": 0,
+                    "save": {"stat": "DEX", "dc": 13, "damage": "1d6"},
+                },
+                "cure_wounds": {
+                    "name": "Cure Wounds",
+                    "description": "Healing touch.",
+                    "target": "ally",
+                    "spell_level": 1,
+                    "heal": "2d8",
+                },
+                "mage_armor": {
+                    "name": "Mage Armor",
+                    "description": "Protective magical force.",
+                    "target": "self",
+                    "spell_level": 1,
+                    "on_cast": {"id": "mage_armor", "rounds": 1},
+                },
+            },
+            "entities": {
+                "goblin": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 30, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+                "medic": {
+                    "type": "npc",
+                    "name": "Medic",
+                    "description": "A field medic.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "following": {"type": "boolean", "description": "Following?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 16, "ac": 12, "atk": 2, "dmg": "1d4+1"},
+                },
+            },
+        })
+
+    @pytest.fixture
+    def ooc_hard(self) -> HardGameState:
+        """Hard state for an INT-based caster with two 1st-level slots."""
+        return HardGameState.model_validate({
+            "player": {
+                "location": "room1",
+                "inventory": {},
+                "stats": {
+                    "STR": 10, "DEX": 14, "CON": 12,
+                    "INT": 16, "WIS": 10, "CHA": 10,
+                },
+                "level": 1,
+                "current_hp": 20,
+                "max_hp": 20,
+                "ac": 12,
+                "proficiency_bonus": 2,
+                "spellcasting_ability": "INT",
+                "spell_slots": {1: 2},
+                "abilities": [
+                    "fire_bolt", "sacred_flame", "warding_flare",
+                    "cure_wounds", "mage_armor",
+                ],
+            },
+            "flags": {},
+            "room_states": {"room1": {"visited": True}},
+            "entity_states": {
+                "goblin": {"alive": True, "current_hp": 30},
+                "medic": {"alive": True, "following": True, "current_hp": 16},
+            },
+            "room_contains": {"room1": {"goblin": 1, "medic": 1}},
+            "turn_count": 0,
+        })
+
+    def _ability(self, ability_id, target):
+        return CombatAction(
+            action_type="combat", combat_action="use_ability",
+            target=target, ability_id=ability_id, detail="Cast a spell!",
+        )
+
+    # -- Legal casts ----------------------------------------------------
+
+    def test_mage_armor_out_of_combat(self, ooc_hard, ooc_corpus):
+        result = resolve_action(
+            self._ability("mage_armor", "player"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success
+        entry = result.combat_log[0]
+        assert entry.action == "ability_on_cast"
+        assert entry.spell_id == "mage_armor"
+        # slot consumed; persistent status applied to the player
+        assert ooc_hard.player.spell_slots == {1: 1}
+        assert ooc_hard.player.status_effects.get("mage_armor") == 1
+        # Mage Armor's ac_base replaces the explicit base AC:
+        # 13 + DEX mod (+2) = 15
+        from mgmai.engine.combat import compute_player_ac
+        assert compute_player_ac(ooc_hard, ooc_corpus) == 15
+        # the status_effect.applied event is queued for dispatch
+        assert (
+            "status_effect.applied",
+            {"target_id": "player", "status_effect_id": "mage_armor",
+             "rounds": 1, "source": "ability"},
+        ) in result.events
+
+    def test_cure_wounds_out_of_combat_self(
+        self, ooc_hard, ooc_corpus, monkeypatch
+    ):
+        ooc_hard.player.current_hp = 10
+        # 2d8 = 3+3 = 6, + INT mod 3 = 9 healed
+        rand_vals = iter([3, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_action(
+            self._ability("cure_wounds", "player"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success
+        assert result.hard_changes.player_hp_delta == 9
+        entry = result.combat_log[0]
+        assert entry.action == "heal"
+        assert entry.damage == 9
+        assert entry.spell_id == "cure_wounds"
+        assert ooc_hard.player.spell_slots == {1: 1}
+
+    def test_cure_wounds_out_of_combat_ally_npc(
+        self, ooc_hard, ooc_corpus, monkeypatch
+    ):
+        ooc_hard.entity_states["medic"]["current_hp"] = 5
+        # 2d8 = 4+4 = 8, + INT mod 3 = 11 healed (5 -> 16, the max)
+        rand_vals = iter([4, 4])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_action(
+            self._ability("cure_wounds", "medic"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success
+        assert result.hard_changes.entity_state_changes["medic"]["current_hp"] == 16
+        assert ooc_hard.entity_states["medic"]["current_hp"] == 16
+        assert ooc_hard.player.spell_slots == {1: 1}
+
+    # -- Rejections -----------------------------------------------------
+
+    def test_enemy_targeted_spell_rejected(self, ooc_hard, ooc_corpus):
+        result = resolve_action(
+            self._ability("fire_bolt", "goblin"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success is False
+        assert "start combat" in result.error
+        assert ooc_hard.player.spell_slots == {1: 2}
+
+    def test_save_spell_out_of_combat_rejected(self, ooc_hard, ooc_corpus):
+        # sacred_flame is enemy-targeted; warding_flare is ally-targeted —
+        # both are save effects and thus combat-only
+        result = resolve_action(
+            self._ability("sacred_flame", "goblin"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success is False
+        result = resolve_action(
+            self._ability("warding_flare", "medic"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success is False
+        assert "only be used in combat" in result.error
+
+    def test_no_slot_out_of_combat(self, ooc_hard, ooc_corpus):
+        ooc_hard.player.spell_slots = {1: 0}
+        result = resolve_action(
+            self._ability("mage_armor", "player"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success is False
+        assert "No level-1 spell slots remaining" in result.error
+        assert "mage_armor" not in ooc_hard.player.status_effects
+
+    def test_unknown_and_unlearned_ability_out_of_combat(
+        self, ooc_hard, ooc_corpus
+    ):
+        result = resolve_action(
+            self._ability("wish", "player"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success is False
+        assert "Unknown ability" in result.error
+        ooc_corpus.abilities["wish"] = ooc_corpus.abilities["mage_armor"]
+        result = resolve_action(
+            self._ability("wish", "player"), ooc_hard, SoftGameState(),
+            ooc_corpus,
+        )
+        assert result.success is False
+        assert "do not know" in result.error
+
+    # -- Briefing --------------------------------------------------------
+
+    def test_player_state_briefing_carries_spell_fields(
+        self, ooc_hard, ooc_corpus
+    ):
+        from mgmai.context.assembler import _build_player_state
+        ooc_hard.player.status_effects["mage_armor"] = 1
+        briefing = _build_player_state(
+            ooc_hard, SoftGameState(), None, ooc_corpus
+        )
+        assert briefing.spell_slots == {1: 2}
+        by_id = {a["id"]: a for a in briefing.abilities}
+        ma = by_id["mage_armor"]
+        assert ma["spell_level"] == 1
+        assert ma["slot_level"] == 1
+        assert ma["effect_kind"] == "on_cast"
+        assert by_id["cure_wounds"]["effect_kind"] == "heal"
+        assert by_id["sacred_flame"]["save_dc"] == 13  # 8 + prof 2 + INT mod 3
+        assert briefing.status_effects[0]["id"] == "mage_armor"
+        # the active Mage Armor is reflected in the effective AC
+        assert briefing.effective_ac == 15
+
+
+# ------------------------------------------------------------------
+# 23. Concentration: tracking, break on damage, one-at-a-time
+# ------------------------------------------------------------------
+
+class TestConcentration:
+    """Concentration spells: the cast sets CombatState.concentration and a
+    ``concentrating`` status on the caster; taking damage forces a CON
+    save (DC max(10, damage // 2)) from every damage path — basic attacks,
+    NPC attacks, and opportunity attacks alike; failure, incapacitation,
+    death, or a second concentration spell ends it and removes the spell's
+    sustained status effects."""
+
+    @pytest.fixture
+    def conc_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Concentration Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1", "description": "A room.",
+                    "contains": ["goblin_a", "goblin_b", "acolyte", "sword"],
+                },
+            },
+            "abilities": {
+                "fire_bolt": {
+                    "name": "Fire Bolt",
+                    "description": "A mote of fire.",
+                    "target": "enemy",
+                    "spell_level": 0,
+                    "attack": {
+                        "stat": "INT", "proficient": True,
+                        "damage": "1d10", "damage_type": "fire",
+                    },
+                },
+                "sleep": {
+                    "name": "Sleep",
+                    "description": "Creatures fall unconscious.",
+                    "target": "enemy",
+                    "spell_level": 1,
+                    "concentration": True,
+                    "sustained_status_effects": ["incapacitated"],
+                    "save": {
+                        "stat": "WIS", "dc": 12, "damage": "",
+                        "apply_status_effect_on_failure": {
+                            "id": "incapacitated", "rounds": 10,
+                        },
+                    },
+                },
+                "hold_person": {
+                    "name": "Hold Person",
+                    "description": "Paralyzes a humanoid.",
+                    "target": "enemy",
+                    "spell_level": 1,
+                    "concentration": True,
+                    "sustained_status_effects": ["paralyzed"],
+                    "save": {
+                        "stat": "WIS", "dc": 12, "damage": "",
+                        "apply_status_effect_on_failure": {
+                            "id": "paralyzed", "rounds": 10,
+                        },
+                    },
+                },
+                "ward": {
+                    # Concentration + on_cast: the only concentration shape
+                    # not already rejected out of combat by the effect-kind
+                    # check.
+                    "name": "Ward",
+                    "description": "A protective ward.",
+                    "target": "self",
+                    "spell_level": 1,
+                    "concentration": True,
+                    "on_cast": {"id": "mage_armor", "rounds": 1},
+                },
+            },
+            "entities": {
+                "goblin_a": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 30, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+                "goblin_b": {
+                    "type": "npc",
+                    "description": "Another goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 30, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+                "acolyte": {
+                    "type": "npc",
+                    "description": "A cult fanatic.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {
+                        "hp": 18, "ac": 12, "atk": 4, "dmg": "1d6+1",
+                        "abilities": ["sleep"],
+                    },
+                },
+                "sword": {
+                    "type": "item",
+                    "name": "Sword",
+                    "description": "A plain sword.",
+                    "equip_block": {
+                        "equip_tags": ["weapon", "martial"],
+                        "damage_expr": "1d8", "damage_type": "slashing",
+                    },
+                },
+            },
+        })
+
+    @pytest.fixture
+    def conc_hard(self) -> HardGameState:
+        """Hard state for an INT-based caster (CON +1) with a sword."""
+        return HardGameState.model_validate({
+            "player": {
+                "location": "room1",
+                "inventory": {"sword": 1},
+                "equipped": ["sword"],
+                "weapon_proficiencies": ["martial"],
+                "stats": {
+                    "STR": 10, "DEX": 14, "CON": 12,
+                    "INT": 16, "WIS": 10, "CHA": 10,
+                },
+                "level": 1,
+                "current_hp": 20,
+                "max_hp": 20,
+                "ac": 12,
+                "proficiency_bonus": 2,
+                "spellcasting_ability": "INT",
+                "spell_slots": {1: 4},
+                "abilities": ["fire_bolt", "sleep", "hold_person", "ward"],
+            },
+            "flags": {},
+            "room_states": {"room1": {"visited": True}},
+            "entity_states": {
+                "goblin_a": {"alive": True, "current_hp": 30},
+                "goblin_b": {"alive": True, "current_hp": 30},
+                "acolyte": {"alive": True, "current_hp": 18},
+            },
+            "room_contains": {
+                "room1": {"goblin_a": 1, "goblin_b": 1, "acolyte": 1, "sword": 1},
+            },
+            "turn_count": 0,
+        })
+
+    def _combat_state(self, hard, order=("player", "goblin_a", "goblin_b"), allies=()):
+        hard.combat = CombatState(
+            active=True,
+            combatants=list(order),
+            allies=list(allies),
+            initiative_order=list(order),
+            current_index=0,
+            round_number=1,
+        )
+
+    def _ability(self, ability_id, target):
+        return CombatAction(
+            action_type="combat", combat_action="use_ability",
+            target=target, ability_id=ability_id, detail="Cast a spell!",
+        )
+
+    def _attack(self, target):
+        return CombatAction(
+            action_type="combat", combat_action="attack",
+            target=target, detail="Strike!",
+        )
+
+    @staticmethod
+    def _effects_of(hard, entity_id):
+        return hard.entity_states[entity_id].get("status_effects") or {}
+
+    # -- Casting sets concentration --------------------------------------
+
+    def test_sleep_sets_concentration_and_incapacitates(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        self._combat_state(conc_hard)
+        # goblin_a WIS save 5 + 0 < 13 -> fail -> incapacitated (its turn
+        # is skipped); goblin_b misses its attack
+        rand_vals = iter([5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sleep", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        combat = conc_hard.combat
+        assert combat.concentration == {"player": "sleep"}
+        assert conc_hard.player.status_effects.get("concentrating") == 1
+        assert "incapacitated" in self._effects_of(conc_hard, "goblin_a")
+        assert conc_hard.player.spell_slots == {1: 3}
+        assert result["combat_log"][0].action == "ability_save"
+
+    # -- Break on damage (every damage path) ------------------------------
+
+    def test_concentration_breaks_on_npc_attack_damage(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        self._combat_state(conc_hard)
+        # sleep lands on goblin_a; goblin_b's basic attack hits the player
+        # for 6; the player's CON save fails: DC max(10, 6 // 2) = 10,
+        # 3 + 1 (CON) = 4 < 10
+        rand_vals = iter([5, 15, 4, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sleep", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {}
+        assert "concentrating" not in conc_hard.player.status_effects
+        assert "incapacitated" not in self._effects_of(conc_hard, "goblin_a")
+        checks = [
+            e for e in result["combat_log"] if e.action == "concentration_check"
+        ]
+        assert len(checks) == 1
+        assert checks[0].attack_id == "sleep"
+        assert checks[0].on_hit_effects[0]["save_dc"] == 10
+        assert checks[0].on_hit_effects[0]["save_success"] is False
+
+    def test_concentration_holds_on_successful_save(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        self._combat_state(conc_hard)
+        # same hit, but the CON save succeeds: 12 + 1 = 13 >= 10
+        rand_vals = iter([5, 15, 4, 12])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sleep", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {"player": "sleep"}
+        assert conc_hard.player.status_effects.get("concentrating") == 1
+        assert "incapacitated" in self._effects_of(conc_hard, "goblin_a")
+        checks = [
+            e for e in result["combat_log"] if e.action == "concentration_check"
+        ]
+        assert len(checks) == 1
+        assert checks[0].on_hit_effects[0]["save_success"] is True
+
+    def test_concentration_breaks_on_opportunity_attack_damage(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        self._combat_state(conc_hard)
+        # Round 1: sleep lands on goblin_a; goblin_b misses.
+        rand_vals = iter([5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sleep", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {"player": "sleep"}
+
+        # Round 2: engaged with goblin_b, the player melee-attacks
+        # goblin_a, provoking an OA from goblin_b.  The OA hits for 6;
+        # the CON save fails (3 + 1 < 10) and concentration breaks.  The
+        # player's own attack then hits goblin_a (who, no longer
+        # incapacitated, acts later and misses, as does goblin_b).
+        conc_hard.combat.engagement = [["goblin_b", "player"]]
+        rand_vals = iter([15, 4, 3, 15, 4, 1, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._attack("goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        actions = [e.action for e in result["combat_log"]]
+        assert "opportunity_attack" in actions
+        assert "concentration_check" in actions
+        assert conc_hard.combat.concentration == {}
+        assert "concentrating" not in conc_hard.player.status_effects
+        assert "incapacitated" not in self._effects_of(conc_hard, "goblin_a")
+
+    def test_player_basic_attack_breaks_enemy_concentration(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        # The acolyte may cast sleep only once, so it can't recast after
+        # its concentration breaks (spells skip uses_per_combat only for
+        # the player, who pays slots instead).
+        conc_corpus.abilities["sleep"].uses_per_combat = 1
+        self._combat_state(conc_hard, order=("player", "acolyte"))
+        # Round 1: the player waits; the acolyte casts sleep (authored DC
+        # 12 for NPC casters), the player's WIS save succeeds: 15 >= 12.
+        # The acolyte is now concentrating.
+        rand_vals = iter([15])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            WaitAction(action_type="wait", detail="Hold."), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {"acolyte": "sleep"}
+        assert "incapacitated" not in conc_hard.player.status_effects
+
+        # Round 2: the player's sword attack hits the acolyte for 4; the
+        # acolyte's concentration save uses its flat save_bonus:
+        # DC max(10, 4 // 2) = 10, 3 + 0 < 10 -> break.  Its sleep is
+        # spent, so it falls back to a basic attack, which misses.
+        rand_vals = iter([15, 4, 3, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._attack("acolyte"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {}
+        assert "concentrating" not in self._effects_of(conc_hard, "acolyte")
+        checks = [
+            e for e in result["combat_log"] if e.action == "concentration_check"
+        ]
+        assert len(checks) == 1
+        assert checks[0].actor == "acolyte"
+        assert checks[0].on_hit_effects[0]["save_success"] is False
+
+    # -- One concentration at a time --------------------------------------
+
+    def test_second_concentration_spell_drops_first(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        self._combat_state(conc_hard)
+        # Round 1: sleep incapacitates goblin_a; goblin_b misses.
+        rand_vals = iter([5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sleep", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert "incapacitated" in self._effects_of(conc_hard, "goblin_a")
+
+        # Round 2: hold_person on goblin_b (save 5 < 13 -> paralyzed)
+        # drops the sleep concentration first: goblin_a's incapacitated is
+        # removed, so it acts (and misses); goblin_b loses its turn.
+        rand_vals = iter([5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("hold_person", "goblin_b"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {"player": "hold_person"}
+        assert conc_hard.player.status_effects.get("concentrating") == 1
+        assert "incapacitated" not in self._effects_of(conc_hard, "goblin_a")
+        assert "paralyzed" in self._effects_of(conc_hard, "goblin_b")
+
+    def test_non_concentration_spell_leaves_concentration_alone(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        self._combat_state(conc_hard)
+        # Round 1: sleep incapacitates goblin_a; goblin_b misses.
+        rand_vals = iter([5, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sleep", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+
+        # Round 2: Fire Bolt (not concentration) hits goblin_b for 6;
+        # goblin_a stays incapacitated, goblin_b misses its attack.
+        rand_vals = iter([15, 6, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("fire_bolt", "goblin_b"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {"player": "sleep"}
+        assert conc_hard.player.status_effects.get("concentrating") == 1
+        assert "incapacitated" in self._effects_of(conc_hard, "goblin_a")
+        assert conc_hard.entity_states["goblin_b"]["current_hp"] == 24
+
+    # -- Other ways concentration ends ------------------------------------
+
+    def test_combat_end_clears_concentrating_status(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        self._combat_state(conc_hard, order=("player", "goblin_a"))
+        # Round 1: sleep lands; the goblin is incapacitated.
+        rand_vals = iter([5])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sleep", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {"player": "sleep"}
+
+        # Round 2: Fire Bolt kills the goblin (hp 5, 6 damage) — combat
+        # ends and the combat-scoped ``concentrating`` status is cleared
+        # along with the CombatState (and its concentration map).
+        conc_hard.entity_states["goblin_a"]["current_hp"] = 5
+        rand_vals = iter([15, 6])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("fire_bolt", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert result["combat_ended_reason"] == "victory"
+        assert conc_hard.combat is None
+        assert "concentrating" not in conc_hard.player.status_effects
+
+    def test_incapacitated_caster_loses_concentration(
+        self, conc_hard, conc_corpus, monkeypatch
+    ):
+        # The acolyte casts hold_person (paralyzed, not incapacitated) so
+        # its sustained status doesn't collide with the player's sleep —
+        # sustained cleanup is unconditional (no source tracking), so two
+        # spells sustaining the same status would over-remove.
+        conc_corpus.entities["acolyte"].combat.abilities = ["hold_person"]
+        self._combat_state(conc_hard, order=("player", "goblin_a", "acolyte"))
+        # The player's sleep incapacitates goblin_a (save 5 < 13); the
+        # acolyte casts hold_person back and the player fails the WIS save
+        # (3 < 12): an incapacitated caster's concentration ends, which
+        # also removes sleep's sustained incapacitated from goblin_a.
+        rand_vals = iter([5, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sleep", "goblin_a"), conc_hard, conc_corpus
+        )
+        assert result["success"]
+        assert conc_hard.combat.concentration == {"acolyte": "hold_person"}
+        assert "concentrating" not in conc_hard.player.status_effects
+        assert "paralyzed" in conc_hard.player.status_effects
+        assert "incapacitated" not in self._effects_of(conc_hard, "goblin_a")
+
+    def test_out_of_combat_concentration_spell_rejected(
+        self, conc_hard, conc_corpus
+    ):
+        # Sleep (enemy save spell) is already rejected out of combat;
+        # a concentration on_cast spell needs the explicit concentration
+        # rejection (no CombatState to track it on).
+        result = resolve_action(
+            self._ability("sleep", "goblin_a"), conc_hard, SoftGameState(),
+            conc_corpus,
+        )
+        assert result.success is False
+        result = resolve_action(
+            self._ability("ward", "player"), conc_hard, SoftGameState(),
+            conc_corpus,
+        )
+        assert result.success is False
+        assert "concentration" in result.error
+        assert conc_hard.player.spell_slots == {1: 4}
+        assert "mage_armor" not in conc_hard.player.status_effects
+
+
+# ------------------------------------------------------------------
 # 18. Positioning: engagement, opportunity attacks, Disengage, impede
 # ------------------------------------------------------------------
 

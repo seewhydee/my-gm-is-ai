@@ -32,6 +32,7 @@ from mgmai.models.actions import (
     WaitAction,
 )
 from mgmai.models.briefing import (
+    BriefingEntity,
     BriefingExit,
     BriefingRoom,
     CombatBriefing,
@@ -262,6 +263,161 @@ class TestUseAbility:
         )
         assert error is not None
         assert "rally" in error and "korbar" in error
+
+    def _spell_briefing(self, spell_slots: dict) -> GMBriefing:
+        briefing = _combat_briefing(abilities=[
+            {"id": "magic_missile", "name": "Magic Missile",
+             "description": "Three unerring darts.", "target": "enemy",
+             "uses_remaining": None,
+             "effect": "level 1 spell, evocation: 3d4+3 force damage (no attack roll or save)",
+             "spell_level": 1, "concentration": False, "slot_level": 1},
+            {"id": "fire_bolt", "name": "Fire Bolt",
+             "description": "A mote of fire.", "target": "enemy",
+             "uses_remaining": None,
+             "effect": "cantrip, evocation: attack (INT) for 1d10 fire damage",
+             "spell_level": 0, "concentration": False, "slot_level": 0},
+        ])
+        briefing.combat_state.spell_slots = spell_slots
+        return briefing
+
+    def test_leveled_spell_without_slot_flagged(self):
+        error = validate_ruling_action(
+            _combat("use_ability", "goblin", "magic_missile"),
+            self._spell_briefing({1: 0}),
+        )
+        assert error is not None
+        assert "no level-1 spell slots" in error
+
+    def test_leveled_spell_with_slot_passes(self):
+        assert validate_ruling_action(
+            _combat("use_ability", "goblin", "magic_missile"),
+            self._spell_briefing({1: 1}),
+        ) is None
+
+    def test_cantrip_needs_no_slot(self):
+        assert validate_ruling_action(
+            _combat("use_ability", "goblin", "fire_bolt"),
+            self._spell_briefing({}),
+        ) is None
+
+
+class TestUseAbilityOutOfCombat:
+    """Out-of-combat use_ability: self/ally heal/on_cast abilities only."""
+
+    def _ooc_briefing(self, spell_slots: dict | None = None) -> GMBriefing:
+        briefing = _peaceful_briefing()
+        briefing.current_room.entities_visible = [
+            BriefingEntity(
+                id="medic", name="Medic", type="npc",
+                description="A field medic.", state={"alive": True},
+            ),
+        ]
+        briefing.player_state.abilities = [
+            {"id": "cure_wounds", "name": "Cure Wounds",
+             "description": "Healing touch.", "target": "ally",
+             "uses_remaining": None,
+             "effect": "level 1 spell, abjuration: heals 2d8",
+             "effect_kind": "heal",
+             "spell_level": 1, "concentration": False, "slot_level": 1},
+            {"id": "mage_armor", "name": "Mage Armor",
+             "description": "Protective magical force.", "target": "self",
+             "uses_remaining": None,
+             "effect": "level 1 spell, abjuration: applies status 'mage_armor'",
+             "effect_kind": "on_cast",
+             "spell_level": 1, "concentration": False, "slot_level": 1},
+            {"id": "fire_bolt", "name": "Fire Bolt",
+             "description": "A mote of fire.", "target": "enemy",
+             "uses_remaining": None,
+             "effect": "cantrip, evocation: attack (INT) for 1d10 fire damage",
+             "effect_kind": "attack",
+             "spell_level": 0, "concentration": False, "slot_level": 0},
+            {"id": "warding_flare", "name": "Warding Flare",
+             "description": "A burst of light.", "target": "ally",
+             "uses_remaining": None,
+             "effect": "cantrip: DEX save DC 13: 1d6 damage",
+             "effect_kind": "save",
+             "spell_level": 0, "concentration": False, "slot_level": 0},
+        ]
+        if spell_slots is not None:
+            briefing.player_state.spell_slots = spell_slots
+        return briefing
+
+    def test_valid_self_buff_passes(self):
+        assert validate_ruling_action(
+            _combat("use_ability", "player", "mage_armor"),
+            self._ooc_briefing({1: 1}),
+        ) is None
+
+    def test_valid_ally_heal_passes(self):
+        assert validate_ruling_action(
+            _combat("use_ability", "medic", "cure_wounds"),
+            self._ooc_briefing({1: 1}),
+        ) is None
+        assert validate_ruling_action(
+            _combat("use_ability", "player", "cure_wounds"),
+            self._ooc_briefing({1: 1}),
+        ) is None
+
+    def test_unknown_ability_flagged(self):
+        error = validate_ruling_action(
+            _combat("use_ability", "player", "fireball"),
+            self._ooc_briefing(),
+        )
+        assert error is not None
+        assert "player_state.abilities" in error
+
+    def test_enemy_targeted_ability_flagged(self):
+        error = validate_ruling_action(
+            _combat("use_ability", "medic", "fire_bolt"),
+            self._ooc_briefing(),
+        )
+        assert error is not None
+        assert "targets an enemy" in error
+
+    def test_save_effect_flagged(self):
+        error = validate_ruling_action(
+            _combat("use_ability", "medic", "warding_flare"),
+            self._ooc_briefing(),
+        )
+        assert error is not None
+        assert "save" in error and "combat" in error
+
+    def test_self_ability_with_npc_target_flagged(self):
+        error = validate_ruling_action(
+            _combat("use_ability", "medic", "mage_armor"),
+            self._ooc_briefing({1: 1}),
+        )
+        assert error is not None
+        assert "player" in error
+
+    def test_ally_ability_with_unknown_target_flagged(self):
+        error = validate_ruling_action(
+            _combat("use_ability", "goblin", "cure_wounds"),
+            self._ooc_briefing({1: 1}),
+        )
+        assert error is not None
+        assert "medic" in error
+
+    def test_leveled_spell_without_slot_flagged(self):
+        error = validate_ruling_action(
+            _combat("use_ability", "player", "mage_armor"),
+            self._ooc_briefing({1: 0}),
+        )
+        assert error is not None
+        assert "no level-1 spell slots" in error
+
+    def test_leveled_spell_with_slot_passes(self):
+        assert validate_ruling_action(
+            _combat("use_ability", "player", "mage_armor"),
+            self._ooc_briefing({1: 1}),
+        ) is None
+
+    def test_other_combat_actions_out_of_combat_unchanged(self):
+        # attack/use_item out of combat fall through to the engine (which
+        # converts attack to the combat-starting interact); no validation.
+        assert validate_ruling_action(
+            _combat("attack", "goblin"), self._ooc_briefing()
+        ) is None
 
 
 class TestMove:

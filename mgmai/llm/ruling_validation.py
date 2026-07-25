@@ -140,6 +140,101 @@ def _validate_use_ability(
                 f"\"enemy\", so 'target' must be an enemy-side combatant "
                 f"ID. Valid enemy IDs: {', '.join(enemies) if enemies else 'none'}."
             )
+    slot_level = abilities[action.ability_id].get("slot_level")
+    if slot_level is not None and slot_level >= 1:
+        pool = briefing.combat_state.spell_slots or {}
+        if pool.get(slot_level, 0) <= 0:
+            return (
+                f"Invalid ability_id '{action.ability_id}' for combat_action "
+                f"\"use_ability\": '{action.ability_id}' is a level-{slot_level} "
+                f"spell and the player has no level-{slot_level} spell slots "
+                f"remaining (see combat_state.spell_slots). Choose a different "
+                f"ability or a cantrip (spell_level 0 spells cost no slot)."
+            )
+    return None
+
+
+def _validate_use_ability_out_of_combat(
+    action: CombatAction, briefing: GMBriefing
+) -> Optional[str]:
+    """Out-of-combat ``use_ability``: self/ally heal/on_cast abilities only.
+
+    Mirrors the engine's out-of-combat ability rules: the ability must be
+    known (listed in ``player_state.abilities``), must not target an enemy,
+    must have a heal or on_cast effect (attack/save effects need a live
+    combat), and leveled spells need a slot.
+    """
+    abilities = {
+        str(a.get("id")): a
+        for a in briefing.player_state.abilities
+        if a.get("id") is not None
+    }
+    if action.ability_id not in abilities:
+        if abilities:
+            listing = ", ".join(abilities)
+        else:
+            listing = "none — the player has no abilities, so use_ability is not possible"
+        return (
+            f"Invalid ability_id '{action.ability_id}'. Outside combat, for "
+            f"combat_action \"use_ability\", 'ability_id' must be an ID from "
+            f"player_state.abilities. Valid ability IDs: {listing}."
+        )
+    entry = abilities[action.ability_id]
+    kind = entry.get("target")
+    if kind == "enemy":
+        return (
+            f"Invalid ability_id '{action.ability_id}' outside combat: "
+            f"'{action.ability_id}' targets an enemy, which requires combat. "
+            f"To fight, start combat first with an 'interact' action with "
+            f"interaction_id \"attack\" on the target."
+        )
+    effect_kind = entry.get("effect_kind")
+    if effect_kind not in ("heal", "on_cast"):
+        return (
+            f"Invalid ability_id '{action.ability_id}' outside combat: "
+            f"'{action.ability_id}' has a {effect_kind} effect, which needs "
+            f"a combatant to resolve against. Outside combat only healing "
+            f"and on-cast (buff) abilities work; attack/save effects "
+            f"require starting combat first."
+        )
+    if entry.get("concentration"):
+        return (
+            f"Invalid ability_id '{action.ability_id}' outside combat: "
+            f"'{action.ability_id}' requires concentration, which is only "
+            f"tracked in combat. Cast it once combat has started."
+        )
+    if kind == "self":
+        if action.target != "player":
+            return (
+                f"Invalid target '{action.target}' for ability "
+                f"'{action.ability_id}': that ability's target kind is "
+                f"\"self\", so 'target' must be \"player\"."
+            )
+    elif kind == "ally" and action.target != "player":
+        allies = {
+            str(e.id)
+            for e in briefing.current_room.entities_visible
+            if e.type == "npc" and e.state.get("alive") is not False
+        }
+        if action.target not in allies:
+            return (
+                f"Invalid target '{action.target}' for ability "
+                f"'{action.ability_id}': that ability's target kind is "
+                f"\"ally\", so 'target' must be \"player\" or a living "
+                f"allied NPC in the current room. Valid NPC IDs: "
+                f"{', '.join(sorted(allies)) if allies else 'none'}."
+            )
+    slot_level = entry.get("slot_level")
+    if slot_level is not None and slot_level >= 1:
+        pool = briefing.player_state.spell_slots or {}
+        if pool.get(slot_level, 0) <= 0:
+            return (
+                f"Invalid ability_id '{action.ability_id}' for combat_action "
+                f"\"use_ability\": '{action.ability_id}' is a level-{slot_level} "
+                f"spell and the player has no level-{slot_level} spell slots "
+                f"remaining (see player_state.spell_slots). Choose a different "
+                f"ability or a cantrip (spell_level 0 spells cost no slot)."
+            )
     return None
 
 
@@ -202,6 +297,11 @@ def validate_ruling_action(action, briefing: GMBriefing) -> Optional[str]:
     string addressed to the model, suitable for the corrective retry prompt.
     """
     if briefing.combat_state is None:
+        if (
+            isinstance(action, CombatAction)
+            and action.combat_action == "use_ability"
+        ):
+            return _validate_use_ability_out_of_combat(action, briefing)
         return None
     if isinstance(action, CombatAction):
         if action.combat_action == "use_item":

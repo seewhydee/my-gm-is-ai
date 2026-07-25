@@ -647,12 +647,17 @@ are rejected.
 |-----------------|--------|----------|-------------|
 | `combat_action` | string | yes      | One of `attack`, `use_item`, `use_ability`, `maneuver`. |
 | `target`        | string | yes, except for `maneuver` | For `attack`: an enemy combatant. For `use_item`: an item entity ID in `player.inventory` with a `consumable` block. For `use_ability`: the ability's target (enemy or ally/self, per the ability definition). Ignored for `maneuver`. |
-| `ability_id`    | string | only for `use_ability` | ID of an ability the player knows (`player.abilities`) with uses remaining. |
+| `ability_id`    | string | only for `use_ability` | ID of an ability the player knows (`player.abilities`) with uses remaining — or, for a leveled spell, with a `spell_slots` entry of its level remaining.  Spells are abilities with `spell_level` set; `use_ability` covers them (see `doc/spellcasting.md`). |
 | `maneuver`      | string | only for `maneuver` | The maneuver to perform; currently only `"disengage"` — the player breaks all engagement pairs without provoking opportunity attacks, at the cost of the action. |
 | `positioning`   | object | no       | Optional engagement assertion (combat only, on `combat`, `wait`, and `interact` actions): `{"engage": [[a, b], ...], "disengage": [[mover, stationary], ...], "impede": [enemy_id, ...]}`. See `doc/combat.md` — *Positioning*. |
 
 This is the player's one action per combat round; after it resolves, the
 remaining combatants act and the round advances.  See `doc/combat.md`.
+Exception: a spell with `casting_time: "bonus_action"` is cast as a bonus
+action — the cast resolves but does **not** end the player's turn.  Only
+one bonus action is available per turn, and only one leveled spell
+(`spell_level` ≥ 1) may be cast per turn, in either order.  See
+`doc/spellcasting.md`.
 
 **Engine validation:**
 - `attack`: `target` must be a living enemy combatant.  Out of combat,
@@ -661,8 +666,14 @@ remaining combatants act and the round advances.  See `doc/combat.md`.
 - `use_item`: `target` must be in `player.inventory` and have a
   `consumable` block; the item is consumed on use.
 - `use_ability`: `ability_id` must be in `player.abilities`, have uses
-  remaining (`uses_per_combat`), and `target` must be a valid combatant
-  for the ability's `target` type (`self`/`ally`/`enemy`).
+  remaining (`uses_per_combat`; leveled spells consume a `spell_slots`
+  entry of their level instead, cantrips cost nothing), and `target`
+  must be a valid combatant for the ability's `target` type
+  (`self`/`ally`/`enemy`).  Player-cast spells derive their save DC and
+  attack bonus from `spellcasting_ability`.  Out of combat, `use_ability`
+  is valid only for `self`/`ally` abilities with heal or on-cast effects
+  (e.g. Cure Wounds, Mage Armor); enemy targets, attack/save effects, and
+  concentration spells are rejected ("start combat first").
 - `maneuver`: no target; breaks the player's engagement pairs and
   consumes the action.
 - `positioning`: ids must be living combatants; `engage`/`disengage`
@@ -724,7 +735,7 @@ whether to continue the chain:
 | `wait`            | null (no target)                                | none; advances turn counter                |
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
 | `gear`            | n/a (targets in `equip_targets`/`unequip_targets`) | each equip target must be in inventory with an `equip_block`; each unequip target must be equipped; validates tag conflicts and `max_equipped`; in combat: weapon-tag items only, costs the combat turn |
-| `combat`          | combat target (enemy, item, or ability target; none for `maneuver`) | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack`; `positioning` assertion optional on `combat`/`wait`/`interact` |
+| `combat`          | combat target (enemy, item, or ability target; none for `maneuver`) | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack`; out-of-combat `use_ability` allowed for self/ally heal/on-cast abilities; `positioning` assertion optional on `combat`/`wait`/`interact` |
 
 ---
 
@@ -1008,7 +1019,7 @@ missing required fields, invalid JSON), the engine returns:
 {
   "success": false,
   "error": "invalid_action",
-  "message": "Unknown action type 'cast_spell'. Supported types: move, examine, interact, talk, transfer, wait, ooc_discussion.",
+  "message": "Unknown action type 'cast_spell'. Supported types: move, examine, interact, talk, transfer, wait, combat, ooc_discussion, gear.",
   "player_input_echo": "<original player input>"
 }
 ```

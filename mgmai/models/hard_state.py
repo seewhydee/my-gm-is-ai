@@ -64,6 +64,15 @@ class PlayerState(BaseModel):
     status_effects: Dict[str, int] = Field(default_factory=dict)
     # IDs of combat abilities the player knows (corpus.abilities keys).
     abilities: list[str] = Field(default_factory=list)
+    # 5e spellcasting: the player's casting stat ("INT"/"WIS"/"CHA"); one
+    # casting ability for all spells (per-spell overrides are a future
+    # multiclass concern).
+    spellcasting_ability: Optional[str] = None
+    # Spell level (1-9) -> slots remaining; empty = no leveled spells
+    # (cantrips only).  Set directly by char-sheets and tests; recharged
+    # only when rests land.  JSON object keys are strings, so saves show
+    # {"1": 2}; pydantic coerces the keys back to int on model_validate.
+    spell_slots: Dict[int, int] = Field(default_factory=dict)
 
 class GameOverState(BaseModel):
     type: str  # "win" or "lose"

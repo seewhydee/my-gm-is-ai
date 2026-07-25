@@ -13,6 +13,11 @@
     "name": "Charmed",
     "description": "Can't attack the charmer or target the charmer with harmful abilities or magical effects; the charmer has advantage on social ability checks with it. (Adjudicated by the GM; no roll modifiers.)"
   },
+  "concentrating": {
+    "name": "Concentrating",
+    "description": "Maintaining concentration on a spell; ends when the caster takes damage and fails a Constitution save (DC 10 or half the damage, whichever is higher), becomes incapacitated, dies, or casts another concentration spell.",
+    "duration": "until_cleared"
+  },
   "deafened": {
     "name": "Deafened",
     "description": "Can't hear; automatically fails ability checks that require hearing. (Adjudicated by the GM; no roll modifiers.)"
@@ -43,6 +48,17 @@
       "5e": {
         "advantage_on_attack": true,
         "disadvantage_against": true
+      }
+    }
+  },
+  "mage_armor": {
+    "name": "Mage Armor",
+    "description": "The Mage Armor spell: the target's base AC becomes 13 + its Dexterity modifier; ends when the target dons armor or the effect is cleared.",
+    "scope": "persistent",
+    "duration": "until_cleared",
+    "system_effects": {
+      "5e": {
+        "ac_base": 13
       }
     }
   },

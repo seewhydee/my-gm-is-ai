@@ -300,6 +300,25 @@ non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 - **Rooms**: Market Alley (start, all combatants, exit east) → Dead-End
   Court
 
+## The spell arena fixture
+
+Located at `tests/integration/fixtures/spell_arena/`, validated by a
+non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
+Built for spellcasting scenarios: the player is a caster whose spells
+come from the SRD spell pack (not declared in the fixture corpus).  No
+scenarios use this fixture yet — it is reserved for future
+spellcasting playtests (see `spellcasting-plan.md`).
+
+- **Player** (level 1 wizard): quarterstaff (1d6 bludgeoning), 1 potion
+  of healing — both from the SRD data pack — `spellcasting_ability:
+  "INT"` (INT 16), two 1st-level `spell_slots`, knows `fire_bolt`
+  (cantrip, 1d10 fire attack), `mage_armor` (on-cast, base AC 13 + DEX),
+  and `magic_missile` (auto-damage, 3d4+3 force); HP 8, AC 12
+- **Goblin grunt**: HP 11, AC 13, rusty shortsword (1d6 slashing)
+- **Hobgoblin**: HP 18, AC 13, morningstar (1d8+1 bludgeoning)
+- **Rooms**: Arena (start, both enemies, exit north to corridor) → Exit
+  Corridor
+
 ## The indicator hall fixture
 
 Located at `tests/integration/fixtures/indicator_hall/`, validated by a

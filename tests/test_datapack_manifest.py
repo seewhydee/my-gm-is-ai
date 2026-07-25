@@ -62,6 +62,17 @@ class TestDatapackManifestSync:
                 f"condition ID {cond_id!r} missing from manifest"
             )
 
+    def test_manifest_lists_all_spell_ids(self) -> None:
+        from mgmai.datapack import load_pack
+
+        spells = load_pack("5e", "spells")
+        manifest_text = MANIFEST_PATH.read_text(encoding="utf-8")
+        assert "## Spells" in manifest_text
+        for spell_id in spells:
+            assert f"`{spell_id}`" in manifest_text, (
+                f"spell ID {spell_id!r} missing from manifest"
+            )
+
     def test_manifest_does_not_leak_stats(self) -> None:
         manifest_text = MANIFEST_PATH.read_text(encoding="utf-8")
         for keyword in ("damage_expr", "damage_type", "equip_block",

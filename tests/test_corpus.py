@@ -43,6 +43,7 @@ from mgmai.models.corpus import (
     StatModifier,
     StatsBlock,
 )
+from mgmai.models.hard_state import PlayerState
 
 
 class TestModuleCorpus:
@@ -1323,3 +1324,124 @@ class TestCombatBlockOnHit:
             "on_hit_effects": [data],
         })
         assert cb.on_hit_effects[0].success.set_flag == {"poisoned": True}
+
+
+class TestAbilitySpellcasting:
+    """Spell fields on Ability and the auto_damage / on_cast effect kinds."""
+
+    def test_defaults_mean_not_a_spell(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        a = Ability(name="Slash", target="enemy",
+                    attack={"stat": "STR", "damage": "1d8"})
+        assert a.spell_level is None
+        assert a.school == "" and a.range == "" and a.duration == ""
+        assert a.components == ""
+        assert a.casting_time == "action"
+        assert a.concentration is False and a.ritual is False
+        assert a.auto_damage is None and a.on_cast is None
+
+    def test_spell_fields(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        a = Ability(
+            name="Sleep", target="enemy", spell_level=1,
+            school="enchantment", range="60 feet",
+            duration="Concentration, up to 1 minute",
+            components="V, S, M (a pinch of sand)", concentration=True,
+            save={"stat": "WIS", "dc": 12},
+        )
+        assert a.spell_level == 1
+        assert a.school == "enchantment" and a.concentration is True
+
+    def test_invalid_casting_time_rejected(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        with pytest.raises(ValidationError):
+            Ability(name="Bad", target="enemy", casting_time="free",
+                    attack={"stat": "INT", "damage": "1d10"})
+
+    def test_auto_damage_effect_kind(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        a = Ability(name="Magic Missile", target="enemy", spell_level=1,
+                    auto_damage={"damage": "3d4+3", "damage_type": "force"})
+        assert a.auto_damage is not None
+        assert a.auto_damage.damage == "3d4+3"
+        assert a.auto_damage.damage_type == "force"
+
+    def test_on_cast_effect_kind(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        a = Ability(name="Mage Armor", target="self", spell_level=1,
+                    on_cast={"id": "mage_armor", "rounds": 1})
+        assert a.on_cast is not None and a.on_cast.id == "mage_armor"
+
+    def test_shape_validator_rejects_effect_combos(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        with pytest.raises(ValidationError, match="exactly one effect"):
+            Ability(name="Bad", target="enemy",
+                    attack={"stat": "INT", "damage": "1d10"},
+                    auto_damage={"damage": "1d4", "damage_type": "force"})
+        with pytest.raises(ValidationError, match="exactly one effect"):
+            Ability(name="Bad", target="self", heal="1d8",
+                    on_cast={"id": "mage_armor"})
+        with pytest.raises(ValidationError, match="exactly one effect"):
+            Ability(name="Bad", target="enemy")
+
+    def test_heal_enemy_rule_unchanged(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        with pytest.raises(ValidationError, match="heal abilities"):
+            Ability(name="Bad", target="enemy", heal="1d8")
+
+    def test_effect_summary_new_kinds(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        mm = Ability(name="Magic Missile", target="enemy",
+                     auto_damage={"damage": "3d4+3", "damage_type": "force"})
+        assert "3d4+3 force" in mm.effect_summary()
+        ma = Ability(name="Mage Armor", target="self",
+                     on_cast={"id": "mage_armor", "rounds": 1})
+        assert "mage_armor" in ma.effect_summary()
+
+    def test_effect_summary_surfaces_spell_metadata(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        fb = Ability(name="Fire Bolt", target="enemy", spell_level=0,
+                     school="evocation",
+                     attack={"stat": "INT", "damage": "1d10", "damage_type": "fire"})
+        summary = fb.effect_summary()
+        assert "cantrip" in summary and "evocation" in summary
+        sl = Ability(name="Sleep", target="enemy", spell_level=1,
+                     school="enchantment", concentration=True,
+                     save={"stat": "WIS", "dc": 12})
+        summary = sl.effect_summary()
+        assert "level 1" in summary and "concentration" in summary
+
+    def test_non_spell_summary_unchanged(self) -> None:
+        from mgmai.models.corpus import Ability
+
+        a = Ability(name="Slash", target="enemy",
+                    attack={"stat": "STR", "damage": "1d8", "damage_type": "slashing"})
+        assert a.effect_summary() == "attack (STR) for 1d8 slashing damage"
+
+
+class TestPlayerSpellcastingState:
+    """spellcasting_ability / spell_slots on PlayerState."""
+
+    def test_defaults(self) -> None:
+        p = PlayerState(location="room1")
+        assert p.spellcasting_ability is None
+        assert p.spell_slots == {}
+
+    def test_spell_slots_json_round_trip(self) -> None:
+        p = PlayerState(location="room1", spellcasting_ability="INT",
+                        spell_slots={1: 2, 2: 1})
+        dumped = p.model_dump(mode="json")
+        # JSON object keys are strings; pydantic coerces them back to int.
+        assert dumped["spell_slots"] == {"1": 2, "2": 1}
+        loaded = PlayerState.model_validate(dumped)
+        assert loaded.spell_slots == {1: 2, 2: 1}
+        assert loaded.spellcasting_ability == "INT"

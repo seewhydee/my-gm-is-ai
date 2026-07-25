@@ -1,0 +1,91 @@
+{
+  "fire_bolt": {
+    "name": "Fire Bolt",
+    "description": "A mote of fire hurled at a creature or object within range.",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "120 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "INT", "proficient": true, "damage": "1d10", "damage_type": "fire" }
+  },
+  "sacred_flame": {
+    "name": "Sacred Flame",
+    "description": "Flame-like radiance descends on a creature; it ignores half cover.",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "save": { "stat": "DEX", "dc": 12, "damage": "1d8", "damage_type": "radiant", "half_on_success": false }
+  },
+  "cure_wounds": {
+    "name": "Cure Wounds",
+    "description": "A creature you touch regains hit points. (The casting-ability bonus is added by the engine at cast time.)",
+    "target": "ally",
+    "spell_level": 1,
+    "school": "abjuration",
+    "casting_time": "action",
+    "range": "Touch",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "heal": "2d8"
+  },
+  "magic_missile": {
+    "name": "Magic Missile",
+    "description": "Three glowing darts of magical force strike unerringly; each dart deals 1d4+1 force damage.",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "120 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "auto_damage": { "damage": "3d4+3", "damage_type": "force" }
+  },
+  "healing_word": {
+    "name": "Healing Word",
+    "description": "A creature you can see regains hit points. Cast as a bonus action; treated as an action until the bonus-action economy lands.",
+    "target": "ally",
+    "spell_level": 1,
+    "school": "abjuration",
+    "casting_time": "bonus_action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V",
+    "heal": "2d4"
+  },
+  "mage_armor": {
+    "name": "Mage Armor",
+    "description": "Protective magical force surrounds the target: base AC becomes 13 + its Dexterity modifier until it dons armor or the spell is dismissed.",
+    "target": "self",
+    "spell_level": 1,
+    "school": "abjuration",
+    "casting_time": "action",
+    "range": "Touch",
+    "duration": "8 hours",
+    "components": "V, S, M (a piece of cured leather)",
+    "on_cast": { "id": "mage_armor", "rounds": 1 }
+  },
+  "sleep": {
+    "name": "Sleep",
+    "description": "Creatures fall unconscious. Simplified: a single WIS save or be incapacitated; the two-stage unconscious ladder and waking on damage are not modeled.",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "enchantment",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Concentration, up to 1 minute",
+    "components": "V, S, M (a pinch of sand)",
+    "concentration": true,
+    "sustained_status_effects": ["incapacitated"],
+    "save": {
+      "stat": "WIS", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "incapacitated", "rounds": 10 }
+    }
+  }
+}

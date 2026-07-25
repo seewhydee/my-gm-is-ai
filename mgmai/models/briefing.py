@@ -150,6 +150,16 @@ class PlayerStateBriefing(BaseModel):
     entity_notes: List[str] = Field(default_factory=list)
     player_stats: Optional[Dict[str, PlayerStatEntry]] = None
     combat_stats: Optional[PlayerCombatStats] = None
+    # Player's known abilities (same entry shape as CombatBriefing.abilities):
+    # [{id, name, description, target, uses_remaining, effect, effect_kind,
+    #   spell_level?, concentration?, slot_level?, save_dc?}]
+    abilities: List[Dict[str, Any]] = Field(default_factory=list)
+    # Spell level -> slots remaining (empty when the player has no
+    # leveled spells; cantrips cost nothing).
+    spell_slots: Dict[int, int] = Field(default_factory=dict)
+    # Status effects active on the player (e.g. an ongoing Mage Armor):
+    # [{id, rounds, description?}]
+    status_effects: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class BriefingHistoryEntry(BaseModel):
@@ -181,8 +191,13 @@ class CombatBriefing(BaseModel):
     #   impeded: bool, impede_used: bool}]
     # Usable consumables in the player's inventory: [{id, name, effects}]
     usable_items: list[dict[str, Any]] = Field(default_factory=list)
-    # Player's combat abilities: [{id, name, description, target, uses_remaining, effect}]
+    # Player's combat abilities: [{id, name, description, target, uses_remaining,
+    #   effect, effect_kind, spell_level?, concentration?, slot_level?,
+    #   casting_time?, save_dc?}]
     abilities: list[dict[str, Any]] = Field(default_factory=list)
+    # Spell level -> slots remaining (empty when the player has no
+    # leveled spells; cantrips cost nothing).
+    spell_slots: Dict[int, int] = Field(default_factory=dict)
     # Interactions the player may use via the `interact` action during
     # combat: same entries as the room briefing's interactions_available
     # (room + present entities), minus the generic "attack" id (attack

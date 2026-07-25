@@ -21,20 +21,28 @@ condition list needs (``advantage_on_attack``, ``disadvantage_against``,
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from mgmai.datapack import load_pack
 from mgmai.engine.resolver import _roll_stat_check
 from mgmai.engine.systems.five_e import FiveESystem
 from mgmai.models.corpus import (
+    Ability,
+    DEFAULT_SPELLS,
     DEFAULT_STATUS_EFFECTS,
     StatCheck,
     StatusEffectDef,
 )
+from mgmai.state.manager import StateManager
 from tests.helpers import (
+    build_state_manager,
     make_char_sheet_corpus,
     make_char_sheet_state,
     make_webs_hard_state,
     make_webs_test_corpus,
 )
+
+FIXTURES = Path(__file__).resolve().parent / "integration" / "fixtures"
 
 SRD_CONDITIONS = {
     "blinded", "charmed", "deafened", "frightened", "grappled",
@@ -42,6 +50,10 @@ SRD_CONDITIONS = {
     "prone", "restrained", "stunned", "unconscious",
 }
 EXHAUSTION_LEVELS = {f"exhaustion-{n}" for n in range(1, 7)}
+SRD_SPELL_IDS = {
+    "fire_bolt", "sacred_flame", "cure_wounds", "magic_missile",
+    "healing_word", "mage_armor", "sleep",
+}
 
 
 class TestPackLoader:
@@ -202,3 +214,111 @@ class TestSaveAutoFail:
         cr = _roll_stat_check(check, FiveESystem(), 10, hard, corpus)
         assert cr.flat_mod == -6
         assert cr.total == cr.raw_roll - 6
+
+
+class TestSpellsPack:
+    def test_spells_pack_loads(self) -> None:
+        raw = load_pack("5e", "spells")
+        assert SRD_SPELL_IDS <= set(raw)
+
+    def test_every_entry_parses_as_ability(self) -> None:
+        for spell_id, entry in load_pack("5e", "spells").items():
+            parsed = Ability.model_validate(entry)
+            assert parsed.name, spell_id
+            assert parsed.spell_level is not None, spell_id
+
+    def test_defaults_come_from_pack(self) -> None:
+        assert set(DEFAULT_SPELLS) == set(load_pack("5e", "spells"))
+
+    def test_pack_spell_mechanics(self) -> None:
+        fire_bolt = DEFAULT_SPELLS["fire_bolt"]
+        assert fire_bolt.spell_level == 0
+        assert fire_bolt.attack is not None
+        assert fire_bolt.attack.damage == "1d10"
+        assert fire_bolt.attack.damage_type == "fire"
+
+        magic_missile = DEFAULT_SPELLS["magic_missile"]
+        assert magic_missile.spell_level == 1
+        assert magic_missile.auto_damage is not None
+        assert magic_missile.auto_damage.damage_type == "force"
+
+        mage_armor = DEFAULT_SPELLS["mage_armor"]
+        assert mage_armor.target == "self"
+        assert mage_armor.on_cast is not None
+        assert mage_armor.on_cast.id == "mage_armor"
+
+        sleep = DEFAULT_SPELLS["sleep"]
+        assert sleep.concentration is True
+        assert sleep.save is not None
+        rider = sleep.save.apply_status_effect_on_failure
+        assert rider is not None and rider.id == "incapacitated"
+
+    def test_mage_armor_condition_in_pack(self) -> None:
+        cond = DEFAULT_STATUS_EFFECTS["mage_armor"]
+        assert cond.scope == "persistent"
+        assert cond.duration == "until_cleared"
+        assert cond.system_effects["5e"]["ac_base"] == 13
+
+
+class TestEffectiveSpells:
+    def test_includes_pack_and_corpus_spells(self) -> None:
+        corpus = make_char_sheet_corpus()
+        corpus.abilities["guiding_bolt"] = Ability(
+            name="Guiding Bolt", target="enemy", spell_level=1,
+            attack={"stat": "WIS", "damage": "4d6", "damage_type": "radiant"},
+        )
+        spells = corpus.effective_spells()
+        assert "fire_bolt" in spells      # from the pack
+        assert "guiding_bolt" in spells   # from the corpus
+
+    def test_corpus_spell_replaces_pack_entry_wholesale(self) -> None:
+        corpus = make_char_sheet_corpus()
+        custom = Ability(
+            name="Greater Fire Bolt", target="enemy", spell_level=0,
+            attack={"stat": "CHA", "damage": "2d10", "damage_type": "fire"},
+        )
+        corpus.abilities["fire_bolt"] = custom
+        spells = corpus.effective_spells()
+        assert spells["fire_bolt"] is custom  # no field-level merge
+        # Untouched pack entries still come through.
+        assert "sleep" in spells
+
+    def test_non_spell_abilities_excluded(self) -> None:
+        corpus = make_char_sheet_corpus()
+        corpus.abilities["slash"] = Ability(
+            name="Slash", target="enemy",
+            attack={"stat": "STR", "damage": "1d8"},
+        )
+        assert "slash" not in corpus.effective_spells()
+
+
+class TestPackSpellMaterialization:
+    def test_pack_spells_minted_at_load(self) -> None:
+        sm = StateManager(adventure_dir=str(FIXTURES / "combat_arena"))
+        assert "fire_bolt" in sm.corpus.abilities
+        assert "magic_missile" in sm.corpus.abilities
+        assert sm.corpus.abilities["fire_bolt"].spell_level == 0
+
+    def test_corpus_ability_wins_over_pack_template(self) -> None:
+        # A corpus-defined ability with a pack ID is kept as-is when pack
+        # spells are materialized (wholesale replace, corpus wins).
+        corpus = make_char_sheet_corpus()
+        custom = Ability(
+            name="Fire Bolt", target="enemy",
+            attack={"stat": "INT", "damage": "1d10", "damage_type": "fire"},
+        )
+        corpus.abilities["fire_bolt"] = custom
+        sm = build_state_manager(corpus)
+        sm._materialize_pack_spells()
+        assert sm.corpus.abilities["fire_bolt"] is custom
+        assert "magic_missile" in sm.corpus.abilities  # untouched IDs minted
+
+    def test_materialized_abilities_are_independent_copies(self) -> None:
+        sm1 = StateManager(adventure_dir=str(FIXTURES / "combat_arena"))
+        assert sm1.corpus.abilities["fire_bolt"].attack is not None
+        sm1.corpus.abilities["fire_bolt"].attack.damage = "9d9"
+        sm2 = StateManager(adventure_dir=str(FIXTURES / "combat_arena"))
+        assert sm2.corpus.abilities["fire_bolt"].attack is not None
+        assert sm2.corpus.abilities["fire_bolt"].attack.damage == "1d10"
+        assert DEFAULT_SPELLS["fire_bolt"].attack is not None
+        assert DEFAULT_SPELLS["fire_bolt"].attack.damage == "1d10"

@@ -93,6 +93,24 @@ def _classify_conditions(conditions: dict) -> dict[str, list[tuple[str, str]]]:
     return buckets
 
 
+def _classify_spells(spells: dict) -> dict[str, list[tuple[str, str]]]:
+    """Return ``{heading: [(id, name), ...]}`` for spells."""
+    cantrips: list[tuple[str, str]] = []
+    leveled: list[tuple[str, str]] = []
+    for sid, entry in spells.items():
+        name = entry.get("name", sid)
+        if entry.get("spell_level", 0) == 0:
+            cantrips.append((sid, name))
+        else:
+            leveled.append((sid, name))
+    buckets: dict[str, list[tuple[str, str]]] = {}
+    if cantrips:
+        buckets["Cantrips"] = cantrips
+    if leveled:
+        buckets["Leveled Spells"] = leveled
+    return buckets
+
+
 def _section(title: str, buckets: dict[str, list[tuple[str, str]]]) -> str:
     lines: list[str] = []
     for heading, items in buckets.items():
@@ -108,6 +126,7 @@ def _section(title: str, buckets: dict[str, list[tuple[str, str]]]) -> str:
 def generate() -> str:
     gear = _load_json("gear")
     conditions = _load_json("conditions")
+    spells = _load_json("spells")
 
     parts: list[str] = [
         "# SRD 5e Data-Pack Manifest\n",
@@ -117,8 +136,9 @@ def generate() -> str:
         "their corpus, rooms, inventories, and character sheets without "
         "re-defining the item.  The engine pulls the full definition from "
         "its built-in data pack.\n",
-        f"**{len(gear)} gear items** and "
-        f"**{len(conditions)} conditions** are currently available.\n",
+        f"**{len(gear)} gear items**, "
+        f"**{len(conditions)} conditions**, and "
+        f"**{len(spells)} spells** are currently available.\n",
         "---\n",
         "## Gear\n",
         "Each ID below is a valid reference for items, equipment, "
@@ -133,6 +153,14 @@ def generate() -> str:
         "and the `status_effects` block.\n"
     )
     parts.append(_section("Conditions", _classify_conditions(conditions)))
+
+    parts.append("---\n")
+    parts.append("## Spells\n")
+    parts.append(
+        "Each ID below is a valid reference in the corpus `abilities` "
+        "block and in player character sheets' `abilities` lists.\n"
+    )
+    parts.append(_section("Spells", _classify_spells(spells)))
 
     return "".join(parts)
 

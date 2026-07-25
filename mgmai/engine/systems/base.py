@@ -448,6 +448,23 @@ class ResolutionSystem(ABC):
         """
         return 0
 
+    def compute_spell_save_dc(self, hard: "HardGameState") -> int:
+        """Save DC for spells cast by the player.
+
+        Default is 0 (no spellcasting). Override in subclasses for
+        system-specific derivation (e.g. 5e: 8 + proficiency bonus +
+        casting ability modifier).
+        """
+        return 0
+
+    def compute_spell_attack_bonus(self, hard: "HardGameState") -> int:
+        """Attack bonus for spell attack rolls made by the player.
+
+        Default is 0 (no spellcasting). Override in subclasses (e.g. 5e:
+        casting ability modifier + proficiency bonus).
+        """
+        return 0
+
     def get_equip_incompatibilities(self, equip_block: "EquipBlock") -> set[str]:
         """Return extra equipment tags that conflict with this equip_block.
 

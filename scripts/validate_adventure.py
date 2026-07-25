@@ -361,6 +361,16 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
                         f"but does not list it in abilities"
                     )
 
+    # Player ability references resolve against the corpus abilities plus
+    # the SRD spell pack (pack spells are materialized into
+    # corpus.abilities at load, so effective_spells() is belt-and-braces).
+    known_abilities = set(corpus.abilities) | set(corpus.effective_spells())
+    for aid in hard.player.abilities:
+        if aid not in known_abilities:
+            errors.append(
+                f"Player references unknown ability '{aid}'"
+            )
+
     # 12. Status-effect references (warning only — adventures may
     # forward-declare status-effect IDs; runtime application still works)
     defined_status_effects = set(corpus.effective_status_effects())
@@ -374,7 +384,7 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
     # A corpus entry replacing a built-in default is legal (wholesale
     # replace), but worth surfacing.  Compare against the *authored*
     # corpus (state_manager.corpus already has pack gear materialized).
-    from mgmai.models.corpus import DEFAULT_GEAR, DEFAULT_STATUS_EFFECTS
+    from mgmai.models.corpus import DEFAULT_GEAR, DEFAULT_SPELLS, DEFAULT_STATUS_EFFECTS
 
     for effect_id in sorted(set(corpus.status_effects) & set(DEFAULT_STATUS_EFFECTS)):
         warnings.append(
@@ -384,6 +394,11 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
     for gear_id in sorted(set(authored_corpus.entities) & set(DEFAULT_GEAR)):
         warnings.append(
             f"Item entity '{gear_id}' redefines an SRD data-pack gear entry "
+            f"(the corpus entry replaces it wholesale)"
+        )
+    for spell_id in sorted(set(authored_corpus.abilities) & set(DEFAULT_SPELLS)):
+        warnings.append(
+            f"Ability '{spell_id}' redefines an SRD data-pack spell entry "
             f"(the corpus entry replaces it wholesale)"
         )
 

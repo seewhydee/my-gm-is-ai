@@ -104,19 +104,26 @@ history for the archived text.
       condition list as built-in defaults.  Also, standard weapons,
       armor, and healing potions; integration tests now use these.  No
       spells or spell-like abilities yet.
-- [~] **Action economy** — one action per turn; no bonus actions,
-      full reaction economy, movement-vs-action split, or
+- [~] **Spellcasting** — spells are abilities with `spell_level` set;
+      slot consumption (`PlayerState.spell_slots`; **no recharge until
+      rests**), derived save DC / spell attack bonus (8 + prof + mod)
+      for player casters, concentration (one at a time, CON-save break
+      on damage, sustained-effect cleanup), out-of-combat self/ally
+      casting (heal/on-cast only), minimal bonus-action casting (one BA
+      + one leveled spell per turn), SRD spell pack
+      (`mgmai/data/srd_5e/spells.json`).  Pending: recharge (rests),
+      upcasting, cantrip scaling, reactions, rituals.  See
+      `spellcasting-plan.md` and `doc/spellcasting.md`
+- [~] **Action economy** — one action per turn; no full bonus-action or
+      reaction economy (bonus-action spellcasting excepted — see
+      Spellcasting above), movement-vs-action split, or
       Dodge/Dash/Ready.  (OA-lite and the Disengage maneuver are
       implemented — see Positioning above.)
 
 ### Not implemented
 
-- [ ] **Spellcasting** — no spell slots, spell levels, spell lists,
-      casting ability, components, concentration, spell attack/save DC
-      derivation (8 + prof + mod). `uses_per_combat` is the only
-      resource model
 - [ ] **Rests** — no short/long rest; no hit dice; per-rest ability
-      recharge
+      recharge (spell slots deplete until this lands)
 - [ ] **Character creation / classes / species** — no class field, no
       class features, no XP/leveling, no per-level HP derivation
 - [ ] **Condition immunities** (separate from damage immunities)
@@ -143,11 +150,10 @@ history for the archived text.
   mitigation as a natural companion.  (`unconscious` now exists as a
   condition to build on.)
 
-- **Short/long rests** — per-rest recharge for abilities, hit dice,
-  spell-slot recovery hook. Medium.
-
-- **Spellcasting proper** — slots by level, spell attack/save DC
-  derivation, concentration. The big one; do only after 3–4.
+- **Short/long rests** — per-rest recharge for abilities, hit dice, and
+  the spell-slot recovery hook.  Spellcasting landed ahead of rests (a
+  conscious reordering — see `spellcasting-plan.md`), so slot recovery
+  is now the natural next step.  Medium.
 
 ---
 
