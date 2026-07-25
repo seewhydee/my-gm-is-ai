@@ -1057,7 +1057,7 @@ class TestCloseCombatDisadvantage:
         Disadvantage even while engaged (melee-touch abilities stay safe;
         a per-ability opt-in flag is future work)."""
         from mgmai.engine.combat import resolve_combat_turn
-        from mgmai.models.actions import CombatAction
+        from mgmai.models.actions import CombatAction, UseAbilityAction
 
         corpus = _pos_corpus()
         hard = _pos_hard()
@@ -1069,8 +1069,8 @@ class TestCloseCombatDisadvantage:
         # goblin misses
         rand_vals = iter([15, 1, 1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
-        action = CombatAction(
-            action_type="combat", combat_action="use_ability",
+        action = UseAbilityAction(
+            action_type="use_ability",
             target="goblin", ability_id="fire_bolt", detail="Hurl fire!",
         )
         result = resolve_combat_turn(action, hard, corpus)

@@ -398,9 +398,10 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 | `using`          | string\|null   | no       | An entity ID or soft item enabling the interaction (e.g., "iron_sword" for attack). |
 
 **Engine validation:**
-- `target` must be a hard entity present in the room or a following NPC.
-  Interactions with generic soft items are not directly supported; use `examine`
-  or `transfer` for soft items instead.
+- `target` must be a hard entity present in the room, a following NPC,
+  or an item in the player's inventory.  Interactions with generic soft
+  items are not directly supported; use `examine` or `transfer` for soft
+  items instead.
 - `interaction_id` must match a defined interaction on the target entity, the
   current room, or a generic interaction (e.g., `attack`).
 - All interaction `conditions` must be met.
@@ -415,6 +416,10 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
   assertion may be attached (see `doc/combat.md` — *Positioning*). An
   `interact` with `interaction_id: "attack"` during combat converts to a
   normal combat attack and never re-enters combat.
+- Inventory items that carry interactions (e.g. a potion with a `drink`
+  interaction) may be targeted; the item-authored `Result` (heal,
+  remove_item_count, cure_status_effects, etc.) applies directly.  This is
+  how consumables are used, in or out of combat.
 
 ---
 
@@ -630,7 +635,7 @@ are rejected.
 
 ---
 
-#### `combat` -- Combat action (attack / use item / use ability / maneuver)
+#### `combat` -- Combat action (attack / maneuver)
 
 ```json
 {
@@ -645,35 +650,19 @@ are rejected.
 
 | Field           | Type   | Required | Description |
 |-----------------|--------|----------|-------------|
-| `combat_action` | string | yes      | One of `attack`, `use_item`, `use_ability`, `maneuver`. |
-| `target`        | string | yes, except for `maneuver` | For `attack`: an enemy combatant. For `use_item`: an item entity ID in `player.inventory` with a `consumable` block. For `use_ability`: the ability's target (enemy or ally/self, per the ability definition). Ignored for `maneuver`. |
-| `ability_id`    | string | only for `use_ability` | ID of an ability the player knows (`player.abilities`) with uses remaining — or, for a leveled spell, with a `spell_slots` entry of its level remaining.  Spells are abilities with `spell_level` set; `use_ability` covers them (see `doc/spellcasting.md`). |
+| `combat_action` | string | yes      | One of `attack`, `maneuver`. |
+| `target`        | string | yes, except for `maneuver` | For `attack`: an enemy combatant. Ignored for `maneuver`. |
 | `maneuver`      | string | only for `maneuver` | The maneuver to perform; currently only `"disengage"` — the player breaks all engagement pairs without provoking opportunity attacks, at the cost of the action. |
 | `positioning`   | object | no       | Optional engagement assertion (combat only, on `combat`, `wait`, and `interact` actions): `{"engage": [[a, b], ...], "disengage": [[mover, stationary], ...], "impede": [enemy_id, ...]}`. See `doc/combat.md` — *Positioning*. |
 
 This is the player's one action per combat round; after it resolves, the
 remaining combatants act and the round advances.  See `doc/combat.md`.
-Exception: a spell with `casting_time: "bonus_action"` is cast as a bonus
-action — the cast resolves but does **not** end the player's turn.  Only
-one bonus action is available per turn, and only one leveled spell
-(`spell_level` ≥ 1) may be cast per turn, in either order.  See
-`doc/spellcasting.md`.
+Attack targets must be IDs from `combat_state.combatants` with `side: "enemy"`.
 
 **Engine validation:**
 - `attack`: `target` must be a living enemy combatant.  Out of combat,
   `attack` is routed to the generic `interact`/`attack` interaction,
   which starts combat with the target.
-- `use_item`: `target` must be in `player.inventory` and have a
-  `consumable` block; the item is consumed on use.
-- `use_ability`: `ability_id` must be in `player.abilities`, have uses
-  remaining (`uses_per_combat`; leveled spells consume a `spell_slots`
-  entry of their level instead, cantrips cost nothing), and `target`
-  must be a valid combatant for the ability's `target` type
-  (`self`/`ally`/`enemy`).  Player-cast spells derive their save DC and
-  attack bonus from `spellcasting_ability`.  Out of combat, `use_ability`
-  is valid only for `self`/`ally` abilities with heal or on-cast effects
-  (e.g. Cure Wounds, Mage Armor); enemy targets, attack/save effects, and
-  concentration spells are rejected ("start combat first").
 - `maneuver`: no target; breaks the player's engagement pairs and
   consumes the action.
 - `positioning`: ids must be living combatants; `engage`/`disengage`
@@ -682,6 +671,44 @@ one bonus action is available per turn, and only one leveled spell
   enemy combatants not already impeded this combat; at most 4 entries
   total.  Malformed entries are dropped with a warning — the core
   action always proceeds (graceful degradation, never a hard failure).
+
+---
+
+#### `use_ability` -- Use a spell, class feature, or other ability
+
+```json
+{
+  "action_type": "use_ability",
+  "ability_id": "cure_wounds",
+  "target": "player",
+  "detail": "Player lays hands on themselves and casts Cure Wounds.",
+  "follow_up": null,
+  "soft_state_patches": []
+}
+```
+
+| Field           | Type   | Required | Description |
+|-----------------|--------|----------|-------------|
+| `ability_id`    | string | yes      | ID of an ability the player knows (`player.abilities`). Spells are abilities with `spell_level` set; `use_ability` covers them (see `doc/spellcasting.md`). |
+| `target`        | string | yes      | The ability's target, matching the ability's `target` kind: `"self"` → `"player"`; `"ally"` → a party combatant (in combat) or a living allied NPC's entity ID (outside combat); `"enemy"` → an enemy combatant (in combat) or a visible enemy entity ID (outside combat — this starts combat). |
+| `positioning`   | object | no       | Optional engagement assertion (combat only, on `use_ability`, `combat`, `wait`, and `interact` actions). |
+
+**Engine validation:**
+- `ability_id` must be in `player.abilities` and have uses remaining
+  (`uses_per_combat`; leveled spells consume a `spell_slots` entry of
+  their level instead, cantrips cost nothing).
+- `target` must be valid for the ability's `target` type.
+- Player-cast spells derive their save DC and attack bonus from
+  `spellcasting_ability`.
+- In combat, follows action economy (bonus-action rules, one leveled
+  spell per turn, concentration tracking).  A spell with
+  `casting_time: "bonus_action"` is cast as a bonus action — the cast
+  resolves but does **not** end the player's turn.
+- Outside combat, self/ally-targeted abilities with heal or on-cast
+  effects resolve directly (e.g. Cure Wounds, Mage Armor).  Enemy-targeted
+  abilities start combat automatically (mirroring `interact`/`attack`),
+  pulling in the target's `combat_group`.  Concentration spells and
+  attack/save/auto_damage effects outside combat are rejected.
 
 ---
 
@@ -729,13 +756,14 @@ whether to continue the chain:
 |-------------------|-------------------------------------------------|--------------------------------------------|
 | `move`            | exit_id in current room                         | exit conditions met, not one-way blocked; in combat: fleeing (DEX check vs. flee DCs)   |
 | `examine`         | entity_id in current room, current room_id, or soft item name | `using` item must be in inventory; unknown targets become soft-item proposals; in combat: non-rigorous is free, rigorous costs the combat turn |
-| `interact`        | entity_id present in room or following NPC      | interaction_id must match defined interaction; `using` item must be present/in-inventory; in combat: costs the combat turn, `attack` converts to a combat attack, `positioning` assertion optional |
+| `interact`        | entity_id present in room, following NPC, or inventory item | interaction_id must match defined interaction; `using` item must be present/in-inventory; in combat: costs the combat turn, `attack` converts to a combat attack, `positioning` assertion optional; inventory items with authored interactions (e.g. potion `drink`) resolve as consumables |
 | `talk`            | npc entity_id in current room, alive            | `utterance` optional; in combat: rejected — rule as `wait` with the speech in `detail` |
 | `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source; soft items become proposals; in combat: costs the combat turn |
 | `wait`            | null (no target)                                | none; advances turn counter                |
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
 | `gear`            | n/a (targets in `equip_targets`/`unequip_targets`) | each equip target must be in inventory with an `equip_block`; each unequip target must be equipped; validates tag conflicts and `max_equipped`; in combat: weapon-tag items only, costs the combat turn |
-| `combat`          | combat target (enemy, item, or ability target; none for `maneuver`) | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack`; out-of-combat `use_ability` allowed for self/ally heal/on-cast abilities; `positioning` assertion optional on `combat`/`wait`/`interact` |
+| `combat`          | combat target (enemy; none for `maneuver`)      | combat mode; `combat_action`: `attack` or `maneuver`; out-of-combat `attack` starts combat via `interact`/`attack`; `positioning` assertion optional on `combat`/`wait`/`interact` |
+| `use_ability`     | self (`"player"`), ally, or enemy entity ID     | `ability_id` must be known; leveled spells consume spell slots; out of combat: self/ally heal/on-cast resolve directly, enemy-targeted starts combat; concentration and attack/save/auto_damage require combat; in combat: bonus-action rules apply |
 
 ---
 

@@ -114,25 +114,27 @@ not trigger a concentration save.
 
 ## Out-of-Combat Casting
 
-Outside combat, `use_ability` resolves through
+Outside combat, `use_ability` is a top-level action resolved by
 `resolve_out_of_combat_ability` (`mgmai/engine/combat.py:1819`, routed
-from `mgmai/engine/resolver.py:1898`) with a restricted rule set:
+from `mgmai/engine/resolver.py` via `_resolve_use_ability`):
 
-- **Targets**: `self` and `ally` only.  Enemy-targeted spells are
-  rejected ("start combat first" — there is no out-of-combat NPC
-  damage/death pipeline).
-- **Effects**: `heal` and `on_cast` only.  Attack/save/auto-damage
-  effects need a `CombatState` and are rejected.
-- **Concentration spells** are combat-only and rejected out of combat.
+- **Self/ally heal and on-cast** abilities resolve directly — Cure
+  Wounds between fights, Mage Armor before a fight, etc.
+- **Enemy-targeted abilities** start combat automatically, mirroring
+  `interact`/`attack`: the engine calls `enter_combat`, pulling in the
+  target's `combat_group`, and the spell is available on the player's
+  first combat turn.
+- **Concentration spells** and **attack/save/auto_damage** effects still
+  require a live `CombatState` and are rejected out of combat.
 - **Slots** are consumed as normal (the pool lives on `PlayerState`,
   not on `CombatState`).  `uses_per_combat` abilities are unlimited out
   of combat — the counter is combat-scoped; per-day recharge is deferred
   to rests.
 
 The LLM sees the player's abilities, slot pool, and active status
-effects out of combat via `PlayerStateBriefing`, and the out-of-combat
-validation path rejects illegal casts up front (see
-`mgmai/templates/ruling.j2:87`).
+effects out of combat via `PlayerStateBriefing`, and the merged
+`_validate_use_ability` validator gates illegal casts up front (see
+`mgmai/templates/ruling.j2`).
 
 ## Bonus-Action Casting
 
@@ -174,5 +176,3 @@ non-goals*):
   the flat `save_bonus` for concentration checks.
 - **Source-tracking for sustained effects** — see the over-removal
   caveat under *Concentration*.
-- **Out-of-combat enemy-targeted spells** — rejected; needs an
-  out-of-combat NPC damage/death pipeline.

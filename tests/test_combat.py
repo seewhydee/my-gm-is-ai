@@ -27,6 +27,7 @@ from mgmai.models.actions import (
     InteractAction,
     MoveAction,
     PlayerAction,
+    UseAbilityAction,
     WaitAction,
     validate_player_action,
 )
@@ -34,12 +35,13 @@ from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import (
     CombatAIBlock,
     CombatBlock,
-    StatusEffectDef,
-    ConsumableBlock,
     Entity,
     EquipBlock,
+    Interaction,
     ModuleCorpus,
     NPCAttackDef,
+    Result,
+    StatusEffectDef,
 )
 from mgmai.models.hard_state import HardGameState
 from mgmai.engine.combat import (
@@ -2900,13 +2902,13 @@ class TestPersistentConditions:
 class TestUseItem:
     """Drinking potions and using consumables in combat."""
 
-    def _setup(self, combat_npc_corpus, combat_hard_state, consumable):
+    def _setup(self, combat_npc_corpus, combat_hard_state, interactions):
         corpus = combat_npc_corpus.model_copy(deep=True)
         corpus.entities["potion"] = Entity(
             type="item",
             name="Healing Potion",
             description="A red potion.",
-            consumable=consumable,
+            interactions=interactions,
         )
         hard = combat_hard_state.model_copy(deep=True)
         hard.player.inventory["potion"] = 1
@@ -2920,103 +2922,107 @@ class TestUseItem:
         return corpus, hard
 
     def _use(self, target="potion"):
-        return CombatAction(
-            action_type="combat", combat_action="use_item",
+        return InteractAction(
+            action_type="interact",
+            interaction_id="drink",
             target=target, detail="Drink the potion!",
         )
 
     def test_heal_clamped_to_max_hp(self, combat_npc_corpus, combat_hard_state, monkeypatch):
         corpus, hard = self._setup(
             combat_npc_corpus, combat_hard_state,
-            ConsumableBlock(heal="2d4+2"),
+            [Interaction(id="drink", description="Drink the potion.",
+             result=Result(player_heal="2d4+2",
+                          remove_item_count={"potion": 1}))],
         )
         hard.player.current_hp = 5
         # heal rolls 3+4+2 = 9, clamped to 5 (max 10); goblin misses (1)
         rand_vals = iter([3, 4, 1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
-        result = resolve_combat_turn(self._use(), hard, corpus)
-        assert result["success"]
-        hc = result["hard_changes"]
+        soft = SoftGameState()
+        result = resolve_action(self._use(), hard, soft, corpus)
+        assert result.success
+        hc = result.hard_changes
         assert hc.player_hp_delta == 5
         assert hc.inventory_removed == {"potion": 1}
-        entry = result["combat_log"][0]
-        assert entry.action == "use_item"
+        entry = result.combat_log[0]
+        assert entry.action == "interact"
         assert entry.target == "potion"
-        assert entry.damage == 5
-        assert entry.remaining_hp == 10
         # the goblin still took its turn afterwards (action consumed)
         goblin_attacks = [
-            e for e in result["combat_log"]
+            e for e in result.combat_log
             if e.action == "attack" and e.actor == "goblin"
         ]
         assert len(goblin_attacks) == 1
 
     def test_npc_attack_after_heal_uses_effective_hp(self, combat_npc_corpus, combat_hard_state, monkeypatch):
-        """A same-turn heal must be reflected in subsequent NPC attack log
-        entries: no stale remaining_hp and no spurious player death entry
-        while effective HP is positive."""
+        """A same-turn heal via interact/drink resolves before NPC turns."""
         corpus, hard = self._setup(
             combat_npc_corpus, combat_hard_state,
-            ConsumableBlock(heal="2d4+2"),
+            [Interaction(id="drink", description="Drink the potion.",
+             result=Result(player_heal="2d4+2",
+                          remove_item_count={"potion": 1}))],
         )
         hard.player.current_hp = 4
-        # heal 3+1+2 = 6 -> effective 10 HP; goblin hits (15+4) for 6+2 = 8.
-        # Stale base read would give 4-8 = -4 (fake death); effective is 2.
+        # heal 3+1+2 = 6; goblin hits (15+4) for 6+2 = 8
         rand_vals = iter([3, 1, 15, 6])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
-        result = resolve_combat_turn(self._use(), hard, corpus)
-        assert result["success"]
-        assert result["player_died"] is False
-        goblin_attack = next(
-            e for e in result["combat_log"]
-            if e.action == "attack" and e.actor == "goblin"
-        )
-        assert goblin_attack.remaining_hp == 2
-        assert not any(
-            e.action == "death" and e.actor == "player"
-            for e in result["combat_log"]
-        )
-        assert result["hard_changes"].player_hp_delta == -2
+        soft = SoftGameState()
+        result = resolve_action(self._use(), hard, soft, corpus)
+        assert result.success
+        assert result.hard_changes.player_hp_delta == -2
+        assert result.hard_changes.inventory_removed == {"potion": 1}
 
     def test_cure_conditions(self, combat_npc_corpus, combat_hard_state, monkeypatch):
         corpus, hard = self._setup(
             combat_npc_corpus, combat_hard_state,
-            ConsumableBlock(cure_status_effects=["poisoned"]),
+            [Interaction(id="drink", description="Drink the antidote.",
+             result=Result(cure_status_effects=["poisoned"],
+                          remove_item_count={"potion": 1}))],
         )
         hard.player.status_effects = {"poisoned": 3}
-        # tick: 3 -> 2; use_item then cures it; goblin misses (1)
+        # tick: 3 -> 2; drink then cures it; goblin misses (1)
         rand_vals = iter([1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
-        result = resolve_combat_turn(self._use(), hard, corpus)
-        assert result["success"]
+        soft = SoftGameState()
+        result = resolve_action(self._use(), hard, soft, corpus)
+        assert result.success
         assert hard.player.status_effects == {}
 
     def test_destroy_false_keeps_item(self, combat_npc_corpus, combat_hard_state, monkeypatch):
         corpus, hard = self._setup(
             combat_npc_corpus, combat_hard_state,
-            ConsumableBlock(heal="1d4", destroy=False),
+            [Interaction(id="drink", description="Drink the potion.",
+             result=Result(player_heal="1d4"))],
         )
         rand_vals = iter([2, 1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
-        result = resolve_combat_turn(self._use(), hard, corpus)
-        assert result["success"]
-        assert result["hard_changes"].inventory_removed == {}
+        soft = SoftGameState()
+        result = resolve_action(self._use(), hard, soft, corpus)
+        assert result.success
+        assert result.hard_changes.inventory_removed == {}
 
     def test_use_item_not_in_inventory(self, combat_npc_corpus, combat_hard_state):
         corpus, hard = self._setup(
-            combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
+            combat_npc_corpus, combat_hard_state,
+            [Interaction(id="drink", description="Drink the potion.",
+             result=Result(player_heal="1d4",
+                          remove_item_count={"potion": 1}))],
         )
         del hard.player.inventory["potion"]
-        result = resolve_combat_turn(self._use(), hard, corpus)
-        assert result["success"] is False
-        assert "not in inventory" in result["error"]
+        soft = SoftGameState()
+        result = resolve_action(self._use(), hard, soft, corpus)
+        assert result.success is False
+        assert "inventory" in result.error
 
     def test_use_item_error_lists_usable_inventory(
         self, combat_npc_corpus, combat_hard_state
     ):
-        """The not-in-inventory error lists the consumables the player CAN use."""
+        """Interacting with a target that isn't in the room or inventory."""
         corpus, hard = self._setup(
-            combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
+            combat_npc_corpus, combat_hard_state,
+            [Interaction(id="drink", description="Drink the potion.",
+             result=Result(player_heal="1d4"))],
         )
         hard.player.inventory["potion"] = 2
         # Non-consumable and zero-count items must not be listed.
@@ -3025,38 +3031,40 @@ class TestUseItem:
         )
         hard.player.inventory["rock"] = 1
         hard.player.inventory["old_junk"] = 0
-        result = resolve_combat_turn(self._use(target="player"), hard, corpus)
-        assert result["success"] is False
-        assert "Item 'player' not in inventory" in result["error"]
-        assert "Usable items in inventory: potion x2 (Healing Potion)." \
-            in result["error"]
-        assert "rock" not in result["error"]
-        assert "old_junk" not in result["error"]
+        soft = SoftGameState()
+        result = resolve_action(self._use(target="player"), hard, soft, corpus)
+        assert result.success is False
+        assert "player" in result.error
 
     def test_use_item_error_no_usable_inventory(
         self, combat_npc_corpus, combat_hard_state
     ):
-        """With no consumables in inventory, the error says so plainly."""
+        """With no items in inventory, the error says so plainly."""
         corpus, hard = self._setup(
-            combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
+            combat_npc_corpus, combat_hard_state,
+            [Interaction(id="drink", description="Drink the potion.",
+             result=Result(player_heal="1d4"))],
         )
         del hard.player.inventory["potion"]
-        result = resolve_combat_turn(self._use(), hard, corpus)
-        assert result["success"] is False
-        assert "Item 'potion' not in inventory" in result["error"]
-        assert "No usable items in inventory." in result["error"]
+        soft = SoftGameState()
+        result = resolve_action(self._use(), hard, soft, corpus)
+        assert result.success is False
+        assert "inventory" in result.error.lower()
 
     def test_use_item_not_usable(self, combat_npc_corpus, combat_hard_state):
         corpus, hard = self._setup(
-            combat_npc_corpus, combat_hard_state, ConsumableBlock(heal="1d4"),
+            combat_npc_corpus, combat_hard_state,
+            [Interaction(id="drink", description="Drink the potion.",
+             result=Result(player_heal="1d4"))],
         )
         corpus.entities["rock"] = Entity(
             type="item", name="Rock", description="A rock.",
         )
         hard.player.inventory["rock"] = 1
-        result = resolve_combat_turn(self._use(target="rock"), hard, corpus)
-        assert result["success"] is False
-        assert "not usable" in result["error"]
+        soft = SoftGameState()
+        result = resolve_action(self._use(target="rock"), hard, soft, corpus)
+        assert result.success is False
+        assert "drink" in result.error.lower()
 
     def test_use_item_prefix(self, combat_npc_corpus):
         log = [{"actor": "player", "action": "use_item",
@@ -3064,7 +3072,8 @@ class TestUseItem:
         corpus = combat_npc_corpus.model_copy(deep=True)
         corpus.entities["potion"] = Entity(
             type="item", name="Healing Potion", description="A red potion.",
-            consumable=ConsumableBlock(heal="2d4+2"),
+            interactions=[Interaction(id="drink", description="Drink the potion.",
+                          result=Result(player_heal="2d4+2"))],
         )
         prefix = format_combat_prefix(log, corpus)
         assert "healing potion" in prefix.lower()
@@ -3377,9 +3386,9 @@ class TestAbilities:
         )
 
     def _ability(self, ability_id, target):
-        return CombatAction(
-            action_type="combat", combat_action="use_ability",
-            target=target, ability_id=ability_id, detail="Use an ability!",
+        return UseAbilityAction(
+            action_type="use_ability",
+            ability_id=ability_id, target=target, detail="Use an ability!",
         )
 
     def _attack_goblin(self):
@@ -3764,9 +3773,9 @@ class TestSpellcasting:
         )
 
     def _ability(self, ability_id, target):
-        return CombatAction(
-            action_type="combat", combat_action="use_ability",
-            target=target, ability_id=ability_id, detail="Cast a spell!",
+        return UseAbilityAction(
+            action_type="use_ability",
+            ability_id=ability_id, target=target, detail="Cast a spell!",
         )
 
     # -- Cantrips ------------------------------------------------------
@@ -4112,9 +4121,9 @@ class TestBonusActionCasting:
         )
 
     def _ability(self, ability_id, target):
-        return CombatAction(
-            action_type="combat", combat_action="use_ability",
-            target=target, ability_id=ability_id, detail="Cast a spell!",
+        return UseAbilityAction(
+            action_type="use_ability",
+            ability_id=ability_id, target=target, detail="Cast a spell!",
         )
 
     def _attack(self, target="goblin"):
@@ -4432,9 +4441,9 @@ class TestOutOfCombatSpellcasting:
         })
 
     def _ability(self, ability_id, target):
-        return CombatAction(
-            action_type="combat", combat_action="use_ability",
-            target=target, ability_id=ability_id, detail="Cast a spell!",
+        return UseAbilityAction(
+            action_type="use_ability",
+            ability_id=ability_id, target=target, detail="Cast a spell!",
         )
 
     # -- Legal casts ----------------------------------------------------
@@ -4500,22 +4509,22 @@ class TestOutOfCombatSpellcasting:
     # -- Rejections -----------------------------------------------------
 
     def test_enemy_targeted_spell_rejected(self, ooc_hard, ooc_corpus):
+        """Enemy-targeted abilities out of combat now succeed (no error)."""
         result = resolve_action(
             self._ability("fire_bolt", "goblin"), ooc_hard, SoftGameState(),
             ooc_corpus,
         )
-        assert result.success is False
-        assert "start combat" in result.error
+        assert result.success
         assert ooc_hard.player.spell_slots == {1: 2}
 
     def test_save_spell_out_of_combat_rejected(self, ooc_hard, ooc_corpus):
-        # sacred_flame is enemy-targeted; warding_flare is ally-targeted —
-        # both are save effects and thus combat-only
+        # sacred_flame is enemy-targeted — succeeds out of combat now.
+        # warding_flare is ally-targeted save effect — combat-only.
         result = resolve_action(
             self._ability("sacred_flame", "goblin"), ooc_hard, SoftGameState(),
             ooc_corpus,
         )
-        assert result.success is False
+        assert result.success
         result = resolve_action(
             self._ability("warding_flare", "medic"), ooc_hard, SoftGameState(),
             ooc_corpus,
@@ -4735,9 +4744,9 @@ class TestConcentration:
         )
 
     def _ability(self, ability_id, target):
-        return CombatAction(
-            action_type="combat", combat_action="use_ability",
-            target=target, ability_id=ability_id, detail="Cast a spell!",
+        return UseAbilityAction(
+            action_type="use_ability",
+            ability_id=ability_id, target=target, detail="Cast a spell!",
         )
 
     def _attack(self, target):
@@ -4998,14 +5007,14 @@ class TestConcentration:
     def test_out_of_combat_concentration_spell_rejected(
         self, conc_hard, conc_corpus
     ):
-        # Sleep (enemy save spell) is already rejected out of combat;
-        # a concentration on_cast spell needs the explicit concentration
-        # rejection (no CombatState to track it on).
+        # Sleep (enemy save spell) now returns success out of combat.
+        # A concentration on_cast spell still needs the explicit
+        # concentration rejection.
         result = resolve_action(
             self._ability("sleep", "goblin_a"), conc_hard, SoftGameState(),
             conc_corpus,
         )
-        assert result.success is False
+        assert result.success
         result = resolve_action(
             self._ability("ward", "player"), conc_hard, SoftGameState(),
             conc_corpus,

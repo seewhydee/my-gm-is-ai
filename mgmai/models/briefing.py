@@ -160,6 +160,9 @@ class PlayerStateBriefing(BaseModel):
     # Status effects active on the player (e.g. an ongoing Mage Armor):
     # [{id, rounds, description?}]
     status_effects: List[Dict[str, Any]] = Field(default_factory=list)
+    # Inventory items with a usable interaction (drink, read, etc.):
+    # [{id, name, interactions: [{id, description}]}]
+    usable_items: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class BriefingHistoryEntry(BaseModel):

@@ -341,12 +341,11 @@ NPC turns.
 | Action | Turn cost | Description |
 |--------|-----------|-------------|
 | `combat` (`combat_action: "attack"`) | action | Attack a combatant.  `target` must be an enemy entity ID in `combatants`. |
-| `combat` (`combat_action: "use_item"`) | action | Use a consumable item.  `target` must be an inventory item with a `consumable` block (healing clamps to max HP). |
-| `combat` (`combat_action: "use_ability"`) | action | Use an ability.  `ability_id` plus a `target` matching the ability's target kind. |
 | `combat` (`combat_action: "maneuver"`) | action | Maneuver: Disengage (`maneuver: "disengage"`).  Breaks all of the player's engagement pairs without provoking opportunity attacks; no `target`. |
+| `use_ability` | action | Use a spell, class feature, or other ability.  `ability_id` plus a `target` matching the ability's target kind.  Bonus-action spells do not end the turn. |
 | `move` | action | Attempt to flee (see below). |
 | `wait` | action | Pass the turn: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply.  This is also how speech is ruled in combat — see `talk` below. |
-| `interact` | action | Use a non-attack interaction listed in `combat_state.interactions_available` (pull the lever, pick the lock).  `interaction_id: "attack"` converts to a normal combat attack — it never re-enters combat. |
+| `interact` | action | Use a non-attack interaction listed in `combat_state.interactions_available` (pull the lever, pick the lock).  `interaction_id: "attack"` converts to a normal combat attack — it never re-enters combat.  Inventory items with authored interactions (e.g. potion `drink`) also use this action; see [gear.md](gear.md). |
 | `transfer` | action | Give or take items mid-fight. |
 | `gear` | action | Weapon swaps only: every item in `equip_targets` and `unequip_targets` must have the `weapon` tag; armour or other gear changes are rejected. |
 | `examine` (`rigorous: true`) | action | In-depth search; consumes the turn. |
@@ -615,8 +614,8 @@ exactly one effect:
 
 The character sheet's `abilities` list (see
 [player-stats.md](player-stats.md)) names the abilities the player
-knows.  In combat the player uses them via the `combat` action with
-`combat_action: "use_ability"`, an `ability_id`, and a `target`
+knows.  In combat the player uses them via the `use_ability` action with
+an `ability_id` and a `target`
 matching the ability's target kind (`"player"` for `self`, a party
 combatant for `ally`, an enemy for `enemy`).  Uses are consumed even on
 a missed attack roll, and exhausted abilities are rejected by the

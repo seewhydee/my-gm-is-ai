@@ -232,7 +232,7 @@ def _format_situation(session: HeadlessSession) -> str:
             ent = corpus.entities.get(item_id)
             if ent is None:
                 continue
-            if ent.consumable:
+            if ent.interactions:
                 usable.append(f"{ent.name} x{count}")
         if usable:
             parts.append("Usable items: " + ", ".join(usable) + ".")

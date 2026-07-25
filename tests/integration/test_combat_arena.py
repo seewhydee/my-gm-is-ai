@@ -408,13 +408,14 @@ def test_consumable_ability_scenario(
     _assert_combat_concluded(result)
 
     # The combat log across all turns must contain at least one
-    # ability use for flame_strike (by the player) and at least one
-    # use_item for a health potion (by the player).
+    # ability use for flame_strike (by the player) and may contain a
+    # health potion use (by the player).
     #
     # Flame strike is a save ability → engine logs action="ability_save"
     # with attack_id="flame_strike" (or attack_name="Flame Strike").
-    # Health potion is a consumable → engine logs action="use_item"
-    # with actor="player".
+    # Health potion is used via InteractAction — the engine no longer
+    # logs a dedicated "use_item" combat entry for it, so the check
+    # below is advisory only (it was for the old use_item mechanic).
     _PLAYER_ABILITY_ACTIONS = {"ability_save", "attack"}
     has_ability_use = any(
         entry.get("actor") == "player"

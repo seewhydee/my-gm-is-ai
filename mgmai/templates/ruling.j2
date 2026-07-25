@@ -33,7 +33,7 @@ You MUST output a single JSON object with the following structure.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `action_type` | string | One of: `move`, `examine`, `interact`, `talk`, `transfer`, `combat`, `wait`, `ooc_discussion` |
+| `action_type` | string | One of: `move`, `examine`, `interact`, `talk`, `transfer`, `combat`, `use_ability`, `wait`, `ooc_discussion` |
 | `detail` | string | Natural-language description of what the player attempts |
 | `follow_up` | string|null | If the player described a chained action, put the rest here (omit or null otherwise) |
 | `soft_state_patches` | array | Soft state changes (see below). Empty array if none. |
@@ -50,8 +50,8 @@ You MUST output a single JSON object with the following structure.
 - `using` (string, optional): Item/entity used to assist (must be in the player's inventory, equipped, or soft inventory)
 
 **interact** — Perform an interaction:
-- `target` (string, required): An entity `id` from `entities_visible`
-- `interaction_id` (string, required): An interaction ID from the target entity's or room's `interactions_available` list (during combat: from `combat_state.interactions_available`). Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction). Exception: `attack` is a generic interaction — always valid on any entity with a `combat_block`, even though it is never listed in `interactions_available`; use it to START combat when not in combat.
+- `target` (string, required): An entity `id` from `entities_visible`, or an item ID from your inventory (for drinking potions, reading scrolls, etc.)
+- `interaction_id` (string, required): An interaction ID from the target entity's or room's `interactions_available` list (during combat: from `combat_state.interactions_available`). Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction). Exception: `attack` is a generic interaction — always valid on any entity with a `combat_block`, even though it is never listed in `interactions_available`; use it to START combat when not in combat. Consumable items (potions, etc.) carry interactions like `drink` defined on the item itself — use `interact`/`drink` with `target` set to the item's ID in or out of combat.
 - `using` (string, optional): Item/entity used to enable the interaction (must be in the player's inventory, equipped, or soft inventory)
 
 **talk** — Talk to an NPC:
@@ -79,12 +79,17 @@ You MUST output a single JSON object with the following structure.
 - Equippable items must have an `equip_block` in the corpus — not all items are equippable
 - In combat, only quick weapon swaps are valid (one weapon for another; see *Gear in combat*). Changing armour in combat is never allowed — armour doffing takes minutes.
 
-**combat** — Attack, use an item, use an ability, or perform a maneuver during combat:
-- `combat_action` (string, required): `"attack"`, `"use_item"`, `"use_ability"`, or `"maneuver"`
-- `target` (string, required except for `"maneuver"`): For `"attack"`, the entity ID of the enemy combatant to attack. For `"use_item"`, the ID of a usable inventory item (see `combat_state.usable_items` — e.g. drinking a healing potion consumes your action); the user/drinker of the item is always the player, so never put `"player"` (or any other beneficiary) in `target`. For `"use_ability"`, a target matching the ability's `target` kind (see `combat_state.abilities`): `"self"` → `"player"`; `"ally"` → a party combatant ID; `"enemy"` → an enemy combatant ID.
-- `ability_id` (string, required for `"use_ability"`): an ID from `combat_state.abilities` (outside combat, from `player_state.abilities` — see the restriction below). A spell whose entry has `casting_time: "bonus_action"` is cast as a bonus action: the cast does NOT end the player's turn — the player still takes their normal action this turn. Only one bonus action is available per turn, and only one leveled spell (`spell_level` ≥ 1) may be cast per turn, so after a bonus-action leveled spell the main action can only be a cantrip or a non-spell action.
+**combat** — Attack or perform a maneuver during combat:
+- `combat_action` (string, required): `"attack"` or `"maneuver"`
+- `target` (string, required except for `"maneuver"`): The entity ID of the enemy combatant to attack. For `"maneuver"`, `maneuver` (see below) must be set; `target` is not used.
 - `maneuver` (string, required for `"maneuver"`): currently only `"disengage"` — the player carefully withdraws from melee: ALL of the player's engagement pairs are broken without provoking opportunity attacks, at the cost of the player's action. `target` is not used. Present Disengage as situational, not a default: it shines when breaking multiple engagements at once or repositioning to protect an ally; in a plain 1v1 the enemy will usually just re-engage next turn. Do NOT pair a Disengage maneuver with `positioning.disengage` entries — the maneuver already breaks all engagement safely; `impede` entries on a Disengage maneuver are fine (the obstacle is independent of the withdrawal).
-- Only valid when `combat_state` is present in the briefing — with one exception: outside combat, `combat_action: "use_ability"` is valid for self/ally-targeted abilities with non-offensive effects (healing or on-cast buffs like Mage Armor, listed in `player_state.abilities`); `target` is `"player"` for a self ability, or `"player"`/an allied NPC's entity ID for an ally ability, and leveled spells consume a slot from `player_state.spell_slots`. Enemy-targeted abilities and attack/save effects require starting combat first: use `interact` with `interaction_id: "attack"` on the target instead. Attack targets must have `side: "enemy"` — allies on the player's side act on their own and cannot be attacked.
+- Only valid when `combat_state` is present in the briefing — with one exception: outside combat, `combat_action: "attack"` is equivalent to `interact`/`attack` and starts combat.
+
+**use_ability** — Use a spell, class feature, or other ability in or out of combat:
+- `ability_id` (string, required): an ID from `combat_state.abilities` (in combat) or `player_state.abilities` (outside combat — see restrictions below)
+- `target` (string, required): a target matching the ability's `target` kind (see the ability's entry): `"self"` → `"player"`; `"ally"` → a party combatant ID (in combat) or a living allied NPC's entity ID (outside combat); `"enemy"` → an enemy combatant ID (in combat) or a visible enemy entity ID (outside combat — this starts combat, mirroring interact/attack)
+- Outside combat, only self/ally-targeted abilities with `effect_kind` `"heal"` or `"on_cast"` (buffs) work directly; concentration spells and attack/save/auto_damage effects require combat. Enemy-targeted abilities outside combat start combat automatically (like `interact`/`attack`). Leveled spells consume a slot from `player_state.spell_slots`.
+- In combat, a spell with `casting_time: "bonus_action"` is cast as a bonus action: it does NOT end the player's turn — the player still takes their normal action this turn. Only one bonus action is available per turn, and only one leveled spell (`spell_level` ≥ 1) may be cast per turn, so after a bonus-action leveled spell the main action can only be a cantrip or a non-spell action.
 
 **ooc_discussion** — Out-of-character talk with the GM:
 - No additional fields.  Summarize the player input in `detail`.
@@ -301,14 +306,16 @@ Worked recipes:
    non-rigorous `examine` (a free cursory look) and `ooc_discussion`
    costs the player's combat action — after it resolves, the enemies
    take their turns. Valid actions:
-   - `combat` — attack an enemy combatant, use a consumable item from
-     `combat_state.usable_items`, use an ability from
-     `combat_state.abilities` via `combat_action: "use_ability"` with
-     `ability_id`, or Disengage via `combat_action: "maneuver"` with
-     `maneuver: "disengage"`. Attack targets must be IDs from
-     `combat_state.combatants` with `side: "enemy"`. Allied NPCs
-     (`side: "party"`) fight autonomously under engine control — the
-     player cannot direct or attack them.
+   - `combat` — attack an enemy combatant from
+      `combat_state.combatants` via `combat_action: "attack"`, or
+      Disengage via `combat_action: "maneuver"` with
+      `maneuver: "disengage"`. Attack targets must have
+      `side: "enemy"`. Allied NPCs (`side: "party"`) fight
+      autonomously under engine control — the player cannot direct or
+      attack them.
+   - `use_ability` — use an ability from `combat_state.abilities`
+      (spell, class feature, etc.) with `ability_id` and a target
+      matching the ability's `target` kind.
    - `move` — attempt to flee the fight through an exit.
    - `wait` — pass your turn.
    - `interact` — manipulate something mid-fight (pull a lever, pick a
@@ -343,8 +350,8 @@ Worked recipes:
 - **Combat awareness**: When `combat_state` is present, combat is active.
   Every action except non-rigorous `examine` (free cursory look) and
   `ooc_discussion` costs the player's combat action and lets the enemies
-  act. Valid actions: `combat` (attack / use item / use ability /
-  maneuver), `move` (flee), `wait` (pass the turn), `interact` (only
+  act. Valid actions: `combat` (attack / maneuver), `use_ability`,
+  `move` (flee), `wait` (pass the turn), `interact` (only
   interaction IDs from `combat_state.interactions_available`),
   `transfer`, `gear` (weapon swap only), and `examine` (rigorous
   allowed). Allied NPCs act on their own

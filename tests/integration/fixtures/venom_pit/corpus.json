@@ -47,10 +47,16 @@
       "type": "item",
       "name": "Antidote",
       "description": "A bitter draught that purges venom. Drinking it removes the poisoned condition.",
-      "consumable": {
-        "cure_status_effects": ["poisoned"],
-        "destroy": true
-      }
+      "interactions": [
+        {
+          "id": "drink",
+          "description": "Drink the antidote to purge poison.",
+          "result": {
+            "cure_status_effects": ["poisoned"],
+            "remove_item_count": {"antidote": 1}
+          }
+        }
+      ]
     },
     "willa": {
       "type": "npc",

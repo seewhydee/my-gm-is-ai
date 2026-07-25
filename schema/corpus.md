@@ -336,6 +336,7 @@ ALL fields in a Result object are optional.
 | `player_damage`     | string   | Deal damage to player, e.g. `"1d4"` |
 | `player_heal`       | string   | Heal player (clamped to max HP), e.g. `"2d4+2"` |
 | `apply_status_effect`   | object   | Apply status effect: `{ "id": "poisoned", "rounds": 3, "target": "player" }` |
+| `cure_status_effects`   | string[] | Remove status effects by ID (e.g. `["poisoned"]`) |
 | `adjust_attitude`   | object   | NPC IDs → attitude deltas           |
 | `reveals`           | string   | Update player knowledge (see below) |
 | `then_check` | CheckResolution | Follow-up check (see below)         |
@@ -1240,8 +1241,8 @@ comparisons in conditions (e.g. `inventory:coin >= 30`).
 | `name`         | string     | Display name (required!)     |
 | `take_check`¹  | GatedCheck | Obstacle to taking the item  |
 | `equip_block`¹ | object     | For equipment (see below)    |
-| `consumable`¹  | object     | For consumables (see below)  |
-| `max_stack`¹   | interger   | Stack cap for stackable item |
+| `interactions`¹ | list[Interaction] | For item-authored interactions (e.g. a potion's `drink`, a scroll's `read`) |
+| `max_stack`¹   | integer    | Stack cap for stackable item |
 
 > ¹ optional
 
@@ -1262,13 +1263,26 @@ Notes:
 - For a stackable item, `max_stack`, if supplied, should be >= 1 and
   sets the inventory count; if omitted, there is no cap.
 
-- `consumable`, if present, marks the item as usable (potion, scroll,
-  food).  It holds `{ "heal": "2d4+2", "cure_status_effects": ["poisoned"],
-  "destroy": true }`: `heal` is a dice expression of HP restored
-  (clamped to max HP), `cure_status_effects` lists combat status effects removed
-  on use, and `destroy` (default `true`) consumes one count per use.
-  In combat the player uses consumables via the `use_item` combat
-  action.
+- `interactions`, if present, carries item-authored interactions
+  available to the player via the `interact` action.  Each entry is an
+  [Interaction](#interaction), with an `id` and a `result`.  Examples:
+
+  ```json
+  { "id": "drink", "description": "Drink the potion",
+    "result": { "player_heal": "2d4+2", "remove_item_count": {"potion_of_healing": 1} } }
+  ```
+
+  ```json
+  { "id": "drink", "description": "Drink to cure poison",
+    "result": { "cure_status_effects": ["poisoned"], "remove_item_count": {"antidote": 1} } }
+  ```
+
+  This replaces the former `consumable` block.  The `Result` field
+  `cure_status_effects` lists combat status effect IDs removed on use.
+  `remove_item_count` with the item's own ID consumes one count on use
+  (omit for multi-use items).  The player uses an inventory item by
+  targeting it with `interact`/`drink` (or the item's specific
+  interaction id), in or out of combat.
 
 #### Equipment
 
@@ -1279,7 +1293,8 @@ Block object, which specifies the parameters of the equipment.
 Standard SRD gear — the full SRD 5.2.1 weapon table (e.g. `longsword`,
 `greataxe`, `light_crossbow`), armor table (`leather_armor`,
 `chain_mail`, `plate_armor`, `shield`), and the four tiers of healing
-potion (`potion_of_healing` … `potion_of_supreme_healing`) — ships with
+potion (`potion_of_healing` … `potion_of_supreme_healing`, each with
+a `drink` interaction) — ships with
 the engine as a data pack; see `srd-5e-pack.md` for the full list of
 available IDs.  Rooms, inventories, and character sheets can reference
 those IDs directly.  A corpus item entity with the same ID replaces the

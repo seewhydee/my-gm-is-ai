@@ -31,6 +31,7 @@ from mgmai.models.actions import (
     HardStateChanges,
     InteractAction,
     MoveAction,
+    UseAbilityAction,
     WaitAction,
 )
 from mgmai.models.combat import CombatLogEntry, CombatState
@@ -1684,7 +1685,7 @@ def _use_npc_ability(
 
 
 def _resolve_player_ability(
-    action: CombatAction,
+    action: CombatAction | UseAbilityAction,
     hard: HardGameState,
     corpus: ModuleCorpus,
     hard_changes: HardStateChanges,
@@ -1817,23 +1818,18 @@ def _resolve_player_ability(
 
 
 def resolve_out_of_combat_ability(
-    action: CombatAction,
+    action: UseAbilityAction,
     hard: HardGameState,
     corpus: ModuleCorpus,
 ) -> dict[str, Any]:
     """Resolve the player's ``use_ability`` action outside combat.
 
-    Only self/ally-targeted abilities with a heal or on_cast effect work
-    out of combat (Cure Wounds between fights, Mage Armor): enemy targets
-    and attack/save/auto_damage effects resolve against combatants and are
-    rejected with a "start combat first" error.  Spell slots live on
-    ``PlayerState`` (cross-combat), so the slot check/decrement mirrors
-    the in-combat path.  ``uses_per_combat`` counters are combat-scoped
-    (they live on ``CombatState``), so per-combat abilities are unlimited
-    here — correct for per-combat abilities; per-day recharge is deferred
-    to the rests feature anyway.
-
-    Returns the same dict shape as :func:`resolve_combat_turn`.
+    Self/ally-targeted abilities with a heal or on_cast effect resolve
+    directly (Cure Wounds between fights, Mage Armor).  Enemy-targeted
+    abilities return a ``combat_triggered`` signal so the caller can
+    enter combat (mirroring interact/attack).  Attack/save/auto_damage
+    effects without a combat state are still rejected — they need a
+    live CombatState.
     """
     aid = action.ability_id
     if not aid:
@@ -1846,17 +1842,17 @@ def resolve_out_of_combat_ability(
 
     if ability.target == "enemy":
         return {
-            "success": False,
-            "error": (
-                f"'{ability.name}' targets an enemy — attack the target "
-                f"to start combat first"
-            ),
+            "success": True,
+            "combat_triggered": True,
+            "enemy_ids": [action.target] if action.target else [],
+            "hard_changes": HardStateChanges(),
+            "combat_log": [],
+            "player_died": False,
+            "combat_ended_reason": None,
+            "events": [],
+            "warnings": [],
         }
     if ability.concentration:
-        # Concentration is tracked on CombatState, which doesn't exist
-        # out of combat — reject rather than cast without tracking.
-        # (Save-effect concentration spells like Sleep are already
-        # rejected by the effect-kind check below.)
         return {
             "success": False,
             "error": (
@@ -1865,7 +1861,6 @@ def resolve_out_of_combat_ability(
             ),
         }
     if not ability.heal and ability.on_cast is None:
-        # attack/save/auto_damage effects need a live CombatState.
         return {
             "success": False,
             "error": f"'{ability.name}' can only be used in combat",
@@ -1874,7 +1869,6 @@ def resolve_out_of_combat_ability(
     if (
         ability.spell_level is not None
         and ability.spell_level >= 1
-        # Leveled spells need a slot of their level; cantrips are free.
         and hard.player.spell_slots.get(ability.spell_level, 0) <= 0
     ):
         return {
@@ -1900,8 +1894,6 @@ def resolve_out_of_combat_ability(
                 }
 
     if ability.spell_level is not None and ability.spell_level >= 1:
-        # The slot is spent only once the cast is validated (mutated in
-        # place, like the in-combat path).
         hard.player.spell_slots[ability.spell_level] -= 1
 
     hard_changes = HardStateChanges()
@@ -2448,81 +2440,6 @@ def enter_combat(
 # Combat turn resolution
 # ------------------------------------------------------------------
 
-def _resolve_use_item(
-    item_id: str,
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-    system: Any,
-    hard_changes: HardStateChanges,
-    combat_log: list[CombatLogEntry],
-    round_number: int,
-    events: list[tuple[str, dict[str, Any]]] | None = None,
-) -> dict[str, Any] | None:
-    """Resolve a ``use_item`` combat action (drink a potion, …).
-
-    Uses the player's action: healing is clamped to max HP, one count of
-    the item is consumed (when the block says so), and NPC turns proceed
-    normally.  Returns an error dict on failure, None on success.
-    """
-    if item_id not in hard.player.inventory:
-        usable: list[str] = []
-        for inv_id, count in hard.player.inventory.items():
-            if count <= 0:
-                continue
-            inv_entity = corpus.entities.get(inv_id)
-            if inv_entity is not None and inv_entity.consumable is not None:
-                usable.append(f"{inv_id} x{count} ({inv_entity.name or inv_id})")
-        if usable:
-            suffix = ". Usable items in inventory: " + ", ".join(usable) + "."
-        else:
-            suffix = ". No usable items in inventory."
-        return {
-            "success": False,
-            "error": f"Item '{item_id}' not in inventory{suffix}",
-        }
-    entity = corpus.entities.get(item_id)
-    if entity is None or entity.consumable is None:
-        return {"success": False, "error": f"Item '{item_id}' is not usable"}
-    block = entity.consumable
-
-    healed = 0
-    heal_roll: str | None = None
-    if block.heal:
-        heal_total, heal_roll = system.roll_damage(block.heal)
-        effective_hp = (hard.player.current_hp or 0) + (
-            hard_changes.player_hp_delta or 0
-        )
-        max_hp = system.compute_player_max_hp(hard, corpus)
-        healed = max(0, min(heal_total, max_hp - effective_hp))
-        if healed:
-            hard_changes.player_hp_delta = (
-                (hard_changes.player_hp_delta or 0) + healed
-            )
-
-    for effect_id in block.cure_status_effects:
-        remove_status_effect("player", effect_id, hard, corpus, "consumable", events)
-
-    if block.destroy:
-        hard_changes.inventory_removed[item_id] = (
-            hard_changes.inventory_removed.get(item_id, 0) + 1
-        )
-        hard_changes.inventory_removed_reasons[item_id] = "consumed"
-
-    combat_log.append(
-        CombatLogEntry(
-            round=round_number,
-            actor="player",
-            action="use_item",
-            target=item_id,
-            damage=healed,  # healing amount (positive), shown by the prefix
-            damage_roll=heal_roll,
-            remaining_hp=(hard.player.current_hp or 0)
-            + (hard_changes.player_hp_delta or 0),
-        )
-    )
-    return None
-
-
 def _begin_player_turn(
     action: Any,
     combat: CombatState,
@@ -2577,7 +2494,7 @@ def _begin_player_turn(
     # warnings — never to a lost turn.
     positioning = getattr(action, "positioning", None)
     if positioning is not None:
-        if isinstance(action, (CombatAction, WaitAction, InteractAction)):
+        if isinstance(action, (CombatAction, WaitAction, InteractAction, UseAbilityAction)):
             if _apply_positioning_assertions(
                 action, combat, hard, corpus, soft, state_manager,
                 system, hard_changes, combat_log, events, warnings,
@@ -2669,7 +2586,7 @@ def _player_died(hard: HardGameState, hard_changes: HardStateChanges) -> bool:
 
 
 def resolve_combat_turn(
-    action: CombatAction | MoveAction | WaitAction,
+    action: CombatAction | MoveAction | WaitAction | UseAbilityAction,
     hard: HardGameState,
     corpus: ModuleCorpus,
     soft: SoftGameState | None = None,
@@ -2677,8 +2594,9 @@ def resolve_combat_turn(
 ) -> dict[str, Any]:
     """Resolve the player's combat action and any following NPC turns.
 
-    The player's action is an attack/item/ability (``CombatAction``), a
-    flee attempt (``MoveAction``), or a turn pass (``WaitAction``).
+    The player's action is an attack/maneuver (``CombatAction``), an
+    ability (``UseAbilityAction``), a flee attempt (``MoveAction``), or
+    a turn pass (``WaitAction``).
 
     Returns a dict with ``success``, ``hard_changes``, ``combat_log``,
     ``player_died``, ``combat_ended_reason``, ``events``, ``warnings``,
@@ -2719,7 +2637,7 @@ def resolve_combat_turn(
         combat_end_reason = "defeat"
     if player_skips or died_to_oa:
         pass  # stunned, or died to a provoked OA; NPC turns are skipped below
-    elif isinstance(action, CombatAction) and action.combat_action == "use_ability":
+    elif isinstance(action, UseAbilityAction):
         # --- Use a combat ability ---
         ability = corpus.abilities.get(action.ability_id or "")
         is_bonus_action = (
@@ -2733,8 +2651,6 @@ def resolve_combat_turn(
                     f"bonus action was already used this turn"
                 ),
             }
-        # One leveled spell per turn: a bonus-action leveled spell and a
-        # main-action leveled spell can't coexist in either order.
         if (
             ability is not None
             and (ability.spell_level or 0) >= 1
@@ -2759,11 +2675,6 @@ def resolve_combat_turn(
             combat_ended = True
             combat_end_reason = "victory"
         elif is_bonus_action:
-            # Bonus-action cast with combat continuing: the player keeps
-            # their main action, so the turn does not end here.  Extend the
-            # combat log now (normally _end_player_turn's job) and mark the
-            # turn as continued so the follow-up resolve_combat_turn call
-            # for the main action skips start-of-turn processing.
             combat.log.extend(combat_log)
             combat.bonus_action_used = True
             combat.turn_continuation = True
@@ -2776,14 +2687,6 @@ def resolve_combat_turn(
                 "events": events,
                 "warnings": warnings,
             }
-    elif isinstance(action, CombatAction) and action.combat_action == "use_item":
-        # --- Use a consumable item ---
-        err = _resolve_use_item(
-            action.target, hard, corpus, system,
-            hard_changes, combat_log, combat.round_number, events,
-        )
-        if err is not None:
-            return err
     elif isinstance(action, CombatAction) and action.combat_action == "maneuver":
         # --- Maneuver: Disengage ---
         # Breaks all of the player's engagement pairs without provoking

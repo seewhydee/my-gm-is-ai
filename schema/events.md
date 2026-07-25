@@ -140,7 +140,7 @@ For these events, the context keys are `exit_id` (the exit ID),
 - `status_effect.cleared` – A status effect is removed.  The context keys are
   `target_id`, `status_effect_id`, and `reason`, one of `"expired"`
   (ticked to zero), `"combat_end"` (combat-scoped status effects clear
-  when combat ends), `"consumable"` (cured by `cure_status_effects`),
+  when combat ends), `"interaction"` (cured by an item interaction's `cure_status_effects`),
   `"auto_clear"` (`until_turn_start` duration, e.g. prone), or
   `"manual"`.
 

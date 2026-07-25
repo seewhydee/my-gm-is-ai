@@ -33,6 +33,7 @@ from mgmai.models.actions import (
     SoftItemProposal,
     TalkAction,
     TransferAction,
+    UseAbilityAction,
     WaitAction,
 )
 from mgmai.models.corpus import (
@@ -936,7 +937,7 @@ def resolve_interact(
     if target_entity is None:
         return ResolutionResult(
             success=False,
-            error=f"Target '{target_id}' not found in room '{room_id}'",
+            error=f"Target '{target_id}' not found in room '{room_id}' or your inventory",
         )
 
     matches: list[tuple[Interaction, str]] = []
@@ -1574,6 +1575,13 @@ def _apply_result(
             hard, corpus, "result",
             events=resolution.events if resolution is not None else None,
         )
+    if result.cure_status_effects and hard is not None:
+        from mgmai.engine.status_effects import remove_status_effect
+        for effect_id in result.cure_status_effects:
+            remove_status_effect(
+                "player", effect_id, hard, corpus, "interaction",
+                resolution.events if resolution is not None else None,
+            )
     if result.reveals:
         revealed_hints.append(result.reveals)
     # Inline game-over: propagate from any result (interaction, reaction,
@@ -1764,12 +1772,15 @@ def _find_entity_in_room_followers(
     hard: HardGameState,
     corpus: ModuleCorpus,
 ) -> Any | None:
-    """Like _find_entity_in_room but also matches following NPCs."""
+    """Like _find_entity_in_room but also matches following NPCs and
+    inventory items (so the player can interact with items they carry)."""
     result = _find_entity_in_room(entity_id, room_id, hard, corpus)
     if result is not None:
         return result
     follower_ids = get_following_npc_ids(hard, corpus)
     if entity_id in follower_ids:
+        return corpus.entities.get(entity_id)
+    if entity_id in hard.player.inventory:
         return corpus.entities.get(entity_id)
     return None
 
@@ -1860,6 +1871,89 @@ def _check_follower_blacklist(
             )
 
 
+def _resolve_use_ability(
+    action: UseAbilityAction,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: SoftGameState,
+    state_manager: Any | None = None,
+) -> ResolutionResult:
+    """Resolve a top-level ``use_ability`` action outside combat.
+
+    Self/ally heal/on-cast abilities resolve directly.  Enemy-targeted
+    abilities start combat (mirroring interact/attack), pulling in the
+    target's combat_group.
+    """
+    from mgmai.engine.combat import (
+        resolve_out_of_combat_ability,
+        enter_combat,
+        resolve_combat_enemies,
+    )
+
+    result = resolve_out_of_combat_ability(action, hard, corpus)
+    if not result["success"]:
+        error_msg = result.get("error")
+        if result.get("combat_triggered"):
+            target_id = action.target
+            target_entity = _find_entity_in_room_followers(
+                target_id, hard.player.location, hard, corpus
+            )
+            if target_entity is None or target_entity.combat is None:
+                return ResolutionResult(
+                    success=False,
+                    error=(
+                        f"Cannot start combat with '{target_id}' "
+                        f"(not present or not a valid combatant)"
+                    ),
+                    room_after_id=hard.player.location,
+                )
+            enemies = resolve_combat_enemies([target_id], None, hard, corpus)
+            if not enemies:
+                return ResolutionResult(
+                    success=False,
+                    error=(
+                        f"Cannot start combat with '{target_id}' "
+                        f"(not present or not a valid combatant)"
+                    ),
+                    room_after_id=hard.player.location,
+                )
+            entry = enter_combat(
+                enemies, hard, corpus, soft=soft, state_manager=state_manager,
+                engage_source=target_id,
+            )
+            events: list[tuple[str, dict[str, Any]]] = [
+                ("combat.started", {"combatant_ids": enemies}),
+            ]
+            events.extend(entry.get("events") or [])
+            if entry.get("combat_ended_reason"):
+                events.append(("combat.ended", {
+                    "reason": entry["combat_ended_reason"],
+                }))
+            return ResolutionResult(
+                success=True,
+                hard_changes=entry["hard_changes"],
+                combat_triggered=True,
+                combat_log=entry["combat_log"],
+                player_died=entry.get("player_died", False),
+                room_after_id=hard.player.location,
+                events=events,
+            )
+        return ResolutionResult(
+            success=False,
+            error=error_msg,
+        )
+
+    events: list[tuple[str, dict[str, Any]]] = list(result.get("events") or [])
+    return ResolutionResult(
+        success=True,
+        hard_changes=result["hard_changes"],
+        combat_log=result["combat_log"],
+        player_died=result.get("player_died", False),
+        room_after_id=hard.player.location,
+        events=events,
+    )
+
+
 def _resolve_combat_action(
     action: CombatAction,
     hard: HardGameState,
@@ -1873,9 +1967,7 @@ def _resolve_combat_action(
     ``interact``/``attack`` interaction: it starts combat with the
     target.  (LLM Call 1 naturally emits ``combat``/``attack`` for
     out-of-combat attack commands, and the engine already knows
-    exactly what that means.)  Out of combat, ``use_ability`` resolves
-    self/ally abilities (heals, on-cast buffs like Mage Armor) without
-    a CombatState.
+    exactly what that means.)
     """
     from mgmai.engine.combat import resolve_combat_turn
 
@@ -1895,13 +1987,9 @@ def _resolve_combat_action(
         )
 
     if combat is None or not combat.active:
-        if action.combat_action == "use_ability":
-            from mgmai.engine.combat import resolve_out_of_combat_ability
-            result = resolve_out_of_combat_ability(action, hard, corpus)
-        else:
-            result = resolve_combat_turn(
-                action, hard, corpus, soft=soft, state_manager=state_manager
-            )
+        result = resolve_combat_turn(
+            action, hard, corpus, soft=soft, state_manager=state_manager
+        )
     else:
         result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
     if not result["success"]:
@@ -2304,6 +2392,30 @@ def resolve_action(
     # During combat, wait actions pass the player's turn
     if action_type == "wait" and in_combat:
         return _resolve_combat_pass(action, hard, corpus, soft, state_manager)
+    # During combat, use_ability resolves via the combat turn pipeline
+    # (action economy, bonus-action rules, concentration, engagement).
+    if action_type == "use_ability" and in_combat:
+        from mgmai.engine.combat import resolve_combat_turn
+        result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
+        if not result["success"]:
+            return ResolutionResult(
+                success=False,
+                error=result.get("error"),
+            )
+        events: list[tuple[str, dict[str, Any]]] = list(result.get("events") or [])
+        if result.get("combat_ended_reason"):
+            events.append(("combat.ended", {
+                "reason": result["combat_ended_reason"],
+            }))
+        return ResolutionResult(
+            success=True,
+            hard_changes=result["hard_changes"],
+            combat_log=result["combat_log"],
+            player_died=result.get("player_died", False),
+            warnings=list(result.get("warnings") or []),
+            room_after_id=hard.player.location,
+            events=events,
+        )
 
     if in_combat:
         # An attack interaction during combat is a normal combat attack —
@@ -2348,6 +2460,8 @@ def resolve_action(
         return resolve_transfer(action, hard, soft, corpus, state_manager)
     elif action_type == "combat":
         return _resolve_combat_action(action, hard, corpus, soft, state_manager)
+    elif action_type == "use_ability":
+        return _resolve_use_ability(action, hard, corpus, soft, state_manager)
     elif action_type == "wait":
         return resolve_wait(action, hard, soft, corpus)
     elif action_type == "gear":

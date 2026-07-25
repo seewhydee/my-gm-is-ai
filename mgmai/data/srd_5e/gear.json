@@ -600,39 +600,63 @@
     "name": "Potion of Healing",
     "description": "A small vial of red liquid that glimmers when agitated. Drinking it restores 2d4+2 hit points.",
     "tags": ["potion"],
-    "consumable": {
-      "heal": "2d4+2",
-      "destroy": true
-    }
+    "interactions": [
+      {
+        "id": "drink",
+        "description": "Drink the potion to restore 2d4+2 hit points.",
+        "result": {
+          "player_heal": "2d4+2",
+          "remove_item_count": {"potion_of_healing": 1}
+        }
+      }
+    ]
   },
   "potion_of_greater_healing": {
     "type": "item",
     "name": "Potion of Greater Healing",
     "description": "A vial of bright red liquid. Drinking it restores 4d4+4 hit points.",
     "tags": ["potion"],
-    "consumable": {
-      "heal": "4d4+4",
-      "destroy": true
-    }
+    "interactions": [
+      {
+        "id": "drink",
+        "description": "Drink the potion to restore 4d4+4 hit points.",
+        "result": {
+          "player_heal": "4d4+4",
+          "remove_item_count": {"potion_of_greater_healing": 1}
+        }
+      }
+    ]
   },
   "potion_of_superior_healing": {
     "type": "item",
     "name": "Potion of Superior Healing",
     "description": "A vial of vivid red liquid. Drinking it restores 8d4+8 hit points.",
     "tags": ["potion"],
-    "consumable": {
-      "heal": "8d4+8",
-      "destroy": true
-    }
+    "interactions": [
+      {
+        "id": "drink",
+        "description": "Drink the potion to restore 8d4+8 hit points.",
+        "result": {
+          "player_heal": "8d4+8",
+          "remove_item_count": {"potion_of_superior_healing": 1}
+        }
+      }
+    ]
   },
   "potion_of_supreme_healing": {
     "type": "item",
     "name": "Potion of Supreme Healing",
     "description": "A vial of brilliant red liquid. Drinking it restores 10d4+20 hit points.",
     "tags": ["potion"],
-    "consumable": {
-      "heal": "10d4+20",
-      "destroy": true
-    }
+    "interactions": [
+      {
+        "id": "drink",
+        "description": "Drink the potion to restore 10d4+20 hit points.",
+        "result": {
+          "player_heal": "10d4+20",
+          "remove_item_count": {"potion_of_supreme_healing": 1}
+        }
+      }
+    ]
   }
 }

@@ -443,7 +443,7 @@ class Display:
                 if count <= 0:
                     continue
                 entity = corpus.entities.get(item_id)
-                if entity is not None and entity.consumable:
+                if entity is not None and entity.interactions:
                     items.append(f"{entity.name or item_id} x{count}")
             parts.append("Items: " + (", ".join(items) if items else "none"))
         return " · ".join(parts)

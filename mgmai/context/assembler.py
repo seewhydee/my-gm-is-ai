@@ -296,6 +296,7 @@ def _build_player_state(
         abilities=abilities,
         spell_slots=dict(hard.player.spell_slots),
         status_effects=_status_effect_briefs(hard.player.status_effects, corpus),
+        usable_items=_build_usable_items(hard, corpus),
     )
 
 
@@ -471,6 +472,28 @@ def _ability_briefing_entry(
     return entry
 
 
+def _build_usable_items(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> list[dict[str, Any]]:
+    """Inventory items that carry an interaction (e.g. potions with ``drink``)."""
+    items: list[dict[str, Any]] = []
+    for item_id in hard.player.inventory:
+        entity = corpus.entities.get(item_id)
+        if entity is None or not entity.interactions:
+            continue
+        interaction_briefs = [
+            {"id": inter.id, "description": inter.description}
+            for inter in entity.interactions
+        ]
+        items.append({
+            "id": item_id,
+            "name": entity.name or item_id,
+            "interactions": interaction_briefs,
+        })
+    return items
+
+
 def _build_combat_state(
     hard: HardGameState,
     soft: SoftGameState,
@@ -528,15 +551,7 @@ def _build_combat_state(
                 **positioning,
             })
 
-    usable_items: list[dict[str, Any]] = []
-    for item_id in hard.player.inventory:
-        entity = corpus.entities.get(item_id)
-        if entity is not None and entity.consumable is not None:
-            usable_items.append({
-                "id": item_id,
-                "name": entity.name or item_id,
-                "effects": entity.consumable.effects_summary(),
-            })
+    usable_items: list[dict[str, Any]] = _build_usable_items(hard, corpus)
 
     abilities: list[dict[str, Any]] = []
     system = get_system_for_corpus(corpus)

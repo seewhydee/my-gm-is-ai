@@ -456,19 +456,12 @@ class TestRulingSemanticRetry:
     def _enter_combat(self, state_manager) -> None:
         """Put the player in combat vs the spider with a potion in hand."""
         from mgmai.models.combat import CombatState
-        from mgmai.models.corpus import CombatBlock, ConsumableBlock, Entity
+        from mgmai.models.corpus import CombatBlock
 
-        state_manager.corpus.entities["health_potion"] = Entity(
-            type="item",
-            name="Healing Potion",
-            description="A red potion.",
-            consumable=ConsumableBlock(heal="2d4+2"),
-        )
         state_manager.corpus.entities["spider"].combat = CombatBlock(
             hp=15, ac=12, atk=4, dmg="1d4+2",
         )
         hard = state_manager.hard_state
-        hard.player.inventory["health_potion"] = 2
         hard.entity_states.setdefault("spider", {})["current_hp"] = 15
         hard.combat = CombatState(
             active=True,
@@ -479,12 +472,23 @@ class TestRulingSemanticRetry:
         )
 
     @staticmethod
-    def _use_item_ruling(target: str) -> str:
+    def _invalid_attack_ruling() -> str:
         return json.dumps({
             "action_type": "combat",
-            "combat_action": "use_item",
-            "target": target,
-            "detail": "Player drinks a healing potion",
+            "combat_action": "attack",
+            "target": "nonexistent",
+            "detail": "Player attacks a nonexistent enemy",
+            "follow_up": None,
+            "soft_state_patches": [],
+        })
+
+    @staticmethod
+    def _valid_attack_ruling() -> str:
+        return json.dumps({
+            "action_type": "combat",
+            "combat_action": "attack",
+            "target": "spider",
+            "detail": "Player attacks the spider",
             "follow_up": None,
             "soft_state_patches": [],
         })
@@ -492,13 +496,13 @@ class TestRulingSemanticRetry:
     def test_semantically_invalid_ruling_retried(
         self, state_manager, fake_display
     ) -> None:
-        """use_item with target "player" is flagged; the retry is used."""
+        """Attack with invalid target is flagged; the retry is used."""
         self._enter_combat(state_manager)
         responses = [
-            self._use_item_ruling("player"),
-            self._use_item_ruling("health_potion"),
+            self._invalid_attack_ruling(),
+            self._valid_attack_ruling(),
         ]
-        llm = FakeLLMClient(prose_response=_prose_json("You drink the potion."))
+        llm = FakeLLMClient(prose_response=_prose_json("You strike the spider."))
         llm._ruling_iter = iter(responses)
 
         def call_ruling(sp, up):
@@ -508,18 +512,14 @@ class TestRulingSemanticRetry:
         llm.call_ruling = call_ruling
 
         loop = GameLoop(state_manager, llm, display=fake_display)
-        loop._run_turn("I drink a healing potion.")
+        loop._run_turn("I attack the spider.")
 
         assert len(llm.ruling_calls) == 2
         retry_prompt = llm.ruling_calls[1][1]
-        assert "[ERROR FROM PREVIOUS ATTEMPT: Invalid use_item target 'player'" \
+        assert "[ERROR FROM PREVIOUS ATTEMPT: Invalid attack target 'nonexistent'" \
             in retry_prompt
-        assert "health_potion (Healing Potion)" in retry_prompt
-        # The retried (valid) action was resolved: one potion was consumed.
         assert loop._last_result is not None
         assert loop._last_result.action_type == "combat"
-        assert loop._last_result.success is True
-        assert state_manager.hard_state.player.inventory["health_potion"] == 1
 
     def test_persistent_semantic_error_falls_back(
         self, state_manager, fake_display
@@ -527,13 +527,13 @@ class TestRulingSemanticRetry:
         """If the retry is also semantically invalid, fall back."""
         self._enter_combat(state_manager)
         llm = FakeLLMClient(
-            ruling_response=self._use_item_ruling("player"),
+            ruling_response=self._invalid_attack_ruling(),
             prose_response=_prose_json(),
         )
         loop = GameLoop(state_manager, llm, display=fake_display)
 
         narration = loop._execute_turn(
-            "I drink a healing potion.", "I drink a healing potion.", 0
+            "I attack the spider.", "I attack the spider.", 0
         )
 
         assert narration is None

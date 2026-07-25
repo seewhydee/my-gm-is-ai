@@ -116,7 +116,8 @@ PlayerAction in JSON, consisting of exactly one of these types:
 - `transfer`: give/take items between inventory and entity/room
 - `gear`: equip or unequip a gear item
 - `wait`: catch-all for below-threshold actions, or pass time or combat turn
-- `combat`: combat action: attack, use consumable, or use ability
+- `combat`: combat action: attack or maneuver
+- `use_ability`: use a spell, class feature, or other ability
 - `ooc_discussion`: out-of-character question to GM
 
 Every action has a `detail` field with a natural-language description
@@ -182,10 +183,10 @@ extends the pipeline in three ways:
 constraints:
 
 - The Assembler injects a `combat_state` block with positioning data,
-  HP, initiative order, consumable effects, and ability summaries.
+  HP, initiative order, usable item effects, and ability summaries.
 
 - Template injections constrain LLM Call 1 to specific action types
-  (attack, use item/ability, flee, wait, or cursory examine) and
+  (attack, use ability, flee, wait, interact, or cursory examine) and
   instruct LLM Call 2 to narrate from the combat log.
 
 - The engine runs the turn-based combat loop (initiative tracking, NPC

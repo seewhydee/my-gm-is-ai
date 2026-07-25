@@ -249,25 +249,6 @@ class EquipBlock(BaseModel):
         return ", ".join(parts)
 
 
-class ConsumableBlock(BaseModel):
-    """Describes how an item is consumed (potion drunk, scroll read, …).
-
-    Only present on item-type entities.  Usable in combat via the
-    ``use_item`` combat action, which consumes the player's action.
-    """
-    heal: str = ""                              # dice expression, e.g. "2d4+2"
-    cure_status_effects: list[str] = Field(default_factory=list)
-    destroy: bool = True                        # consume one count on use
-
-    def effects_summary(self) -> str:
-        """Compact plain-English summary for briefings and display."""
-        parts: list[str] = []
-        if self.heal:
-            parts.append(f"heals {self.heal}")
-        if self.cure_status_effects:
-            parts.append(f"cures {', '.join(self.cure_status_effects)}")
-        return ", ".join(parts)
-
 
 class Result(BaseModel):
     narrative: Optional[str] = None
@@ -282,6 +263,7 @@ class Result(BaseModel):
     adjust_attitude: Optional[Dict[str, int]] = None
     reveals: Optional[str] = None
     apply_status_effect: Optional[ApplyStatusEffect] = None
+    cure_status_effects: Optional[List[str]] = None
     then_check: Optional[CheckResolution] = None
     player_damage: Optional[str] = None
     player_heal: Optional[str] = None
@@ -296,7 +278,8 @@ class Result(BaseModel):
                 "narrative", "add_item", "add_item_count",
                 "remove_item", "remove_item_count",
                 "set_flag", "alter_stat", "set_entity_state", "set_room_state",
-                "adjust_attitude", "reveals", "then_check",
+                "adjust_attitude", "reveals", "apply_status_effect",
+                "cure_status_effects", "then_check",
                 "player_damage", "player_heal", "set_player_location",
             )
         ) or self.game_over is not None or self.start_combat is not None
@@ -728,7 +711,6 @@ class Entity(BaseModel):
     combat: Optional[CombatBlock] = None
     combat_group: Optional[str] = None
     equip_block: Optional[EquipBlock] = None
-    consumable: Optional[ConsumableBlock] = None
     max_stack: Optional[int] = None
     reactions: List[Reaction] = Field(default_factory=list)
     _contains_map: Dict[str, int] = PrivateAttr(default_factory=dict)
@@ -769,10 +751,6 @@ class Entity(BaseModel):
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'equip_block'. "
                 f"Only 'item' entities may carry equip_block.")
-        if self.type != "item" and self.consumable is not None:
-            raise ValueError(
-                f"Entity type '{self.type}' must not have 'consumable'. "
-                f"Only 'item' entities may carry consumable.")
         if self.type != "item" and self.max_stack is not None:
             raise ValueError(
                 f"Entity type '{self.type}' must not have 'max_stack'. "

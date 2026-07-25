@@ -77,7 +77,7 @@ Pack conventions:
   (14/16/17/18); `shield` is `ac_bonus` +2.  Strength requirements and
   Stealth disadvantage are noted in descriptions for GM adjudication.
 - **Potions** — `potion_of_healing` (2d4+2) through
-  `potion_of_supreme_healing` (10d4+20) as `consumable` items.
+  `potion_of_supreme_healing` (10d4+20) as items with a `drink` interaction.
 
 ---
 
@@ -291,9 +291,10 @@ with the ruling model.
 
 ## Consumables
 
-Items with a `consumable` block can be used (drunk, eaten, activated).
-In combat this is the `use_item` combat action, which consumes the
-player's action:
+Items with an `interactions` list that carry mechanical effects can be
+used in or out of combat via the `interact` action targeting the item
+itself.  For example, a potion defines a `drink` interaction whose
+`Result` heals the player and consumes one count:
 
 ```json
 {
@@ -301,24 +302,36 @@ player's action:
     "type": "item",
     "name": "Healing Potion",
     "description": "A small vial of red liquid.",
-    "consumable": {
-      "heal": "2d4+2",
-      "cure_status_effects": ["poisoned"],
-      "destroy": true
-    }
+    "interactions": [
+      {
+        "id": "drink",
+        "description": "Drink the potion to restore 2d4+2 hit points.",
+        "result": {
+          "player_heal": "2d4+2",
+          "cure_status_effects": ["poisoned"],
+          "remove_item_count": {"health_potion": 1}
+        }
+      }
+    ]
   }
 }
 ```
 
-| Field             | Type      | Default | Description |
-|-------------------|-----------|---------|-------------|
-| `heal`            | `string`  | `""`    | Healing dice expression (e.g. `"2d4+2"`); clamped to max HP. Empty = no healing. |
-| `cure_status_effects` | `[string]`| `[]`    | Status effects removed on use (e.g. `["poisoned"]`); works for any defined status effect, in or out of combat. |
-| `destroy`         | `bool`    | `true`  | Consume one count of the item on use. |
+The `Result` carries the mechanical primitives:
 
-The combat briefing lists the player's usable consumables under
-`combat_state.usable_items` so the ruling LLM can map requests like "I
-drink the potion" to `use_item`.
+| Field             | Type      | Description |
+|-------------------|-----------|-------------|
+| `player_heal`     | `string`  | Healing dice expression (e.g. `"2d4+2"`); clamped to max HP. |
+| `cure_status_effects` | `[string]`| Status effects removed on use (e.g. `["poisoned"]`). |
+| `remove_item_count` | `object` | Item IDs → counts consumed on use; omit for multi-use items. |
+
+The player and combat briefings list usable inventory items under
+`player_state.usable_items` / `combat_state.usable_items` so the ruling
+LLM can map requests like "I drink the potion" to `interact`/`drink`
+targeting the item's ID.
+
+Other item interaction IDs (`read`, `activate`, `pour`, etc.) work
+identically — each is an `interact`/`<id>` action on the item.
 
 ---
 

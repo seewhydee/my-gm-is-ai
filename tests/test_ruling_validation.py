@@ -29,6 +29,7 @@ from mgmai.models.actions import (
     MoveAction,
     PositioningAssertion,
     TalkAction,
+    UseAbilityAction,
     WaitAction,
 )
 from mgmai.models.briefing import (
@@ -111,12 +112,20 @@ def _peaceful_briefing() -> GMBriefing:
     return briefing.model_copy(update={"combat_state": None})
 
 
-def _combat(combat_action: str, target: str, ability_id: str | None = None):
+def _combat(combat_action: str, target: str):
     return CombatAction(
         action_type="combat",
         combat_action=combat_action,
         target=target,
+        detail="test",
+    )
+
+
+def _use_ability(ability_id: str, target: str = "player"):
+    return UseAbilityAction(
+        action_type="use_ability",
         ability_id=ability_id,
+        target=target,
         detail="test",
     )
 
@@ -155,37 +164,6 @@ def _briefing_with_equipped(equipped_items: list) -> GMBriefing:
     return briefing
 
 
-class TestUseItem:
-    def test_valid_item_target_passes(self):
-        assert validate_ruling_action(
-            _combat("use_item", "health_potion"), _combat_briefing()
-        ) is None
-
-    def test_player_as_target_flagged(self):
-        error = validate_ruling_action(
-            _combat("use_item", "player"), _combat_briefing()
-        )
-        assert error is not None
-        assert "Invalid use_item target 'player'" in error
-        assert "health_potion (Healing Potion)" in error
-        assert '"player"' in error and "never a valid" in error
-
-    def test_unknown_item_flagged(self):
-        error = validate_ruling_action(
-            _combat("use_item", "invisibility_potion"), _combat_briefing()
-        )
-        assert error is not None
-        assert "invisibility_potion" in error
-
-    def test_empty_usable_items_flagged(self):
-        error = validate_ruling_action(
-            _combat("use_item", "health_potion"),
-            _combat_briefing(usable_items=[]),
-        )
-        assert error is not None
-        assert "no usable items" in error
-
-
 class TestAttack:
     def test_valid_enemy_target_passes(self):
         assert validate_ruling_action(
@@ -211,23 +189,23 @@ class TestAttack:
 class TestUseAbility:
     def test_valid_self_ability_passes(self):
         assert validate_ruling_action(
-            _combat("use_ability", "player", "second_wind"),
+            _use_ability("second_wind", "player"),
             _combat_briefing(),
         ) is None
 
     def test_valid_enemy_ability_passes(self):
         assert validate_ruling_action(
-            _combat("use_ability", "goblin", "smite"), _combat_briefing()
+            _use_ability("smite", "goblin"), _combat_briefing()
         ) is None
 
     def test_valid_ally_ability_passes(self):
         assert validate_ruling_action(
-            _combat("use_ability", "korbar", "rally"), _combat_briefing()
+            _use_ability("rally", "korbar"), _combat_briefing()
         ) is None
 
     def test_unknown_ability_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "goblin", "fireball"), _combat_briefing()
+            _use_ability("fireball", "goblin"), _combat_briefing()
         )
         assert error is not None
         assert "Invalid ability_id 'fireball'" in error
@@ -235,7 +213,7 @@ class TestUseAbility:
 
     def test_empty_abilities_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "player", "second_wind"),
+            _use_ability("second_wind", "player"),
             _combat_briefing(abilities=[]),
         )
         assert error is not None
@@ -243,7 +221,7 @@ class TestUseAbility:
 
     def test_self_ability_with_enemy_target_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "goblin", "second_wind"),
+            _use_ability("second_wind", "goblin"),
             _combat_briefing(),
         )
         assert error is not None
@@ -252,14 +230,14 @@ class TestUseAbility:
 
     def test_enemy_ability_with_player_target_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "player", "smite"), _combat_briefing()
+            _use_ability("smite", "player"), _combat_briefing()
         )
         assert error is not None
         assert "smite" in error and "goblin" in error
 
     def test_ally_ability_with_enemy_target_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "goblin", "rally"), _combat_briefing()
+            _use_ability("rally", "goblin"), _combat_briefing()
         )
         assert error is not None
         assert "rally" in error and "korbar" in error
@@ -282,7 +260,7 @@ class TestUseAbility:
 
     def test_leveled_spell_without_slot_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "goblin", "magic_missile"),
+            _use_ability("magic_missile", "goblin"),
             self._spell_briefing({1: 0}),
         )
         assert error is not None
@@ -290,13 +268,13 @@ class TestUseAbility:
 
     def test_leveled_spell_with_slot_passes(self):
         assert validate_ruling_action(
-            _combat("use_ability", "goblin", "magic_missile"),
+            _use_ability("magic_missile", "goblin"),
             self._spell_briefing({1: 1}),
         ) is None
 
     def test_cantrip_needs_no_slot(self):
         assert validate_ruling_action(
-            _combat("use_ability", "goblin", "fire_bolt"),
+            _use_ability("fire_bolt", "goblin"),
             self._spell_briefing({}),
         ) is None
 
@@ -344,23 +322,23 @@ class TestUseAbilityOutOfCombat:
 
     def test_valid_self_buff_passes(self):
         assert validate_ruling_action(
-            _combat("use_ability", "player", "mage_armor"),
+            _use_ability("mage_armor", "player"),
             self._ooc_briefing({1: 1}),
         ) is None
 
     def test_valid_ally_heal_passes(self):
         assert validate_ruling_action(
-            _combat("use_ability", "medic", "cure_wounds"),
+            _use_ability("cure_wounds", "medic"),
             self._ooc_briefing({1: 1}),
         ) is None
         assert validate_ruling_action(
-            _combat("use_ability", "player", "cure_wounds"),
+            _use_ability("cure_wounds", "player"),
             self._ooc_briefing({1: 1}),
         ) is None
 
     def test_unknown_ability_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "player", "fireball"),
+            _use_ability("fireball", "player"),
             self._ooc_briefing(),
         )
         assert error is not None
@@ -368,15 +346,15 @@ class TestUseAbilityOutOfCombat:
 
     def test_enemy_targeted_ability_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "medic", "fire_bolt"),
+            _use_ability("fire_bolt", "medic"),
             self._ooc_briefing(),
         )
         assert error is not None
-        assert "targets an enemy" in error
+        assert "combat" in error
 
     def test_save_effect_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "medic", "warding_flare"),
+            _use_ability("warding_flare", "medic"),
             self._ooc_briefing(),
         )
         assert error is not None
@@ -384,7 +362,7 @@ class TestUseAbilityOutOfCombat:
 
     def test_self_ability_with_npc_target_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "medic", "mage_armor"),
+            _use_ability("mage_armor", "medic"),
             self._ooc_briefing({1: 1}),
         )
         assert error is not None
@@ -392,7 +370,7 @@ class TestUseAbilityOutOfCombat:
 
     def test_ally_ability_with_unknown_target_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "goblin", "cure_wounds"),
+            _use_ability("cure_wounds", "goblin"),
             self._ooc_briefing({1: 1}),
         )
         assert error is not None
@@ -400,7 +378,7 @@ class TestUseAbilityOutOfCombat:
 
     def test_leveled_spell_without_slot_flagged(self):
         error = validate_ruling_action(
-            _combat("use_ability", "player", "mage_armor"),
+            _use_ability("mage_armor", "player"),
             self._ooc_briefing({1: 0}),
         )
         assert error is not None
@@ -408,12 +386,12 @@ class TestUseAbilityOutOfCombat:
 
     def test_leveled_spell_with_slot_passes(self):
         assert validate_ruling_action(
-            _combat("use_ability", "player", "mage_armor"),
+            _use_ability("mage_armor", "player"),
             self._ooc_briefing({1: 1}),
         ) is None
 
     def test_other_combat_actions_out_of_combat_unchanged(self):
-        # attack/use_item out of combat fall through to the engine (which
+        # attack out of combat falls through to the engine (which
         # converts attack to the combat-starting interact); no validation.
         assert validate_ruling_action(
             _combat("attack", "goblin"), self._ooc_briefing()
@@ -530,7 +508,7 @@ class TestConservative:
     def test_no_combat_state_anything_passes(self):
         briefing = _peaceful_briefing()
         assert validate_ruling_action(
-            _combat("use_item", "player"), briefing
+            _combat("attack", "goblin"), briefing
         ) is None
         assert validate_ruling_action(_move("goblin"), briefing) is None
 

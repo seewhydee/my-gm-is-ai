@@ -115,20 +115,23 @@ class WaitAction(_BaseAction):
 
 class CombatAction(_BaseAction):
     action_type: Literal["combat"]
-    combat_action: Literal["attack", "use_item", "use_ability", "maneuver"]
+    combat_action: Literal["attack", "maneuver"]
     target: Optional[str] = None
-    ability_id: Optional[str] = None
     maneuver: Optional[Literal["disengage"]] = None
 
     @model_validator(mode="after")
     def check_target_requirement(self) -> CombatAction:
-        # Maneuvers (e.g. Disengage) have no target; every other combat
-        # action requires one.
         if self.combat_action != "maneuver" and not self.target:
             raise ValueError(
                 f"combat action '{self.combat_action}' requires a target"
             )
         return self
+
+
+class UseAbilityAction(_BaseAction):
+    action_type: Literal["use_ability"]
+    ability_id: str
+    target: Optional[str] = None
 
 
 class OocDiscussionAction(_BaseAction):
@@ -165,6 +168,7 @@ PlayerActionType = Annotated[
         TransferAction,
         WaitAction,
         CombatAction,
+        UseAbilityAction,
         OocDiscussionAction,
         GearAction,
     ],
@@ -182,6 +186,7 @@ def validate_player_action(data: dict) -> (
     | TransferAction
     | WaitAction
     | CombatAction
+    | UseAbilityAction
     | OocDiscussionAction
     | GearAction
 ):
@@ -204,6 +209,7 @@ class PlayerAction:
         | TransferAction
         | WaitAction
         | CombatAction
+        | UseAbilityAction
         | OocDiscussionAction
         | GearAction
     ):
@@ -218,6 +224,7 @@ class PlayerAction:
         | TransferAction
         | WaitAction
         | CombatAction
+        | UseAbilityAction
         | OocDiscussionAction
         | GearAction
     ):

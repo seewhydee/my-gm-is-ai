@@ -125,9 +125,11 @@ class TestGearPack:
         shield = DEFAULT_GEAR["shield"].equip_block
         assert getattr(shield, "ac_bonus", 0) == 2
 
-        potion = DEFAULT_GEAR["potion_of_healing"].consumable
-        assert potion.heal == "2d4+2"
-        assert potion.destroy is True
+        potion = DEFAULT_GEAR["potion_of_healing"]
+        drink = potion.interactions[0]
+        assert drink.id == "drink"
+        assert drink.result.player_heal == "2d4+2"
+        assert drink.result.remove_item_count == {"potion_of_healing": 1}
 
 
 class TestEffectiveGear:

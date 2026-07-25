@@ -412,7 +412,7 @@ class TestIntegrationFixtureSmoke:
         # The player's longsword and potions come from the SRD data pack
         # (not declared in the fixture corpus).
         assert sm.corpus.entities["longsword"].equip_block.damage_expr == "1d8"
-        assert sm.corpus.entities["potion_of_healing"].consumable.heal == "2d4+2"
+        assert sm.corpus.entities["potion_of_healing"].interactions[0].result.player_heal == "2d4+2"
 
         # Four enemies and one ally are defined.
         assert "goblin_grunt" in sm.corpus.entities
@@ -496,7 +496,8 @@ class TestIntegrationFixtureSmoke:
 
         # Antidote cures poisoned.
         antidote = sm.corpus.entities["antidote"]
-        assert antidote.consumable.cure_status_effects == ["poisoned"]
+        drink = next(i for i in antidote.interactions if i.id == "drink")
+        assert drink.result.cure_status_effects == ["poisoned"]
 
     def test_ambush_alley_loads(self):
         """StateManager successfully loads the ambush_alley fixture."""
