@@ -30,7 +30,14 @@ from __future__ import annotations
 
 from typing import Optional
 
-from mgmai.models.actions import CombatAction, MoveAction, WaitAction
+from mgmai.models.actions import (
+    CombatAction,
+    GearAction,
+    InteractAction,
+    MoveAction,
+    TalkAction,
+    WaitAction,
+)
 from mgmai.models.briefing import GMBriefing
 
 #: Maximum positioning changes (engage + disengage + impede entries) the
@@ -146,9 +153,45 @@ def _validate_move(action: MoveAction, briefing: GMBriefing) -> Optional[str]:
         f"be an exit ID from current_room.exits_available. Valid exit IDs: "
         f"{', '.join(exit_ids) if exit_ids else 'none'}. Repositioning "
         f"within the fight is expressed with the optional 'positioning' "
-        f"field on a 'combat' or 'wait' action, or with combat_action "
-        f"\"maneuver\" (Disengage)."
+        f"field on a 'combat', 'wait', or 'interact' action, or with "
+        f"combat_action \"maneuver\" (Disengage)."
     )
+
+
+def _validate_talk(action: TalkAction, briefing: GMBriefing) -> Optional[str]:
+    return (
+        "Invalid action_type 'talk' during combat: conversations are "
+        "impossible in the middle of a fight — the engine cannot hold a "
+        "dialogue while combat is active. Rule the player's speech as a "
+        "'wait' action instead, putting the speech itself in 'detail' "
+        "(this passes the player's combat turn; NPC turns proceed). "
+        "Never convert a talk attempt into an attack."
+    )
+
+
+def _validate_gear(action: GearAction, briefing: GMBriefing) -> Optional[str]:
+    """Mirror the engine's combat gear restriction (weapon swaps only).
+
+    The briefing exposes ``equip_tags`` only for currently equipped
+    items, so only unequip targets can be judged here; equip targets are
+    left to the engine (when in doubt, return ``None``).
+    """
+    tags_by_id = {
+        item.id: set(item.equip_tags)
+        for item in briefing.player_state.equipped_items
+    }
+    for target in action.unequip_targets:
+        tags = tags_by_id.get(target)
+        if tags is not None and "weapon" not in tags:
+            return (
+                f"Invalid gear action during combat: '{target}' is not a "
+                f"weapon (its equip_tags lack \"weapon\"). Only weapon "
+                f"swaps are possible in combat — changing armor or other "
+                f"gear mid-fight is not allowed. Restrict 'equip_targets' "
+                f"and 'unequip_targets' to weapons, or rule the attempt "
+                f"as 'wait'."
+            )
+    return None
 
 
 def validate_ruling_action(action, briefing: GMBriefing) -> Optional[str]:
@@ -169,6 +212,10 @@ def validate_ruling_action(action, briefing: GMBriefing) -> Optional[str]:
             return _validate_use_ability(action, briefing)
     elif isinstance(action, MoveAction):
         return _validate_move(action, briefing)
+    elif isinstance(action, TalkAction):
+        return _validate_talk(action, briefing)
+    elif isinstance(action, GearAction):
+        return _validate_gear(action, briefing)
     return None
 
 
@@ -196,11 +243,11 @@ def validate_positioning_assertion(action, briefing: GMBriefing) -> Optional[str
             "valid during combat (combat_state is not present in the "
             "briefing). Omit 'positioning' outside combat."
         )
-    if not isinstance(action, (CombatAction, WaitAction)):
+    if not isinstance(action, (CombatAction, WaitAction, InteractAction)):
         return (
             f"Invalid 'positioning' field on action_type "
             f"'{action.action_type}': positioning assertions are only "
-            f"valid on 'combat' and 'wait' actions."
+            f"valid on 'combat', 'wait', and 'interact' actions."
         )
 
     combatants: dict[str, dict] = {

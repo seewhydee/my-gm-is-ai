@@ -1189,3 +1189,105 @@ def _find_entity(briefing: GMBriefing, entity_id: str) -> BriefingEntity | None:
         if e.id == entity_id:
             return e
     return None
+
+
+class TestCombatStateInteractions:
+    """combat_state.interactions_available mirrors the room briefing's
+    interactions (room + present entities), minus the generic "attack"."""
+
+    @staticmethod
+    def _enter_combat(state_manager, room: str = "bag_floor"):
+        from mgmai.models.combat import CombatState
+
+        hard = state_manager.hard_state
+        hard.player.location = room
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "korbar"],
+            initiative_order=["player", "korbar"],
+            current_index=0,
+            round_number=1,
+        )
+
+    def test_no_combat_no_combat_state(self, state_manager):
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        assert result.combat_state is None
+
+    def test_interactions_available_in_combat(self, state_manager):
+        self._enter_combat(state_manager)
+
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        assert result.combat_state is not None
+        ids = {i.id for i in result.combat_state.interactions_available}
+        # bag_floor entities: rubbish_pile (rummage_for_weapon) and
+        # handkerchief (search_handkerchief); the flag-gated
+        # move_handkerchief is excluded.
+        assert ids == {"rummage_for_weapon", "search_handkerchief"}
+
+    def test_matches_room_briefing(self, state_manager):
+        self._enter_combat(state_manager)
+
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        room_ids = {
+            i.id for i in result.current_room.interactions_available
+        }
+        combat_ids = {
+            i.id for i in result.combat_state.interactions_available
+        }
+        assert combat_ids == room_ids - {"attack"}
+
+    def test_attack_interaction_excluded(self, state_manager):
+        from mgmai.models.corpus import Interaction
+
+        self._enter_combat(state_manager)
+        state_manager.corpus.entities["rubbish_pile"].interactions.append(
+            Interaction.model_validate({
+                "id": "attack",
+                "description": "Strike the pile.",
+                "result": {"narrative": "You strike the pile."},
+            })
+        )
+
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        room_ids = {
+            i.id for i in result.current_room.interactions_available
+        }
+        combat_ids = {
+            i.id for i in result.combat_state.interactions_available
+        }
+        assert "attack" in room_ids
+        assert "attack" not in combat_ids
+
+    def test_interaction_descriptions_carried(self, state_manager):
+        self._enter_combat(state_manager)
+
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look",
+        )
+        by_id = {
+            i.id: i for i in result.combat_state.interactions_available
+        }
+        assert by_id["search_handkerchief"].description

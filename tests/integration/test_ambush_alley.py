@@ -287,9 +287,10 @@ def test_hold_and_talk_rejected(
     # Combat started via the encounter and concluded (win or graceful
     # loss).  This also asserts no exceptions and no empty narrations,
     # which is the graceful-handling check for the talk attempt: the
-    # engine has no hard rejection of talk during combat, so the ruling
-    # model is expected to refuse or redirect it — either way the run
-    # must continue cleanly.
+    # ruling model is expected to refuse or redirect it — and if it emits
+    # a talk action anyway, the engine backstop now rejects it (a failed
+    # validation that costs no turn).  Either way the run must continue
+    # cleanly.
     _assert_ambush_started_combat(result)
     assert_combat_concluded(result, _ENEMIES)
 

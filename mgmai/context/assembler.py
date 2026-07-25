@@ -62,7 +62,7 @@ def assemble(corpus: ModuleCorpus,
 
     atmosphere   = corpus.adventure.atmosphere
     player_stats = _build_player_stats(hard, corpus)
-    combat_state = _build_combat_state(hard, corpus)
+    combat_state = _build_combat_state(hard, soft, corpus)
 
     return GMBriefing(
         adventure_title=corpus.adventure.title,
@@ -77,6 +77,43 @@ def assemble(corpus: ModuleCorpus,
         revealed_hints=list(soft.revealed_hints),
         player_input=player_input,
         combat_state=combat_state)
+
+
+def _build_interactions(room: object,
+                        room_id: str,
+                        hard: HardGameState,
+                        soft: SoftGameState,
+                        corpus: ModuleCorpus) -> list[BriefingInteraction]:
+    """Interactions available in the room: the room's own plus those of
+    each present, living entity (condition-gated ones filtered)."""
+    interactions_available: list[BriefingInteraction] = []
+    for inter in room.interactions:
+        if inter.condition:
+            if not evaluate(inter.condition, hard, soft, corpus):
+                continue
+        interactions_available.append(
+            BriefingInteraction(id=inter.id,
+                                description=inter.description))
+
+    entity_ids: set[str] = set(hard.room_contains.get(room_id, {}))
+    for eid in get_following_npc_ids(hard, corpus):
+        entity_ids.add(eid)
+
+    for eid in sorted(entity_ids):
+        entity = corpus.entities.get(eid)
+        if entity is None:
+            continue
+        entity_state = hard.entity_states.get(eid, {})
+        if entity_state.get("alive") is False:
+            continue
+        for inter in entity.interactions:
+            if inter.condition:
+                if not evaluate(inter.condition, hard, soft, corpus):
+                    continue
+            interactions_available.append(
+                BriefingInteraction(id=inter.id,
+                                    description=inter.description))
+    return interactions_available
 
 
 def _build_room(room_id: str,
@@ -155,33 +192,8 @@ def _build_room(room_id: str,
                          direction=ex.direction,
                          target_room=ex.target_room))
 
-    interactions_available: list[BriefingInteraction] = []
-    for inter in room.interactions:
-        if inter.condition:
-            if not evaluate(inter.condition, hard, soft, corpus):
-                continue
-        interactions_available.append(
-            BriefingInteraction(id=inter.id,
-                                description=inter.description))
-
-    entity_ids: set[str] = set(hard.room_contains.get(room_id, {}))
-    for eid in get_following_npc_ids(hard, corpus):
-        entity_ids.add(eid)
-
-    for eid in sorted(entity_ids):
-        entity = corpus.entities.get(eid)
-        if entity is None:
-            continue
-        entity_state = hard.entity_states.get(eid, {})
-        if entity_state.get("alive") is False:
-            continue
-        for inter in entity.interactions:
-            if inter.condition:
-                if not evaluate(inter.condition, hard, soft, corpus):
-                    continue
-            interactions_available.append(
-                BriefingInteraction(id=inter.id,
-                                    description=inter.description))
+    interactions_available = _build_interactions(
+        room, room_id, hard, soft, corpus)
 
     room_notes = soft.room_notes.get(room_id, [])
     room_soft_items_taken = [
@@ -401,6 +413,7 @@ def _status_effect_briefs(
 
 def _build_combat_state(
     hard: HardGameState,
+    soft: SoftGameState,
     corpus: ModuleCorpus,
 ) -> CombatBriefing | None:
     """Build a CombatBriefing when combat is active."""
@@ -485,6 +498,17 @@ def _build_combat_state(
             "effect": ability.effect_summary(),
         })
 
+    # Interactions the player may use mid-combat via `interact`: same
+    # source as the room briefing, minus the generic "attack" id (attack
+    # maps to the `combat` action).
+    room_id = hard.player.location
+    room = corpus.rooms.get(room_id)
+    interactions_available = (
+        [i for i in _build_interactions(room, room_id, hard, soft, corpus)
+         if i.id != "attack"]
+        if room is not None else []
+    )
+
     return CombatBriefing(
         round_number=combat.round_number,
         initiative_order=list(initiative),
@@ -492,4 +516,5 @@ def _build_combat_state(
         combatants=combatants,
         usable_items=usable_items,
         abilities=abilities,
+        interactions_available=interactions_available,
     )

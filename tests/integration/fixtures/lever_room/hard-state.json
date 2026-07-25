@@ -1,0 +1,21 @@
+{
+  "player": {
+    "location": "gatehouse"
+  },
+  "flags": {},
+  "room_states": {
+    "gatehouse": {"visited": false}
+  },
+  "entity_states": {
+    "sentry_golem": {
+      "alive": true,
+      "current_hp": 16
+    },
+    "war_hound": {
+      "alive": true,
+      "current_hp": 8
+    }
+  },
+  "turn_count": 0,
+  "game_over": null
+}

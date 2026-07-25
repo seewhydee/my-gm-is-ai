@@ -471,6 +471,16 @@ def resolve_talk(
     if room is None:
         return ResolutionResult(success=False, error=f"Room '{room_id}' not found")
 
+    # Dialogue and combat are mutually exclusive; the guards in the other
+    # direction (combat entry exiting dialogue) live in engine.py and
+    # event_bus.py.  This is the engine backstop for a talk action emitted
+    # while combat is active.
+    if hard.combat is not None and hard.combat.active:
+        return ResolutionResult(
+            success=False,
+            error="Cannot hold a conversation during combat",
+        )
+
     follower_ids = get_following_npc_ids(hard, corpus)
     if (target_npc not in hard.room_contains.get(room_id, {})
             and target_npc not in follower_ids):
@@ -1940,6 +1950,146 @@ def _resolve_combat_pass(
     )
 
 
+def _resolve_combat_environmental(
+    action: InteractAction | TransferAction | ExamineAction | GearAction,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    state_manager: Any | None = None,
+) -> ResolutionResult:
+    """Resolve a non-combat action during combat as the player's turn.
+
+    Covers ``interact`` (non-attack), ``transfer``, rigorous ``examine``,
+    and weapon ``gear`` swaps while combat is active.  The action costs
+    the player's combat turn: start-of-turn status processing and
+    positioning assertions apply, the normal resolver resolves the action
+    itself, and the enemies take their turns afterwards.
+
+    A failed validation returns without running NPC turns (failed
+    validations never cost a turn — consistent with the engine's failed
+    resolution path).  A Result that moves the player to another room
+    ends combat immediately (reason ``"fled"``, no NPC turns after).  An
+    encounter trigger on the delegate's result flows through the engine's
+    normal encounter path, which merges reinforcements into the active
+    combat (NPC turns for the current round still proceed first, with the
+    pre-merge roster).
+    """
+    from mgmai.engine.combat import (
+        _begin_player_turn,
+        _clear_status_effects,
+        _end_player_turn,
+        _player_died,
+    )
+
+    combat = hard.combat
+    system = get_system_for_corpus(corpus)
+
+    hard_changes = HardStateChanges()
+    combat_log: list[CombatLogEntry] = []
+    begin_events: list[tuple[str, dict[str, Any]]] = []
+    end_events: list[tuple[str, dict[str, Any]]] = []
+    warnings: list[str] = []
+
+    player_skips, died_to_oa = _begin_player_turn(
+        action, combat, hard, corpus, soft, state_manager,
+        system, hard_changes, combat_log, begin_events, warnings,
+    )
+
+    delegate: ResolutionResult | None = None
+    game_over = False
+    combat_ended = False
+    end_reason: str | None = None
+
+    if died_to_oa:
+        game_over = True
+        end_reason = "defeat"
+    elif not player_skips:
+        # Log the player's action so the combat prefix can summarize it.
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number,
+                actor="player",
+                action=action.action_type,
+                target=getattr(action, "target", None),
+            )
+        )
+        if action.action_type == "interact":
+            delegate = resolve_interact(action, hard, soft, corpus, state_manager)
+        elif action.action_type == "transfer":
+            delegate = resolve_transfer(action, hard, soft, corpus, state_manager)
+        elif action.action_type == "examine":
+            delegate = resolve_examine(action, hard, soft, corpus, state_manager)
+        else:
+            delegate = resolve_gear(action, hard, soft, corpus, state_manager)
+
+        if not delegate.success:
+            # Failed validation never costs a turn: no NPC turns.
+            return delegate
+
+        # Hazard checks on the result, before NPC turns.
+        if hard.game_over is not None:
+            # An inline (scripted) game-over ended everything; no NPC turns.
+            game_over = True
+            end_reason = "defeat"
+        elif hard.combat is None or not hard.combat.active:
+            # The resolution itself ended combat already.
+            combat_ended = True
+        elif delegate.hard_changes and delegate.hard_changes.player_location:
+            # The Result moved the player to another room: combat ends.
+            combat_ended = True
+            end_reason = "fled"
+
+    # --- Resolve NPC turns after the player ---
+    if not combat_ended and not game_over:
+        game_over, combat_ended, end_reason = _end_player_turn(
+            combat, hard, corpus, soft, state_manager, system,
+            hard_changes, combat_log, end_events,
+        )
+    else:
+        combat.log.extend(combat_log)
+        _clear_status_effects(hard, corpus, end_events)
+        hard.combat = None
+
+    if end_reason is not None:
+        end_events.append(("combat.ended", {"reason": end_reason}))
+
+    if delegate is None:
+        # The player was stunned or died to a provoked OA before acting.
+        return ResolutionResult(
+            success=True,
+            hard_changes=hard_changes,
+            combat_log=combat_log,
+            player_died=_player_died(hard, hard_changes),
+            warnings=warnings,
+            room_after_id=hard.player.location,
+            events=begin_events + end_events,
+        )
+
+    merged = HardStateChanges()
+    merged.merge(hard_changes)
+    if delegate.hard_changes:
+        merged.merge(delegate.hard_changes)
+
+    return ResolutionResult(
+        success=True,
+        hard_changes=merged,
+        triggered_narration=delegate.triggered_narration,
+        revealed_hints=delegate.revealed_hints,
+        encounter_trigger=delegate.encounter_trigger,
+        combat_log=combat_log,
+        player_died=_player_died(hard, merged),
+        warnings=warnings + delegate.warnings,
+        room_after_id=delegate.room_after_id,
+        soft_patches=delegate.soft_patches,
+        rolls=delegate.rolls,
+        soft_content_takes=delegate.soft_content_takes,
+        soft_item_proposals=delegate.soft_item_proposals,
+        events=begin_events + delegate.events + end_events,
+        immediate_changes=delegate.immediate_changes,
+        costs_turn=True,
+    )
+
+
 def _resolve_combat_flee(
     action: MoveAction,
     hard: HardGameState,
@@ -2002,6 +2152,23 @@ def resolve_gear(
        failure rejects everything.
     """
     room_id = hard.player.location
+
+    # During combat only weapon swaps are allowed (matching the attack
+    # code's weapon detection); changing armor or other gear mid-fight is
+    # rejected.  Turn-costing behavior arrives via the combat wrapper in
+    # resolve_action.
+    if hard.combat is not None and hard.combat.active:
+        for target in list(action.equip_targets) + list(action.unequip_targets):
+            item_entity = corpus.entities.get(target)
+            eb = item_entity.equip_block if item_entity is not None else None
+            if eb is None or "weapon" not in eb.equip_tags:
+                return ResolutionResult(
+                    success=False,
+                    error=(
+                        f"Cannot change '{target}' during combat: "
+                        "only weapon swaps are allowed"
+                    ),
+                )
 
     # Step 0: Validate unequip_targets
     for uid in action.unequip_targets:
@@ -2118,13 +2285,45 @@ def resolve_action(
 ) -> ResolutionResult:
     """Dispatch a PlayerAction to the appropriate resolver."""
     action_type = action.action_type
+    in_combat = hard.combat is not None and hard.combat.active
 
     # During combat, move actions become flee attempts
-    if action_type == "move" and hard.combat is not None and hard.combat.active:
+    if action_type == "move" and in_combat:
         return _resolve_combat_flee(action, hard, corpus, soft, state_manager)
     # During combat, wait actions pass the player's turn
-    if action_type == "wait" and hard.combat is not None and hard.combat.active:
+    if action_type == "wait" and in_combat:
         return _resolve_combat_pass(action, hard, corpus, soft, state_manager)
+
+    if in_combat:
+        # An attack interaction during combat is a normal combat attack —
+        # never re-enter combat mid-combat (which would reroll initiative
+        # and wipe engagement/cooldown state).
+        if action_type == "interact" and action.interaction_id == "attack":
+            return _resolve_combat_action(
+                CombatAction(
+                    action_type="combat",
+                    combat_action="attack",
+                    target=action.target,
+                    detail=action.detail,
+                    follow_up=action.follow_up,
+                    soft_state_patches=action.soft_state_patches,
+                    positioning=action.positioning,
+                ),
+                hard, corpus, soft, state_manager,
+            )
+        # Other environmental actions cost the player's combat turn:
+        # they resolve normally, then the enemies take their turns.
+        if action_type in ("interact", "transfer", "gear"):
+            return _resolve_combat_environmental(
+                action, hard, soft, corpus, state_manager
+            )
+        if action_type == "examine" and action.rigorous:
+            return _resolve_combat_environmental(
+                action, hard, soft, corpus, state_manager
+            )
+        # Non-rigorous examine stays free (no NPC turns); talk falls
+        # through to resolve_talk, which rejects it during combat;
+        # ooc_discussion is a no-op as today.
 
     if action_type == "move":
         return resolve_move(action, hard, soft, corpus, state_manager)

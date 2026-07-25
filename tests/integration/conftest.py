@@ -130,6 +130,12 @@ def ambush_alley_dir() -> Path:
 
 
 @pytest.fixture
+def lever_room_dir() -> Path:
+    """Path to the lever_room fixture adventure."""
+    return FIXTURES_DIR / "lever_room"
+
+
+@pytest.fixture
 def indicator_hall_dir() -> Path:
     """Path to the indicator_hall fixture adventure."""
     return FIXTURES_DIR / "indicator_hall"

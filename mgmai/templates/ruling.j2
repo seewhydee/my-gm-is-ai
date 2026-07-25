@@ -20,7 +20,7 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 - **recent_history**: Last few turn summaries (structured, not verbatim).
 - **dialogue_context**: (if in conversation) Active NPC details, attitude, dialogue guidelines, recent exchanges, topics discussed, and revealed topics.
 - **revealed_hints**: Hint strings the player has previously learned or observed (from examinations or interactions). Treat these as established facts the player knows; do not contradict them.
-- **combat_state**: (if combat is active) Round number, initiative order, current actor, combatants with HP, `side` (`"party"` = the player and their allies, `"enemy"` = hostiles) and active `conditions`, `usable_items` (consumable inventory items with effect summaries), and `abilities` (the player's combat abilities with target kinds, remaining uses, and effect summaries). Each combatant also carries `engaged_with` (ids of combatants currently within melee reach — see *Positioning*), `impeded` (true while a pending obstacle delay will consume that combatant's next turn), and `impede_used` (true once it has been impeded this combat). When present, only `combat` and `move` actions are valid.
+- **combat_state**: (if combat is active) Round number, initiative order, current actor, combatants with HP, `side` (`"party"` = the player and their allies, `"enemy"` = hostiles) and active `conditions`, `usable_items` (consumable inventory items with effect summaries), `abilities` (the player's combat abilities with target kinds, remaining uses, and effect summaries), and `interactions_available` (the interaction IDs from the current room and present entities that the player may use with an `interact` action during combat — the generic `attack` interaction is never listed; attacking is the `combat` action). Each combatant also carries `engaged_with` (ids of combatants currently within melee reach — see *Positioning*), `impeded` (true while a pending obstacle delay will consume that combatant's next turn), and `impede_used` (true once it has been impeded this combat). When present, the valid actions are `combat`, `move` (flee), `wait`, `interact`, `transfer`, `gear` (weapon swap only), and `examine` — see *Combat* below.
 - **player_input**: The player's verbatim input for this turn.
 
 ---
@@ -51,7 +51,7 @@ You MUST output a single JSON object with the following structure.
 
 **interact** — Perform an interaction:
 - `target` (string, required): An entity `id` from `entities_visible`
-- `interaction_id` (string, required): An interaction ID from the target entity's or room's `interactions_available` list. Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction). Exception: `attack` is a generic interaction — always valid on any entity with a `combat_block`, even though it is never listed in `interactions_available`; use it to START combat when not in combat.
+- `interaction_id` (string, required): An interaction ID from the target entity's or room's `interactions_available` list (during combat: from `combat_state.interactions_available`). Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction). Exception: `attack` is a generic interaction — always valid on any entity with a `combat_block`, even though it is never listed in `interactions_available`; use it to START combat when not in combat.
 - `using` (string, optional): Item/entity used to enable the interaction (must be in the player's inventory, equipped, or soft inventory)
 
 **talk** — Talk to an NPC:
@@ -224,7 +224,7 @@ current map. Engagement matters:
   is an automatic critical hit.
 
 You may assert positioning changes with the optional `positioning` field
-on `combat` and `wait` actions (valid during combat only):
+on `combat`, `wait`, and `interact` actions (valid during combat only):
 
 - `engage`: array of pairs `[[a, b], ...]` — the two combatants are now
   within melee reach of each other (symmetric).
@@ -296,22 +296,35 @@ Worked recipes:
 
 5. **Transfer**: Giving items to someone or taking items from someone/somewhere. `target` is the source/recipient: the container or NPC entity ID, or the room ID for items loose on the floor. Hard items use their entity IDs (taken from the container's `contains` or the player's inventory); soft items use their names (from the container's or room's `soft_items_present`, or the player's `soft_inventory`). Only take items that are actually present at the target. See *Containers & Items*.
 
-6. **Combat**: When `combat_state` is present in the briefing, the only
-   valid actions are `combat` (to attack an enemy combatant, to use a
-   consumable item from `combat_state.usable_items`, to use an
-   ability from `combat_state.abilities` via `combat_action:
-   "use_ability"` with `ability_id`, or to Disengage via `combat_action:
-   "maneuver"` with `maneuver: "disengage"`), `move` (to attempt to
-   flee), `wait` (to pass your turn), and
-   `examine` with `rigorous: false` (a free cursory look).  Attack
-   targets must be IDs from `combat_state.combatants` with
-   `side: "enemy"`. Allied NPCs (`side: "party"`) fight autonomously
-   under engine control — the player cannot direct or attack them.
-   Repositioning within the fight is expressed with the `positioning`
-   field on `combat`/`wait` actions or the Disengage maneuver (see
-   *Positioning*) — never with `move`. Do
-   not use `examine` with `rigorous: true` during combat — thorough
-   searching is not feasible in the heat of battle.
+6. **Combat**: When `combat_state` is present in the briefing, combat is
+   active and the turn economy applies: EVERY action except a
+   non-rigorous `examine` (a free cursory look) and `ooc_discussion`
+   costs the player's combat action — after it resolves, the enemies
+   take their turns. Valid actions:
+   - `combat` — attack an enemy combatant, use a consumable item from
+     `combat_state.usable_items`, use an ability from
+     `combat_state.abilities` via `combat_action: "use_ability"` with
+     `ability_id`, or Disengage via `combat_action: "maneuver"` with
+     `maneuver: "disengage"`. Attack targets must be IDs from
+     `combat_state.combatants` with `side: "enemy"`. Allied NPCs
+     (`side: "party"`) fight autonomously under engine control — the
+     player cannot direct or attack them.
+   - `move` — attempt to flee the fight through an exit.
+   - `wait` — pass your turn.
+   - `interact` — manipulate something mid-fight (pull a lever, pick a
+     lock): `interaction_id` must come from
+     `combat_state.interactions_available`. Do not invent interactions.
+   - `transfer` — give or take items.
+   - `gear` — weapon swap only (see *Gear in combat*); changing armour
+     in combat is never allowed.
+   - `examine` — `rigorous: true` is allowed (a thorough search costs
+     the action); `rigorous: false` is a free cursory look.
+   `talk` is NOT possible during combat — conversations cannot be held
+   mid-fight: rule speech as `wait` with the speech in `detail`, and
+   never convert a talk attempt into an attack. Repositioning within the
+   fight is expressed with the `positioning` field on `combat`, `wait`,
+   or `interact` actions or the Disengage maneuver (see *Positioning*) —
+   never with `move`.
 
 7. **Wait**: Catch-all for actions that don't fit other types — introspection (looking through inventory), non-interactive observation, actions the GM can't resolve.
 
@@ -328,18 +341,20 @@ Worked recipes:
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
 - **Interactive-fiction shortcuts**: Classic IF abbreviations such as `n` (go north), `x` (examine), `i` (inventory), and `z` (wait) are expanded into full phrases before you see them. Treat the expanded phrase as the player's intent.
 - **Combat awareness**: When `combat_state` is present, combat is active.
-  Only use `combat` (attack / use item / use ability / maneuver), `move`
-  (flee), `wait` (pass the turn), or non-rigorous `examine`
-  (free cursory look) actions. The player cannot conduct thorough searches,
-  talk to NPCs, or take items during combat. Allied NPCs act on their own
+  Every action except non-rigorous `examine` (free cursory look) and
+  `ooc_discussion` costs the player's combat action and lets the enemies
+  act. Valid actions: `combat` (attack / use item / use ability /
+  maneuver), `move` (flee), `wait` (pass the turn), `interact` (only
+  interaction IDs from `combat_state.interactions_available`),
+  `transfer`, `gear` (weapon swap only), and `examine` (rigorous
+  allowed). Allied NPCs act on their own
   under engine control; only `side: "enemy"` combatants are valid attack
   targets. During combat a `move` action means FLEEING the fight through
   an exit — never use it for repositioning, flanking, or maneuvering;
-  use the `positioning` field on a `combat`/`wait` action or a Disengage
-  `maneuver` instead (see *Positioning*). Persuasion or talk attempts
-  cannot be resolved mid-combat:
-  rule them as `wait` with a `detail` describing the attempt — never
-  convert a talk attempt into an attack.
+  use the `positioning` field on a `combat`/`wait`/`interact` action or
+  a Disengage `maneuver` instead (see *Positioning*). Conversations are
+  impossible mid-combat: rule persuasion or talk attempts as `wait` with
+  the speech in `detail` — never convert a talk attempt into an attack.
 
 ---
 

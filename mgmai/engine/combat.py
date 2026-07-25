@@ -29,6 +29,7 @@ from typing import Any
 from mgmai.models.actions import (
     CombatAction,
     HardStateChanges,
+    InteractAction,
     MoveAction,
     WaitAction,
 )
@@ -160,6 +161,19 @@ def roll_initiative(
 
     Ties are broken by initiative modifier, then coin flip.
     """
+    order, _totals = _roll_initiative(hard, corpus, npc_ids)
+    return order
+
+
+def _roll_initiative(
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    npc_ids: list[str],
+) -> tuple[list[str], dict[str, int]]:
+    """Roll initiative like :func:`roll_initiative`, but also return the
+    rolled total per combatant (recorded on the combat state so
+    reinforcements merged mid-combat can be spliced into the right
+    initiative slot)."""
     system = get_system_for_corpus(corpus)
 
     entries: list[tuple[str, int, int, float]] = []  # (id, roll, tiebreaker, coin)
@@ -181,7 +195,7 @@ def roll_initiative(
 
     # Sort: highest roll first, then tiebreaker, then coin flip
     entries.sort(key=lambda e: (e[1], e[2], e[3]), reverse=True)
-    return [e[0] for e in entries]
+    return [e[0] for e in entries], {e[0]: e[1] for e in entries}
 
 
 # ------------------------------------------------------------------
@@ -467,8 +481,8 @@ def _attack_sequence(entity: Any) -> list:
 # melee attack engages attacker <-> target and automatically disengages
 # the attacker from previous targets (provoking opportunity attacks);
 # the ruling LLM may also assert explicit changes via a ``positioning``
-# block on combat/wait actions, which the engine re-validates at apply
-# time (malformed entries are dropped with a warning, never fatal).
+# block on combat/wait/interact actions, which the engine re-validates at
+# apply time (malformed entries are dropped with a warning, never fatal).
 
 #: Maximum positioning changes (engage + disengage + impede entries)
 #: applied from a single action's assertion block.
@@ -706,7 +720,7 @@ def _auto_engage_on_melee(
 
 
 def _apply_positioning_assertions(
-    action: CombatAction | WaitAction,
+    action: CombatAction | WaitAction | InteractAction,
     combat: CombatState,
     hard: HardGameState,
     corpus: ModuleCorpus,
@@ -1779,6 +1793,90 @@ def resolve_combat_allies(
     return allies
 
 
+def _merge_combatants(
+    enemy_ids: list[str],
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> dict[str, Any]:
+    """Merge new enemies into an already-active combat as reinforcements.
+
+    *enemy_ids* is filtered (via :func:`resolve_combat_enemies`) to living,
+    present, stat-blocked entities not already combatants.  Each newcomer
+    gets its ``current_hp`` initialized, rolls initiative, and is spliced
+    into the existing initiative order at its sorted position — it acts
+    when its slot comes up (no pre-player NPC turns on merge, unlike fresh
+    combat entry).  A ``reinforcement`` log entry per newcomer lets the
+    combat prefix announce them.  An empty filtered set is a no-op success
+    (``combat_triggered: False``) that leaves state untouched.
+    """
+    combat = hard.combat
+    system = get_system_for_corpus(corpus)
+
+    eligible = resolve_combat_enemies(enemy_ids, None, hard, corpus)
+    newcomers = [
+        eid for eid in eligible
+        if eid != "player" and eid not in combat.combatants
+    ]
+    if not newcomers:
+        return {
+            "combat_log": [],
+            "hard_changes": HardStateChanges(),
+            "combat_triggered": False,
+            "player_died": False,
+            "combat_ended_reason": None,
+            "events": [],
+        }
+
+    def _init_mod(cid: str) -> int:
+        if cid == "player":
+            return system.compute_player_initiative_modifier(hard, corpus)
+        ent = corpus.entities.get(cid)
+        return ent.combat.initiative_mod if ent and ent.combat else 0
+
+    totals = combat.initiative_totals
+    combat_log: list[CombatLogEntry] = []
+    for eid in newcomers:
+        entity = corpus.entities.get(eid)
+        state = hard.entity_states.setdefault(eid, {})
+        if state.get("current_hp") is None:
+            state["current_hp"] = entity.combat.hp
+
+        total = system.roll_initiative(entity.combat.initiative_mod)
+        totals[eid] = total
+        # Splice into the initiative order at its sorted position
+        # (descending total, then initiative modifier).  Combatants with
+        # no recorded total (hand-built states, older saves) sort after
+        # any newcomer.
+        insert_at = len(combat.initiative_order)
+        for i, cid in enumerate(combat.initiative_order):
+            cid_total = totals.get(cid)
+            if cid_total is None:
+                continue
+            if (total, entity.combat.initiative_mod) > (cid_total, _init_mod(cid)):
+                insert_at = i
+                break
+        combat.initiative_order.insert(insert_at, eid)
+        combat.combatants.append(eid)
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor=eid, action="reinforcement",
+            )
+        )
+
+    # Splicing may have shifted the player's slot.
+    combat.current_index = combat.initiative_order.index("player")
+    combat.log.extend(combat_log)
+
+    return {
+        "combat_log": combat_log,
+        "hard_changes": HardStateChanges(),
+        "combat_triggered": True,
+        "player_died": False,
+        "combat_ended_reason": None,
+        "events": [],
+    }
+
+
 def enter_combat(
     enemy_ids: list[str],
     hard: HardGameState,
@@ -1808,6 +1906,12 @@ def enter_combat(
     ``status_effect.cleared``) raised during pre-player NPC turns, for the
     caller to dispatch.
     """
+    # Combat already running: merge the new enemies as reinforcements
+    # instead of overwriting the live combat state (initiative, round,
+    # engagement, cooldowns all survive).
+    if hard.combat is not None and hard.combat.active:
+        return _merge_combatants(enemy_ids, hard, corpus)
+
     system = get_system_for_corpus(corpus)
 
     # Followers with combat blocks join the player's side automatically —
@@ -1829,7 +1933,9 @@ def enter_combat(
             state["current_hp"] = entity.combat.hp
 
     # Roll initiative once
-    initiative_order = roll_initiative(hard, corpus, list(ally_ids) + list(enemy_ids))
+    initiative_order, initiative_totals = _roll_initiative(
+        hard, corpus, list(ally_ids) + list(enemy_ids)
+    )
 
     # Create combat state
     combat = CombatState(
@@ -1837,6 +1943,7 @@ def enter_combat(
         combatants=["player"] + list(ally_ids) + list(enemy_ids),
         allies=list(ally_ids),
         initiative_order=initiative_order,
+        initiative_totals=initiative_totals,
         current_index=0,
         round_number=1,
         log=[],
@@ -1983,6 +2090,137 @@ def _resolve_use_item(
     return None
 
 
+def _begin_player_turn(
+    action: Any,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: SoftGameState | None,
+    state_manager: Any | None,
+    system: Any,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]],
+    warnings: list[str],
+) -> tuple[bool, bool]:
+    """Start-of-turn processing for the player.
+
+    Ticks the player's status effects, applies the action's LLM
+    positioning assertion (engagement changes; provoked opportunity
+    attacks resolve immediately — a lethal OA cancels the declared
+    action), and logs a ``stunned`` entry when a skip_turn status effect
+    consumes the player's action.
+
+    Returns ``(skip, died)``.  The declared action must not run when
+    either is set: ``skip`` means a status effect consumed the action but
+    the turn (and NPC turns) still proceeds; ``died`` means the player
+    dropped to 0 HP on a provoked OA and combat ends in defeat without
+    NPC turns.
+    """
+    # Start-of-turn status-effect processing for the player.
+    _tick_status_effects("player", hard, corpus, events)
+    if _skips_turn("player", hard, corpus):
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number, actor="player", action="stunned",
+            )
+        )
+        return True, False
+
+    # LLM positioning assertions (engagement changes) apply before the
+    # declared action: engage/disengage pairs first, then provoked
+    # opportunity attacks.  Invalid entries degrade gracefully to
+    # warnings — never to a lost turn.
+    positioning = getattr(action, "positioning", None)
+    if positioning is not None:
+        if isinstance(action, (CombatAction, WaitAction, InteractAction)):
+            if _apply_positioning_assertions(
+                action, combat, hard, corpus, soft, state_manager,
+                system, hard_changes, combat_log, events, warnings,
+            ):
+                return False, True
+        else:
+            warnings.append(
+                "positioning assertion ignored: only valid on "
+                "combat, wait, and interact actions"
+            )
+    return False, False
+
+
+def _end_player_turn(
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    soft: SoftGameState | None,
+    state_manager: Any | None,
+    system: Any,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]],
+) -> tuple[bool, bool, str | None]:
+    """Resolve NPC turns after the player, then advance the round.
+
+    Runs every other combatant's turn in initiative order (wrapping back
+    to the player), extends the combat log, increments the round number,
+    and ticks NPC ability cooldowns.  When combat is over (no living
+    enemies, or the player dropped to 0 HP) combat-scoped status effects
+    are cleared and ``hard.combat`` is dropped.  Returns
+    ``(game_over, combat_ended, end_reason)`` where ``end_reason`` is
+    ``"defeat"`` / ``"victory"`` / None.
+    """
+    game_over = False
+    combat_ended = False
+    end_reason: str | None = None
+
+    initiative = combat.initiative_order
+    n = len(initiative)
+    player_idx = initiative.index("player")
+    # advance past the player
+    idx = (player_idx + 1) % n
+    while idx != player_idx:
+        actor_id = initiative[idx]
+        if actor_id != "player":
+            go, ended = _resolve_npc_turn(
+                actor_id, combat, hard, corpus, soft, state_manager,
+                hard_changes, combat_log, events,
+            )
+            if go:
+                game_over = True
+                end_reason = "defeat"
+                break
+            if ended:
+                combat_ended = True
+                end_reason = "victory"
+                break
+        idx = (idx + 1) % n
+
+    if not game_over and not combat_ended:
+        # Advance to next round
+        combat.round_number += 1
+        combat.current_index = player_idx
+        # NPC ability cooldowns tick at round end.
+        for cds in combat.npc_cooldowns.values():
+            for aid in list(cds):
+                cds[aid] = max(0, cds[aid] - 1)
+
+    combat.log.extend(combat_log)
+
+    if combat_ended or game_over:
+        _clear_status_effects(hard, corpus, events)
+        hard.combat = None
+
+    return game_over, combat_ended, end_reason
+
+
+def _player_died(hard: HardGameState, hard_changes: HardStateChanges) -> bool:
+    """True when the player dropped to 0 HP without an inline (scripted)
+    game-over; the engine routes that through the ``player.died`` event,
+    which lets rescue reactions avert the death."""
+    return hard.game_over is None and (
+        (hard.player.current_hp or 0) + (hard_changes.player_hp_delta or 0) <= 0
+    )
+
+
 def resolve_combat_turn(
     action: CombatAction | MoveAction | WaitAction,
     hard: HardGameState,
@@ -2025,35 +2263,15 @@ def resolve_combat_turn(
     # Start-of-turn status-effect processing for the player; a player with a
     # skip_turn status effect (e.g. stunned) loses the action but the turn
     # (and NPC turns) still proceeds.
-    _tick_status_effects("player", hard, corpus, events)
-    player_skips = _skips_turn("player", hard, corpus)
-    if not player_skips:
-        # LLM positioning assertions (engagement changes) apply before the
-        # declared action: engage/disengage pairs first, then provoked
-        # opportunity attacks (a lethal OA cancels the action).  Invalid
-        # entries degrade gracefully to warnings — never to a lost turn.
-        positioning = getattr(action, "positioning", None)
-        if positioning is not None:
-            if isinstance(action, (CombatAction, WaitAction)):
-                if _apply_positioning_assertions(
-                    action, combat, hard, corpus, soft, state_manager,
-                    system, hard_changes, combat_log, events, warnings,
-                ):
-                    game_over = True
-                    combat_end_reason = "defeat"
-            else:
-                warnings.append(
-                    "positioning assertion ignored: only valid on "
-                    "combat and wait actions"
-                )
-    if player_skips:
-        combat_log.append(
-            CombatLogEntry(
-                round=combat.round_number, actor="player", action="stunned",
-            )
-        )
-    elif game_over:
-        pass  # player died to a provoked OA; NPC turns are skipped below
+    player_skips, died_to_oa = _begin_player_turn(
+        action, combat, hard, corpus, soft, state_manager,
+        system, hard_changes, combat_log, events, warnings,
+    )
+    if died_to_oa:
+        game_over = True
+        combat_end_reason = "defeat"
+    if player_skips or died_to_oa:
+        pass  # stunned, or died to a provoked OA; NPC turns are skipped below
     elif isinstance(action, CombatAction) and action.combat_action == "use_ability":
         # --- Use a combat ability ---
         err = _resolve_player_ability(
@@ -2203,51 +2421,21 @@ def resolve_combat_turn(
 
     # --- Resolve NPC turns after the player ---
     if not combat_ended and not game_over:
-        initiative = combat.initiative_order
-        n = len(initiative)
-        player_idx = initiative.index("player")
-        # advance past the player
-        idx = (player_idx + 1) % n
-        while idx != player_idx:
-            actor_id = initiative[idx]
-            if actor_id != "player":
-                go, ended = _resolve_npc_turn(
-                    actor_id, combat, hard, corpus, soft, state_manager,
-                    hard_changes, combat_log, events,
-                )
-                if go:
-                    game_over = True
-                    combat_end_reason = "defeat"
-                    break
-                if ended:
-                    combat_ended = True
-                    combat_end_reason = "victory"
-                    break
-            idx = (idx + 1) % n
-
-        # Advance to next round
-        combat.round_number += 1
-        combat.current_index = player_idx
-        # NPC ability cooldowns tick at round end.
-        for cds in combat.npc_cooldowns.values():
-            for aid in list(cds):
-                cds[aid] = max(0, cds[aid] - 1)
-
-    combat.log.extend(combat_log)
-
-    if combat_ended:
-        _clear_status_effects(hard, corpus, events)
-        hard.combat = None
-    elif game_over:
+        game_over, combat_ended, tail_reason = _end_player_turn(
+            combat, hard, corpus, soft, state_manager, system,
+            hard_changes, combat_log, events,
+        )
+        if tail_reason is not None:
+            combat_end_reason = tail_reason
+    else:
+        combat.log.extend(combat_log)
         _clear_status_effects(hard, corpus, events)
         hard.combat = None
 
     # HP-based death is reported separately from an inline (scripted)
     # game-over: the engine routes it through the ``player.died`` event,
     # which lets rescue reactions avert the death.
-    player_died = hard.game_over is None and (
-        (hard.player.current_hp or 0) + (hard_changes.player_hp_delta or 0) <= 0
-    )
+    player_died = _player_died(hard, hard_changes)
 
     return {
         "success": True,

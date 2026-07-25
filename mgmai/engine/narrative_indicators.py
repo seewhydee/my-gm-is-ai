@@ -157,6 +157,32 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
         tgt = "you" if target == "player" else _entity_name(target, corpus)
         return f"**{caster} uses {abil} on {tgt}: healed {healed} HP.**"
 
+    if action == "reinforcement":
+        # A new enemy merged into the ongoing fight.
+        return f"**{_entity_name(actor, corpus)} joins the fight!**"
+
+    if action == "interact":
+        name = _entity_name(target, corpus)
+        if actor == "player":
+            return f"**You interact with {name}.**"
+        return f"**{_entity_name(actor, corpus)} interacts with {name}.**"
+
+    if action == "transfer":
+        if actor == "player":
+            return "**You transfer items.**"
+        return f"**{_entity_name(actor, corpus)} transfers items.**"
+
+    if action == "examine":
+        name = _entity_name(target, corpus)
+        if actor == "player":
+            return f"**You examine {name}.**"
+        return f"**{_entity_name(actor, corpus)} examines {name}.**"
+
+    if action == "gear":
+        if actor == "player":
+            return "**You change your equipment.**"
+        return f"**{_entity_name(actor, corpus)} changes equipment.**"
+
     return ""
 
 

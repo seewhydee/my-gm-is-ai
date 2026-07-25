@@ -25,7 +25,7 @@ from mgmai.models.soft_state import SoftStatePatch
 
 
 class PositioningAssertion(BaseModel):
-    """LLM-asserted positioning changes attached to a combat/wait action.
+    """LLM-asserted positioning changes attached to a combat/wait/interact action.
 
     ``engage`` entries are symmetric pairs ``[a, b]`` (the two combatants
     are now within melee reach of each other); ``disengage`` entries are

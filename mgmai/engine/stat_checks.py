@@ -243,6 +243,39 @@ def format_combat_prefix(
                 summaries.append(
                     f"**{caster} uses {abil} on {tgt}: healed {healed} HP.**"
                 )
+        elif action == "reinforcement":
+            # A new enemy merged into the ongoing fight.
+            summaries.append(f"**{_entity_name(actor, corpus)} joins the fight!**")
+        elif action == "interact":
+            name = _entity_name(target, corpus)
+            if actor == "player":
+                summaries.append(f"**You interact with {name}.**")
+            else:
+                summaries.append(
+                    f"**{_entity_name(actor, corpus)} interacts with {name}.**"
+                )
+        elif action == "transfer":
+            if actor == "player":
+                summaries.append("**You transfer items.**")
+            else:
+                summaries.append(
+                    f"**{_entity_name(actor, corpus)} transfers items.**"
+                )
+        elif action == "examine":
+            name = _entity_name(target, corpus)
+            if actor == "player":
+                summaries.append(f"**You examine {name}.**")
+            else:
+                summaries.append(
+                    f"**{_entity_name(actor, corpus)} examines {name}.**"
+                )
+        elif action == "gear":
+            if actor == "player":
+                summaries.append("**You change your equipment.**")
+            else:
+                summaries.append(
+                    f"**{_entity_name(actor, corpus)} changes equipment.**"
+                )
 
     if not summaries:
         return ""

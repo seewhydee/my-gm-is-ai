@@ -1,0 +1,129 @@
+{
+  "adventure": {
+    "id": "lever_room",
+    "title": "The Lever Room",
+    "introduction": "A torch-lit gatehouse of black stone. A sentry golem of riveted iron bars the inner gate, its eyes flaring red as you enter. A heavy winch lever juts from the wall beside the gate, and a snarling war hound paces behind the bars of a stout iron cage, straining to get at you — or at whoever its master points it at.",
+    "atmosphere": {
+      "setting": "a grim gatehouse guarding a fortress gate",
+      "tone": "tense"
+    }
+  },
+  "flags_declared": ["lever_pulled", "hound_released"],
+  "rooms": {
+    "gatehouse": {
+      "id": "gatehouse",
+      "name": "Gatehouse",
+      "description": "A square chamber of black stone, lit by sputtering torches. A sentry golem of riveted iron stands before the inner gate, halberd lowered. A heavy winch lever juts from the wall beside the gate, connected by chains to the portcullis above. In the corner, a war hound paces behind the bars of a stout iron cage, snarling.",
+      "exits": [],
+      "contains": [
+        "sentry_golem",
+        "war_hound",
+        "winch_lever",
+        "hound_cage"
+      ],
+      "interactions": [],
+      "is_start_room": true
+    }
+  },
+  "entities": {
+    "sentry_golem": {
+      "type": "npc",
+      "name": "Sentry Golem",
+      "description": "A hulking construct of riveted iron plates, eyes burning red. It guards the inner gate and answers any threat with its halberd.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Functional?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "combat": {
+        "hp": 16,
+        "ac": 13,
+        "atk": 4,
+        "dmg": "1d6+1",
+        "dmg_type": "slashing",
+        "initiative_mod": 0,
+        "flee_dc": 12
+      }
+    },
+    "war_hound": {
+      "type": "npc",
+      "name": "War Hound",
+      "description": "A scarred mastiff bred for battle, snarling behind the bars of its cage. If the cage opens, it lunges for the nearest intruder.",
+      "state_fields": {
+        "alive": {"type": "boolean", "description": "Alive?"},
+        "current_hp": {"type": "number", "description": "Current HP"}
+      },
+      "reactions": [
+        {
+          "id": "hound_cage_opened",
+          "on": "interaction.used",
+          "condition": {
+            "all": [
+              "event:interaction_id == open_cage",
+              "event:target_id == hound_cage"
+            ]
+          },
+          "once": true,
+          "effect": { "trigger_encounter": "self" }
+        }
+      ],
+      "aggro": [
+        {
+          "result": {
+            "narrative": "The cage door swings open and the war hound bursts out, hackles raised, and hurls itself into the fight!",
+            "set_flag": { "hound_released": true },
+            "start_combat": []
+          }
+        }
+      ],
+      "combat": {
+        "hp": 8,
+        "ac": 12,
+        "atk": 4,
+        "dmg": "1d6",
+        "dmg_type": "piercing",
+        "initiative_mod": 2,
+        "flee_dc": 10
+      }
+    },
+    "winch_lever": {
+      "type": "feature",
+      "name": "Winch Lever",
+      "description": "A heavy iron lever set into the wall, its chains running up to the portcullis mechanism above the gate. It looks like it takes a good hard pull.",
+      "interactions": [
+        {
+          "id": "pull",
+          "description": "Pull the winch lever to crank the portcullis open.",
+          "result": {
+            "narrative": "You haul the lever down with both hands. Chains rattle overhead and the portcullis groans upward!",
+            "set_flag": { "lever_pulled": true }
+          }
+        }
+      ]
+    },
+    "hound_cage": {
+      "type": "feature",
+      "name": "Hound Cage",
+      "description": "A stout iron cage holding the snarling war hound. A simple latch holds the door shut.",
+      "interactions": [
+        {
+          "id": "open_cage",
+          "description": "Lift the latch and open the cage door.",
+          "result": {
+            "narrative": "You lift the latch and the cage door swings open."
+          }
+        }
+      ]
+    }
+  },
+  "stats": {
+    "definitions": {
+      "STR": {"name": "Strength"},
+      "DEX": {"name": "Dexterity"},
+      "CON": {"name": "Constitution"},
+      "INT": {"name": "Intelligence"},
+      "WIS": {"name": "Wisdom"},
+      "CHA": {"name": "Charisma"}
+    },
+    "system": "5e"
+  }
+}

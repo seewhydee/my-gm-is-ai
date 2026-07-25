@@ -410,6 +410,11 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 - If no matching interaction exists, the engine returns `success: false` with
   a reason. The LLM may then retry with a different action or fall back to
   `wait`.
+- During combat, a non-attack `interact` costs the player's combat turn (the
+  enemies act and the round advances afterwards), and a `positioning`
+  assertion may be attached (see `doc/combat.md` — *Positioning*). An
+  `interact` with `interaction_id: "attack"` during combat converts to a
+  normal combat attack and never re-enters combat.
 
 ---
 
@@ -437,6 +442,10 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 
 **Engine validation:**
 - `target` must be an NPC entity present in the current room, with `state.alive` true.
+- During combat, `talk` is rejected: conversations cannot be held mid-fight
+  ("Cannot hold a conversation during combat"). Ruling validation catches it
+  first with a corrective retry instructing a `wait` action with the speech
+  in `detail`; the engine error is the backstop.
 - When a `talk` action succeeds, the engine activates or extends dialogue mode:
   sets `dialogue_state.active_npc`, appends the player's `utterance` (or a
   summary of the `detail` if no `utterance`) to `conversation_log`, and records
@@ -640,7 +649,7 @@ are rejected.
 | `target`        | string | yes, except for `maneuver` | For `attack`: an enemy combatant. For `use_item`: an item entity ID in `player.inventory` with a `consumable` block. For `use_ability`: the ability's target (enemy or ally/self, per the ability definition). Ignored for `maneuver`. |
 | `ability_id`    | string | only for `use_ability` | ID of an ability the player knows (`player.abilities`) with uses remaining. |
 | `maneuver`      | string | only for `maneuver` | The maneuver to perform; currently only `"disengage"` — the player breaks all engagement pairs without provoking opportunity attacks, at the cost of the action. |
-| `positioning`   | object | no       | Optional engagement assertion (combat only, on `combat` and `wait` actions): `{"engage": [[a, b], ...], "disengage": [[mover, stationary], ...], "impede": [enemy_id, ...]}`. See `doc/combat.md` — *Positioning*. |
+| `positioning`   | object | no       | Optional engagement assertion (combat only, on `combat`, `wait`, and `interact` actions): `{"engage": [[a, b], ...], "disengage": [[mover, stationary], ...], "impede": [enemy_id, ...]}`. See `doc/combat.md` — *Positioning*. |
 
 This is the player's one action per combat round; after it resolves, the
 remaining combatants act and the round advances.  See `doc/combat.md`.
@@ -707,15 +716,15 @@ whether to continue the chain:
 
 | Action            | target must be                                  | other constraints                          |
 |-------------------|-------------------------------------------------|--------------------------------------------|
-| `move`            | exit_id in current room                         | exit conditions met, not one-way blocked   |
-| `examine`         | entity_id in current room, current room_id, or soft item name | `using` item must be in inventory; unknown targets become soft-item proposals |
-| `interact`        | entity_id present in room or following NPC      | interaction_id must match defined interaction; `using` item must be present/in-inventory |
-| `talk`            | npc entity_id in current room, alive            | `utterance` optional                       |
-| `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source; soft items become proposals |
+| `move`            | exit_id in current room                         | exit conditions met, not one-way blocked; in combat: fleeing (DEX check vs. flee DCs)   |
+| `examine`         | entity_id in current room, current room_id, or soft item name | `using` item must be in inventory; unknown targets become soft-item proposals; in combat: non-rigorous is free, rigorous costs the combat turn |
+| `interact`        | entity_id present in room or following NPC      | interaction_id must match defined interaction; `using` item must be present/in-inventory; in combat: costs the combat turn, `attack` converts to a combat attack, `positioning` assertion optional |
+| `talk`            | npc entity_id in current room, alive            | `utterance` optional; in combat: rejected — rule as `wait` with the speech in `detail` |
+| `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source; soft items become proposals; in combat: costs the combat turn |
 | `wait`            | null (no target)                                | none; advances turn counter                |
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
-| `gear`            | n/a (targets in `equip_targets`/`unequip_targets`) | each equip target must be in inventory with an `equip_block`; each unequip target must be equipped; validates tag conflicts and `max_equipped` |
-| `combat`          | combat target (enemy, item, or ability target; none for `maneuver`) | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack`; `positioning` assertion optional on `combat`/`wait` |
+| `gear`            | n/a (targets in `equip_targets`/`unequip_targets`) | each equip target must be in inventory with an `equip_block`; each unequip target must be equipped; validates tag conflicts and `max_equipped`; in combat: weapon-tag items only, costs the combat turn |
+| `combat`          | combat target (enemy, item, or ability target; none for `maneuver`) | combat mode; `ability_id` required for `use_ability`; out-of-combat `attack` starts combat via `interact`/`attack`; `positioning` assertion optional on `combat`/`wait`/`interact` |
 
 ---
 

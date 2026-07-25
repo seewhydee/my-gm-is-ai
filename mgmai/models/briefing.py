@@ -183,6 +183,11 @@ class CombatBriefing(BaseModel):
     usable_items: list[dict[str, Any]] = Field(default_factory=list)
     # Player's combat abilities: [{id, name, description, target, uses_remaining, effect}]
     abilities: list[dict[str, Any]] = Field(default_factory=list)
+    # Interactions the player may use via the `interact` action during
+    # combat: same entries as the room briefing's interactions_available
+    # (room + present entities), minus the generic "attack" id (attack
+    # maps to the `combat` action).
+    interactions_available: List[BriefingInteraction] = Field(default_factory=list)
 
 
 class GMBriefing(BaseModel):

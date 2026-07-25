@@ -56,7 +56,15 @@ the `error` naturally, and do not narrate any log entries for it.
    `target` for leaving the actor's reach — same fields as `"attack"`),
    `"maneuver"` (the actor Disengaged, withdrawing from melee safely),
    or `"impeded"` (an obstacle delayed the actor, who spent its turn
-   closing in instead of attacking).  Attack entries carry `hit`,
+   closing in instead of attacking). Non-attack actions taken mid-combat
+   also appear: `"interact"` (the actor used an environmental
+   interaction — pulled a lever, picked a lock; `target` names the
+   entity), `"transfer"` (the actor gave or took items), `"examine"`
+   (the actor conducted a thorough search; `target` names what was
+   searched), `"gear"` (the actor changed equipment — usually swapping
+   one weapon for another), and `"reinforcement"` (a new enemy joined
+   the ongoing fight — narrate their dramatic arrival). Attack entries
+   carry `hit`,
    `critical`, `damage`, and
    `remaining_hp`; for `"use_item"` and `"heal"` entries, `damage` is
    the amount of HP restored.  Abilities and named attacks set

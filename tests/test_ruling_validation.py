@@ -24,14 +24,18 @@ from mgmai.llm.ruling_validation import (
 )
 from mgmai.models.actions import (
     CombatAction,
+    GearAction,
+    InteractAction,
     MoveAction,
     PositioningAssertion,
+    TalkAction,
     WaitAction,
 )
 from mgmai.models.briefing import (
     BriefingExit,
     BriefingRoom,
     CombatBriefing,
+    EquippedItemBriefing,
     GMBriefing,
     PlayerStateBriefing,
 )
@@ -118,6 +122,36 @@ def _combat(combat_action: str, target: str, ability_id: str | None = None):
 
 def _move(target: str):
     return MoveAction(action_type="move", target=target, detail="test")
+
+
+def _talk(target: str = "goblin"):
+    return TalkAction(
+        action_type="talk", target=target, utterance="Parley!", detail="test"
+    )
+
+
+def _gear(equip_targets=None, unequip_targets=None):
+    return GearAction(
+        action_type="gear",
+        equip_targets=equip_targets or [],
+        unequip_targets=unequip_targets or [],
+        detail="test",
+    )
+
+
+def _interact(target: str = "goblin", interaction_id: str = "pull_lever"):
+    return InteractAction(
+        action_type="interact",
+        target=target,
+        interaction_id=interaction_id,
+        detail="test",
+    )
+
+
+def _briefing_with_equipped(equipped_items: list) -> GMBriefing:
+    briefing = _combat_briefing()
+    briefing.player_state.equipped_items = equipped_items
+    return briefing
 
 
 class TestUseItem:
@@ -247,6 +281,93 @@ class TestMove:
         assert "positioning" in error and "maneuver" in error
 
 
+class TestTalk:
+    def test_talk_during_combat_flagged(self):
+        error = validate_ruling_action(_talk(), _combat_briefing())
+        assert error is not None
+        assert "talk" in error
+        assert "'wait'" in error and "detail" in error
+        assert "Never convert a talk attempt into an attack" in error
+
+    def test_talk_outside_combat_passes(self):
+        assert validate_ruling_action(_talk(), _peaceful_briefing()) is None
+
+
+class TestGear:
+    _SWORD = EquippedItemBriefing(
+        id="sword", name="Sword", description="A blade.",
+        equip_tags=["weapon"], effects_summary="1d8 damage",
+    )
+    _ARMOR = EquippedItemBriefing(
+        id="plate_armor", name="Plate Armor", description="Heavy plate.",
+        equip_tags=["armor"], effects_summary="AC 18",
+    )
+
+    def test_weapon_swap_passes(self):
+        briefing = _briefing_with_equipped([self._SWORD])
+        assert validate_ruling_action(
+            _gear(equip_targets=["axe"], unequip_targets=["sword"]),
+            briefing,
+        ) is None
+
+    def test_unequip_armor_flagged(self):
+        briefing = _briefing_with_equipped([self._SWORD, self._ARMOR])
+        error = validate_ruling_action(
+            _gear(unequip_targets=["plate_armor"]), briefing
+        )
+        assert error is not None
+        assert "plate_armor" in error
+        assert "weapon" in error
+
+    def test_equip_only_passes(self):
+        """Equip-target tags are not in the briefing: stay conservative."""
+        briefing = _briefing_with_equipped([self._SWORD])
+        assert validate_ruling_action(
+            _gear(equip_targets=["axe"]), briefing
+        ) is None
+
+    def test_unknown_unequip_target_passes(self):
+        """Not provably non-weapon from the briefing: stay conservative."""
+        briefing = _briefing_with_equipped([self._SWORD])
+        assert validate_ruling_action(
+            _gear(unequip_targets=["helmet"]), briefing
+        ) is None
+
+    def test_gear_outside_combat_passes(self):
+        briefing = _peaceful_briefing()
+        briefing.player_state.equipped_items = [self._ARMOR]
+        assert validate_ruling_action(
+            _gear(unequip_targets=["plate_armor"]), briefing
+        ) is None
+
+
+class TestEnvironmentalActionsLegal:
+    """interact/transfer/examine are legal in combat: never rejected."""
+
+    def test_interact_during_combat_passes(self):
+        assert validate_ruling_action(
+            _interact(), _combat_briefing()
+        ) is None
+
+    def test_transfer_during_combat_passes(self):
+        from mgmai.models.actions import TransferAction
+
+        action = TransferAction(
+            action_type="transfer", target="goblin",
+            taken_items=["dagger"], detail="test",
+        )
+        assert validate_ruling_action(action, _combat_briefing()) is None
+
+    def test_rigorous_examine_during_combat_passes(self):
+        from mgmai.models.actions import ExamineAction
+
+        action = ExamineAction(
+            action_type="examine", target="goblin", rigorous=True,
+            detail="test",
+        )
+        assert validate_ruling_action(action, _combat_briefing()) is None
+
+
 class TestConservative:
     """Cases where the validator must stay silent (return None)."""
 
@@ -317,6 +438,15 @@ class TestPositioning:
 
     def test_valid_on_wait_action_passes(self):
         action = _wait_with_positioning(
+            {"engage": [], "disengage": [], "impede": ["orc"]}
+        )
+        assert validate_positioning_assertion(
+            action, _combat_briefing()
+        ) is None
+
+    def test_valid_on_interact_action_passes(self):
+        action = _interact()
+        action.positioning = PositioningAssertion.model_validate(
             {"engage": [], "disengage": [], "impede": ["orc"]}
         )
         assert validate_positioning_assertion(
@@ -459,7 +589,7 @@ class TestPositioning:
         )
         error = validate_positioning_assertion(action, _combat_briefing())
         assert error is not None
-        assert "only valid on 'combat' and 'wait'" in error
+        assert "only valid on 'combat', 'wait', and 'interact'" in error
 
 
 class TestPositioningSoftFail:

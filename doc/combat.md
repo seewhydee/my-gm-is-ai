@@ -3,8 +3,9 @@
 MGMAI supports a rudimentary, multi-round combat phase modelled after
 D&D 5e but described in corpus-agnostic terms so other RPG systems can be
 plugged in later.  Combat is a **phase** in the game loop, analogous to
-dialogue mode: when active, the set of valid player actions narrows to
-*attack* and *flee*.
+dialogue mode: when active, the **turn economy** arbitrates what the
+player may do — almost every action costs the combat turn and lets the
+enemies act (see *Player Actions in Combat* below).
 
 ## Resolution System Abstraction
 
@@ -310,6 +311,19 @@ On entry:
   only triggers combat entry.
 - Dialogue mode is exited if active.
 
+**Reinforcements.**  When `enter_combat` fires while combat is already
+active — a mid-combat `interact`/`attack` on a new enemy, an encounter
+trigger, or a Result carrying `start_combat` — the new enemies **merge**
+into the running fight instead of replacing it.  Each newcomer has its
+`current_hp` initialised, rolls initiative, and is spliced into the
+existing `initiative_order` at its sorted position (per-combatant
+initiative totals are kept on `CombatState.initiative_totals`); a
+`CombatLogEntry(action="reinforcement")` is logged so the combat prefix
+can announce them.  Round number, engagement, impede, and cooldown state
+are preserved, and no pre-player NPC turns run on merge — a newcomer acts
+when its initiative slot comes up.  If every listed id is dead, absent,
+non-stat-blocked, or already a combatant, the merge is a no-op.
+
 ### Turn Order
 
 The engine processes turns in initiative order.  The player is prompted
@@ -317,24 +331,42 @@ only when `initiative_order[current_index] == "player"`.
 
 ### Player Actions in Combat
 
-When combat is active, the following action types are valid:
+Combat does not narrow the action space to a whitelist; the **turn
+economy** arbitrates it.  Almost every action costs the player's combat
+turn: after it resolves, the surviving enemies take their turns in
+initiative order and the round advances.  The exceptions — a
+non-rigorous `examine` and `ooc_discussion` — are free and do not run
+NPC turns.
 
-| Action | Description |
-|--------|-------------|
-| `combat` (`combat_action: "attack"`) | Attack a combatant.  `target` must be an enemy entity ID in `combatants`. |
-| `combat` (`combat_action: "use_item"`) | Use a consumable item.  `target` must be an inventory item with a `consumable` block (healing clamps to max HP; consumes the player's action). |
-| `combat` (`combat_action: "use_ability"`) | Use an ability.  `ability_id` plus a `target` matching the ability's target kind. |
-| `combat` (`combat_action: "maneuver"`) | Maneuver: Disengage (`maneuver: "disengage"`).  Breaks all of the player's engagement pairs without provoking opportunity attacks; consumes the action; no `target`. |
-| `move` | Attempt to flee (see below). |
-| `wait` | Pass the turn: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply. NPC turns proceed and the round advances. |
-| `examine` | Free cursory look (non-rigorous only). Rigorous examine is not allowed during combat. |
+| Action | Turn cost | Description |
+|--------|-----------|-------------|
+| `combat` (`combat_action: "attack"`) | action | Attack a combatant.  `target` must be an enemy entity ID in `combatants`. |
+| `combat` (`combat_action: "use_item"`) | action | Use a consumable item.  `target` must be an inventory item with a `consumable` block (healing clamps to max HP). |
+| `combat` (`combat_action: "use_ability"`) | action | Use an ability.  `ability_id` plus a `target` matching the ability's target kind. |
+| `combat` (`combat_action: "maneuver"`) | action | Maneuver: Disengage (`maneuver: "disengage"`).  Breaks all of the player's engagement pairs without provoking opportunity attacks; no `target`. |
+| `move` | action | Attempt to flee (see below). |
+| `wait` | action | Pass the turn: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply.  This is also how speech is ruled in combat — see `talk` below. |
+| `interact` | action | Use a non-attack interaction listed in `combat_state.interactions_available` (pull the lever, pick the lock).  `interaction_id: "attack"` converts to a normal combat attack — it never re-enters combat. |
+| `transfer` | action | Give or take items mid-fight. |
+| `gear` | action | Weapon swaps only: every item in `equip_targets` and `unequip_targets` must have the `weapon` tag; armour or other gear changes are rejected. |
+| `examine` (`rigorous: true`) | action | In-depth search; consumes the turn. |
+| `examine` (`rigorous: false`) | free | Cursory look; costs nothing and does not run NPC turns. |
+| `ooc_discussion` | free | Out-of-character talk to the GM; a no-op, as outside combat. |
+| `talk` | — | Not possible: conversations cannot be held in combat.  The ruling layer rejects `talk` with a corrective retry instructing a `wait` action with the speech in `detail`; the engine rejects it outright if one slips through. |
 
-A `combat` or `wait` action may also carry an optional `positioning`
-assertion (LLM-adjudicated engagement changes) — see *Positioning*
-below.
+A turn-costing action that fails *validation* (unknown interaction id,
+invalid target, non-weapon gear) does not cost the turn and does not
+run NPC turns; a failed *check* (e.g. the lever's roll) still consumes
+it.
 
-All other actions (`talk`, `transfer`, `interact`) are rejected by the
-engine while combat is active.
+A `combat`, `wait`, or `interact` action may also carry an optional
+`positioning` assertion (LLM-adjudicated engagement changes) — see
+*Positioning* below.
+
+A Result produced by one of these actions that moves the player to
+another room ends combat immediately as a flight (see *Ending
+Combat*); one that triggers combat with new enemies merges them into
+the active fight as reinforcements (see *Entering Combat*).
 
 ### Attack Resolution
 
@@ -386,6 +418,9 @@ Combat ends when:
 - All enemies are dead → victory.  Control returns to normal exploration.
 - The player dies → game over (defeat).
 - The player successfully flees.
+- A Result moves the player to another room mid-combat (e.g. an
+  interaction that teleports or throws the player out) → combat ends
+  immediately with reason `"fled"`; no NPC turns run afterwards.
 
 ### Fleeing
 
@@ -449,8 +484,8 @@ plain 1v1 the enemy will usually re-engage on its next turn.
 
 ### The `positioning` assertion (LLM adjudication)
 
-The ruling LLM may attach an optional `positioning` block to `combat`
-and `wait` actions (valid during combat only):
+The ruling LLM may attach an optional `positioning` block to `combat`,
+`wait`, and `interact` actions (valid during combat only):
 
 - `engage`: pairs `[a, b]` — the two combatants are now within melee
   reach of each other (symmetric).
@@ -742,6 +777,9 @@ The combat system deliberately excludes:
   voluntarily move
 - Death saving throws (player 0 HP is death unless a rescue reaction intervenes)
 - Bonus actions and the 5e action/movement split (one action per turn)
+- Conversations (`talk`) during combat — speech mid-fight is narrated via
+  `wait` with the speech in `detail`; dialogue mode stays mutually
+  exclusive with combat
 
 Gear and equipment are supported — see [gear.md](gear.md).  Status
 effects, abilities, and saving throws are supported; see the sections

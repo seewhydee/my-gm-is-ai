@@ -61,6 +61,10 @@ class CombatState(BaseModel):
     combatants: list[str] = Field(default_factory=list)        # entity IDs + "player"
     allies: list[str] = Field(default_factory=list)            # combatant IDs fighting on the player's side
     initiative_order: list[str] = Field(default_factory=list)  # sorted turn order
+    # Rolled initiative total per combatant, recorded at combat entry so
+    # reinforcements merged mid-combat can be spliced into the right
+    # initiative slot (empty for hand-built states and older saves).
+    initiative_totals: dict[str, int] = Field(default_factory=dict)
     current_index: int = 0                                     # index into initiative_order
     round_number: int = 0
     log: list[CombatLogEntry] = Field(default_factory=list)

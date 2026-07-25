@@ -1741,7 +1741,7 @@ class TestBriefingMultiEnemy:
             current_index=0,
             round_number=1,
         )
-        briefing = _build_combat_state(hard, combat_npc_corpus)
+        briefing = _build_combat_state(hard, SoftGameState(), combat_npc_corpus)
         assert briefing is not None
         enemy_ids = {c["id"] for c in briefing.combatants if c["id"] != "player"}
         assert enemy_ids == {"goblin", "goblin2"}
@@ -1764,7 +1764,7 @@ class TestBriefingMultiEnemy:
             current_index=0,
             round_number=1,
         )
-        briefing = _build_combat_state(hard, combat_npc_corpus)
+        briefing = _build_combat_state(hard, SoftGameState(), combat_npc_corpus)
         assert briefing is not None
         by_id = {c["id"]: c for c in briefing.combatants}
         assert by_id["player"]["status_effects"] == [{
@@ -2161,7 +2161,7 @@ class TestPartyCombat:
     def test_briefing_includes_sides(self, party_hard, party_corpus):
         from mgmai.context.assembler import _build_combat_state
         self._combat_state(party_hard)
-        briefing = _build_combat_state(party_hard, party_corpus)
+        briefing = _build_combat_state(party_hard, SoftGameState(), party_corpus)
         assert briefing is not None
         sides = {c["id"]: c["side"] for c in briefing.combatants}
         assert sides == {"player": "party", "companion": "party", "goblin": "enemy"}
@@ -3603,7 +3603,7 @@ class TestAbilities:
         from mgmai.context.assembler import _build_combat_state
         self._combat_state(ability_hard)
         ability_hard.combat.ability_uses["player"] = {"poison_spray": 1}
-        briefing = _build_combat_state(ability_hard, ability_corpus)
+        briefing = _build_combat_state(ability_hard, SoftGameState(), ability_corpus)
         assert briefing is not None
         by_id = {a["id"]: a for a in briefing.abilities}
         assert by_id["fire_bolt"]["uses_remaining"] is None  # unlimited
@@ -4310,3 +4310,126 @@ class TestPositioning:
         assert len(impeded) == 1
         assert impeded[0].actor == "goblin2"
         assert pos_hard.combat.impede_used == ["goblin2"]
+
+
+# ------------------------------------------------------------------
+# Reinforcement merge (enter_combat while combat is active)
+# ------------------------------------------------------------------
+
+class TestReinforcementMerge:
+    """enter_combat with combat already active merges new enemies as
+    reinforcements instead of overwriting the live combat state."""
+
+    @pytest.fixture
+    def merge_corpus(self, combat_npc_corpus) -> ModuleCorpus:
+        data = combat_npc_corpus.model_dump()
+        data["entities"]["orc"] = {
+            "type": "npc",
+            "description": "A hulking orc.",
+            "state_fields": {
+                "alive": {"type": "boolean", "description": "Is alive"},
+                "current_hp": {"type": "number", "description": "Current HP"},
+            },
+            "combat": {
+                "hp": 15,
+                "ac": 13,
+                "atk": 5,
+                "dmg": "1d8+3",
+                "initiative_mod": 1,
+                "flee_dc": 12,
+            },
+        }
+        data["rooms"]["room1"]["contains"] = ["goblin", "orc"]
+        return ModuleCorpus.model_validate(data)
+
+    @pytest.fixture
+    def merge_hard(self, combat_hard_state) -> HardGameState:
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.entity_states["orc"] = {"alive": True}
+        hard.room_contains = {"room1": {"goblin": 1, "orc": 1}}
+        return hard
+
+    def _active_combat(self, hard):
+        hard.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin"],
+            initiative_order=["player", "goblin"],
+            initiative_totals={"player": 18, "goblin": 12},
+            current_index=0,
+            round_number=3,
+        )
+
+    def test_merge_adds_enemy_preserves_state(self, merge_hard, merge_corpus, monkeypatch):
+        self._active_combat(merge_hard)
+        merge_hard.combat.engagement = [["goblin", "player"]]
+        merge_hard.combat.impede_used = ["goblin"]
+        merge_hard.combat.npc_cooldowns = {"goblin": {"slam": 2}}
+        # orc initiative roll: 5 + 1 = 6, below both existing combatants
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+
+        result = enter_combat(["orc"], merge_hard, merge_corpus)
+
+        assert result["combat_triggered"]
+        combat = merge_hard.combat
+        # Round / engagement / impede / cooldown state is preserved.
+        assert combat.round_number == 3
+        assert combat.engagement == [["goblin", "player"]]
+        assert combat.impede_used == ["goblin"]
+        assert combat.npc_cooldowns == {"goblin": {"slam": 2}}
+        # The orc joins the roster and the initiative order (last slot).
+        assert combat.combatants == ["player", "goblin", "orc"]
+        assert combat.initiative_order == ["player", "goblin", "orc"]
+        assert combat.current_index == 0
+        # Newcomer HP is initialized from its combat block.
+        assert merge_hard.entity_states["orc"]["current_hp"] == 15
+        # A reinforcement log entry announces the newcomer; no pre-player
+        # NPC turns run on merge (no attack entries, no damage).
+        assert any(
+            e.action == "reinforcement" and e.actor == "orc"
+            for e in result["combat_log"]
+        )
+        assert not any(e.action == "attack" for e in result["combat_log"])
+        assert not result["hard_changes"].player_hp_delta
+
+    def test_merge_splices_initiative_by_roll(self, merge_hard, merge_corpus, monkeypatch):
+        self._active_combat(merge_hard)
+        # orc rolls 15 + 1 = 16: between player (18) and goblin (12)
+        monkeypatch.setattr(random, "randint", lambda a, b: 15)
+        enter_combat(["orc"], merge_hard, merge_corpus)
+        assert merge_hard.combat.initiative_order == ["player", "orc", "goblin"]
+        assert merge_hard.combat.current_index == 0
+
+    def test_merge_splices_ahead_of_player(self, merge_hard, merge_corpus, monkeypatch):
+        self._active_combat(merge_hard)
+        # orc rolls 20 + 1 = 21: ahead of everyone; the player's slot
+        # shifts and current_index must follow it.
+        monkeypatch.setattr(random, "randint", lambda a, b: 20)
+        enter_combat(["orc"], merge_hard, merge_corpus)
+        assert merge_hard.combat.initiative_order == ["orc", "player", "goblin"]
+        assert merge_hard.combat.current_index == 1
+
+    def test_merge_all_invalid_is_noop(self, merge_hard, merge_corpus):
+        self._active_combat(merge_hard)
+        before = merge_hard.combat.model_dump()
+        # "goblin" is already a combatant; "nonexistent" is not in the corpus.
+        result = enter_combat(["goblin", "nonexistent"], merge_hard, merge_corpus)
+        assert result["combat_triggered"] is False
+        assert result["combat_log"] == []
+        assert merge_hard.combat.model_dump() == before
+
+    def test_merge_dead_enemy_is_noop(self, merge_hard, merge_corpus):
+        self._active_combat(merge_hard)
+        merge_hard.entity_states["orc"]["alive"] = False
+        before = merge_hard.combat.model_dump()
+        result = enter_combat(["orc"], merge_hard, merge_corpus)
+        assert result["combat_triggered"] is False
+        assert merge_hard.combat.model_dump() == before
+
+    def test_merge_absent_enemy_is_noop(self, merge_hard, merge_corpus):
+        self._active_combat(merge_hard)
+        # The orc is alive but not present in the player's room.
+        merge_hard.room_contains = {"room1": {"goblin": 1}}
+        before = merge_hard.combat.model_dump()
+        result = enter_combat(["orc"], merge_hard, merge_corpus)
+        assert result["combat_triggered"] is False
+        assert merge_hard.combat.model_dump() == before
