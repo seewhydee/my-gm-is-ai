@@ -114,8 +114,7 @@ PlayerAction in JSON, consisting of exactly one of these types:
 - `interact`: perform a named interaction on a room or entity
 - `talk`: start or continue dialogue with an NPC
 - `transfer`: give/take items between inventory and entity/room
-- `equip`: equip a gear item from inventory
-- `unequip`: remove a gear item
+- `gear`: equip or unequip a gear item
 - `wait`: catch-all for below-threshold actions, or pass time or combat turn
 - `combat`: combat action: attack, use consumable, or use ability
 - `ooc_discussion`: out-of-character question to GM
