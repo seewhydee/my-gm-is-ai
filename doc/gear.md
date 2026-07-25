@@ -148,56 +148,48 @@ system recognises the following extras:
 
 ## Action System
 
-Two new player actions control equipment:
+A single player action controls equipment:
 
-### `equip` — Equip an item
+### `gear` — Equip and/or unequip items
 
 ```json
 {
-  "action_type": "equip",
-  "target": "toenail_sword",
+  "action_type": "gear",
+  "equip_targets": ["toenail_sword"],
   "unequip_targets": [],
   "detail": "Player draws the toenail sword and holds it ready."
 }
 ```
 
-| Field              | Type     | Description |
-|--------------------|----------|-------------|
-| `target`           | `string` | Entity ID of the item to equip.  Must be in the player's `inventory` and must have an `equip_block`. |
-| `unequip_targets`  | `[string]` | **Optional.** Items to unequip as part of the same action, so weapon swaps happen in one turn.  Each must be currently `equipped`.  The engine unequips them before checking conflicts for the new item. |
+| Field              | Type       | Description |
+|--------------------|------------|-------------|
+| `equip_targets`    | `[string]` | **Optional.** Entity IDs of items to equip.  Each must be in the player's `inventory` and must have an `equip_block`. |
+| `unequip_targets`  | `[string]` | **Optional.** Items to unequip as part of the same action, so weapon swaps happen in one turn.  Each must be currently `equipped`.  The engine unequips them before checking conflicts for the new items. |
+
+At least one of the two fields must be non-empty; duplicates within a field
+are rejected.
 
 **Engine validation** (in order):
 1. Each `unequip_target` must be in `player.equipped`.
-2. `target` must be in `player.inventory`.
-3. `target` must have a non-null `equip_block`.
-4. Build the set of incompatible tags from `incompatible_with`, and the
-   default self-conflict for items sharing the same slot tag.
-5. Check each already-equipped item (post-unequip) — if any of its `equip_tags` overlaps the incompatible set, reject.
-6. Check `max_equipped` for the slot tag group.
-7. On success: decrement `target`'s count in `inventory` by 1 (remove the key
-   if the count reaches 0) and append it to `equipped`; increment each
-   `unequip_target`'s count in `inventory` by 1 and remove it from `equipped`.
-
-### `unequip` — Unequip an item
-
-```json
-{
-  "action_type": "unequip",
-  "target": "toenail_sword",
-  "detail": "Player sheathes the toenail sword."
-}
-```
-
-| Field    | Type     | Description |
-|----------|----------|-------------|
-| `target` | `string` | Entity ID of the item to unequip.  Must be in `player.equipped`. |
-
-On success: the item is removed from `equipped` and its count in `inventory`
-is incremented by 1. Its stat modifiers, AC bonuses, and damage expression stop applying.
+2. For each `equip_target`, in order:
+   a. It must be in `player.inventory`.
+   b. It must have a non-null `equip_block`.
+   c. Build the set of incompatible tags from `incompatible_with`, and the
+      default self-conflict for items sharing the same slot tag.
+   d. Check each already-equipped item (post-unequip, plus any items already
+      equipped by this same action) — if any of its `equip_tags` overlaps
+      the incompatible set, reject.
+   e. Check `max_equipped` for the slot tag group.
+3. On success: decrement each `equip_target`'s count in `inventory` by 1
+   (remove the key if the count reaches 0) and append it to `equipped`;
+   increment each `unequip_target`'s count in `inventory` by 1 and remove it
+   from `equipped`.  Unequipped items' stat modifiers, AC bonuses, and damage
+   expressions stop applying.  The action is atomic: any failure rejects the
+   whole change.
 
 ### Hard state changes
 
-Both actions set `equipment_changed: true` on the `HardStateChanges` object,
+The action sets `equipment_changed: true` on the `HardStateChanges` object,
 signalling downstream systems (combat, context assembler) to recompute
 effective stats and AC.
 
@@ -288,7 +280,8 @@ The LLM prompt instructs the ruling model to use common sense:
 - A couple of rings (max_equipped: 2).
 - One weapon per hand, or one two-handed weapon.
 - Doffing armour during combat is never allowed (takes minutes).
-- Swapping weapons in combat is one action using `unequip_targets`.
+- Swapping weapons in combat is one `gear` action using both `equip_targets`
+  and `unequip_targets`.
 
 If a conflict is detected, the **engine rejects the action** — the LLM must
 explicitly unequip the conflicting item first.  This keeps narrative control

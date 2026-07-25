@@ -43,7 +43,7 @@ from mgmai.models.actions import (
     TransferAction,
     WaitAction,
     OocDiscussionAction,
-    EquipAction,
+    GearAction,
     HardStateChanges,
 )
 from mgmai.models.corpus import (
@@ -1533,13 +1533,13 @@ class TestResolveTransferCounts:
         soft = state_manager.soft_state
         corpus = state_manager.corpus
         hard.player.inventory["toenail_sword"] = 3
-        action = EquipAction(
-            action_type="equip",
-            target="toenail_sword",
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["toenail_sword"],
             detail="Equipping one sword",
         )
-        from mgmai.engine.resolver import resolve_equip
-        result = resolve_equip(action, hard, soft, corpus)
+        from mgmai.engine.resolver import resolve_gear
+        result = resolve_gear(action, hard, soft, corpus)
         assert result.success is True
         assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
         assert result.hard_changes.equipped_added == ["toenail_sword"]

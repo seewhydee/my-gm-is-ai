@@ -135,15 +135,25 @@ class OocDiscussionAction(_BaseAction):
     action_type: Literal["ooc_discussion"]
 
 
-class EquipAction(_BaseAction):
-    action_type: Literal["equip"]
-    target: str
+class GearAction(_BaseAction):
+    action_type: Literal["gear"]
+    equip_targets: list[str] = Field(default_factory=list)
     unequip_targets: list[str] = Field(default_factory=list)
 
-
-class UnequipAction(_BaseAction):
-    action_type: Literal["unequip"]
-    target: str
+    @model_validator(mode="after")
+    def check_non_empty_gear_change(self) -> GearAction:
+        if not self.equip_targets and not self.unequip_targets:
+            raise ValueError(
+                "GearAction must have at least one of equip_targets or "
+                "unequip_targets be non-empty")
+        for field_name, targets in (
+            ("equip_targets", self.equip_targets),
+            ("unequip_targets", self.unequip_targets),
+        ):
+            if len(set(targets)) != len(targets):
+                raise ValueError(
+                    f"GearAction {field_name} must not contain duplicates")
+        return self
 
 
 PlayerActionType = Annotated[
@@ -156,8 +166,7 @@ PlayerActionType = Annotated[
         WaitAction,
         CombatAction,
         OocDiscussionAction,
-        EquipAction,
-        UnequipAction,
+        GearAction,
     ],
     Field(discriminator="action_type"),
 ]
@@ -174,8 +183,7 @@ def validate_player_action(data: dict) -> (
     | WaitAction
     | CombatAction
     | OocDiscussionAction
-    | EquipAction
-    | UnequipAction
+    | GearAction
 ):
     return _player_action_adapter.validate_python(data)
 
@@ -197,8 +205,7 @@ class PlayerAction:
         | WaitAction
         | CombatAction
         | OocDiscussionAction
-        | EquipAction
-        | UnequipAction
+        | GearAction
     ):
         return _player_action_adapter.validate_python(data)
 
@@ -212,8 +219,7 @@ class PlayerAction:
         | WaitAction
         | CombatAction
         | OocDiscussionAction
-        | EquipAction
-        | UnequipAction
+        | GearAction
     ):
         return _player_action_adapter.validate_json(json_str)
 
