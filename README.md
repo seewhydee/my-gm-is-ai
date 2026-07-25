@@ -1,26 +1,25 @@
 # My GM is AI
 
 An experimental AI-driven Game Master (GM) for single-player RPGs.
-The goal: replicate the tabletop RPG experience without friends.
+Experience tabletop RPGs without friends!
 
-Unlike freeform AI roleplay chatbots, this AI GM system is not
-optimized for crafting naturalistic interlocutors with emotional
-depth, nor does it create open-ended adventures.  Instead, the AI GM
-runs a pre-generated adventure module faithfully.  You, the player,
-can attempt anything, and the GM decides (a) if it's possible, (b)
-what rules apply, and (c) how to describe what happens.  Like a human
-GM, the AI GM aims to strike a balance between creativity and rules
-adherence.
+Unlike freeform AI roleplay chatbots, this AI GM system does not
+create open-ended adventures, nor is it optimized for naturalistic
+interlocutors with emotional depth.  Instead, it aims to run a
+pre-generated adventure module faithfully.  You, the player, can
+attempt anything, and the GM decides if it's possible, what rules
+apply, and how to describe what happens.  Like a human GM, the system
+tries to strike a balance between creativity and rules adherence.
 
-This is a work in progress.  There is a short sample adventure (a
-handwritten 5-room scenario) that can be played through.  A reasonable
-subset of 5e SRD has been implemented thus far, including core player
+This is a work in progress.  There is a short sample adventure, in the
+form of a handwritten 5-room scenario that can be played through.  A
+subset of 5e SRD rules has been implemented, including core player
 stats, standard equipment, and basic combat rules.
 
 ## Installation and setup
 
-Requires Python 3 with some standard packages (pydantic, rich, openai,
-jinja2, platformdirs).  You can install them all via `pip`:
+Requires Python 3 with some packages (pydantic, rich, openai, jinja2,
+platformdirs).  You can install them all via `pip`:
 
 ```bash
 pip install -e .
@@ -42,7 +41,7 @@ export MGMAI_API_KEY="<your_api_key>"
 3. You can also specify model details directly in your config files
    (see below).
 
-You can switch between models with the `--model <model_id>` option:
+To switch between models, use the `--model <model_id>` option:
 
 ```bash
 mgmai adventures/bag-of-holding --model kimi-k2.6
@@ -75,8 +74,7 @@ for details.
 
 ## Usage
 
-If you installed the package with `pip install -e .`, run it like
-this:
+If you installed with `pip install -e .`, run it like this:
 
 ```bash
 mgmai adventures/bag-of-holding
@@ -115,15 +113,24 @@ three-stage pipeline:
 2. **Engine resolution** — A gameplay engine validates the action against the adventure module's rules and the current game state, rolls virtual dice, etc.
 3. **Prose narration** — A second LLM call weaves the outcome into natural prose, respecting narrative requirements like keeping secrets hidden.
 
-Adventure rules are generated ahead of time (usually using LLMs), just as a human GM prepares modules before each play session.  In time, it is hoped that the system will be powerful enough to run converted tabletop modules.
+Adventure rules are generated ahead of time (usually using LLMs), just
+as a human GM prepares modules before each play session.  In time, it
+is hoped that the system becomes strong enough to run converted
+tabletop modules.
 
 ## Scenario Generation
 
-To construct a playable adventure, write up a "scenario file" in natural language, and save it in `adventures/SCENARIO-ID/scenario.md`. See `adventures/bag-of-holding/scenario.md` for an example.
+To construct a playable adventure, write it up in natural language,
+and save it in `adventures/SCENARIO-ID/scenario.md`.  See
+`adventures/bag-of-holding/scenario.md` for an example.  Next, fire up
+an LLM of your choice and instruct it to follow the steps in
+`schema/scenario-generation.md`, to convert your scenario into JSON.
+Finally, playtest extensively, and ask the LLM to fix the scenario's
+JSON files until it works satisfactorily (or not).
 
-Then fire up an LLM of your choice and instruct it to follow the steps in `schema/scenario-generation.md`.  This converts your scenario file into JSON. Finally, playtest extensively, and ask the LLM to fix the scenario's JSON files until it works satisfactorily (or not).
-
-In future, it will be interesting to try constructing playable scenarios from other sources, such as scanned PDFs, by using multimodal LLMs. Success/failure reports are welcome.
+In future, it will be interesting to try constructing playable
+scenarios from other sources, such as scanned PDFs, using multimodal
+LLMs.  Success/failure reports are welcome.
 
 ## Testing
 
@@ -134,7 +141,10 @@ pytest                  # run the full unit suite (fast, no API calls)
 pytest tests/test_combat.py -k "flee"   # run a specific subset
 ```
 
-There is also a separate suite of LLM-driven integration tests, which run a LLM as the player against the real GM LLM, along with an LLM judge.  See [tests/integration/README.md](tests/integration/README.md) for details.
+There is also a separate suite of LLM-driven integration tests, which
+run a LLM as the player against the real GM LLM, along with an LLM
+judge.  See [tests/integration/README.md](tests/integration/README.md)
+for details.
 
 ## Documentation
 
@@ -150,11 +160,17 @@ The design documentation is in the `doc/` folder:
 
 My GM Is AI is (C) 2026 Chong Yidong (cyd@stupidchicken.com).
 
-It is free software licensed under the terms of the GNU General Public
-Licencse (GPL), version 3.0.  See [LICENSE](LICENSE).
+This is free software licensed under the terms of the GNU General
+Public Licencse (GPL), version 3.0.  See [LICENSE](LICENSE).
 
 Dedicated to the memory of Logan Goh (1980-2026): programmer, gamer, dreamer.
 
-The sample adventure(s) in the `adventure/` folder are based on original works copyrighted by various authors, used and distributed under GPL-compatible (e.g., Creative Commons-type) licenses.  Refer to those files for copyright and licensing information.
+The sample adventure(s) in the `adventure/` folder are based on
+original works copyrighted by various authors, used and distributed
+under GPL-compatible (e.g., Creative Commons-type) licenses.  Refer to
+those files for copyright and licensing information.
 
-Some of the RPG mechanics implemented therein includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd.  The SRD 5.2.1 is licensed under the [Creative Commons Attribution 4 License](https://creativecommons.org/licenses/by/4.0/legalcode).
+Some of the RPG rules implemented therein follow material from
+the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the
+Coast LLC, available at https://www.dndbeyond.com/srd.  The SRD 5.2.1
+is licensed under the [Creative Commons Attribution 4 License](https://creativecommons.org/licenses/by/4.0/legalcode).

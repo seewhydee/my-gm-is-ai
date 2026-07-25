@@ -123,7 +123,6 @@ Soft State, for the ruling LLM (call 1).
     "description": "You are on the lower section of the axe handle. The webs here are denser, blocking the path downward unless you push through. If you look carefully, you see the spider — huge and hungry for blood — lurking in the webs. Below, many irregularly shaped objects are coming into view. It looks like you could drop down safely. There is some muffled clanking from the shadows below.",
     "soft_item_guidance": "Loose stones, dust, and cobwebs are common here.",
     "soft_items_taken": ["rock (taken 1)", "loose stone (taken 1)"],
-    "soft_items_present": [],
     "entities_visible": [
       {
         "id": "spider",
@@ -131,10 +130,6 @@ Soft State, for the ruling LLM (call 1).
         "type": "npc",
         "description": "A huge, hungry spider lurking in the dense webs.",
         "state": { "alive": true },
-        "entity_notes": [],
-        "soft_item_guidance": "",
-        "soft_items_taken": [],
-        "soft_items_present": [],
         "dialogue_paths": {
           "flatter": "Praise the spider's hunting prowess to improve its attitude toward the player."
         }
@@ -144,11 +139,6 @@ Soft State, for the ruling LLM (call 1).
         "name": "Dense Webs",
         "type": "feature",
         "description": "Thick webs blocking the downward path.",
-        "state": {},
-        "entity_notes": [],
-        "soft_item_guidance": "",
-        "soft_items_taken": [],
-        "soft_items_present": []
       }
     ],
     "exits_available": [
@@ -156,7 +146,6 @@ Soft State, for the ruling LLM (call 1).
       { "id": "exit_through_webs", "direction": "Push through the dense webs downward", "target_room": "bag_floor" },
       { "id": "exit_drop_lower", "direction": "Drop safely down to the floor", "target_room": "bag_floor" }
     ],
-    "interactions_available": [],
     "room_notes": ["The webs here are partially cleared from the spider's flight."]
   },
 
@@ -176,7 +165,6 @@ Soft State, for the ruling LLM (call 1).
     "effective_ac": 14,
     "effective_stats": null,
     "active_flags": { "injured": false, "stunned": false },
-    "entity_notes": [],
     "player_stats": {
       "STR": { "value": 14, "modifier": 2 },
       "DEX": { "value": 12, "modifier": 1 },

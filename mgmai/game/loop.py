@@ -247,7 +247,7 @@ class GameLoop:
         # 1. Context Assembler → GMBriefing
         briefing = assemble(corpus, hard, soft, current_input)
 
-        log.debug("--- GMBriefing ---\n%s", briefing.model_dump_json(indent=2))
+        log.debug("--- GMBriefing ---\n%s", briefing.compact_dump_json(indent=2))
 
         # 2. LLM Call 1 → PlayerAction (with retry on malformed output)
         try:
@@ -407,7 +407,7 @@ class GameLoop:
         from mgmai.templates.renderer import render_ruling
 
         system_prompt = render_ruling()
-        user_prompt = briefing.model_dump_json(indent=2)
+        user_prompt = briefing.compact_dump_json(indent=2)
         self._positioning_warning = None
 
         raw = self._llm.call_ruling(system_prompt, user_prompt)
@@ -489,7 +489,7 @@ class GameLoop:
         user_data = {
             "setting": briefing.setting,
             "tone": briefing.tone,
-            "briefing": briefing.model_dump(mode="json"),
+            "briefing": briefing.compact_dump(),
             "player_action": action.model_dump(mode="json"),
             "engine_result": result.model_dump(mode="json"),
             "chat_log": self._chat_log[-10:],

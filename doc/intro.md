@@ -1,12 +1,26 @@
 # My GM is AI — Architecture Guide
 
-This is an **experimental** software project to implement an AI-driven Game Master (GM) that replicates the tabletop RPG experience.  It attempts to function like a human GM running a pre-written adventure module: the GM knows and follows the rules, but also accommodates the player's intentions and provides customized narrative flavor.
+This is an experimental software project to implement an AI-driven
+Game Master (GM) that replicates the tabletop RPG experience.  It aims
+to function like a human GM running a pre-written adventure module.
+The GM knows and follows the rules, but also accommodates the player's
+unpredictable intentions and provides customized narrative flavor.
 
-The system uses a large language model (LLM) to drive interpretation and narration, and a deterministic engine to impose game mechanics.  LLMs are excellent at natural-language understanding and prose generation, but unreliable for rule enforcement and state tracking.  By splitting these responsibilities, we hope to get the best of both worlds: the LLM interprets player intent, constructs structured actions, and weaves outcomes into compelling prose; the engine validates actions against the rules, resolves mechanics, and constrains the narrative output to the actual game state.
+The system uses a large language model (LLM) to drive interpretation
+and narration, and a deterministic engine to impose game mechanics.
+LLMs are good at natural-language understanding and prose generation,
+but unreliable for persistent rule enforcement and state tracking.
+Therefore, the system splits the GM's responsibilities: the LLM
+interprets player intent, constructs structured actions, and weaves
+outcomes into compelling prose; the engine validates actions against
+the rules, resolves mechanics, and constrains the narrative output to
+the actual game state.
 
 ## Architecture
 
-Each turn, we run two LLM calls sandwiching a coded engine.  The LLM calls and engine are informed by three data stores that track the game state.
+Each turn, we run two LLM calls sandwiching a coded engine.  The LLM
+calls and engine are informed by three data stores that track the game
+state.
 
 ### Per-turn data flow
 
@@ -22,13 +36,13 @@ Player Input
 ┌─────────────────┐
 │   LLM Call 1    │  (low temperature — ruling)
 │ "What does      │
-│  the player     │  Output: PlayerAction (machine-readable)
+│  the player     │  Output: structured PlayerAction
 │  attempt?"      │         + optional soft state patch
 └────┬────────────┘
      │ PlayerAction
      ▼
 ┌─────────────────┐
-│  Engine         │  Reads: Corpus + Hard State + Soft State
+│  Engine         │  Reads: Corpus, Hard State, Soft State
 │ (checks, rules, │  Writes: Hard State only
 │  roll dice)     │  Validates & applies soft state patch
 └────┬────────────┘
@@ -51,25 +65,41 @@ Player Input
 
 ### The three data stores
 
-**Module Corpus** (read-only).  This is loaded at startup and never modified during play, serving as the equivalent of a printed adventure module.  It specifies rooms (as graph nodes), entities (player, NPCs, features, items), interactions (named actions gated by conditions), and mechanics (win/lose rules, dice checks).
+**Module Corpus**: the equivalent of a printed adventure module,
+loaded at startup and never modified during play.  It specifies rooms,
+entities (player, NPCs, features, items), interactions (named actions
+gated by conditions), mechanics, global flags and their initial
+values, etc.
 
-**Hard Game State** (engine-authoritative).  This contains mutable runtime state and is managed exclusively by the engine.  It tracks player location, inventory, flags, room/entity states (including per-NPC attitude values), turn count, and game-over conditions.  The LLM reads part of it via the GMBriefing, but cannot alter it directly.
+**Hard Game State**: mutable runtime state managed exclusively by the
+engine.  It tracks player location, inventory, flags, room/entity
+states (including per-NPC attitude values), turn count, and game-over
+conditions.
 
-**Soft Game State** (LLM-proposed, engine-validated).  This contains narrative elements that the LLM can propose changes to: soft inventory (non-unique items like "a rock"), room notes, entity notes, dialogue state, turn history, and player knowledge (topics learned through NPC dialogue, interactions, examination, etc.).  All proposals go through a patch schema, which the engine validates and applies.
+**Soft Game State**: narrative elements that the LLM can propose
+changes to: soft inventory (non-unique items like "a rock"), room
+notes, entity notes, dialogue state, turn history, player knowledge,
+etc.  Changes to soft game state follow fixed schema and are validated
+by the engine.
 
 ### The Context Assembler and GMBriefing
 
-Each turn, the Context Assembler builds a **GMBriefing** — a JSON document describing the current world state to the ruling LLM, containing:
+Each turn, the Context Assembler builds a **GMBriefing** — a JSON
+document describing the current world state, containing the following:
 
-- **Global setting**: a few introductory sentences about the adventure.
-- **Current room**: ID, name, prose description, visible entities, available exits, available interactions.
-- **Player state**: location, hard inventory, soft inventory, active flags.
+- **Global setting**: introductory sentences about the adventure.
+- **Current room**: ID, name, prose description, available exits,
+  available interactions, etc.
+  - All **Entities** visible in the current room: ID, name, type
+    (feature/item/NPC), description, state, etc.
+- **Player state**: location, hard/soft inventory, active flags.
 - **Recent history**: summary of the last 5 turns.
-- **Player knowledge topics**: topic IDs the player has learned about (through dialogue, interactions, examination, etc.).
+- **Player knowledge**: key topics the player has learned about through dialogue, interactions, examination, etc.
 - **Dialogue context** (when in conversation): active NPC identity, attitude, dialogue guidelines, recent exchanges, topics discussed.
 - **Player input**: the verbatim input for this turn.
 
-In the future, we might turn to a vector database, but for now lookups are deterministic by ID.
+In the future, we might turn to a vector database, but for now lookups
+are deterministic.
 
 ### LLM Call 1 and player actions
 

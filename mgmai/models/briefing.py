@@ -15,9 +15,47 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
+import json
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 from mgmai.models.corpus import DialogueGuidelines
+
+
+def _is_empty(value: Any) -> bool:
+    """True for values that carry no information for the LLM.
+
+    None, empty strings, and empty containers (``[]``/``{}``) are dropped
+    from the serialized briefing. Falsy scalars like ``0`` or ``False``
+    are meaningful (e.g. ``modifier: 0``, ``impeded: false``) and kept.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str) and value == "":
+        return True
+    if isinstance(value, (list, dict)) and len(value) == 0:
+        return True
+    return False
+
+
+def _strip_empty(obj: Any) -> Any:
+    """Recursively drop empty fields from a JSON-native structure."""
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            v = _strip_empty(v)
+            if _is_empty(v):
+                continue
+            out[k] = v
+        return out
+    if isinstance(obj, list):
+        out_list: list[Any] = []
+        for item in obj:
+            v = _strip_empty(item)
+            if _is_empty(v):
+                continue
+            out_list.append(v)
+        return out_list
+    return obj
 
 
 class BriefingInteraction(BaseModel):
@@ -160,3 +198,17 @@ class GMBriefing(BaseModel):
     revealed_hints: List[str] = Field(default_factory=list)
     player_input: str
     combat_state: Optional[CombatBriefing] = None
+
+    def compact_dump(self) -> dict[str, Any]:
+        """Return the briefing as a dict with empty fields omitted.
+
+        Drops keys whose values are ``None``, ``""``, ``[]``, or ``{}``
+        recursively. Absence is semantically equivalent to "no value"
+        for every briefing field, so the LLM loses no information while
+        prompt tokens and visual noise are reduced.
+        """
+        return _strip_empty(self.model_dump(mode="json"))
+
+    def compact_dump_json(self, indent: int = 2) -> str:
+        """JSON string form of :meth:`compact_dump`."""
+        return json.dumps(self.compact_dump(), indent=indent)
