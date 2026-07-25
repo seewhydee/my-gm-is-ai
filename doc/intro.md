@@ -159,21 +159,73 @@ adjudicate the insertion of soft items into the narrative, as well as
 managing the topics NPCs reveal in conversation and changes in NPC
 attitude; see [npcs.md](npcs.md) for details.
 
-### Dialogue mode
+### Dialogue and combat modes
 
-When the player starts talking to an NPC (`talk` action), the system enters dialogue mode.  The GMBriefing is then enriched with a `dialogue_context` block specifying the NPC's personality guidelines, current attitude, recent exchanges, discussed topics, and topics already revealed to the player.
+The system implements two situational modes that layer over the above
+pipeline (LLM Call 1 → Engine → LLM Call 2).
 
-Dialogue ends when the player moves rooms (away from the NPC), the NPC dies/flees, the player terminates the conversation (a `talk` action with `ends_dialogue: true`), or 3+ turns pass without a `talk` action.  An exception is made for **follower NPCs** (NPCs with `entity_states[].following == true`), who travel with the player between rooms and remain in active dialogue regardless of room changes.  On exit, the conversation is archived as an `entity_note` on the NPC — LLM Call 2 may provide a rich `conversation_note`, otherwise the engine writes a minimal fallback.  Any entity-scoped `dialogue.ended` reaction on the NPC fires during deferred reaction dispatch.
+**Dialogue mode** activates when the player talks to an NPC.  It
+extends the pipeline in three ways:
+
+- The Context Assembler injects a `dialogue_context` block into the
+  GMBriefing, giving both LLM calls access to the conversation log,
+  NPC personality guidelines, attitude, and topics discussed.
+
+- The prose renderer injects a dialogue-specific template section,
+  instructing LLM Call 2 to manage NPC speech inline, propose attitude
+  shifts, and track knowledge revelations.
+
+- After Call 2 returns, a lightweight post-processing step feeds the
+  NPC's verbatim response into the dialogue log and, if conversation
+  has ended, archives a summary as an entity note on the NPC.
+
+**Combat mode** uses the same layering pattern with more aggressive
+constraints:
+
+- The Assembler injects a `combat_state` block with positioning data,
+  HP, initiative order, consumable effects, and ability summaries.
+
+- Template injections constrain LLM Call 1 to specific action types
+  (attack, use item/ability, flee, wait, or cursory examine) and
+  instruct LLM Call 2 to narrate from the combat log.
+
+- The engine runs the turn-based combat loop (initiative tracking, NPC
+  AI turns, status effects, etc.) entirely within its step of the
+  pipeline.  The LLMs only see the briefing and the log.
 
 ### Error handling
 
-- **Malformed LLM output** (invalid JSON, unknown action): retry once with error in prompt, then fall back to generic narration.
-- **Impossible action** (valid JSON but engine rejects): `success: false` with a reason; narration describes the failure.
-- **Rejected soft patches** and **rejected attitude changes**: listed in the EngineResult; narration should not discuss the rejected change.
+Each stage of the pipeline has its own error path.
+
+**LLM Call 1** (ruling): On malformed JSON, unknown action type, or
+(in combat) invalid targets/abilities, the system retries once with
+the error appended to the prompt.  A second failure aborts the turn,
+and skips to the next player input with no narration.
+
+**Engine**: Validly-structured actions that violate game rules (e.g.,
+missing item, dead NPC, room has no such exit) return `success: false`
+on the `EngineResult`.  This is not a turn abort; LLM Call 2 proceeds
+normally and narrates the failure.  Soft-state patches proposed by the
+LLM that reference nonexistent entities or contradict current state
+are rejected individually while the rest apply.
+
+**LLM Call 2** (prose): On malformed JSON, the system retries once.  A
+second failure falls back to an engine-generated narration string
+rather than aborting.  Semantic validation (missing or mangled marker
+tags, contradiction of the engine's success/failure outcome, empty
+narration) also retries once, and on a second failure logs a warning
+and continues with the output as-is.
+
+**Post-validation** (after Call 2): Knowledge tags, attitude changes,
+and soft-item adjudications proposed by the prose LLM are validated
+against the game state.  Invalid entries are rejected silently,
+without preventing the rest of the turn from completing.
 
 ### Serialization
 
-After each non-chain turn, the system saves hard state + soft state as a JSON file.  The GMBriefing is reconstructed from scratch on load; no LLM context is persisted.
+After each non-chain turn, the system saves hard state + soft state as
+a JSON file.  The GMBriefing is reconstructed from scratch on load; no
+LLM context is persisted.
 
 ## Directory Structure
 
