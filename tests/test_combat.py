@@ -3457,7 +3457,7 @@ class TestAbilities:
         ability_corpus.abilities["wish"] = ability_corpus.abilities["fire_bolt"]
         result = resolve_combat_turn(self._ability("wish", "goblin"), ability_hard, ability_corpus)
         assert result["success"] is False
-        assert "do not know" in result["error"]
+        assert "not available" in result["error"]
 
     def test_ability_wrong_target_side(self, ability_hard, ability_corpus):
         self._combat_state(ability_hard, order=("player", "medic", "goblin"), allies=["medic"])
@@ -4574,7 +4574,7 @@ class TestOutOfCombatSpellcasting:
             ooc_corpus,
         )
         assert result.success is False
-        assert "do not know" in result.error
+        assert "not available" in result.error
 
     # -- Briefing --------------------------------------------------------
 

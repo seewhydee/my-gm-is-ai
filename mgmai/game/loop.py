@@ -34,6 +34,7 @@ from mgmai.engine.post_validate import apply_post_validation
 from mgmai.game.commands import Commands
 from mgmai.game.display import Display
 from mgmai.game.input_normalizer import normalize_player_input
+from mgmai.game.rest_mode import RestMode
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
 from mgmai.logging import format_state_snapshot
@@ -114,6 +115,10 @@ class GameLoop:
         self._config_dir = Path(config_dir) if config_dir else None
         self._prose_validation_enabled = prose_validation_enabled
         self._positioning_warning: str | None = None
+        # Active rest-mode controller, or None during normal play.  Set
+        # when a rest action resolves successfully; cleared when the
+        # player picks *done* in the rest menu.
+        self._rest_mode: RestMode | None = None
         self._commands = Commands(
             state_loader=state_manager,
             render=self._display.print,
@@ -152,10 +157,57 @@ class GameLoop:
             if _HAS_READLINE:
                 readline.add_history(line)
 
-            if self._commands.handle(line):
+            if self._dispatch_input(line) is not None:
                 continue
 
             self._run_turn(line)
+
+    # --- input dispatch (shared by REPL and HeadlessSession.submit) ---
+
+    def _dispatch_input(self, line: str) -> str | None:
+        """Handle a line of input outside the turn pipeline.
+
+        Returns the rendered output string when the line was consumed
+        (rest-mode step, or a slash-command which already printed its
+        own output and returns ``""``); returns ``None`` when the line
+        should go to ``_run_turn``.  This is the single pre-turn
+        dispatch shared by the REPL and the headless session so that
+        rest mode is reachable headlessly.
+        """
+        if self._rest_mode is not None:
+            text = self._rest_mode.handle(line)
+            self._display.render_rest_menu(text)
+            if self._rest_mode.exited:
+                self._rest_mode = None
+            return text
+        if self._commands.handle(line):
+            return ""
+        return None
+
+    def _maybe_enter_rest_mode(self) -> None:
+        """Enter rest mode if the just-resolved action was a successful rest.
+
+        Called from ``_finalize_turn`` after a turn completes.  Renders
+        the entry summary + top menu.  No-op if rest mode is already
+        active, the action wasn't a rest, or the rest failed.
+        """
+        if self._rest_mode is not None:
+            return
+        action = getattr(self, "_last_action", None)
+        result = getattr(self, "_last_result", None)
+        if (
+            action is None
+            or getattr(action, "action_type", None) != "rest"
+            or result is None
+            or not result.success
+        ):
+            return
+        hard = self._state.hard_state
+        corpus = self._state.corpus
+        if hard is None or corpus is None:
+            return
+        self._rest_mode = RestMode(action.kind, result, hard, corpus)
+        self._display.render_rest_menu(self._rest_mode.initial_text())
 
     # --- turn running ---
 
@@ -370,6 +422,7 @@ class GameLoop:
 
         self._display.render_status(self._state)
         self._auto_save(narration)
+        self._maybe_enter_rest_mode()
 
     def _auto_save(self, narration: str) -> None:
         try:

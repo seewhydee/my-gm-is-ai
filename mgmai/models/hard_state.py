@@ -79,8 +79,19 @@ class PlayerState(BaseModel):
     )
     # Active status effects (status effect id -> rounds remaining); combat-scoped.
     status_effects: dict[str, int] = Field(default_factory=dict)
-    # IDs of combat abilities the player knows (corpus.abilities keys).
+    # IDs of abilities the player currently has available to cast/use
+    # (the prepared subset for prepared casters; the whole list
+    # otherwise).  CombatAction.ability_id, briefings, and validation
+    # all read this as the castable set.
     abilities: list[str] = Field(default_factory=list)
+    # Every ability the player knows / has in their spellbook.  For
+    # prepared casters (cleric, wizard, ...), ``abilities`` is the
+    # prepared subset and ``spellbook`` is the known superset; re-
+    # preparation after a long rest swaps ``abilities``.  Empty for
+    # spontaneous casters and non-casters, in which case ``abilities``
+    # is the whole list and the prepare-spells menu is hidden.
+    # Invariant when non-empty: ``abilities`` ⊆ ``spellbook``.
+    spellbook: list[str] = Field(default_factory=list)
     # 5e spellcasting: the player's casting stat ("INT"/"WIS"/"CHA"); one
     # casting ability for all spells (per-spell overrides are a future
     # multiclass concern).

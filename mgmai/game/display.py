@@ -132,6 +132,13 @@ class Display:
         else:
             print(f"Error: {text}")
 
+    def render_rest_menu(self, text: str) -> None:
+        """Render rest-mode menu text (bookkeeping, not narration)."""
+        if RICH_AVAILABLE:
+            self._console.print(text)
+        else:
+            print(text)
+
     def render_status(self, state_loader: Any) -> None:
         hard = state_loader.hard_state
         if hard is None:

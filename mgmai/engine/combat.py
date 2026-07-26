@@ -1703,7 +1703,7 @@ def _resolve_player_ability(
     if ability is None:
         return {"success": False, "error": f"Unknown ability '{aid}'"}
     if aid not in hard.player.abilities:
-        return {"success": False, "error": f"You do not know ability '{aid}'"}
+        return {"success": False, "error": f"Ability '{aid}' is not available to you"}
     used_map = combat.ability_uses.setdefault("player", {})
     if ability.spell_level is not None:
         # Spells consume spell slots, not uses_per_combat.  Leveled
@@ -1835,7 +1835,7 @@ def resolve_out_of_combat_ability(
     if ability is None:
         return {"success": False, "error": f"Unknown ability '{aid}'"}
     if aid not in hard.player.abilities:
-        return {"success": False, "error": f"You do not know ability '{aid}'"}
+        return {"success": False, "error": f"Ability '{aid}' is not available to you"}
 
     if ability.target == "enemy":
         return {

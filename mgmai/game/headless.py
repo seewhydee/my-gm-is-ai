@@ -142,6 +142,7 @@ class RecordingDisplay(Display):
         self.errors: list[str] = []
         self.game_over_events: list[dict[str, Any]] = []
         self.intros: list[dict[str, Any]] = []
+        self.rest_menus: list[str] = []
 
     # --- game screens (override: record + suppress output) ---
 
@@ -166,6 +167,10 @@ class RecordingDisplay(Display):
 
     def render_error(self, text: str) -> None:
         self.errors.append(text)
+
+    def render_rest_menu(self, text: str) -> None:
+        self.rest_menus.append(text)
+        # Deliberately do NOT call super(): zero terminal output.
 
     def render_game_over(self, result: Any) -> None:
         self.game_over_events.append({
@@ -342,7 +347,14 @@ class HeadlessSession:
         exception: BaseException | None = None
         narration: str | None = None
         try:
-            narration = self._loop._run_turn(command)
+            # Rest-mode bookkeeping (and slash-commands) bypass the turn
+            # pipeline entirely.  _dispatch_input returns the rendered
+            # output string when it consumed the line, None otherwise.
+            rest_output = self._loop._dispatch_input(command)
+            if rest_output is not None:
+                narration = rest_output or None
+            else:
+                narration = self._loop._run_turn(command)
         except BaseException as exc:  # noqa: BLE001 — record + reraise
             exception = exc
 

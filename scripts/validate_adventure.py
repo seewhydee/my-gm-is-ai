@@ -383,6 +383,20 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
                 f"that level"
             )
 
+    # Prepared-caster invariant: when a spellbook is declared, every
+    # prepared ability (abilities) must be in it.  Warn (not error) so a
+    # forward-declared ability ID doesn't block validation.
+    spellbook = hard.player.spellbook
+    if spellbook:
+        known = set(spellbook)
+        for aid in hard.player.abilities:
+            if aid not in known:
+                warnings.append(
+                    f"Player has ability '{aid}' prepared but it is not "
+                    f"in their spellbook (abilities must be a subset of "
+                    f"spellbook)"
+                )
+
     # 12. Status-effect references (warning only — adventures may
     # forward-declare status-effect IDs; runtime application still works)
     defined_status_effects = set(corpus.effective_status_effects())

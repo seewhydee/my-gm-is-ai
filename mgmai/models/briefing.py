@@ -151,7 +151,8 @@ class PlayerStateBriefing(BaseModel):
     entity_notes: list[str] = Field(default_factory=list)
     player_stats: dict[str, PlayerStatEntry] | None = None
     combat_stats: PlayerCombatStats | None = None
-    # Player's known abilities (same entry shape as CombatBriefing.abilities):
+    # Player's available/prepared abilities (same entry shape as
+    # CombatBriefing.abilities):
     # [{id, name, description, target, uses_remaining, effect, effect_kind,
     #   spell_level?, concentration?, slot_level?, save_dc?}]
     abilities: list[dict[str, Any]] = Field(default_factory=list)

@@ -82,6 +82,18 @@ history for the archived text.
       unconscious/paralyzed/stunned; obstacle `impede` delay (once per
       combat per enemy).  See `combat-positioning-plan.md` and
       `doc/combat.md` — *Positioning*.
+- [x] **Rests** — a `rest` action (short/long) resolved through the
+      normal LLM loop; rejected during combat.  Long rest (SRD 5.2.1):
+      regain all HP, all spell slots (`max_spell_slots`), all spent Hit
+      Dice, reduce exhaustion by 1, and end time-limited persistent
+      magic (Mage Armor); short rest is a no-op recharge.  Recharge is
+      delegated to `ResolutionSystem.on_short_rest`/`on_long_rest` hooks
+      returning a `RestRechargeResult`; a `rest.completed` event is
+      emitted.  **Rest mode** (LLM-free bookkeeping UI: prepare-spells
+      toggle, hit-dice spend, done) is driven through a shared
+      `_dispatch_input` helper so `HeadlessSession.submit` reaches it
+      one step at a time.  Deferred: rest interruption, warlock pact
+      magic, named per-rest resource pools.
 
 ### Partially implemented (known gaps)
 
@@ -118,24 +130,9 @@ history for the archived text.
       Spellcasting above), movement-vs-action split, or
       Dodge/Dash/Ready.  (OA-lite and the Disengage maneuver are
       implemented — see Positioning above.)
-- [~] **Rests (recharge)** — a `rest` action (short/long) resolved through
-      the normal LLM loop; rejected during combat.  Long rest (SRD 5.2.1):
-      regain all HP, all spell slots (`max_spell_slots`), all spent Hit
-      Dice, reduce exhaustion by 1, and end time-limited persistent magic
-      (Mage Armor).  Short rest is a no-op recharge (hit-dice spend is a
-      rest-mode bookkeeping step, not yet implemented).  Recharge is
-      delegated to `ResolutionSystem.on_short_rest`/`on_long_rest` hooks
-      returning a `RestRechargeResult`; a `rest.completed` event is
-      emitted.  Pending: rest mode (LLM-free re-preparation / hit-dice
-      spend UI), rest interruption, warlock pact magic, named per-rest
-      resource pools.  See `rests-design.md`
 
 ### Not implemented
 
-- [ ] **Rest mode** — the LLM-free bookkeeping UI for re-preparing
-      spells and spending Hit Dice after a rest (see `rests-design.md`
-      Part 2).  Rest recharge itself is implemented (see Partially
-      implemented above).
 - [ ] **Character creation / classes / species** — no class field, no
       class features, no XP/leveling, no per-level HP derivation
 - [ ] **Condition immunities** (separate from damage immunities)
@@ -162,12 +159,12 @@ history for the archived text.
   mitigation as a natural companion.  (`unconscious` now exists as a
   condition to build on.)
 
-- **Rest mode** — the LLM-free bookkeeping UI for re-preparing spells
-  and spending Hit Dice after a rest (rests-design.md Part 2).  Rest
-  recharge itself (the `rest` action, slot/HP/hit-dice/exhaustion
-  recovery, the `rest.completed` event) is now implemented; this is the
-  remaining half.  Requires a shared `_dispatch_input` helper so
-  `HeadlessSession.submit` can drive the modal menu.  Medium.
+- **Rest extensions** — rests (recharge + rest mode) are now
+  implemented; the deferred follow-ups are: rest interruption /
+  mid-rest ambushes (needs `rest.started` + immediate-phase events),
+  warlock pact magic (short-rest slot recharge — needs slot *kinds*),
+  and named per-rest resource pools (Action Surge, Channel Divinity) via
+  the anticipated `resources: Dict[str, int]` generalization.
 
 ---
 
