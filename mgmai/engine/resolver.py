@@ -1891,59 +1891,63 @@ def _resolve_use_ability(
     )
 
     result = resolve_out_of_combat_ability(action, hard, corpus)
-    if not result["success"]:
-        error_msg = result.get("error")
-        if result.get("combat_triggered"):
-            target_id = action.target
-            target_entity = _find_entity_in_room_followers(
-                target_id, hard.player.location, hard, corpus
-            )
-            if target_entity is None or target_entity.combat is None:
-                return ResolutionResult(
-                    success=False,
-                    error=(
-                        f"Cannot start combat with '{target_id}' "
-                        f"(not present or not a valid combatant)"
-                    ),
-                    room_after_id=hard.player.location,
-                )
-            enemies = resolve_combat_enemies([target_id], None, hard, corpus)
-            if not enemies:
-                return ResolutionResult(
-                    success=False,
-                    error=(
-                        f"Cannot start combat with '{target_id}' "
-                        f"(not present or not a valid combatant)"
-                    ),
-                    room_after_id=hard.player.location,
-                )
-            entry = enter_combat(
-                enemies, hard, corpus, soft=soft, state_manager=state_manager,
-                engage_source=target_id,
-            )
-            events: list[tuple[str, dict[str, Any]]] = [
-                ("combat.started", {"combatant_ids": enemies}),
-            ]
-            events.extend(entry.get("events") or [])
-            if entry.get("combat_ended_reason"):
-                events.append(("combat.ended", {
-                    "reason": entry["combat_ended_reason"],
-                }))
+
+    # Enemy-targeted abilities return success=True with combat_triggered=True:
+    # the spell is deferred to the player's first combat turn, and combat
+    # starts now (mirroring interact/attack).
+    if result.get("combat_triggered"):
+        target_id = action.target
+        target_entity = _find_entity_in_room_followers(
+            target_id, hard.player.location, hard, corpus
+        )
+        if target_entity is None or target_entity.combat is None:
             return ResolutionResult(
-                success=True,
-                hard_changes=entry["hard_changes"],
-                combat_triggered=True,
-                combat_log=entry["combat_log"],
-                player_died=entry.get("player_died", False),
+                success=False,
+                error=(
+                    f"Cannot start combat with '{target_id}' "
+                    f"(not present or not a valid combatant)"
+                ),
                 room_after_id=hard.player.location,
-                events=events,
             )
+        enemies = resolve_combat_enemies([target_id], None, hard, corpus)
+        if not enemies:
+            return ResolutionResult(
+                success=False,
+                error=(
+                    f"Cannot start combat with '{target_id}' "
+                    f"(not present or not a valid combatant)"
+                ),
+                room_after_id=hard.player.location,
+            )
+        entry = enter_combat(
+            enemies, hard, corpus, soft=soft, state_manager=state_manager,
+            engage_source=target_id,
+        )
+        events: list[tuple[str, dict[str, Any]]] = [
+            ("combat.started", {"combatant_ids": enemies}),
+        ]
+        events.extend(entry.get("events") or [])
+        if entry.get("combat_ended_reason"):
+            events.append(("combat.ended", {
+                "reason": entry["combat_ended_reason"],
+            }))
         return ResolutionResult(
-            success=False,
-            error=error_msg,
+            success=True,
+            hard_changes=entry["hard_changes"],
+            combat_triggered=True,
+            combat_log=entry["combat_log"],
+            player_died=entry.get("player_died", False),
+            room_after_id=hard.player.location,
+            events=events,
         )
 
-    events: list[tuple[str, dict[str, Any]]] = list(result.get("events") or [])
+    if not result["success"]:
+        return ResolutionResult(
+            success=False,
+            error=result.get("error"),
+        )
+
+    events = list(result.get("events") or [])
     return ResolutionResult(
         success=True,
         hard_changes=result["hard_changes"],
@@ -2125,6 +2129,14 @@ def _resolve_combat_environmental(
             # Failed validation never costs a turn: no NPC turns.
             return delegate
 
+        # Merge the delegate's hard changes (e.g. a potion's heal and
+        # item consumption) into hard_changes BEFORE NPC turns, so that
+        # _end_player_turn sees the correct effective player HP.  Without
+        # this, NPC attacks compute effective HP without the heal and
+        # may spuriously log a "player death" that didn't actually happen.
+        if delegate.hard_changes:
+            hard_changes.merge(delegate.hard_changes)
+
         # Hazard checks on the result, before NPC turns.
         if hard.game_over is not None:
             # An inline (scripted) game-over ended everything; no NPC turns.
@@ -2164,19 +2176,16 @@ def _resolve_combat_environmental(
             events=begin_events + end_events,
         )
 
-    merged = HardStateChanges()
-    merged.merge(hard_changes)
-    if delegate.hard_changes:
-        merged.merge(delegate.hard_changes)
-
+    # hard_changes already includes the delegate's changes (merged
+    # before NPC turns so the effective HP was correct).
     return ResolutionResult(
         success=True,
-        hard_changes=merged,
+        hard_changes=hard_changes,
         triggered_narration=delegate.triggered_narration,
         revealed_hints=delegate.revealed_hints,
         encounter_trigger=delegate.encounter_trigger,
         combat_log=combat_log,
-        player_died=_player_died(hard, merged),
+        player_died=_player_died(hard, hard_changes),
         warnings=warnings + delegate.warnings,
         room_after_id=delegate.room_after_id,
         soft_patches=delegate.soft_patches,

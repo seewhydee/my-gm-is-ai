@@ -17,8 +17,8 @@
 """Semantic validation of ruling (LLM Call 1) outputs against the briefing.
 
 ``parse_player_action`` guarantees syntactic/schema validity only.  A ruling
-can be well-formed JSON and still be nonsense — e.g. ``use_item`` with the
-beneficiary in ``target`` instead of the item ID.  This module checks the
+can be well-formed JSON and still be nonsense — e.g. ``attack`` with a
+``target`` that is not an enemy combatant.  This module checks the
 parsed PlayerAction against the GMBriefing data the model was shown and
 returns a short, model-addressed error string (fed back verbatim in the
 corrective retry) when the briefing clearly proves the ruling invalid.
@@ -161,7 +161,12 @@ def _validate_use_ability(
                     f"that ability's target kind is \"enemy\", so 'target' "
                     f"must be the ID of a visible enemy entity."
                 )
-    if not in_combat:
+    # Out of combat, self/ally abilities are restricted to heal/on_cast
+    # effects (attack/save/auto_damage and concentration need a live
+    # CombatState).  Enemy-targeted abilities skip this check: they
+    # start combat (mirroring interact/attack) and resolve on the
+    # player's first combat turn, where the effect_kind is legal.
+    if not in_combat and kind != "enemy":
         effect_kind = entry.get("effect_kind")
         if effect_kind not in ("heal", "on_cast"):
             return (

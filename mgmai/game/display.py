@@ -398,7 +398,7 @@ class Display:
 
     def _combat_player_footer(self, hard: Any, corpus: Any, combat: Any) -> str:
         """One-line summary of the player's combat-relevant resources:
-        AC, equipped weapon, ability uses left, and consumables."""
+        AC, equipped weapon, ability uses left, and usable items."""
         parts: list[str] = []
         try:
             from mgmai.engine.combat import compute_player_ac

@@ -2956,7 +2956,12 @@ class TestUseItem:
         assert len(goblin_attacks) == 1
 
     def test_npc_attack_after_heal_uses_effective_hp(self, combat_npc_corpus, combat_hard_state, monkeypatch):
-        """A same-turn heal via interact/drink resolves before NPC turns."""
+        """A same-turn heal via interact/drink resolves before NPC turns.
+
+        The heal must be visible to NPC turn resolution so the effective
+        HP is correct — without this, NPC attacks compute HP without the
+        heal and may spuriously log a 'player death' that didn't happen.
+        """
         corpus, hard = self._setup(
             combat_npc_corpus, combat_hard_state,
             [Interaction(id="drink", description="Drink the potion.",
@@ -2964,7 +2969,8 @@ class TestUseItem:
                           remove_item_count={"potion": 1}))],
         )
         hard.player.current_hp = 4
-        # heal 3+1+2 = 6; goblin hits (15+4) for 6+2 = 8
+        # heal 3+1+2 = 6 -> effective 10 HP; goblin hits (15+4) for 6+2 = 8
+        # Without the heal visible, effective HP would be 4-8 = -4 (fake death).
         rand_vals = iter([3, 1, 15, 6])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
         soft = SoftGameState()
@@ -2972,6 +2978,12 @@ class TestUseItem:
         assert result.success
         assert result.hard_changes.player_hp_delta == -2
         assert result.hard_changes.inventory_removed == {"potion": 1}
+        # No spurious player death — the heal kept the player alive.
+        assert result.player_died is False
+        assert not any(
+            e.action == "death" and e.actor == "player"
+            for e in result.combat_log
+        )
 
     def test_cure_conditions(self, combat_npc_corpus, combat_hard_state, monkeypatch):
         corpus, hard = self._setup(
@@ -3066,9 +3078,9 @@ class TestUseItem:
         assert result.success is False
         assert "drink" in result.error.lower()
 
-    def test_use_item_prefix(self, combat_npc_corpus):
-        log = [{"actor": "player", "action": "use_item",
-                "target": "potion", "damage": 5}]
+    def test_interact_prefix(self, combat_npc_corpus):
+        log = [{"actor": "player", "action": "interact",
+                "target": "potion"}]
         corpus = combat_npc_corpus.model_copy(deep=True)
         corpus.entities["potion"] = Entity(
             type="item", name="Healing Potion", description="A red potion.",
@@ -3077,7 +3089,6 @@ class TestUseItem:
         )
         prefix = format_combat_prefix(log, corpus)
         assert "healing potion" in prefix.lower()
-        assert "healed 5" in prefix.lower()
 
 
 # ------------------------------------------------------------------
@@ -4508,23 +4519,30 @@ class TestOutOfCombatSpellcasting:
 
     # -- Rejections -----------------------------------------------------
 
-    def test_enemy_targeted_spell_rejected(self, ooc_hard, ooc_corpus):
-        """Enemy-targeted abilities out of combat now succeed (no error)."""
+    def test_enemy_targeted_spell_starts_combat(self, ooc_hard, ooc_corpus):
+        """Enemy-targeted abilities out of combat start combat (spell deferred)."""
         result = resolve_action(
             self._ability("fire_bolt", "goblin"), ooc_hard, SoftGameState(),
             ooc_corpus,
         )
         assert result.success
+        assert result.combat_triggered
+        assert ooc_hard.combat is not None and ooc_hard.combat.active
+        assert "goblin" in ooc_hard.combat.combatants
+        # The spell is deferred to the first combat turn — no slot consumed.
         assert ooc_hard.player.spell_slots == {1: 2}
 
-    def test_save_spell_out_of_combat_rejected(self, ooc_hard, ooc_corpus):
-        # sacred_flame is enemy-targeted — succeeds out of combat now.
-        # warding_flare is ally-targeted save effect — combat-only.
+    def test_save_spell_out_of_combat_starts_combat(self, ooc_hard, ooc_corpus):
+        # sacred_flame (enemy save cantrip) starts combat out of combat.
+        hard1 = ooc_hard.model_copy(deep=True)
         result = resolve_action(
-            self._ability("sacred_flame", "goblin"), ooc_hard, SoftGameState(),
+            self._ability("sacred_flame", "goblin"), hard1, SoftGameState(),
             ooc_corpus,
         )
         assert result.success
+        assert result.combat_triggered
+        assert hard1.combat is not None and hard1.combat.active
+        # warding_flare (ally save) is still combat-only — rejected OOC.
         result = resolve_action(
             self._ability("warding_flare", "medic"), ooc_hard, SoftGameState(),
             ooc_corpus,
@@ -5004,17 +5022,19 @@ class TestConcentration:
         assert "paralyzed" in conc_hard.player.status_effects
         assert "incapacitated" not in self._effects_of(conc_hard, "goblin_a")
 
-    def test_out_of_combat_concentration_spell_rejected(
+    def test_out_of_combat_enemy_spell_starts_combat(
         self, conc_hard, conc_corpus
     ):
-        # Sleep (enemy save spell) now returns success out of combat.
-        # A concentration on_cast spell still needs the explicit
-        # concentration rejection.
+        # sleep (enemy save + concentration) starts combat out of combat.
+        hard1 = conc_hard.model_copy(deep=True)
         result = resolve_action(
-            self._ability("sleep", "goblin_a"), conc_hard, SoftGameState(),
+            self._ability("sleep", "goblin_a"), hard1, SoftGameState(),
             conc_corpus,
         )
         assert result.success
+        assert result.combat_triggered
+        assert hard1.combat is not None and hard1.combat.active
+        # A self concentration on_cast spell is still rejected OOC.
         result = resolve_action(
             self._ability("ward", "player"), conc_hard, SoftGameState(),
             conc_corpus,

@@ -215,13 +215,6 @@ def format_combat_prefix(
                 summaries.append(
                     f"**{_entity_name(actor, corpus)} is stunned and cannot act.**"
                 )
-        elif action == "use_item":
-            name = _entity_name(target, corpus)
-            healed = entry.get("damage") or 0
-            if healed:
-                summaries.append(f"**You use {name}: healed {healed} HP.**")
-            else:
-                summaries.append(f"**You use {name}.**")
         elif action == "ability_save":
             caster = "You" if actor == "player" else _entity_name(actor, corpus)
             abil = entry.get("attack_name") or "an ability"

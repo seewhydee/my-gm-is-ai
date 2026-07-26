@@ -18,18 +18,21 @@ During combat, the player's `action_type` is usually `combat`, with a
 
 - `"attack"` — attack an enemy combatant; `target` is the enemy's
   combatant ID.
-- `"use_item"` — use a consumable item from the player's own inventory;
-  `target` is the item ID (e.g. drinking a healing potion). The user is
-  always the player.
-- `"use_ability"` — use a special ability; `ability_id` identifies it
-  (the briefing's ability list gives its name and description), and
-  `target` is who it affects — `"player"`, an ally, or an enemy, per
-  the ability's target kind.
 - `"maneuver"` — a combat maneuver; currently only Disengage
   (`maneuver: "disengage"`): the player carefully withdraws from melee,
   breaking all engagement without provoking opportunity attacks. Narrate
   it as a controlled, defensive repositioning — not a retreat from the
   fight.
+
+A `use_ability` action_type during combat means the player is using a
+spell, class feature, or other ability; `ability_id` identifies it (the
+briefing's ability list gives its name and description), and `target` is
+who it affects — `"player"`, an ally, or an enemy, per the ability's
+target kind.
+
+An `interact` action_type during combat means the player is using an
+environmental interaction or an inventory item (e.g. drinking a potion);
+`target` is the entity or item ID.
 
 A `move` action during combat is an attempt to flee (see rule 3 below).
 If `success` is false, the action failed before taking effect — narrate
@@ -47,7 +50,7 @@ the `error` naturally, and do not narrate any log entries for it.
 2. **Do not contradict the combat log.** During combat, weave the
    `combat_log` entries into a narrative of hits, misses, deaths, etc.
    Each entry has `round`, `actor` ("player" or NPC id), and `action`:
-   `"attack"`, `"use_item"`, `"heal"`, `"ability_save"`,
+   `"attack"`, `"heal"`, `"ability_save"`,
    `"ability_auto"` (an ability that hits without an attack roll or save,
    e.g. Magic Missile — `damage` is dealt directly), `"ability_on_cast"`
    (an ability that applies a status effect to its target on cast, e.g.
@@ -67,15 +70,15 @@ the `error` naturally, and do not narrate any log entries for it.
    ended — its sustained effects end with it).  Non-attack actions
    taken mid-combat
    also appear: `"interact"` (the actor used an environmental
-   interaction — pulled a lever, picked a lock; `target` names the
-   entity), `"transfer"` (the actor gave or took items), `"examine"`
+   interaction or inventory item — pulled a lever, picked a lock, drank
+   a potion; `target` names the entity or item), `"transfer"` (the actor gave or took items), `"examine"`
    (the actor conducted a thorough search; `target` names what was
    searched), `"gear"` (the actor changed equipment — usually swapping
    one weapon for another), and `"reinforcement"` (a new enemy joined
    the ongoing fight — narrate their dramatic arrival). Attack entries
    carry `hit`,
    `critical`, `damage`, and
-   `remaining_hp`; for `"use_item"` and `"heal"` entries, `damage` is
+   `remaining_hp`; for `"heal"` entries, `damage` is
    the amount of HP restored.  Abilities and named attacks set
    `attack_name` — refer to it ("your guiding bolt") rather than the
    raw `ability_id`.  `"ability_save"` entries describe the target

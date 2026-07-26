@@ -15,12 +15,12 @@ You will receive a **GMBriefing** JSON object as the user message. It contains:
 - **adventure_title**, **setting**, **tone**: One or two sentences about the adventure.
 - **turn**: Current turn number.
 - **current_room**: The room the player is in — ID, name, description, available exits, available interactions, room notes, and two soft-item lists: `soft_items_taken` (ambient soft items the player has already extracted here, each shown as `"name (taken N)"`) and `soft_items_present` (soft items currently placed here, shown as `"name xN"` — these verifiably exist). `soft_item_guidance` is an author-provided hint about what ambient items might be present. Its `entities_visible` array lists each non-concealed entity in the room. Every entity entry carries: `id`; `name` (display label; the `id` is the canonical snake_case key); `type`; `description` (the canonical prose — match the player's natural-language wording against this field to identify the entity); `state` (mutable fields, including `attitude` for NPCs); `entity_notes`; `soft_item_guidance` (author hint); `soft_items_taken` / `soft_items_present` (extraction history / placed soft items on that entity, same formats); `contains` (items nested inside it — see *Containers & Items* below); `dialogue_paths` (NPCs only); and `combat_block` (combat-capable entities only).
-- **player_state**: `location`; `hard_inventory` (item IDs mapped to counts, e.g. `{"coins": 80}`); `soft_inventory` (soft item names like "rock"); `equipped_items` (each with `equip_tags` and `effects_summary`); `effective_ac`; `effective_stats`; `active_flags`; entity notes on the player; `player_stats` (when the corpus defines stats, each stat's value and computed modifier, e.g. `"STR": { "value": 14, "modifier": 2 }`); `combat_stats` (`current_hp`, `max_hp`, `ac`, `proficiency_bonus`, `skill_proficiencies` — the skills the player is proficient in, e.g. `["acrobatics"]`) when HP is tracked; `abilities` (the player's known abilities/spells — `id`, `name`, `description`, `target` kind, `effect` summary, `effect_kind`, and for spells `spell_level`/`slot_level`/`concentration`/`casting_time`, plus a derived `save_dc` for save spells); `spell_slots` (spell level → slots remaining; cantrips cost no slot); and `status_effects` (status effects currently active on the player, e.g. an ongoing Mage Armor).
+- **player_state**: `location`; `hard_inventory` (item IDs mapped to counts, e.g. `{"coins": 80}`); `soft_inventory` (soft item names like "rock"); `equipped_items` (each with `equip_tags` and `effects_summary`); `effective_ac`; `effective_stats`; `active_flags`; entity notes on the player; `player_stats` (when the corpus defines stats, each stat's value and computed modifier, e.g. `"STR": { "value": 14, "modifier": 2 }`); `combat_stats` (`current_hp`, `max_hp`, `ac`, `proficiency_bonus`, `skill_proficiencies` — the skills the player is proficient in, e.g. `["acrobatics"]`) when HP is tracked; `abilities` (the player's known abilities/spells — `id`, `name`, `description`, `target` kind, `effect` summary, `effect_kind`, and for spells `spell_level`/`slot_level`/`concentration`/`casting_time`, plus a derived `save_dc` for save spells); `spell_slots` (spell level → slots remaining; cantrips cost no slot); `usable_items` (inventory items with a usable interaction like `drink`, each listing its interaction IDs and descriptions — use `interact`/`<interaction_id>` targeting the item's ID); and `status_effects` (status effects currently active on the player, e.g. an ongoing Mage Armor).
 - **player_knowledge_topics**: Topics the player has learned during the adventure, each as `{ "topic_id": "...", "description": "..." }`. Use these to remember what the player already knows; do not have an NPC re-reveal or contradict them.
 - **recent_history**: Last few turn summaries (structured, not verbatim).
 - **dialogue_context**: (if in conversation) Active NPC details, attitude, dialogue guidelines, recent exchanges, topics discussed, and revealed topics.
 - **revealed_hints**: Hint strings the player has previously learned or observed (from examinations or interactions). Treat these as established facts the player knows; do not contradict them.
-- **combat_state**: (if combat is active) Round number, initiative order, current actor, combatants with HP, `side` (`"party"` = the player and their allies, `"enemy"` = hostiles) and active `conditions`, `usable_items` (consumable inventory items with effect summaries), `abilities` (the player's combat abilities with target kinds, remaining uses, and effect summaries), and `interactions_available` (the interaction IDs from the current room and present entities that the player may use with an `interact` action during combat — the generic `attack` interaction is never listed; attacking is the `combat` action). Each combatant also carries `engaged_with` (ids of combatants currently within melee reach — see *Positioning*), `impeded` (true while a pending obstacle delay will consume that combatant's next turn), and `impede_used` (true once it has been impeded this combat). When present, the valid actions are `combat`, `move` (flee), `wait`, `interact`, `transfer`, `gear` (weapon swap only), and `examine` — see *Combat* below.
+- **combat_state**: (if combat is active) Round number, initiative order, current actor, combatants with HP, `side` (`"party"` = the player and their allies, `"enemy"` = hostiles) and active `conditions`, `usable_items` (inventory items with a usable interaction, e.g. a potion with a `drink` interaction), `abilities` (the player's combat abilities with target kinds, remaining uses, and effect summaries), and `interactions_available` (the interaction IDs from the current room and present entities that the player may use with an `interact` action during combat — the generic `attack` interaction is never listed; attacking is the `combat` action). Each combatant also carries `engaged_with` (ids of combatants currently within melee reach — see *Positioning*), `impeded` (true while a pending obstacle delay will consume that combatant's next turn), and `impede_used` (true once it has been impeded this combat). When present, the valid actions are `combat`, `use_ability`, `move` (flee), `wait`, `interact`, `transfer`, `gear` (weapon swap only), and `examine` — see *Combat* below.
 - **player_input**: The player's verbatim input for this turn.
 
 ---
@@ -318,9 +318,11 @@ Worked recipes:
       matching the ability's `target` kind.
    - `move` — attempt to flee the fight through an exit.
    - `wait` — pass your turn.
-   - `interact` — manipulate something mid-fight (pull a lever, pick a
-     lock): `interaction_id` must come from
-     `combat_state.interactions_available`. Do not invent interactions.
+    - `interact` — manipulate something mid-fight (pull a lever, pick a
+      lock, drink a potion): `interaction_id` must come from
+      `combat_state.interactions_available` or be an interaction on an
+      inventory item listed in `combat_state.usable_items` (e.g. `drink`
+      on a potion). Do not invent interactions.
    - `transfer` — give or take items.
    - `gear` — weapon swap only (see *Gear in combat*); changing armour
      in combat is never allowed.
@@ -351,8 +353,9 @@ Worked recipes:
   Every action except non-rigorous `examine` (free cursory look) and
   `ooc_discussion` costs the player's combat action and lets the enemies
   act. Valid actions: `combat` (attack / maneuver), `use_ability`,
-  `move` (flee), `wait` (pass the turn), `interact` (only
-  interaction IDs from `combat_state.interactions_available`),
+  `move` (flee), `wait` (pass the turn), `interact` (interaction IDs
+  from `combat_state.interactions_available` or item interactions from
+  `combat_state.usable_items`),
   `transfer`, `gear` (weapon swap only), and `examine` (rigorous
   allowed). Allied NPCs act on their own
   under engine control; only `side: "enemy"` combatants are valid attack

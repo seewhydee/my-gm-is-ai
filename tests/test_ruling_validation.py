@@ -309,6 +309,12 @@ class TestUseAbilityOutOfCombat:
              "effect": "cantrip, evocation: attack (INT) for 1d10 fire damage",
              "effect_kind": "attack",
              "spell_level": 0, "concentration": False, "slot_level": 0},
+            {"id": "magic_missile", "name": "Magic Missile",
+             "description": "Three bolts of force.", "target": "enemy",
+             "uses_remaining": None,
+             "effect": "level 1 spell, evocation: 3d4 force damage",
+             "effect_kind": "auto_damage",
+             "spell_level": 1, "concentration": False, "slot_level": 1},
             {"id": "warding_flare", "name": "Warding Flare",
              "description": "A burst of light.", "target": "ally",
              "uses_remaining": None,
@@ -344,13 +350,31 @@ class TestUseAbilityOutOfCombat:
         assert error is not None
         assert "player_state.abilities" in error
 
-    def test_enemy_targeted_ability_flagged(self):
+    def test_enemy_targeted_ability_passes(self):
+        # Enemy-targeted abilities out of combat start combat (mirroring
+        # interact/attack); the validator allows them through.
+        assert validate_ruling_action(
+            _use_ability("fire_bolt", "goblin"),
+            self._ooc_briefing(),
+        ) is None
+
+    def test_enemy_targeted_no_target_flagged(self):
         error = validate_ruling_action(
-            _use_ability("fire_bolt", "medic"),
+            _use_ability("fire_bolt", ""),
             self._ooc_briefing(),
         )
         assert error is not None
-        assert "combat" in error
+        assert "enemy" in error
+
+    def test_enemy_leveled_spell_without_slot_flagged(self):
+        # Enemy-targeted leveled spells still need a slot (it will be
+        # consumed on the first combat turn).
+        error = validate_ruling_action(
+            _use_ability("magic_missile", "goblin"),
+            self._ooc_briefing({1: 0}),
+        )
+        assert error is not None
+        assert "no level-1 spell slots" in error
 
     def test_save_effect_flagged(self):
         error = validate_ruling_action(

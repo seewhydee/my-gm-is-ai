@@ -108,7 +108,7 @@ def remove_status_effect(
     """Remove *effect_id* from *target_id* if present.
 
     *reason* records the provenance (``"expired"``, ``"combat_end"``,
-    ``"consumable"``, ``"auto_clear"``, ``"manual"``) on the emitted
+    ``"interaction"``, ``"auto_clear"``, ``"manual"``) on the emitted
     ``status_effect.cleared`` event.  No-op (and no event) when the target
     does not have the status effect.
     """

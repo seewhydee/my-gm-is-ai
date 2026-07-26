@@ -192,7 +192,7 @@ class CombatBriefing(BaseModel):
     combatants: list[dict[str, Any]]  # [{id, name, side, current_hp, max_hp,
     #   status_effects: [{id, rounds, description?}], engaged_with: [ids],
     #   impeded: bool, impede_used: bool}]
-    # Usable consumables in the player's inventory: [{id, name, effects}]
+    # Inventory items with a usable interaction: [{id, name, interactions: [{id, description}]}]
     usable_items: list[dict[str, Any]] = Field(default_factory=list)
     # Player's combat abilities: [{id, name, description, target, uses_remaining,
     #   effect, effect_kind, spell_level?, concentration?, slot_level?,

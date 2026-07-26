@@ -326,15 +326,14 @@ class TestFormatSingleCombatEntry:
         result = _format_single_combat_entry(entry)
         assert "stunned" in result.lower()
 
-    def test_use_item_heal(self):
+    def test_interact_item(self):
         entry = {
             "actor": "player",
-            "action": "use_item",
+            "action": "interact",
             "target": "healing potion",
-            "damage": 4,
         }
         result = _format_single_combat_entry(entry)
-        assert "healed 4 HP" in result
+        assert "healing potion" in result.lower()
 
     def test_ability_save(self):
         entry = {

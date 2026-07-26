@@ -132,13 +132,6 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
             return "**You are stunned and cannot act!**"
         return f"**{_entity_name(actor, corpus)} is stunned and cannot act.**"
 
-    if action == "use_item":
-        name = _entity_name(target, corpus)
-        healed = entry.get("damage") or 0
-        if healed:
-            return f"**You use {name}: healed {healed} HP.**"
-        return f"**You use {name}.**"
-
     if action == "ability_save":
         caster = "You" if actor == "player" else _entity_name(actor, corpus)
         abil = entry.get("attack_name") or "an ability"

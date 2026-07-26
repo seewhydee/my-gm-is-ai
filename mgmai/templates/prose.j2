@@ -51,7 +51,8 @@ Important `action_type` values:
 |---------------|---------|
 | `move` | Traverse an exit; `target` is the exit ID, `style` is an optional qualifier. |
 | `examine` | The player examines something. `rigorous: true` means a thorough search costing a turn. Default (non-rigorous) is a free cursory glance. |
-| `combat` | Act during combat: attack, use a consumable item, or use an ability. See the Combat section (present whenever combat is active) for how to narrate these. |
+| `combat` | Act during combat: attack an enemy or perform a maneuver (e.g. Disengage). See the Combat section (present whenever combat is active) for how to narrate these. |
+| `use_ability` | Use a spell, class feature, or other ability in or out of combat. See the Combat section when combat is active. |
 | `talk` | Speak to NPC `target`; `utterance` is verbatim in-character speech, `detail` is non-verbal context, `ends_dialogue: true` means the player is ending the conversation. |
 | `transfer` | Give or take items; `given_items` / `taken_items` list item IDs or soft item names, `target` is the recipient/source. |
 | `wait` | Literal waiting, **or** catch-all representation of plot-insignificant actions, introspection, and other actions the engine cannot categorize. **If `detail` explains a problem (no exit, ambiguous target, etc.), narrate the problem, not literal waiting.** |
