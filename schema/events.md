@@ -160,6 +160,14 @@ counts), `source` (for `item.acquired` only; one of `"transfer"`,
 `item.lost` only; one of `"transfer"`, `"interaction"`, `"destroyed"`,
 or `"equip"`).
 
+### Rests
+
+- `rest.completed` – A `rest` action resolves successfully.  The context
+  key is `kind` (`"short"` or `"long"`).  Emitted after the recharge
+  has been applied, so reactions observe post-rest state.  (Rest
+  *interruption* — an ambush mid-rest with partial benefits — is not
+  modeled; refuse unsafe rests at the ruling layer instead.)
+
 ---
 
 ## State-change Events

@@ -188,6 +188,7 @@ def _summarise_recharge(
     kind: str,
     recharge: Any,
     hard: HardGameState,
+    corpus: ModuleCorpus,
 ) -> str:
     """Build a concise factual summary of what a rest recovered.
 
@@ -208,6 +209,12 @@ def _summarise_recharge(
         parts.append(
             "statuses cleared: " + ", ".join(recharge.statuses_to_clear)
         )
+    if recharge.followers_healed:
+        names = [
+            getattr(corpus.entities.get(eid), "name", None) or eid
+            for eid in recharge.followers_healed
+        ]
+        parts.append("followers healed: " + ", ".join(names))
     if not parts:
         return f"{label}: no resources recovered."
     return f"{label}: " + "; ".join(parts) + "."
@@ -258,9 +265,13 @@ def resolve_rest(
     if recharge.hp_delta:
         changes.player_hp_delta = recharge.hp_delta
 
-    # Spell slots — refill to the declared ceiling.
-    if recharge.slots_refilled_to_max and hard.player.max_spell_slots:
-        hard.player.spell_slots = dict(hard.player.max_spell_slots)
+    # Spell slots — refill each declared level to its ceiling.  Levels
+    # present in spell_slots but absent from max_spell_slots (a sheet
+    # omission the validator only warns about) are left untouched, not
+    # wiped.
+    if recharge.slots_refilled_to_max:
+        for lvl, count in hard.player.max_spell_slots.items():
+            hard.player.spell_slots[lvl] = count
 
     # Statuses — clear time-limited magic (e.g. Mage Armor).
     for eid in recharge.statuses_to_clear:
@@ -292,6 +303,18 @@ def resolve_rest(
                     corpus, "rest", events,
                 )
 
+    # Follower allies — long rest restores them to full HP (no hit-dice
+    # tracking for NPCs).  Mutated directly and recorded as absolute
+    # sets, matching NPC HP handling in combat.
+    for eid in recharge.followers_healed:
+        ent = corpus.entities.get(eid)
+        if ent is None or ent.combat is None:
+            continue
+        hard.entity_states.setdefault(eid, {})["current_hp"] = ent.combat.hp
+        changes.entity_state_changes.setdefault(eid, {})["current_hp"] = (
+            ent.combat.hp
+        )
+
     result = ResolutionResult(
         success=True,
         hard_changes=changes,
@@ -307,7 +330,7 @@ def resolve_rest(
         hard, soft, corpus, state_manager, result,
     )
 
-    result.message = _summarise_recharge(action.kind, recharge, hard)
+    result.message = _summarise_recharge(action.kind, recharge, hard, corpus)
     return result
 
 def resolve_ooc(

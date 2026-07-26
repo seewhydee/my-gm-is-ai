@@ -22,6 +22,7 @@ To make the player a caster, add three things to the player sheet
 {
   "spellcasting_ability": "INT",
   "spell_slots": { "1": 2 },
+  "max_spell_slots": { "1": 2 },
   "abilities": ["fire_bolt", "mage_armor", "magic_missile"]
 }
 ```
@@ -29,7 +30,11 @@ To make the player a caster, add three things to the player sheet
 The spells themselves come from the SRD data pack — no corpus entries
 needed.  `spell_slots` maps spell level → slots remaining; note that
 JSON object keys are strings (`{"1": 2}`), which pydantic coerces back
-to `int` on load (see `schema/hard-state.md`).
+to `int` on load (see `schema/hard-state.md`).  `max_spell_slots` is
+the recharge ceiling a long rest refills to — without it, slots
+deplete with no recharge.  For a *prepared* caster, also declare
+`spellbook` (the known superset of `abilities`) so spells can be
+re-prepared in rest mode; see [rests](rests.md).
 
 ---
 
@@ -46,9 +51,9 @@ slot pool replaces the per-combat use counter.
 **Slots recharge on a long rest.**  A `rest` action with
 `kind: "long"` refills `spell_slots` to `PlayerState.max_spell_slots`
 (the recharge ceiling declared on the character sheet); a short rest
-does not recharge slots.  See `rests-design.md` and `plan.md`.  When a
-character sheet omits `max_spell_slots` for a level, that level is not
-recharged (usually a sheet omission).
+does not recharge slots.  When a character sheet omits
+`max_spell_slots` for a level, that level is not recharged (usually a
+sheet omission).  See [rests](rests.md).
 
 ## Save DCs and Attack Bonuses
 

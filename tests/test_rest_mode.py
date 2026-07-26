@@ -192,6 +192,14 @@ class TestRestModeTopMenu:
         assert "Invalid" in text
         assert "[3] Done" in text
 
+    def test_slot_ordinals(self):
+        rm = _rest_mode()
+        rm._hard.player.spell_slots = {1: 4, 2: 2, 3: 1}
+        text = rm.initial_text()
+        assert "1st ×4" in text
+        assert "2nd ×2" in text
+        assert "3rd ×1" in text
+
 
 class TestRestModePrepare:
     def test_enter_prepare_menu(self):
@@ -211,12 +219,16 @@ class TestRestModePrepare:
         rm.handle("0")
         assert rm._hard.player.abilities == ["mage_armor", "magic_missile"]
 
-    def test_no_spellbook(self):
+    def test_prepare_hidden_without_spellbook(self):
         rm = _rest_mode(spellbook=[], abilities=["fire_bolt"])
-        text = rm.handle("1")
-        assert "no spellbook" in text
-        # Still at the top menu.
-        assert "[3] Done" in text
+        text = rm.initial_text()
+        assert "Prepare spells" not in text
+        assert "[1] Spend hit dice" in text
+        assert "[2] Done" in text
+        # Done is the last option and exits.
+        out = rm.handle("2")
+        assert rm.exited
+        assert "finish" in out
 
 
 class TestRestModeSpend:
@@ -239,6 +251,22 @@ class TestRestModeSpend:
         text = rm.handle("1")     # spend another
         assert "regain" in text
         assert rm._hard.player.hit_dice.current == hd_after_first - 1
+
+    def test_spend_failure_in_submenu_returns_to_top(self):
+        rm = _rest_mode()
+        # Force the failure to be "no dice" (a single d8 cannot fill HP).
+        rm._hard.player.current_hp = 1
+        rm._hard.player.hit_dice.current = 1
+        rm.handle("2")                       # spend the only die -> submenu
+        assert rm._hard.player.hit_dice.current == 0
+        text = rm.handle("1")                # fails: no dice left
+        assert "no Hit Dice" in text
+        # The top menu is displayed AND the controller is back in the
+        # top state (regression: displayed menu and state used to desync,
+        # making Done unreachable from that screen).
+        assert "[3] Done" in text
+        rm.handle("3")
+        assert rm.exited
 
 
 # ------------------------------------------------------------------

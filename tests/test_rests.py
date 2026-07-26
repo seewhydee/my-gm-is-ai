@@ -39,6 +39,8 @@ from mgmai.models.combat import CombatState
 from mgmai.models.corpus import (
     Adventure,
     Atmosphere,
+    CombatBlock,
+    DialogueGuidelines,
     ModuleCorpus,
     ReactionEffects,
     Result,
@@ -48,6 +50,7 @@ from mgmai.models.corpus import (
 from mgmai.models.hard_state import HardGameState, HitDice, PlayerState
 from mgmai.models.soft_state import SoftGameState
 from tests.helpers import (
+    _mk_npc_entity,
     _mk_reaction,
     _mk_room,
     build_state_manager,
@@ -360,6 +363,65 @@ class TestResolveRest:
         assert res.success
         # spell_slots left untouched (no ceiling to refill to).
         assert hard.player.spell_slots == {1: 0, 2: 1}
+
+    def test_partial_max_spell_slots_preserves_undeclared_levels(self):
+        corpus = _corpus()
+        # Level 2 has slots but no max entry (a sheet omission the
+        # validator only warns about).
+        hard = _hard(player=_player(
+            spell_slots={1: 0, 2: 1},
+            max_spell_slots={1: 4},
+        ))
+        res = resolve_rest(
+            RestAction(action_type="rest", kind="long", detail="camp"),
+            hard, _soft(), corpus,
+        )
+        assert res.success
+        # Level 1 refilled to its ceiling; the undeclared level-2 slot
+        # is preserved, not wiped.
+        assert hard.player.spell_slots == {1: 4, 2: 1}
+
+    def test_long_rest_heals_follower_allies(self):
+        companion = _mk_npc_entity(
+            "companion",
+            combat=CombatBlock(hp=10, ac=12, atk=3, dmg="1d6", flee_dc=10),
+        )
+        companion.dialogue = DialogueGuidelines(guidelines="A loyal companion.")
+        corpus = make_char_sheet_corpus(entities={"companion": companion})
+        hard = _hard()
+        hard.entity_states["companion"] = {
+            "alive": True, "following": True, "current_hp": 4,
+        }
+        res = resolve_rest(
+            RestAction(action_type="rest", kind="long", detail="camp"),
+            hard, _soft(), corpus,
+        )
+        assert res.success
+        # Full heal, mutated directly and recorded as an absolute set.
+        assert hard.entity_states["companion"]["current_hp"] == 10
+        assert (
+            res.hard_changes.entity_state_changes["companion"]["current_hp"]
+            == 10
+        )
+        assert "followers healed" in res.message
+
+    def test_short_rest_does_not_heal_followers(self):
+        companion = _mk_npc_entity(
+            "companion",
+            combat=CombatBlock(hp=10, ac=12, atk=3, dmg="1d6", flee_dc=10),
+        )
+        companion.dialogue = DialogueGuidelines(guidelines="A loyal companion.")
+        corpus = make_char_sheet_corpus(entities={"companion": companion})
+        hard = _hard()
+        hard.entity_states["companion"] = {
+            "alive": True, "following": True, "current_hp": 4,
+        }
+        res = resolve_rest(
+            RestAction(action_type="rest", kind="short", detail="nap"),
+            hard, _soft(), corpus,
+        )
+        assert res.success
+        assert hard.entity_states["companion"]["current_hp"] == 4
 
     def test_hit_dice_recovered_clamps_to_max(self):
         corpus = _corpus()

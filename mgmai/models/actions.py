@@ -383,6 +383,9 @@ class RestRechargeResult(BaseModel):
     # 1 → reduce the player's exhaustion level by one step on a long rest;
     # 0 otherwise.
     exhaustion_decrement: int = 0
+    # Follower NPC IDs restored to full HP by the rest (5e long rest heals
+    # the party; NPCs get no hit-dice tracking, so this is a full heal).
+    followers_healed: list[str] = Field(default_factory=list)
 
 
 class EncounterOutcome(BaseModel):

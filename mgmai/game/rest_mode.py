@@ -40,6 +40,13 @@ if TYPE_CHECKING:
     from mgmai.models.hard_state import HardGameState
 
 
+def _ordinal(n: int) -> str:
+    """English ordinal suffix: 1st, 2nd, 3rd, 4th, …, 11th, 21st, …"""
+    if 10 <= n % 100 <= 20:
+        return f"{n}th"
+    return f"{n}" + {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+
 class RestMode:
     """Modal controller for post-rest bookkeeping.
 
@@ -61,7 +68,15 @@ class RestMode:
         self._corpus = corpus
         self._summary = result.message or f"{kind.title()} rest complete."
         self._state = "top"
-        self._prepared: list[str] = list(hard.player.abilities)
+        # Working copy of the prepared selection.  Drop any prepared ID
+        # that is not in the spellbook (only possible from a pre-invalid
+        # save/char-sheet, which the validator only warns about): keeping
+        # it would soft-lock the menu, since it cannot be toggled off and
+        # confirm would reject it forever.
+        spellbook = hard.player.spellbook
+        self._prepared: list[str] = [
+            a for a in hard.player.abilities if not spellbook or a in spellbook
+        ]
         self._exited = False
 
     @property
@@ -86,6 +101,20 @@ class RestMode:
     # top menu
     # ------------------------------------------------------------------
 
+    def _top_options(self) -> list[str]:
+        """Top-menu choices, in numbered order.  *Done* is always last.
+
+        "Prepare spells" is hidden when the player has no spellbook
+        (spontaneous casters and non-casters — `abilities` is already
+        the whole list, so there is nothing to re-prepare).
+        """
+        options: list[str] = []
+        if self._hard.player.spellbook:
+            options.append("Prepare spells")
+        options.append("Spend hit dice")
+        options.append("Done")
+        return options
+
     def _top_menu(self, feedback: str = "") -> str:
         label = "Long rest" if self.kind == "long" else "Short rest"
         lines = [f"── {label} ──"]
@@ -94,9 +123,8 @@ class RestMode:
         if feedback:
             lines.append(feedback)
         lines.append("")
-        lines.append("[1] Prepare spells")
-        lines.append("[2] Spend hit dice")
-        lines.append("[3] Done")
+        for idx, option in enumerate(self._top_options(), 1):
+            lines.append(f"[{idx}] {option}")
         return "\n".join(lines)
 
     def _status_line(self) -> str:
@@ -109,24 +137,33 @@ class RestMode:
             parts.append(f"Hit Dice {p.hit_dice.current}/{p.hit_dice.max}")
         if p.spell_slots:
             slots = ", ".join(
-                f"{lvl}st ×{n}" if lvl == 1 else f"{lvl}th ×{n}"
+                f"{_ordinal(lvl)} ×{n}"
                 for lvl, n in sorted(p.spell_slots.items())
             )
             parts.append(f"slots: {slots}")
         return "  ".join(parts) if parts else ""
 
     def _handle_top(self, line: str) -> str:
+        options = self._top_options()
         choice = line.strip()
-        if choice == "1":
+        try:
+            idx = int(choice)
+        except ValueError:
+            idx = -1
+        if not 1 <= idx <= len(options):
+            valid = ", ".join(str(i) for i in range(1, len(options) + 1))
+            return self._top_menu(
+                feedback=f"Invalid choice '{line}'. Pick {valid}."
+            )
+        option = options[idx - 1]
+        if option == "Prepare spells":
             self._state = "prepare"
             return self._prepare_menu()
-        if choice == "2":
+        if option == "Spend hit dice":
             return self._spend_one()
-        if choice == "3":
-            self._exited = True
-            label = "long rest" if self.kind == "long" else "short rest"
-            return f"You finish your {label} and ready yourself to continue."
-        return self._top_menu(feedback=f"Invalid choice '{line}'. Pick 1, 2, or 3.")
+        self._exited = True
+        label = "long rest" if self.kind == "long" else "short rest"
+        return f"You finish your {label} and ready yourself to continue."
 
     # ------------------------------------------------------------------
     # prepare spells
@@ -179,6 +216,10 @@ class RestMode:
     def _spend_one(self) -> str:
         ok, msg, _healed = spend_hit_die(self._hard, self._corpus)
         if not ok:
+            # Back at the top menu — keep the controller state in sync
+            # with what is displayed (also reached from the spend
+            # submenu, where leaving the state as "spend" would desync).
+            self._state = "top"
             return self._top_menu(feedback=msg)
         self._state = "spend"
         return self._spend_menu(feedback=msg)

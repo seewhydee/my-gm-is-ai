@@ -36,7 +36,7 @@ from mgmai.engine.systems.base import (
     ResolutionSystem,
 )
 from mgmai.engine.systems.dice import parse_damage_dice
-from mgmai.engine.utils import get_status_effects
+from mgmai.engine.utils import get_following_npc_ids, get_status_effects
 from mgmai.models.actions import RestRechargeResult
 from mgmai.models.combat import CombatLogEntry
 from mgmai.models.hard_state import WeaponProfClause
@@ -967,8 +967,9 @@ class FiveESystem(ResolutionSystem):
         """5e long rest (SRD 5.2.1).
 
         Regain all HP, all spent spell slots, all spent Hit Dice, and
-        reduce exhaustion by one level.  Time-limited persistent magic
-        (Mage Armor and similar buffs) ends.
+        reduce exhaustion by one level.  Follower allies are restored to
+        full HP.  Time-limited persistent magic (Mage Armor and similar
+        buffs) ends.
         """
         max_hp = self.compute_player_max_hp(hard, corpus)
         current = hard.player.current_hp or 0
@@ -1004,10 +1005,23 @@ class FiveESystem(ResolutionSystem):
             eid.startswith("exhaustion") for eid in hard.player.status_effects
         ) else 0
 
+        # Follower allies heal to full on a long rest (NPCs get no
+        # hit-dice tracking).  A follower whose current_hp was never
+        # initialized (no combat yet) is already at full HP.
+        followers_healed: list[str] = []
+        for eid in get_following_npc_ids(hard, corpus):
+            ent = corpus.entities.get(eid)
+            if ent is None or ent.combat is None:
+                continue
+            cur = hard.entity_states.get(eid, {}).get("current_hp")
+            if cur is not None and cur < ent.combat.hp:
+                followers_healed.append(eid)
+
         return RestRechargeResult(
             hp_delta=hp_delta,
             slots_refilled_to_max=slots_refilled,
             statuses_to_clear=statuses_to_clear,
             hit_dice_recovered=hit_dice_recovered,
             exhaustion_decrement=exhaustion_decrement,
+            followers_healed=followers_healed,
         )

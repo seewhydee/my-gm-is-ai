@@ -712,6 +712,48 @@ Attack targets must be IDs from `combat_state.combatants` with `side: "enemy"`.
 
 ---
 
+#### `rest` -- Take a short or long rest
+
+```json
+{
+  "action_type": "rest",
+  "kind": "long",
+  "detail": "The player makes camp and settles in for the night.",
+  "follow_up": null,
+  "soft_state_patches": []
+}
+```
+
+| Field   | Type   | Required | Description |
+|---------|--------|----------|-------------|
+| `kind`  | string | yes      | `"short"` or `"long"`. |
+
+The `rest` action advances the turn counter and recovers resources,
+deterministically: what a rest *means* is decided by the active
+resolution system (`ResolutionSystem.on_short_rest` / `on_long_rest`),
+not by the engine or the LLM.  For 5e (SRD 5.2.1): a **long rest**
+restores the player to full HP, refills `spell_slots` to
+`max_spell_slots`, recovers all spent Hit Dice, heals follower allies to
+full HP, reduces exhaustion by one level, and ends time-limited
+persistent magic (e.g. Mage Armor); a **short rest** recovers nothing on
+its own — spending Hit Dice is a player choice made in rest mode (see
+`doc/rests.md`).  A `rest.completed` event is emitted with context key
+`kind`.
+
+After a successful rest, the game enters **rest mode**: a modal,
+LLM-free menu where the player can re-prepare spells and spend Hit Dice
+before continuing.  Bookkeeping done in rest mode is not narrated; the
+rest itself is narrated from the `EngineResult` as usual.
+
+**Engine validation:**
+- Rejected during combat — rule it as `wait` instead, or start the
+  rest only once combat is over.
+- The ruling LLM decides whether resting is fictionally possible/safe
+  (an unsafe attempt should be ruled as `wait`); there is no
+  engine-enforced frequency limit.
+
+---
+
 ### 2.2 Follow-up: Chained actions
 
 Players often describe multi-step plans in a single input (e.g., "I pick up
@@ -764,6 +806,7 @@ whether to continue the chain:
 | `gear`            | n/a (targets in `equip_targets`/`unequip_targets`) | each equip target must be in inventory with an `equip_block`; each unequip target must be equipped; validates tag conflicts and `max_equipped`; in combat: weapon-tag items only, costs the combat turn |
 | `combat`          | combat target (enemy; none for `maneuver`)      | combat mode; `combat_action`: `attack` or `maneuver`; out-of-combat `attack` starts combat via `interact`/`attack`; `positioning` assertion optional on `combat`/`wait`/`interact` |
 | `use_ability`     | self (`"player"`), ally, or enemy entity ID     | `ability_id` must be known; leveled spells consume spell slots; out of combat: self/ally heal/on-cast resolve directly, enemy-targeted starts combat; concentration and attack/save/auto_damage require combat; in combat: bonus-action rules apply |
+| `rest`            | null (no target)                                | `kind`: `short` or `long`; rejected in combat — rule as `wait`; deterministic recharge via system hooks; enters rest mode on success |
 
 ---
 
@@ -1047,7 +1090,7 @@ missing required fields, invalid JSON), the engine returns:
 {
   "success": false,
   "error": "invalid_action",
-  "message": "Unknown action type 'cast_spell'. Supported types: move, examine, interact, talk, transfer, wait, combat, ooc_discussion, gear.",
+  "message": "Unknown action type 'cast_spell'. Supported types: move, examine, interact, talk, transfer, wait, combat, ooc_discussion, gear, use_ability, rest.",
   "player_input_echo": "<original player input>"
 }
 ```

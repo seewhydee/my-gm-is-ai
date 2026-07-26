@@ -84,16 +84,17 @@ history for the archived text.
       `doc/combat.md` — *Positioning*.
 - [x] **Rests** — a `rest` action (short/long) resolved through the
       normal LLM loop; rejected during combat.  Long rest (SRD 5.2.1):
-      regain all HP, all spell slots (`max_spell_slots`), all spent Hit
-      Dice, reduce exhaustion by 1, and end time-limited persistent
-      magic (Mage Armor); short rest is a no-op recharge.  Recharge is
-      delegated to `ResolutionSystem.on_short_rest`/`on_long_rest` hooks
-      returning a `RestRechargeResult`; a `rest.completed` event is
-      emitted.  **Rest mode** (LLM-free bookkeeping UI: prepare-spells
-      toggle, hit-dice spend, done) is driven through a shared
+      regain all HP (player and follower allies), all spell slots
+      (`max_spell_slots`), all spent Hit Dice, reduce exhaustion by 1,
+      and end time-limited persistent magic (Mage Armor); short rest is
+      a no-op recharge.  Recharge is delegated to
+      `ResolutionSystem.on_short_rest`/`on_long_rest` hooks returning a
+      `RestRechargeResult`; a `rest.completed` event is emitted.
+      **Rest mode** (LLM-free bookkeeping UI: prepare-spells toggle,
+      hit-dice spend, done) is driven through a shared
       `_dispatch_input` helper so `HeadlessSession.submit` reaches it
       one step at a time.  Deferred: rest interruption, warlock pact
-      magic, named per-rest resource pools.
+      magic, named per-rest resource pools.  See `doc/rests.md`
 
 ### Partially implemented (known gaps)
 
