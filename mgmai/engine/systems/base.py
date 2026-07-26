@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     )
     from mgmai.models.hard_state import HardGameState
 
+from mgmai.models.actions import RestRechargeResult
 from mgmai.models.combat import CombatLogEntry
 
 
@@ -475,3 +476,30 @@ class ResolutionSystem(ABC):
         ``"handwear"`` in its ``incompatible_with``.
         """
         return set()
+
+    # ------------------------------------------------------------------
+    # Rests
+    # ------------------------------------------------------------------
+    def on_short_rest(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> RestRechargeResult:
+        """Recharge effects of a short rest.
+
+        The default is a no-op: by SRD 5.2.1 a short rest only lets the
+        player spend Hit Dice to heal, which is a player choice handled
+        by the game-layer rest mode, not by the engine.  Override in
+        subclasses for system-specific short-rest recharge (e.g. warlock
+        pact magic).
+        """
+        return RestRechargeResult()
+
+    def on_long_rest(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> RestRechargeResult:
+        """Recharge effects of a long rest.
+
+        The default is a no-op.  Override in subclasses for
+        system-specific long-rest recharge (5e: restore all HP, all spell
+        slots, all spent Hit Dice, and reduce exhaustion by 1).
+        """
+        return RestRechargeResult()

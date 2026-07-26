@@ -33,6 +33,7 @@ from mgmai.models.actions import (
     GearAction,
     InteractAction,
     MoveAction,
+    RestAction,
     TalkAction,
     UseAbilityAction,
     WaitAction,
@@ -224,6 +225,16 @@ def _validate_talk(action: TalkAction, briefing: GMBriefing) -> str | None:
     )
 
 
+def _validate_rest(action: RestAction, briefing: GMBriefing) -> str | None:
+    return (
+        "Invalid action_type 'rest' during combat: you cannot rest in the "
+        "middle of a fight. Rule the player's attempt as a 'wait' action "
+        "instead, putting the intent in 'detail' (this passes the player's "
+        "combat turn). A short or long rest is only possible outside "
+        "combat."
+    )
+
+
 def _validate_gear(action: GearAction, briefing: GMBriefing) -> str | None:
     """Mirror the engine's combat gear restriction (weapon swaps only).
 
@@ -269,6 +280,8 @@ def validate_ruling_action(action, briefing: GMBriefing) -> str | None:
         return _validate_move(action, briefing)
     elif isinstance(action, TalkAction):
         return _validate_talk(action, briefing)
+    elif isinstance(action, RestAction):
+        return _validate_rest(action, briefing)
     elif isinstance(action, GearAction):
         return _validate_gear(action, briefing)
     return None

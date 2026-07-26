@@ -37,6 +37,7 @@ from mgmai.engine.systems.base import (
 )
 from mgmai.engine.systems.dice import parse_damage_dice
 from mgmai.engine.utils import get_status_effects
+from mgmai.models.actions import RestRechargeResult
 from mgmai.models.combat import CombatLogEntry
 from mgmai.models.hard_state import WeaponProfClause
 
@@ -951,3 +952,62 @@ class FiveESystem(ResolutionSystem):
 
     # get_equip_incompatibilities() — inherit default (two_handed is now
     # a conventional equip_tag with explicit incompatible_with entries).
+
+    # ------------------------------------------------------------------
+    # Rests (SRD 5.2.1)
+    # ------------------------------------------------------------------
+    # on_short_rest() — inherit the no-op default.  By SRD 5.2.1 a short
+    # rest only lets the player spend Hit Dice to heal, which is a player
+    # choice handled by the game-layer rest mode, not by the engine.
+    # Warlock pact magic (short-rest slot recharge) is deferred.
+
+    def on_long_rest(
+        self, hard: HardGameState, corpus: ModuleCorpus
+    ) -> RestRechargeResult:
+        """5e long rest (SRD 5.2.1).
+
+        Regain all HP, all spent spell slots, all spent Hit Dice, and
+        reduce exhaustion by one level.  Time-limited persistent magic
+        (Mage Armor and similar buffs) ends.
+        """
+        max_hp = self.compute_player_max_hp(hard, corpus)
+        current = hard.player.current_hp or 0
+        hp_delta = max(0, max_hp - current)
+
+        slots_refilled = bool(hard.player.max_spell_slots)
+
+        # End time-limited persistent magic: clear every persistent-scope
+        # status on the player except exhaustion (handled by the
+        # decrement below).  Unknown status IDs (not in the corpus) and
+        # combat-scoped statuses are left alone — combat-scoped statuses
+        # should already be gone (rest is rejected during combat).
+        # NOTE: a future *permanent* persistent condition (e.g. a curse)
+        # would also be cleared here; distinguishing permanent from
+        # time-limited needs a status-effect flag when such conditions
+        # are introduced.
+        effect_defs = corpus.effective_status_effects()
+        statuses_to_clear: list[str] = []
+        for eid in hard.player.status_effects:
+            if eid.startswith("exhaustion"):
+                continue
+            cdef = effect_defs.get(eid)
+            if cdef is None or cdef.scope != "persistent":
+                continue
+            statuses_to_clear.append(eid)
+
+        hit_dice_recovered = 0
+        hd = hard.player.hit_dice
+        if hd is not None:
+            hit_dice_recovered = max(0, hd.max - hd.current)
+
+        exhaustion_decrement = 1 if any(
+            eid.startswith("exhaustion") for eid in hard.player.status_effects
+        ) else 0
+
+        return RestRechargeResult(
+            hp_delta=hp_delta,
+            slots_refilled_to_max=slots_refilled,
+            statuses_to_clear=statuses_to_clear,
+            hit_dice_recovered=hit_dice_recovered,
+            exhaustion_decrement=exhaustion_decrement,
+        )

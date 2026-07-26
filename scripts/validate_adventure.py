@@ -370,6 +370,19 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
                 f"Player references unknown ability '{aid}'"
             )
 
+    # Spell-slot recharge ceiling: a long rest refills spell_slots to
+    # max_spell_slots.  Warn (not error) when a leveled slot is present
+    # without a matching max — recharge silently skips that level, which
+    # is usually a char-sheet omission rather than a corrupt adventure.
+    max_slots = hard.player.max_spell_slots
+    for level in hard.player.spell_slots:
+        if level not in max_slots:
+            warnings.append(
+                f"Player has spell_slots[{level}] but no "
+                f"max_spell_slots[{level}]; long rest will not recharge "
+                f"that level"
+            )
+
     # 12. Status-effect references (warning only — adventures may
     # forward-declare status-effect IDs; runtime application still works)
     defined_status_effects = set(corpus.effective_status_effects())

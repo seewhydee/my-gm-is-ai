@@ -43,10 +43,12 @@ cost nothing.  A cast with no slot remaining is rejected up front, both
 in validation and at resolution.  Spells ignore `uses_per_combat` — the
 slot pool replaces the per-combat use counter.
 
-**Slots do not recharge.**  There is no rest mechanic yet, so a player's
-slots deplete over a session; adventures and char-sheets set the pool
-directly.  Slot recovery is the natural hook for the future rests
-feature.
+**Slots recharge on a long rest.**  A `rest` action with
+`kind: "long"` refills `spell_slots` to `PlayerState.max_spell_slots`
+(the recharge ceiling declared on the character sheet); a short rest
+does not recharge slots.  See `rests-design.md` and `plan.md`.  When a
+character sheet omits `max_spell_slots` for a level, that level is not
+recharged (usually a sheet omission).
 
 ## Save DCs and Attack Bonuses
 
@@ -161,10 +163,8 @@ reaction economy yet.
 
 ## Deferred Items
 
-Deliberately not implemented (see `spellcasting-plan.md` — *Deliberate
-non-goals*):
+Deliberately not implemented:
 
-- **Slot recharge** — the defining deferred item; waits on rests.
 - **Upcasting** — a spell consumes exactly its own level; no
   higher-level slot selection or scaling.
 - **Cantrip scaling** — cantrips use base dice at all levels
@@ -176,3 +176,5 @@ non-goals*):
   the flat `save_bonus` for concentration checks.
 - **Source-tracking for sustained effects** — see the over-removal
   caveat under *Concentration*.
+- **Warlock pact magic** — short-rest slot recharge; the slot pool does
+  not distinguish slot *kinds* yet (waits on classes).

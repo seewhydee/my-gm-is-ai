@@ -27,7 +27,7 @@ from mgmai.engine.dialogue import (
     enter_dialogue,
     exit_dialogue,
 )
-from mgmai.engine.status_effects import apply_status_effect
+from mgmai.engine.status_effects import apply_status_effect, remove_status_effect
 from mgmai.engine.systems import CheckResult, get_system_for_corpus
 from mgmai.engine.utils import (
     _is_stackable,
@@ -44,6 +44,7 @@ from mgmai.models.actions import (
     InteractAction,
     MoveAction,
     OocDiscussionAction,
+    RestAction,
     SoftItemProposal,
     TalkAction,
     TransferAction,
@@ -147,6 +148,10 @@ class ResolutionResult:
     success: bool
     error: str | None = None
     hard_changes: HardStateChanges | None = None
+    # Free-form summary surfaced to the prose LLM via EngineResult.message
+    # (e.g. a rest's recharge breakdown).  None for actions with no
+    # mechanical summary to convey.
+    message: str | None = None
     triggered_narration: list[str] = field(default_factory=list)
     revealed_hints: list[str] = field(default_factory=list)
     encounter_trigger: str | None = None
@@ -178,6 +183,132 @@ def resolve_wait(
         room_after_id=hard.player.location,
     )
 
+
+def _summarise_recharge(
+    kind: str,
+    recharge: Any,
+    hard: HardGameState,
+) -> str:
+    """Build a concise factual summary of what a rest recovered.
+
+    This is the ``EngineResult.message`` channel for the prose LLM — not
+    the final narration, just a hint of the mechanical outcome.
+    """
+    label = "Long rest" if kind == "long" else "Short rest"
+    parts: list[str] = []
+    if recharge.hp_delta:
+        parts.append(f"HP +{recharge.hp_delta}")
+    if recharge.slots_refilled_to_max and hard.player.max_spell_slots:
+        parts.append("spell slots recharged")
+    if recharge.hit_dice_recovered:
+        parts.append(f"Hit Dice +{recharge.hit_dice_recovered}")
+    if recharge.exhaustion_decrement:
+        parts.append("exhaustion -1")
+    if recharge.statuses_to_clear:
+        parts.append(
+            "statuses cleared: " + ", ".join(recharge.statuses_to_clear)
+        )
+    if not parts:
+        return f"{label}: no resources recovered."
+    return f"{label}: " + "; ".join(parts) + "."
+
+
+def resolve_rest(
+    action: RestAction,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    state_manager: Any | None = None,
+) -> ResolutionResult:
+    """Resolve a short or long rest.
+
+    Recharge is deterministic and delegated to the resolution system's
+    ``on_short_rest`` / ``on_long_rest`` hooks, which return a
+    :class:`~mgmai.models.actions.RestRechargeResult` describing what the
+    rest means for the active rules.  The resolver applies it here —
+    system hooks never mutate ``hard`` directly.
+
+    HP healing flows through ``HardStateChanges.player_hp_delta`` (so the
+    prose LLM and state-change event derivation see it); slot, hit-dice,
+    and status-effect changes are applied directly to ``hard.player``,
+    mirroring how ``apply_status_effect`` / ``remove_status_effect`` work
+    elsewhere.  A ``rest.completed`` event is emitted so corpus reactions
+    can observe rests.
+
+    Resting during combat is rejected (the engine backstop for a rest
+    action emitted while combat is active; the ruling LLM is expected to
+    rule it as ``wait`` instead).
+    """
+    if hard.combat is not None and hard.combat.active:
+        return ResolutionResult(
+            success=False,
+            error="Cannot rest during combat",
+        )
+
+    system = get_system_for_corpus(corpus)
+    if action.kind == "long":
+        recharge = system.on_long_rest(hard, corpus)
+    else:
+        recharge = system.on_short_rest(hard, corpus)
+
+    events: list[tuple[str, dict[str, Any]]] = []
+
+    # HP healing — via HardStateChanges for the prose LLM / event diff.
+    changes = HardStateChanges()
+    if recharge.hp_delta:
+        changes.player_hp_delta = recharge.hp_delta
+
+    # Spell slots — refill to the declared ceiling.
+    if recharge.slots_refilled_to_max and hard.player.max_spell_slots:
+        hard.player.spell_slots = dict(hard.player.max_spell_slots)
+
+    # Statuses — clear time-limited magic (e.g. Mage Armor).
+    for eid in recharge.statuses_to_clear:
+        remove_status_effect("player", eid, hard, corpus, "rest", events)
+
+    # Hit dice — recover spent dice (SRD 5.2.1 long rest: all).
+    hd = hard.player.hit_dice
+    if hd is not None and recharge.hit_dice_recovered:
+        hd.current = min(hd.max, hd.current + recharge.hit_dice_recovered)
+
+    # Exhaustion — reduce by one level on a long rest.
+    if recharge.exhaustion_decrement:
+        current_level: int | None = None
+        for eid in hard.player.status_effects:
+            if eid.startswith("exhaustion-"):
+                try:
+                    current_level = int(eid.split("-", 1)[1])
+                except ValueError:
+                    continue
+                break
+        if current_level is not None:
+            remove_status_effect(
+                "player", f"exhaustion-{current_level}", hard, corpus,
+                "rest", events,
+            )
+            if current_level > 1:
+                apply_status_effect(
+                    "player", f"exhaustion-{current_level - 1}", 1, hard,
+                    corpus, "rest", events,
+                )
+
+    result = ResolutionResult(
+        success=True,
+        hard_changes=changes,
+        room_after_id=hard.player.location,
+        events=events,
+    )
+
+    # Surface a rest.completed event for corpus reactions.  Interruption
+    # mid-rest (ambush at hour six, partial benefit) is deferred — the
+    # ruling LLM's refusal-at-ruling covers "it's not safe here".
+    _emit_event(
+        "rest.completed", {"kind": action.kind},
+        hard, soft, corpus, state_manager, result,
+    )
+
+    result.message = _summarise_recharge(action.kind, recharge, hard)
+    return result
 
 def resolve_ooc(
     action: OocDiscussionAction,
@@ -2470,6 +2601,8 @@ def resolve_action(
         return _resolve_use_ability(action, hard, corpus, soft, state_manager)
     elif action_type == "wait":
         return resolve_wait(action, hard, soft, corpus)
+    elif action_type == "rest":
+        return resolve_rest(action, hard, soft, corpus, state_manager)
     elif action_type == "gear":
         return resolve_gear(action, hard, soft, corpus, state_manager)
     elif action_type == "ooc_discussion":

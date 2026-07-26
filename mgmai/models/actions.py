@@ -116,6 +116,11 @@ class WaitAction(_BaseAction):
     action_type: Literal["wait"]
 
 
+class RestAction(_BaseAction):
+    action_type: Literal["rest"]
+    kind: Literal["short", "long"]
+
+
 class CombatAction(_BaseAction):
     action_type: Literal["combat"]
     combat_action: Literal["attack", "maneuver"]
@@ -163,7 +168,7 @@ class GearAction(_BaseAction):
 
 
 PlayerActionType = Annotated[
-    MoveAction | ExamineAction | InteractAction | TalkAction | TransferAction | WaitAction | CombatAction | UseAbilityAction | OocDiscussionAction | GearAction,
+    MoveAction | ExamineAction | InteractAction | TalkAction | TransferAction | WaitAction | RestAction | CombatAction | UseAbilityAction | OocDiscussionAction | GearAction,
     Field(discriminator="action_type"),
 ]
 
@@ -177,6 +182,7 @@ def validate_player_action(data: dict) -> (
     | TalkAction
     | TransferAction
     | WaitAction
+    | RestAction
     | CombatAction
     | UseAbilityAction
     | OocDiscussionAction
@@ -200,6 +206,7 @@ class PlayerAction:
         | TalkAction
         | TransferAction
         | WaitAction
+        | RestAction
         | CombatAction
         | UseAbilityAction
         | OocDiscussionAction
@@ -215,6 +222,7 @@ class PlayerAction:
         | TalkAction
         | TransferAction
         | WaitAction
+        | RestAction
         | CombatAction
         | UseAbilityAction
         | OocDiscussionAction
@@ -344,6 +352,37 @@ class HardStateChanges(BaseModel):
             or bool(self.entity_contains_removed)
             or bool(self.entity_placements)
         )
+
+
+class RestRechargeResult(BaseModel):
+    """What a rest restores, as decided by the resolution system.
+
+    The engine records that a rest occurred and emits a ``rest.completed``
+    event; the system hook decides what that *means* for the active rules
+    (5e: refill slots to max, heal, recover hit dice, reduce exhaustion on
+    a long rest) and returns it here.  The resolver applies it
+    deterministically — system hooks never mutate ``hard`` directly.
+
+    HP healing flows through ``HardStateChanges.player_hp_delta`` (so the
+    prose LLM and event derivation see it); slot/hit-dice/exhaustion
+    changes are applied directly to ``hard.player`` by the resolver, like
+    ``apply_status_effect`` / ``remove_status_effect``.
+    """
+
+    # Positive = HP gained. The resolver builds HardStateChanges.player_hp_delta
+    # from this.
+    hp_delta: int = 0
+    # True → set spell_slots := max_spell_slots for every declared level.
+    slots_refilled_to_max: bool = False
+    # Status-effect IDs to clear from the player (e.g. time-limited buffs
+    # ended by a long rest). Exhaustion is NOT listed here — it is handled
+    # by ``exhaustion_decrement``.
+    statuses_to_clear: list[str] = Field(default_factory=list)
+    # Number of spent Hit Dice to recover (SRD 5.2.1 long rest: all of them).
+    hit_dice_recovered: int = 0
+    # 1 → reduce the player's exhaustion level by one step on a long rest;
+    # 0 otherwise.
+    exhaustion_decrement: int = 0
 
 
 class EncounterOutcome(BaseModel):

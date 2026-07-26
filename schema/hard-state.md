@@ -185,6 +185,8 @@ set of system-specific fields.
 | `abilities`          | string[] | IDs of [Abilities](corpus.md#abilities) the player knows |
 | `spellcasting_ability`¹ | string | The player's spellcasting stat (`"INT"`, `"WIS"`, or `"CHA"`); one casting ability for all spells (default `null` = not a caster) |
 | `spell_slots`        | object   | Spell level → slots remaining, e.g. `{ "1": 2 }` (default `{}` = no leveled spells).  **Note:** JSON object keys are always strings, so `spell_slots` appears with string keys in JSON and save files; the engine coerces the keys back to integers on load, and in-code access is by integer level |
+| `max_spell_slots`    | object   | Spell level → maximum slots (the recharge ceiling), e.g. `{ "1": 2 }` (default `{}` = none).  Set by character sheets alongside `spell_slots`; a long rest refills `spell_slots` to this.  Same string-key JSON coercion as `spell_slots`.  When a leveled slot has no `max_spell_slots` entry, a long rest silently skips recharging that level |
+| `hit_dice`           | object   | 5e Hit Dice pool: `{ "die": "d6", "current": 1, "max": 1 }` (default `null` = no hit-dice tracking).  `die` is the hit-die type; `current` is unspent dice; `max` is the total.  A short rest spends from `current` (a player choice); a long rest restores `current` to `max` (SRD 5.2.1: all spent Hit Dice are regained) |
 
 When `ac` is `null`, AC is computed from base (10 + DEX mod) plus
 equipment bonuses. Set an explicit value to override the computation.
@@ -192,9 +194,9 @@ equipment bonuses. Set an explicit value to override the computation.
 When `proficiency_bonus` is `null`, it defaults to the standard 5e
 progression for the player's `level`.
 
-`spell_slots` never refills on its own — slot recovery arrives with the
-rests feature; until then character sheets set the pool directly and
-slots deplete over a session.
+`spell_slots` depletes as leveled spells are cast.  A long rest refills
+`spell_slots` to `max_spell_slots`; until `max_spell_slots` is declared on
+the character sheet, slots deplete over a session with no recharge.
 
 ---
 

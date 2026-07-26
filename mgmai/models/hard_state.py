@@ -37,6 +37,20 @@ class WeaponProfClause(BaseModel):
     properties: list[str] = Field(min_length=1)
 
 
+class HitDice(BaseModel):
+    """5e Hit Dice pool for the player.
+
+    ``die`` is the hit-die type (e.g. ``"d6"``, ``"d8"``); ``current`` is
+    the number of unspent dice; ``max`` is the total.  Short rests spend
+    from ``current``; a long rest restores ``current`` to ``max`` (SRD
+    5.2.1: all spent Hit Dice are regained).
+    """
+
+    die: str
+    current: int
+    max: int
+
+
 class PlayerState(BaseModel):
     location: str
     inventory: dict[str, int] = Field(default_factory=dict)
@@ -76,6 +90,16 @@ class PlayerState(BaseModel):
     # only when rests land.  JSON object keys are strings, so saves show
     # {"1": 2}; pydantic coerces the keys back to int on model_validate.
     spell_slots: dict[int, int] = Field(default_factory=dict)
+    # Spell level (1-9) -> maximum slots (the recharge ceiling).  Set by
+    # char-sheets alongside ``spell_slots``; a long rest refills
+    # ``spell_slots`` to this.  Absent (empty) when the character has no
+    # leveled slots or no recharge source; same string-key JSON coercion
+    # as ``spell_slots``.
+    max_spell_slots: dict[int, int] = Field(default_factory=dict)
+    # 5e Hit Dice pool.  Absent for non-5e characters or NPCs without
+    # hit-dice tracking; a long rest restores ``current`` to ``max``
+    # (SRD 5.2.1).
+    hit_dice: HitDice | None = None
 
 class GameOverState(BaseModel):
     type: str  # "win" or "lose"

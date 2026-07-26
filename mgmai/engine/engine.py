@@ -625,6 +625,7 @@ def resolve(
         action_type=action_type,
         target=getattr(player_action, "target", None),
         player_input_echo=player_input_echo,
+        message=resolution.message,
         room_after=room_after,
         hard_state_changes=merged_changes,
         soft_state_patches_applied=combined_applied,
