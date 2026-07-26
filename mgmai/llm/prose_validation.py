@@ -112,7 +112,6 @@ def _validate_indicators(
 
     # 2b. Mangled marker check.
     for match in _MANGLED_MARKER_RE.finditer(narration):
-        matched_text = match.group(0)
         # Is this an exact match for any known marker?
         start = match.start()
         end = match.end()

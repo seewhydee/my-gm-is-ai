@@ -23,7 +23,6 @@ ruling LLM.  Inputs that do not match are returned unchanged.
 
 from __future__ import annotations
 
-
 # Shortcuts that expand only when the entire input is exactly this token.
 _SINGLE_TOKEN_SHORTCUTS: dict[str, str] = {
     "n": "go north",

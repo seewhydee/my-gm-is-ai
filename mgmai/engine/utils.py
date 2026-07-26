@@ -45,8 +45,7 @@ def _normalize_item_name(name: str) -> str:
     """
     lower = name.lower()
     for article in ("the ", "a ", "an "):
-        if lower.startswith(article):
-            lower = lower[len(article):]
+        lower = lower.removeprefix(article)
     lower = " ".join(lower.split())
     return lower.replace(" ", "_")
 
@@ -93,8 +92,7 @@ def get_following_npc_ids(
     for eid, estate in hard.entity_states.items():
         if estate.get("following") is True:
             ent = corpus.entities.get(eid)
-            if ent is not None and ent.type == "npc" and ent.dialogue is not None:
-                if estate.get("alive") is not False:
+            if ent is not None and ent.type == "npc" and ent.dialogue is not None and estate.get("alive") is not False:
                     result.append(eid)
     return result
 

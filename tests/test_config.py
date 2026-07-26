@@ -19,20 +19,19 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
-
 from mgmai.config import (
     AppConfig,
     Credentials,
+    get_autosave_path,
     get_config_dir,
     get_config_file,
     get_credentials_file,
     get_saves_dir,
-    get_autosave_path,
     load_app_config,
-    save_app_config,
     load_credentials,
-    save_credentials,
     resolve_api_key,
+    save_app_config,
+    save_credentials,
 )
 
 

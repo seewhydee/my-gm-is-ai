@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import getpass
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from mgmai.llm.model_config import (
     get_known_model_labels,
@@ -182,7 +183,7 @@ class Commands:
             save_path.parent.mkdir(parents=True, exist_ok=True)
             self._state.save(str(save_path))
             self._render(f"[green]Game saved to {save_path}[/green]")
-        except Exception as e:
+        except (OSError, ValueError) as e:
             self._render(f"[red]Save failed: {e}[/red]")
 
     def _cmd_load(self, arg: str) -> None:
@@ -205,7 +206,7 @@ class Commands:
                 self._on_load()
         except FileNotFoundError:
             self._render(f"[red]Save file not found: {load_path}[/red]")
-        except Exception as e:
+        except (OSError, ValueError) as e:
             self._render(f"[red]Load failed: {e}[/red]")
 
     def _cmd_debug(self, _: str) -> None:
@@ -295,8 +296,9 @@ class Commands:
             new_model = choice
 
         # --- API key ---
-        from mgmai.config import resolve_api_key
         import os
+
+        from mgmai.config import resolve_api_key
 
         provider = get_provider(new_model, base_url=None,
                                 custom_models=custom_models)
@@ -359,8 +361,9 @@ class Commands:
         self._render(f"\n[green]Switched to [cyan]{new_model}[/cyan][/green]")
 
         if self._on_model_change:
-            from mgmai.config import resolve_api_key
             import os
+
+            from mgmai.config import resolve_api_key
 
             effective_url = new_url if new_url else None
             new_cfg = get_model_config(new_model, base_url=effective_url,
@@ -451,8 +454,8 @@ class Commands:
             self._render("[dim]No character stats defined.[/dim]")
             return
 
-        from mgmai.engine.stat_checks import compute_modifier
         from mgmai.engine.combat import compute_player_ac, get_player_max_hp
+        from mgmai.engine.stat_checks import compute_modifier
 
         stats = hard.player.stats
         system = corpus.stats.system

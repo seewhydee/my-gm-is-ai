@@ -119,7 +119,7 @@ class TestGearPack:
         assert longbow.damage_expr == "1d8"
 
         plate = DEFAULT_GEAR["plate_armor"].equip_block
-        assert getattr(plate, "ac_override") == 18
+        assert plate.ac_override == 18
         leather = DEFAULT_GEAR["leather_armor"].equip_block
         assert getattr(leather, "ac_bonus", 0) == 1
         shield = DEFAULT_GEAR["shield"].equip_block

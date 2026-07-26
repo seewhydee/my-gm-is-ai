@@ -235,7 +235,7 @@ class ResolutionSystem(ABC):
         return 0
 
     def check_roll_mods(
-        self, is_save: bool, status_effects: dict, corpus: "ModuleCorpus"
+        self, is_save: bool, status_effects: dict, corpus: ModuleCorpus
     ) -> tuple[bool, bool]:
         """Return ``(advantage, disadvantage)`` for an ability/skill check
         given the roller's active status effects and the corpus (whose
@@ -246,7 +246,7 @@ class ResolutionSystem(ABC):
         return False, False
 
     def d20_test_modifier(
-        self, status_effects: dict, corpus: "ModuleCorpus"
+        self, status_effects: dict, corpus: ModuleCorpus
     ) -> int:
         """Flat modifier applied to all d20 rolls (attacks, ability checks,
         saving throws) from the roller's active status effects (5e:
@@ -254,7 +254,7 @@ class ResolutionSystem(ABC):
         return 0
 
     def save_auto_fail(
-        self, stat: str, status_effects: dict, corpus: "ModuleCorpus"
+        self, stat: str, status_effects: dict, corpus: ModuleCorpus
     ) -> bool:
         """True when the roller's active status effects force a saving throw
         against ``stat`` to fail without a roll (5e: paralyzed, petrified,
@@ -289,7 +289,7 @@ class ResolutionSystem(ABC):
         """True if a raw attack roll is an automatic miss."""
 
     def attack_roll_mods(
-        self, attacker_status_effects: dict, target_status_effects: dict, corpus: "ModuleCorpus",
+        self, attacker_status_effects: dict, target_status_effects: dict, corpus: ModuleCorpus,
         engaged: bool = False,
     ) -> tuple[bool, bool]:
         """Return ``(advantage, disadvantage)`` for an attack roll given
@@ -300,7 +300,7 @@ class ResolutionSystem(ABC):
         return False, False
 
     def player_attack_is_ranged(
-        self, hard: "HardGameState", corpus: "ModuleCorpus"
+        self, hard: HardGameState, corpus: ModuleCorpus
     ) -> bool:
         """Whether the player's attack with the equipped weapon is ranged.
         Default: False (melee/unarmed)."""
@@ -316,8 +316,8 @@ class ResolutionSystem(ABC):
         damage: int,
         damage_type: str,
         target_id: str,
-        hard: "HardGameState",
-        corpus: "ModuleCorpus",
+        hard: HardGameState,
+        corpus: ModuleCorpus,
     ) -> tuple[int, str | None]:
         """Apply damage-type modifiers (resistance, vulnerability,
         immunity) to rolled damage against a target.
@@ -353,7 +353,7 @@ class ResolutionSystem(ABC):
         target_id: str,
         target_ac: int,
         round_number: int,
-        attack: "NPCAttackDef | None" = None,
+        attack: NPCAttackDef | None = None,
         player_hp_pending: int = 0,
     ) -> NPCAttackResult:
         """Resolve an NPC attack against a combatant.
@@ -431,7 +431,7 @@ class ResolutionSystem(ABC):
     # ------------------------------------------------------------------
     # Saving throw / check proficiency
     # ------------------------------------------------------------------
-    def proficiency_bonus(self, check: "StatCheck", player_state: Any) -> int:
+    def proficiency_bonus(self, check: StatCheck, player_state: Any) -> int:
         """Return any extra modifier the system applies to a check for this player.
 
         Default is 0. Override in subclasses for system-specific rules
@@ -448,7 +448,7 @@ class ResolutionSystem(ABC):
         """
         return 0
 
-    def compute_spell_save_dc(self, hard: "HardGameState") -> int:
+    def compute_spell_save_dc(self, hard: HardGameState) -> int:
         """Save DC for spells cast by the player.
 
         Default is 0 (no spellcasting). Override in subclasses for
@@ -457,7 +457,7 @@ class ResolutionSystem(ABC):
         """
         return 0
 
-    def compute_spell_attack_bonus(self, hard: "HardGameState") -> int:
+    def compute_spell_attack_bonus(self, hard: HardGameState) -> int:
         """Attack bonus for spell attack rolls made by the player.
 
         Default is 0 (no spellcasting). Override in subclasses (e.g. 5e:
@@ -465,7 +465,7 @@ class ResolutionSystem(ABC):
         """
         return 0
 
-    def get_equip_incompatibilities(self, equip_block: "EquipBlock") -> set[str]:
+    def get_equip_incompatibilities(self, equip_block: EquipBlock) -> set[str]:
         """Return extra equipment tags that conflict with this equip_block.
 
         Called during equip validation after ``incompatible_with`` has been

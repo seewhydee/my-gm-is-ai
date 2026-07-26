@@ -15,8 +15,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+
+from typing import Annotated, Any, Literal
+
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
+
 from mgmai.models.briefing import BriefingRoom
 from mgmai.models.combat import CombatLogEntry
 from mgmai.models.corpus import StatModifier
@@ -36,54 +39,54 @@ class PositioningAssertion(BaseModel):
     re-validates every entry at apply time and drops malformed ones with
     a warning; the core action always proceeds.
     """
-    engage: List[List[str]] = Field(default_factory=list)
-    disengage: List[List[str]] = Field(default_factory=list)
-    impede: List[str] = Field(default_factory=list)
+    engage: list[list[str]] = Field(default_factory=list)
+    disengage: list[list[str]] = Field(default_factory=list)
+    impede: list[str] = Field(default_factory=list)
 
 
 class _BaseAction(BaseModel):
     detail: str
-    follow_up: Optional[str] = None
-    soft_state_patches: List[SoftStatePatch] = Field(default_factory=list)
-    positioning: Optional[PositioningAssertion] = None
+    follow_up: str | None = None
+    soft_state_patches: list[SoftStatePatch] = Field(default_factory=list)
+    positioning: PositioningAssertion | None = None
 
 
 class MoveAction(_BaseAction):
     action_type: Literal["move"]
     target: str
-    style: Optional[str] = None
-    using: Optional[str] = None
+    style: str | None = None
+    using: str | None = None
 
 
 class ExamineAction(_BaseAction):
     action_type: Literal["examine"]
     target: str
     rigorous: bool = False
-    using: Optional[str] = None
+    using: str | None = None
 
 
 class InteractAction(_BaseAction):
     action_type: Literal["interact"]
     target: str
     interaction_id: str
-    using: Optional[str] = None
+    using: str | None = None
 
 
 class TalkAction(_BaseAction):
     action_type: Literal["talk"]
     target: str
-    utterance: Optional[str] = None
+    utterance: str | None = None
     ends_dialogue: bool = False
-    dialogue_path: Optional[str] = None
+    dialogue_path: str | None = None
 
 
 class TransferAction(_BaseAction):
     action_type: Literal["transfer"]
     target: str
-    given_items: Optional[List[str]] = None
-    taken_items: Optional[List[str]] = None
-    given_counts: Optional[Dict[str, int]] = None
-    taken_counts: Optional[Dict[str, int]] = None
+    given_items: list[str] | None = None
+    taken_items: list[str] | None = None
+    given_counts: dict[str, int] | None = None
+    taken_counts: dict[str, int] | None = None
 
     @model_validator(mode="after")
     def check_non_empty_transfer(self) -> TransferAction:
@@ -116,8 +119,8 @@ class WaitAction(_BaseAction):
 class CombatAction(_BaseAction):
     action_type: Literal["combat"]
     combat_action: Literal["attack", "maneuver"]
-    target: Optional[str] = None
-    maneuver: Optional[Literal["disengage"]] = None
+    target: str | None = None
+    maneuver: Literal["disengage"] | None = None
 
     @model_validator(mode="after")
     def check_target_requirement(self) -> CombatAction:
@@ -131,7 +134,7 @@ class CombatAction(_BaseAction):
 class UseAbilityAction(_BaseAction):
     action_type: Literal["use_ability"]
     ability_id: str
-    target: Optional[str] = None
+    target: str | None = None
 
 
 class OocDiscussionAction(_BaseAction):
@@ -160,18 +163,7 @@ class GearAction(_BaseAction):
 
 
 PlayerActionType = Annotated[
-    Union[
-        MoveAction,
-        ExamineAction,
-        InteractAction,
-        TalkAction,
-        TransferAction,
-        WaitAction,
-        CombatAction,
-        UseAbilityAction,
-        OocDiscussionAction,
-        GearAction,
-    ],
+    MoveAction | ExamineAction | InteractAction | TalkAction | TransferAction | WaitAction | CombatAction | UseAbilityAction | OocDiscussionAction | GearAction,
     Field(discriminator="action_type"),
 ]
 
@@ -232,39 +224,39 @@ class PlayerAction:
 
 
 class HardStateChanges(BaseModel):
-    player_location: Optional[str] = None
-    inventory_added: Dict[str, int] = Field(default_factory=dict)
-    inventory_removed: Dict[str, int] = Field(default_factory=dict)
+    player_location: str | None = None
+    inventory_added: dict[str, int] = Field(default_factory=dict)
+    inventory_removed: dict[str, int] = Field(default_factory=dict)
     # Provenance for the inventory dicts above, used to derive item.acquired /
     # item.lost events with an accurate source/reason.  Keys are item IDs;
     # entries default to "interaction" when absent (see _derive_state_events).
-    inventory_added_sources: Dict[str, str] = Field(default_factory=dict)
-    inventory_removed_reasons: Dict[str, str] = Field(default_factory=dict)
-    equipped_added: List[str] = Field(default_factory=list)
-    equipped_removed: List[str] = Field(default_factory=list)
+    inventory_added_sources: dict[str, str] = Field(default_factory=dict)
+    inventory_removed_reasons: dict[str, str] = Field(default_factory=dict)
+    equipped_added: list[str] = Field(default_factory=list)
+    equipped_removed: list[str] = Field(default_factory=list)
     equipment_changed: bool = False
-    flags_set: Dict[str, bool] = Field(default_factory=dict)
-    flags_cleared: List[str] = Field(default_factory=list)
-    room_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    entity_state_changes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    stat_modifiers: Dict[str, StatModifier] = Field(default_factory=dict)
-    old_stat_values: Dict[str, int] = Field(default_factory=dict)
-    player_hp_delta: Optional[int] = None
+    flags_set: dict[str, bool] = Field(default_factory=dict)
+    flags_cleared: list[str] = Field(default_factory=list)
+    room_state_changes: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    entity_state_changes: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    stat_modifiers: dict[str, StatModifier] = Field(default_factory=dict)
+    old_stat_values: dict[str, int] = Field(default_factory=dict)
+    player_hp_delta: int | None = None
     # World-side containment deltas. Keys are room/container IDs; values are
     # {entity_id: count} maps. Added counts are summed on merge.
-    room_contains_added: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-    room_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-    entity_contains_added: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-    entity_contains_removed: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    room_contains_added: dict[str, dict[str, int]] = Field(default_factory=dict)
+    room_contains_removed: dict[str, dict[str, int]] = Field(default_factory=dict)
+    entity_contains_added: dict[str, dict[str, int]] = Field(default_factory=dict)
+    entity_contains_removed: dict[str, dict[str, int]] = Field(default_factory=dict)
     # Author-facing entity placements derived from set_entity_state "location".
     # {entity_id: "room:<id>" | "entity:<id>" | None}.  Merged by dict-overwrite
     # (last wins), unlike the count-summed containment deltas above.
-    entity_placements: Dict[str, Optional[str]] = Field(default_factory=dict)
+    entity_placements: dict[str, str | None] = Field(default_factory=dict)
 
     @staticmethod
     def _merge_nested_counts(
-        target: Dict[str, Dict[str, int]],
-        source: Dict[str, Dict[str, int]],
+        target: dict[str, dict[str, int]],
+        source: dict[str, dict[str, int]],
     ) -> None:
         """Sum nested {container_id: {entity_id: count}} maps into *target*."""
         for container_id, entries in source.items():
@@ -274,7 +266,7 @@ class HardStateChanges(BaseModel):
                     target[container_id].get(entity_id, 0) + count
                 )
 
-    def merge(self, other: "HardStateChanges") -> "HardStateChanges":
+    def merge(self, other: HardStateChanges) -> HardStateChanges:
         """Merge another HardStateChanges into this one in-place."""
         if other.player_location is not None:
             self.player_location = other.player_location
@@ -357,15 +349,15 @@ class HardStateChanges(BaseModel):
 class EncounterOutcome(BaseModel):
     encounter_id: str
     combat: bool = False
-    narrative_brief: Optional[str] = None
-    branch_taken: Optional[str] = None
+    narrative_brief: str | None = None
+    branch_taken: str | None = None
 
 
 class SoftItemProposal(BaseModel):
     item_name: str
     action: Literal["take", "give", "examine"]
     source_id: str
-    target_id: Optional[str] = None
+    target_id: str | None = None
     count: int = 1
     proposed_by: Literal["call_1"] = "call_1"
 
@@ -373,19 +365,19 @@ class SoftItemProposal(BaseModel):
 class GameOverResult(BaseModel):
     type: str
     trigger: str
-    narrative: Optional[str] = None
+    narrative: str | None = None
 
 
 class DialogueExitedResult(BaseModel):
     npc_id: str
-    exit_narrative: Optional[str] = None
-    archival_fallback: Optional[str] = None
+    exit_narrative: str | None = None
+    archival_fallback: str | None = None
 
 
 class WillRevealReadinessEntry(BaseModel):
     conditions_met: bool
     description: str
-    conditions: List[ConditionStatus] = Field(default_factory=list)
+    conditions: list[ConditionStatus] = Field(default_factory=list)
 
 
 class ConditionStatus(BaseModel):
@@ -404,42 +396,42 @@ class AttitudeLimitsCurrent(BaseModel):
 class RevelationApplied(BaseModel):
     npc_id: str
     topic_id: str
-    side_effects_applied: List[str] = Field(default_factory=list)
+    side_effects_applied: list[str] = Field(default_factory=list)
 
 
 class ChainInfo(BaseModel):
-    follow_up: Optional[str] = None
-    termination_reason: Optional[str] = None
+    follow_up: str | None = None
+    termination_reason: str | None = None
 
 
 class EngineResult(BaseModel):
     success: bool
     action_type: str
-    target: Optional[str] = None
-    error: Optional[str] = None
-    message: Optional[str] = None
-    player_input_echo: Optional[str] = None
-    room_after: Optional[BriefingRoom] = None
-    hard_state_changes: Optional[HardStateChanges] = None
-    soft_state_patches_applied: List[SoftStatePatch] = Field(default_factory=list)
-    soft_state_patches_rejected: List[Dict[str, Any]] = Field(default_factory=list)
-    rolls: List[Dict[str, Any]] = Field(default_factory=list)
-    encounter_outcome: Optional[EncounterOutcome] = None
-    triggered_narration: List[str] = Field(default_factory=list)
-    game_over: Optional[GameOverResult] = None
-    dialogue_exited: Optional[DialogueExitedResult] = None
-    will_reveal_readiness: Optional[Dict[str, Dict[str, WillRevealReadinessEntry]]] = None
-    revelations_applied: List[RevelationApplied] = Field(default_factory=list)
-    npc_attitude_limits: Optional[Dict[str, AttitudeLimitsCurrent]] = None
-    attitude_changes_applied: Dict[str, AttitudeChange] = Field(default_factory=dict)
-    attitude_changes_rejected: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    chain_info: Optional[ChainInfo] = None
-    revealed_hints: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
+    target: str | None = None
+    error: str | None = None
+    message: str | None = None
+    player_input_echo: str | None = None
+    room_after: BriefingRoom | None = None
+    hard_state_changes: HardStateChanges | None = None
+    soft_state_patches_applied: list[SoftStatePatch] = Field(default_factory=list)
+    soft_state_patches_rejected: list[dict[str, Any]] = Field(default_factory=list)
+    rolls: list[dict[str, Any]] = Field(default_factory=list)
+    encounter_outcome: EncounterOutcome | None = None
+    triggered_narration: list[str] = Field(default_factory=list)
+    game_over: GameOverResult | None = None
+    dialogue_exited: DialogueExitedResult | None = None
+    will_reveal_readiness: dict[str, dict[str, WillRevealReadinessEntry]] | None = None
+    revelations_applied: list[RevelationApplied] = Field(default_factory=list)
+    npc_attitude_limits: dict[str, AttitudeLimitsCurrent] | None = None
+    attitude_changes_applied: dict[str, AttitudeChange] = Field(default_factory=dict)
+    attitude_changes_rejected: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    chain_info: ChainInfo | None = None
+    revealed_hints: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     combat_triggered: bool = False
     combat_log: list[CombatLogEntry] = Field(default_factory=list)
     costs_turn: bool = True
-    soft_item_proposals: List[SoftItemProposal] = Field(default_factory=list)
-    soft_content_takes: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-    soft_items_accepted: List[SoftItemAdjudication] = Field(default_factory=list)
-    soft_items_rejected: List[Dict[str, Any]] = Field(default_factory=list)
+    soft_item_proposals: list[SoftItemProposal] = Field(default_factory=list)
+    soft_content_takes: dict[str, dict[str, int]] = Field(default_factory=dict)
+    soft_items_accepted: list[SoftItemAdjudication] = Field(default_factory=list)
+    soft_items_rejected: list[dict[str, Any]] = Field(default_factory=list)

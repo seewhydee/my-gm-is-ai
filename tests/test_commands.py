@@ -405,7 +405,7 @@ class TestCharCommand:
     def test_no_player_stats(self, state_manager, monkeypatch) -> None:
         """When corpus.stats exists but player.stats is None, show graceful message."""
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
-        from mgmai.models.corpus import StatsBlock, StatDefinition
+        from mgmai.models.corpus import StatDefinition, StatsBlock
         state_manager.hard_state.player.stats = None
         state_manager.corpus.stats = StatsBlock(
             definitions={"STR": StatDefinition(name="Strength")},
@@ -421,7 +421,7 @@ class TestCharCommand:
     def test_with_stats(self, state_manager, monkeypatch) -> None:
         """Full character stats display."""
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
-        from mgmai.models.corpus import StatsBlock, StatDefinition
+        from mgmai.models.corpus import StatDefinition, StatsBlock
         state_manager.corpus.stats = StatsBlock(
             definitions={
                 "STR": StatDefinition(name="Strength"),
@@ -463,7 +463,7 @@ class TestCharCommand:
     def test_with_skill_proficiencies(self, state_manager, monkeypatch) -> None:
         """Character display lists proficient skills with total modifiers."""
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
-        from mgmai.models.corpus import StatsBlock, StatDefinition
+        from mgmai.models.corpus import StatDefinition, StatsBlock
         state_manager.corpus.stats = StatsBlock(
             definitions={"DEX": StatDefinition(name="Dexterity")},
             system="5e",
@@ -485,7 +485,7 @@ class TestCharCommand:
     def test_no_skills_line_without_proficiencies(self, state_manager, monkeypatch) -> None:
         """No Skills line when the player has no skill proficiencies."""
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
-        from mgmai.models.corpus import StatsBlock, StatDefinition
+        from mgmai.models.corpus import StatDefinition, StatsBlock
         state_manager.corpus.stats = StatsBlock(
             definitions={"DEX": StatDefinition(name="Dexterity")},
             system="5e",
@@ -503,7 +503,7 @@ class TestCharCommand:
     def test_weapon_proficiencies_line(self, state_manager, monkeypatch) -> None:
         """Character display lists weapon proficiencies (categories title-cased)."""
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
-        from mgmai.models.corpus import StatsBlock, StatDefinition
+        from mgmai.models.corpus import StatDefinition, StatsBlock
         state_manager.corpus.stats = StatsBlock(
             definitions={"STR": StatDefinition(name="Strength")},
             system="5e",
@@ -527,7 +527,7 @@ class TestCharCommand:
     def test_weapon_proficiencies_clause_line(self, state_manager, monkeypatch) -> None:
         """Clauses render as 'Category (prop/prop)'."""
         monkeypatch.setattr("mgmai.game.display.RICH_AVAILABLE", False)
-        from mgmai.models.corpus import StatsBlock, StatDefinition
+        from mgmai.models.corpus import StatDefinition, StatsBlock
         from mgmai.models.hard_state import WeaponProfClause
         state_manager.corpus.stats = StatsBlock(
             definitions={"STR": StatDefinition(name="Strength")},

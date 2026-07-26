@@ -36,7 +36,6 @@ from mgmai.models.actions import (
 )
 from mgmai.models.narration import NarrationOutput
 
-
 # ------------------------------------------------------------------
 # parse_player_action
 # ------------------------------------------------------------------

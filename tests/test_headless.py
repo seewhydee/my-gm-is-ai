@@ -393,6 +393,7 @@ class TestIntegrationFixtureSmoke:
     def test_combat_arena_loads(self):
         """StateManager successfully loads the combat_arena fixture."""
         from pathlib import Path
+
         from mgmai.state.manager import StateManager
 
         fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "combat_arena"
@@ -446,6 +447,7 @@ class TestIntegrationFixtureSmoke:
     def test_venom_pit_loads(self):
         """StateManager successfully loads the venom_pit fixture."""
         from pathlib import Path
+
         from mgmai.state.manager import StateManager
 
         fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "venom_pit"
@@ -502,6 +504,7 @@ class TestIntegrationFixtureSmoke:
     def test_ambush_alley_loads(self):
         """StateManager successfully loads the ambush_alley fixture."""
         from pathlib import Path
+
         from mgmai.state.manager import StateManager
 
         fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "ambush_alley"
@@ -543,6 +546,7 @@ class TestIntegrationFixtureSmoke:
     def test_indicator_hall_loads(self):
         """StateManager successfully loads the indicator_hall fixture."""
         from pathlib import Path
+
         from mgmai.state.manager import StateManager
 
         fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "indicator_hall"
@@ -589,6 +593,7 @@ class TestIntegrationFixtureSmoke:
     def test_spell_arena_loads(self):
         """StateManager successfully loads the spell_arena fixture."""
         from pathlib import Path
+
         from mgmai.state.manager import StateManager
 
         fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "spell_arena"

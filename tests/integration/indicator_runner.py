@@ -39,7 +39,7 @@ import json
 import logging
 import random
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -148,7 +148,7 @@ def run_indicator_turn(
         player_input=player_input,
         action=action,
     )
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
 
     try:
         hard = state_manager.hard_state
@@ -212,7 +212,7 @@ def run_indicator_turn(
             }
             for ind in indicators
         ]
-    except Exception as exc:  # noqa: BLE001 — record + write artifact
+    except Exception as exc:
         result.error = exc
         log.exception("Indicator turn failed for scenario %s", scenario_name)
     finally:

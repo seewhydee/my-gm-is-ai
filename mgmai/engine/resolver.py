@@ -21,6 +21,20 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from mgmai.engine.conditions import evaluate
+from mgmai.engine.dialogue import (
+    append_player_turn,
+    enter_dialogue,
+    exit_dialogue,
+)
+from mgmai.engine.status_effects import apply_status_effect
+from mgmai.engine.systems import CheckResult, get_system_for_corpus
+from mgmai.engine.utils import (
+    _is_stackable,
+    _match_soft_content,
+    get_following_npc_ids,
+    get_status_effects,
+)
 from mgmai.models.actions import (
     CombatAction,
     DialogueExitedResult,
@@ -36,6 +50,7 @@ from mgmai.models.actions import (
     UseAbilityAction,
     WaitAction,
 )
+from mgmai.models.combat import CombatLogEntry
 from mgmai.models.corpus import (
     CheckResolution,
     CheckType,
@@ -50,18 +65,8 @@ from mgmai.models.corpus import (
     StatModifier,
     UsingResultOverride,
 )
-from mgmai.models.combat import CombatLogEntry
-from mgmai.models.hard_state import HardGameState, GameOverState
+from mgmai.models.hard_state import GameOverState, HardGameState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch
-from mgmai.engine.conditions import evaluate
-from mgmai.engine.dialogue import (
-    append_player_turn,
-    enter_dialogue,
-    exit_dialogue,
-)
-from mgmai.engine.utils import get_following_npc_ids, get_status_effects, _is_stackable, _match_soft_content
-from mgmai.engine.status_effects import apply_status_effect
-from mgmai.engine.systems import CheckResult, get_system_for_corpus
 
 MAX_THEN_CHECK_DEPTH = 3
 
@@ -107,7 +112,7 @@ def _emit_event(
     if state_manager is None:
         return
 
-    from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
+    from mgmai.engine.event_bus import dispatch_reactions, find_matching_reactions
 
     matches = find_matching_reactions(event_type, context, hard, soft, corpus)
     immediate = [(r, o) for r, o in matches if r.phase == "immediate"]
@@ -204,17 +209,16 @@ def resolve_examine(
             costs_turn=False,
         )
 
-    if action.using is not None:
-        if (
-            action.using not in hard.player.inventory
-            and action.using not in hard.player.equipped
-            and action.using not in soft.soft_inventory
-        ):
-            return ResolutionResult(
-                success=False,
-                error=f"Item '{action.using}' is not in your inventory",
-                costs_turn=False,
-            )
+    if action.using is not None and (
+        action.using not in hard.player.inventory
+        and action.using not in hard.player.equipped
+        and action.using not in soft.soft_inventory
+    ):
+        return ResolutionResult(
+            success=False,
+            error=f"Item '{action.using}' is not in your inventory",
+            costs_turn=False,
+        )
 
     if target == room_id:
         changes = HardStateChanges()
@@ -304,12 +308,11 @@ def resolve_move(
             error=f"Exit '{target_exit_id}' not found in room '{room_id}'",
         )
 
-    if exit_data.condition is not None:
-        if not evaluate(exit_data.condition, hard, soft, corpus):
-            return ResolutionResult(
-                success=False,
-                error=f"Condition not met for exit '{target_exit_id}'",
-            )
+    if exit_data.condition is not None and not evaluate(exit_data.condition, hard, soft, corpus):
+        return ResolutionResult(
+            success=False,
+            error=f"Condition not met for exit '{target_exit_id}'",
+        )
 
     traversal_rolls: list[dict[str, Any]] = []
     traversal_changes = HardStateChanges()
@@ -611,9 +614,8 @@ def _locate_world_item(
     Otherwise prefer room-level placement, then any open container in the
     room. Returns ("room", room_id) or ("entity", container_id), or None.
     """
-    if preferred_container is not None:
-        if item in hard.entity_contains.get(preferred_container, {}):
-            return ("entity", preferred_container)
+    if preferred_container is not None and item in hard.entity_contains.get(preferred_container, {}):
+        return ("entity", preferred_container)
     if item in hard.room_contains.get(room_id, {}):
         return ("room", room_id)
     for container_id in hard.room_contains.get(room_id, {}):
@@ -704,8 +706,7 @@ def resolve_transfer(
             ent = corpus.entities.get(eid)
             if ent and ent.type == "item":
                 available_pool[eid] = available_pool.get(eid, 0) + ecount
-            if ent and hard.entity_contains.get(eid):
-                if _container_is_open(eid, hard, corpus):
+            if ent and hard.entity_contains.get(eid) and _container_is_open(eid, hard, corpus):
                     for cid, ccount in hard.entity_contains[eid].items():
                         cstate = hard.entity_states.get(cid, {})
                         if cstate.get("hidden", False):
@@ -762,14 +763,12 @@ def resolve_transfer(
             closed_error: str | None = None
             if target_is_entity:
                 target_ent = corpus.entities.get(target_id)
-                if target_ent and not _container_is_open(target_id, hard, corpus):
-                    if item in hard.entity_contains.get(target_id, {}):
+                if target_ent and not _container_is_open(target_id, hard, corpus) and item in hard.entity_contains.get(target_id, {}):
                         closed_error = f"The {target_ent.name or target_id} is closed."
             else:
                 for eid in room_contains:
                     ent = corpus.entities.get(eid)
-                    if ent and not _container_is_open(eid, hard, corpus):
-                        if item in hard.entity_contains.get(eid, {}):
+                    if ent and not _container_is_open(eid, hard, corpus) and item in hard.entity_contains.get(eid, {}):
                             closed_error = f"The {ent.name or eid} is closed."
                             break
             if closed_error is not None:
@@ -921,16 +920,15 @@ def resolve_interact(
     if room is None:
         return ResolutionResult(success=False, error=f"Room '{room_id}' not found")
 
-    if action.using is not None:
-        if (
-            action.using not in hard.player.inventory
-            and action.using not in hard.player.equipped
-            and action.using not in soft.soft_inventory
-        ):
-            return ResolutionResult(
-                success=False,
-                error=f"Item '{action.using}' is not in your inventory",
-            )
+    if action.using is not None and (
+        action.using not in hard.player.inventory
+        and action.using not in hard.player.equipped
+        and action.using not in soft.soft_inventory
+    ):
+        return ResolutionResult(
+            success=False,
+            error=f"Item '{action.using}' is not in your inventory",
+        )
 
     target_entity = _find_entity_in_room_followers(target_id, room_id, hard, corpus)
 
@@ -1041,7 +1039,7 @@ def resolve_interact(
     if not matches:
         return result
 
-    inter, source = matches[0]
+    inter, _source = matches[0]
 
     if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
         result.error = f"Conditions not met for interaction '{interaction_id}'"
@@ -1885,9 +1883,9 @@ def _resolve_use_ability(
     target's combat_group.
     """
     from mgmai.engine.combat import (
-        resolve_out_of_combat_ability,
         enter_combat,
         resolve_combat_enemies,
+        resolve_out_of_combat_ability,
     )
 
     result = resolve_out_of_combat_ability(action, hard, corpus)
@@ -2337,8 +2335,7 @@ def resolve_gear(
             max_limit = eb.max_equipped
             for eid in still_equipped:
                 eq_entity = corpus.entities.get(eid)
-                if eq_entity and eq_entity.equip_block:
-                    if eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == slot_tag:
+                if eq_entity and eq_entity.equip_block and eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == slot_tag:
                         other_max = eq_entity.equip_block.max_equipped
                         if other_max is None:
                             max_limit = None

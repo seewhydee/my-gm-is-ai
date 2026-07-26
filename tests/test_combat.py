@@ -20,6 +20,21 @@ import random
 
 import pytest
 
+from mgmai.engine.combat import (
+    enter_combat,
+    get_player_ac,
+    get_player_max_hp,
+    resolve_combat_enemies,
+    resolve_combat_turn,
+    roll_damage,
+    roll_initiative,
+)
+from mgmai.engine.engine import resolve
+from mgmai.engine.resolver import resolve_action
+from mgmai.engine.stat_checks import format_combat_prefix
+from mgmai.engine.status_effects import apply_status_effect
+from mgmai.engine.systems.five_e import FiveESystem
+from mgmai.engine.utils import get_status_effects
 from mgmai.models.actions import (
     CombatAction,
     ExamineAction,
@@ -44,24 +59,8 @@ from mgmai.models.corpus import (
     StatusEffectDef,
 )
 from mgmai.models.hard_state import HardGameState
-from mgmai.engine.combat import (
-    enter_combat,
-    get_player_ac,
-    get_player_max_hp,
-    resolve_combat_enemies,
-    resolve_combat_turn,
-    roll_damage,
-    roll_initiative,
-)
 from mgmai.models.soft_state import SoftGameState
-from mgmai.engine.systems.five_e import FiveESystem
-from mgmai.engine.engine import resolve
-from mgmai.engine.resolver import resolve_action
-from mgmai.engine.stat_checks import format_combat_prefix
-from mgmai.engine.status_effects import apply_status_effect
-from mgmai.engine.utils import get_status_effects
 from tests.helpers import build_state_manager
-
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -204,13 +203,13 @@ class TestDamageDice:
     def test_roll_damage_range(self, monkeypatch):
         """Damage from 1d6 should be in [1,6]."""
         monkeypatch.setattr(random, "randint", lambda a, b: a)
-        total, s = roll_damage("1d6")
+        total, _s = roll_damage("1d6")
         assert total == 1
 
     def test_roll_damage_critical(self, monkeypatch):
         """Critical hit doubles dice count but modifier applied once."""
         monkeypatch.setattr(random, "randint", lambda a, b: b)
-        total, s = roll_damage("1d6+2", critical=True)
+        total, _s = roll_damage("1d6+2", critical=True)
         # 2 dice, each max 6, +2 modifier = 14
         assert total == 14
 

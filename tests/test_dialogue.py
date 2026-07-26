@@ -19,12 +19,12 @@
 
 
 from mgmai.engine.dialogue import (
-    enter_dialogue,
-    append_player_turn,
     append_npc_response,
-    increment_stall,
-    exit_dialogue,
+    append_player_turn,
     check_room_change_exit,
+    enter_dialogue,
+    exit_dialogue,
+    increment_stall,
     track_topic,
 )
 

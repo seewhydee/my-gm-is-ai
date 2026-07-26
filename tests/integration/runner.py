@@ -28,13 +28,12 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from mgmai.game.headless import HeadlessSession, TurnTranscript
 from mgmai.llm.client import LLMClient
-
 from tests.integration.driver import PlayerDriver, is_abort
 
 log = logging.getLogger(__name__)
@@ -147,7 +146,7 @@ def run_scenario(
     driver = PlayerDriver(driver_client, directive)
 
     result = ScenarioResult(scenario_name=scenario_name, directive=directive)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
 
     try:
         for i in range(max_turns):
@@ -162,7 +161,7 @@ def run_scenario(
 
             try:
                 command = driver.next_command(session)
-            except Exception as exc:  # noqa: BLE001 — record + abort
+            except Exception as exc:
                 result.error = exc
                 log.exception("Driver LLM call failed on turn %d", i + 1)
                 break
@@ -177,7 +176,7 @@ def run_scenario(
 
             try:
                 transcript = session.submit(command)
-            except Exception as exc:  # noqa: BLE001 — record + abort
+            except Exception as exc:
                 # Build a partial transcript for the failed turn.
                 transcript = TurnTranscript(
                     command=command,

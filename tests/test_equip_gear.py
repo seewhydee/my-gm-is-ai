@@ -22,8 +22,8 @@ from pathlib import Path
 import pytest
 
 from mgmai.engine.resolver import (
-    resolve_gear,
     resolve_action,
+    resolve_gear,
 )
 from mgmai.models.actions import (
     GearAction,
@@ -36,9 +36,9 @@ from mgmai.models.corpus import (
 )
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import (
+    ImprovisedWeapon,
     SoftGameState,
     SoftStatePatch,
-    ImprovisedWeapon,
 )
 from mgmai.state.manager import StateManager
 
@@ -104,8 +104,8 @@ class TestEquipBlockModel:
             ac_bonus=0,
         )
         assert eb.equip_tags == ["armor", "heavy"]
-        assert getattr(eb, "ac_override") == 18
-        assert getattr(eb, "ac_bonus") == 0
+        assert eb.ac_override == 18
+        assert eb.ac_bonus == 0
 
         simple = EquipBlock(equip_tags=["ring"])
         assert getattr(simple, "ac_override", None) is None
@@ -414,8 +414,8 @@ class TestStateManagerEquipment:
 
     def test_equip_unequip_stackable_roundtrip(self, state_manager):
         """Equip one from a stack of 2, then unequip back to 2."""
-        from tests.helpers import _mk_item_entity
         from mgmai.models.corpus import EquipBlock
+        from tests.helpers import _mk_item_entity
         hard = state_manager.hard_state
         corpus = state_manager.corpus
         corpus.entities["magic_sword"] = _mk_item_entity(

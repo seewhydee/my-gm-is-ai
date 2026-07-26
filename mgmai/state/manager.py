@@ -23,19 +23,19 @@ from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
+from mgmai.models.actions import HardStateChanges
 from mgmai.models.corpus import (
     DEFAULT_GEAR,
     DEFAULT_SPELLS,
-    Entity,
-    ModuleCorpus,
     RESERVED_ENTITY_STATE_FIELDS,
     RESERVED_ROOM_STATE_FIELDS,
     RESERVED_STATE_FIELD_DEFAULTS,
+    Entity,
+    ModuleCorpus,
     StateFieldDecl,
 )
 from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
-from mgmai.models.actions import HardStateChanges
 
 log = logging.getLogger(__name__)
 
@@ -229,7 +229,7 @@ class StateManager:
                 raise ValueError("default-player.json must contain a 'player' object")
             player_overrides = data["player"]
             if not isinstance(player_overrides, dict):
-                raise ValueError("'player' must be an object")
+                raise TypeError("'player' must be an object")
 
             if corpus.stats is None and player_overrides.get("stats") is not None:
                 raise ValueError(
@@ -366,7 +366,7 @@ class StateManager:
     def _apply_char_sheet_data(self, data: dict[str, Any]) -> None:
         """Apply an already-parsed character sheet dict to the loaded state."""
         if not isinstance(data, dict):
-            raise ValueError("Character sheet must be a JSON object")
+            raise TypeError("Character sheet must be a JSON object")
 
         assert self.corpus is not None
         assert self.hard_state is not None
@@ -394,7 +394,7 @@ class StateManager:
             raise ValueError("Character sheet must contain a 'player' object")
         player_overrides = data["player"]
         if not isinstance(player_overrides, dict):
-            raise ValueError("'player' must be an object")
+            raise TypeError("'player' must be an object")
 
         if not has_stats_system and player_overrides.get("stats") is not None:
             raise ValueError(
@@ -635,8 +635,7 @@ class StateManager:
 
         # Entities with combat blocks must declare current_hp in state_fields
         for entity_id, entity in self.corpus.entities.items():
-            if entity.combat is not None:
-                if "current_hp" not in entity.state_fields:
+            if entity.combat is not None and "current_hp" not in entity.state_fields:
                     errors.append(
                         f"Entity '{entity_id}' has combat block but no "
                         f"'current_hp' in state_fields"
@@ -704,9 +703,7 @@ class StateManager:
         # Soft state: player_knowledge entries must reference valid entities/sources
         for entry in self.soft_state.player_knowledge:
             if entry.source_type == "npc_dialogue" and entry.source_id is not None:
-                if entry.source_id not in self.corpus.entities:
-                    errors.append(f"No matching entity: {entry.source_id}")
-                elif self.corpus.entities[entry.source_id].type != "npc":
+                if entry.source_id not in self.corpus.entities or self.corpus.entities[entry.source_id].type != "npc":
                     errors.append(f"No matching entity: {entry.source_id}")
                 else:
                     guidelines = self.corpus.entities[entry.source_id].dialogue
@@ -756,8 +753,7 @@ class StateManager:
             if result is None:
                 return
             has_combat = result.start_combat is not None
-            if has_combat:
-                if not allowed:
+            if has_combat and not allowed:
                     errors.append(
                         f"{carrier}: 'start_combat' is only "
                         f"allowed on encounter-rule results"
@@ -1460,8 +1456,7 @@ class StateManager:
             elif stat_key not in corpus.stats.definitions:
                 errors.append(f"stat_modifiers references undeclared stat: {stat_key}")
 
-        if changes.player_location is not None:
-            if corpus is None or changes.player_location not in corpus.rooms:
+        if changes.player_location is not None and (corpus is None or changes.player_location not in corpus.rooms):
                 errors.append(f"No matching room for player_location: {changes.player_location}")
 
         # Validate world containment deltas.

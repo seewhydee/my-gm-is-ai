@@ -32,7 +32,6 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from tests.helpers import build_state_manager
 
-
 # ------------------------------------------------------------------
 # Out-of-combat fixtures: a lethal turn.end trap, plus an optional
 # life-ward rescue mechanic.

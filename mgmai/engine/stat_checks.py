@@ -31,8 +31,8 @@ too.
 import random  # noqa: F401  — kept as a monkeypatch anchor for tests
 from typing import Any
 
-from mgmai.models.corpus import StatModifier
 from mgmai.engine.systems import get_system
+from mgmai.models.corpus import StatModifier
 
 
 def roll_d20(advantage: bool = False, disadvantage: bool = False) -> int:

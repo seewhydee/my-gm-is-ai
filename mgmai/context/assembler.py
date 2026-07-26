@@ -17,8 +17,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
+from mgmai.engine.conditions import evaluate
+from mgmai.engine.systems import get_system_for_corpus
+from mgmai.engine.utils import (
+    _is_stackable,
+    build_contains,
+    get_following_npc_ids,
+    inject_following_npcs,
+    is_exit_visible,
+)
 from mgmai.models.briefing import (
     BriefingEntity,
     BriefingExit,
@@ -33,20 +42,11 @@ from mgmai.models.briefing import (
     PlayerCombatStats,
     PlayerKnowledgeTopic,
     PlayerStateBriefing,
-    PlayerStatEntry)
-
+    PlayerStatEntry,
+)
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
-from mgmai.engine.conditions import evaluate
-from mgmai.engine.systems import get_system_for_corpus
-from mgmai.engine.utils import (
-    get_following_npc_ids,
-    inject_following_npcs,
-    build_contains,
-    is_exit_visible,
-    _is_stackable,
-)
 
 log = logging.getLogger(__name__)
 
@@ -89,9 +89,8 @@ def _build_interactions(room: object,
     each present, living entity (condition-gated ones filtered)."""
     interactions_available: list[BriefingInteraction] = []
     for inter in room.interactions:
-        if inter.condition:
-            if not evaluate(inter.condition, hard, soft, corpus):
-                continue
+        if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
+            continue
         interactions_available.append(
             BriefingInteraction(id=inter.id,
                                 description=inter.description))
@@ -108,9 +107,8 @@ def _build_interactions(room: object,
         if entity_state.get("alive") is False:
             continue
         for inter in entity.interactions:
-            if inter.condition:
-                if not evaluate(inter.condition, hard, soft, corpus):
-                    continue
+            if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
+                continue
             interactions_available.append(
                 BriefingInteraction(id=inter.id,
                                     description=inter.description))
@@ -222,7 +220,7 @@ def _build_room(room_id: str,
 def _build_player_state(
         hard: HardGameState,
         soft: SoftGameState,
-        player_stats: Optional[dict[str, PlayerStatEntry]],
+        player_stats: dict[str, PlayerStatEntry] | None,
         corpus: ModuleCorpus) -> PlayerStateBriefing:
     active_flags = {k: v for k, v in hard.flags.items() if v}
     player_entity_notes = soft.entity_notes.get("player", [])
@@ -247,7 +245,7 @@ def _build_player_state(
         ))
 
     # Effective stats and AC
-    from mgmai.engine.combat import compute_player_ac, compute_effective_stats
+    from mgmai.engine.combat import compute_effective_stats, compute_player_ac
     effective_ac = compute_player_ac(hard, corpus)
     effective_stats = compute_effective_stats(hard, corpus)
 
@@ -301,7 +299,7 @@ def _build_player_state(
 
 
 def _build_player_stats(hard: HardGameState,
-                        corpus: ModuleCorpus) -> Optional[dict[str, PlayerStatEntry]]:
+                        corpus: ModuleCorpus) -> dict[str, PlayerStatEntry] | None:
     if hard.player.stats is None or corpus.stats is None:
         return None
 
@@ -438,7 +436,7 @@ def _ability_briefing_entry(
     ability: Any,
     system: Any,
     hard: HardGameState,
-    uses_remaining: Optional[int],
+    uses_remaining: int | None,
 ) -> dict[str, Any]:
     """Briefing entry for one player ability (shared by the combat and
     player-state briefings).  Spell entries carry their slot cost and

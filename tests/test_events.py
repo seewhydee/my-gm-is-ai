@@ -31,7 +31,6 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from tests.helpers import build_state_manager
 
-
 # ------------------------------------------------------------------
 # Persistent-condition fixtures: a slime whose touch applies a
 # persistent burn that ticks (and damages) on turn.end.

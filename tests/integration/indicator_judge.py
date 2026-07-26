@@ -29,7 +29,6 @@ import logging
 from typing import Any
 
 from mgmai.llm.client import LLMClient
-
 from tests.integration.indicator_runner import IndicatorTurnResult
 from tests.integration.judge import JudgeError, parse_judge_output
 

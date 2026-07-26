@@ -20,6 +20,24 @@ import copy
 import logging
 from typing import Any
 
+from mgmai.engine.conditions import evaluate, get_condition_detail
+from mgmai.engine.dialogue import (
+    check_room_change_exit,
+    exit_dialogue,
+    increment_stall,
+)
+from mgmai.engine.encounters import resolve_encounter
+from mgmai.engine.event_bus import dispatch_reactions, find_matching_reactions
+from mgmai.engine.resolver import ResolutionResult, resolve_action
+from mgmai.engine.status_effects import emit_status_effect_event, remove_status_effect
+from mgmai.engine.utils import (
+    _is_stackable,
+    get_following_npc_ids,
+    get_status_effects,
+    inject_following_npcs,
+    is_exit_visible,
+    present_entity_ids,
+)
 from mgmai.models.actions import (
     AttitudeLimitsCurrent,
     ChainInfo,
@@ -29,7 +47,6 @@ from mgmai.models.actions import (
     EngineResult,
     GameOverResult,
     HardStateChanges,
-
     PlayerAction,
     WillRevealReadinessEntry,
 )
@@ -40,27 +57,9 @@ from mgmai.models.briefing import (
     BriefingRoom,
 )
 from mgmai.models.corpus import ModuleCorpus, Reaction
-from mgmai.models.hard_state import HardGameState, GameOverState
+from mgmai.models.hard_state import GameOverState, HardGameState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
 from mgmai.state.manager import StateManager
-from mgmai.engine.conditions import evaluate, get_condition_detail
-from mgmai.engine.resolver import resolve_action, ResolutionResult
-from mgmai.engine.utils import (
-    inject_following_npcs,
-    get_status_effects,
-    get_following_npc_ids,
-    is_exit_visible,
-    present_entity_ids,
-    _is_stackable,
-)
-from mgmai.engine.status_effects import emit_status_effect_event, remove_status_effect
-from mgmai.engine.event_bus import find_matching_reactions, dispatch_reactions
-from mgmai.engine.encounters import resolve_encounter
-from mgmai.engine.dialogue import (
-    check_room_change_exit,
-    exit_dialogue,
-    increment_stall,
-)
 
 log = logging.getLogger(__name__)
 
@@ -464,8 +463,7 @@ def resolve(
 
     if action_type == "talk":
         pass
-    elif action_type != "ooc_discussion":
-        if soft.dialogue_state.active_npc is not None:
+    elif action_type != "ooc_discussion" and soft.dialogue_state.active_npc is not None:
             stall_exited = increment_stall(soft)
             if stall_exited:
                 resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
@@ -837,9 +835,8 @@ def _build_room_after(
 
     interactions_available: list[BriefingInteraction] = []
     for inter in room.interactions:
-        if inter.condition:
-            if not evaluate(inter.condition, hard, soft, corpus):
-                continue
+        if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
+            continue
         interactions_available.append(
             BriefingInteraction(
                 id=inter.id,
@@ -1097,7 +1094,7 @@ def _derive_state_events(
             }))
 
     # stat.changed
-    for stat_key, mod in hard_changes.stat_modifiers.items():
+    for stat_key in hard_changes.stat_modifiers:
         old_val = old_stats.get(stat_key, 0)
         new_stats = hard.player.stats or {}
         new_val = new_stats.get(stat_key, old_val)

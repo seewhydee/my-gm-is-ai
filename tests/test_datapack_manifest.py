@@ -41,7 +41,6 @@ class TestDatapackManifestSync:
         )
 
     def test_manifest_lists_all_gear_ids(self) -> None:
-        import json
 
         from mgmai.datapack import load_pack
 

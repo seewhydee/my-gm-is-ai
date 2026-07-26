@@ -64,7 +64,6 @@ import pytest
 
 from mgmai.models.combat import CombatState
 from mgmai.state.manager import StateManager
-
 from tests.integration.indicator_judge import judge_indicator_turn
 from tests.integration.indicator_runner import run_indicator_turn
 from tests.integration.judge import JudgeError, format_verdict_for_failure

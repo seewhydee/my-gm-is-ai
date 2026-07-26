@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from mgmai.templates.renderer import render_ruling, render_prose
+from mgmai.templates.renderer import render_prose, render_ruling
 
 
 class TestRulingTemplate:

@@ -15,8 +15,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import Any, Dict, List, Literal, Optional, Union
+
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field, model_validator
+
 from mgmai.models.combat import CombatState
 
 
@@ -31,19 +34,19 @@ class WeaponProfClause(BaseModel):
     have the Light property".
     """
     category: Literal["simple", "martial"]
-    properties: List[str] = Field(min_length=1)
+    properties: list[str] = Field(min_length=1)
 
 
 class PlayerState(BaseModel):
     location: str
-    inventory: Dict[str, int] = Field(default_factory=dict)
+    inventory: dict[str, int] = Field(default_factory=dict)
     equipped: list[str] = Field(default_factory=list)
-    stats: Optional[Dict[str, int]] = None
+    stats: dict[str, int] | None = None
     level: int = 1
-    current_hp: Optional[int] = None
-    max_hp: Optional[int] = None
-    ac: Optional[int] = None
-    proficiency_bonus: Optional[int] = None
+    current_hp: int | None = None
+    max_hp: int | None = None
+    ac: int | None = None
+    proficiency_bonus: int | None = None
     save_proficiencies: list[str] = Field(default_factory=list)
     # 5e skill names the player is proficient in (e.g. "acrobatics");
     # matched case-insensitively by the resolution system.
@@ -57,22 +60,22 @@ class PlayerState(BaseModel):
     # A weapon the player is not proficient with can still be used, but
     # grants no proficiency bonus to the attack roll.  Unarmed strikes
     # are always proficient.
-    weapon_proficiencies: List[Union[str, WeaponProfClause]] = Field(
+    weapon_proficiencies: list[str | WeaponProfClause] = Field(
         default_factory=list
     )
     # Active status effects (status effect id -> rounds remaining); combat-scoped.
-    status_effects: Dict[str, int] = Field(default_factory=dict)
+    status_effects: dict[str, int] = Field(default_factory=dict)
     # IDs of combat abilities the player knows (corpus.abilities keys).
     abilities: list[str] = Field(default_factory=list)
     # 5e spellcasting: the player's casting stat ("INT"/"WIS"/"CHA"); one
     # casting ability for all spells (per-spell overrides are a future
     # multiclass concern).
-    spellcasting_ability: Optional[str] = None
+    spellcasting_ability: str | None = None
     # Spell level (1-9) -> slots remaining; empty = no leveled spells
     # (cantrips only).  Set directly by char-sheets and tests; recharged
     # only when rests land.  JSON object keys are strings, so saves show
     # {"1": 2}; pydantic coerces the keys back to int on model_validate.
-    spell_slots: Dict[int, int] = Field(default_factory=dict)
+    spell_slots: dict[int, int] = Field(default_factory=dict)
 
 class GameOverState(BaseModel):
     type: str  # "win" or "lose"
@@ -80,17 +83,17 @@ class GameOverState(BaseModel):
 
 class HardGameState(BaseModel):
     player: PlayerState
-    flags: Dict[str, bool] = Field(default_factory=dict)
-    room_states: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    entity_states: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    flags: dict[str, bool] = Field(default_factory=dict)
+    room_states: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    entity_states: dict[str, dict[str, Any]] = Field(default_factory=dict)
     # Runtime containment maps, initialised from the corpus at load time.
     # {room_id: {entity_id: count}}
-    room_contains: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    room_contains: dict[str, dict[str, int]] = Field(default_factory=dict)
     # {container_entity_id: {entity_id: count}}
-    entity_contains: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    entity_contains: dict[str, dict[str, int]] = Field(default_factory=dict)
     turn_count: int = 0
-    game_over: Optional[GameOverState] = None
-    combat: Optional[CombatState] = None
+    game_over: GameOverState | None = None
+    combat: CombatState | None = None
 
     @model_validator(mode="after")
     def check_turn_count_non_negative(self) -> HardGameState:

@@ -18,10 +18,14 @@
 
 from __future__ import annotations
 
-
 import pytest
 
-from mgmai.engine.stat_checks import compute_5e_modifier, compute_modifier, format_stat_check_prefix, roll_d20
+from mgmai.engine.stat_checks import (
+    compute_5e_modifier,
+    compute_modifier,
+    format_stat_check_prefix,
+    roll_d20,
+)
 
 
 class TestCompute5eModifier:

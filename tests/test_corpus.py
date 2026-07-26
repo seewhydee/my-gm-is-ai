@@ -14,8 +14,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import pytest
 from typing import Any
+
+import pytest
 from pydantic import ValidationError
 
 from mgmai.models.corpus import (
@@ -27,10 +28,10 @@ from mgmai.models.corpus import (
     Credits,
     DialogueGuidelines,
     EncounterRule,
-    GameOverCondition,
-    GameOverTrigger,
     Entity,
     Exit,
+    GameOverCondition,
+    GameOverTrigger,
     Interaction,
     Mechanic,
     ModuleCorpus,
@@ -38,8 +39,8 @@ from mgmai.models.corpus import (
     Result,
     RollCheck,
     Room,
-    StateFieldDecl,
     StatCheck,
+    StateFieldDecl,
     StatModifier,
     StatsBlock,
 )

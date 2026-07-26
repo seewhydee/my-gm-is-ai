@@ -19,14 +19,13 @@
 import json
 from pathlib import Path
 
-
-from mgmai.engine.encounters import resolve_encounter, _game_over_dict
+from mgmai.engine.encounters import _game_over_dict, resolve_encounter
 from mgmai.models.corpus import (
     ConditionExpression,
     GameOverTrigger,
     StatDefinition,
+    StatModifier,
     StatsBlock,
-    StatModifier
 )
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState

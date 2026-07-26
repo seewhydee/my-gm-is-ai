@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # My GM is AI — an AI-driven Game Master for tabletop RPG adventures
 # Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
 #
@@ -34,7 +33,7 @@ from pathlib import Path
 parent = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(parent))
 
-from mgmai.state.manager import StateManager  # noqa: E402
+from mgmai.state.manager import StateManager
 
 
 def _collect_addable_from_result(result, addable_entities: set[str]) -> None:
@@ -110,7 +109,7 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
     except ValueError as e:
         errors.append(f"Cross-reference validation failed: {e}")
         return errors, warnings
-    except Exception as e:
+    except (OSError, KeyError) as e:
         errors.append(f"Failed to load adventure: {e}")
         return errors, warnings
 

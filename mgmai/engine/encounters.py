@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from mgmai.engine.conditions import evaluate
+from mgmai.engine.resolver import _apply_result, _resolve_checkable
 from mgmai.models.actions import HardStateChanges
 from mgmai.models.corpus import (
     EncounterRule,
@@ -26,8 +28,6 @@ from mgmai.models.corpus import (
 )
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
-from mgmai.engine.conditions import evaluate
-from mgmai.engine.resolver import _apply_result, _resolve_checkable
 
 
 def resolve_encounter(

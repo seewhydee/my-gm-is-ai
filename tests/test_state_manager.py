@@ -20,17 +20,16 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from mgmai.state.manager import StateManager, StateNotLoadedError
 from mgmai.models.actions import HardStateChanges
 from mgmai.models.corpus import Entity, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
+from mgmai.state.manager import StateManager, StateNotLoadedError
 from tests.helpers import (
     build_state_manager,
     make_char_sheet_corpus,
     make_char_sheet_state,
 )
-
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -795,8 +794,8 @@ class TestContainmentMaps:
 
     def test_load_all_rebuilds_entity_contains_from_corpus(self) -> None:
         # Build a corpus with an entity that contains another entity.
-        from tests.helpers import make_char_sheet_corpus, _mk_item_entity
         from mgmai.models.corpus import Entity
+        from tests.helpers import _mk_item_entity, make_char_sheet_corpus
         corpus = make_char_sheet_corpus()
         corpus.entities["chest"] = Entity(
             type="feature",
@@ -901,7 +900,7 @@ class TestContainmentMaps:
             ))
 
     def test_validate_cross_references_rejects_non_item_count_gt_one(self) -> None:
-        from tests.helpers import _mk_room, _mk_npc_entity
+        from tests.helpers import _mk_npc_entity, _mk_room
         corpus = ModuleCorpus.model_validate({
             "adventure": {"title": "Test", "introduction": "Test."},
             "rooms": {
@@ -919,7 +918,7 @@ class TestContainmentMaps:
             sm.validate_cross_references()
 
     def test_validate_cross_references_rejects_non_stackable_item_count_gt_one(self) -> None:
-        from tests.helpers import _mk_room, _mk_item_entity
+        from tests.helpers import _mk_item_entity, _mk_room
         corpus = ModuleCorpus.model_validate({
             "adventure": {"title": "Test", "introduction": "Test."},
             "rooms": {
@@ -948,7 +947,7 @@ class TestContainmentMaps:
             sm.validate_cross_references()
 
     def test_validate_cross_references_rejects_player_in_contains(self) -> None:
-        from tests.helpers import _mk_room, _mk_npc_entity
+        from tests.helpers import _mk_npc_entity, _mk_room
         corpus = ModuleCorpus.model_validate({
             "adventure": {"title": "Test", "introduction": "Test."},
             "rooms": {

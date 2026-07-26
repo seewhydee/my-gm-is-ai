@@ -40,14 +40,14 @@ from mgmai.models.corpus import (
     StatModifier,
 )
 from tests.helpers import (
-    build_state_manager,
-    make_encounter_trigger_corpus,
     _mk_cond,
     _mk_encounter_rule,
     _mk_hard_state,
     _mk_item_entity,
     _mk_reaction,
     _mk_room,
+    build_state_manager,
+    make_encounter_trigger_corpus,
 )
 
 
@@ -922,7 +922,7 @@ class TestMultiCombatantEncounters:
     def test_encounter_start_combat_multi_enemy_combat(self, monkeypatch):
         monkeypatch.setattr("random.randint", lambda a, b: 1)
         monkeypatch.setattr("random.random", lambda: 0.5)
-        from tests.helpers import _mk_npc_entity, CombatBlock
+        from tests.helpers import CombatBlock, _mk_npc_entity
         corpus = make_encounter_trigger_corpus(
             mechanic_id="ambush",
             encounter_outcome="combat",
@@ -1018,7 +1018,7 @@ class TestMultiCombatantEncounters:
         assert manager.hard_state.player.location == "target"
 
     def test_encounter_state_change_visible_to_enemy_resolution(self):
-        from tests.helpers import _mk_npc_entity, CombatBlock
+        from tests.helpers import CombatBlock, _mk_npc_entity
         corpus = make_encounter_trigger_corpus(
             mechanic_id="unused",
             encounter_outcome="combat",

@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mgmai.game.loop import GameLoop, FALLBACK_NARRATION, TURN_ERROR_NARRATION
+from mgmai.game.loop import FALLBACK_NARRATION, TURN_ERROR_NARRATION, GameLoop
 
 
 class FakeLLMClient:
@@ -284,7 +284,7 @@ class TestRunTurn:
         # Actually our fake returns the same response every time, so it would chain
         # forever until MAX_CHAIN_LENGTH. That's actually a valid test!
         # But let's be more precise.
-        pass  # Will write a better test below
+        # Will write a better test below
 
     def test_chain_executes_two_turns(self, state_manager, fake_display) -> None:
         """Verify that a follow_up causes two engine resolutions."""

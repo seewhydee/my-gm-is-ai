@@ -21,22 +21,22 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from mgmai.context.assembler import assemble
-from mgmai.engine.engine import resolve, MAX_CHAIN_LENGTH
-from mgmai.engine.post_validate import apply_post_validation
+from mgmai.engine.engine import MAX_CHAIN_LENGTH, resolve
 from mgmai.engine.narrative_indicators import (
     build_indicators,
     format_indicators_fallback,
     process_narration,
 )
-from mgmai.llm.client import LLMClient
-from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
-from mgmai.logging import format_state_snapshot
+from mgmai.engine.post_validate import apply_post_validation
 from mgmai.game.commands import Commands
 from mgmai.game.display import Display
 from mgmai.game.input_normalizer import normalize_player_input
+from mgmai.llm.client import LLMClient
+from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
+from mgmai.logging import format_state_snapshot
 from mgmai.state.manager import StateManager
 
 try:
@@ -102,8 +102,8 @@ class GameLoop:
         llm_client: LLMClient,
         *,
         debug: bool = False,
-        display: Optional[Display] = None,
-        config_dir: Optional[str | Path] = None,
+        display: Display | None = None,
+        config_dir: str | Path | None = None,
         prose_validation_enabled: bool = True,
     ):
         self._state = state_manager
@@ -113,7 +113,7 @@ class GameLoop:
         self._chat_log: list[dict[str, str]] = []
         self._config_dir = Path(config_dir) if config_dir else None
         self._prose_validation_enabled = prose_validation_enabled
-        self._positioning_warning: Optional[str] = None
+        self._positioning_warning: str | None = None
         self._commands = Commands(
             state_loader=state_manager,
             render=self._display.print,
@@ -159,7 +159,7 @@ class GameLoop:
 
     # --- turn running ---
 
-    def _run_turn(self, player_input: str) -> Optional[str]:
+    def _run_turn(self, player_input: str) -> str | None:
         """Run a single player-input turn (possibly chained) end to end.
 
         Returns the final narration string rendered to the display, or
@@ -174,7 +174,7 @@ class GameLoop:
         current_input = normalize_player_input(player_input)
         room_changed = False
         examined_room = False
-        narration: Optional[str] = None
+        narration: str | None = None
 
         while chain_depth < MAX_CHAIN_LENGTH:
             narration = self._execute_turn(current_input, player_input, chain_depth)
@@ -235,7 +235,7 @@ class GameLoop:
         current_input: str,
         original_input: str,
         chain_depth: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         corpus = self._state.corpus
         hard = self._state.hard_state
         soft = self._state.soft_state
@@ -378,7 +378,7 @@ class GameLoop:
             self._state.save_state(
                 save_path.parent, save_path.name, latest_narration=narration
             )
-        except Exception:
+        except (OSError, ValueError):
             # Auto-save failure is non-fatal; don't interrupt the player
             pass
 
@@ -466,8 +466,8 @@ class GameLoop:
         return action
 
     def _call_prose(self, briefing, action, result, *, indicators=None):
-        from mgmai.templates.renderer import render_prose
         from mgmai.llm.prose_validation import validate_prose_output
+        from mgmai.templates.renderer import render_prose
 
         system_prompt = render_prose(
             include_combat=(

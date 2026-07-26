@@ -18,10 +18,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from mgmai.game.display import Display
 from mgmai.models.actions import GameOverResult
-
-import pytest
 
 
 class TestDisplayNoRich:

@@ -33,7 +33,6 @@ import logging
 from typing import Any
 
 from mgmai.llm.client import LLMClient
-
 from tests.integration.runner import ScenarioResult
 
 log = logging.getLogger(__name__)

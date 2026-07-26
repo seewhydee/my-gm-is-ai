@@ -19,8 +19,8 @@ from dataclasses import replace
 import pytest
 
 from mgmai.llm.model_config import (
-    ModelConfig,
     _MODEL_REGISTRY,
+    ModelConfig,
     get_known_model_labels,
     get_model_config,
     list_known_models,

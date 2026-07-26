@@ -130,19 +130,27 @@ def generate() -> str:
 
     parts: list[str] = [
         "# SRD 5e Data-Pack Manifest\n",
-        "This file is **auto-generated** by "
-        "`scripts/generate_datapack_manifest.py`.  Do not edit by hand.\n",
-        "Adventure-module authors can reference any ID listed below in "
-        "their corpus, rooms, inventories, and character sheets without "
-        "re-defining the item.  The engine pulls the full definition from "
-        "its built-in data pack.\n",
-        f"**{len(gear)} gear items**, "
-        f"**{len(conditions)} conditions**, and "
-        f"**{len(spells)} spells** are currently available.\n",
+        (
+            "This file is **auto-generated** by "
+            "`scripts/generate_datapack_manifest.py`.  Do not edit by hand.\n"
+        ),
+        (
+            "Adventure-module authors can reference any ID listed below in "
+            "their corpus, rooms, inventories, and character sheets without "
+            "re-defining the item.  The engine pulls the full definition from "
+            "its built-in data pack.\n"
+        ),
+        (
+            f"**{len(gear)} gear items**, "
+            f"**{len(conditions)} conditions**, and "
+            f"**{len(spells)} spells** are currently available.\n"
+        ),
         "---\n",
         "## Gear\n",
-        "Each ID below is a valid reference for items, equipment, "
-        "and consumables.\n",
+        (
+            "Each ID below is a valid reference for items, equipment, "
+            "and consumables.\n"
+        ),
     ]
     parts.append(_section("Gear", _classify_gear(gear)))
 

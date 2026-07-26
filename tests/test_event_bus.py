@@ -7,12 +7,12 @@
 # (at your option) any later version.
 
 
+from mgmai.engine.engine import _derive_state_events
 from mgmai.engine.event_bus import (
     _resolve_self,
     dispatch_reactions,
     find_matching_reactions,
 )
-from mgmai.engine.engine import _derive_state_events
 from mgmai.engine.resolver import _apply_result
 from mgmai.models.actions import HardStateChanges
 from mgmai.models.corpus import (

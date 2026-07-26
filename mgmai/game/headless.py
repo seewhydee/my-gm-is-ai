@@ -35,14 +35,14 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from mgmai.game.display import Display
 from mgmai.game.loop import GameLoop
 from mgmai.llm.client import LLMClient
+from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
-from mgmai.models.corpus import ModuleCorpus
 from mgmai.state.manager import StateManager
 
 try:
@@ -60,9 +60,9 @@ class StatusSnapshot:
     turn_count: int
     location: str
     in_combat: bool
-    combat_round: Optional[int]
-    player_hp: Optional[int]
-    player_max_hp: Optional[int]
+    combat_round: int | None
+    player_hp: int | None
+    player_max_hp: int | None
     # {combatant_id: {"hp", "max_hp", "side": "party"|"enemy", "alive",
     #                 "status_effects": {status_effect: rounds},
     #                 "status_effect_names": {status_effect: display name},
@@ -88,17 +88,17 @@ class TurnTranscript:
     """Result of a single ``HeadlessSession.submit()`` call."""
 
     command: str
-    narration: Optional[str]
+    narration: str | None
     status: StatusSnapshot
     game_over: bool
-    game_over_type: Optional[str]
+    game_over_type: str | None
     errors: list[str] = field(default_factory=list)
     # Serialized combat-log entries for this turn (list of dicts), used
     # by the LLM judge to cross-reference narration against engine truth.
     combat_log: list[dict[str, Any]] = field(default_factory=list)
     # Exception raised during the turn, if any (so callers can record
     # artifacts even when the harness blows up).
-    exception: Optional[BaseException] = None
+    exception: BaseException | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -294,15 +294,15 @@ class HeadlessSession:
         return self._state
 
     @property
-    def hard_state(self) -> Optional[HardGameState]:
+    def hard_state(self) -> HardGameState | None:
         return self._state.hard_state
 
     @property
-    def soft_state(self) -> Optional[SoftGameState]:
+    def soft_state(self) -> SoftGameState | None:
         return self._state.soft_state
 
     @property
-    def corpus(self) -> Optional[ModuleCorpus]:
+    def corpus(self) -> ModuleCorpus | None:
         return self._state.corpus
 
     @property
@@ -339,8 +339,8 @@ class HeadlessSession:
         """
         errors_before = len(self._display.errors)
 
-        exception: Optional[BaseException] = None
-        narration: Optional[str] = None
+        exception: BaseException | None = None
+        narration: str | None = None
         try:
             narration = self._loop._run_turn(command)
         except BaseException as exc:  # noqa: BLE001 — record + reraise

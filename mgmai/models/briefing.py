@@ -15,9 +15,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
+
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+
 from pydantic import BaseModel, Field
+
 from mgmai.models.corpus import DialogueGuidelines
 
 
@@ -32,9 +35,7 @@ def _is_empty(value: Any) -> bool:
         return True
     if isinstance(value, str) and value == "":
         return True
-    if isinstance(value, (list, dict)) and len(value) == 0:
-        return True
-    return False
+    return isinstance(value, (list, dict)) and len(value) == 0
 
 
 def _strip_empty(obj: Any) -> Any:
@@ -83,14 +84,14 @@ class BriefingEntity(BaseModel):
     name: str
     type: str
     description: str
-    state: Dict[str, Any] = Field(default_factory=dict)
-    entity_notes: List[str] = Field(default_factory=list)
-    soft_item_guidance: Optional[str] = None
-    soft_items_taken: List[str] = Field(default_factory=list)
-    soft_items_present: List[str] = Field(default_factory=list)
-    contains: List[BriefingContainsEntry] = Field(default_factory=list)
-    dialogue_paths: Dict[str, str] = Field(default_factory=dict)
-    combat_block: Optional[dict[str, Any]] = None
+    state: dict[str, Any] = Field(default_factory=dict)
+    entity_notes: list[str] = Field(default_factory=list)
+    soft_item_guidance: str | None = None
+    soft_items_taken: list[str] = Field(default_factory=list)
+    soft_items_present: list[str] = Field(default_factory=list)
+    contains: list[BriefingContainsEntry] = Field(default_factory=list)
+    dialogue_paths: dict[str, str] = Field(default_factory=dict)
+    combat_block: dict[str, Any] | None = None
     count: int = 1
 
 
@@ -104,13 +105,13 @@ class BriefingRoom(BaseModel):
     id: str
     name: str
     description: str
-    soft_item_guidance: Optional[str] = None
-    soft_items_taken: List[str] = Field(default_factory=list)
-    soft_items_present: List[str] = Field(default_factory=list)
-    entities_visible: List[BriefingEntity] = Field(default_factory=list)
-    exits_available: List[BriefingExit] = Field(default_factory=list)
-    interactions_available: List[BriefingInteraction] = Field(default_factory=list)
-    room_notes: List[str] = Field(default_factory=list)
+    soft_item_guidance: str | None = None
+    soft_items_taken: list[str] = Field(default_factory=list)
+    soft_items_present: list[str] = Field(default_factory=list)
+    entities_visible: list[BriefingEntity] = Field(default_factory=list)
+    exits_available: list[BriefingExit] = Field(default_factory=list)
+    interactions_available: list[BriefingInteraction] = Field(default_factory=list)
+    room_notes: list[str] = Field(default_factory=list)
 
 
 class EquippedItemBriefing(BaseModel):
@@ -131,38 +132,38 @@ class PlayerCombatStats(BaseModel):
     max_hp: int
     ac: int
     proficiency_bonus: int
-    skill_proficiencies: List[str] = Field(default_factory=list)
+    skill_proficiencies: list[str] = Field(default_factory=list)
     # Each entry is a bare string (category or weapon ID) or a dict
     # {"category": ..., "properties": [...]} (a WeaponProfClause, serialized).
-    weapon_proficiencies: List[Union[str, Dict[str, Any]]] = Field(
+    weapon_proficiencies: list[str | dict[str, Any]] = Field(
         default_factory=list
     )
 
 
 class PlayerStateBriefing(BaseModel):
     location: str
-    hard_inventory: Dict[str, int] = Field(default_factory=dict)
-    soft_inventory: List[str] = Field(default_factory=list)
-    equipped_items: List[EquippedItemBriefing] = Field(default_factory=list)
+    hard_inventory: dict[str, int] = Field(default_factory=dict)
+    soft_inventory: list[str] = Field(default_factory=list)
+    equipped_items: list[EquippedItemBriefing] = Field(default_factory=list)
     effective_ac: int = 10
-    effective_stats: Optional[Dict[str, int]] = None
-    active_flags: Dict[str, bool] = Field(default_factory=dict)
-    entity_notes: List[str] = Field(default_factory=list)
-    player_stats: Optional[Dict[str, PlayerStatEntry]] = None
-    combat_stats: Optional[PlayerCombatStats] = None
+    effective_stats: dict[str, int] | None = None
+    active_flags: dict[str, bool] = Field(default_factory=dict)
+    entity_notes: list[str] = Field(default_factory=list)
+    player_stats: dict[str, PlayerStatEntry] | None = None
+    combat_stats: PlayerCombatStats | None = None
     # Player's known abilities (same entry shape as CombatBriefing.abilities):
     # [{id, name, description, target, uses_remaining, effect, effect_kind,
     #   spell_level?, concentration?, slot_level?, save_dc?}]
-    abilities: List[Dict[str, Any]] = Field(default_factory=list)
+    abilities: list[dict[str, Any]] = Field(default_factory=list)
     # Spell level -> slots remaining (empty when the player has no
     # leveled spells; cantrips cost nothing).
-    spell_slots: Dict[int, int] = Field(default_factory=dict)
+    spell_slots: dict[int, int] = Field(default_factory=dict)
     # Status effects active on the player (e.g. an ongoing Mage Armor):
     # [{id, rounds, description?}]
-    status_effects: List[Dict[str, Any]] = Field(default_factory=list)
+    status_effects: list[dict[str, Any]] = Field(default_factory=list)
     # Inventory items with a usable interaction (drink, read, etc.):
     # [{id, name, interactions: [{id, description}]}]
-    usable_items: List[Dict[str, Any]] = Field(default_factory=list)
+    usable_items: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class BriefingHistoryEntry(BaseModel):
@@ -180,9 +181,9 @@ class DialogueActiveNpc(BaseModel):
 
 class DialogueContext(BaseModel):
     active_npc: DialogueActiveNpc
-    recent_exchanges: List[Dict[str, Any]] = Field(default_factory=list)
-    topics_discussed: List[str] = Field(default_factory=list)
-    revealed_topics: List[str] = Field(default_factory=list)
+    recent_exchanges: list[dict[str, Any]] = Field(default_factory=list)
+    topics_discussed: list[str] = Field(default_factory=list)
+    revealed_topics: list[str] = Field(default_factory=list)
 
 
 class CombatBriefing(BaseModel):
@@ -200,12 +201,12 @@ class CombatBriefing(BaseModel):
     abilities: list[dict[str, Any]] = Field(default_factory=list)
     # Spell level -> slots remaining (empty when the player has no
     # leveled spells; cantrips cost nothing).
-    spell_slots: Dict[int, int] = Field(default_factory=dict)
+    spell_slots: dict[int, int] = Field(default_factory=dict)
     # Interactions the player may use via the `interact` action during
     # combat: same entries as the room briefing's interactions_available
     # (room + present entities), minus the generic "attack" id (attack
     # maps to the `combat` action).
-    interactions_available: List[BriefingInteraction] = Field(default_factory=list)
+    interactions_available: list[BriefingInteraction] = Field(default_factory=list)
 
 
 class GMBriefing(BaseModel):
@@ -215,12 +216,12 @@ class GMBriefing(BaseModel):
     turn: int
     current_room: BriefingRoom
     player_state: PlayerStateBriefing
-    player_knowledge_topics: List[PlayerKnowledgeTopic] = Field(default_factory=list)
-    recent_history: List[BriefingHistoryEntry] = Field(default_factory=list)
-    dialogue_context: Optional[DialogueContext] = None
-    revealed_hints: List[str] = Field(default_factory=list)
+    player_knowledge_topics: list[PlayerKnowledgeTopic] = Field(default_factory=list)
+    recent_history: list[BriefingHistoryEntry] = Field(default_factory=list)
+    dialogue_context: DialogueContext | None = None
+    revealed_hints: list[str] = Field(default_factory=list)
     player_input: str
-    combat_state: Optional[CombatBriefing] = None
+    combat_state: CombatBriefing | None = None
 
     def compact_dump(self) -> dict[str, Any]:
         """Return the briefing as a dict with empty fields omitted.

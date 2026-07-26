@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -30,26 +30,26 @@ class CombatLogEntry(BaseModel):
     round: int
     actor: str               # "player" or npc entity id
     action: str              # "attack", "flee", "death", etc.
-    target: Optional[str] = None
-    attack_roll: Optional[int] = None
-    attack_total: Optional[int] = None
-    ac: Optional[int] = None
-    hit: Optional[bool] = None
-    critical: Optional[bool] = None
-    damage_roll: Optional[str] = None
-    damage: Optional[int] = None
-    remaining_hp: Optional[int] = None
+    target: str | None = None
+    attack_roll: int | None = None
+    attack_total: int | None = None
+    ac: int | None = None
+    hit: bool | None = None
+    critical: bool | None = None
+    damage_roll: str | None = None
+    damage: int | None = None
+    remaining_hp: int | None = None
     # On-hit saving throws and secondary damage
     on_hit_effects: list[dict] = Field(default_factory=list)
     # Damage typing and mitigation (resistance / vulnerability / immunity)
-    damage_type: Optional[str] = None
-    mitigation: Optional[str] = None   # "resisted" | "vulnerable" | "immune"
+    damage_type: str | None = None
+    mitigation: str | None = None   # "resisted" | "vulnerable" | "immune"
     # Named attack used (NPC attack definitions / multiattack)
-    attack_id: Optional[str] = None
-    attack_name: Optional[str] = None
+    attack_id: str | None = None
+    attack_name: str | None = None
     # Spell identity (set when the resolved ability is a spell)
-    spell_id: Optional[str] = None
-    spell_level: Optional[int] = None
+    spell_id: str | None = None
+    spell_level: int | None = None
 
 
 class CombatState(BaseModel):
@@ -74,7 +74,7 @@ class CombatState(BaseModel):
     # Combat-AI bookkeeping: who last landed a hit on each combatant
     # (target id -> attacker id), and the player's most recent target.
     last_attacker: dict[str, str] = Field(default_factory=dict)
-    player_last_target: Optional[str] = None
+    player_last_target: str | None = None
     # Ability bookkeeping: combatant id -> {ability id -> times used this
     # combat}, and NPC id -> {ability id -> rounds until usable again}.
     ability_uses: dict[str, dict[str, int]] = Field(default_factory=dict)

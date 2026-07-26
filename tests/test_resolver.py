@@ -22,29 +22,29 @@ from pathlib import Path
 
 import pytest
 
+from mgmai.engine.conditions import evaluate_condition_string
 from mgmai.engine.resolver import (
-    resolve_move,
+    _apply_result,
+    _apply_result_with_check,
+    resolve_action,
     resolve_examine,
     resolve_interact,
+    resolve_move,
+    resolve_ooc,
     resolve_talk,
     resolve_transfer,
     resolve_wait,
-    resolve_ooc,
-    resolve_action,
-    _apply_result,
-    _apply_result_with_check,
 )
-from mgmai.engine.conditions import evaluate_condition_string
 from mgmai.models.actions import (
-    MoveAction,
     ExamineAction,
+    GearAction,
+    HardStateChanges,
     InteractAction,
+    MoveAction,
+    OocDiscussionAction,
     TalkAction,
     TransferAction,
     WaitAction,
-    OocDiscussionAction,
-    GearAction,
-    HardStateChanges,
 )
 from mgmai.models.corpus import (
     CheckResolution,
@@ -1219,7 +1219,7 @@ class TestResolveTalkPaths:
         soft = state_manager.soft_state
         corpus = state_manager.corpus.model_copy(deep=True)
         hard.player.location = "bag_floor"
-        from mgmai.models.corpus import Resolvable, ConditionExpression
+        from mgmai.models.corpus import ConditionExpression, Resolvable
 
         path = Resolvable(
             description="Test path with an impossible condition.",

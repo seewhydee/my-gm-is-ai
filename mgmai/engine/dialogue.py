@@ -16,10 +16,10 @@
 
 from __future__ import annotations
 
+from mgmai.engine.utils import get_following_npc_ids
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import ConversationLogEntry, SoftGameState
-from mgmai.engine.utils import get_following_npc_ids
 
 DIALOGUE_MAX_LOG_ENTRIES = 10
 DIALOGUE_STALL_LIMIT = 3

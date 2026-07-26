@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # My GM is AI — an AI-driven Game Master for tabletop RPG adventures
 # Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
 #
@@ -41,8 +40,8 @@ from mgmai.config import (
     save_app_config,
     save_credentials,
 )
-from mgmai.logging import setup_logging
-from mgmai.state.manager import StateManager
+from mgmai.game.display import Display
+from mgmai.game.loop import GameLoop
 from mgmai.llm.client import LLMClient
 from mgmai.llm.model_config import (
     get_known_model_labels,
@@ -50,8 +49,8 @@ from mgmai.llm.model_config import (
     get_provider,
     load_custom_models,
 )
-from mgmai.game.display import Display
-from mgmai.game.loop import GameLoop
+from mgmai.logging import setup_logging
+from mgmai.state.manager import StateManager
 
 
 def _invocation_name() -> str:
@@ -196,7 +195,7 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as e:
         display.render_error(str(e))
         sys.exit(1)
-    except Exception as e:
+    except (OSError, KeyError) as e:
         display.render_error(f"Failed to load state: {e}")
         sys.exit(1)
 

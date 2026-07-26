@@ -19,16 +19,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from mgmai.engine.conditions import evaluate
+from mgmai.models.actions import HardStateChanges
+from mgmai.models.combat import CombatLogEntry
 from mgmai.models.corpus import (
     ModuleCorpus,
     Reaction,
     ReactionEffects,
 )
-from mgmai.models.hard_state import HardGameState, GameOverState
+from mgmai.models.hard_state import GameOverState, HardGameState
 from mgmai.models.soft_state import SoftGameState
-from mgmai.models.actions import HardStateChanges
-from mgmai.models.combat import CombatLogEntry
-from mgmai.engine.conditions import evaluate
 
 log = logging.getLogger(__name__)
 
@@ -206,7 +206,7 @@ def dispatch_reactions(
             hc = HardStateChanges()
             narrative: list[str] = []
             revealed: list[str] = []
-            from mgmai.engine.resolver import _apply_result_with_check, ResolutionResult
+            from mgmai.engine.resolver import ResolutionResult, _apply_result_with_check
             resolution_for_chain = ResolutionResult(success=True)
             chain_rolls: list[dict[str, Any]] = []
             _apply_result_with_check(
@@ -396,9 +396,8 @@ def _resolve_reaction_encounter(
     else:
         mech = corpus.mechanics.get(encounter_id)
         if mech and mech.rules:
-            if mech.condition:
-                if not evaluate(mech.condition, hard, soft, corpus):
-                    return []
+            if mech.condition and not evaluate(mech.condition, hard, soft, corpus):
+                return []
             encounter_rules = mech.rules
 
     if not encounter_rules:

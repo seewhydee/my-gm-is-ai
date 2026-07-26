@@ -51,7 +51,6 @@ import pytest
 from mgmai.game.headless import _snapshot_status
 from mgmai.models.combat import CombatState
 from mgmai.state.manager import StateManager
-
 from tests.integration.helpers import assert_combat_concluded
 from tests.integration.indicator_judge import judge_indicator_turn
 from tests.integration.indicator_runner import run_indicator_turn

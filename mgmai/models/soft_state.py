@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -25,7 +25,7 @@ class KnowledgeEntry(BaseModel):
     topic_id: str
     description: str
     source_type: Literal["npc_dialogue", "interaction", "examination", "book", "puzzle"]
-    source_id: Optional[str] = None
+    source_id: str | None = None
     turn_learned: int
 
 
@@ -38,7 +38,7 @@ class ImprovisedWeapon(BaseModel):
 
 
 class SoftStatePatch(BaseModel):
-    entity_id: Optional[str] = None
+    entity_id: str | None = None
     field: Literal[
         "room_note", "entity_note", "soft_inventory_remove",
         "appearance_note_add", "set_improvised_weapon"
@@ -67,8 +67,7 @@ class SoftStatePatch(BaseModel):
                 )
             if not isinstance(self.new_value, str) or not self.new_value.strip():
                 raise ValueError("appearance_note_add new_value must be a non-empty string")
-        elif self.field == "set_improvised_weapon":
-            if self.entity_id is not None:
+        elif self.field == "set_improvised_weapon" and self.entity_id is not None:
                 raise ValueError(
                     "set_improvised_weapon patch must not carry entity_id"
                 )
@@ -82,9 +81,9 @@ class ConversationLogEntry(BaseModel):
 
 
 class DialogueState(BaseModel):
-    active_npc: Optional[str] = None
-    conversation_log: List[ConversationLogEntry] = Field(default_factory=list)
-    topics_discussed: List[str] = Field(default_factory=list)
+    active_npc: str | None = None
+    conversation_log: list[ConversationLogEntry] = Field(default_factory=list)
+    topics_discussed: list[str] = Field(default_factory=list)
     entered_turn: int = 0
     stall_counter: int = 0
 
@@ -92,9 +91,9 @@ class DialogueState(BaseModel):
 class TurnHistoryEntry(BaseModel):
     turn: int
     player_input: str
-    ruled_action: Dict[str, Any]
+    ruled_action: dict[str, Any]
     engine_result_summary: str
-    flags_changed: List[str] = Field(default_factory=list)
+    flags_changed: list[str] = Field(default_factory=list)
     location_after: str
 
     model_config = {
@@ -111,15 +110,15 @@ class TurnHistoryEntry(BaseModel):
 
 
 class SoftGameState(BaseModel):
-    soft_inventory: List[str] = Field(default_factory=list)
-    room_notes: Dict[str, List[str]] = Field(default_factory=dict)
-    entity_notes: Dict[str, List[str]] = Field(default_factory=dict)
-    player_knowledge: List[KnowledgeEntry] = Field(default_factory=list)
-    turn_history: List[TurnHistoryEntry] = Field(default_factory=list)
+    soft_inventory: list[str] = Field(default_factory=list)
+    room_notes: dict[str, list[str]] = Field(default_factory=dict)
+    entity_notes: dict[str, list[str]] = Field(default_factory=dict)
+    player_knowledge: list[KnowledgeEntry] = Field(default_factory=list)
+    turn_history: list[TurnHistoryEntry] = Field(default_factory=list)
     dialogue_state: DialogueState = Field(default_factory=DialogueState)
-    soft_items_taken: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-    soft_contents: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-    checks_attempted: Dict[str, List[str]] = Field(default_factory=dict)
-    revealed_hints: List[str] = Field(default_factory=list)
-    appearance_notes: List[str] = Field(default_factory=list)
-    improvised_weapon: Optional[ImprovisedWeapon] = None
+    soft_items_taken: dict[str, dict[str, int]] = Field(default_factory=dict)
+    soft_contents: dict[str, dict[str, int]] = Field(default_factory=dict)
+    checks_attempted: dict[str, list[str]] = Field(default_factory=dict)
+    revealed_hints: list[str] = Field(default_factory=list)
+    appearance_notes: list[str] = Field(default_factory=list)
+    improvised_weapon: ImprovisedWeapon | None = None

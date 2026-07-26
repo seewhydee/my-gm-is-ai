@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from mgmai.engine.conditions import evaluate
+from mgmai.engine.utils import _match_soft_content, _normalize_item_name
 from mgmai.models.actions import (
     EngineResult,
     HardStateChanges,
@@ -29,8 +31,6 @@ from mgmai.models.hard_state import HardGameState
 from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
 from mgmai.models.soft_state import KnowledgeEntry, SoftGameState
 from mgmai.state.manager import StateManager
-from mgmai.engine.conditions import evaluate
-from mgmai.engine.utils import _match_soft_content, _normalize_item_name
 
 
 def _is_hard_entity_collision(name: str, corpus: ModuleCorpus) -> bool:

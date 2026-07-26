@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import logging
 
-
 from mgmai.logging import (
     format_state_snapshot,
     get_level,
@@ -90,11 +89,11 @@ class TestGetSetLevel:
         setup_logging(level="INFO")
         set_level("BOGUS")
         root = logging.getLogger("mgmai")
-        console = [
+        console = next(
             h for h in root.handlers
             if isinstance(h, logging.StreamHandler)
             and not isinstance(h, logging.FileHandler)
-        ][0]
+        )
         assert console.level == logging.INFO
 
     def test_get_level_returns_root_level(self) -> None:

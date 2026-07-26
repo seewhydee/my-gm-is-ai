@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from mgmai.engine.utils import get_entity_location, get_status_effects
+from mgmai.models.actions import ConditionStatus
 from mgmai.models.corpus import (
     ConditionExpression,
     ModuleCorpus,
@@ -26,8 +28,6 @@ from mgmai.models.corpus import (
 )
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
-from mgmai.models.actions import ConditionStatus
-from mgmai.engine.utils import get_status_effects, get_entity_location
 
 DOMAINS = "flag|inventory|tag|entity|room|topic|stat|equipped|event|status_effect"
 CONDITION_RE = re.compile(
@@ -272,12 +272,10 @@ def _compare(actual: object, op: str, expected: str) -> bool:
 
     actual_num: int | float
     if isinstance(actual, bool):
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004
             f"Cannot compare boolean {actual!r} with operator {op!r}"
         )
-    if isinstance(actual, int):
-        actual_num = actual
-    elif isinstance(actual, float):
+    if isinstance(actual, (int, float)):
         actual_num = actual
     else:
         try:

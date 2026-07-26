@@ -21,8 +21,8 @@ from pathlib import Path
 
 import pytest
 
+from mgmai.engine.dialogue import check_room_change_exit
 from mgmai.engine.engine import _build_room_after
-from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs
 from mgmai.engine.resolver import (
     _find_entity_in_room_followers,
     resolve_examine,
@@ -30,8 +30,7 @@ from mgmai.engine.resolver import (
     resolve_talk,
     resolve_transfer,
 )
-from mgmai.engine.dialogue import check_room_change_exit
-from mgmai.state.manager import StateManager
+from mgmai.engine.utils import get_following_npc_ids, inject_following_npcs
 from mgmai.models.actions import (
     ExamineAction,
     InteractAction,
@@ -39,9 +38,10 @@ from mgmai.models.actions import (
     TransferAction,
 )
 from mgmai.models.briefing import BriefingEntity
-from mgmai.models.corpus import Interaction, Result, ModuleCorpus
+from mgmai.models.corpus import Interaction, ModuleCorpus, Result
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
+from mgmai.state.manager import StateManager
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 

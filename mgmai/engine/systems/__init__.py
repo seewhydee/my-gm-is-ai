@@ -81,13 +81,13 @@ def register_system(name: str, cls: type[ResolutionSystem]) -> None:
 
 
 __all__ = [
-    "ResolutionSystem",
     "CheckResult",
-    "SaveResult",
-    "PlayerAttackResult",
-    "NPCAttackResult",
-    "FleeResult",
     "FiveESystem",
+    "FleeResult",
+    "NPCAttackResult",
+    "PlayerAttackResult",
+    "ResolutionSystem",
+    "SaveResult",
     "get_system",
     "get_system_for_corpus",
     "register_system",

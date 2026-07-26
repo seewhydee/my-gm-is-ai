@@ -396,8 +396,8 @@ class TestReactionRecursionDepthLimit:
     reactions (here, check.passed from then_check)."""
 
     def test_recursion_capped_at_max_depth(self, state_manager):
-        from mgmai.models.corpus import CheckResolution, RollCheck
         from mgmai.models.actions import WaitAction
+        from mgmai.models.corpus import CheckResolution, RollCheck
 
         hard = state_manager.hard_state
         corpus = state_manager.corpus
@@ -911,7 +911,7 @@ class TestReactionEncounterMultiEnemy:
     """Reaction-fired encounters support start_combat and combat_group expansion."""
 
     def test_reaction_encounter_start_combat_multi_enemy(self, state_manager):
-        from mgmai.models.corpus import Mechanic, CombatBlock
+        from mgmai.models.corpus import CombatBlock, Mechanic
         from tests.helpers import _mk_encounter_rule
         hard = state_manager.hard_state
         corpus = state_manager.corpus
@@ -1328,7 +1328,7 @@ class TestCombatEvents:
             ],
         )
 
-        from mgmai.models.actions import TalkAction, InteractAction
+        from mgmai.models.actions import InteractAction, TalkAction
         # Enter dialogue with the goblin.
         talk = TalkAction(
             action_type="talk",

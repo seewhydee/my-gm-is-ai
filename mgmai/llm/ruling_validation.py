@@ -28,8 +28,6 @@ The checks are deliberately conservative: when in doubt, return ``None``.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from mgmai.models.actions import (
     CombatAction,
     GearAction,
@@ -63,7 +61,7 @@ def _party_ids(briefing: GMBriefing) -> list[str]:
     ]
 
 
-def _validate_attack(action: CombatAction, briefing: GMBriefing) -> Optional[str]:
+def _validate_attack(action: CombatAction, briefing: GMBriefing) -> str | None:
     enemies = _enemy_ids(briefing)
     if action.target in enemies:
         return None
@@ -77,7 +75,7 @@ def _validate_attack(action: CombatAction, briefing: GMBriefing) -> Optional[str
 
 def _validate_use_ability(
     action: UseAbilityAction, briefing: GMBriefing
-) -> Optional[str]:
+) -> str | None:
     """Validate ``use_ability`` in or out of combat.
 
     In combat, validates against ``combat_state.abilities`` and
@@ -200,7 +198,7 @@ def _validate_use_ability(
     return None
 
 
-def _validate_move(action: MoveAction, briefing: GMBriefing) -> Optional[str]:
+def _validate_move(action: MoveAction, briefing: GMBriefing) -> str | None:
     exit_ids = [e.id for e in briefing.current_room.exits_available]
     if action.target in exit_ids:
         return None
@@ -215,7 +213,7 @@ def _validate_move(action: MoveAction, briefing: GMBriefing) -> Optional[str]:
     )
 
 
-def _validate_talk(action: TalkAction, briefing: GMBriefing) -> Optional[str]:
+def _validate_talk(action: TalkAction, briefing: GMBriefing) -> str | None:
     return (
         "Invalid action_type 'talk' during combat: conversations are "
         "impossible in the middle of a fight — the engine cannot hold a "
@@ -226,7 +224,7 @@ def _validate_talk(action: TalkAction, briefing: GMBriefing) -> Optional[str]:
     )
 
 
-def _validate_gear(action: GearAction, briefing: GMBriefing) -> Optional[str]:
+def _validate_gear(action: GearAction, briefing: GMBriefing) -> str | None:
     """Mirror the engine's combat gear restriction (weapon swaps only).
 
     The briefing exposes ``equip_tags`` only for currently equipped
@@ -251,7 +249,7 @@ def _validate_gear(action: GearAction, briefing: GMBriefing) -> Optional[str]:
     return None
 
 
-def validate_ruling_action(action, briefing: GMBriefing) -> Optional[str]:
+def validate_ruling_action(action, briefing: GMBriefing) -> str | None:
     """Check a parsed PlayerAction for semantic consistency with the briefing.
 
     Returns ``None`` when the action is consistent (or when the briefing
@@ -276,7 +274,7 @@ def validate_ruling_action(action, briefing: GMBriefing) -> Optional[str]:
     return None
 
 
-def validate_positioning_assertion(action, briefing: GMBriefing) -> Optional[str]:
+def validate_positioning_assertion(action, briefing: GMBriefing) -> str | None:
     """Soft-fail check for the optional ``positioning`` embellishment.
 
     Mirrors the engine's apply-time validation
@@ -318,7 +316,7 @@ def validate_positioning_assertion(action, briefing: GMBriefing) -> Optional[str
     # skip the currently-engaged check rather than guessing.
     engagement_known = all("engaged_with" in c for c in combatants.values())
 
-    def _pair_error(pair, kind: str) -> Optional[str]:
+    def _pair_error(pair, kind: str) -> str | None:
         if not isinstance(pair, list) or len(pair) != 2 or pair[0] == pair[1]:
             return (
                 f"Invalid positioning.{kind} entry {pair!r}: each entry "

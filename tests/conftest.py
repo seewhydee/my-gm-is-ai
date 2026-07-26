@@ -21,11 +21,11 @@ from pathlib import Path
 
 import pytest
 
+from mgmai.engine.event_bus import reset_disabled_once
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.state.manager import StateManager
-from mgmai.engine.event_bus import reset_disabled_once
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 

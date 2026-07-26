@@ -19,13 +19,14 @@
 from __future__ import annotations
 
 import random
+from typing import ClassVar
 
 import pytest
 
 from mgmai.engine.systems import (
     CheckResult,
-    FleeResult,
     FiveESystem,
+    FleeResult,
     NPCAttackResult,
     PlayerAttackResult,
     ResolutionSystem,
@@ -38,7 +39,6 @@ from mgmai.engine.systems.dice import parse_damage_dice
 from mgmai.models.combat import CombatLogEntry
 from mgmai.models.corpus import EquipBlock, ModuleCorpus, StatCheck
 from mgmai.models.hard_state import HardGameState, WeaponProfClause
-
 
 # ------------------------------------------------------------------
 # Registry
@@ -127,7 +127,7 @@ class TestRegistry:
             assert isinstance(inst, DummySystem)
             assert inst.unarmed_damage == "1d4"
         finally:
-            from mgmai.engine.systems import _REGISTRY, _INSTANCES
+            from mgmai.engine.systems import _INSTANCES, _REGISTRY
             _REGISTRY.pop("dummy", None)
             _INSTANCES.pop("dummy", None)
 
@@ -265,7 +265,7 @@ class TestFiveECombat:
 
     def test_compute_save_modifier_proficient(self) -> None:
         class FakePlayer:
-            save_proficiencies = ["CON", "DEX"]
+            save_proficiencies: ClassVar[list[str]] = ["CON", "DEX"]
             proficiency_bonus = 3
 
         s = FiveESystem()
@@ -275,14 +275,14 @@ class TestFiveECombat:
 
     def test_compute_save_modifier_default_prof_bonus(self) -> None:
         class FakePlayer:
-            save_proficiencies = ["CON"]
+            save_proficiencies: ClassVar[list[str]] = ["CON"]
             proficiency_bonus = None
 
         assert FiveESystem().compute_save_modifier("CON", FakePlayer()) == 2
 
     def test_compute_save_modifier_no_proficiencies(self) -> None:
         class FakePlayer:
-            save_proficiencies = []
+            save_proficiencies: ClassVar[list[str]] = []
             proficiency_bonus = 2
 
         assert FiveESystem().compute_save_modifier("CON", FakePlayer()) == 0
@@ -294,7 +294,7 @@ class TestFiveECombat:
 
     def test_proficiency_bonus_applies_to_save_proficiency(self) -> None:
         class FakePlayer:
-            save_proficiencies = ["CON"]
+            save_proficiencies: ClassVar[list[str]] = ["CON"]
             proficiency_bonus = 3
 
         check = StatCheck(stat="CON", target=10, save=True, repeatable=True)
@@ -302,7 +302,7 @@ class TestFiveECombat:
 
     def test_proficiency_bonus_ignored_without_marker(self) -> None:
         class FakePlayer:
-            save_proficiencies = ["CON"]
+            save_proficiencies: ClassVar[list[str]] = ["CON"]
             proficiency_bonus = 3
 
         check = StatCheck(stat="CON", target=10, repeatable=True)
@@ -310,7 +310,7 @@ class TestFiveECombat:
 
     def test_proficiency_bonus_non_proficient_player(self) -> None:
         class FakePlayer:
-            save_proficiencies = []
+            save_proficiencies: ClassVar[list[str]] = []
             proficiency_bonus = 3
 
         check = StatCheck(stat="CON", target=10, save=True, repeatable=True)
@@ -387,7 +387,7 @@ class TestFiveESkills:
 
     def test_stat_value_for_check_maps_skill_to_ability(self) -> None:
         class FakePlayer:
-            stats = {"STR": 12, "DEX": 16}
+            stats: ClassVar[dict[str, int]] = {"STR": 12, "DEX": 16}
 
         s = FiveESystem()
         assert s.stat_value_for_check("acrobatics", FakePlayer()) == 16
@@ -395,19 +395,19 @@ class TestFiveESkills:
 
     def test_stat_value_for_check_skill_case_insensitive(self) -> None:
         class FakePlayer:
-            stats = {"DEX": 14}
+            stats: ClassVar[dict[str, int]] = {"DEX": 14}
 
         assert FiveESystem().stat_value_for_check("Acrobatics", FakePlayer()) == 14
 
     def test_stat_value_for_check_skill_defaults_to_10(self) -> None:
         class FakePlayer:
-            stats = {"STR": 12}
+            stats: ClassVar[dict[str, int]] = {"STR": 12}
 
         assert FiveESystem().stat_value_for_check("acrobatics", FakePlayer()) == 10
 
     def test_stat_value_for_check_falls_back_to_stats(self) -> None:
         class FakePlayer:
-            stats = {"STR": 12}
+            stats: ClassVar[dict[str, int]] = {"STR": 12}
 
         s = FiveESystem()
         assert s.stat_value_for_check("STR", FakePlayer()) == 12
@@ -422,7 +422,7 @@ class TestFiveESkills:
 
     def test_skill_modifier_proficient(self) -> None:
         class FakePlayer:
-            skill_proficiencies = ["acrobatics", "Stealth"]
+            skill_proficiencies: ClassVar[list[str]] = ["acrobatics", "Stealth"]
             proficiency_bonus = 3
 
         s = FiveESystem()
@@ -432,21 +432,21 @@ class TestFiveESkills:
 
     def test_skill_modifier_default_prof_bonus(self) -> None:
         class FakePlayer:
-            skill_proficiencies = ["acrobatics"]
+            skill_proficiencies: ClassVar[list[str]] = ["acrobatics"]
             proficiency_bonus = None
 
         assert FiveESystem().skill_modifier("acrobatics", FakePlayer()) == 2
 
     def test_skill_modifier_ignores_non_skills(self) -> None:
         class FakePlayer:
-            skill_proficiencies = ["acrobatics"]
+            skill_proficiencies: ClassVar[list[str]] = ["acrobatics"]
             proficiency_bonus = 3
 
         assert FiveESystem().skill_modifier("STR", FakePlayer()) == 0
 
     def test_proficiency_bonus_applies_to_skill_check(self) -> None:
         class FakePlayer:
-            skill_proficiencies = ["acrobatics"]
+            skill_proficiencies: ClassVar[list[str]] = ["acrobatics"]
             proficiency_bonus = 3
 
         check = StatCheck(stat="acrobatics", target=13, repeatable=True)
@@ -454,7 +454,7 @@ class TestFiveESkills:
 
     def test_proficiency_bonus_skill_not_proficient(self) -> None:
         class FakePlayer:
-            skill_proficiencies = []
+            skill_proficiencies: ClassVar[list[str]] = []
             proficiency_bonus = 3
 
         check = StatCheck(stat="acrobatics", target=13, repeatable=True)
@@ -462,8 +462,8 @@ class TestFiveESkills:
 
     def test_proficiency_bonus_save_branch_unaffected(self) -> None:
         class FakePlayer:
-            save_proficiencies = ["CON"]
-            skill_proficiencies = ["acrobatics"]
+            save_proficiencies: ClassVar[list[str]] = ["CON"]
+            skill_proficiencies: ClassVar[list[str]] = ["acrobatics"]
             proficiency_bonus = 3
 
         check = StatCheck(stat="CON", target=10, save=True, repeatable=True)
@@ -1057,7 +1057,7 @@ class TestCloseCombatDisadvantage:
         Disadvantage even while engaged (melee-touch abilities stay safe;
         a per-ability opt-in flag is future work)."""
         from mgmai.engine.combat import resolve_combat_turn
-        from mgmai.models.actions import CombatAction, UseAbilityAction
+        from mgmai.models.actions import UseAbilityAction
 
         corpus = _pos_corpus()
         hard = _pos_hard()

@@ -19,11 +19,10 @@
 import json
 from pathlib import Path
 
-
 from mgmai.engine.post_validate import (
-    post_validate_knowledge_tags,
-    post_validate_attitude_changes,
     apply_post_validation,
+    post_validate_attitude_changes,
+    post_validate_knowledge_tags,
 )
 from mgmai.models.actions import EngineResult, HardStateChanges
 from mgmai.models.narration import AttitudeChange
@@ -148,7 +147,7 @@ class TestPostValidateAttitudeChanges:
         changes = {
             "korbar": AttitudeChange(old_value=5, new_value=7, reason="Test")
         }
-        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, _hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
         assert "mismatch" in rejected["korbar"]["reason"]
@@ -161,7 +160,7 @@ class TestPostValidateAttitudeChanges:
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=10, reason="Big jump")
         }
-        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, _hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
         assert "step_per_turn" in rejected["korbar"]["reason"]
@@ -174,7 +173,7 @@ class TestPostValidateAttitudeChanges:
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=100, reason="OOB")
         }
-        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, _hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
 
@@ -187,7 +186,7 @@ class TestPostValidateAttitudeChanges:
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=1, reason="Dead NPC")
         }
-        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, _hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
 
@@ -199,7 +198,7 @@ class TestPostValidateAttitudeChanges:
         changes = {
             "korbar": AttitudeChange(old_value=0, new_value=1, reason="")
         }
-        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, _hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "korbar" not in applied
         assert "korbar" in rejected
 
@@ -211,7 +210,7 @@ class TestPostValidateAttitudeChanges:
         changes = {
             "spider": AttitudeChange(old_value=-5, new_value=-4, reason="Feed spider")
         }
-        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, _hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "spider" not in applied
         assert "spider" in rejected
         assert "step_per_turn is 0" in rejected["spider"]["reason"]
@@ -223,7 +222,7 @@ class TestPostValidateAttitudeChanges:
         changes = {
             "nonexistent": AttitudeChange(old_value=0, new_value=1, reason="Test")
         }
-        applied, rejected, hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
+        applied, rejected, _hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
         assert "nonexistent" not in applied
         assert "nonexistent" in rejected
 
@@ -237,7 +236,7 @@ class TestPostValidateAttitudeChanges:
         }
         prior = HardStateChanges()
         prior.entity_state_changes["korbar"] = {"attitude": 1}
-        applied, rejected, hard_changes = post_validate_attitude_changes(
+        applied, rejected, _hard_changes = post_validate_attitude_changes(
             changes, hard, soft, corpus, prior_changes=prior
         )
         assert "korbar" not in applied
@@ -254,7 +253,7 @@ class TestPostValidateAttitudeChanges:
         }
         prior = HardStateChanges()
         prior.entity_state_changes["korbar"] = {"following": True}
-        applied, rejected, hard_changes = post_validate_attitude_changes(
+        applied, rejected, _hard_changes = post_validate_attitude_changes(
             changes, hard, soft, corpus, prior_changes=prior
         )
         assert "korbar" in applied

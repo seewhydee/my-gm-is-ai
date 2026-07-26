@@ -26,6 +26,13 @@ from __future__ import annotations
 import random
 from typing import Any
 
+from mgmai.engine.status_effects import (
+    apply_status_effect,
+    emit_status_effect_event,
+    remove_status_effect,
+)
+from mgmai.engine.systems import get_system, get_system_for_corpus
+from mgmai.engine.utils import get_following_npc_ids, get_status_effects
 from mgmai.models.actions import (
     CombatAction,
     HardStateChanges,
@@ -38,14 +45,6 @@ from mgmai.models.combat import CombatLogEntry, CombatState
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
-from mgmai.engine.utils import get_status_effects, get_following_npc_ids
-from mgmai.engine.status_effects import (
-    apply_status_effect,
-    emit_status_effect_event,
-    remove_status_effect,
-)
-from mgmai.engine.systems import get_system, get_system_for_corpus
-
 
 # ------------------------------------------------------------------
 # Damage dice parsing & rolling
@@ -97,7 +96,7 @@ def compute_effective_stats(
         entity = corpus.entities.get(item_id)
         if entity is None or entity.equip_block is None:
             continue
-        for stat_key, mod in entity.equip_block.stat_effects.items():
+        for mod in entity.equip_block.stat_effects.values():
             if mod.mode == "set":
                 effective[mod.stat] = mod.value
             elif mod.mode == "delta" and mod.stat in effective:
@@ -224,7 +223,7 @@ def _resolve_npc_on_hits(
     *hard_changes.player_hp_delta*. Returns ``(on_hit_log_entries,
     death_log_entries, game_over)``.
     """
-    from mgmai.engine.resolver import _resolve_checkable, ResolutionResult
+    from mgmai.engine.resolver import ResolutionResult, _resolve_checkable
 
     entity = corpus.entities.get(npc_id)
     if entity is None or entity.combat is None:
@@ -367,9 +366,7 @@ def _living_opponents(
     for cid in combat.combatants:
         if cid == actor_id or _same_side(actor_side, _side_of(combat, cid)):
             continue
-        if cid == "player":
-            opponents.append(cid)
-        elif (hard.entity_states.get(cid, {}).get("current_hp") or 0) > 0:
+        if cid == "player" or (hard.entity_states.get(cid, {}).get("current_hp") or 0) > 0:
             opponents.append(cid)
     return opponents
 

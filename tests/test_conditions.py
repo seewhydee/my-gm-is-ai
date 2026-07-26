@@ -21,9 +21,9 @@ import pytest
 from mgmai.engine.conditions import (
     evaluate,
     evaluate_condition_string,
-    parse_condition_string,
     evaluate_require,
     get_condition_detail,
+    parse_condition_string,
 )
 from mgmai.models.corpus import ConditionExpression, ModuleCorpus
 from mgmai.models.hard_state import HardGameState

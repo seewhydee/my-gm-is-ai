@@ -46,10 +46,12 @@ class TestCliArguments:
     def test_missing_api_key(self, monkeypatch, capsys) -> None:
         monkeypatch.delenv("MGMAI_API_KEY", raising=False)
         monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
-        with patch("mgmai.cli.load_credentials", return_value=Credentials()):
-            with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
-                with pytest.raises(SystemExit) as exc_info:
-                    main([str(MINI_ADVENTURE)])
+        with (
+            patch("mgmai.cli.load_credentials", return_value=Credentials()),
+            patch("mgmai.cli.load_app_config", return_value=AppConfig()),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main([str(MINI_ADVENTURE)])
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "MGMAI_API_KEY" in captured.out
@@ -88,14 +90,16 @@ class TestCliPrompting:
         monkeypatch.setattr("getpass.getpass", lambda _prompt="": next(pass_iter))
 
         mock_loop = MagicMock()
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop):
-            with patch("mgmai.cli.LLMClient") as mock_llm_cls:
-                with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
-                    with patch("mgmai.cli.load_credentials", return_value=Credentials()):
-                        with patch("mgmai.cli.load_custom_models", return_value={}):
-                            with patch("mgmai.cli.save_app_config"):
-                                with patch("mgmai.cli.save_credentials"):
-                                    main(cli_args)
+        with (
+            patch("mgmai.cli.GameLoop", return_value=mock_loop),
+            patch("mgmai.cli.LLMClient") as mock_llm_cls,
+            patch("mgmai.cli.load_app_config", return_value=AppConfig()),
+            patch("mgmai.cli.load_credentials", return_value=Credentials()),
+            patch("mgmai.cli.load_custom_models", return_value={}),
+            patch("mgmai.cli.save_app_config"),
+            patch("mgmai.cli.save_credentials"),
+        ):
+            main(cli_args)
         return mock_llm_cls
 
     def test_prompts_for_api_key_when_model_known(self, monkeypatch) -> None:
@@ -141,10 +145,12 @@ class TestCliPrompting:
         monkeypatch.delenv("MGMAI_BASE_URL", raising=False)
         monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
 
-        with patch("mgmai.cli.load_app_config", return_value=AppConfig()):
-            with patch("mgmai.cli.load_credentials", return_value=Credentials()):
-                with pytest.raises(SystemExit) as exc_info:
-                    main([str(MINI_ADVENTURE), "--model", "unknown-model"])
+        with (
+            patch("mgmai.cli.load_app_config", return_value=AppConfig()),
+            patch("mgmai.cli.load_credentials", return_value=Credentials()),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main([str(MINI_ADVENTURE), "--model", "unknown-model"])
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
@@ -158,9 +164,11 @@ class TestCliBoot:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
         mock_loop = MagicMock()
 
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop):
-            with patch("mgmai.cli.LLMClient"):
-                main([str(MINI_ADVENTURE)])
+        with (
+            patch("mgmai.cli.GameLoop", return_value=mock_loop),
+            patch("mgmai.cli.LLMClient"),
+        ):
+            main([str(MINI_ADVENTURE)])
 
         mock_loop.start.assert_called_once()
 
@@ -178,9 +186,11 @@ class TestCliBoot:
         )
         mock_loop = MagicMock()
 
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop):
-            with patch("mgmai.cli.LLMClient"):
-                main([str(MINI_ADVENTURE), "--load", str(save_file)])
+        with (
+            patch("mgmai.cli.GameLoop", return_value=mock_loop),
+            patch("mgmai.cli.LLMClient"),
+        ):
+            main([str(MINI_ADVENTURE), "--load", str(save_file)])
 
         mock_loop.start.assert_called_once()
 
@@ -188,9 +198,11 @@ class TestCliBoot:
         monkeypatch.delenv("MGMAI_API_KEY", raising=False)
         mock_loop = MagicMock()
 
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop):
-            with patch("mgmai.cli.LLMClient") as mock_llm_cls:
-                main([str(MINI_ADVENTURE), "--api-key", "arg-key"])
+        with (
+            patch("mgmai.cli.GameLoop", return_value=mock_loop),
+            patch("mgmai.cli.LLMClient") as mock_llm_cls,
+        ):
+            main([str(MINI_ADVENTURE), "--api-key", "arg-key"])
 
         mock_llm_cls.assert_called_once()
         _, kwargs = mock_llm_cls.call_args
@@ -201,13 +213,15 @@ class TestCliBoot:
         monkeypatch.delenv("MGMAI_BASE_URL", raising=False)
         mock_loop = MagicMock()
 
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop):
-            with patch("mgmai.cli.LLMClient") as mock_llm_cls:
-                main([
-                    str(MINI_ADVENTURE),
-                    "--model", "gpt-4o",
-                    "--base-url", "https://example.com",
-                ])
+        with (
+            patch("mgmai.cli.GameLoop", return_value=mock_loop),
+            patch("mgmai.cli.LLMClient") as mock_llm_cls,
+        ):
+            main([
+                str(MINI_ADVENTURE),
+                "--model", "gpt-4o",
+                "--base-url", "https://example.com",
+            ])
 
         _, kwargs = mock_llm_cls.call_args
         assert kwargs["config"].name == "gpt-4o"
@@ -217,9 +231,11 @@ class TestCliBoot:
         monkeypatch.delenv("MGMAI_BASE_URL", raising=False)
         mock_loop = MagicMock()
 
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop):
-            with patch("mgmai.cli.LLMClient") as mock_llm_cls:
-                main([str(MINI_ADVENTURE), "--base-url", "https://example.com"])
+        with (
+            patch("mgmai.cli.GameLoop", return_value=mock_loop),
+            patch("mgmai.cli.LLMClient") as mock_llm_cls,
+        ):
+            main([str(MINI_ADVENTURE), "--base-url", "https://example.com"])
 
         _, kwargs = mock_llm_cls.call_args
         assert kwargs["config"].base_url == "https://example.com"
@@ -233,9 +249,11 @@ class TestCliBoot:
         monkeypatch.setenv("MGMAI_API_KEY", "fake-key")
         mock_loop = MagicMock()
 
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
-            with patch("mgmai.cli.LLMClient"):
-                main([str(MINI_ADVENTURE)] + cli_flags)
+        with (
+            patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls,
+            patch("mgmai.cli.LLMClient"),
+        ):
+            main([str(MINI_ADVENTURE)] + cli_flags)
 
         _, kwargs = mock_loop_cls.call_args
         assert kwargs["debug"] is expect_debug
@@ -254,11 +272,13 @@ class TestCliBoot:
             def start(self):
                 pass
 
-        with patch("mgmai.cli.GameLoop", SpyGameLoop):
-            with patch("mgmai.cli.LLMClient"):
-                with patch("mgmai.cli.save_app_config"):
-                    with patch("mgmai.cli.save_credentials"):
-                        main([str(MINI_ADVENTURE)])
+        with (
+            patch("mgmai.cli.GameLoop", SpyGameLoop),
+            patch("mgmai.cli.LLMClient"),
+            patch("mgmai.cli.save_app_config"),
+            patch("mgmai.cli.save_credentials"),
+        ):
+            main([str(MINI_ADVENTURE)])
 
         sm = captured_state["manager"]
         assert sm.corpus is not None
@@ -292,9 +312,11 @@ class TestCharSheetCli:
             }
         })
 
-        with patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls:
-            with patch("mgmai.cli.LLMClient"):
-                main([str(MINI_ADVENTURE), "--char-sheet", str(sheet)])
+        with (
+            patch("mgmai.cli.GameLoop", return_value=mock_loop) as mock_loop_cls,
+            patch("mgmai.cli.LLMClient"),
+        ):
+            main([str(MINI_ADVENTURE), "--char-sheet", str(sheet)])
 
         mock_loop.start.assert_called_once()
         args, _ = mock_loop_cls.call_args

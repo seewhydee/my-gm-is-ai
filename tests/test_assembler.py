@@ -20,11 +20,11 @@
 import pytest
 
 from mgmai.context.assembler import assemble
+from mgmai.engine.utils import build_contains
 from mgmai.models.briefing import (
     BriefingEntity,
     GMBriefing,
 )
-from mgmai.engine.utils import build_contains
 from mgmai.models.soft_state import (
     ConversationLogEntry,
     DialogueState,
@@ -566,12 +566,12 @@ class TestPlayerState:
 
     def test_combat_stats_serialize_weapon_proficiency_clause(self):
         """Clauses are serialized to dicts for the LLM-facing briefing."""
+        from mgmai.models.hard_state import WeaponProfClause
         from tests.helpers import (
             build_state_manager,
             make_char_sheet_corpus,
             make_char_sheet_state,
         )
-        from mgmai.models.hard_state import WeaponProfClause
 
         manager = build_state_manager(
             make_char_sheet_corpus(), hard_state=make_char_sheet_state()

@@ -25,13 +25,16 @@ the artifact (it does not gate the test).
 
 from __future__ import annotations
 
-
 import warnings
 
 import pytest
 
-from tests.integration.judge import judge_scenario, format_verdict_for_failure, JudgeError
-from tests.integration.runner import run_scenario, ScenarioResult
+from tests.integration.judge import (
+    JudgeError,
+    format_verdict_for_failure,
+    judge_scenario,
+)
+from tests.integration.runner import ScenarioResult, run_scenario
 
 pytestmark = pytest.mark.llm
 

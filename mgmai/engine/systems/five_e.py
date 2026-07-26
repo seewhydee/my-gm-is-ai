@@ -26,7 +26,7 @@ system interface so the engine is system-agnostic.
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from mgmai.engine.systems.base import (
     CheckResult,
@@ -68,7 +68,7 @@ class FiveESystem(ResolutionSystem):
     #: ability score.  A stat check naming a skill uses the player's score in
     #: the governing ability, plus the proficiency bonus when the player is
     #: proficient in the skill (``player_state.skill_proficiencies``).
-    SKILL_ABILITIES = {
+    SKILL_ABILITIES: ClassVar[dict[str, str]] = {
         "acrobatics": "DEX",
         "animal handling": "WIS",
         "arcana": "INT",
@@ -235,7 +235,7 @@ class FiveESystem(ResolutionSystem):
 
     def _equipped_weapon(
         self, hard: HardGameState, corpus: ModuleCorpus
-    ) -> "tuple[str, EquipBlock] | None":
+    ) -> tuple[str, EquipBlock] | None:
         """Return ``(item_id, EquipBlock)`` of the first equipped weapon,
         else ``None``."""
         for item_id in hard.player.equipped:
@@ -250,7 +250,7 @@ class FiveESystem(ResolutionSystem):
 
     def _equipped_weapon_block(
         self, hard: HardGameState, corpus: ModuleCorpus
-    ) -> "EquipBlock | None":
+    ) -> EquipBlock | None:
         """Return the EquipBlock of the first equipped weapon, else None."""
         equipped = self._equipped_weapon(hard, corpus)
         return equipped[1] if equipped is not None else None
@@ -658,7 +658,7 @@ class FiveESystem(ResolutionSystem):
         target_id: str,
         target_ac: int,
         round_number: int,
-        attack: "NPCAttackDef | None" = None,
+        attack: NPCAttackDef | None = None,
         player_hp_pending: int = 0,
     ) -> NPCAttackResult:
         """Resolve an NPC attack against a combatant (player or NPC).
@@ -849,8 +849,7 @@ class FiveESystem(ResolutionSystem):
             entity = corpus.entities.get(item_id)
             if entity and entity.equip_block:
                 override_val = getattr(entity.equip_block, "ac_override", None)
-                if override_val is not None:
-                    if ac_override is None or override_val > ac_override:
+                if override_val is not None and (ac_override is None or override_val > ac_override):
                         ac_override = override_val
 
         effective_ac = ac_override if ac_override is not None else base_ac

@@ -15,8 +15,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import Dict, List, Literal, Optional
+
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
 
 class AttitudeChange(BaseModel):
     old_value: int
@@ -28,18 +31,18 @@ class SoftItemAdjudication(BaseModel):
     action: Literal["take", "give", "examine"]
     accepted: bool
     source_id: str
-    target_id: Optional[str] = None
+    target_id: str | None = None
     count: int = 1
-    justification: Optional[str] = None
+    justification: str | None = None
 
 class KnowledgeTags(BaseModel):
-    npc_revealed: Optional[Dict[str, List[str]]] = None
+    npc_revealed: dict[str, list[str]] | None = None
 
 class NarrationOutput(BaseModel):
     narration: str
-    npc_response: Optional[str] = None
-    knowledge_tags: Optional[KnowledgeTags] = None
-    attitude_changes: Optional[Dict[str, AttitudeChange]] = None
-    conversation_note: Optional[str] = None
+    npc_response: str | None = None
+    knowledge_tags: KnowledgeTags | None = None
+    attitude_changes: dict[str, AttitudeChange] | None = None
+    conversation_note: str | None = None
     terminate_chain: bool = False
-    soft_item_adjudications: List[SoftItemAdjudication] = Field(default_factory=list)
+    soft_item_adjudications: list[SoftItemAdjudication] = Field(default_factory=list)

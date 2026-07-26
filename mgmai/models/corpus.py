@@ -15,8 +15,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+
+from typing import Any, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 from mgmai.datapack import load_pack
 
@@ -63,7 +72,7 @@ RESERVED_ENTITY_STATE_FIELD_DEFAULTS: dict[str, Any] = {
 
 
 def reserved_entity_field_default(
-    field_name: str, entity: "Entity | None" = None
+    field_name: str, entity: Entity | None = None
 ) -> Any:
     """Default value of a reserved entity state field.
 
@@ -80,16 +89,16 @@ def reserved_entity_field_default(
 
 # A flags_declared entry is either a plain string (starts false) or a
 # single-key dict mapping a flag id to its initial boolean value.
-FlagDecl = Union[str, Dict[str, bool]]
+FlagDecl = str | dict[str, bool]
 
 
-def _normalize_contains(contains: List[Union[str, Dict[str, int]]]) -> Dict[str, int]:
+def _normalize_contains(contains: list[str | dict[str, int]]) -> dict[str, int]:
     """Normalise a mixed-type contains list into a {entity_id: count} map.
 
     Plain strings count as 1. Dict elements must be single-key count objects.
     Duplicate IDs have their counts summed.
     """
-    result: Dict[str, int] = {}
+    result: dict[str, int] = {}
     for entry in contains:
         if isinstance(entry, str):
             result[entry] = result.get(entry, 0) + 1
@@ -105,16 +114,16 @@ def _normalize_contains(contains: List[Union[str, Dict[str, int]]]) -> Dict[str,
                     )
                 result[eid] = result.get(eid, 0) + count
         else:
-            raise ValueError(
+            raise ValueError(  # noqa: TRY004
                 "Each entry in 'contains' must be a string or a single-key count-object"
             )
     return result
 
 
 class Credits(BaseModel):
-    author: Optional[str] = None
-    source: Optional[str] = None
-    license: Optional[str] = None
+    author: str | None = None
+    source: str | None = None
+    license: str | None = None
 
 
 class Atmosphere(BaseModel):
@@ -123,20 +132,20 @@ class Atmosphere(BaseModel):
 
 
 class Adventure(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     title: str
-    credits: Optional[Credits] = None
+    credits: Credits | None = None
     introduction: str
-    atmosphere: Optional[Atmosphere] = None
+    atmosphere: Atmosphere | None = None
 
 
 class ConditionExpression(BaseModel):
-    require: Optional[str] = None
-    unless: Optional[str] = None
-    any_of: Optional[List[Union[str, ConditionExpression]]] = Field(
+    require: str | None = None
+    unless: str | None = None
+    any_of: list[str | ConditionExpression] | None = Field(
         default=None, alias="any"
     )
-    all_of: Optional[List[Union[str, ConditionExpression]]] = Field(
+    all_of: list[str | ConditionExpression] | None = Field(
         default=None, alias="all"
     )
 
@@ -198,8 +207,8 @@ class StatusEffectDef(BaseModel):
     scope: Literal["combat", "persistent"] = "combat"
     duration: Literal["rounds", "until_cleared", "until_turn_start"] = "rounds"
     skip_turn: bool = False
-    tick_effect: Optional[Result] = None
-    system_effects: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    tick_effect: Result | None = None
+    system_effects: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class EquipBlock(BaseModel):
@@ -216,7 +225,7 @@ class EquipBlock(BaseModel):
 
     equip_tags: list[str]
     incompatible_with: list[str] = Field(default_factory=list)
-    stat_effects: Dict[str, StatModifier] = Field(default_factory=dict)
+    stat_effects: dict[str, StatModifier] = Field(default_factory=dict)
     max_equipped: int | None = 1
     damage_expr: str = "1d8"
     hit_bonus: int = 0
@@ -251,25 +260,25 @@ class EquipBlock(BaseModel):
 
 
 class Result(BaseModel):
-    narrative: Optional[str] = None
-    add_item: Optional[List[str]] = None
-    add_item_count: Optional[Dict[str, int]] = None
-    remove_item: Optional[List[str]] = None
-    remove_item_count: Optional[Dict[str, int]] = None
-    set_flag: Optional[Dict[str, bool]] = None
-    alter_stat: Optional[Dict[str, StatModifier]] = None
-    set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
-    set_room_state: Optional[Dict[str, Dict[str, Any]]] = None
-    adjust_attitude: Optional[Dict[str, int]] = None
-    reveals: Optional[str] = None
-    apply_status_effect: Optional[ApplyStatusEffect] = None
-    cure_status_effects: Optional[List[str]] = None
-    then_check: Optional[CheckResolution] = None
-    player_damage: Optional[str] = None
-    player_heal: Optional[str] = None
-    set_player_location: Optional[str] = None
-    game_over: Optional[GameOverTrigger] = None
-    start_combat: Optional[List[str]] = None
+    narrative: str | None = None
+    add_item: list[str] | None = None
+    add_item_count: dict[str, int] | None = None
+    remove_item: list[str] | None = None
+    remove_item_count: dict[str, int] | None = None
+    set_flag: dict[str, bool] | None = None
+    alter_stat: dict[str, StatModifier] | None = None
+    set_entity_state: dict[str, dict[str, Any]] | None = None
+    set_room_state: dict[str, dict[str, Any]] | None = None
+    adjust_attitude: dict[str, int] | None = None
+    reveals: str | None = None
+    apply_status_effect: ApplyStatusEffect | None = None
+    cure_status_effects: list[str] | None = None
+    then_check: CheckResolution | None = None
+    player_damage: str | None = None
+    player_heal: str | None = None
+    set_player_location: str | None = None
+    game_over: GameOverTrigger | None = None
+    start_combat: list[str] | None = None
 
     def has_any_effect(self) -> bool:
         return any(
@@ -312,10 +321,10 @@ class Checkable(BaseModel):
     (condition, result, gating, using_results, id, rigorous_only, ...)
     and validators that tighten optionality per their semantics.
     """
-    skip_check_if: Optional[ConditionExpression] = None
-    check: Optional[CheckType] = None
-    success: Optional[Result] = None
-    failure: Optional[Result] = None
+    skip_check_if: ConditionExpression | None = None
+    check: CheckType | None = None
+    success: Result | None = None
+    failure: Result | None = None
 
 
 class CheckResolution(Checkable):
@@ -328,10 +337,10 @@ class CheckResolution(Checkable):
     """
     check: CheckType
     success: Result
-    tag: Optional[str] = None
+    tag: str | None = None
 
     @model_validator(mode="after")
-    def require_check_and_success(self) -> "CheckResolution":
+    def require_check_and_success(self) -> CheckResolution:
         if self.check is None:
             raise ValueError("CheckResolution requires 'check'")
         if self.success is None:
@@ -340,10 +349,10 @@ class CheckResolution(Checkable):
 
 
 class UsingResultOverride(BaseModel):
-    check: Optional[CheckType] = None
-    success: Optional[Result] = None
-    failure: Optional[Result] = None
-    result: Optional[Result] = None
+    check: CheckType | None = None
+    success: Result | None = None
+    failure: Result | None = None
+    result: Result | None = None
 
     @model_validator(mode="after")
     def check_mutually_exclusive(self) -> UsingResultOverride:
@@ -358,8 +367,8 @@ class GatedCheck(Checkable):
     """A check gated by a condition. Used for take checks and traversal checks."""
 
     check: CheckType
-    gating: Optional[ConditionExpression] = None
-    using_results: Optional[Dict[str, UsingResultOverride]] = None
+    gating: ConditionExpression | None = None
+    using_results: dict[str, UsingResultOverride] | None = None
 
 
 class Resolvable(Checkable):
@@ -369,14 +378,14 @@ class Resolvable(Checkable):
     of an NPC's dialogue_paths.  Subclasses tighten optionality per
     their context (e.g. Interaction requires id and description).
     """
-    id: Optional[str] = None
-    description: Optional[str] = None
-    condition: Optional[ConditionExpression] = None
-    result: Optional[Result] = None
-    using_results: Optional[Dict[str, UsingResultOverride]] = None
+    id: str | None = None
+    description: str | None = None
+    condition: ConditionExpression | None = None
+    result: Result | None = None
+    using_results: dict[str, UsingResultOverride] | None = None
 
     @model_validator(mode="after")
-    def check_mutually_exclusive(self) -> "Resolvable":
+    def check_mutually_exclusive(self) -> Resolvable:
         has_check = self.check is not None
         has_result = self.result is not None
         if not has_check and not has_result:
@@ -401,9 +410,9 @@ class Exit(BaseModel):
     id: str
     direction: str
     target_room: str
-    condition: Optional[ConditionExpression] = None
+    condition: ConditionExpression | None = None
     one_way: bool = False
-    traversal_check: Optional[GatedCheck] = None
+    traversal_check: GatedCheck | None = None
 
 
 class OnExamineEvent(Resolvable):
@@ -426,13 +435,13 @@ class GameOverCondition(BaseModel):
     type: Literal["win", "lose"]
     condition: ConditionExpression
     trigger_id: str
-    narrative: Optional[str] = None
+    narrative: str | None = None
 
 
 class ReactionEffects(BaseModel):
-    result: Optional[Result] = None
-    trigger_encounter: Optional[str] = None
-    trigger_dialogue: Optional[str] = None
+    result: Result | None = None
+    trigger_encounter: str | None = None
+    trigger_dialogue: str | None = None
 
     @model_validator(mode="after")
     def check_non_empty(self) -> ReactionEffects:
@@ -449,7 +458,7 @@ class ReactionEffects(BaseModel):
 class Reaction(BaseModel):
     id: str
     on: str
-    condition: Optional[ConditionExpression] = None
+    condition: ConditionExpression | None = None
     effect: ReactionEffects
     once: bool = False
     priority: int = 0
@@ -468,23 +477,23 @@ class Reaction(BaseModel):
 class Room(BaseModel):
     name: str
     description: str
-    contains: List[Union[str, Dict[str, int]]] = Field(default_factory=list)
-    soft_item_guidance: Optional[str] = None
-    exits: List[Exit] = Field(default_factory=list)
-    interactions: List[Interaction] = Field(default_factory=list)
-    on_examine: List[OnExamineEvent] = Field(default_factory=list)
+    contains: list[str | dict[str, int]] = Field(default_factory=list)
+    soft_item_guidance: str | None = None
+    exits: list[Exit] = Field(default_factory=list)
+    interactions: list[Interaction] = Field(default_factory=list)
+    on_examine: list[OnExamineEvent] = Field(default_factory=list)
     is_start_room: bool = False
-    reactions: List[Reaction] = Field(default_factory=list)
-    state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
-    _contains_map: Dict[str, int] = PrivateAttr(default_factory=dict)
+    reactions: list[Reaction] = Field(default_factory=list)
+    state_fields: dict[str, StateFieldDecl] = Field(default_factory=dict)
+    _contains_map: dict[str, int] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
-    def _build_contains_map(self) -> "Room":
+    def _build_contains_map(self) -> Room:
         self._contains_map = _normalize_contains(self.contains)
         return self
 
     @property
-    def contains_map(self) -> Dict[str, int]:
+    def contains_map(self) -> dict[str, int]:
         """Normalised {entity_id: count} view of ``contains``.
 
         Runtime code must use this property or the runtime maps in
@@ -499,7 +508,7 @@ class StateFieldDecl(BaseModel):
     initial: Any = None
 
     @model_validator(mode="after")
-    def validate_initial_type(self) -> "StateFieldDecl":
+    def validate_initial_type(self) -> StateFieldDecl:
         if self.initial is None:
             return self
         if self.type == "boolean":
@@ -512,8 +521,7 @@ class StateFieldDecl(BaseModel):
                 raise ValueError(
                     f"initial must be a number for type 'number', got {self.initial!r}"
                 )
-        elif self.type == "string":
-            if not isinstance(self.initial, str):
+        elif self.type == "string" and not isinstance(self.initial, str):
                 raise ValueError(
                     f"initial must be a string for type 'string', got {self.initial!r}"
                 )
@@ -528,19 +536,19 @@ class AttitudeLimits(BaseModel):
 
 class WillRevealEntry(BaseModel):
     description: str
-    conditions: List[str] = Field(default_factory=list)
-    set_flag: Optional[Dict[str, bool]] = None
-    set_entity_state: Optional[Dict[str, Dict[str, Any]]] = None
+    conditions: list[str] = Field(default_factory=list)
+    set_flag: dict[str, bool] | None = None
+    set_entity_state: dict[str, dict[str, Any]] | None = None
 
 
 class DialogueGuidelines(BaseModel):
     guidelines: str
     attitude_limits: AttitudeLimits = Field(default_factory=AttitudeLimits)
-    will_reveal: Dict[str, WillRevealEntry] = Field(default_factory=dict)
-    dialogue_paths: Dict[str, Resolvable] = Field(default_factory=dict)
+    will_reveal: dict[str, WillRevealEntry] = Field(default_factory=dict)
+    dialogue_paths: dict[str, Resolvable] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def populate_dialogue_path_ids(self) -> "DialogueGuidelines":
+    def populate_dialogue_path_ids(self) -> DialogueGuidelines:
         for path_id, resolvable in self.dialogue_paths.items():
             resolvable.id = path_id
         return self
@@ -556,13 +564,13 @@ class EncounterRule(Checkable):
     Either branch Result or the rule's ``result`` may carry ``start_combat``
     or ``game_over`` to dispatch combat / game-over to the engine.
     """
-    condition: Optional[ConditionExpression] = None
-    result: Optional[Result] = None
+    condition: ConditionExpression | None = None
+    result: Result | None = None
     # Inherited from Checkable:
     #   skip_check_if, check (CheckType), success (Result), failure (Result)
 
     @model_validator(mode="after")
-    def check_xor_result(self) -> "EncounterRule":
+    def check_xor_result(self) -> EncounterRule:
         has_check = self.check is not None
         has_result = self.result is not None
         if has_check == has_result:
@@ -599,7 +607,7 @@ class AbilitySave(BaseModel):
     damage: str = ""                 # dice expr; "" = no damage
     damage_type: str = ""
     half_on_success: bool = True     # successful save halves damage
-    apply_status_effect_on_failure: Optional[ApplyStatusEffect] = None
+    apply_status_effect_on_failure: ApplyStatusEffect | None = None
 
 
 class AbilityAutoDamage(BaseModel):
@@ -625,15 +633,15 @@ class Ability(BaseModel):
     description: str = ""
     target: Literal["self", "ally", "enemy"]
     uses_per_combat: int = -1
-    attack: Optional[AbilityAttack] = None
-    save: Optional[AbilitySave] = None
+    attack: AbilityAttack | None = None
+    save: AbilitySave | None = None
     heal: str = ""
-    auto_damage: Optional[AbilityAutoDamage] = None
-    on_cast: Optional[ApplyStatusEffect] = None
+    auto_damage: AbilityAutoDamage | None = None
+    on_cast: ApplyStatusEffect | None = None
     # Spell metadata (all default to "not a spell").  ``spell_level``
     # drives slot consumption and DC/attack-bonus derivation in combat;
     # the rest are data/flavor until later spellcasting phases.
-    spell_level: Optional[int] = None
+    spell_level: int | None = None
     school: str = ""
     casting_time: Literal["action", "bonus_action", "reaction", "long"] = "action"
     range: str = ""
@@ -644,10 +652,10 @@ class Ability(BaseModel):
     # Status-effect IDs the spell sustains on its targets while the caster
     # concentrates on it (Sleep -> incapacitated); removed from all
     # combatants when the caster's concentration on this spell ends.
-    sustained_status_effects: List[str] = Field(default_factory=list)
+    sustained_status_effects: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _check_shape(self) -> "Ability":
+    def _check_shape(self) -> Ability:
         kinds = sum([
             self.attack is not None,
             self.save is not None,
@@ -691,37 +699,37 @@ class Ability(BaseModel):
 
 
 class FollowerConfig(BaseModel):
-    blacklist: List[str] = Field(default_factory=list)
+    blacklist: list[str] = Field(default_factory=list)
 
 
 class Entity(BaseModel):
     type: Literal["player", "feature", "npc", "item"]
-    name: Optional[str] = None
+    name: str | None = None
     description: str
-    soft_item_guidance: Optional[str] = None
-    contains: List[Union[str, Dict[str, int]]] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
-    take_check: Optional[GatedCheck] = None
-    interactions: List[Interaction] = Field(default_factory=list)
-    on_examine: List[OnExamineEvent] = Field(default_factory=list)
-    dialogue: Optional[DialogueGuidelines] = None
-    aggro: Optional[List[EncounterRule]] = None
-    state_fields: Dict[str, StateFieldDecl] = Field(default_factory=dict)
-    follower: Optional[FollowerConfig] = None
-    combat: Optional[CombatBlock] = None
-    combat_group: Optional[str] = None
-    equip_block: Optional[EquipBlock] = None
-    max_stack: Optional[int] = None
-    reactions: List[Reaction] = Field(default_factory=list)
-    _contains_map: Dict[str, int] = PrivateAttr(default_factory=dict)
+    soft_item_guidance: str | None = None
+    contains: list[str | dict[str, int]] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    take_check: GatedCheck | None = None
+    interactions: list[Interaction] = Field(default_factory=list)
+    on_examine: list[OnExamineEvent] = Field(default_factory=list)
+    dialogue: DialogueGuidelines | None = None
+    aggro: list[EncounterRule] | None = None
+    state_fields: dict[str, StateFieldDecl] = Field(default_factory=dict)
+    follower: FollowerConfig | None = None
+    combat: CombatBlock | None = None
+    combat_group: str | None = None
+    equip_block: EquipBlock | None = None
+    max_stack: int | None = None
+    reactions: list[Reaction] = Field(default_factory=list)
+    _contains_map: dict[str, int] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
-    def _build_contains_map(self) -> "Entity":
+    def _build_contains_map(self) -> Entity:
         self._contains_map = _normalize_contains(self.contains)
         return self
 
     @property
-    def contains_map(self) -> Dict[str, int]:
+    def contains_map(self) -> dict[str, int]:
         """Normalised {entity_id: count} view of ``contains``.
 
         Runtime code must use this property or the runtime maps in
@@ -781,9 +789,9 @@ class Mechanic(BaseModel):
     use inline ``Result.game_over`` and cross-cutting ones use the top-level
     ``ModuleCorpus.game_over_conditions`` list.
     """
-    condition: Optional[ConditionExpression] = None
-    rules: Optional[List[EncounterRule]] = None
-    reactions: List[Reaction] = Field(default_factory=list)
+    condition: ConditionExpression | None = None
+    rules: list[EncounterRule] | None = None
+    reactions: list[Reaction] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_shape(self) -> Mechanic:
@@ -810,10 +818,10 @@ class CombatAIBlock(BaseModel):
     targeting: Literal["last_attacker", "player", "lowest_hp", "random"] = (
         "last_attacker"
     )
-    flee_below_hp_pct: Optional[int] = Field(default=None, ge=1, le=99)
+    flee_below_hp_pct: int | None = Field(default=None, ge=1, le=99)
     passive: bool = False
     # Per-ability usage rules, keyed by ability id (see CombatBlock.abilities).
-    ability_rules: dict[str, "AbilityAIRule"] = Field(default_factory=dict)
+    ability_rules: dict[str, AbilityAIRule] = Field(default_factory=dict)
 
 
 class AbilityAIRule(BaseModel):
@@ -824,7 +832,7 @@ class AbilityAIRule(BaseModel):
     NPC is below the given HP percentage.
     """
     cooldown_rounds: int = Field(default=0, ge=0)
-    use_below_own_hp_pct: Optional[int] = Field(default=None, ge=1, le=100)
+    use_below_own_hp_pct: int | None = Field(default=None, ge=1, le=100)
 
 
 def _validate_combat_safe_effects(
@@ -876,7 +884,7 @@ class NPCAttackDef(BaseModel):
     "slashes with its claws"); it defaults to ``id``.
     """
     id: str
-    name: Optional[str] = None
+    name: str | None = None
     atk: int
     dmg: str = "1d6"
     dmg_type: str = ""
@@ -884,7 +892,7 @@ class NPCAttackDef(BaseModel):
     on_hit_effects: list[CheckResolution] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_on_hit_effects(self) -> "NPCAttackDef":
+    def _validate_on_hit_effects(self) -> NPCAttackDef:
         _validate_combat_safe_effects(self.on_hit_effects, "on_hit_effects")
         return self
 
@@ -902,7 +910,7 @@ class CombatBlock(BaseModel):
     """
     hp: int = Field(gt=0)
     ac: int
-    atk: Optional[int] = None
+    atk: int | None = None
     dmg: str = "1d6"
     dmg_type: str = ""
     ranged: bool = False
@@ -916,15 +924,15 @@ class CombatBlock(BaseModel):
     abilities: list[str] = Field(default_factory=list)
     save_bonus: int = 0
     on_hit_effects: list[CheckResolution] = Field(default_factory=list)
-    ai: Optional[CombatAIBlock] = None
+    ai: CombatAIBlock | None = None
 
     @model_validator(mode="after")
-    def _validate_on_hit_effects(self) -> "CombatBlock":
+    def _validate_on_hit_effects(self) -> CombatBlock:
         _validate_combat_safe_effects(self.on_hit_effects, "on_hit_effects")
         return self
 
     @model_validator(mode="after")
-    def _validate_attacks(self) -> "CombatBlock":
+    def _validate_attacks(self) -> CombatBlock:
         if self.attacks:
             if self.on_hit_effects:
                 raise ValueError(
@@ -951,22 +959,22 @@ class CombatBlock(BaseModel):
 
 
 class StatsBlock(BaseModel):
-    definitions: Dict[str, StatDefinition]
+    definitions: dict[str, StatDefinition]
     system: str = "5e"
 
 
 class ModuleCorpus(BaseModel):
     adventure: Adventure
-    rooms: Dict[str, Room]
-    entities: Dict[str, Entity]
-    mechanics: Dict[str, Mechanic] = Field(default_factory=dict)
-    game_over_conditions: List[GameOverCondition] = Field(default_factory=list)
-    flags_declared: Optional[List[FlagDecl]] = None
-    stats: Optional[StatsBlock] = None
-    abilities: Dict[str, Ability] = Field(default_factory=dict)
-    status_effects: Dict[str, StatusEffectDef] = Field(default_factory=dict)
+    rooms: dict[str, Room]
+    entities: dict[str, Entity]
+    mechanics: dict[str, Mechanic] = Field(default_factory=dict)
+    game_over_conditions: list[GameOverCondition] = Field(default_factory=list)
+    flags_declared: list[FlagDecl] | None = None
+    stats: StatsBlock | None = None
+    abilities: dict[str, Ability] = Field(default_factory=dict)
+    status_effects: dict[str, StatusEffectDef] = Field(default_factory=dict)
 
-    def effective_status_effects(self) -> Dict[str, StatusEffectDef]:
+    def effective_status_effects(self) -> dict[str, StatusEffectDef]:
         """Built-in default status effects overlaid by the corpus block.
 
         A corpus entry replaces the built-in default of the same ID
@@ -974,7 +982,7 @@ class ModuleCorpus(BaseModel):
         """
         return {**DEFAULT_STATUS_EFFECTS, **self.status_effects}
 
-    def effective_gear(self) -> Dict[str, "Entity"]:
+    def effective_gear(self) -> dict[str, Entity]:
         """The full gear catalog: SRD data-pack items overlaid by corpus
         item entities.
 
@@ -988,7 +996,7 @@ class ModuleCorpus(BaseModel):
                 gear[eid] = entity
         return gear
 
-    def effective_spells(self) -> Dict[str, "Ability"]:
+    def effective_spells(self) -> dict[str, Ability]:
         """The full spell catalog: SRD data-pack spells overlaid by corpus
         spell abilities (abilities with ``spell_level`` set).
 
@@ -1006,10 +1014,10 @@ class ModuleCorpus(BaseModel):
 
     @field_validator("flags_declared", mode="before")
     @classmethod
-    def _validate_flags_declared(cls, v: Any) -> Optional[List[FlagDecl]]:
+    def _validate_flags_declared(cls, v: Any) -> list[FlagDecl] | None:
         if v is None:
             return None
-        result: List[FlagDecl] = []
+        result: list[FlagDecl] = []
         for item in v:
             if isinstance(item, str):
                 result.append(item)
@@ -1020,28 +1028,28 @@ class ModuleCorpus(BaseModel):
                     )
                 for key, value in item.items():
                     if not isinstance(key, str):
-                        raise ValueError(
+                        raise ValueError(  # noqa: TRY004
                             f"flags_declared dict key must be a string, got {key!r}"
                         )
                     if not isinstance(value, bool):
-                        raise ValueError(
+                        raise ValueError(  # noqa: TRY004
                             f"flags_declared value for '{key}' must be a boolean, "
                             f"got {value!r}"
                         )
                 result.append(item)
             else:
-                raise ValueError(
+                raise ValueError(  # noqa: TRY004
                     f"flags_declared entries must be strings or single-key dicts, "
                     f"got {item!r}"
                 )
         return result
 
     @property
-    def flags_initial(self) -> Dict[str, bool]:
+    def flags_initial(self) -> dict[str, bool]:
         """Canonical {flag_id: initial_value} view of flags_declared."""
         if self.flags_declared is None:
             return {}
-        result: Dict[str, bool] = {}
+        result: dict[str, bool] = {}
         for item in self.flags_declared:
             if isinstance(item, str):
                 result[item] = False
@@ -1058,7 +1066,7 @@ class ModuleCorpus(BaseModel):
 # ``StatusEffectDef.tick_effect`` references ``Result``, whose own forward
 # references only resolve once the module is complete.
 StatusEffectDef.model_rebuild()
-DEFAULT_STATUS_EFFECTS: Dict[str, StatusEffectDef] = {
+DEFAULT_STATUS_EFFECTS: dict[str, StatusEffectDef] = {
     effect_id: StatusEffectDef.model_validate(entry)
     for effect_id, entry in load_pack("5e", "conditions").items()
 }
@@ -1069,7 +1077,7 @@ DEFAULT_STATUS_EFFECTS: Dict[str, StatusEffectDef] = {
 # ``corpus.entities`` at load time (StateManager._materialize_pack_gear);
 # a corpus entity with the same ID replaces the pack template wholesale
 # (see ModuleCorpus.effective_gear).
-DEFAULT_GEAR: Dict[str, Entity] = {
+DEFAULT_GEAR: dict[str, Entity] = {
     gear_id: Entity.model_validate(entry)
     for gear_id, entry in load_pack("5e", "gear").items()
 }
@@ -1083,7 +1091,7 @@ DEFAULT_GEAR: Dict[str, Entity] = {
 # Note: existing test corpora deliberately define abilities named
 # ``fire_bolt``/``cure_wounds`` (tests/test_combat.py); the corpus-wins
 # wholesale semantics keep those fixtures untouched by the pack.
-DEFAULT_SPELLS: Dict[str, Ability] = {
+DEFAULT_SPELLS: dict[str, Ability] = {
     spell_id: Ability.model_validate(entry)
     for spell_id, entry in load_pack("5e", "spells").items()
 }

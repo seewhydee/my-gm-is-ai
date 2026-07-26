@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
-from functools import lru_cache
+from functools import cache
 from importlib import resources
 from typing import Any
 
@@ -47,7 +47,7 @@ _PACK_DIRS = {
 }
 
 
-@lru_cache(maxsize=None)
+@cache
 def load_pack(system_id: str, kind: str) -> dict[str, Any]:
     """Load the raw JSON mapping of pack file ``kind`` for ``system_id``.
 
