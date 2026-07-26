@@ -1241,7 +1241,6 @@ comparisons in conditions (e.g. `inventory:coin >= 30`).
 | `name`         | string     | Display name (required!)     |
 | `take_check`¹  | GatedCheck | Obstacle to taking the item  |
 | `equip_block`¹ | object     | For equipment (see below)    |
-| `interactions`¹ | list[Interaction] | For item-authored interactions (e.g. a potion's `drink`, a scroll's `read`) |
 | `max_stack`¹   | integer    | Stack cap for stackable item |
 
 > ¹ optional
@@ -1263,9 +1262,8 @@ Notes:
 - For a stackable item, `max_stack`, if supplied, should be >= 1 and
   sets the inventory count; if omitted, there is no cap.
 
-- `interactions`, if present, carries item-authored interactions
-  available to the player via the `interact` action.  Each entry is an
-  [Interaction](#interaction), with an `id` and a `result`.  Examples:
+- The `interactions` field of an item, if present, can be used to
+  define how the player uses the item.  Examples:
 
   ```json
   { "id": "drink", "description": "Drink the potion",
@@ -1277,12 +1275,8 @@ Notes:
     "result": { "cure_status_effects": ["poisoned"], "remove_item_count": {"antidote": 1} } }
   ```
 
-  This replaces the former `consumable` block.  The `Result` field
-  `cure_status_effects` lists combat status effect IDs removed on use.
-  `remove_item_count` with the item's own ID consumes one count on use
-  (omit for multi-use items).  The player uses an inventory item by
-  targeting it with `interact`/`drink` (or the item's specific
-  interaction id), in or out of combat.
+  Note that `remove_item_count` with the item's own ID consumes one
+  count on use (omit for multi-use items).
 
 #### Equipment
 
