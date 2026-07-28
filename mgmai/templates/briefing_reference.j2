@@ -1,0 +1,93 @@
+{# My GM is AI — an AI-driven Game Master for tabletop RPG adventures -#}
+{# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com> -#}
+{# Licensed under the GNU GPL v3. -#}
+
+## The GMBriefing Object
+
+The **GMBriefing** is a JSON snapshot of the game state *before* the
+player's action this turn. Convention: fields with empty values (`null`,
+`""`, `[]`, `{}`) are omitted entirely — a missing field always means
+"none", never "unknown".
+
+### Top level
+
+| Field | Meaning |
+|-------|---------|
+| `adventure_title` | Adventure title |
+| `setting`, `tone` | One or two sentences each: the world, and the narrative tone to match |
+| `turn` | Current turn number |
+| `current_room` | The room the player is in (table below) |
+| `player_state` | The player's status (table below) |
+| `player_knowledge_topics` | Facts the player has learned: `{`topic_id`, `description`}` entries. Established facts — never contradict or re-reveal them |
+| `recent_history` | Last few turns: `{`turn`, `summary`, `location_after`}` entries — structured summaries, not verbatim |
+| `dialogue_context` | Present only while a conversation is active (table below) |
+| `revealed_hints` | Hint strings the player has learned or observed (from examinations or interactions). Established facts |
+| `player_input` | The player's verbatim input this turn |
+| `combat_state` | Present only while combat is active (table below) |
+
+### current_room
+
+| Field | Meaning |
+|-------|---------|
+| `id`, `name`, `description` | Room identity and prose description |
+| `entities_visible` | Non-concealed entities present (NPCs, items, features) — table below |
+| `exits_available` | Visible exits: `{`id`, `direction`}` entries |
+| `interactions_available` | The room's *own* interactions: `{`id`, `description`}` entries (entity interactions are listed on each entity) |
+| `room_notes` | Narrative ("soft") notes accumulated about the room |
+| `soft_item_guidance` | GM-only hint about which ambient soft items fit here |
+| `soft_items_taken` | Soft items taken from here, each `"name (taken N)"`; every count is a completed extraction |
+| `soft_items_present` | Soft items the player placed here, each `"name xN"` — they verifiably exist |
+
+Soft items are mundane ambient objects with generic names ("rock",
+"stick") and no entity IDs, unlike "hard" item entities, which have IDs
+and narrative significance.
+
+### current_room.entities_visible[]
+
+| Field | Meaning |
+|-------|---------|
+| `id` | snake_case identifier — use verbatim when referring to the entity |
+| `name` | Display label |
+| `type` | `npc`, `item`, or `feature` (a fixed object that can't be picked up) |
+| `description` | Prose description; match the player's wording against it to find the right `id` |
+| `count` | Stack size for stackable items (usually 1) |
+| `state` | Mutable state fields, e.g. `attitude` for NPCs, `open` for containers |
+| `entity_notes` | Narrative ("soft") notes about the entity |
+| `interactions_available` | The entity's own usable interactions: `{`id`, `description`}` entries |
+| `contains` | Items nested inside (container contents): `{`id`, `name`, `type`, `description`, `count`}` entries. Not listed separately in `entities_visible` — reachable only via this parent entity |
+| `dialogue_paths` | NPCs only: map of dialogue-path ID → natural-language description of the path |
+| `combat_block` | Present on entities that can fight: their combat stats |
+| `soft_item_guidance`, `soft_items_taken`, `soft_items_present` | As for the room, but for soft items contained in this entity |
+
+### player_state
+
+| Field | Meaning |
+|-------|---------|
+| `hard_inventory` | Item ID → count, e.g. `{"coins": 80}` |
+| `soft_inventory` | Soft item names the player carries |
+| `equipped_items` | `{`id`, `name`, `description`, `equip_tags`, `effects_summary`}` entries |
+| `active_flags` | Adventure flags currently true |
+| `entity_notes` | Narrative notes about the player |
+| `player_stats` | Effective (gear-adjusted) stats, e.g. `"STR": {`value`, `modifier`}` |
+| `combat_stats` | When HP is tracked: `current_hp`, `max_hp`, `ac`, `proficiency_bonus`, `skill_proficiencies`, `weapon_proficiencies` |
+| `abilities` | Available/prepared abilities and spells: `{`id`, `name`, `description`, `target`, `uses_remaining`, `effect`, `effect_kind`}` entries; spells add `spell_level`, `slot_level`, `concentration`, `casting_time`, and a derived `save_dc` for save spells. Omitted during combat — use `combat_state.abilities` |
+| `spell_slots` | Spell level → slots remaining (cantrips cost no slot). Omitted during combat — use `combat_state.spell_slots` |
+| `status_effects` | Status effects active on the player: `{`id`, `rounds`, `description`}` entries |
+| `usable_items` | Inventory items with a usable interaction (e.g. a potion's `drink`): `{`id`, `name`, `interactions`}` entries, each interaction being `{`id`, `description`}`. Omitted during combat — use `combat_state.usable_items` |
+
+### combat_state (present only during combat)
+
+| Field | Meaning |
+|-------|---------|
+| `round_number`, `initiative_order`, `current_actor` | Turn order state |
+| `combatants` | Entries with `id`, `name`, `side`, `current_hp`, `max_hp`, `status_effects`, `engaged_with`, `impeded`, `impede_used` — `side` is `"party"` (the player and their allies) or `"enemy"` (hostiles); `engaged_with` lists combatants currently within melee reach; `impeded` means a pending obstacle delay will consume that combatant's next turn; `impede_used` means it has already been impeded this combat |
+| `abilities`, `spell_slots`, `usable_items` | Same shape as in `player_state`, but `abilities[].uses_remaining` tracks per-combat use. During combat these are the authoritative copies |
+
+### dialogue_context (present only during conversation)
+
+| Field | Meaning |
+|-------|---------|
+| `active_npc` | The NPC being talked to: `id`, `name`, `attitude`, `dialogue` |
+| `active_npc.dialogue` | Portrayal guidance: `guidelines` (how the NPC speaks and behaves), `attitude_limits`, `will_reveal` (topics the NPC may reveal), `dialogue_paths` |
+| `recent_exchanges` | Recent verbatim back-and-forth: `{`player`, `npc`}` entries |
+| `topics_discussed`, `revealed_topics` | Topic IDs already covered / already revealed by this NPC |

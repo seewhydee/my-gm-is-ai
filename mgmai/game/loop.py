@@ -460,7 +460,7 @@ class GameLoop:
         from mgmai.templates.renderer import render_ruling
 
         system_prompt = render_ruling()
-        user_prompt = briefing.compact_dump_json(indent=2)
+        user_prompt = briefing.compact_dump_json(indent=None)
         self._positioning_warning = None
 
         raw = self._llm.call_ruling(system_prompt, user_prompt)
@@ -540,8 +540,6 @@ class GameLoop:
         )
 
         user_data = {
-            "setting": briefing.setting,
-            "tone": briefing.tone,
             "briefing": briefing.compact_dump(),
             "player_action": action.model_dump(mode="json"),
             "engine_result": result.model_dump(mode="json"),
@@ -560,7 +558,7 @@ class GameLoop:
         if result.chain_info and result.chain_info.follow_up:
             user_data["chained_action"] = True
 
-        user_prompt = json.dumps(user_data, indent=2)
+        user_prompt = json.dumps(user_data)
 
         raw = self._llm.call_prose(system_prompt, user_prompt)
         log.debug("--- LLM Call 2 raw ---\n%s", raw)

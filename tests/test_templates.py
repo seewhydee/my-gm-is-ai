@@ -29,7 +29,7 @@ class TestRulingTemplate:
 
     def test_contains_required_sections(self) -> None:
         output = render_ruling()
-        assert "Game State Context" in output
+        assert "The GMBriefing Object" in output
         assert "Output Format" in output
         assert "action_type" in output
         assert "move" in output

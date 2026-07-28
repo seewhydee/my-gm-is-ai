@@ -1742,7 +1742,7 @@ class TestBriefingMultiEnemy:
             current_index=0,
             round_number=1,
         )
-        briefing = _build_combat_state(hard, SoftGameState(), combat_npc_corpus)
+        briefing = _build_combat_state(hard, combat_npc_corpus)
         assert briefing is not None
         enemy_ids = {c["id"] for c in briefing.combatants if c["id"] != "player"}
         assert enemy_ids == {"goblin", "goblin2"}
@@ -1765,7 +1765,7 @@ class TestBriefingMultiEnemy:
             current_index=0,
             round_number=1,
         )
-        briefing = _build_combat_state(hard, SoftGameState(), combat_npc_corpus)
+        briefing = _build_combat_state(hard, combat_npc_corpus)
         assert briefing is not None
         by_id = {c["id"]: c for c in briefing.combatants}
         assert by_id["player"]["status_effects"] == [{
@@ -2162,7 +2162,7 @@ class TestPartyCombat:
     def test_briefing_includes_sides(self, party_hard, party_corpus):
         from mgmai.context.assembler import _build_combat_state
         self._combat_state(party_hard)
-        briefing = _build_combat_state(party_hard, SoftGameState(), party_corpus)
+        briefing = _build_combat_state(party_hard, party_corpus)
         assert briefing is not None
         sides = {c["id"]: c["side"] for c in briefing.combatants}
         assert sides == {"player": "party", "companion": "party", "goblin": "enemy"}
@@ -3622,7 +3622,7 @@ class TestAbilities:
         from mgmai.context.assembler import _build_combat_state
         self._combat_state(ability_hard)
         ability_hard.combat.ability_uses["player"] = {"poison_spray": 1}
-        briefing = _build_combat_state(ability_hard, SoftGameState(), ability_corpus)
+        briefing = _build_combat_state(ability_hard, ability_corpus)
         assert briefing is not None
         by_id = {a["id"]: a for a in briefing.abilities}
         assert by_id["fire_bolt"]["uses_remaining"] is None  # unlimited
@@ -3965,7 +3965,7 @@ class TestSpellcasting:
     def test_briefing_lists_spell_fields(self, spell_hard, spell_corpus):
         from mgmai.context.assembler import _build_combat_state
         self._combat_state(spell_hard)
-        briefing = _build_combat_state(spell_hard, SoftGameState(), spell_corpus)
+        briefing = _build_combat_state(spell_hard, spell_corpus)
         assert briefing is not None
         assert briefing.spell_slots == {1: 2}
         by_id = {a["id"]: a for a in briefing.abilities}
@@ -4596,7 +4596,8 @@ class TestOutOfCombatSpellcasting:
         assert by_id["sacred_flame"]["save_dc"] == 13  # 8 + prof 2 + INT mod 3
         assert briefing.status_effects[0]["id"] == "mage_armor"
         # the active Mage Armor is reflected in the effective AC
-        assert briefing.effective_ac == 15
+        assert briefing.combat_stats is not None
+        assert briefing.combat_stats.ac == 15
 
 
 # ------------------------------------------------------------------

@@ -6,12 +6,12 @@ or moving/using generic items found in the game world.  Unlike hard
 state, which is managed rigorously by the engine only, soft state is
 co-managed by the LLM and the engine.
 
-By having the LLM co-manage soft state, we aim for flexibility: e.g.,
+We let the LLM co-manage soft state for flexibility.  For instance,
 the player may interact with items that were narrated as incidental
 detail but weren't modelled in the adventure corpus, or items that
-simply ought to exist based on common sense (e.g., hair on a dog).
-However, there are safeguards against abuse ("I search the leaves and
-pick up a wand of wishing").
+simply ought to exist based on common sense (e.g., hair on a dog).  At
+the same time, we place safeguards against abuse ("I search the leaves
+and pick up a wand of wishing").
 
 The system has two parts: **soft state notes**, and **soft items**.
 
@@ -88,11 +88,15 @@ For the patch format and validation rules,see the
 
 ## Soft Items
 
+Soft items identified by general name only; identically-named soft
+items (e.g. two "rock" entries) are deliberately indistinguishable.
+
 ### Corpus guidance
 
 In the game's corpus, rooms and entities may contain an optional
-`soft_item_guidance` field, containing a freeform string that help the
-LLM know what kinds of generic contents are plausible.
+`soft_item_guidance` field, containing a freeform string that suggests
+what kinds of generic contents are plausible.  This is advisory, *not*
+an authoritative whitelist.
 
 ```json
 {
@@ -104,20 +108,15 @@ LLM know what kinds of generic contents are plausible.
 }
 ```
 
-This is advisory, *not* an authoritative whitelist.
 
-### Soft State
-
-Soft items identified by general name only; identically-named soft
-items (e.g. two "rock" entries) are deliberately indistinguishable.
+### Tracking soft items
 
 Soft items are tracked in three data structures:
 
 - `soft_inventory` lists the soft items carried by the player.
 
 - `soft_items_taken` is an **extraction ledger** specifying the number
-  of soft items taken from various sources (rooms or entities).  Every
-  count is a completed extraction and a clean depletion signal.
+  of soft items taken from various sources (rooms or entities).
 
 - `soft_contents` tracks the **current placement** of soft items the
   player has put in each room or entity.  These lists are incremented
@@ -130,6 +129,13 @@ see the [Soft State schema](../schema/soft-state.md).
 
 ### Examining a Soft Item
 
+When the engine receives an `ExamineAction` whose `target` does not
+match any hard entity or room, it auto-generates a **soft item
+proposal** and passes it to LLM Call 2 for adjudication.  If accepted,
+this examination affects narration only.  (If the examination
+establishes a durable fact the player may return to, LLM Call 1 should
+record it via a `room_note` or `entity_note` patch, as noted above.)
+
 ```
 Player: "I examine the rock."
 
@@ -138,8 +144,9 @@ LLM Call 1 → ExamineAction(target="rock")
 Engine resolver → "rock" is not a hard room/entity
                 → returns ResolutionResult(success=True,
                      soft_item_proposals=[
-                       SoftItemProposal(item_name="rock", action="examine",
-                                        source_id="<current_room>")
+                       SoftItemProposal(item_name="rock", 
+						   action="examine",
+						   source_id="<current_room>")
                      ])
          ↓
 LLM Call 2 → narrates and adjudicates:
@@ -149,14 +156,6 @@ LLM Call 2 → narrates and adjudicates:
 Engine post-validation → records the adjudication for audit;
                          NO soft-state mutation
 ```
-
-Accepted examine adjudications affect narration only — they write no
-soft-item state.  If an examine establishes a durable fact the player
-may return to, LLM Call 1 should record it via a `room_note` or
-`entity_note` patch (see `schema/soft-state.md`).
-
-Because `ExamineAction` does not carry an entity source, examine
-proposals always use the **current room** as `source_id`.
 
 ### Picking Up / Taking a Soft Item
 

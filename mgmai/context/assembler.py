@@ -19,21 +19,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from mgmai.engine.conditions import evaluate
 from mgmai.engine.systems import get_system_for_corpus
-from mgmai.engine.utils import (
-    _is_stackable,
-    build_contains,
-    get_following_npc_ids,
-    inject_following_npcs,
-    is_exit_visible,
-)
+from mgmai.engine.utils import build_briefing_room
 from mgmai.models.briefing import (
-    BriefingEntity,
-    BriefingExit,
     BriefingHistoryEntry,
-    BriefingInteraction,
-    BriefingRoom,
     CombatBriefing,
     DialogueActiveNpc,
     DialogueContext,
@@ -57,20 +46,19 @@ def assemble(corpus: ModuleCorpus,
              player_input: str) -> GMBriefing:
     """Build a GMBriefing from the current corpus + game state."""
     room_id = hard.player.location
-    room = corpus.rooms.get(room_id)
-    if room is None:
+    if room_id not in corpus.rooms:
         raise ValueError(f"Player location '{room_id}' not found in corpus")
 
     atmosphere   = corpus.adventure.atmosphere
     player_stats = _build_player_stats(hard, corpus)
-    combat_state = _build_combat_state(hard, soft, corpus)
+    combat_state = _build_combat_state(hard, corpus)
 
     return GMBriefing(
         adventure_title=corpus.adventure.title,
         setting=atmosphere.setting if atmosphere else "",
         tone=atmosphere.tone if atmosphere else "",
         turn=hard.turn_count,
-        current_room=_build_room(room_id, room, hard, soft, corpus),
+        current_room=build_briefing_room(room_id, hard, soft, corpus),
         player_state=_build_player_state(hard, soft, player_stats, corpus),
         player_knowledge_topics=_build_player_knowledge(soft),
         recent_history=_build_recent_history(soft),
@@ -80,143 +68,6 @@ def assemble(corpus: ModuleCorpus,
         combat_state=combat_state)
 
 
-def _build_interactions(room: object,
-                        room_id: str,
-                        hard: HardGameState,
-                        soft: SoftGameState,
-                        corpus: ModuleCorpus) -> list[BriefingInteraction]:
-    """Interactions available in the room: the room's own plus those of
-    each present, living entity (condition-gated ones filtered)."""
-    interactions_available: list[BriefingInteraction] = []
-    for inter in room.interactions:
-        if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
-            continue
-        interactions_available.append(
-            BriefingInteraction(id=inter.id,
-                                description=inter.description))
-
-    entity_ids: set[str] = set(hard.room_contains.get(room_id, {}))
-    for eid in get_following_npc_ids(hard, corpus):
-        entity_ids.add(eid)
-
-    for eid in sorted(entity_ids):
-        entity = corpus.entities.get(eid)
-        if entity is None:
-            continue
-        entity_state = hard.entity_states.get(eid, {})
-        if entity_state.get("alive") is False:
-            continue
-        for inter in entity.interactions:
-            if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
-                continue
-            interactions_available.append(
-                BriefingInteraction(id=inter.id,
-                                    description=inter.description))
-    return interactions_available
-
-
-def _build_room(room_id: str,
-                room: object,
-                hard: HardGameState,
-                soft: SoftGameState,
-                corpus: ModuleCorpus) -> BriefingRoom:
-
-    from mgmai.models.corpus import Room as CorpusRoom
-    assert isinstance(room, CorpusRoom)
-
-    entities_visible: list[BriefingEntity] = []
-    room_contains = hard.room_contains.get(room_id, {})
-    for eid, count in room_contains.items():
-        if count <= 0:
-            continue
-        entity = corpus.entities.get(eid)
-        if entity is None:
-            continue
-
-        entity_state = hard.entity_states.get(eid, {})
-        if entity_state.get("hidden", False):
-            continue
-        # Hide equipped items; hide inventory items only when non-stackable.
-        if entity.type == "item":
-            if eid in hard.player.equipped:
-                continue
-            if eid in hard.player.inventory and not _is_stackable(eid, corpus):
-                continue
-
-        notes = soft.entity_notes.get(eid, [])
-        entity_soft_items_taken = [
-            f"{name} (taken {count})"
-            for name, count in soft.soft_items_taken.get(eid, {}).items()
-        ]
-        entity_soft_items_present = [
-            f"{name} x{count}"
-            for name, count in soft.soft_contents.get(eid, {}).items()
-        ]
-
-        path_descriptions: dict[str, str] = {}
-        if entity.type == "npc" and entity.dialogue:
-            path_descriptions = {
-                path_id: resolvable.description
-                for path_id, resolvable in entity.dialogue.dialogue_paths.items()
-            }
-
-        combat_block_dict = None
-        if entity.combat is not None:
-            combat_block_dict = entity.combat.model_dump(mode="json")
-
-        entities_visible.append(
-            BriefingEntity(
-                id=eid,
-                name=entity.name or eid,
-                type=entity.type,
-                description=entity.description,
-                state=dict(entity_state),
-                entity_notes=list(notes),
-                soft_item_guidance=entity.soft_item_guidance,
-                soft_items_taken=entity_soft_items_taken,
-                soft_items_present=entity_soft_items_present,
-                contains=build_contains(entity, hard, corpus, entity_id=eid),
-                dialogue_paths=path_descriptions,
-                combat_block=combat_block_dict,
-                count=count))
-
-    inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
-
-    exits_available: list[BriefingExit] = []
-    for ex in room.exits:
-        if not is_exit_visible(ex, hard, soft, corpus):
-            continue
-        exits_available.append(
-            BriefingExit(id=ex.id,
-                         direction=ex.direction,
-                         target_room=ex.target_room))
-
-    interactions_available = _build_interactions(
-        room, room_id, hard, soft, corpus)
-
-    room_notes = soft.room_notes.get(room_id, [])
-    room_soft_items_taken = [
-        f"{name} (taken {count})"
-        for name, count in soft.soft_items_taken.get(room_id, {}).items()
-    ]
-    room_soft_items_present = [
-        f"{name} x{count}"
-        for name, count in soft.soft_contents.get(room_id, {}).items()
-    ]
-
-    return BriefingRoom(
-        id=room_id,
-        name=room.name,
-        description=room.description,
-        soft_item_guidance=room.soft_item_guidance,
-        soft_items_taken=room_soft_items_taken,
-        soft_items_present=room_soft_items_present,
-        entities_visible=entities_visible,
-        exits_available=exits_available,
-        interactions_available=interactions_available,
-        room_notes=list(room_notes))
-
-
 def _build_player_state(
         hard: HardGameState,
         soft: SoftGameState,
@@ -224,6 +75,7 @@ def _build_player_state(
         corpus: ModuleCorpus) -> PlayerStateBriefing:
     active_flags = {k: v for k, v in hard.flags.items() if v}
     player_entity_notes = soft.entity_notes.get("player", [])
+    in_combat = hard.combat is not None and hard.combat.active
 
     # Build equipped items briefing
     equipped_items: list[EquippedItemBriefing] = []
@@ -244,10 +96,8 @@ def _build_player_state(
             effects_summary=effects_summary,
         ))
 
-    # Effective stats and AC
-    from mgmai.engine.combat import compute_effective_stats, compute_player_ac
+    from mgmai.engine.combat import compute_player_ac
     effective_ac = compute_player_ac(hard, corpus)
-    effective_stats = compute_effective_stats(hard, corpus)
 
     combat_stats = None
     if hard.player.current_hp is not None:
@@ -265,52 +115,57 @@ def _build_player_state(
         )
 
     # Abilities (same entry shape as the combat briefing), spell slots,
-    # and active status effects, so the GM LLM can rule out-of-combat
-    # ability use (e.g. casting Mage Armor before a fight).
+    # and usable items, so the GM LLM can rule out-of-combat ability and
+    # item use (e.g. casting Mage Armor before a fight).  During combat
+    # these live on combat_state instead, which tracks per-combat
+    # remaining uses; duplicating them here would risk the LLM reading a
+    # stale copy.
     abilities: list[dict[str, Any]] = []
-    system = get_system_for_corpus(corpus)
-    for aid in hard.player.abilities:
-        ability = corpus.abilities.get(aid)
-        if ability is None:
-            continue
-        # uses_per_combat counters are combat-scoped: outside combat an
-        # ability shows its full per-combat allotment (null = unlimited).
-        remaining = None if ability.uses_per_combat < 0 else ability.uses_per_combat
-        abilities.append(
-            _ability_briefing_entry(aid, ability, system, hard, remaining)
-        )
+    if not in_combat:
+        system = get_system_for_corpus(corpus)
+        for aid in hard.player.abilities:
+            ability = corpus.abilities.get(aid)
+            if ability is None:
+                continue
+            # uses_per_combat counters are combat-scoped: outside combat an
+            # ability shows its full per-combat allotment (null = unlimited).
+            remaining = None if ability.uses_per_combat < 0 else ability.uses_per_combat
+            abilities.append(
+                _ability_briefing_entry(aid, ability, system, hard, remaining)
+            )
 
     return PlayerStateBriefing(
-        location=hard.player.location,
         hard_inventory=dict(hard.player.inventory),
         soft_inventory=list(soft.soft_inventory),
         equipped_items=equipped_items,
-        effective_ac=effective_ac,
-        effective_stats=effective_stats,
         active_flags=active_flags,
         entity_notes=list(player_entity_notes),
         player_stats=player_stats,
         combat_stats=combat_stats,
         abilities=abilities,
-        spell_slots=dict(hard.player.spell_slots),
+        spell_slots={} if in_combat else dict(hard.player.spell_slots),
         status_effects=_status_effect_briefs(hard.player.status_effects, corpus),
-        usable_items=_build_usable_items(hard, corpus),
+        usable_items=[] if in_combat else _build_usable_items(hard, corpus),
     )
 
 
 def _build_player_stats(hard: HardGameState,
                         corpus: ModuleCorpus) -> dict[str, PlayerStatEntry] | None:
-    if hard.player.stats is None or corpus.stats is None:
-        return None
-
+    """Effective (gear-adjusted) stats with computed modifiers."""
+    from mgmai.engine.combat import compute_effective_stats
     from mgmai.engine.stat_checks import compute_modifier
 
-    stats_block = corpus.stats
-    result: dict[str, PlayerStatEntry] = {}
-    for stat_key, stat_value in hard.player.stats.items():
-        mod = compute_modifier(stat_value, stats_block.system)
-        result[stat_key] = PlayerStatEntry(value=stat_value, modifier=mod)
-    return result
+    effective = compute_effective_stats(hard, corpus)
+    if effective is None or corpus.stats is None:
+        return None
+
+    system = corpus.stats.system
+    return {
+        stat_key: PlayerStatEntry(
+            value=stat_value,
+            modifier=compute_modifier(stat_value, system))
+        for stat_key, stat_value in effective.items()
+    }
 
 
 _CONVERSATION_LOG_CAP = 5
@@ -494,7 +349,6 @@ def _build_usable_items(
 
 def _build_combat_state(
     hard: HardGameState,
-    soft: SoftGameState,
     corpus: ModuleCorpus,
 ) -> CombatBriefing | None:
     """Build a CombatBriefing when combat is active."""
@@ -567,17 +421,6 @@ def _build_combat_state(
             _ability_briefing_entry(aid, ability, system, hard, remaining)
         )
 
-    # Interactions the player may use mid-combat via `interact`: same
-    # source as the room briefing, minus the generic "attack" id (attack
-    # maps to the `combat` action).
-    room_id = hard.player.location
-    room = corpus.rooms.get(room_id)
-    interactions_available = (
-        [i for i in _build_interactions(room, room_id, hard, soft, corpus)
-         if i.id != "attack"]
-        if room is not None else []
-    )
-
     return CombatBriefing(
         round_number=combat.round_number,
         initiative_order=list(initiative),
@@ -586,5 +429,4 @@ def _build_combat_state(
         usable_items=usable_items,
         abilities=abilities,
         spell_slots=dict(hard.player.spell_slots),
-        interactions_available=interactions_available,
     )

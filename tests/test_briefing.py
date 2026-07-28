@@ -100,16 +100,14 @@ class TestBriefingExit:
         e = BriefingExit.model_validate({
             "id": "exit_through_webs",
             "direction": "Push through the dense webs downward",
-            "target_room": "bag_floor",
         })
         assert e.id == "exit_through_webs"
-        assert e.target_room == "bag_floor"
+        assert e.direction == "Push through the dense webs downward"
 
-    def test_missing_target_room_raises(self) -> None:
+    def test_missing_direction_raises(self) -> None:
         with pytest.raises(ValidationError):
             BriefingExit.model_validate({
                 "id": "exit_through_webs",
-                "direction": "Go north",
             })
 
 
@@ -160,13 +158,11 @@ class TestBriefingRoom:
 class TestPlayerStateBriefing:
     def test_basic(self) -> None:
         p = PlayerStateBriefing.model_validate({
-            "location": "axe_handle_lower",
             "hard_inventory": {"iron_sword": 1},
             "soft_inventory": ["rock"],
             "active_flags": {"injured": False},
             "entity_notes": [],
         })
-        assert p.location == "axe_handle_lower"
         assert p.hard_inventory == {"iron_sword": 1}
         assert p.active_flags["injured"] is False
 

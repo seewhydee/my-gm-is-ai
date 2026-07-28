@@ -421,8 +421,12 @@ visible in `player_state`:
         "effects_summary": "1d6 damage"
       }
     ],
-    "effective_ac": 14,
-    "effective_stats": { "STR": 11, "DEX": 10, "CON": 10 }
+    "player_stats": {
+      "STR": { "value": 11, "modifier": 0 },
+      "DEX": { "value": 10, "modifier": 0 },
+      "CON": { "value": 10, "modifier": 0 }
+    },
+    "combat_stats": { "current_hp": 12, "max_hp": 12, "ac": 14, "...": "..." }
   }
 }
 ```
@@ -430,8 +434,8 @@ visible in `player_state`:
 | Field              | Description |
 |--------------------|-------------|
 | `equipped_items`   | List of currently equipped items with names, descriptions, tags, and a plain-English effects summary. |
-| `effective_ac`     | Computed AC after applying the active system's equipment rules (e.g. 5e's `ac_override` and `ac_bonus` extras). |
-| `effective_stats`  | Stat values after applying equipped items' `stat_effects` on top of the permanent baseline. |
+| `player_stats`     | Effective stat values — permanent baseline plus equipped items' `stat_effects` — each with its computed modifier. |
+| `combat_stats.ac`  | Computed AC after applying the active system's equipment rules (e.g. 5e's `ac_override` and `ac_bonus` extras). |
 
 The LLM prompts reference these fields so the ruling model knows what gear
 the player is wearing and the prose model can describe equipment changes

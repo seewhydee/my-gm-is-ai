@@ -96,11 +96,11 @@ def compute_effective_stats(
         entity = corpus.entities.get(item_id)
         if entity is None or entity.equip_block is None:
             continue
-        for mod in entity.equip_block.stat_effects.values():
+        for stat, mod in entity.equip_block.stat_effects.items():
             if mod.mode == "set":
-                effective[mod.stat] = mod.value
-            elif mod.mode == "delta" and mod.stat in effective:
-                effective[mod.stat] += mod.value
+                effective[stat] = mod.value
+            elif mod.mode == "delta" and stat in effective:
+                effective[stat] += mod.value
 
     return effective
 

@@ -327,11 +327,16 @@ class TestExitFiltering:
             e for e in result.current_room.exits_available if e.id == "exit_climb_down_handle"
         )
         assert exit.direction == "Climb carefully down the axe handle"
-        assert exit.target_room == "axe_handle_upper"
 
 
 class TestInteractions:
-    """Interaction filtering by condition."""
+    """Entity interactions are listed on the entity; condition filtering."""
+
+    @staticmethod
+    def _entity(result, eid):
+        return next(
+            e for e in result.current_room.entities_visible if e.id == eid
+        )
 
     def test_no_condition_always_available(self, state_manager):
         state_manager.hard_state.player.location = "bag_floor"
@@ -341,7 +346,9 @@ class TestInteractions:
             state_manager.soft_state,
             "look",
         )
-        inter_ids = [i.id for i in result.current_room.interactions_available]
+        inter_ids = [
+            i.id for i in self._entity(result, "rubbish_pile").interactions_available
+        ]
         # rummage_for_weapon has a condition (unless injured)
         assert "rummage_for_weapon" in inter_ids
 
@@ -354,7 +361,9 @@ class TestInteractions:
             state_manager.soft_state,
             "look",
         )
-        inter_ids = [i.id for i in result.current_room.interactions_available]
+        inter_ids = [
+            i.id for i in self._entity(result, "rubbish_pile").interactions_available
+        ]
         assert "rummage_for_weapon" not in inter_ids
 
     def test_interaction_fields_populated(self, state_manager):
@@ -366,7 +375,8 @@ class TestInteractions:
             "look",
         )
         inter = next(
-            i for i in result.current_room.interactions_available if i.id == "rummage_for_weapon"
+            i for i in self._entity(result, "rubbish_pile").interactions_available
+            if i.id == "rummage_for_weapon"
         )
         assert inter.description == "Root through the piles of giant rubbish looking for something that could be used as a weapon."
 
@@ -456,15 +466,6 @@ class TestRoomSoftItemsAndNotes:
 
 class TestPlayerState:
     """Player state assembly."""
-
-    def test_location(self, state_manager):
-        result = assemble(
-            state_manager.corpus,
-            state_manager.hard_state,
-            state_manager.soft_state,
-            "look",
-        )
-        assert result.player_state.location == "axe_head"
 
     def test_hard_inventory(self, state_manager):
         state_manager.hard_state.player.inventory = {"rusty_key": 1, "toenail_sword": 1}
@@ -1192,8 +1193,8 @@ def _find_entity(briefing: GMBriefing, entity_id: str) -> BriefingEntity | None:
 
 
 class TestCombatStateInteractions:
-    """combat_state.interactions_available mirrors the room briefing's
-    interactions (room + present entities), minus the generic "attack"."""
+    """During combat, entity interactions stay on the entities in the
+    current_room briefing; combat_state carries no separate list."""
 
     @staticmethod
     def _enter_combat(state_manager, room: str = "bag_floor"):
@@ -1207,6 +1208,12 @@ class TestCombatStateInteractions:
             initiative_order=["player", "korbar"],
             current_index=0,
             round_number=1,
+        )
+
+    @staticmethod
+    def _entity(result, eid):
+        return next(
+            e for e in result.current_room.entities_visible if e.id == eid
         )
 
     def test_no_combat_no_combat_state(self, state_manager):
@@ -1228,55 +1235,15 @@ class TestCombatStateInteractions:
             "look",
         )
         assert result.combat_state is not None
-        ids = {i.id for i in result.combat_state.interactions_available}
         # bag_floor entities: rubbish_pile (rummage_for_weapon) and
         # handkerchief (search_handkerchief); the flag-gated
         # move_handkerchief is excluded.
+        ids = {
+            i.id
+            for eid in ("rubbish_pile", "handkerchief")
+            for i in self._entity(result, eid).interactions_available
+        }
         assert ids == {"rummage_for_weapon", "search_handkerchief"}
-
-    def test_matches_room_briefing(self, state_manager):
-        self._enter_combat(state_manager)
-
-        result = assemble(
-            state_manager.corpus,
-            state_manager.hard_state,
-            state_manager.soft_state,
-            "look",
-        )
-        room_ids = {
-            i.id for i in result.current_room.interactions_available
-        }
-        combat_ids = {
-            i.id for i in result.combat_state.interactions_available
-        }
-        assert combat_ids == room_ids - {"attack"}
-
-    def test_attack_interaction_excluded(self, state_manager):
-        from mgmai.models.corpus import Interaction
-
-        self._enter_combat(state_manager)
-        state_manager.corpus.entities["rubbish_pile"].interactions.append(
-            Interaction.model_validate({
-                "id": "attack",
-                "description": "Strike the pile.",
-                "result": {"narrative": "You strike the pile."},
-            })
-        )
-
-        result = assemble(
-            state_manager.corpus,
-            state_manager.hard_state,
-            state_manager.soft_state,
-            "look",
-        )
-        room_ids = {
-            i.id for i in result.current_room.interactions_available
-        }
-        combat_ids = {
-            i.id for i in result.combat_state.interactions_available
-        }
-        assert "attack" in room_ids
-        assert "attack" not in combat_ids
 
     def test_interaction_descriptions_carried(self, state_manager):
         self._enter_combat(state_manager)
@@ -1288,6 +1255,7 @@ class TestCombatStateInteractions:
             "look",
         )
         by_id = {
-            i.id: i for i in result.combat_state.interactions_available
+            i.id: i
+            for i in self._entity(result, "handkerchief").interactions_available
         }
         assert by_id["search_handkerchief"].description

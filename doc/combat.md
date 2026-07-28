@@ -345,7 +345,7 @@ NPC turns.
 | `use_ability` | action | Use a spell, class feature, or other ability.  `ability_id` plus a `target` matching the ability's target kind.  Bonus-action spells do not end the turn. |
 | `move` | action | Attempt to flee (see below). |
 | `wait` | action | Pass the turn: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply.  This is also how speech is ruled in combat — see `talk` below. |
-| `interact` | action | Use a non-attack interaction listed in `combat_state.interactions_available` (pull the lever, pick the lock).  `interaction_id: "attack"` converts to a normal combat attack — it never re-enters combat.  Inventory items with authored interactions (e.g. potion `drink`) also use this action; see [gear.md](gear.md). |
+| `interact` | action | Use a non-attack interaction listed on the target entity's or the room's `interactions_available` (pull the lever, pick the lock).  `interaction_id: "attack"` converts to a normal combat attack — it never re-enters combat.  Inventory items with authored interactions (e.g. potion `drink`) also use this action; see [gear.md](gear.md). |
 | `transfer` | action | Give or take items mid-fight. |
 | `gear` | action | Weapon swaps only: every item in `equip_targets` and `unequip_targets` must have the `weapon` tag; armour or other gear changes are rejected. |
 | `examine` (`rigorous: true`) | action | In-depth search; consumes the turn. |

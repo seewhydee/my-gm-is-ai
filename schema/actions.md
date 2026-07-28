@@ -142,16 +142,15 @@ Soft State, for the ruling LLM (call 1).
       }
     ],
     "exits_available": [
-      { "id": "exit_up_handle_lower", "direction": "Walk up the axe handle", "target_room": "axe_handle_upper" },
-      { "id": "exit_through_webs", "direction": "Push through the dense webs downward", "target_room": "bag_floor" },
-      { "id": "exit_drop_lower", "direction": "Drop safely down to the floor", "target_room": "bag_floor" }
+      { "id": "exit_up_handle_lower", "direction": "Walk up the axe handle" },
+      { "id": "exit_through_webs", "direction": "Push through the dense webs downward" },
+      { "id": "exit_drop_lower", "direction": "Drop safely down to the floor" }
     ],
     "room_notes": ["The webs here are partially cleared from the spider's flight."]
   },
 
   "player_state": {
-    "location": "axe_handle_lower",
-    "hard_inventory": ["iron_sword"],
+    "hard_inventory": {"iron_sword": 1},
     "soft_inventory": ["rock"],
     "equipped_items": [
       {
@@ -162,8 +161,6 @@ Soft State, for the ruling LLM (call 1).
         "effects_summary": "1d6 damage"
       }
     ],
-    "effective_ac": 14,
-    "effective_stats": null,
     "active_flags": { "injured": false, "stunned": false },
     "player_stats": {
       "STR": { "value": 14, "modifier": 2 },
@@ -241,7 +238,9 @@ Soft State, for the ruling LLM (call 1).
 2. **Current room**: fetched by ID from the module corpus. Includes 
    `entities_visible`, listing all non-concealed entities in the room.
    Each of these entity entries includes the entity ID, current hard
-   state, and entity notes. For NPCs with
+   state, entity notes, and the entity's own `interactions_available`
+   (the room's own interactions are listed separately on the room).
+   For NPCs with
    `dialogue.dialogue_paths`, `entities_visible[*].dialogue_paths`
    is a map of `{path_id: description}` so LLM Call 1 can match player intent
    to the correct special dialogue path.
@@ -259,9 +258,12 @@ Soft State, for the ruling LLM (call 1).
 
 5. **Player state** summarises hard inventory, soft inventory, active flags,
    entity notes, and (when the corpus defines stats) a `player_stats` block
-   with each stat's value and computed modifier (e.g.
-   `{ "value": 14, "modifier": 2 }`). This gives LLM Call 1 direct knowledge
-   of the player's capabilities without requiring it to do the math.
+   with each stat's effective (gear-adjusted) value and computed modifier
+   (e.g. `{ "value": 14, "modifier": 2 }`). This gives LLM Call 1 direct
+   knowledge of the player's capabilities without requiring it to do the
+   math. During combat, `abilities`, `spell_slots`, and `usable_items`
+   appear only on `combat_state` (which tracks per-combat remaining uses),
+   not on `player_state`.
 
 6. **Recent history** is drawn from soft state `turn_history`, which
    summarizes the player's recent actions.  This includes the last 5
@@ -854,7 +856,7 @@ everything LLM Call 2 needs to narrate the outcome.
       { "id": "rubbish_pile", "name": "Piles of Rubbish", "type": "feature", "description": "Giant potion bottles, corks, sandwiches, copper pieces, lint.", "state": {}, "entity_notes": [], "soft_items_taken": ["cork (taken 2)", "loose copper (taken 1)"], "soft_items_present": [] }
     ],
     "exits_available": [
-      { "id": "exit_climb_up_handle_floor", "direction": "Climb up the axe handle", "target_room": "axe_handle_lower" }
+      { "id": "exit_climb_up_handle_floor", "direction": "Climb up the axe handle" }
     ],
     "interactions_available": [],
     "room_notes": []

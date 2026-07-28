@@ -89,6 +89,9 @@ class BriefingEntity(BaseModel):
     soft_item_guidance: str | None = None
     soft_items_taken: list[str] = Field(default_factory=list)
     soft_items_present: list[str] = Field(default_factory=list)
+    # The entity's own usable interactions (condition-gated ones filtered;
+    # empty for dead entities).
+    interactions_available: list[BriefingInteraction] = Field(default_factory=list)
     contains: list[BriefingContainsEntry] = Field(default_factory=list)
     dialogue_paths: dict[str, str] = Field(default_factory=dict)
     combat_block: dict[str, Any] | None = None
@@ -98,7 +101,6 @@ class BriefingEntity(BaseModel):
 class BriefingExit(BaseModel):
     id: str
     direction: str
-    target_room: str
 
 
 class BriefingRoom(BaseModel):
@@ -110,6 +112,7 @@ class BriefingRoom(BaseModel):
     soft_items_present: list[str] = Field(default_factory=list)
     entities_visible: list[BriefingEntity] = Field(default_factory=list)
     exits_available: list[BriefingExit] = Field(default_factory=list)
+    # The room's own interactions; entity interactions live on each entity.
     interactions_available: list[BriefingInteraction] = Field(default_factory=list)
     room_notes: list[str] = Field(default_factory=list)
 
@@ -141,29 +144,32 @@ class PlayerCombatStats(BaseModel):
 
 
 class PlayerStateBriefing(BaseModel):
-    location: str
     hard_inventory: dict[str, int] = Field(default_factory=dict)
     soft_inventory: list[str] = Field(default_factory=list)
     equipped_items: list[EquippedItemBriefing] = Field(default_factory=list)
-    effective_ac: int = 10
-    effective_stats: dict[str, int] | None = None
     active_flags: dict[str, bool] = Field(default_factory=dict)
     entity_notes: list[str] = Field(default_factory=list)
+    # When the corpus defines stats: effective (gear-adjusted) value and
+    # computed modifier per stat, e.g. "STR": {"value": 14, "modifier": 2}.
     player_stats: dict[str, PlayerStatEntry] | None = None
     combat_stats: PlayerCombatStats | None = None
     # Player's available/prepared abilities (same entry shape as
     # CombatBriefing.abilities):
     # [{id, name, description, target, uses_remaining, effect, effect_kind,
     #   spell_level?, concentration?, slot_level?, save_dc?}]
+    # Omitted during combat — use combat_state.abilities instead, which
+    # tracks per-combat remaining uses.
     abilities: list[dict[str, Any]] = Field(default_factory=list)
     # Spell level -> slots remaining (empty when the player has no
-    # leveled spells; cantrips cost nothing).
+    # leveled spells; cantrips cost nothing).  Omitted during combat —
+    # use combat_state.spell_slots.
     spell_slots: dict[int, int] = Field(default_factory=dict)
     # Status effects active on the player (e.g. an ongoing Mage Armor):
     # [{id, rounds, description?}]
     status_effects: list[dict[str, Any]] = Field(default_factory=list)
     # Inventory items with a usable interaction (drink, read, etc.):
     # [{id, name, interactions: [{id, description}]}]
+    # Omitted during combat — use combat_state.usable_items.
     usable_items: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -203,11 +209,6 @@ class CombatBriefing(BaseModel):
     # Spell level -> slots remaining (empty when the player has no
     # leveled spells; cantrips cost nothing).
     spell_slots: dict[int, int] = Field(default_factory=dict)
-    # Interactions the player may use via the `interact` action during
-    # combat: same entries as the room briefing's interactions_available
-    # (room + present entities), minus the generic "attack" id (attack
-    # maps to the `combat` action).
-    interactions_available: list[BriefingInteraction] = Field(default_factory=list)
 
 
 class GMBriefing(BaseModel):

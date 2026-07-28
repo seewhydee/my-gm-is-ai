@@ -633,29 +633,69 @@ class TestAssemblerEquipment:
         assert "toenail_sword" in equipped_names
 
     def test_effective_stats_in_briefing(self, state_manager):
-        """Effective stats should be populated when player has stats."""
+        """Player stats are absent when the player has no stats block."""
         from mgmai.context.assembler import assemble
 
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
-        # The test fixture doesn't have player stats in hard_state
-        # So effective_stats should be None
+        # The test fixture doesn't have player stats in hard_state,
+        # so player_stats should be None
         briefing = assemble(corpus, hard, soft, "")
-        assert briefing.player_state.effective_stats is None
+        assert briefing.player_state.player_stats is None
+
+    def test_effective_stats_merged_with_gear_in_briefing(self, state_manager):
+        """player_stats carries gear-adjusted (effective) values with modifiers."""
+        from mgmai.context.assembler import assemble
+        from mgmai.models.corpus import Entity, StatsBlock
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+
+        corpus.stats = StatsBlock(
+            system="5e",
+            definitions={
+                s: {"name": s, "description": f"{s} stat."}
+                for s in ("STR", "DEX", "CON", "INT", "WIS", "CHA")
+            },
+        )
+        hard.player.stats = {"STR": 10, "DEX": 10, "CON": 10,
+                             "INT": 10, "WIS": 10, "CHA": 10}
+        corpus.entities["str_belt"] = Entity(
+            type="item",
+            name="Belt of Giant Strength",
+            description="A belt of giant strength.",
+            equip_block=EquipBlock(
+                equip_tags=["accessory"],
+                stat_effects={"STR": StatModifier(mode="delta", value=2)},
+            ),
+        )
+        hard.player.inventory = {"str_belt": 1}
+        hard.player.equipped = ["str_belt"]
+
+        briefing = assemble(corpus, hard, soft, "")
+        stats = briefing.player_state.player_stats
+        assert stats is not None
+        assert stats["STR"].value == 12
+        assert stats["STR"].modifier == 1
+        assert stats["DEX"].value == 10
 
     def test_effective_ac_in_briefing(self, state_manager):
-        """Effective AC should be calculated."""
+        """Effective AC should be calculated into combat_stats."""
         from mgmai.context.assembler import assemble
 
         hard = state_manager.hard_state
         soft = state_manager.soft_state
         corpus = state_manager.corpus
 
+        hard.player.current_hp = 10
+        hard.player.max_hp = 10
         briefing = assemble(corpus, hard, soft, "")
         # Default AC: 10 + DEX mod. DEX default 10 = +0 mod = AC 10
-        assert briefing.player_state.effective_ac >= 10
+        assert briefing.player_state.combat_stats is not None
+        assert briefing.player_state.combat_stats.ac >= 10
 
 
 # ------------------------------------------------------------------

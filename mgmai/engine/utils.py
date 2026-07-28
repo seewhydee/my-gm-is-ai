@@ -18,7 +18,13 @@
 
 from __future__ import annotations
 
-from mgmai.models.briefing import BriefingContainsEntry, BriefingEntity
+from mgmai.models.briefing import (
+    BriefingContainsEntry,
+    BriefingEntity,
+    BriefingExit,
+    BriefingInteraction,
+    BriefingRoom,
+)
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
@@ -179,6 +185,108 @@ def get_entity_location(
     return None
 
 
+def build_entity_interactions(
+    entity: object,
+    entity_state: dict,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> list[BriefingInteraction]:
+    """An entity's own usable interactions: condition-gated ones filtered,
+    and none for dead entities."""
+    from mgmai.engine.conditions import evaluate
+
+    if entity_state.get("alive") is False:
+        return []
+    interactions: list[BriefingInteraction] = []
+    for inter in entity.interactions:
+        if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
+            continue
+        interactions.append(
+            BriefingInteraction(id=inter.id, description=inter.description))
+    return interactions
+
+
+def build_room_interactions(
+    room: object,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> list[BriefingInteraction]:
+    """A room's own interactions (condition-gated ones filtered)."""
+    from mgmai.engine.conditions import evaluate
+
+    interactions: list[BriefingInteraction] = []
+    for inter in room.interactions:
+        if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
+            continue
+        interactions.append(
+            BriefingInteraction(id=inter.id, description=inter.description))
+    return interactions
+
+
+def build_briefing_entity(
+    eid: str,
+    count: int,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> BriefingEntity | None:
+    """Build the BriefingEntity for a present entity, or None when it should
+    be hidden from the briefing (hidden state, equipped, or a non-stackable
+    item already in the player's inventory).
+
+    Shared by the turn assembler, the room-after-move builder, and
+    following-NPC injection so all three produce identical entries.
+    """
+    entity = corpus.entities.get(eid)
+    if entity is None:
+        return None
+    entity_state = hard.entity_states.get(eid, {})
+    if entity_state.get("hidden", False):
+        return None
+    # Hide equipped items; hide inventory items only when non-stackable.
+    if entity.type == "item":
+        if eid in hard.player.equipped:
+            return None
+        if eid in hard.player.inventory and not _is_stackable(eid, corpus):
+            return None
+
+    path_descriptions: dict[str, str] = {}
+    if entity.type == "npc" and entity.dialogue:
+        path_descriptions = {
+            path_id: resolvable.description
+            for path_id, resolvable in entity.dialogue.dialogue_paths.items()
+        }
+
+    combat_block_dict = None
+    if entity.combat is not None:
+        combat_block_dict = entity.combat.model_dump(mode="json")
+
+    return BriefingEntity(
+        id=eid,
+        name=entity.name or eid,
+        type=entity.type,
+        description=entity.description,
+        state=dict(entity_state),
+        entity_notes=list(soft.entity_notes.get(eid, [])),
+        soft_item_guidance=entity.soft_item_guidance,
+        soft_items_taken=[
+            f"{name} (taken {n})"
+            for name, n in soft.soft_items_taken.get(eid, {}).items()
+        ],
+        soft_items_present=[
+            f"{name} x{n}"
+            for name, n in soft.soft_contents.get(eid, {}).items()
+        ],
+        interactions_available=build_entity_interactions(
+            entity, entity_state, hard, soft, corpus),
+        contains=build_contains(entity, hard, corpus, entity_id=eid),
+        dialogue_paths=path_descriptions,
+        combat_block=combat_block_dict,
+        count=count)
+
+
 def inject_following_npcs(
     entities_visible: list[BriefingEntity],
     room_id: str,
@@ -191,41 +299,58 @@ def inject_following_npcs(
     for eid in get_following_npc_ids(hard, corpus):
         if eid in seen_ids:
             continue
-        entity = corpus.entities[eid]
-        entity_state = hard.entity_states.get(eid, {})
-        if entity_state.get("hidden", False):
-            continue
-        notes = soft.entity_notes.get(eid, [])
-        entity_soft_items_taken = [
-            f"{name} (taken {count})"
-            for name, count in soft.soft_items_taken.get(eid, {}).items()
-        ]
-        entity_soft_items_present = [
-            f"{name} x{count}"
-            for name, count in soft.soft_contents.get(eid, {}).items()
-        ]
-        path_descriptions: dict[str, str] = {}
-        if entity.type == "npc" and entity.dialogue:
-            path_descriptions = {
-                path_id: resolvable.description
-                for path_id, resolvable in entity.dialogue.dialogue_paths.items()
-            }
+        briefing_entity = build_briefing_entity(eid, 1, hard, soft, corpus)
+        if briefing_entity is not None:
+            entities_visible.append(briefing_entity)
 
-        entities_visible.append(
-            BriefingEntity(
-                id=eid,
-                name=entity.name or eid,
-                type=entity.type,
-                description=entity.description,
-                state=entity_state,
-                entity_notes=notes,
-                soft_item_guidance=entity.soft_item_guidance,
-                soft_items_taken=entity_soft_items_taken,
-                soft_items_present=entity_soft_items_present,
-                contains=build_contains(entity, hard, corpus, entity_id=eid),
-                dialogue_paths=path_descriptions,
-            )
-        )
+
+def build_briefing_room(
+    room_id: str,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> BriefingRoom:
+    """Build the full BriefingRoom for a room: visible entities, exits, the
+    room's own interactions, notes, and soft-item listings.
+
+    Shared by the turn assembler and the engine's room-after-move builder.
+    """
+    room = corpus.rooms.get(room_id)
+    if room is None:
+        return BriefingRoom(id=room_id, name="Unknown", description="")
+
+    entities_visible: list[BriefingEntity] = []
+    for eid, count in hard.room_contains.get(room_id, {}).items():
+        if count <= 0:
+            continue
+        briefing_entity = build_briefing_entity(eid, count, hard, soft, corpus)
+        if briefing_entity is not None:
+            entities_visible.append(briefing_entity)
+    inject_following_npcs(entities_visible, room_id, hard, soft, corpus)
+
+    exits_available = [
+        BriefingExit(id=ex.id, direction=ex.direction)
+        for ex in room.exits
+        if is_exit_visible(ex, hard, soft, corpus)
+    ]
+
+    return BriefingRoom(
+        id=room_id,
+        name=room.name,
+        description=room.description,
+        soft_item_guidance=room.soft_item_guidance,
+        soft_items_taken=[
+            f"{name} (taken {n})"
+            for name, n in soft.soft_items_taken.get(room_id, {}).items()
+        ],
+        soft_items_present=[
+            f"{name} x{n}"
+            for name, n in soft.soft_contents.get(room_id, {}).items()
+        ],
+        entities_visible=entities_visible,
+        exits_available=exits_available,
+        interactions_available=build_room_interactions(room, hard, soft, corpus),
+        room_notes=list(soft.room_notes.get(room_id, [])))
 
 
 def build_contains(
