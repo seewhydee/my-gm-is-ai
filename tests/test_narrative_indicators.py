@@ -104,6 +104,30 @@ class TestBuildIndicators:
         indicators = build_indicators(result, hard)
         assert "Healed 5 HP" in indicators[0].formatted
 
+    def test_hp_split_indicators_on_mixed_turn(self):
+        """Healing and damage on the same turn produce separate markers —
+        one net marker would misattribute (a +7/-10 turn is not "Took 3
+        damage" next to the potion)."""
+        from mgmai.models.actions import EngineResult, HardStateChanges
+
+        result = EngineResult(
+            success=True,
+            action_type="interact",
+            hard_state_changes=HardStateChanges(
+                player_hp_delta=-3,
+                player_damage_delta=10,
+                player_heal_delta=7,
+            ),
+        )
+        hard = FakeHardState(current_hp=7, max_hp=10)
+        indicators = build_indicators(result, hard)
+        assert [i.marker for i in indicators] == [
+            "[MECH:hp_damage]", "[MECH:hp_heal]",
+        ]
+        assert "Took 10 damage" in indicators[0].formatted
+        assert "HP 7/10" in indicators[0].formatted
+        assert "Healed 7 HP" in indicators[1].formatted
+
     def test_stat_modifier_indicator(self):
         from mgmai.models.actions import EngineResult, HardStateChanges
         from mgmai.models.corpus import StatModifier

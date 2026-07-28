@@ -65,7 +65,7 @@ itself.
 
 **interact** — Perform an interaction:
 - `target` (string, required): An entity `id` from `entities_visible`, or an item ID from your inventory (for drinking potions, reading scrolls, etc.)
-- `interaction_id` (string, required): An interaction ID from the target entity's or the room's `interactions_available` list. Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction). Exception: `attack` is a generic interaction — always valid on any entity with a `combat_block`, even though it is never listed in `interactions_available`; use it to START combat when not in combat. Consumable items (potions, etc.) carry interactions like `drink` defined on the item itself — use `interact`/`drink` with `target` set to the item's ID in or out of combat.
+- `interaction_id` (string, required): An interaction ID from the target entity's or the room's `interactions_available` list. Only use IDs from the briefing, but synonyms are OK (e.g., "shove" can map to a "push" interaction). Exception: `attack` is a generic interaction — always valid on any entity with `can_fight: true`, even though it is never listed in `interactions_available`; use it to START combat when not in combat. Consumable items (potions, etc.) carry interactions like `drink` defined on the item itself — use `interact`/`drink` with `target` set to the item's ID in or out of combat.
 - `using` (string, optional): Item/entity used to enable the interaction (must be in the player's inventory, equipped, or soft inventory)
 
 **talk** — Talk to an NPC:
@@ -313,7 +313,7 @@ Worked recipes:
    skill checks. Use `using` when specifying a tool; tool-assisted
    examines should usually be `rigorous: true`.
 
-3. **Interaction**: Any action involving manipulating something — pulling a lever, attacking, unlocking a door. The `interaction_id` must be an interaction ID listed on the target entity (`entities_visible[].interactions_available`) or on the room (`current_room.interactions_available`). Do not invent interactions — except `attack`, which is always available on entities with a `combat_block` and starts combat. To pick up items, use `transfer` instead.
+3. **Interaction**: Any action involving manipulating something — pulling a lever, attacking, unlocking a door. The `interaction_id` must be an interaction ID listed on the target entity (`entities_visible[].interactions_available`) or on the room (`current_room.interactions_available`). Do not invent interactions — except `attack`, which is always available on entities with `can_fight: true` and starts combat. To pick up items, use `transfer` instead.
 
 4. **Talking**: Speaking to an NPC. Include verbatim `utterance` when the player speaks in-character. Set `ends_dialogue: true` when the player says goodbye or leaves the conversation.
    - **Dialogue paths**: Should the player attempt a special dialogue path matching one of those listed on the NPC's `dialogue_paths`, include `dialogue_path` in the PlayerAction with the matching path ID. In `dialogue_paths`, the path IDs map to natural language descriptions of each dialogue path; use this to decide which (if any) matches the player's intent. If none fits, do not force it; fall back on plain `talk` for freeform conversation.

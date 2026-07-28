@@ -268,7 +268,32 @@ def build_indicators(
     hc = result.hard_state_changes
 
     # --- HP change ---
-    if hc and hc.player_hp_delta:
+    # Prefer the directional components: on a turn mixing healing and
+    # damage, one net marker ("Took 3 damage" for a +7/-10 turn) is
+    # unplaceable without misattributing it.  Fall back to the net delta
+    # for HardStateChanges built without components.
+    damage_taken = (hc.player_damage_delta or 0) if hc else 0
+    healed = (hc.player_heal_delta or 0) if hc else 0
+    if hc and (damage_taken or healed):
+        current_hp = hard_state.player.current_hp or 0
+        max_hp = hard_state.player.max_hp or 0
+        if damage_taken:
+            indicators.append(
+                NarrativeIndicator(
+                    marker="[MECH:hp_damage]",
+                    formatted=f"**[Took {damage_taken} damage (HP {current_hp}/{max_hp})]**",
+                    category="hp",
+                )
+            )
+        if healed:
+            indicators.append(
+                NarrativeIndicator(
+                    marker="[MECH:hp_heal]",
+                    formatted=f"**[Healed {healed} HP (HP {current_hp}/{max_hp})]**",
+                    category="hp",
+                )
+            )
+    elif hc and hc.player_hp_delta:
         current_hp = hard_state.player.current_hp or 0
         max_hp = hard_state.player.max_hp or 0
         if hc.player_hp_delta < 0:

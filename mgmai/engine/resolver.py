@@ -264,6 +264,8 @@ def resolve_rest(
     changes = HardStateChanges()
     if recharge.hp_delta:
         changes.player_hp_delta = recharge.hp_delta
+        if recharge.hp_delta > 0:
+            changes.player_heal_delta = recharge.hp_delta
 
     # Spell slots — refill each declared level to its ceiling.  Levels
     # present in spell_slots but absent from max_spell_slots (a sheet
@@ -1706,6 +1708,9 @@ def _apply_result(
         dmg_total, _ = system.roll_damage(result.player_damage)
         existing = changes.player_hp_delta or 0
         changes.player_hp_delta = existing - dmg_total
+        changes.player_damage_delta = (
+            (changes.player_damage_delta or 0) + dmg_total
+        )
     if result.player_heal and corpus is not None:
         system = get_system_for_corpus(corpus)
         heal_total, _ = system.roll_damage(result.player_heal)
@@ -1718,6 +1723,10 @@ def _apply_result(
             heal_total = max(0, min(heal_total, max_hp - effective_hp))
         existing = changes.player_hp_delta or 0
         changes.player_hp_delta = existing + heal_total
+        if heal_total:
+            changes.player_heal_delta = (
+                (changes.player_heal_delta or 0) + heal_total
+            )
     if result.apply_status_effect is not None and hard is not None:
         # Engine-owned runtime state (like combat state): mutate directly.
         apply_status_effect(
@@ -2288,6 +2297,35 @@ def _resolve_combat_environmental(
         # may spuriously log a "player death" that didn't actually happen.
         if delegate.hard_changes:
             hard_changes.merge(delegate.hard_changes)
+
+        # A healing interaction (e.g. drinking a potion) otherwise leaves
+        # no trace in the combat log: the bare "interact" entry above
+        # carries no amount, and the heal only feeds the net HP delta.
+        # Log it as a heal entry so the narrator and indicators can
+        # anchor to the actual event.
+        if (
+            action.action_type == "interact"
+            and delegate.hard_changes
+            and delegate.hard_changes.player_heal_delta
+        ):
+            heal_source = corpus.entities.get(getattr(action, "target", "") or "")
+            combat_log.append(
+                CombatLogEntry(
+                    round=combat.round_number,
+                    actor="player",
+                    action="heal",
+                    target="player",
+                    attack_name=(
+                        (heal_source.name if heal_source else None)
+                        or getattr(action, "target", None)
+                    ),
+                    damage=delegate.hard_changes.player_heal_delta,
+                    remaining_hp=(
+                        (hard.player.current_hp or 0)
+                        + (hard_changes.player_hp_delta or 0)
+                    ),
+                )
+            )
 
         # Hazard checks on the result, before NPC turns.
         if hard.game_over is not None:

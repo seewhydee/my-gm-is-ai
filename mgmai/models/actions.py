@@ -250,6 +250,13 @@ class HardStateChanges(BaseModel):
     stat_modifiers: dict[str, StatModifier] = Field(default_factory=dict)
     old_stat_values: dict[str, int] = Field(default_factory=dict)
     player_hp_delta: int | None = None
+    # Directional components of player_hp_delta (positive magnitudes):
+    # player_damage_delta accumulates HP lost, player_heal_delta HP gained.
+    # They let the narrative indicators show healing and damage as separate
+    # events instead of one misleading net figure on mixed turns.  Code that
+    # needs the net change should keep reading player_hp_delta.
+    player_damage_delta: int | None = None
+    player_heal_delta: int | None = None
     # World-side containment deltas. Keys are room/container IDs; values are
     # {entity_id: count} maps. Added counts are summed on merge.
     room_contains_added: dict[str, dict[str, int]] = Field(default_factory=dict)
@@ -329,6 +336,14 @@ class HardStateChanges(BaseModel):
                 self.player_hp_delta += other.player_hp_delta
             else:
                 self.player_hp_delta = other.player_hp_delta
+        if other.player_damage_delta is not None:
+            self.player_damage_delta = (
+                (self.player_damage_delta or 0) + other.player_damage_delta
+            )
+        if other.player_heal_delta is not None:
+            self.player_heal_delta = (
+                (self.player_heal_delta or 0) + other.player_heal_delta
+            )
         return self
 
     def has_changes(self) -> bool:
@@ -346,6 +361,8 @@ class HardStateChanges(BaseModel):
             or bool(self.entity_state_changes)
             or bool(self.stat_modifiers)
             or self.player_hp_delta is not None
+            or self.player_damage_delta is not None
+            or self.player_heal_delta is not None
             or bool(self.room_contains_added)
             or bool(self.room_contains_removed)
             or bool(self.entity_contains_added)

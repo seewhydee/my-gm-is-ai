@@ -1133,6 +1133,9 @@ def _apply_damage_to_target(
         hard_changes.player_hp_delta = (
             (hard_changes.player_hp_delta or 0) - damage
         )
+        hard_changes.player_damage_delta = (
+            (hard_changes.player_damage_delta or 0) + damage
+        )
         effective_hp = (hard.player.current_hp or 0) + (
             hard_changes.player_hp_delta or 0
         )
@@ -1185,6 +1188,9 @@ def _apply_healing_to_target(
         if healed:
             hard_changes.player_hp_delta = (
                 (hard_changes.player_hp_delta or 0) + healed
+            )
+            hard_changes.player_heal_delta = (
+                (hard_changes.player_heal_delta or 0) + healed
             )
         return healed
     entity = corpus.entities.get(target_id)

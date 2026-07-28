@@ -56,7 +56,10 @@ applies deterministically.  `FiveESystem` implements the SRD rules:
 Application details:
 
 - HP healing flows through `HardStateChanges.player_hp_delta` (so the
-  prose LLM and state-change event derivation see it); slot, hit-dice,
+  prose LLM and state-change event derivation see it), with the healed
+  amount also recorded in `player_heal_delta` — the directional
+  component the narrative indicators use to show healing separately
+  from damage; slot, hit-dice,
   status, and follower changes are applied directly to `hard`, mirroring
   `apply_status_effect` / `remove_status_effect` and NPC HP handling in
   combat.

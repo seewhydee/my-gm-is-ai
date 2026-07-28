@@ -2983,6 +2983,38 @@ class TestUseItem:
             e.action == "death" and e.actor == "player"
             for e in result.combat_log
         )
+        # Directional components: +6 healed, -8 damage, net -2.
+        assert result.hard_changes.player_heal_delta == 6
+        assert result.hard_changes.player_damage_delta == 8
+
+    def test_heal_logs_heal_entry(self, combat_npc_corpus, combat_hard_state, monkeypatch):
+        """A potion heal in combat produces a heal combat-log entry carrying
+        the amount, so the narrator and indicators can anchor to the actual
+        event instead of a bare "interact" line."""
+        corpus, hard = self._setup(
+            combat_npc_corpus, combat_hard_state,
+            [Interaction(id="drink", description="Drink the potion.",
+             result=Result(player_heal="2d4+2",
+                          remove_item_count={"potion": 1}))],
+        )
+        hard.player.current_hp = 5
+        # heal rolls 3+4+2 = 9, clamped to 5 (max 10); goblin misses (1)
+        rand_vals = iter([3, 4, 1])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        soft = SoftGameState()
+        result = resolve_action(self._use(), hard, soft, corpus)
+        assert result.success
+        heal_entries = [e for e in result.combat_log if e.action == "heal"]
+        assert len(heal_entries) == 1
+        entry = heal_entries[0]
+        assert entry.actor == "player"
+        assert entry.target == "player"
+        assert entry.attack_name == "Healing Potion"
+        assert entry.damage == 5
+        assert entry.remaining_hp == 10
+        # The heal entry comes right after the bare interact entry.
+        assert result.combat_log[0].action == "interact"
+        assert result.combat_log[1] is entry
 
     def test_cure_conditions(self, combat_npc_corpus, combat_hard_state, monkeypatch):
         corpus, hard = self._setup(

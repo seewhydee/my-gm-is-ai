@@ -94,7 +94,10 @@ class BriefingEntity(BaseModel):
     interactions_available: list[BriefingInteraction] = Field(default_factory=list)
     contains: list[BriefingContainsEntry] = Field(default_factory=list)
     dialogue_paths: dict[str, str] = Field(default_factory=dict)
-    combat_block: dict[str, Any] | None = None
+    # True on entities that can fight (attack is always valid on them and
+    # starts combat).  None otherwise, so compact_dump omits it; the
+    # combat stats themselves are engine-only and never leave the corpus.
+    can_fight: bool | None = None
     count: int = 1
 
 

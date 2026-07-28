@@ -259,10 +259,6 @@ def build_briefing_entity(
             for path_id, resolvable in entity.dialogue.dialogue_paths.items()
         }
 
-    combat_block_dict = None
-    if entity.combat is not None:
-        combat_block_dict = entity.combat.model_dump(mode="json")
-
     return BriefingEntity(
         id=eid,
         name=entity.name or eid,
@@ -283,7 +279,7 @@ def build_briefing_entity(
             entity, entity_state, hard, soft, corpus),
         contains=build_contains(entity, hard, corpus, entity_id=eid),
         dialogue_paths=path_descriptions,
-        combat_block=combat_block_dict,
+        can_fight=True if entity.combat is not None else None,
         count=count)
 
 

@@ -317,9 +317,9 @@ def _prose_json(narration):
 
 
 def _rest_prose_json(narration="You rest."):
-    # A long rest heals, so the prose must carry the [MECH:hp] marker
+    # A long rest heals, so the prose must carry the [MECH:hp_heal] marker
     # that build_indicators requires (else prose validation retries).
-    return _prose_json(narration + " [MECH:hp]")
+    return _prose_json(narration + " [MECH:hp_heal]")
 
 
 def _caster_state_manager():
