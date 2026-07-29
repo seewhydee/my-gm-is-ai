@@ -338,7 +338,7 @@ The LLM must output a single structured action, corresponding to the player's in
 ```json
 {
   "action_type": "examine",
-  "target": "<entity_id or room_id>",
+  "target": "<entity_id, \"current_room\", or soft_item_name>",
   "rigorous": false,
   "using": null,
   "detail": "The player peers closely at the rusty mechanism, looking for a way to disengage it.",
@@ -349,17 +349,18 @@ The LLM must output a single structured action, corresponding to the player's in
 
 | Field      | Type          | Required | Description |
 |------------|---------------|----------|-------------|
-| `target`   | string        | yes      | A valid entity ID present in the current room, the current room ID itself (for examining the room), or a soft item name the player wishes to examine. |
+| `target`   | string        | yes      | A valid entity ID present in the current room, the reserved sentinel `"current_room"` (for examining the room itself), or a soft item name the player wishes to examine. |
 | `rigorous` | boolean       | no       | If `true`, signifies an in-depth search costing one turn. A non-rigorous examine is a free cursory glance that costs no turns. |
 | `using`    | string\|null  | no       | A valid entity ID or soft item used to assist the examination (e.g., using a torch to look at a dark corner). Tool-assisted examines should usually be `rigorous: true`. |
 
 **Engine validation:**
-- If `target` matches a valid entity in the current room's `contains` or the
-  current room ID, the engine performs a normal examine and fires any matching
-  `on_examine` events.
-- If `target` does not match a hard room or entity, the engine returns
-  `success: true` with a `soft_item_proposal` for `"examine"`. LLM Call 2 will
-  adjudicate whether the item exists in the scene.
+- If `target` matches a valid entity in the current room's `contains` or is
+  the `"current_room"` sentinel, the engine performs a normal examine and
+  fires any matching `on_examine` events.
+- If `target` does not match a hard entity and is not `"current_room"`, the
+  engine returns `success: true` with a `soft_item_proposal` for
+  `"examine"`. LLM Call 2 will adjudicate whether the item exists in the
+  scene.
 - If `using` is specified, the item must be in the player's hard inventory
   (entity IDs) or soft inventory (soft item names).
 - If `rigorous: true`, the engine evaluates the room/entity's interactions
@@ -395,17 +396,18 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 
 | Field            | Type           | Required | Description |
 |------------------|----------------|----------|-------------|
-| `target`         | string         | yes      | The entity ID being interacted with. Soft items should be handled via `examine` or `transfer`. |
+| `target`         | string         | yes      | The entity ID being interacted with, or the reserved sentinel `"current_room"` to perform a room interaction. Soft items should be handled via `examine` or `transfer`. |
 | `interaction_id` | string         | yes      | The specific interaction to perform. Generic interactions include `attack`. Module authors define additional ones (e.g., `recharge`). Picking up or giving items should use the `transfer` action instead. |
 | `using`          | string\|null   | no       | An entity ID or soft item enabling the interaction (e.g., "iron_sword" for attack). |
 
 **Engine validation:**
 - `target` must be a hard entity present in the room, a following NPC,
-  or an item in the player's inventory.  Interactions with generic soft
-  items are not directly supported; use `examine` or `transfer` for soft
-  items instead.
+  an item in the player's inventory, or the `"current_room"` sentinel.
+  Interactions with generic soft items are not directly supported; use
+  `examine` or `transfer` for soft items instead.
 - `interaction_id` must match a defined interaction on the target entity, the
-  current room, or a generic interaction (e.g., `attack`).
+  current room (when `target` is `"current_room"`), or a generic interaction
+  (e.g., `attack`).
 - All interaction `conditions` must be met.
 - If the interaction has a `check` (roll), the engine resolves it and selects
   the `success` or `failure` result.
@@ -482,14 +484,15 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 
 | Field          | Type            | Required | Description |
 |----------------|-----------------|----------|-------------|
-| `target`       | string          | yes      | Entity ID (NPC or container) or room ID (for dropping items on the floor). |
+| `target`       | string          | yes      | Entity ID (NPC or container) or the reserved sentinel `"current_room"` (for dropping items on the floor / taking loose items). |
 | `given_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is giving to the target (each counts as one). |
 | `taken_items`  | string[]\|null  | no       | List of item entity IDs and/or soft item names the player is taking from the target (each counts as one). |
 | `given_counts` | object\|null    | no       | Item IDs or soft item names mapped to quantities to give, e.g. `{ "gold_coins": 50 }`. |
 | `taken_counts` | object\|null    | no       | Item IDs or soft item names mapped to quantities to take, e.g. `{ "gold_coins": 50 }`. |
 
 **Engine validation:**
-- `target` must be an entity ID present in the room, or current room ID.
+- `target` must be an entity ID present in the room, or the `"current_room"`
+  sentinel.
 - Each item in `given_items` must be in the player's hard inventory
   (entity IDs) or soft inventory (soft item names).
 - Each item in `taken_items` must be obtainable from the target in the
@@ -799,10 +802,10 @@ whether to continue the chain:
 | Action            | target must be                                  | other constraints                          |
 |-------------------|-------------------------------------------------|--------------------------------------------|
 | `move`            | exit_id in current room                         | exit conditions met, not one-way blocked; in combat: fleeing (DEX check vs. flee DCs)   |
-| `examine`         | entity_id in current room, current room_id, or soft item name | `using` item must be in inventory; unknown targets become soft-item proposals; in combat: non-rigorous is free, rigorous costs the combat turn |
-| `interact`        | entity_id present in room, following NPC, or inventory item | interaction_id must match defined interaction; `using` item must be present/in-inventory; in combat: costs the combat turn, `attack` converts to a combat attack, `positioning` assertion optional; inventory items with authored interactions (e.g. potion `drink`) resolve as consumables |
+| `examine`         | entity_id in current room, `"current_room"`, or soft item name | `using` item must be in inventory; unknown targets become soft-item proposals; in combat: non-rigorous is free, rigorous costs the combat turn |
+| `interact`        | entity_id present in room, following NPC, inventory item, or `"current_room"` | interaction_id must match defined interaction; `using` item must be present/in-inventory; in combat: costs the combat turn, `attack` converts to a combat attack, `positioning` assertion optional; inventory items with authored interactions (e.g. potion `drink`) resolve as consumables |
 | `talk`            | npc entity_id in current room, alive            | `utterance` optional; in combat: rejected — rule as `wait` with the speech in `detail` |
-| `transfer`        | entity_id (NPC/container) in room, or room_id   | items in given/taken must exist in source; soft items become proposals; in combat: costs the combat turn |
+| `transfer`        | entity_id (NPC/container) in room, or `"current_room"`   | items in given/taken must exist in source; soft items become proposals; in combat: costs the combat turn |
 | `wait`            | null (no target)                                | none; advances turn counter                |
 | `ooc_discussion`  | null (no target)                                | no-op; does not advance turn counter       |
 | `gear`            | n/a (targets in `equip_targets`/`unequip_targets`) | each equip target must be in inventory with an `equip_block`; each unequip target must be equipped; validates tag conflicts and `max_equipped`; in combat: weapon-tag items only, costs the combat turn |

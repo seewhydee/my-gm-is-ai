@@ -26,7 +26,9 @@ Certain parts of the game (rooms, items, NPCs, named mechanics, etc.)
 are denoted by ID strings, often used in object keys (as in the above
 example).  By convention, IDs are in snake_case.  Different ID types
 have different uniqueness requirements, as explained in the following
-documentation.
+documentation.  No room or entity may use `"current_room"` as an ID;
+this is reserved for use during gameplay (in player-action `target`
+fields, to denote the current room).
 
 All objects in the schema permit undocumented fields with no
 rejection.  By convention, a `note` field may be added to any object

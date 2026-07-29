@@ -36,6 +36,7 @@ from mgmai.engine.utils import (
     get_status_effects,
 )
 from mgmai.models.actions import (
+    CURRENT_ROOM_SENTINEL,
     CombatAction,
     DialogueExitedResult,
     ExamineAction,
@@ -357,6 +358,11 @@ def resolve_examine(
 ) -> ResolutionResult:
     target = action.target
     room_id = hard.player.location
+    # The "current_room" sentinel denotes the player's current room; normalize
+    # it to the actual room ID so downstream logic (event context, soft-item
+    # proposals, etc.) sees a real ID.
+    if target == CURRENT_ROOM_SENTINEL:
+        target = room_id
     room = corpus.rooms.get(room_id)
     if room is None:
         return ResolutionResult(
@@ -789,6 +795,11 @@ def resolve_transfer(
 ) -> ResolutionResult:
     target_id = action.target
     room_id = hard.player.location
+    # The "current_room" sentinel denotes the player's current room; normalize
+    # it to the actual room ID so downstream logic (containment maps,
+    # soft-item proposals, post-validation) sees a real ID.
+    if target_id == CURRENT_ROOM_SENTINEL:
+        target_id = room_id
     room = corpus.rooms.get(room_id)
     if room is None:
         return ResolutionResult(success=False, error=f"Room '{room_id}' not found")
@@ -1072,6 +1083,11 @@ def resolve_interact(
     target_id = action.target
     interaction_id = action.interaction_id
     room_id = hard.player.location
+    # The "current_room" sentinel denotes the player's current room; normalize
+    # it to the actual room ID so downstream logic (event context, etc.) sees
+    # a real ID.
+    if target_id == CURRENT_ROOM_SENTINEL:
+        target_id = room_id
     room = corpus.rooms.get(room_id)
     if room is None:
         return ResolutionResult(success=False, error=f"Room '{room_id}' not found")
@@ -1088,7 +1104,7 @@ def resolve_interact(
 
     target_entity = _find_entity_in_room_followers(target_id, room_id, hard, corpus)
 
-    if target_entity is None:
+    if target_entity is None and target_id != room_id:
         return ResolutionResult(
             success=False,
             error=f"Target '{target_id}' not found in room '{room_id}' or your inventory",

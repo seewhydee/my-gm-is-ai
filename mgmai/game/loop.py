@@ -25,6 +25,7 @@ from typing import Any
 
 from mgmai.context.assembler import assemble
 from mgmai.engine.engine import MAX_CHAIN_LENGTH, resolve
+from mgmai.models.actions import CURRENT_ROOM_SENTINEL
 from mgmai.engine.narrative_indicators import (
     build_indicators,
     format_indicators_fallback,
@@ -242,7 +243,10 @@ class GameLoop:
                    result.hard_state_changes.player_location is not None:
                     room_changed = True
                 elif action and action.action_type == "examine" and \
-                     result.room_after and action.target == result.room_after.id:
+                     result.room_after and action.target in (
+                         result.room_after.id,
+                         CURRENT_ROOM_SENTINEL,
+                     ):
                     examined_room = True
 
             if (

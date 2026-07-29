@@ -154,6 +154,21 @@ class TestBriefingRoom:
         assert r.exits_available == []
         assert r.interactions_available == []
 
+    def test_room_id_not_serialized(self) -> None:
+        """The room ``id`` is an internal identifier: it is present on the
+        Python object (the game loop uses it) but excluded from the
+        serialized briefing so the LLM is never tempted to copy it as an
+        action ``target`` (use the ``"current_room"`` sentinel instead)."""
+        r = BriefingRoom.model_validate({
+            "id": "axe_head",
+            "name": "Axe Head",
+            "description": "The axe head.",
+        })
+        assert r.id == "axe_head"  # available internally
+        dumped = r.model_dump(mode="json")
+        assert "id" not in dumped
+        assert dumped["name"] == "Axe Head"
+
 
 class TestPlayerStateBriefing:
     def test_basic(self) -> None:

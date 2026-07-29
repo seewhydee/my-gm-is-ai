@@ -117,6 +117,20 @@ class TestResolveExamine:
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.success is True
 
+    def test_examine_current_room_sentinel(self, state_manager):
+        """The "current_room" sentinel examines the player's current room,
+        equivalent to targeting the room by its actual ID."""
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        room_id = hard.player.location
+        room = corpus.rooms[room_id]
+        action = ExamineAction(
+            action_type="examine", target="current_room", detail="Looking around"
+        )
+        result = resolve_examine(action, hard, state_manager.soft_state, corpus)
+        assert result.success is True
+        assert room.description in result.triggered_narration
+
     def test_examine_nonexistent_target(self, state_manager):
         action = ExamineAction(action_type="examine", target="nonexistent", detail="Looking")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
@@ -469,6 +483,39 @@ class TestResolveTransfer:
         assert result.success is True
         assert result.hard_changes.inventory_added.get("rusty_key") == 1
 
+    def test_take_item_from_room_via_current_room_sentinel(self, state_manager):
+        """The "current_room" sentinel targets loose items in the current room."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "secret_compartment"
+        action = TransferAction(
+            action_type="transfer", target="current_room",
+            taken_items=["rusty_key"],
+            detail="Taking the rusty key",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_added.get("rusty_key") == 1
+
+    def test_give_item_to_room_via_current_room_sentinel(self, state_manager):
+        """Giving an item with the "current_room" sentinel drops it on the floor
+        of the current room (keyed by the real room ID, not the sentinel)."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        hard.player.inventory["toenail_sword"] = 1
+        action = TransferAction(
+            action_type="transfer", target="current_room",
+            given_items=["toenail_sword"],
+            detail="Dropping the sword",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
+        assert result.hard_changes.room_contains_added.get("bag_floor", {}).get("toenail_sword") == 1
+
     def test_transfer_target_not_found(self, state_manager):
         hard = state_manager.hard_state
         soft = state_manager.soft_state
@@ -613,6 +660,39 @@ class TestResolveInteract:
         )
         result = resolve_interact(action, hard, soft, corpus)
         assert result.success is False
+
+    def test_interact_room_target_via_current_room_sentinel(self, state_manager):
+        """Targeting the room (via the "current_room" sentinel, or the room's
+        actual ID) resolves a room-authored interaction directly, without
+        requiring an entity target."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        room = corpus.rooms["bag_floor"]
+        room.interactions.append(Interaction(
+            id="room_lever",
+            description="Pull the lever on the wall",
+            result=Result(narrative="A hidden door grinds open."),
+        ))
+
+        action = InteractAction(
+            action_type="interact", target="current_room",
+            interaction_id="room_lever",
+            detail="Pulling the room lever",
+        )
+        result = resolve_interact(action, hard, soft, corpus)
+        assert result.success is True
+        assert result.triggered_narration == ["A hidden door grinds open."]
+
+        # Targeting the room by its actual ID works too.
+        action2 = InteractAction(
+            action_type="interact", target="bag_floor",
+            interaction_id="room_lever",
+            detail="Pulling the room lever",
+        )
+        result2 = resolve_interact(action2, hard, soft, corpus)
+        assert result2.success is True
 
     def test_interact_condition_not_met(self, state_manager):
         hard = state_manager.hard_state

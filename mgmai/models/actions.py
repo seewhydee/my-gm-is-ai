@@ -26,6 +26,12 @@ from mgmai.models.corpus import StatModifier
 from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
 from mgmai.models.soft_state import SoftStatePatch
 
+# Reserved sentinel used in player-action ``target`` fields to denote the
+# player's current room.  Using this instead of the room's actual ID removes
+# any need to disambiguate a room ID from an entity ID (the two namespaces
+# are separate and need not be mutually disjoint).  See ``schema/corpus.md``.
+CURRENT_ROOM_SENTINEL = "current_room"
+
 
 class PositioningAssertion(BaseModel):
     """LLM-asserted positioning changes attached to a combat/wait/interact action.

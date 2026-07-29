@@ -2283,7 +2283,14 @@ All IDs must be **snake_case, lowercase ASCII**:
    the one-way nature).
 
 6. **Duplicate IDs**: Ensure every ID (room, entity, exit, interaction,
-   mechanic, flag, topic) is unique across the entire corpus.
+   mechanic, flag, topic) is unique within its own namespace. Room and
+   entity IDs occupy separate namespaces and need not be mutually
+   disjoint: player actions denote the current room via the reserved
+   `"current_room"` sentinel rather than by room ID, so a room/entity
+   ID collision cannot confuse action resolution. (Corpus-wide
+   uniqueness across namespaces is still good hygiene, but not
+   required.) The string `"current_room"` is reserved and may not be
+   used as any room or entity ID.
 
 7. **NPCs with neither dialogue nor aggro**: Conversational NPCs
    need `dialogue`; combat NPCs need `aggro`. An NPC with

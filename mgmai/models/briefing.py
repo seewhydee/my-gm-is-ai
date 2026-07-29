@@ -107,7 +107,12 @@ class BriefingExit(BaseModel):
 
 
 class BriefingRoom(BaseModel):
-    id: str
+    # ``id`` is an internal identifier used by the engine/game loop (e.g.
+    # to detect when the player examined the room).  It is deliberately
+    # excluded from the serialized briefing: the LLM never needs the room's
+    # ID, and surfacing it invites the ruling GM to copy it as an action
+    # ``target`` instead of using the reserved ``"current_room"`` sentinel.
+    id: str = Field(exclude=True)
     name: str
     description: str
     soft_item_guidance: str | None = None

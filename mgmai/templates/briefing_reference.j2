@@ -29,7 +29,7 @@ player's action this turn. Convention: fields with empty values (`null`,
 
 | Field | Meaning |
 |-------|---------|
-| `id`, `name`, `description` | Room identity and prose description |
+| `name`, `description` | Room display name and prose description |
 | `entities_visible` | Non-concealed entities present (NPCs, items, features) — table below |
 | `exits_available` | Visible exits: `{`id`, `direction`}` entries |
 | `interactions_available` | The room's *own* interactions: `{`id`, `description`}` entries (entity interactions are listed on each entity) |
@@ -41,6 +41,11 @@ player's action this turn. Convention: fields with empty values (`null`,
 Soft items are mundane ambient objects with generic names ("rock",
 "stick") and no entity IDs, unlike "hard" item entities, which have IDs
 and narrative significance.
+
+To target the current room itself in a player action (`examine`,
+`interact`, `transfer`), use the reserved sentinel `"current_room"`. The
+room's own ID is intentionally not surfaced here, to avoid it being
+mistaken for a target value.
 
 ### current_room.entities_visible[]
 

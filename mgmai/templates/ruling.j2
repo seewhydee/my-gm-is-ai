@@ -40,15 +40,15 @@ You MUST output a single JSON object with the following structure.
 
 **examine** — inspect or search something:
 - `target` (string, required): What's being inspected; one of:
+  - `"current_room"` – the player's current location
   - An entity `id` from `entities_visible`
-  - The current room ID
   - A "soft item" – something nondescript that can be picked up, with a generic name like "rock"
 - `rigorous` (boolean, optional): Set to `true` for thorough search
 - `using` (string, optional): Item/entity used to assist in the examination (must be in inventory or equipped)
 - If the player examines an object that's narratively in the scene but has no entity ID and cannot be picked up (i.e., not a soft item), classify it as an examination of the host room or host entity, and write an additional Soft State Patch (see below) as a narrative note about the unlisted component that was examined.
 
 **interact** — Perform an interaction:
-- `target` (string, required): The ID of the current room, or an entity `id` from `entities_visible`, or an item ID from inventory.
+- `target` (string, required): either `"current_room"`, an entity `id` from `entities_visible`, or an item ID from inventory.
 - `interaction_id` (string, required): An interaction ID from the target's `interactions_available` list.  It can be approximately synonymous to the player's command (e.g., player's "shove" can map to a "push" interaction).
 - `using` (string, optional): Item used to aid the interaction (must be in inventory or equipped)
 
@@ -59,7 +59,7 @@ You MUST output a single JSON object with the following structure.
 - `dialogue_path` (string, optional): If the player attempts a specific special dialogue path (see below), specify the path ID from the NPC's `dialogue_paths`
 
 **transfer** — Shift items to/from player's inventory:
-- `target` (string, required): The source/recipient — the room ID for loose items in the room, or a container entity (NPC/feature/item).
+- `target` (string, required): The source/recipient — either `"current_room"` (loose items in the room), or a container entity (NPC/feature/item).
 - `given_items` (array of strings, optional): Item IDs or soft item names to give; each counts as one
 - `taken_items` (array of strings, optional): Item IDs or soft item names to take; each counts as one
 - `given_counts` (object, optional): Item IDs mapped to quantities to give, e.g. `{"coins": 50}`
@@ -98,7 +98,7 @@ You MUST output a single JSON object with the following structure.
 
 ### Soft State Patches
 
-If the player's action has effects on the world that are not plot-significant, but are worth recording for future narrative continuity, note them in `soft_state_patches`. Each patch is an object:
+Use `soft_state_patches` to record plot-adjacent notes about the game world: tweaks to the world, or pieces of information gleaned by the player, that are not plot-significant but worth recording for future narrative continuity. Each patch is an object:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -107,14 +107,12 @@ If the player's action has effects on the world that are not plot-significant, b
 | `new_value` | string/object | The note text, item name, or improvised-weapon object |
 | `reason` | string | Why this change is being proposed |
 
-- `room_note` attaches to the current room automatically; do not specify a room ID.
-- `entity_note` attaches to a single entity in the current room. For a persistent player-scoped note, use `"player"` as the entity ID.
-- `soft_inventory_remove` destroys/consumes a carried soft item; for placing it, use a `transfer` action instead.
+- `room_note` attaches to the current room.
+- `entity_note` attaches to an entity in the current room. For a persistent player-scoped note, use `"player"` as the entity ID.
+- `soft_inventory_remove` destroys/consumes a carried soft item; to place it, use a `transfer` action instead.
 - `set_improvised_weapon` sets or clears (`null`) an improvised weapon.
 
 Only propose patches that are plausible given the current room and player state. The engine validates and rejects impossible patches (e.g. a note on an entity that is not in the current room, or a note claiming an outcome the hard state contradicts).
-
-If an `examine` action establishes a notable ambient object or detail the player may return to, record it as a `room_note` on the current room, or an `entity_note` on the host entity.
 
 ---
 
@@ -126,7 +124,7 @@ To take an item from a container, propose a `transfer` with:
 - `target` = the **container's entity `id`** (not the room, unless the item is loose on the floor),
 - `taken_items` = the item `id`(s) from the container's `contains`, or soft item name(s) for ambient objects.
 
-To give an item to an NPC or place it into a container, use the same `target` = container/NPC entity `id` and list `given_items`. To drop an item on the floor, use `target` = the current room ID with `given_items`.
+To give an item to an NPC or place it into a container, use the same `target` = container/NPC entity `id` and list `given_items`. To drop an item on the floor, use `target` = `"current_room"` with `given_items`.
 
 Soft items the player has placed somewhere are listed in `soft_items_present` — they verifiably exist and can be taken back like ordinary contents: `target` the room or entity whose `soft_items_present` lists the item (prefer the listing entity).
 
@@ -154,9 +152,9 @@ Do NOT propose soft items that are:
 
 Before proposing a soft item, check whether the item name matches a hard entity (by ID or display name) currently present in the room. If it does, target that entity directly — do not propose it as a soft item. Soft items are for ambient objects that have no corpus entity.
 
-When the player's input implies interacting with a soft item, use the normal action types: `transfer` for taking/giving, `examine` for examining. For `transfer`, `target` is the source/recipient (room ID, container entity ID, or NPC entity ID). The engine will ask Call 2 to confirm the item exists before changing inventory.
+When the player's input implies interacting with a soft item, use the normal action types: `transfer` for taking/giving, `examine` for examining. For `transfer`, `target` is the source/recipient (`"current_room"`, a container entity ID, or an NPC entity ID). The engine will ask Call 2 to confirm the item exists before changing inventory.
 
-To dispose of a carried soft item by putting it somewhere, use `transfer` (an entity ID, or the room ID to drop it on the floor). The `soft_inventory_remove` patch is only for items destroyed, consumed, or lost — not for placement.
+To dispose of a carried soft item by putting it somewhere, use `transfer` (an entity ID, or `"current_room"` to drop on the floor). The `soft_inventory_remove` patch is only for items destroyed, consumed, or lost — not for placement.
 
 If the player grabs a non-standard object to use as a weapon, that is NOT a soft-item take: propose a `set_improvised_weapon` patch instead, with the object's mechanical parameters. Soft items are narrative props; improvised weapons are mechanical.
 
@@ -300,7 +298,7 @@ Worked recipes:
 4. **Talking**: Speaking to an NPC. Include verbatim `utterance` when the player speaks in-character. Set `ends_dialogue: true` when the player says goodbye or leaves the conversation.
    - **Dialogue paths**: Should the player attempt a special dialogue path matching one of those listed on the NPC's `dialogue_paths`, include `dialogue_path` in the PlayerAction with the matching path ID. In `dialogue_paths`, the path IDs map to natural language descriptions of each dialogue path; use this to decide which (if any) matches the player's intent. If none fits, do not force it; fall back on plain `talk` for freeform conversation.
 
-5. **Transfer**: Giving items to someone or taking items from someone/somewhere. `target` is the source/recipient: the container or NPC entity ID, or the room ID for items loose on the floor. Hard items use their entity IDs (taken from the container's `contains` or the player's inventory); soft items use their names (from the container's or room's `soft_items_present`, or the player's `soft_inventory`). Only take items that are actually present at the target. See *Containers & Items*.
+5. **Transfer**: Giving items to someone or taking items from someone/somewhere. `target` is the source/recipient: the container or NPC entity ID, or `"current_room"` for items loose on the floor. Hard items use their entity IDs (taken from the container's `contains` or the player's inventory); soft items use their names (from the container's or room's `soft_items_present`, or the player's `soft_inventory`). Only take items that are actually present at the target. See *Containers & Items*.
 
 6. **Combat**: When `combat_state` is present in the briefing, combat is
    active and the turn economy applies: EVERY action except a
@@ -378,13 +376,13 @@ Input: "I go north"
 Output: `{"action_type": "move", "target": "exit_north", "detail": "Player heads north through the doorway", "follow_up": null, "soft_state_patches": []}`
 
 Input: "I search the room thoroughly"
-Output: `{"action_type": "examine", "target": "room_entrance", "rigorous": true, "detail": "Player conducts a thorough search of the entrance hall", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "examine", "target": "current_room", "rigorous": true, "detail": "Player conducts a thorough search of the entrance hall", "follow_up": null, "soft_state_patches": []}`
 
 Input: "I pick up the rusty key and unlock the padlock"
-Output: `{"action_type": "transfer", "target": "dungeon_cell", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "soft_state_patches": []}`
 
 Input: "I pull a loose rock from the wall and throw it at the spider"
-Output: `{"action_type": "transfer", "target": "axe_head", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": "throw the rock at the spider", "soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": "throw the rock at the spider", "soft_state_patches": []}`
 
 Input: "ooc: wait, what room am I in again?"
 Output: `{"action_type": "ooc_discussion", "detail": "Player asks what room they are in", "follow_up": null, "soft_state_patches": []}`

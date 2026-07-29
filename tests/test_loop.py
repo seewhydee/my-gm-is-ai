@@ -95,6 +95,55 @@ class TestExecuteTurn:
         assert state_manager.hard_state.turn_count == 1
         assert len(state_manager.soft_state.turn_history) == 1
 
+    def test_examine_room_sentinel_appends_exits(self, state_manager, fake_display) -> None:
+        """Examining the room via the "current_room" sentinel is detected as
+        a room examination, so the loop appends the exits list to the
+        narration (regression guard: the detection must not rely solely on
+        the raw room ID, which the LLM no longer emits)."""
+        ruling = json.dumps({
+            "action_type": "examine",
+            "target": "current_room",
+            "detail": "I look around.",
+            "follow_up": None,
+            "soft_state_patches": [],
+        })
+        llm = FakeLLMClient(
+            ruling_response=ruling,
+            prose_response=_prose_json("You survey the room."),
+        )
+        loop = GameLoop(state_manager, llm, display=fake_display)
+        fake_display.format_exits.return_value = " [EXITS]"
+
+        narration = loop._run_turn("look around")
+
+        assert narration == "You survey the room. [EXITS]"
+        fake_display.format_exits.assert_called_once()
+        # The exits were formatted from the post-examine room_after.
+        room_after = fake_display.format_exits.call_args.args[0]
+        assert room_after.id == "axe_head"
+
+    def test_examine_room_by_raw_id_appends_exits(self, state_manager, fake_display) -> None:
+        """Targeting the room by its actual ID (legacy/robustness path) is
+        still detected as a room examination."""
+        ruling = json.dumps({
+            "action_type": "examine",
+            "target": "axe_head",
+            "detail": "I look around.",
+            "follow_up": None,
+            "soft_state_patches": [],
+        })
+        llm = FakeLLMClient(
+            ruling_response=ruling,
+            prose_response=_prose_json("You survey the room."),
+        )
+        loop = GameLoop(state_manager, llm, display=fake_display)
+        fake_display.format_exits.return_value = " [EXITS]"
+
+        narration = loop._run_turn("look around")
+
+        assert narration == "You survey the room. [EXITS]"
+        fake_display.format_exits.assert_called_once()
+
     def test_fallback_on_llm1_parse_error(self, state_manager, fake_display) -> None:
         llm = FakeLLMClient(
             ruling_response="not valid json",
