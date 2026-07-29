@@ -816,28 +816,6 @@ class TestCombatEquipmentStats:
 # Appearance notes (soft state)
 # ------------------------------------------------------------------
 
-class TestAppearanceNotes:
-    def test_appearance_note_add(self, state_manager):
-        """appearance_note_add patch should append to appearance_notes."""
-        soft = state_manager.soft_state
-        patch = SoftStatePatch(
-            field="appearance_note_add",
-            new_value="tattered cloak pulled from a goblin corpse",
-            reason="Player described wearing a goblin cloak",
-        )
-        state_manager.apply_soft_patches([patch])
-        assert "tattered cloak" in soft.appearance_notes[0]
-
-    def test_appearance_notes_persist(self, state_manager):
-        """Multiple appearance notes should accumulate."""
-        soft = state_manager.soft_state
-        for note in ["note 1", "note 2"]:
-            state_manager.apply_soft_patches([
-                SoftStatePatch(field="appearance_note_add", new_value=note, reason="test")
-            ])
-        assert len(soft.appearance_notes) == 2
-
-
 # ------------------------------------------------------------------
 # HardStateChanges merge with equipment fields
 # ------------------------------------------------------------------

@@ -41,7 +41,7 @@ class SoftStatePatch(BaseModel):
     entity_id: str | None = None
     field: Literal[
         "room_note", "entity_note", "soft_inventory_remove",
-        "appearance_note_add", "set_improvised_weapon"
+        "set_improvised_weapon"
     ]
     new_value: Any
     reason: str
@@ -60,13 +60,6 @@ class SoftStatePatch(BaseModel):
         elif self.field == "entity_note":
             if self.entity_id is None:
                 raise ValueError("entity_note patch requires entity_id")
-        elif self.field == "appearance_note_add":
-            if self.entity_id is not None:
-                raise ValueError(
-                    "appearance_note_add patch must not carry entity_id"
-                )
-            if not isinstance(self.new_value, str) or not self.new_value.strip():
-                raise ValueError("appearance_note_add new_value must be a non-empty string")
         elif self.field == "set_improvised_weapon" and self.entity_id is not None:
                 raise ValueError(
                     "set_improvised_weapon patch must not carry entity_id"
@@ -120,5 +113,4 @@ class SoftGameState(BaseModel):
     soft_contents: dict[str, dict[str, int]] = Field(default_factory=dict)
     checks_attempted: dict[str, list[str]] = Field(default_factory=dict)
     revealed_hints: list[str] = Field(default_factory=list)
-    appearance_notes: list[str] = Field(default_factory=list)
     improvised_weapon: ImprovisedWeapon | None = None

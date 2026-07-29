@@ -56,7 +56,7 @@ and narrative significance.
 | `interactions_available` | The entity's own usable interactions: `{`id`, `description`}` entries |
 | `contains` | Items nested inside (container contents): `{`id`, `name`, `type`, `description`, `count`}` entries. Not listed separately in `entities_visible` — reachable only via this parent entity |
 | `dialogue_paths` | NPCs only: map of dialogue-path ID → natural-language description of the path |
-| `can_fight` | Present and true on entities that can fight — attacking one starts combat |
+| `can_fight` | Present and true on entities that can fight; they include an `attack` interaction in `interactions_available` |
 | `soft_item_guidance`, `soft_items_taken`, `soft_items_present` | As for the room, but for soft items contained in this entity |
 
 ### player_state

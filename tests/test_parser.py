@@ -182,7 +182,7 @@ class TestParsePlayerAction:
             "follow_up": None,
             "soft_state_patches": [
                 {
-                    "field": "appearance_note_add",
+                    "field": "room_note",
                     "new_value": "A loose rock catches the eye.",
                     "reason": "Player noticed a rock",
                 }

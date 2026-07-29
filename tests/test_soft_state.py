@@ -67,15 +67,6 @@ class TestSoftStatePatch:
         })
         assert p.entity_id == "player"
 
-    def test_appearance_note_add(self) -> None:
-        p = SoftStatePatch.model_validate({
-            "field": "appearance_note_add",
-            "new_value": "A loose rock catches the player's eye.",
-            "reason": "Player notices a rock on the floor.",
-        })
-        assert p.field == "appearance_note_add"
-        assert p.new_value == "A loose rock catches the player's eye."
-
     def test_soft_inventory_remove(self) -> None:
         p = SoftStatePatch.model_validate({
             "field": "soft_inventory_remove",
@@ -129,16 +120,7 @@ class TestSoftStatePatch:
                 "field": "entity_note",
                 "new_value": "Wounded.",
                 "reason": "Player attacked.",
-            })
-
-    def test_appearance_note_with_entity_id_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            SoftStatePatch.model_validate({
-                "entity_id": "spider",
-                "field": "appearance_note_add",
-                "new_value": "Shiny.",
-                "reason": "Player noted it.",
-            })
+            }            )
 
 
 class TestConversationLogEntry:

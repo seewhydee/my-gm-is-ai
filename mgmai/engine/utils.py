@@ -199,6 +199,9 @@ def build_entity_interactions(
     if entity_state.get("alive") is False:
         return []
     interactions: list[BriefingInteraction] = []
+    if entity.combat is not None:
+        interactions.append(
+            BriefingInteraction(id="attack", description="Start combat with this entity"))
     for inter in entity.interactions:
         if inter.condition and not evaluate(inter.condition, hard, soft, corpus):
             continue

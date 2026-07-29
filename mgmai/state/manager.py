@@ -1608,11 +1608,6 @@ class StateManager:
                 if value in self.soft_state.soft_inventory:
                     self.soft_state.soft_inventory.remove(value)
 
-            elif field == "appearance_note_add":
-                if not isinstance(patch.new_value, str):
-                    raise ValueError(f"appearance_note_add has invalid value {type(patch.new_value).__name__}")
-                self.soft_state.appearance_notes.append(patch.new_value)
-
             elif field == "set_improvised_weapon":
                 from mgmai.models.soft_state import ImprovisedWeapon
                 if patch.new_value is None:

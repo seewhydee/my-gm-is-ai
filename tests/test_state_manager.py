@@ -411,15 +411,6 @@ class TestApplySoftPatches:
         manager.apply_soft_patches([patch])
         assert "Left legs are wounded." in manager.soft_state.entity_notes["spider"]
 
-    def test_appearance_note_add(self, manager: StateManager) -> None:
-        patch = SoftStatePatch(
-            field="appearance_note_add",
-            new_value="A loose rock catches the player's eye.",
-            reason="Player noticed it.",
-        )
-        manager.apply_soft_patches([patch])
-        assert "A loose rock catches the player's eye." in manager.soft_state.appearance_notes
-
     def test_soft_inventory_remove(self, manager: StateManager) -> None:
         manager.soft_state.soft_inventory = ["rock", "cork"]
         patch = SoftStatePatch(
@@ -452,12 +443,12 @@ class TestApplySoftPatches:
     def test_apply_from_dict(self, manager: StateManager) -> None:
         manager.apply_soft_patches([
             {
-                "field": "appearance_note_add",
+                "field": "room_note",
                 "new_value": "A wisp of lint drifts by.",
                 "reason": "Player noticed it.",
             }
         ])
-        assert "A wisp of lint drifts by." in manager.soft_state.appearance_notes
+        assert "A wisp of lint drifts by." in manager.soft_state.room_notes[manager.hard_state.player.location]
 
     def test_apply_before_load_raises(self) -> None:
         sm = StateManager()
