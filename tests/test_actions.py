@@ -145,17 +145,17 @@ class TestPlayerAction:
     def test_with_soft_state_patches(self) -> None:
         a = PlayerAction.model_validate({
             "action_type": "wait",
-            "detail": "The player notes the rock.",
+            "detail": "The player smashes the bottle.",
             "soft_state_patches": [
                 {
-                    "field": "room_note",
-                    "new_value": "A loose rock catches the player's eye.",
-                    "reason": "Player notices a rock on the floor.",
+                    "field": "soft_inventory_remove",
+                    "new_value": "broken bottle",
+                    "reason": "The bottle shatters on impact.",
                 },
             ],
         })
         assert len(a.soft_state_patches) == 1
-        assert a.soft_state_patches[0].field == "room_note"
+        assert a.soft_state_patches[0].field == "soft_inventory_remove"
 
     def test_follow_up(self) -> None:
         a = PlayerAction.model_validate({
@@ -221,24 +221,35 @@ class TestEngineResult:
             "action_type": "wait",
             "soft_state_patches_applied": [
                 {
+                    "field": "soft_inventory_remove",
+                    "new_value": "broken bottle",
+                    "reason": "The bottle shatters.",
+                },
+            ],
+            "soft_state_notes_applied": [
+                {
                     "field": "room_note",
                     "new_value": "Webs cleared.",
                     "reason": "Player cleared the webs.",
                 },
             ],
-            "soft_state_patches_rejected": [
+            "soft_state_notes_rejected": [
                 {
-                    "field": "entity_note",
-                    "entity_id": "spider",
-                    "new_value": "The spider is dead.",
-                    "reason": "Player killed it.",
-                    "rejection_reason": "Contradicts hard state: spider is alive.",
+                    "note": {
+                        "field": "entity_note",
+                        "entity_id": "spider",
+                        "new_value": "The spider is dead.",
+                        "reason": "Player killed it.",
+                    },
+                    "reason": "Contradicts hard state: spider is alive.",
                 },
             ],
         })
         assert len(r.soft_state_patches_applied) == 1
-        assert len(r.soft_state_patches_rejected) == 1
-        assert r.soft_state_patches_applied[0].field == "room_note"
+        assert r.soft_state_patches_applied[0].field == "soft_inventory_remove"
+        assert len(r.soft_state_notes_applied) == 1
+        assert r.soft_state_notes_applied[0].field == "room_note"
+        assert len(r.soft_state_notes_rejected) == 1
 
     def test_game_over(self) -> None:
         r = EngineResult.model_validate({

@@ -23,7 +23,12 @@ from pydantic import ValidationError
 from mgmai.models.actions import HardStateChanges
 from mgmai.models.corpus import Entity, ModuleCorpus
 from mgmai.models.hard_state import HardGameState
-from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
+from mgmai.models.soft_state import (
+    SoftGameState,
+    SoftStateNote,
+    SoftStatePatch,
+    TurnHistoryEntry,
+)
 from mgmai.state.manager import StateManager, StateNotLoadedError
 from tests.helpers import (
     build_state_manager,
@@ -393,22 +398,22 @@ class TestApplyHardChanges:
 class TestApplySoftPatches:
     def test_room_note(self, manager: StateManager) -> None:
         # room_note attaches to the player's current room (axe_head).
-        patch = SoftStatePatch(
+        note = SoftStateNote(
             field="room_note",
             new_value="The blade gleams.",
             reason="Player polished it.",
         )
-        manager.apply_soft_patches([patch])
+        manager.apply_soft_patches([note])
         assert "The blade gleams." in manager.soft_state.room_notes["axe_head"]
 
     def test_entity_note(self, manager: StateManager) -> None:
-        patch = SoftStatePatch(
+        note = SoftStateNote(
             entity_id="spider",
             field="entity_note",
             new_value="Left legs are wounded.",
             reason="Player attacked it.",
         )
-        manager.apply_soft_patches([patch])
+        manager.apply_soft_patches([note])
         assert "Left legs are wounded." in manager.soft_state.entity_notes["spider"]
 
     def test_soft_inventory_remove(self, manager: StateManager) -> None:
@@ -434,7 +439,7 @@ class TestApplySoftPatches:
 
     def test_entity_note_missing_entity_raises(self, manager: StateManager) -> None:
         with pytest.raises(ValidationError, match="requires entity_id"):
-            SoftStatePatch(
+            SoftStateNote(
                 field="entity_note",
                 new_value="Something.",
                 reason="Test.",
@@ -456,23 +461,21 @@ class TestApplySoftPatches:
             sm.apply_soft_patches([])
 
     def test_room_note_non_string_raises(self, manager: StateManager) -> None:
-        patch = SoftStatePatch(
-            field="room_note",
-            new_value=123,
-            reason="Test.",
-        )
-        with pytest.raises(ValueError, match="has invalid value"):
-            manager.apply_soft_patches([patch])
+        with pytest.raises(ValidationError):
+            SoftStateNote(
+                field="room_note",
+                new_value=123,
+                reason="Test.",
+            )
 
     def test_entity_note_non_string_raises(self, manager: StateManager) -> None:
-        patch = SoftStatePatch(
-            entity_id="spider",
-            field="entity_note",
-            new_value={"bad": "value"},
-            reason="Test.",
-        )
-        with pytest.raises(ValueError, match="has invalid value"):
-            manager.apply_soft_patches([patch])
+        with pytest.raises(ValidationError):
+            SoftStateNote(
+                entity_id="spider",
+                field="entity_note",
+                new_value={"bad": "value"},
+                reason="Test.",
+            )
 
     def test_soft_inventory_add_rejected(self, manager: StateManager) -> None:
         with pytest.raises(ValidationError):

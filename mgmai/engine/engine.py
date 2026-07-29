@@ -34,7 +34,6 @@ from mgmai.engine.utils import (
     build_briefing_room,
     get_following_npc_ids,
     get_status_effects,
-    present_entity_ids,
 )
 from mgmai.models.actions import (
     AttitudeLimitsCurrent,
@@ -367,9 +366,6 @@ def resolve(
     _apply_and_merge(action_changes)
 
     # 5. Apply soft patches and persist soft-content takes / revealed hints.
-    engine_soft_patches = list(resolution.soft_patches or [])
-    if engine_soft_patches:
-        state_manager.apply_soft_patches(engine_soft_patches)
 
     # Mechanically verified retrievals of placed soft items: decrement
     # soft_contents (pruning zeros) and move the items to soft_inventory.
@@ -398,7 +394,6 @@ def resolve(
     applied_patches, rejected_patches = soft_patches
     if applied_patches:
         state_manager.apply_soft_patches(applied_patches)
-    combined_applied = engine_soft_patches + applied_patches
 
     for hint in resolution.revealed_hints or []:
         if hint not in soft.revealed_hints:
@@ -621,7 +616,7 @@ def resolve(
         message=resolution.message,
         room_after=room_after,
         hard_state_changes=merged_changes,
-        soft_state_patches_applied=combined_applied,
+        soft_state_patches_applied=applied_patches,
         soft_state_patches_rejected=rejected_patches,
         rolls=rolls,
         encounter_outcome=encounter_outcome if isinstance(encounter_outcome, EncounterOutcome) else None,
@@ -650,59 +645,10 @@ def _validate_soft_patches(
     applied: list[SoftStatePatch] = []
     rejected: list[dict[str, Any]] = []
 
-    present_room = hard.player.location
-    present_entities = present_entity_ids(hard, corpus)
-
     for patch in patches:
         reason = None
 
-        if patch.field == "room_note":
-            # room_note always attaches to the player's current room.
-            if present_room not in corpus.rooms:
-                reason = f"Invalid current room: {present_room}"
-            elif not isinstance(patch.new_value, str) or not patch.new_value.strip():
-                reason = "room_note new_value must be a non-empty string"
-            else:
-                contradiction = _check_note_contradiction(
-                    patch.new_value, present_room, hard, corpus)
-                if contradiction:
-                    reason = contradiction
-        elif patch.field == "entity_note":
-            eid = patch.entity_id
-            entity = corpus.entities.get(eid) if eid else None
-            is_player = eid == "player" or (
-                entity is not None and entity.type == "player")
-            if not eid or (entity is None and not is_player):
-                reason = f"Invalid entity_id: {eid}"
-            elif not isinstance(patch.new_value, str) or not patch.new_value.strip():
-                reason = "entity_note new_value must be a non-empty string"
-            else:
-                entity_state = hard.entity_states.get(eid, {})
-                if entity_state.get("alive") is False:
-                    reason = f"Entity '{eid}' is dead; notes are not allowed"
-                elif not is_player and eid not in present_entities:
-                    # The player entity (type == "player") is always a
-                    # valid target — it carries "global" notes that follow
-                    # the player.  Otherwise the entity must be present in
-                    # the current room (directly, nested in a container, or
-                    # a following NPC).
-                    reason = (
-                        f"Entity '{eid}' is not present in room "
-                        f"'{present_room}'; entity notes are only allowed "
-                        f"on entities in the current room or on the "
-                        f"player entity"
-                    )
-                else:
-                    contradiction = _check_note_contradiction(
-                        patch.new_value, None, hard, corpus)
-                    if contradiction:
-                        reason = contradiction
-        elif patch.field == "soft_inventory_add":
-            reason = (
-                "soft_inventory_add is deprecated; soft items are now "
-                "adjudicated via soft_item_proposals / soft_item_adjudications"
-            )
-        elif patch.field == "soft_inventory_remove":
+        if patch.field == "soft_inventory_remove":
             item = patch.new_value if isinstance(patch.new_value, str) else str(patch.new_value)
             if item not in soft.soft_inventory:
                 reason = f"Soft item '{item}' not in soft inventory"
@@ -719,34 +665,6 @@ def _validate_soft_patches(
             applied.append(patch)
 
     return applied, rejected
-
-
-def _check_note_contradiction(
-    text: str,
-    room_id: str | None,
-    hard: HardGameState,
-    corpus: ModuleCorpus,
-) -> str | None:
-    """Basic contradiction check: note text must not claim an entity is
-    dead/alive in contradiction with hard state."""
-    text_lower = text.lower()
-    for ent_id, state in hard.entity_states.items():
-        if room_id is not None:
-            room = corpus.rooms.get(room_id)
-            if room is None or ent_id not in hard.room_contains.get(room_id, {}):
-                continue
-        ent = corpus.entities.get(ent_id)
-        if ent is None:
-            continue
-        name = getattr(ent, "name", ent_id) or ent_id
-        name_lower = name.lower()
-        if name_lower not in text_lower.split():
-            continue
-        if state.get("alive") is False and "dead" not in text_lower:
-            pass
-        elif state.get("alive") is True and "dead" in text_lower and name_lower in text_lower:
-            return f"Note contradicts hard state: '{name}' is alive"
-    return None
 
 
 def _build_room_after(

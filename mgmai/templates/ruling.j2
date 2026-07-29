@@ -45,7 +45,7 @@ You MUST output a single JSON object with the following structure.
   - A "soft item" – something nondescript that can be picked up, with a generic name like "rock"
 - `rigorous` (boolean, optional): Set to `true` for thorough search
 - `using` (string, optional): Item/entity used to assist in the examination (must be in inventory or equipped)
-- If the player examines an object that's narratively in the scene but has no entity ID and cannot be picked up (i.e., not a soft item), classify it as an examination of the host room or host entity, and write an additional Soft State Patch (see below) as a narrative note about the unlisted component that was examined.
+- If the player examines an object that's narratively in the scene but has no entity ID and cannot be picked up (i.e., not a soft item), classify it as an examination of the host room or host entity, and mention the unlisted component in `detail` so the narrator knows what was examined.
 
 **interact** — Perform an interaction:
 - `target` (string, required): either `"current_room"`, an entity `id` from `entities_visible`, or an item ID from inventory.
@@ -98,21 +98,18 @@ You MUST output a single JSON object with the following structure.
 
 ### Soft State Patches
 
-Use `soft_state_patches` to record plot-adjacent notes about the game world: tweaks to the world, or pieces of information gleaned by the player, that are not plot-significant but worth recording for future narrative continuity. Each patch is an object:
+Use `soft_state_patches` for intent-coupled soft state changes that are part of what the player is attempting — not for narrative observations (the narrator records durable world-change notes after you). Each patch is an object:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `field` | string | One of: `room_note`, `entity_note`, `soft_inventory_remove`, `set_improvised_weapon` |
-| `entity_id` | string | (for `entity_note` only) Entity ID of the target. Must be an entity present in the current room (entities nested inside containers count as present), or `"player"` for a player-scoped note. Omit for other patch types. |
-| `new_value` | string/object | The note text, item name, or improvised-weapon object |
+| `field` | string | One of: `soft_inventory_remove`, `set_improvised_weapon` |
+| `new_value` | string/object | The item name, or improvised-weapon object |
 | `reason` | string | Why this change is being proposed |
 
-- `room_note` attaches to the current room.
-- `entity_note` attaches to an entity in the current room. For a persistent player-scoped note, use `"player"` as the entity ID.
 - `soft_inventory_remove` destroys/consumes a carried soft item; to place it, use a `transfer` action instead.
 - `set_improvised_weapon` sets or clears (`null`) an improvised weapon.
 
-Only propose patches that are plausible given the current room and player state. The engine validates and rejects impossible patches (e.g. a note on an entity that is not in the current room, or a note claiming an outcome the hard state contradicts).
+Only propose patches that are plausible given the current room and player state. The engine validates and rejects impossible patches.
 
 ---
 

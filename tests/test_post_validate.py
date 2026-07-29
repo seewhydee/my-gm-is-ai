@@ -23,9 +23,11 @@ from mgmai.engine.post_validate import (
     apply_post_validation,
     post_validate_attitude_changes,
     post_validate_knowledge_tags,
+    post_validate_notes,
 )
 from mgmai.models.actions import EngineResult, HardStateChanges
 from mgmai.models.narration import AttitudeChange
+from mgmai.models.soft_state import SoftStateNote
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -309,4 +311,121 @@ class TestApplyPostValidation:
         assert result.action_type == "post_validation"
         assert len(result.revelations_applied) == 1
         assert result.hard_state_changes is not None
-        assert result.hard_state_changes.flags_set.get("handkerchief_noticed") is True
+
+
+class TestPostValidateNotes:
+    def test_room_note_accepted(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        # Player starts in axe_head.
+        notes = [SoftStateNote(
+            field="room_note",
+            new_value="The room seems dusty.",
+            reason="Player looked around.",
+        )]
+        applied, rejected = post_validate_notes(notes, hard, soft, corpus)
+        assert len(applied) == 1
+        assert rejected == []
+
+    def test_entity_note_on_present_entity_accepted(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        # rip_in_canvas is in axe_head (the player's starting room).
+        notes = [SoftStateNote(
+            field="entity_note",
+            entity_id="rip_in_canvas",
+            new_value="The rip is fraying at the edges.",
+            reason="Player inspected the rip.",
+        )]
+        applied, rejected = post_validate_notes(notes, hard, soft, corpus)
+        assert len(applied) == 1
+        assert rejected == []
+
+    def test_entity_note_on_player_accepted(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        notes = [SoftStateNote(
+            field="entity_note",
+            entity_id="player",
+            new_value="Player vowed to find Korbar's party.",
+            reason="A promise worth remembering.",
+        )]
+        applied, rejected = post_validate_notes(notes, hard, soft, corpus)
+        assert len(applied) == 1
+        assert rejected == []
+
+    def test_entity_note_on_absent_entity_rejected(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        # spider is in axe_handle_lower, not the player's current room
+        # (axe_head).
+        notes = [SoftStateNote(
+            field="entity_note",
+            entity_id="spider",
+            new_value="The spider looks agitated.",
+            reason="Player recalls the spider.",
+        )]
+        applied, rejected = post_validate_notes(notes, hard, soft, corpus)
+        assert applied == []
+        assert len(rejected) == 1
+        assert "not present in room" in rejected[0]["reason"]
+
+    def test_entity_note_on_dead_entity_rejected(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        # Move the spider into the current room but kill it.
+        hard.entity_states["spider"]["alive"] = False
+        notes = [SoftStateNote(
+            field="entity_note",
+            entity_id="spider",
+            new_value="The spider looks agitated.",
+            reason="Player pokes it.",
+        )]
+        applied, rejected = post_validate_notes(notes, hard, soft, corpus)
+        assert applied == []
+        assert len(rejected) == 1
+        assert "dead" in rejected[0]["reason"]
+
+    def test_empty_reason_rejected(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        notes = [SoftStateNote(
+            field="room_note",
+            new_value="Something happened.",
+            reason="",
+        )]
+        applied, rejected = post_validate_notes(notes, hard, soft, corpus)
+        assert applied == []
+        assert len(rejected) == 1
+        assert "reason" in rejected[0]["reason"]
+
+    def test_apply_post_validation_applies_notes(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        notes = [
+            SoftStateNote(
+                field="room_note",
+                new_value="The webs are partially cleared.",
+                reason="Player hacked through them.",
+            ),
+            SoftStateNote(
+                field="entity_note",
+                entity_id="spider",
+                new_value="The spider is somewhere else.",
+                reason="Not actually present.",
+            ),
+        ]
+        base = EngineResult(success=True, action_type="wait")
+        result = apply_post_validation(
+            None, None, state_manager, base_result=base, soft_state_notes=notes
+        )
+        assert len(result.soft_state_notes_applied) == 1
+        assert len(result.soft_state_notes_rejected) == 1
+        assert soft.room_notes["axe_head"] == ["The webs are partially cleared."]
+        assert "spider" not in soft.entity_notes

@@ -38,32 +38,48 @@ class ImprovisedWeapon(BaseModel):
 
 
 class SoftStatePatch(BaseModel):
+    """Intent-coupled soft-state change proposed by LLM Call 1 as part of
+    the PlayerAction.  Validated and applied by the engine during action
+    resolution, before narration."""
+
     entity_id: str | None = None
-    field: Literal[
-        "room_note", "entity_note", "soft_inventory_remove",
-        "set_improvised_weapon"
-    ]
+    field: Literal["soft_inventory_remove", "set_improvised_weapon"]
     new_value: Any
     reason: str
 
     @model_validator(mode="after")
     def check_field_consistency(self) -> SoftStatePatch:
+        if self.entity_id is not None:
+            raise ValueError(
+                f"{self.field} patch must not carry entity_id"
+            )
+        return self
+
+
+class SoftStateNote(BaseModel):
+    """Narrative note proposed by LLM Call 2 alongside its narration,
+    recording a durable, non-plot-relevant change to the current room or
+    to an entity in it.  Validated and applied by the engine during
+    post-validation."""
+
+    entity_id: str | None = None
+    field: Literal["room_note", "entity_note"]
+    new_value: str
+    reason: str
+
+    @model_validator(mode="after")
+    def check_field_consistency(self) -> SoftStateNote:
         if self.field == "room_note":
             # room_note attaches to the player's current room; the engine
-            # derives the target, so neither entity_id nor target_id is
-            # accepted on the patch.
+            # derives the target, so entity_id is not accepted on the note.
             if self.entity_id is not None:
                 raise ValueError(
-                    "room_note patch must not carry entity_id; it attaches "
+                    "room_note must not carry entity_id; it attaches "
                     "to the player's current room"
                 )
         elif self.field == "entity_note":
             if self.entity_id is None:
-                raise ValueError("entity_note patch requires entity_id")
-        elif self.field == "set_improvised_weapon" and self.entity_id is not None:
-                raise ValueError(
-                    "set_improvised_weapon patch must not carry entity_id"
-                )
+                raise ValueError("entity_note requires entity_id")
         return self
 
 

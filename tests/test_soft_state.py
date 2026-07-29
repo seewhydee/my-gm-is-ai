@@ -22,51 +22,78 @@ from mgmai.models.soft_state import (
     DialogueState,
     KnowledgeEntry,
     SoftGameState,
+    SoftStateNote,
     SoftStatePatch,
     TurnHistoryEntry,
 )
 
 
-class TestSoftStatePatch:
+class TestSoftStateNote:
     def test_room_note(self) -> None:
-        p = SoftStatePatch.model_validate({
+        n = SoftStateNote.model_validate({
             "field": "room_note",
             "new_value": "The webs here are partially cleared.",
             "reason": "Player hacked through the webs with the iron sword.",
         })
-        assert p.field == "room_note"
-        assert p.entity_id is None
-        assert p.new_value == "The webs here are partially cleared."
+        assert n.field == "room_note"
+        assert n.entity_id is None
+        assert n.new_value == "The webs here are partially cleared."
 
     def test_room_note_needs_no_room_id(self) -> None:
         # room_note carries no room identifier; the engine attaches it to
         # the player's current room.
-        p = SoftStatePatch.model_validate({
+        n = SoftStateNote.model_validate({
             "field": "room_note",
             "new_value": "Cleared webs.",
             "reason": "Player cleared webs.",
         })
-        assert p.entity_id is None
+        assert n.entity_id is None
 
     def test_entity_note(self) -> None:
-        p = SoftStatePatch.model_validate({
+        n = SoftStateNote.model_validate({
             "entity_id": "spider",
             "field": "entity_note",
             "new_value": "The spider's left legs are covered in ichor.",
             "reason": "Player wounded the spider with the toenail sword.",
         })
-        assert p.entity_id == "spider"
-        assert p.field == "entity_note"
+        assert n.entity_id == "spider"
+        assert n.field == "entity_note"
 
     def test_entity_note_player_target(self) -> None:
-        p = SoftStatePatch.model_validate({
+        n = SoftStateNote.model_validate({
             "entity_id": "player",
             "field": "entity_note",
             "new_value": "Player vowed to find Korbar's old party.",
             "reason": "Player made a promise worth remembering.",
         })
-        assert p.entity_id == "player"
+        assert n.entity_id == "player"
 
+    def test_room_note_with_entity_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStateNote.model_validate({
+                "entity_id": "spider",
+                "field": "room_note",
+                "new_value": "The webs are cleared.",
+                "reason": "Player cleared webs.",
+            })
+
+    def test_entity_note_missing_entity_id_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStateNote.model_validate({
+                "field": "entity_note",
+                "new_value": "Wounded.",
+                "reason": "Player attacked.",
+            }            )
+
+    def test_missing_reason_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            SoftStateNote.model_validate({
+                "field": "room_note",
+                "new_value": "x",
+            })
+
+
+class TestSoftStatePatch:
     def test_soft_inventory_remove(self) -> None:
         p = SoftStatePatch.model_validate({
             "field": "soft_inventory_remove",
@@ -75,6 +102,16 @@ class TestSoftStatePatch:
         })
         assert p.field == "soft_inventory_remove"
         assert p.new_value == "rock"
+
+    def test_note_fields_rejected(self) -> None:
+        # room_note/entity_note are Call 2's domain (SoftStateNote), not
+        # Call 1 patches.
+        with pytest.raises(ValidationError):
+            SoftStatePatch.model_validate({
+                "field": "room_note",
+                "new_value": "The webs are cleared.",
+                "reason": "Player cleared webs.",
+            })
 
     def test_invalid_field_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -94,33 +131,25 @@ class TestSoftStatePatch:
     def test_missing_new_value_raises(self) -> None:
         with pytest.raises(ValidationError):
             SoftStatePatch.model_validate({
-                "field": "room_note",
+                "field": "soft_inventory_remove",
                 "reason": "y",
             })
 
     def test_missing_reason_raises(self) -> None:
         with pytest.raises(ValidationError):
             SoftStatePatch.model_validate({
-                "field": "room_note",
+                "field": "soft_inventory_remove",
                 "new_value": "x",
             })
 
-    def test_room_note_with_entity_id_raises(self) -> None:
+    def test_entity_id_raises(self) -> None:
         with pytest.raises(ValidationError):
             SoftStatePatch.model_validate({
                 "entity_id": "spider",
-                "field": "room_note",
-                "new_value": "The webs are cleared.",
-                "reason": "Player cleared webs.",
+                "field": "soft_inventory_remove",
+                "new_value": "rock",
+                "reason": "Player throws the rock away.",
             })
-
-    def test_entity_note_missing_entity_id_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            SoftStatePatch.model_validate({
-                "field": "entity_note",
-                "new_value": "Wounded.",
-                "reason": "Player attacked.",
-            }            )
 
 
 class TestConversationLogEntry:

@@ -24,7 +24,7 @@ from mgmai.models.briefing import BriefingRoom
 from mgmai.models.combat import CombatLogEntry
 from mgmai.models.corpus import StatModifier
 from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
-from mgmai.models.soft_state import SoftStatePatch
+from mgmai.models.soft_state import SoftStateNote, SoftStatePatch
 
 # Reserved sentinel used in player-action ``target`` fields to denote the
 # player's current room.  Using this instead of the room's actual ID removes
@@ -500,3 +500,5 @@ class EngineResult(BaseModel):
     soft_content_takes: dict[str, dict[str, int]] = Field(default_factory=dict)
     soft_items_accepted: list[SoftItemAdjudication] = Field(default_factory=list)
     soft_items_rejected: list[dict[str, Any]] = Field(default_factory=list)
+    soft_state_notes_applied: list[SoftStateNote] = Field(default_factory=list)
+    soft_state_notes_rejected: list[dict[str, Any]] = Field(default_factory=list)

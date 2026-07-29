@@ -373,13 +373,15 @@ class GameLoop:
             if note:
                 soft.entity_notes.setdefault(npc_id, []).append(note)
 
-        # 5. Post-validate knowledge_tags + attitude_changes + soft_items
+        # 5. Post-validate knowledge_tags + attitude_changes + soft_items + notes
         kt = prose.knowledge_tags.npc_revealed if prose.knowledge_tags else None
         ac = dict(prose.attitude_changes) if prose.attitude_changes else None
         sia = list(prose.soft_item_adjudications) if prose.soft_item_adjudications else None
-        if kt or ac or result.soft_item_proposals or sia:
+        notes = list(prose.soft_state_notes) if prose.soft_state_notes else None
+        if kt or ac or result.soft_item_proposals or sia or notes:
             result = apply_post_validation(
-                kt, ac, self._state, result, soft_item_adjudications=sia
+                kt, ac, self._state, result, soft_item_adjudications=sia,
+                soft_state_notes=notes,
             )
             self._last_result = result
 

@@ -327,88 +327,40 @@ class TestEngineFullFlow:
 
     def test_soft_patches_validated(self, state_manager):
         from mgmai.models.soft_state import SoftStatePatch
+        state_manager.soft_state.soft_inventory = ["rock"]
         action = WaitAction(
             action_type="wait",
-            detail="Looking around",
+            detail="Throwing the rock away",
             soft_state_patches=[
                 SoftStatePatch(
-                    field="room_note",
-                    new_value="The room seems dusty.",
-                    reason="Perception",
+                    field="soft_inventory_remove",
+                    new_value="rock",
+                    reason="Player throws the rock away.",
                 ),
             ],
         )
         result = resolve(action, state_manager)
         assert result.success is True
         assert len(result.soft_state_patches_applied) == 1
-        # room_note attaches to the player's current room (axe_head).
-        assert state_manager.soft_state.room_notes.get("axe_head") == [
-            "The room seems dusty."
-        ]
+        assert state_manager.soft_state.soft_inventory == []
 
-    def test_entity_note_on_present_entity_accepted(self, state_manager):
-        from mgmai.models.soft_state import SoftStatePatch
-        # rip_in_canvas is in axe_head (the player's starting room).
-        action = WaitAction(
-            action_type="wait",
-            detail="Noting the rip",
-            soft_state_patches=[
-                SoftStatePatch(
-                    field="entity_note",
-                    entity_id="rip_in_canvas",
-                    new_value="The rip is fraying at the edges.",
-                    reason="Player inspected the rip.",
-                ),
-            ],
-        )
-        result = resolve(action, state_manager)
-        assert result.success is True
-        assert len(result.soft_state_patches_applied) == 1
-        assert state_manager.soft_state.entity_notes.get("rip_in_canvas") == [
-            "The rip is fraying at the edges."
-        ]
-
-    def test_entity_note_on_player_accepted(self, state_manager):
+    def test_soft_patch_rejected_when_item_missing(self, state_manager):
         from mgmai.models.soft_state import SoftStatePatch
         action = WaitAction(
             action_type="wait",
-            detail="Vowing",
+            detail="Throwing the rock away",
             soft_state_patches=[
                 SoftStatePatch(
-                    field="entity_note",
-                    entity_id="player",
-                    new_value="Player vowed to find Korbar's party.",
-                    reason="A promise worth remembering.",
-                ),
-            ],
-        )
-        result = resolve(action, state_manager)
-        assert result.success is True
-        assert len(result.soft_state_patches_applied) == 1
-        assert state_manager.soft_state.entity_notes.get("player") == [
-            "Player vowed to find Korbar's party."
-        ]
-
-    def test_entity_note_on_absent_entity_rejected(self, state_manager):
-        from mgmai.models.soft_state import SoftStatePatch
-        # spider is in axe_handle_lower, not the player's current room
-        # (axe_head).
-        action = WaitAction(
-            action_type="wait",
-            detail="Noting the spider",
-            soft_state_patches=[
-                SoftStatePatch(
-                    field="entity_note",
-                    entity_id="spider",
-                    new_value="The spider looks agitated.",
-                    reason="Player recalls the spider.",
+                    field="soft_inventory_remove",
+                    new_value="rock",
+                    reason="Player throws the rock away.",
                 ),
             ],
         )
         result = resolve(action, state_manager)
         assert result.success is True
         assert len(result.soft_state_patches_rejected) == 1
-        assert "not present in room" in result.soft_state_patches_rejected[0]["reason"]
+        assert "not in soft inventory" in result.soft_state_patches_rejected[0]["reason"]
 
 
 class TestPresentEntityIds:

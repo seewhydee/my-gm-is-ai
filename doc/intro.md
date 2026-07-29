@@ -52,12 +52,12 @@ Player Input
 │   LLM Call 2    │  (moderate temperature — prose)
 │ "How does the   │
 │  world react?"  │  Output: natural-language narration
-│                 │       + optional NPC knowledge tags
-└────┬─────────┬──┘         and/or attitude changes
-     │         ▼
+│                 │       + optional NPC knowledge tags,
+└────┬─────────┬──┘         attitude changes, and/or soft
+     │         ▼            state notes
      │ ┌─────────────────┐
-     │ │ Post-validation │ Validates knowledge_tags and
-     │ │   (optional)    │ attitude_changes
+     │ │ Post-validation │ Validates knowledge_tags, attitude
+     │ │   (optional)    │ changes, and soft state notes
      │ └──────┬──────────┘
      ▼        ▼
    Game state saved   Player receives narration
@@ -155,9 +155,10 @@ the engine result, respect game-over triggers, etc.
 
 However, LLM Call 2 is not a pure narrator, and it also has leeway to
 affect the game's soft state to fit the narrative.  It helps
-adjudicate the insertion of soft items into the narrative, as well as
-managing the topics NPCs reveal in conversation and changes in NPC
-attitude; see [npcs.md](npcs.md) for details.
+adjudicate the insertion of soft items into the narrative, records
+durable narrative notes about rooms and entities (`soft_state_notes`),
+and manages the topics NPCs reveal in conversation and changes in NPC
+attitude; see [npcs.md](npcs.md) and [soft.md](soft.md) for details.
 
 ### Dialogue and combat modes
 
@@ -205,9 +206,9 @@ and skips to the next player input with no narration.
 **Engine**: Validly-structured actions that violate game rules (e.g.,
 missing item, dead NPC, room has no such exit) return `success: false`
 on the `EngineResult`.  This is not a turn abort; LLM Call 2 proceeds
-normally and narrates the failure.  Soft-state patches proposed by the
-LLM that reference nonexistent entities or contradict current state
-are rejected individually while the rest apply.
+normally and narrates the failure.  Soft-state patches proposed by LLM
+Call 1 that are invalid (e.g., removing an item not in the soft
+inventory) are rejected individually while the rest apply.
 
 **LLM Call 2** (prose): On malformed JSON, the system retries once.  A
 second failure falls back to an engine-generated narration string
@@ -217,9 +218,9 @@ narration) also retries once, and on a second failure logs a warning
 and continues with the output as-is.
 
 **Post-validation** (after Call 2): Knowledge tags, attitude changes,
-and soft-item adjudications proposed by the prose LLM are validated
-against the game state.  Invalid entries are rejected silently,
-without preventing the rest of the turn from completing.
+soft-item adjudications, and soft-state notes proposed by the prose LLM
+are validated against the game state.  Invalid entries are rejected
+silently, without preventing the rest of the turn from completing.
 
 ### Serialization
 

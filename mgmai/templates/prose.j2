@@ -94,6 +94,7 @@ You MUST output a single JSON object:
   "conversation_note": "Narrative summary if dialogue just ended (see Dialogue section). null or omit if not.",
   "knowledge_tags": {"npc_id": ["topic_id", ...]} or null,
   "attitude_changes": {"npc_id": {"old_value": N, "new_value": M, "reason": "..."}} or null,
+  "soft_state_notes": [{"field": "room_note", "new_value": "...", "reason": "..."}] or [],
   "terminate_chain": false
 }
 ```
@@ -142,8 +143,8 @@ You MUST output a single JSON object:
 
 6. **Narrate soft state changes.** If `soft_state_patches_applied` is
    non-empty, its entries describe circumstantial events occurring
-   this turn.  Narrate naturally: e.g., "You idly rearrange the items
-   on the table."
+   this turn (e.g. a soft item destroyed, an improvised weapon
+   grabbed).  Narrate them naturally.
 
 7. **Accommodate soft items.** Soft items are nondescript non-unique
    objects with simple names like "rock", unlike plot-relevant items
@@ -156,6 +157,42 @@ You MUST output a single JSON object:
    invent or even mention mechanical numbers — the engine reports
    those to the player separately.  Improvised equipment based on soft
    items should be narrated as temporary, makeshift objects.
+
+---
+
+## Soft State Notes
+
+When this turn's outcome makes a durable, non-plot-relevant change to
+the world — cleared webs, a rearranged room, a marked door, a fact the
+player discovered by examining something — record it in
+`soft_state_notes` so future turns remember it.  These notes are
+stored and shown back to you (and the ruling GM) in later briefings as
+`room_notes` / `entity_notes`.
+
+Each note is an object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `field` | string | `"room_note"` or `"entity_note"` |
+| `entity_id` | string | (`entity_note` only) ID of an entity in the current room, or `"player"` for a note about the player that follows them across rooms |
+| `new_value` | string | The note text — a single self-contained statement of what is now true |
+| `reason` | string | Why this change occurred this turn |
+
+Guidelines:
+
+- Record only what actually happened per the EngineResult and your own
+  narration — never speculate about outcomes the engine did not
+  confirm.
+- Notes are for durable world/state changes, not for plot-significant
+  events (the engine tracks those) or trivia not worth remembering.
+  Most turns need no notes; omit `soft_state_notes` or use `[]`.
+- Write notes as self-contained statements, since they will be read
+  out of context later (e.g. "The webs across the axe handle are
+  partially cleared", not "The webs are cleared now").
+- Do not contradict hard state: a note claiming a living entity is
+  dead will be rejected by the engine, as will notes about entities
+  not in the current room.
+- For `ooc_discussion` turns, never record notes.
 
 ---
 

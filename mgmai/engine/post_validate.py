@@ -19,7 +19,11 @@ from __future__ import annotations
 from typing import Any
 
 from mgmai.engine.conditions import evaluate
-from mgmai.engine.utils import _match_soft_content, _normalize_item_name
+from mgmai.engine.utils import (
+    _match_soft_content,
+    _normalize_item_name,
+    present_entity_ids,
+)
 from mgmai.models.actions import (
     EngineResult,
     HardStateChanges,
@@ -29,7 +33,7 @@ from mgmai.models.actions import (
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
-from mgmai.models.soft_state import KnowledgeEntry, SoftGameState
+from mgmai.models.soft_state import KnowledgeEntry, SoftGameState, SoftStateNote
 from mgmai.state.manager import StateManager
 
 
@@ -42,6 +46,111 @@ def _is_hard_entity_collision(name: str, corpus: ModuleCorpus) -> bool:
         if entity.name and _normalize_item_name(entity.name) == normalized:
             return True
     return False
+
+
+def _check_note_contradiction(
+    text: str,
+    room_id: str | None,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> str | None:
+    """Basic contradiction check: note text must not claim an entity is
+    dead/alive in contradiction with hard state."""
+    text_lower = text.lower()
+    for ent_id, state in hard.entity_states.items():
+        if room_id is not None:
+            room = corpus.rooms.get(room_id)
+            if room is None or ent_id not in hard.room_contains.get(room_id, {}):
+                continue
+        ent = corpus.entities.get(ent_id)
+        if ent is None:
+            continue
+        name = getattr(ent, "name", ent_id) or ent_id
+        name_lower = name.lower()
+        if name_lower not in text_lower.split():
+            continue
+        if state.get("alive") is False and "dead" not in text_lower:
+            pass
+        elif state.get("alive") is True and "dead" in text_lower and name_lower in text_lower:
+            return f"Note contradicts hard state: '{name}' is alive"
+    return None
+
+
+def post_validate_notes(
+    notes: list[SoftStateNote],
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+) -> tuple[list[SoftStateNote], list[dict[str, Any]]]:
+    """Validate soft-state notes from Call 2.
+
+    Returns a tuple of (applied_notes, rejected_entries).  State is not
+    mutated here; the caller applies the accepted notes via the state
+    manager.
+    """
+    applied: list[SoftStateNote] = []
+    rejected: list[dict[str, Any]] = []
+
+    present_room = hard.player.location
+    present_entities = present_entity_ids(hard, corpus)
+
+    for note in notes:
+        reason = None
+
+        if note.field == "room_note":
+            # room_note always attaches to the player's current room.
+            if present_room not in corpus.rooms:
+                reason = f"Invalid current room: {present_room}"
+            elif not note.new_value.strip():
+                reason = "room_note new_value must be a non-empty string"
+            else:
+                contradiction = _check_note_contradiction(
+                    note.new_value, present_room, hard, corpus)
+                if contradiction:
+                    reason = contradiction
+        elif note.field == "entity_note":
+            eid = note.entity_id
+            entity = corpus.entities.get(eid) if eid else None
+            is_player = eid == "player" or (
+                entity is not None and entity.type == "player")
+            if not eid or (entity is None and not is_player):
+                reason = f"Invalid entity_id: {eid}"
+            elif not note.new_value.strip():
+                reason = "entity_note new_value must be a non-empty string"
+            else:
+                entity_state = hard.entity_states.get(eid, {})
+                if entity_state.get("alive") is False:
+                    reason = f"Entity '{eid}' is dead; notes are not allowed"
+                elif not is_player and eid not in present_entities:
+                    # The player entity (type == "player") is always a
+                    # valid target — it carries "global" notes that follow
+                    # the player.  Otherwise the entity must be present in
+                    # the current room (directly, nested in a container, or
+                    # a following NPC).
+                    reason = (
+                        f"Entity '{eid}' is not present in room "
+                        f"'{present_room}'; entity notes are only allowed "
+                        f"on entities in the current room or on the "
+                        f"player entity"
+                    )
+                else:
+                    contradiction = _check_note_contradiction(
+                        note.new_value, None, hard, corpus)
+                    if contradiction:
+                        reason = contradiction
+
+        if not note.reason or not note.reason.strip():
+            reason = "reason is empty"
+
+        if reason:
+            rejected.append({
+                "note": note.model_dump(),
+                "reason": reason,
+            })
+        else:
+            applied.append(note)
+
+    return applied, rejected
 
 
 def post_validate_soft_items(
@@ -391,6 +500,7 @@ def apply_post_validation(
     state_manager: StateManager,
     base_result: EngineResult | None = None,
     soft_item_adjudications: list[SoftItemAdjudication] | None = None,
+    soft_state_notes: list[SoftStateNote] | None = None,
 ) -> EngineResult:
     """Run full post-validation and produce an updated EngineResult.
 
@@ -451,6 +561,16 @@ def apply_post_validation(
             corpus,
         )
 
+    notes_applied: list[SoftStateNote] = []
+    notes_rejected: list[dict[str, Any]] = []
+
+    if soft_state_notes:
+        notes_applied, notes_rejected = post_validate_notes(
+            soft_state_notes, hard, soft, corpus
+        )
+        if notes_applied:
+            state_manager.apply_soft_patches(notes_applied)
+
     if base_result is not None:
         result = base_result.model_copy(deep=True)
         if post_hard_changes.has_changes() and result.hard_state_changes is not None:
@@ -462,6 +582,8 @@ def apply_post_validation(
         result.attitude_changes_rejected = attitude_changes_rejected
         result.soft_items_accepted = soft_items_accepted
         result.soft_items_rejected = soft_items_rejected
+        result.soft_state_notes_applied = notes_applied
+        result.soft_state_notes_rejected = notes_rejected
         return result
 
     return EngineResult(
@@ -473,4 +595,6 @@ def apply_post_validation(
         attitude_changes_rejected=attitude_changes_rejected,
         soft_items_accepted=soft_items_accepted,
         soft_items_rejected=soft_items_rejected,
+        soft_state_notes_applied=notes_applied,
+        soft_state_notes_rejected=notes_rejected,
     )

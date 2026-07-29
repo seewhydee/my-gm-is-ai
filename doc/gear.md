@@ -446,16 +446,17 @@ narratively.
 ## Soft State: Appearance Notes
 
 Narrative-only equipment that has no mechanical effect can be tracked via
-soft state:
+an `entity_note` on the player entity:
 
 ```
-SoftStatePatch
-  field: "appearance_note_add"
-  new_value: "tattered cloak pulled from a goblin corpse"
+SoftStateNote
+  field: "entity_note"
+  entity_id: "player"
+  new_value: "Wearing a tattered cloak pulled from a goblin corpse."
   reason: "Player described wearing the goblin cloak as a trophy."
 ```
 
-Appearance notes accumulate in `soft_state.appearance_notes` and are
+Notes on the player entity follow the player across rooms and are
 displayed in the GMBriefing's player state section so both LLMs can
 reference them.  They carry no mechanical weight.
 

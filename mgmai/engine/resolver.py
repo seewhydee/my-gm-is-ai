@@ -68,7 +68,7 @@ from mgmai.models.corpus import (
     UsingResultOverride,
 )
 from mgmai.models.hard_state import GameOverState, HardGameState
-from mgmai.models.soft_state import SoftGameState, SoftStatePatch
+from mgmai.models.soft_state import SoftGameState
 
 MAX_THEN_CHECK_DEPTH = 3
 
@@ -163,7 +163,6 @@ class ResolutionResult:
     warnings: list[str] = field(default_factory=list)
     room_after_id: str | None = None
     dialogue_exited: DialogueExitedResult | dict | None = None
-    soft_patches: list[SoftStatePatch] = field(default_factory=list)
     rolls: list[dict[str, Any]] = field(default_factory=list)
     soft_content_takes: dict[str, dict[str, int]] = field(default_factory=dict)
     soft_item_proposals: list[Any] = field(default_factory=list)
@@ -821,11 +820,9 @@ def resolve_transfer(
     taken_counts = action.taken_counts or {}
 
     changes = HardStateChanges()
-    soft_patches: list[SoftStatePatch] = []
     result = ResolutionResult(
         success=True,
         hard_changes=changes,
-        soft_patches=soft_patches,
         room_after_id=room_id,
     )
 
@@ -1066,7 +1063,6 @@ def resolve_transfer(
                 )[item] = count
 
     result.hard_changes = changes
-    result.soft_patches = soft_patches
     result.triggered_narration = triggered_narration
     result.revealed_hints = revealed_hints
     result.rolls = rolls
@@ -2394,7 +2390,6 @@ def _resolve_combat_environmental(
         player_died=_player_died(hard, hard_changes),
         warnings=warnings + delegate.warnings,
         room_after_id=delegate.room_after_id,
-        soft_patches=delegate.soft_patches,
         rolls=delegate.rolls,
         soft_content_takes=delegate.soft_content_takes,
         soft_item_proposals=delegate.soft_item_proposals,

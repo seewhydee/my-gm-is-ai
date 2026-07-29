@@ -35,7 +35,12 @@ from mgmai.models.corpus import (
     StateFieldDecl,
 )
 from mgmai.models.hard_state import HardGameState, PlayerState
-from mgmai.models.soft_state import SoftGameState, SoftStatePatch, TurnHistoryEntry
+from mgmai.models.soft_state import (
+    SoftGameState,
+    SoftStateNote,
+    SoftStatePatch,
+    TurnHistoryEntry,
+)
 
 log = logging.getLogger(__name__)
 
@@ -1563,14 +1568,20 @@ class StateManager:
         self._apply_contains_deltas(changes)
         self._apply_placements(changes.entity_placements)
 
-    def apply_soft_patches(self, patches: list[SoftStatePatch | dict[str, Any]]) -> None:
-        """Apply a list of validated ``SoftStatePatch`` objects to soft state."""
+    def apply_soft_patches(
+        self, patches: list[SoftStatePatch | SoftStateNote | dict[str, Any]]
+    ) -> None:
+        """Apply a list of validated ``SoftStatePatch``/``SoftStateNote``
+        objects to soft state."""
         if self.soft_state is None:
             raise StateNotLoadedError("Soft state has not been loaded")
 
         for patch in patches:
             if isinstance(patch, dict):
-                patch = SoftStatePatch.model_validate(patch)
+                if patch.get("field") in ("room_note", "entity_note"):
+                    patch = SoftStateNote.model_validate(patch)
+                else:
+                    patch = SoftStatePatch.model_validate(patch)
 
             field = patch.field
             if field == "room_note":

@@ -20,6 +20,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from mgmai.models.soft_state import SoftStateNote
+
 
 class AttitudeChange(BaseModel):
     old_value: int
@@ -46,3 +48,4 @@ class NarrationOutput(BaseModel):
     conversation_note: str | None = None
     terminate_chain: bool = False
     soft_item_adjudications: list[SoftItemAdjudication] = Field(default_factory=list)
+    soft_state_notes: list[SoftStateNote] = Field(default_factory=list)

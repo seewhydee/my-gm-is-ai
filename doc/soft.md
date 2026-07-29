@@ -15,18 +15,18 @@ and pick up a wand of wishing").
 
 The system has two parts: **soft state notes**, and **soft items**.
 
-- **Soft State Notes** – During the [turn loop](intro.md), LLM Call 1
-  checks if the player's actions cause a notable change to a room or
+- **Soft State Notes** – During the [turn loop](intro.md), LLM Call 2
+  checks if the turn's outcome caused a notable change to a room or
   corpus-defined entity (feature, item, or NPC).  If so, it writes a
-  `SoftStatePatch` object, which goes in the `PlayerAction`'s
-  `soft_state_patches` array (see [Action schema](../schema/actions.md)).
+  `SoftStateNote` object, which goes in the `NarrationOutput`'s
+  `soft_state_notes` array (see [Action schema](../schema/actions.md)).
   
-  Each `SoftStatePatch` records a change to the present room, or an
+  Each `SoftStateNote` records a change to the present room, or an
   entity in that room (or the player entity, for global notes).  The
-  engine validates it against a simple schema that forbids rooms other
-  than the present room and entities not in the present room, and so
-  forth; if it passes, the note is attached to the room/entity and
-  included in future GM briefings.
+  engine validates it during post-validation, applying a simple schema
+  that forbids rooms other than the present room and entities not in
+  the present room, and so forth; if it passes, the note is attached
+  to the room/entity and included in future GM briefings.
 
 - **Soft Items** – These are nondescript items that can be picked up,
   dropped, and/or used by the player.  Examples: rocks, loose stones,
@@ -60,10 +60,10 @@ to each room or entity (feature, item, or NPC) ID:
 }
 ```
 
-These notes come from the optional `soft_state_patches` array in the
-`PlayerAction` emitted by LLM Call 1.  Here is an example of a
-room-note patch (which carries no room identifier — the engine
-attaches it automatically to the current room):
+These notes come from the optional `soft_state_notes` array in the
+`NarrationOutput` emitted by LLM Call 2.  Here is an example of a
+room-note (which carries no room identifier — the engine attaches it
+automatically to the current room):
 
 ```json
 {
@@ -133,8 +133,9 @@ When the engine receives an `ExamineAction` whose `target` does not
 match any hard entity or room, it auto-generates a **soft item
 proposal** and passes it to LLM Call 2 for adjudication.  If accepted,
 this examination affects narration only.  (If the examination
-establishes a durable fact the player may return to, LLM Call 1 should
-record it via a `room_note` or `entity_note` patch, as noted above.)
+establishes a durable fact the player may return to, LLM Call 2 should
+record it via a `room_note` or `entity_note` in `soft_state_notes`, as
+noted above.)
 
 ```
 Player: "I examine the rock."
@@ -280,19 +281,19 @@ rejection rules are documented in [schema/actions.md](../schema/actions.md)
 | File | Role |
 |------|------|
 | `schema/corpus.md` | Defines `soft_item_guidance` fields on rooms and entities. |
-| `schema/soft-state.md` | Documents the full soft-state schema: `soft_inventory`, `room_notes`, `entity_notes`, `soft_items_taken`, `soft_contents`, and the `SoftStatePatch` reference. |
+| `schema/soft-state.md` | Documents the full soft-state schema: `soft_inventory`, `room_notes`, `entity_notes`, `soft_items_taken`, `soft_contents`, and the `SoftStatePatch` / `SoftStateNote` references. |
 | `schema/actions.md` | Documents soft-item proposals and adjudications for `examine`, `transfer`, and narration output. |
 | `mgmai/models/corpus.py` | Pydantic models: `Room.soft_item_guidance`, `Entity.soft_item_guidance`. |
 | `mgmai/models/briefing.py` | Pydantic models: `BriefingRoom.soft_item_guidance`, `BriefingEntity.soft_item_guidance`, and the `soft_items_taken` / `soft_items_present` briefing fields. |
-| `mgmai/models/soft_state.py` | Pydantic models: `SoftGameState` (incl. `soft_items_taken`, `soft_contents`, `room_notes`, `entity_notes`) and `SoftStatePatch`. |
+| `mgmai/models/soft_state.py` | Pydantic models: `SoftGameState` (incl. `soft_items_taken`, `soft_contents`, `room_notes`, `entity_notes`), `SoftStatePatch`, and `SoftStateNote`. |
 | `mgmai/models/actions.py` | Pydantic models: `SoftItemProposal`, `EngineResult.soft_item_proposals`, `EngineResult.soft_content_takes`; `PlayerAction.soft_state_patches`. |
-| `mgmai/models/narration.py` | Pydantic model: `SoftItemAdjudication`, `NarrationOutput.soft_item_adjudications`. |
+| `mgmai/models/narration.py` | Pydantic model: `SoftItemAdjudication`, `NarrationOutput.soft_item_adjudications`, `NarrationOutput.soft_state_notes`. |
 | `mgmai/engine/utils.py` | `present_entity_ids(hard, corpus)` — the shared helper for "entities present in the current room" (direct, nested, and following NPCs); used by the note validator. |
 | `mgmai/engine/resolver.py` | Issues soft-item proposals in `resolve_examine` and `resolve_transfer`; resolves mechanical retrievals from `soft_contents` into `ResolutionResult.soft_content_takes`. |
 | `mgmai/engine/engine.py` | Applies `soft_content_takes` (decrementing `soft_contents`, appending to `soft_inventory`) and copies them onto `EngineResult.soft_content_takes`; validates and applies `soft_state_patches` via `_validate_soft_patches`; populates `_build_room_after` with taken/present items. |
-| `mgmai/engine/post_validate.py` | Validates and applies soft-item adjudications. |
+| `mgmai/engine/post_validate.py` | Validates and applies soft-item adjudications; validates `soft_state_notes` via `post_validate_notes`. |
 | `mgmai/context/assembler.py` | Populates `BriefingRoom`/`BriefingEntity` `soft_items_taken` and `soft_items_present`, plus `room_notes`/`entity_notes` and player entity notes. |
-| `mgmai/game/loop.py` | Passes adjudications to post-validation. |
+| `mgmai/game/loop.py` | Passes adjudications and notes to post-validation. |
 | `doc/soft.md` | This document. |
 
 

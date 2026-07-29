@@ -45,13 +45,15 @@ Player Input
 |    Output: Narration (text)  |
 |           + knowledge_tags   |
 |           + attitude_changes |
+|           + soft_state_notes |
 +------------------------------+
        |
        v
 +------------------------------+
 | 4.5. Engine Post-Validation  |
-|    (if knowledge_tags or     |
-|     attitude_changes present)|
+|    (if knowledge_tags,       |
+|     attitude_changes, or     |
+|     soft_state_notes present)|
 |    Reads:  Module Corpus     |
 |    Validates & Applies       |
 |    Produces: corrected       |
@@ -783,10 +785,11 @@ the key and unlock the door"). The LLM is instructed to:
 After LLM Call 2 narrates the result of the current step, the system checks
 whether to continue the chain:
 
-- If the engine terminated the chain due to a validation failure or hard/soft
-  state rejection, control returns to the player. The `chain_info` in the
-  EngineResult will note the reason for cancellation and the `follow_up` that
-  was discarded.
+- If the engine terminated the chain due to a validation failure, or LLM
+  Call 2 signalled `terminate_chain` (narrative termination — e.g. something
+  this turn made the follow-up nonsensical), control returns to the player.
+  The `chain_info` in the EngineResult will note the reason for cancellation
+  and the `follow_up` that was discarded.
 - If the chain is still viable, the system loops back to the Context Assembler
   (now with updated state) and feeds the `follow_up` text as the "player input"
   for the next step. LLM Call 2 is instructed to be terse during ongoing chain
@@ -817,23 +820,22 @@ whether to continue the chain:
 
 ## 3. SoftStatePatch -- LLM-proposed, engine-validated
 
-The LLM may propose changes to soft state in its `PlayerAction` output. The
-full format and validation rules are detailed in `soft-state.md`. In summary:
+LLM Call 1 may propose intent-coupled soft-state changes in its
+`PlayerAction` output. The full format and validation rules are detailed
+in `soft-state.md`. In summary:
 
 ```json
 {
-  "field": "room_note",
-  "new_value": "The webs here are partially cleared.",
-  "reason": "Player hacked through the webs with the iron sword."
+  "field": "soft_inventory_remove",
+  "new_value": "broken bottle",
+  "reason": "The bottle shatters after the blow."
 }
 ```
 
-Supported fields: `room_note`, `entity_note`, `soft_inventory_remove`,
-`appearance_note_add`, `set_improvised_weapon`.
-`room_note` attaches to the player's current room; `entity_note` targets an
-entity present in the current room (or `"player"` for a global note).
-(Attitude changes are proposed by LLM Call 2 via `attitude_changes`, not by
-LLM Call 1.)
+Supported fields: `soft_inventory_remove`, `set_improvised_weapon`.
+(Narrative notes about world changes — `room_note` / `entity_note` — are
+proposed by LLM Call 2 via `soft_state_notes`, and attitude changes via
+`attitude_changes`; see §5.)
 
 ---
 
@@ -921,6 +923,9 @@ everything LLM Call 2 needs to narrate the outcome.
   "attitude_changes_applied": [],
   "attitude_changes_rejected": [],
 
+  "soft_state_notes_applied": [],
+  "soft_state_notes_rejected": [],
+
   "chain_info": null,
 
   "warnings": [
@@ -937,8 +942,10 @@ everything LLM Call 2 needs to narrate the outcome.
 | `action_type`, `target`        | Echoed from PlayerAction for context. |
 | `room_after`                   | The room after resolution: the new room if the player moved, otherwise the current room. Includes `soft_items_taken` / `soft_items_present`, `room_notes`, visible `entities_visible` (with their `soft_items_taken` / `soft_items_present` and `entity_notes`), available exits, and interactions. |
 | `hard_state_changes`           | All applied changes to hard state: location, inventory changes, flag changes, room state changes, entity state changes. LLM Call 2 must not contradict these. |
-| `soft_state_patches_applied`   | Soft-state patches the engine accepted. |
-| `soft_state_patches_rejected`  | Soft-state patches the engine rejected, each with a `reason` string. LLM Call 2 must not narrate rejected changes. |
+| `soft_state_patches_applied`   | Soft-state patches (Call 1) the engine accepted. |
+| `soft_state_patches_rejected`  | Soft-state patches (Call 1) the engine rejected, each with a `reason` string. LLM Call 2 must not narrate rejected changes. |
+| `soft_state_notes_applied`     | Narrative notes proposed by LLM Call 2 that the engine post-validated and accepted (step 4.5). Empty until post-validation runs. |
+| `soft_state_notes_rejected`    | Narrative notes proposed by LLM Call 2 that the engine rejected, each with a `reason` string. |
 | `soft_item_proposals`          | Proposals for examine/take/give of soft items produced by the engine. LLM Call 2 must adjudicate each one. |
 | `soft_item_adjudications`      | The subset of proposals accepted by LLM Call 2, after post-validation. Empty until post-validation runs. |
 | `soft_content_takes`           | Placed soft items mechanically retrieved this turn (source ID → item name → count). Their existence was verified when they were placed, so they need no adjudication; LLM Call 2 should narrate the retrieval naturally. Empty when no retrieval occurred. |
@@ -952,7 +959,7 @@ everything LLM Call 2 needs to narrate the outcome.
 | `revelations_applied`          | Topics that LLM Call 2 tagged as revealed in `knowledge_tags` and the engine post-validated (step 4.5). Each entry records the NPC ID, topic ID, and any side effects applied. |
 | `attitude_changes_applied`     | Attitude changes proposed by LLM Call 2 that the engine post-validated and accepted (step 4.5). Each entry records the NPC ID, old value, new value, and reason. |
 | `attitude_changes_rejected`    | Attitude changes proposed by LLM Call 2 that the engine rejected, each with a `reason` string. LLM Call 2 must not narrate the rejected change on future turns. |
-| `chain_info`                   | `null` or an object with chain status: `{ "follow_up": "<discarded text>", "termination_reason": "..." }`. Present when a chained action was terminated by the engine (validation failure, hard-state or soft-state rejection). Also present when a chain is ongoing, indicating the next follow-up step. |
+| `chain_info`                   | `null` or an object with chain status: `{ "follow_up": "<discarded text>", "termination_reason": "..." }`. Present when a chained action was terminated (engine validation failure, maximum chain length exceeded, or narrative termination by LLM Call 2 via `terminate_chain`). Also present when a chain is ongoing, indicating the next follow-up step. |
 | `warnings`                     | Engine hints to LLM Call 2 about narrative constraints (e.g., don't reveal secrets, respect attitude gating, NPC dialogue limits). |
 
 ---
@@ -1024,6 +1031,41 @@ LLM Call 2 receives:
     only). After narrating the turn's events, consider which NPCs' dispositions
     shifted and propose `attitude_changes` accordingly. Never contradict the
     `npc_attitude_limits` listed in the EngineResult.
+
+12. **Propose `soft_state_notes` when relevant** (non-`ooc_discussion` actions
+    only). When the turn's outcome makes a durable, non-plot-relevant change
+    to the current room or an entity in it (cleared webs, a marked door, a
+    fact discovered by examination), record it as a `room_note` or
+    `entity_note`. The engine post-validates each note (entity presence,
+    hard-state consistency) and silently drops rejected ones. If nothing
+    worth remembering changed, omit `soft_state_notes` or use `[]`.
+
+#### `soft_state_notes` output format
+
+```json
+{
+  "soft_state_notes": [
+    {
+      "field": "room_note",
+      "new_value": "The webs here are partially cleared.",
+      "reason": "Player hacked through the webs with the iron sword."
+    },
+    {
+      "field": "entity_note",
+      "entity_id": "spider",
+      "new_value": "The spider's left legs are covered in ichor.",
+      "reason": "Player wounded the spider."
+    }
+  ]
+}
+```
+
+| Field       | Type    | Description |
+|-------------|---------|-------------|
+| `field`     | string  | `room_note` or `entity_note`. |
+| `entity_id` | string\|null | (`entity_note` only) An entity present in the current room, or `"player"` for a note that follows the player across rooms. Must be omitted for `room_note`. |
+| `new_value` | string  | The note text — a self-contained statement of what is now true. |
+| `reason`    | string  | Why the change occurred. Must be non-empty. |
 
 #### `soft_item_adjudications` output format
 
@@ -1123,10 +1165,14 @@ Korbar, but there's no response from the darkness below.").
 
 ### 6.3 LLM proposes contradictory soft state
 
-If a soft-state patch is rejected by the engine, it appears in
+If a soft-state patch (Call 1) is rejected by the engine, it appears in
 `soft_state_patches_rejected` with a reason. LLM Call 2 must not narrate the
 rejected change. If the rejection invalidates the LLM's intended narration
 direction, the LLM should adapt.
+
+Soft-state notes (Call 2) are validated after narration; rejected notes are
+dropped silently and appear in `soft_state_notes_rejected` on the corrected
+EngineResult, mainly for audit.
 
 ---
 
@@ -1143,8 +1189,9 @@ direction, the LLM should adapt.
 5. Engine adds entry to turn_history (ooc_discussion entries are logged
    but do not count toward the GMBriefing cap)
 6. LLM Call 2 (Prose) narrates outcome and returns soft_item_adjudications
-7. Engine post-validates knowledge_tags, attitude_changes, and
-   soft_item_adjudications; produces corrected EngineResult (step 4.5)
+7. Engine post-validates knowledge_tags, attitude_changes,
+   soft_item_adjudications, and soft_state_notes; produces corrected
+   EngineResult (step 4.5)
 8. If chained action is ongoing and not terminated by engine: goto 2
    Else: output text to player, save game state
 ```

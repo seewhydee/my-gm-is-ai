@@ -21,7 +21,6 @@ document describes the schema used in-game to track soft state.
   "checks_attempted":  { "<check_id>": ["<room_id>", ...] },
   "revealed_hints":    ["string", ...],
   "dialogue_state":    { /* active NPC conversation state */ },
-  "appearance_notes":  ["string", ...],
   "improvised_weapon": { /* ImprovisedWeapon or null */ }
 }
 ```
@@ -68,10 +67,12 @@ Freeform strings describing non-plot-relevant changes to rooms (e.g.,
 cleared webs, rearranged debris, campfire remains). The Context
 Assembler includes all room notes in the GMBriefing room description.
 
-### Patch format
+### Note format
 
-A `room_note` patch carries no room identifier — the engine attaches it
-to the player's current room automatically.
+A `room_note` carries no room identifier — the engine attaches it
+to the player's current room automatically.  Notes are proposed by LLM
+Call 2 in its `soft_state_notes` output (see
+[actions.md](actions.md) §5) and validated during post-validation.
 
 ```json
 {
@@ -113,7 +114,7 @@ The **player entity** (`entity_id: "player"`) is also a valid target: notes
 placed on it are "global" observations that follow the player across rooms
 and are surfaced in the GMBriefing's player-state block.
 
-### Patch format
+### Note format
 
 ```json
 {
@@ -126,6 +127,10 @@ and are surfaced in the GMBriefing's player-state block.
 
 ### Validation rules
 
+These rules are enforced during post-validation of LLM Call 2's
+`soft_state_notes`.  Notes appended directly by the engine (e.g.
+dialogue archival summaries) bypass this validation.
+
 1. `entity_id` must identify either the player entity (`"player"` or any
    corpus entity with `type == "player"`) or an entity **present in the
    current room** — directly, nested inside a container in the room, or a
@@ -133,8 +138,7 @@ and are surfaced in the GMBriefing's player-state block.
 2. `new_value` must be a non-empty string.
 3. The note must not contradict hard state (same rules as room notes).
 4. For non-player entities, `alive == false` rejects the note.
-5. Dialogue archival summaries appended by the engine are exempt from the
-   `reason` length check (the reason is the engine's own archival trigger).
+5. `reason` must be a non-empty string.
 
 ---
 
@@ -483,37 +487,6 @@ verbatim exchange indefinitely in the active dialogue state.
 
 ---
 
----
-
-## `appearance_notes` — Player visual appearance
-
-```json
-["tattered cloak pulled from a goblin corpse", "ornamental circlet of woven grass"]
-```
-
-Freeform narrative notes about the player's visual appearance from improvised /
-narrative-only equipment. Displayed in the GMBriefing's player-state section so
-both LLMs can reference them. Carries no mechanical effect — for that, use
-hard-state equipment.
-
-### Patch format
-
-```json
-{
-  "field": "appearance_note_add",
-  "new_value": "tattered cloak pulled from a goblin corpse",
-  "reason": "Player described wearing the goblin cloak as a trophy."
-}
-```
-
-### Validation rules
-
-1. `new_value` must be a non-empty string.
-2. Notes accumulate in order; the Context Assembler may cap them at the
-   briefing stage to avoid context bloat.
-
----
-
 ## `improvised_weapon` — Temporary weapon
 
 ```json
@@ -571,10 +544,56 @@ Clear an improvised weapon (set to `null`):
 
 ---
 
-## SoftStatePatch reference
+## SoftStatePatch reference (LLM Call 1)
 
-The general soft-state patch format that LLM Call 1 outputs in
-`PlayerAction.soft_state_patches`:
+The soft-state patch format that LLM Call 1 outputs in
+`PlayerAction.soft_state_patches`.  Call 1 patches are intent-coupled:
+they record what the player's action does to soft state, and are
+validated and applied by the engine during action resolution, before
+narration.
+
+```json
+{
+  "field": "soft_inventory_remove",
+  "new_value": "broken bottle",
+  "reason": "The bottle shatters after the blow."
+}
+```
+
+| Field       | Type           | Description |
+|-------------|----------------|-------------|
+| `entity_id` | string\|null   | Must be null (omitted) for all Call 1 patch types. |
+| `field`     | string         | One of `soft_inventory_remove`, `set_improvised_weapon`. Narrative notes are proposed by LLM Call 2 — see below. Attitude changes are also proposed by LLM Call 2 — see `actions.md` §5 and `hard-state.md`. |
+| `new_value` | any            | Proposed new value. |
+| `reason`    | string         | Narrative justification. Must be non-empty. |
+
+### Supported soft state fields (LLM Call 1)
+
+| Field                     | Type     | Allowed values              | Notes |
+|---------------------------|----------|-----------------------------|-------|
+| `soft_inventory_remove`   | string   | Must exist in `soft_inventory` | Removed from `soft_inventory[]`. |
+| `set_improvised_weapon`   | dict\|null | Valid `ImprovisedWeapon` dict or `null` | Sets or clears `improvised_weapon`. |
+
+### Full validation rules (LLM Call 1 patches)
+
+| Rule | Description |
+|------|-------------|
+| Field must be registered | `field` must be one of the supported types above. |
+| Reason required | `reason` must be non-empty. |
+| Soft inventory removal | `soft_inventory_remove` must reference an item currently in `soft_inventory`. |
+| Improvised weapon shape | `set_improvised_weapon.new_value` must be a valid `ImprovisedWeapon` object or `null`. |
+
+---
+
+## SoftStateNote reference (LLM Call 2)
+
+The narrative-note format that LLM Call 2 outputs in
+`NarrationOutput.soft_state_notes`.  Notes record durable,
+non-plot-relevant changes to the world arising from the turn's
+outcome; they are validated and applied by the engine during
+post-validation (step 4.5), like `knowledge_tags` and
+`attitude_changes`.  Rejected notes are dropped silently, without
+preventing the rest of the turn from completing.
 
 ```json
 {
@@ -586,33 +605,27 @@ The general soft-state patch format that LLM Call 1 outputs in
 
 | Field       | Type           | Description |
 |-------------|----------------|-------------|
-| `entity_id` | string\|null   | Target entity ID for `entity_note`. Must be `"player"` or an entity present in the current room. Null (omitted) for other patch types. |
-| `field`     | string         | One of `room_note`, `entity_note`, `soft_inventory_remove`, `appearance_note_add`, `set_improvised_weapon`. Attitude changes are proposed separately by LLM Call 2 — see `actions.md` §5 and `hard-state.md`. |
-| `new_value` | any            | Proposed new value. |
+| `entity_id` | string\|null   | Target entity ID for `entity_note`. Must be `"player"` or an entity present in the current room. Null (omitted) for `room_note`. |
+| `field`     | string         | One of `room_note`, `entity_note`. |
+| `new_value` | string         | The note text. Must be non-empty. |
 | `reason`    | string         | Narrative justification. Must be non-empty. |
 
-### Supported soft state fields (LLM Call 1)
+### Supported note fields (LLM Call 2)
 
 | Field                     | Type     | Allowed values              | Notes |
 |---------------------------|----------|-----------------------------|-------|
 | `room_note`               | string   | Non-empty, non-contradictory | Appended to `room_notes[<current_room>]`; the engine derives the room from the player's location. |
 | `entity_note`             | string   | Non-empty, non-contradictory | Appended to `entity_notes[entity_id]`. `entity_id` must be the player entity or an entity present in the current room. |
-| `soft_inventory_remove`   | string   | Must exist in `soft_inventory` | Removed from `soft_inventory[]`. |
-| `appearance_note_add`     | string   | Non-empty string               | Appended to `appearance_notes[]`. |
-| `set_improvised_weapon`   | dict\|null | Valid `ImprovisedWeapon` dict or `null` | Sets or clears `improvised_weapon`. |
 
-### Full validation rules (LLM Call 1 patches)
+### Full validation rules (LLM Call 2 notes)
 
 | Rule | Description |
 |------|-------------|
 | Entity must be present | For `entity_note`, `entity_id` must be the player entity or an entity present in the current room (directly, nested in a container, or a following NPC). |
 | Field must be registered | `field` must be one of the supported types above. |
-| Alive check | Patches for non-player entities with `alive == false` are rejected. |
+| Alive check | Notes for non-player entities with `alive == false` are rejected. |
 | Reason required | `reason` must be non-empty. |
 | No hard-state contradiction | Notes cannot assert facts that contradict hard-state flags or entity states. |
-| Soft inventory removal | `soft_inventory_remove` must reference an item currently in `soft_inventory`. |
-| Appearance note value | `appearance_note_add.new_value` must be a non-empty string. |
-| Improvised weapon shape | `set_improvised_weapon.new_value` must be a valid `ImprovisedWeapon` object or `null`. |
 
 ### Attitude changes (LLM Call 2)
 
@@ -643,7 +656,6 @@ rules are documented in `hard-state.md` (§ NPC Attitude).
     "entered_turn": 0,
     "stall_counter": 0
   },
-  "appearance_notes": [],
   "improvised_weapon": null
 }
 ```
