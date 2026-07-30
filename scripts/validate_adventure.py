@@ -74,6 +74,34 @@ def _collect_stat_check_stats(obj, stats: set[str]) -> None:
             _collect_stat_check_stats(item, stats)
 
 
+def _validate_ids(corpus) -> list[str]:
+    """Check reserved IDs and room/entity ID disjointness.
+
+    "current_room" is a reserved sentinel used in player-action targets.
+    Room and entity IDs must be mutually disjoint because soft-state maps
+    (soft_contents, soft_items_taken) key by ID without distinguishing
+    namespace, so a collision would conflate items placed in the room
+    with items placed in the entity.
+    """
+    errors: list[str] = []
+    for rid in corpus.rooms:
+        if rid == "current_room":
+            errors.append(
+                "Room ID 'current_room' is reserved and may not be used"
+            )
+        if rid in corpus.entities:
+            errors.append(
+                f"ID '{rid}' is used as both a room and an entity; room and "
+                f"entity IDs must be mutually disjoint"
+            )
+    for eid in corpus.entities:
+        if eid == "current_room":
+            errors.append(
+                "Entity ID 'current_room' is reserved and may not be used"
+            )
+    return errors
+
+
 def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
     """Load and validate an adventure directory.
 
@@ -148,6 +176,11 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
         errors.append("No room is marked as is_start_room")
     elif len(start_rooms) > 1:
         errors.append(f"Multiple rooms marked as start: {start_rooms}")
+
+    # 4b. Reserved IDs and room/entity ID disjointness (soft-state maps
+    # key by ID without distinguishing namespace, so a room/entity ID
+    # collision would conflate placed items).
+    errors.extend(_validate_ids(corpus))
 
     if hard.player.location not in corpus.rooms:
         errors.append(

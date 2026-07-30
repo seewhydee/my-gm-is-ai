@@ -30,6 +30,16 @@ documentation.  No room or entity may use `"current_room"` as an ID;
 this is reserved for use during gameplay (in player-action `target`
 fields, to denote the current room).
 
+Room IDs and entity IDs **must be mutually disjoint** (no ID may appear
+in both `rooms` and `entities`).  Although these are separate object
+namespaces, several internal structures key persistent soft state by ID
+without distinguishing the namespace — e.g. `soft_contents` and
+`soft_items_taken` map a room *or* entity ID to soft-item counts (see
+the [Soft State schema](soft-state.md)), and a room/entity ID collision
+would conflate items placed in the room with items placed in the entity.
+The `"current_room"` sentinel does not help here: it is normalized back
+to the real room ID before any persistent state is keyed.
+
 All objects in the schema permit undocumented fields with no
 rejection.  By convention, a `note` field may be added to any object
 to record author notes that have no gameplay effects.

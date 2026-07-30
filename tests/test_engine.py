@@ -746,6 +746,46 @@ class TestSoftContentFlow:
         assert soft.soft_contents == {"bag_floor": {"stone": 1}}
         assert "stone" not in soft.soft_inventory
 
+    def test_post_validate_rejects_give_of_uninstantiated_soft_item(self, state_manager):
+        """Defense-in-depth: even if a give proposal for a soft item the
+        player does not carry were to reach post-validation (e.g. via a
+        resolver bug), an accepted adjudication is rejected and no state
+        is mutated.  The player can never give an uninstantiated soft item."""
+        from mgmai.engine.post_validate import post_validate_soft_items
+        from mgmai.models.actions import SoftItemProposal
+        from mgmai.models.narration import SoftItemAdjudication
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        # soft_inventory is empty — "cork" is not instantiated.
+        proposal = SoftItemProposal(
+            item_name="cork",
+            action="give",
+            source_id="player",
+            target_id="korbar",
+            count=1,
+        )
+        adjudication = SoftItemAdjudication(
+            item_name="cork",
+            action="give",
+            accepted=True,
+            source_id="player",
+            target_id="korbar",
+            count=1,
+            justification="sure",
+        )
+        applied, rejected = post_validate_soft_items(
+            [adjudication], [proposal], hard, soft, corpus
+        )
+        assert applied == []
+        # The accepted give is rejected for insufficient inventory.
+        assert any("not enough" in r["reason"] for r in rejected)
+        # No state mutated.
+        assert soft.soft_inventory == []
+        assert soft.soft_contents == {}
+
     def test_retrieval_from_feature_is_mechanical(self, state_manager):
         hard = state_manager.hard_state
         hard.player.location = "bag_floor"

@@ -16,17 +16,16 @@ and pick up a wand of wishing").
 The system has two parts: **soft state notes**, and **soft items**.
 
 - **Soft State Notes** – During the [turn loop](intro.md), LLM Call 2
-  checks if the turn's outcome caused a notable change to a room or
-  corpus-defined entity (feature, item, or NPC).  If so, it writes a
-  `SoftStateNote` object, which goes in the `NarrationOutput`'s
+  checks if the turn's outcome warrants recording a note about a room
+  or corpus-defined entity (feature, item, or NPC).  If so, it writes
+  a `SoftStateNote` object, which goes in the `NarrationOutput`'s
   `soft_state_notes` array (see [Action schema](../schema/actions.md)).
-  
-  Each `SoftStateNote` records a change to the present room, or an
-  entity in that room (or the player entity, for global notes).  The
-  engine validates it during post-validation, applying a simple schema
-  that forbids rooms other than the present room and entities not in
-  the present room, and so forth; if it passes, the note is attached
-  to the room/entity and included in future GM briefings.
+
+  Each `SoftStateNote` attaches to the present room, or an entity in
+  that room (or the player entity, for global notes).  The engine
+  validates it during post-validation, applying a simple schema (e.g.,
+  can't attach notes to entities not in the present room); after
+  passing, the note is included in future GM briefings.
 
 - **Soft Items** – These are nondescript items that can be picked up,
   dropped, and/or used by the player.  Examples: rocks, loose stones,
@@ -36,10 +35,10 @@ The system has two parts: **soft state notes**, and **soft items**.
 
   In each turn, LLM Call 1 may interpret the player's actions as
   taking, giving, or examining one or more soft items.  If so, the
-  engine passes its proposal on to LLM Call 2, which adjudicates
-  whether to accept the proposed interaction.  If accepted, the soft
-  item is instantiated as necessary.  Soft items can be put in the
-  player's "soft inventory", or in corpus-defined rooms or entities.
+  engine passes the proposal to LLM Call 2, which adjudicates whether
+  to accept the proposed interaction.  If accepted, the soft item can
+  be instantiated.  Soft items can be put in the player's "soft
+  inventory", or in corpus-defined rooms or entities.
 
 Relatedly, we also use LLM Call 2 to track and manage what NPCs
 remember of their conversations with the player, and any plot-relevant
@@ -115,27 +114,41 @@ Soft items are tracked in three data structures:
 
 - `soft_inventory` lists the soft items carried by the player.
 
-- `soft_items_taken` is an **extraction ledger** specifying the number
-  of soft items taken from various sources (rooms or entities).
+- `soft_items_taken` is an extraction ledger specifying the number of
+  soft items taken from each source (rooms and entities).
 
-- `soft_contents` tracks the **current placement** of soft items the
+- `soft_contents` tracks the current placement of soft items the
   player has put in each room or entity.  These lists are incremented
   on accepted gives, decremented on retrieval, and pruned at zero.
-  
+
 The Context Assembler includes these in the GMBriefing; for details,
 see the [Soft State schema](../schema/soft-state.md).
 
-## Interaction Flow
+## Surfacing a Soft Item
 
-### Examining a Soft Item
+When the engine receives an `examine` or `transfer` (retrieval) action
+involving an uninstantiated soft item (one that does not match any
+entity ID, nor any existing soft item), it generates a **soft item
+proposal** and passes it to LLM Call 2 for adjudication.  If this
+proposal is accepted by LLM Call 2,
 
-When the engine receives an `ExamineAction` whose `target` does not
-match any hard entity or room, it auto-generates a **soft item
-proposal** and passes it to LLM Call 2 for adjudication.  If accepted,
-this examination affects narration only.  (If the examination
-establishes a durable fact the player may return to, LLM Call 2 should
-record it via a `room_note` or `entity_note` in `soft_state_notes`, as
-noted above.)
+- For `examine`, LLM Call 2 proceeds to incorporate the soft item into
+  the narration, *without* instantiating it in soft state.  If the
+  examination establishes a durable fact the player may return to, LLM
+  Call 2 should record it via a soft state note.
+
+- For `transfer` (retrieval of a non-preexisting soft item), LLM Call
+  2 proceeds to narrate the player taking the soft item.  During the
+  [post-validation step](../schema/actions.md), the engine
+  instantiates the soft item by mutating the trackers
+  `soft_inventory`, `soft_items_taken`, and `soft_contents`.
+
+For `transfer` actions involving an existing soft item, see the next
+section.
+
+### Examples
+
+Examining a soft item:
 
 ```
 Player: "I examine the rock."
@@ -145,7 +158,7 @@ LLM Call 1 → ExamineAction(target="rock")
 Engine resolver → "rock" is not a hard room/entity
                 → returns ResolutionResult(success=True,
                      soft_item_proposals=[
-                       SoftItemProposal(item_name="rock", 
+                       SoftItemProposal(item_name="rock",
 						   action="examine",
 						   source_id="<current_room>")
                      ])
@@ -158,7 +171,7 @@ Engine post-validation → records the adjudication for audit;
                          NO soft-state mutation
 ```
 
-### Picking Up / Taking a Soft Item
+Taking a soft item from a feature:
 
 ```
 Player: "I take the cork."
@@ -179,7 +192,23 @@ Engine post-validation → adds "cork" to soft_inventory
                        → records soft_items_taken["rubbish_pile"]["cork"] = 1
 ```
 
-### Giving, Placing, or Dropping a Soft Item
+## Moving Soft Items
+
+Once instantiated, soft items can be transferred mechanically to
+different locations.  Each `examine` or `transfer` action consults the
+relevant inventories of soft items (e.g., `soft_inventory` for soft
+items carried by the player); if the specified soft item is found, the
+action is proceeds mechanically without the instantiation procedure
+described in the preceding section.
+
+Note that `transfer` actions can still be gated by the usual game
+mechanisms.  For example, an item inside a closed container entity
+cannot be retrieved, and transfers involving NPCs are still subject to
+adjudication by LLM Call 2 that the NPC consents.
+
+### Examples
+
+Giving a soft item to an NPC:
 
 ```
 Player: "I give the cork to Korbar."
@@ -200,9 +229,7 @@ Engine post-validation → removes "cork" from soft_inventory
                        → records soft_contents["korbar"]["cork"] = 1
 ```
 
-Give proposals always use `source_id="player"` — the item comes out of
-the player's own `soft_inventory`.  The `target_id` may be an entity ID
-(a give or placement) or a **room ID**, which is a drop:
+Placing a soft item on the floor of the room:
 
 ```
 Player: "I drop the rock."
@@ -217,64 +244,6 @@ LLM Call 2 → narrates and adjudicates acceptance
 Engine post-validation → removes "rock" from soft_inventory
                        → records soft_contents["bag_floor"]["rock"] = 1
 ```
-
-Accepted gives never touch `soft_items_taken` — placing an item is not
-extracting one.
-
-### Retrieving a Placed Soft Item
-
-Takes consult `soft_contents` before falling back to an ambient take
-proposal.  Items in `soft_contents` came out of the player's own
-`soft_inventory` via an accepted give, so their existence is
-mechanically verified — no adjudication of *existence* is needed.  All
-`soft_contents` lookups normalize names (via `_normalize_item_name`), so
-"the Stone" matches a stored "stone".
-
-- **From a room or non-NPC entity, retrieval is mechanical.**  The
-  resolver satisfies the take directly, with no Call 2 adjudication.
-  It records the retrieval in `ResolutionResult.soft_content_takes`
-  (source → name → count); the engine decrements `soft_contents`
-  (pruning zero-count and emptied parent entries), appends the items
-  to `soft_inventory`, and copies the record onto
-  `EngineResult.soft_content_takes` so Call 2 can narrate the
-  retrieval.
-- **From an NPC, Call 2 adjudicates consent.**  The resolver emits a
-  normal take proposal; Call 2 sees the item in the NPC's
-  `soft_items_present` and decides whether the NPC parts with it.
-- **Closed containers gate retrieval.**  A placed item inside a closed
-  container entity cannot be retrieved: the take fails with the same
-  "The X is closed." error a hard item would produce.
-- **Room-targeted takes search the room's entities.**  If the take
-  targets the room but the item rests on an entity, the resolver
-  searches the room's entities' `soft_contents` before going ambient;
-  an item found only inside a closed container yields the closed error.
-- **Shortfall splits the take.**  If the requested count exceeds the
-  placed count, the placed portion is satisfied as above and only the
-  remainder becomes an ambient take proposal.
-
-A unified post-validation rule keeps the extraction ledger clean:
-every accepted take decrements `soft_contents[source]` first; only the
-remainder increments `soft_items_taken[source]`.  Retrieving your own
-stone is not extraction.
-
-## Carried Soft Items
-
-Soft items in the player's inventory are surfaced through
-`PlayerStateBriefing.soft_inventory`. This is separate from the room/entity
-`soft_items_taken` and `soft_items_present` fields — the player always sees
-what they're carrying via the player state block in the GMBriefing.
-
-## Adjudication Model
-
-Each soft-item interaction is adjudicated by LLM Call 2: the engine
-produces a `SoftItemProposal` (for `examine`, `take`, or `give`), Call 2
-returns a matching `SoftItemAdjudication`, and the engine's
-post-validation step matches adjudications to proposals, verifies the
-source/target against the corpus, and applies accepted changes to
-`soft_inventory`, `soft_items_taken`, and `soft_contents` (accepted
-examines have no state effect). The full field formats and the
-rejection rules are documented in [schema/actions.md](../schema/actions.md)
-(§4 and §5).
 
 ## Files Summary
 

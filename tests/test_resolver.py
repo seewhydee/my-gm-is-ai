@@ -573,6 +573,47 @@ class TestResolveTransfer:
         assert proposal.source_id == "player"
         assert proposal.target_id == "korbar"
 
+    def test_give_soft_item_not_in_inventory_rejected(self, state_manager):
+        """A soft item the player does not carry cannot be given: the
+        resolver rejects the action and emits no proposal, so an
+        uninstantiated soft item can never reach the adjudication step."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        # soft_inventory is empty — "cork" is not instantiated.
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_items=["cork"],
+            taken_items=[],
+            detail="Giving a cork I don't have",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "not in your inventory" in (result.error or "")
+        assert result.soft_item_proposals == []
+
+    def test_give_soft_item_insufficient_count_rejected(self, state_manager):
+        """Requesting more of a soft item than the player carries is
+        rejected at the resolver; no proposal is emitted for the
+        shortfall."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        soft.soft_inventory.append("cork")  # only one cork
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_counts={"cork": 3},
+            taken_items=[],
+            detail="Giving three corks",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "Not enough" in (result.error or "")
+        assert "soft inventory to give" in (result.error or "")
+        assert result.soft_item_proposals == []
+
     def test_take_soft_item_surfaces_on_entity_source(self, state_manager):
         """Taken soft items exclusive to an entity are proposed on that entity."""
         hard = state_manager.hard_state
