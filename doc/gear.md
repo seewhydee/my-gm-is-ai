@@ -1,55 +1,71 @@
 # Equipment and Gear System
 
-MGMAI supports equippable items through a **tag-based compatibility system**
-modelled after tabletop RPG convention.  Instead of hard-coded slot types
-("helmet slot", "ring slot"), items declare what they *are* via tags and
-what they conflict with.  The engine validates conflicts; the LLM proposes
-equip/unequip actions using common sense.
+MGMAI supports equippable items through a tag-based compatibility
+system modelled after tabletop RPG conventions.  Instead of hard-coded
+slot types ("helmet", "ring", etc.), items declare what they *are* via
+tags and what they conflict with.
 
-This mirrors how a human GM operates ("you can't wear two helmets") without
-being rigid ("but this ethereal circlet floats above your head, so fine").
+The player can equip/unequip gear items via natural language ("I draw
+the sword", "I sheathe it", etc.).  The LLM interprets the command,
+including what item ID the player refers to and whether the action
+makes sense.  The engine handles adjusting inventory counts,
+recomputing stats, validating conflicts, etc.
 
 ---
 
-## Quickstart
+## Gear model
 
-To make an item equippable, add an `equip_block` to its entity definition:
+An equippable **gear** item has an `equip_block` in its entity
+definition.  Items without an `equip_block` cannot be equipped (keys,
+potions, quest items, etc.).
 
 ```json
 {
-  "toenail_sword": {
+  "dragonslaying_saber": {
     "type": "item",
-    "name": "Toenail Sword",
-    "description": "A giant toenail clipping, curved and razor-sharp...",
+    "name": "Dragonslaying Saber",
+      "description": "A curved saber, exceptionally well-balanced, engraved with intricate runes.  It is said that the wielder of this blade can rule the martial world.",
     "tags": ["weapon"],
     "equip_block": {
       "equip_tags": ["weapon", "martial"],
-      "damage_expr": "1d6",
+      "damage_expr": "2d6",
       "damage_type": "piercing",
-      "properties": ["finesse", "light"],
+      "properties": ["finesse"],
       "hit_bonus": 0
     }
   }
 }
 ```
 
-Every `item` entity must carry a `name` — this is the display string shown in
-the `/inv` panel and in the LLM-facing `equipped_items` briefing, rather than
-the raw snake_case entity ID. (Other entity types may omit `name`, in which
-case the engine falls back to the entity ID.)
+| Field               | Type        | Default  | Description |
+|---------------------|-------------|----------|-------------|
+| `equip_tags`        | `[string]`  | required | Category tags describing what this item "is" when worn/wielded.  The first element is the **slot** (controls default incompatibility and `max_equipped` caps); remaining elements are sub-tags.  Examples: `["headwear"]`, `["weapon", "martial"]`, `["weapon", "two_handed"]`, `["armor", "heavy"]`, `["shield"]`, `["ring"]`.  For weapons, include a proficiency category tag (`"simple"` or `"martial"`) so the engine can gate the proficiency bonus (see [weapon proficiencies](player-stats.md#weapon-proficiencies-5e)). |
+| `incompatible_with` | `[string]`  | `[]`     | Tags that conflict with this item.  When equipping, the engine checks all already-equipped items: if any of *their* `equip_tags` intersects this list, the equip is rejected.  Default (empty) means items conflict with anything sharing the same slot tag (the first element of `equip_tags`). |
+| `stat_effects`      | `{string: {mode, value}}` | `{}` | Stat changes applied while equipped.  Keys are stat names (e.g. `"STR"`, `"DEX"`), values follow the `StatModifier` format: `{"mode": "delta"|"set", "value": int}`.  Set modifiers apply first (e.g. "belt of giant strength sets STR to 21"), then delta modifiers (e.g. "gauntlets give +1 STR"). |
+| `max_equipped`      | `int|null`  | `1`      | How many items of this slot can be equipped simultaneously.  `1` = standard (one helmet, one armour).  `2` = rings (two ring slots).  `null` = unlimited (artifacts, auras).  The engine uses the **highest** value among all items sharing the same slot tag. |
+| `damage_expr`       | `string`    | `"1d8"`  | Damage dice expression for this weapon (e.g. `"1d6"`, `"2d4"`, `"1d12"`).  Only meaningful when `"weapon"` is in `equip_tags`. |
+| `hit_bonus`         | `int`       | `0`      | Flat bonus to hit rolls.  A "+1 sword" has `hit_bonus: 1`.  Stacks across equipped weapons. |
+| `properties`        | `[string]`  | `[]`     | Weapon properties.  The `5e` system recognizes `"finesse"` (attack and damage use the better of STR or DEX) and `"ranged"` (attack and damage use DEX; no range mechanics exist). |
+| `damage_type`       | `string`    | `""`     | Damage type of the weapon (e.g. `"slashing"`, `"fire"`) used for resistance/vulnerability/immunity.  Empty = untyped. |
 
-The player can then equip it via the LLM ("I draw the sword") and unequip it ("I sheathe it").  The engine handles adjusting inventory counts and moving IDs between `inventory` and `equipped`, computing effective stats, and validating conflicts.
+System-specific fields are also accepted as extra top-level keys.  The `5e`
+system recognises the following extras:
+
+| Field          | Type       | Description |
+|----------------|------------|-------------|
+| `ac_override`  | `int|null` | If set, the player's AC becomes this value (e.g. heavy plate armour: 18).  Only the highest `ac_override` among equipped items takes effect. |
+| `ac_bonus`     | `int`      | Added to the player's base AC.  Used for light/medium armour and shields.  Stacks across all equipped items. |
 
 ---
 
 ## SRD Data Pack
 
 The full SRD 5.2.1 weapon and armor tables, plus the four tiers of
-healing potion, ship with the engine as a data pack
-(`mgmai/data/srd_5e/gear.json`).  At load time every pack item is
-minted as an item entity, so rooms, inventories, and character sheets
-can reference pack IDs — `longsword`, `plate_armor`, `shield`,
-`potion_of_healing`, … — without declaring them:
+healing potion, come as a data pack (`mgmai/data/srd_5e/gear.json`).
+At load time every pack item is minted as an item entity, so rooms,
+inventories, and character sheets can reference pack IDs (`longsword`,
+`plate_armor`, `shield`, `potion_of_healing`, etc.) without declaring
+them:
 
 ```json
 "inventory": { "longsword": 1, "potion_of_healing": 2 },
@@ -78,32 +94,6 @@ Pack conventions:
   Stealth disadvantage are noted in descriptions for GM adjudication.
 - **Potions** — `potion_of_healing` (2d4+2) through
   `potion_of_supreme_healing` (10d4+20) as items with a `drink` interaction.
-
----
-
-## Data Model: `EquipBlock`
-
-The `EquipBlock` object sits on item-type entities in `corpus.json`.  Items
-without an `equip_block` cannot be equipped (keys, potions, quest items, etc.).
-
-| Field               | Type        | Default  | Description |
-|---------------------|-------------|----------|-------------|
-| `equip_tags`        | `[string]`  | required | Category tags describing what this item "is" when worn/wielded.  The first element is the **slot** (controls default incompatibility and `max_equipped` caps); remaining elements are sub-tags.  Examples: `["headwear"]`, `["weapon", "martial"]`, `["weapon", "two_handed"]`, `["armor", "heavy"]`, `["shield"]`, `["ring"]`.  For weapons, include a proficiency category tag (`"simple"` or `"martial"`) so the engine can gate the proficiency bonus (see [weapon proficiencies](player-stats.md#weapon-proficiencies-5e)). |
-| `incompatible_with` | `[string]`  | `[]`     | Tags that conflict with this item.  When equipping, the engine checks all already-equipped items: if any of *their* `equip_tags` intersects this list, the equip is rejected.  Default (empty) means items conflict with anything sharing the same slot tag (the first element of `equip_tags`). |
-| `stat_effects`      | `{string: {mode, value}}` | `{}` | Stat changes applied while equipped.  Keys are stat names (e.g. `"STR"`, `"DEX"`), values follow the `StatModifier` format: `{"mode": "delta"|"set", "value": int}`.  Set modifiers apply first (e.g. "belt of giant strength sets STR to 21"), then delta modifiers (e.g. "gauntlets give +1 STR"). |
-| `max_equipped`      | `int|null`  | `1`      | How many items of this slot can be equipped simultaneously.  `1` = standard (one helmet, one armour).  `2` = rings (two ring slots).  `null` = unlimited (artifacts, auras).  The engine uses the **highest** value among all items sharing the same slot tag. |
-| `damage_expr`       | `string`    | `"1d8"`  | Damage dice expression for this weapon (e.g. `"1d6"`, `"2d4"`, `"1d12"`).  Only meaningful when `"weapon"` is in `equip_tags`. |
-| `hit_bonus`         | `int`       | `0`      | Flat bonus to hit rolls.  A "+1 sword" has `hit_bonus: 1`.  Stacks across equipped weapons. |
-| `properties`        | `[string]`  | `[]`     | Weapon properties.  The `5e` system recognizes `"finesse"` (attack and damage use the better of STR or DEX) and `"ranged"` (attack and damage use DEX; no range mechanics exist). |
-| `damage_type`       | `string`    | `""`     | Damage type of the weapon (e.g. `"slashing"`, `"fire"`) used for resistance/vulnerability/immunity.  Empty = untyped. |
-
-System-specific fields are also accepted as extra top-level keys.  The `5e`
-system recognises the following extras:
-
-| Field          | Type       | Description |
-|----------------|------------|-------------|
-| `ac_override`  | `int|null` | If set, the player's AC becomes this value (e.g. heavy plate armour: 18).  Only the highest `ac_override` among equipped items takes effect. |
-| `ac_bonus`     | `int`      | Added to the player's base AC.  Used for light/medium armour and shields.  Stacks across all equipped items. |
 
 ### Examples
 
@@ -477,3 +467,6 @@ It is serialised and deserialised alongside `equipped`:
   }
 }
 ```
+
+> Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+> This document is part of My GM is AI, licensed under the [GNU GPL v3](../LICENSE).
