@@ -776,7 +776,7 @@ class TestSoftContentFlow:
             count=1,
             justification="sure",
         )
-        applied, rejected = post_validate_soft_items(
+        applied, rejected, hard_changes = post_validate_soft_items(
             [adjudication], [proposal], hard, soft, corpus
         )
         assert applied == []
@@ -785,6 +785,183 @@ class TestSoftContentFlow:
         # No state mutated.
         assert soft.soft_inventory == []
         assert soft.soft_contents == {}
+        assert not hard_changes.has_changes()
+
+    # --- Hard-item NPC consent (give / take, alive / dead) ---
+
+    @staticmethod
+    def _adjudicate(state_manager, result, accepted, justification=None):
+        """Build adjudications echoing each proposal and apply post-validation."""
+        from mgmai.engine.post_validate import apply_post_validation
+        from mgmai.models.narration import SoftItemAdjudication
+
+        adjudications = [
+            SoftItemAdjudication(
+                item_name=p.item_name,
+                action=p.action,
+                accepted=accepted,
+                source_id=p.source_id,
+                target_id=p.target_id,
+                count=p.count,
+                justification=justification,
+            )
+            for p in (result.soft_item_proposals or [])
+        ]
+        return apply_post_validation(
+            None, None, state_manager, result, soft_item_adjudications=adjudications
+        )
+
+    def test_hard_give_to_living_npc_deferred_then_accepted(self, state_manager):
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        hard.player.location = "bag_floor"
+        hard.player.inventory["toenail_sword"] = 1
+
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_items=["toenail_sword"], detail="Handing sword to Korbar",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        # Deferred: no move yet.
+        assert len(result.soft_item_proposals) == 1
+        assert result.soft_item_proposals[0].item_kind == "hard"
+        assert hard.player.inventory.get("toenail_sword") == 1
+
+        result = self._adjudicate(state_manager, result, accepted=True)
+        # On consent, the move is applied.
+        assert hard.player.inventory.get("toenail_sword", 0) == 0
+        assert hard.entity_contains.get("korbar", {}).get("toenail_sword") == 1
+        assert result.soft_items_accepted[0].item_name == "toenail_sword"
+
+    def test_hard_give_to_living_npc_deferred_then_rejected(self, state_manager):
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        hard.player.inventory["toenail_sword"] = 1
+
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_items=["toenail_sword"], detail="Handing sword to Korbar",
+        )
+        result = resolve(action, state_manager)
+        assert len(result.soft_item_proposals) == 1
+
+        result = self._adjudicate(
+            state_manager, result, accepted=False, justification="Korbar refuses."
+        )
+        # On refusal, nothing moves; the player keeps the item.
+        assert hard.player.inventory.get("toenail_sword") == 1
+        assert "toenail_sword" not in hard.entity_contains.get("korbar", {})
+        # A matched-but-refused adjudication is recorded as applied with
+        # accepted=False (the engine applied the refusal, i.e. no move).
+        assert result.soft_items_accepted
+        assert result.soft_items_accepted[0].accepted is False
+
+    def test_hard_take_from_living_npc_deferred_then_accepted(self, state_manager):
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        # Korbar (alive) holds the sword.
+        hard.entity_contains["korbar"] = {"toenail_sword": 1}
+
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            taken_items=["toenail_sword"], detail="Taking the sword from Korbar",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert len(result.soft_item_proposals) == 1
+        assert result.soft_item_proposals[0].item_kind == "hard"
+        assert result.soft_item_proposals[0].action == "take"
+        assert result.soft_item_proposals[0].source_id == "korbar"
+        # Deferred: item not yet taken.
+        assert hard.entity_contains["korbar"].get("toenail_sword") == 1
+        assert "toenail_sword" not in hard.player.inventory
+
+        result = self._adjudicate(state_manager, result, accepted=True)
+        assert hard.player.inventory.get("toenail_sword") == 1
+        assert hard.entity_contains.get("korbar", {}).get("toenail_sword", 0) == 0
+
+    def test_hard_take_from_living_npc_deferred_then_rejected(self, state_manager):
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        hard.entity_contains["korbar"] = {"toenail_sword": 1}
+
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            taken_items=["toenail_sword"], detail="Taking the sword from Korbar",
+        )
+        result = resolve(action, state_manager)
+        assert len(result.soft_item_proposals) == 1
+
+        result = self._adjudicate(
+            state_manager, result, accepted=False, justification="Korbar pulls it away."
+        )
+        # Refused: NPC keeps the item, player gets nothing.
+        assert hard.entity_contains["korbar"].get("toenail_sword") == 1
+        assert "toenail_sword" not in hard.player.inventory
+
+    def test_hard_give_to_dead_npc_is_mechanical(self, state_manager):
+        """A dead NPC is not consent-gated: giving is applied mechanically."""
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        hard.player.inventory["toenail_sword"] = 1
+        hard.entity_states.setdefault("korbar", {})["alive"] = False
+
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            given_items=["toenail_sword"], detail="Placing sword on the corpse",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert result.soft_item_proposals == []
+        assert result.hard_state_changes.inventory_removed.get("toenail_sword") == 1
+        assert result.hard_state_changes.entity_contains_added.get("korbar", {}).get("toenail_sword") == 1
+
+    def test_hard_take_from_dead_npc_is_mechanical_looting(self, state_manager):
+        """Looting a dead NPC is mechanical: no consent proposal."""
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        hard.entity_contains["korbar"] = {"toenail_sword": 1}
+        hard.entity_states.setdefault("korbar", {})["alive"] = False
+
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            taken_items=["toenail_sword"], detail="Looting the corpse",
+        )
+        result = resolve(action, state_manager)
+        assert result.success is True
+        assert result.soft_item_proposals == []
+        assert result.hard_state_changes.inventory_added.get("toenail_sword") == 1
+        assert result.hard_state_changes.entity_contains_removed.get("korbar", {}).get("toenail_sword") == 1
+        # Applied by the engine.
+        assert hard.player.inventory.get("toenail_sword") == 1
+        assert hard.entity_contains.get("korbar", {}).get("toenail_sword", 0) == 0
+
+    def test_hard_take_from_npc_runs_take_check_then_defers(self, state_manager):
+        """take_check is independent of consent: it resolves first, and only
+        if it passes is the take deferred for NPC consent."""
+        from mgmai.models.corpus import GatedCheck, RollCheck
+
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        hard.entity_contains["korbar"] = {"toenail_sword": 1}
+        # A take_check that always fails.
+        sword = corpus.entities["toenail_sword"]
+        sword.take_check = GatedCheck(
+            check=RollCheck(threshold=0.0, repeatable=True),
+            failure=Result(narrative="It won't budge."),
+        )
+
+        action = TransferAction(
+            action_type="transfer", target="korbar",
+            taken_items=["toenail_sword"], detail="Trying to take the sword",
+        )
+        result = resolve(action, state_manager)
+        # take_check failed: no proposal, no move.
+        assert result.soft_item_proposals == []
+        assert "toenail_sword" not in hard.player.inventory
+        assert hard.entity_contains["korbar"].get("toenail_sword") == 1
 
     def test_retrieval_from_feature_is_mechanical(self, state_manager):
         hard = state_manager.hard_state

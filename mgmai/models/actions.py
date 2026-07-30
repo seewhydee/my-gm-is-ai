@@ -425,6 +425,12 @@ class SoftItemProposal(BaseModel):
     target_id: str | None = None
     count: int = 1
     proposed_by: Literal["call_1"] = "call_1"
+    # Whether the proposed item is a hard corpus entity (``item_name`` is
+    # its entity ID) or a soft item (``item_name`` is a generic name).
+    # Hard items to/from a *living* NPC are deferred to LLM Call 2 for
+    # consent adjudication, mirroring the soft-item flow; on acceptance the
+    # engine applies the deferred hard move in post-validation.
+    item_kind: Literal["soft", "hard"] = "soft"
 
 
 class GameOverResult(BaseModel):

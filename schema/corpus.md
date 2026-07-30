@@ -1023,6 +1023,20 @@ be omitted if the event lacks that particular detail).
 For the full list, and full documentation of the context keys, see the
 [Events schema doc](events.md).
 
+> **Limitation — deferred NPC transfers.** A `transfer` that gives a
+> hard item to, or takes a hard item from, a *living* NPC is not applied
+> immediately: the move is deferred until LLM Call 2 adjudicates the
+> NPC's consent, and is then applied during post-validation (see
+> [Action schema](actions.md)). State-change events for such a move
+> (`item.acquired`/`item.lost`, `entity_state.changed`, etc.) are **not
+> dispatched** — post-validation applies the hard-state delta directly
+> without re-running the engine's event/reaction pipeline. Reactions on
+> those events will therefore not fire for a consented living-NPC
+> transfer (they do fire for ordinary transfers, including looting a
+> dead NPC). Adventure authors should not rely on `item.acquired`/
+> `item.lost` reactions to gate living-NPC transfers; use the NPC's
+> dialogue/attitude mechanics or a `take_check` instead.
+
 ### Reaction Effect
 
 A ReactionEffect object is stored in a reaction's `effect` field, and
@@ -1390,6 +1404,29 @@ socialize with.  NPC entity blocks support these additional fields:
 | `combat`¹       | object | NPC's [combat stat block](#combat)       |
 | `combat_group`¹ | string | See [combat groups](#combat-groups)      |
 > ¹ optional
+
+#### Item-transfer consent
+
+Transferring an item to or from a **living** NPC is not applied
+mechanically.  When the player gives an item to, or takes an item from,
+an NPC whose `alive` state is not `false`, the engine defers the move
+and emits an item proposal that LLM Call 2 adjudicates — i.e. the NPC
+must *consent* before the item changes hands.  On refusal, nothing
+moves.  This applies to both hard items and soft items.  Looting a dead
+NPC (or transferring to/from a non-NPC entity, a feature, or a room) is
+**not** consent-gated and resolves mechanically.
+
+A hard item's [`take_check`](#item) (if any) is independent of consent
+and always applies: the check is resolved first, and only if the item is
+physically takeable is the take deferred for the NPC's consent.
+
+Because the deferred move is applied during post-validation, state-change
+reactions (`item.acquired`/`item.lost`, `entity_state.changed`) do not
+fire for a consented living-NPC transfer — see the limitation noted under
+[Reaction](#reaction).  Authors who need to gate or react to an NPC
+giving up an item should model it via the NPC's [dialogue
+paths](#dialogue-path) or `attitude` rather than `item.acquired`
+reactions.
 
 #### Dialogue
 

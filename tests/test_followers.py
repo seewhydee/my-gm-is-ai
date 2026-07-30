@@ -224,7 +224,14 @@ class TestResolveWithFollower:
             hard, soft, corpus,
         )
         assert result.success is True
-        assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
+        # Korbar is a living NPC (follower), so the hard-item give is
+        # deferred to LLM Call 2 for consent rather than applied here; the
+        # proposal confirms the follower was a valid target in any room.
+        assert len(result.soft_item_proposals) == 1
+        prop = result.soft_item_proposals[0]
+        assert prop.item_kind == "hard"
+        assert prop.action == "give"
+        assert prop.target_id == "korbar"
 
     def test_interact_follower_in_any_room(self, _setup):
         hard, soft, corpus = _setup

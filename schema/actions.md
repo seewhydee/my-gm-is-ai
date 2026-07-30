@@ -516,7 +516,14 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
   reject counts greater than 1; soft item names (with no corpus entity)
   are exempt.
 - On success, hard items are moved between `player.inventory` and the
-  world-side runtime containment maps.
+  world-side runtime containment maps — **except** when the other party
+  is a *living* NPC: a give to, or take from, a living NPC is deferred to
+  LLM Call 2 as a `soft_item_proposal` with `item_kind: "hard"`. The hard
+  move is applied in post-validation only if Call 2 adjudicates that the
+  NPC consents; on refusal, nothing moves. Looting a dead NPC (or
+  transferring to/from a non-NPC entity, a follower's corpse, a room) is
+  mechanical. A hard item's `take_check` is independent and always
+  applies (resolved before the consent proposal is issued).
 - Soft items given from the player's inventory produce a `soft_item_proposal`
   for `"give"` with `source_id` set to `"player"` and `target_id` set to
   the recipient entity or room ID (a room target is a drop).

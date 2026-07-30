@@ -203,8 +203,12 @@ described in the preceding section.
 
 Note that `transfer` actions can still be gated by the usual game
 mechanisms.  For example, an item inside a closed container entity
-cannot be retrieved, and transfers involving NPCs are still subject to
-adjudication by LLM Call 2 that the NPC consents.
+cannot be retrieved, and transfers involving a **living NPC** — whether
+the item is soft or hard — are deferred to LLM Call 2, which adjudicates
+whether the NPC consents.  (Looting a dead NPC short-circuits this: the
+transfer is mechanical, with no consent step.)  For a hard item, the
+NPC's `take_check` (if any) still applies independently — the item must
+be both physically takeable *and* consented.
 
 ### Examples
 

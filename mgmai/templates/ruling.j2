@@ -297,6 +297,8 @@ Worked recipes:
 
 5. **Transfer**: Giving items to someone or taking items from someone/somewhere. `target` is the source/recipient: the container or NPC entity ID, or `"current_room"` for items loose on the floor. Hard items use their entity IDs (taken from the container's `contains` or the player's inventory); soft items use their names (from the container's or room's `soft_items_present`, or the player's `soft_inventory`). Only take items that are actually present at the target. See *Containers & Items*.
 
+   Note: giving to, or taking from, a **living NPC** (soft or hard items) is deferred to Call 2, which adjudicates whether the NPC consents — so do not assume the transfer succeeds; the narrator will handle the NPC's response. Looting a dead NPC is not consent-gated.
+
 6. **Combat**: When `combat_state` is present in the briefing, combat is
    active and the turn economy applies: EVERY action except a
    non-rigorous `examine` (a free cursory look) and `ooc_discussion`

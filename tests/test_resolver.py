@@ -453,7 +453,16 @@ class TestResolveTransfer:
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
-        assert result.hard_changes.inventory_removed.get("toenail_sword") == 1
+        # Giving a hard item to a living NPC is deferred to LLM Call 2 for
+        # consent: no mechanical move yet, just a hard-item proposal.
+        assert result.hard_changes.inventory_removed == {}
+        assert len(result.soft_item_proposals) == 1
+        proposal = result.soft_item_proposals[0]
+        assert proposal.item_name == "toenail_sword"
+        assert proposal.action == "give"
+        assert proposal.item_kind == "hard"
+        assert proposal.source_id == "player"
+        assert proposal.target_id == "korbar"
 
     def test_give_item_not_in_inventory(self, state_manager):
         hard = state_manager.hard_state
@@ -1817,15 +1826,18 @@ class TestResolveTransferContainment:
         )
         hard.player.inventory["gold_coin"] = 100
 
+        # Giving to a non-NPC entity (a feature) is mechanical and adds to
+        # entity_contains.  (Giving to a living NPC is consent-gated and
+        # deferred — see test_give_item_from_inventory.)
         action = TransferAction(
-            action_type="transfer", target="korbar",
+            action_type="transfer", target="rubbish_pile",
             given_counts={"gold_coin": 25},
-            detail="Giving coins to Korbar",
+            detail="Putting coins in the rubbish pile",
         )
         result = resolve_transfer(action, hard, soft, corpus)
         assert result.success is True
         assert result.hard_changes.inventory_removed.get("gold_coin") == 25
-        assert result.hard_changes.entity_contains_added.get("korbar", {}).get("gold_coin") == 25
+        assert result.hard_changes.entity_contains_added.get("rubbish_pile", {}).get("gold_coin") == 25
 
     def test_take_from_nested_container(self, state_manager):
         hard = state_manager.hard_state

@@ -87,7 +87,7 @@ class TestProseTemplateConditional:
 
     _COMBAT_HEADING = "## Narration During Combat"
     _DIALOGUE_HEADING = "## Dialogue with NPCs"
-    _SOFT_ITEMS_HEADING = "## Soft Item Adjudication"
+    _SOFT_ITEMS_HEADING = "## Item Adjudication"
     _COMBAT_FIELDS = ("combat_triggered", "combat_log")
     _DIALOGUE_FIELDS = ("dialogue_exited", "npc_attitude_limits")
     _SOFT_ITEMS_FIELDS = ("soft_item_proposals", "soft_item_adjudications")

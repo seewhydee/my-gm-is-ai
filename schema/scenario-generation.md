@@ -523,6 +523,36 @@ Revisit the entity list, and add the following to each entity:
   when first encountered (e.g., hurls insults, begs for help, plays
   dead), note it.
 
+- **Item-transfer consent** — recall that an ad-hoc `transfer` action
+  to or from a *living* NPC is deferred to LLM Call 2, which adjudicates
+  the NPC's consent; by default the NPC **refuses** (see the *Item-
+  transfer consent* subsection under [Entity](corpus.md#npc) in the
+  corpus schema).  This is the right behavior for the player poking at
+  an NPC's belongings uninvited.  But it is *not* the mechanism to use
+  for transfers the scenario *intends* to happen — those should be
+  authored deterministically so they are not subject to the consent
+  default.  Two recommended patterns:
+
+  - **An NPC hands something over** as a consequence of conversation or
+    an interaction: model it as a dialogue path (see *Dialogue Paths*
+    below) or an interaction on the NPC whose success `Result` does the
+    move directly —
+    `add_item` (the player receives it) plus
+    `set_entity_state` setting the item's `location` to `null` (it
+    leaves the NPC).  For example, a guard `bribe_to_enter` path whose
+    success gives the player a `gate_key` and removes it from the guard.
+
+  - **The player is meant to be able to take an item freely** (e.g.,
+    looting after the NPC is dead, or an item the NPC has dropped): no
+    special work is needed once the NPC is dead (looting a dead NPC is
+    mechanical, not consent-gated) or once the item has been moved out
+    of the NPC's `contains` (e.g., to the room).
+
+  Reserve the consent-gated `transfer` path for the social/ambiguous
+  cases where the NPC's willingness genuinely depends on the
+  conversational context, and note in the NPC entry which items are
+  "theirs" (so the GM understands what a take-from-NPC attempt means).
+
 - **Dialogue Paths** — for dialogue, if the NPC talks.
   A dialogue path is any special plot/gameplay-relevant line of
   conversation the player can engage the NPC with: e.g., bribing a

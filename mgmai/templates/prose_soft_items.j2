@@ -2,14 +2,23 @@
 {# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com> -#}
 {# Licensed under the GNU GPL v3. -#}
 
-## Soft Item Adjudication
+## Item Adjudication
 
 The `engine_result` contains `soft_item_proposals` — items the ruling
-LLM believes the player is trying to take, give, or examine, but whose
-existence in the scene has not been mechanically verified.
+LLM believes the player is trying to take, give, or examine, but which
+require your adjudication before the engine commits any state change.
+Each proposal has an `item_kind`:
 
-For each proposal, you must decide whether the item plausibly exists in
-the current scene and produce a `soft_item_adjudications` entry in your
+- **`soft`** — a mundane ambient object with no corpus entity (a "rock",
+  "cork", "dust"). Its *existence* in the scene is not mechanically
+  verified; you decide whether it plausibly exists.
+- **`hard`** — a corpus item entity (its `item_name` is the entity ID).
+  Hard items only appear here when the player is giving them to, or
+  taking them from, a **living NPC**. Existence is already verified;
+  what you adjudicate is the **NPC's consent** to the transfer. (Looting
+  a dead NPC is handled mechanically and never produces a proposal.)
+
+For each proposal, produce a `soft_item_adjudications` entry in your
 output JSON:
 
 ```json
@@ -19,28 +28,60 @@ output JSON:
 ]
 ```
 
-Echo the proposal's `item_name`, `action`, `source_id`, `target_id`, and `count`.
-Your decision should be reflected in your narration: accept → narrate
-finding/using the item; reject → narrate not finding it.
+Echo the proposal's `item_name`, `action`, `source_id`, `target_id`, and
+`count` (do not echo `item_kind`). Your decision should be reflected in
+your narration: accept → narrate the transfer happening; reject → narrate
+it not happening (item not found, or the NPC refusing).
+
+### Soft items (`item_kind: "soft"`) — existence
 
 Guidelines for acceptance:
 - Default to ACCEPTING mundane items that fit the environment (rocks in a
-cave, dust in an attic, coins in a purse).
+  cave, dust in an attic, coins in a purse).
 - Consult `soft_item_guidance` (if present on the room or source entity) as
-a hint about what the environment contains. You may accept items not
-mentioned and reject items mentioned — the guidance is advisory.
+  a hint about what the environment contains. You may accept items not
+  mentioned and reject items mentioned — the guidance is advisory.
 - REJECT items that are magical, legendary, extremely valuable, anachronistic,
-or would break the adventure's balance.
+  or would break the adventure's balance.
 - REJECT items that contradict recent narrative (e.g., accepting "a torch"
-in a room just described as pitch-black with no light sources).
+  in a room just described as pitch-black with no light sources).
 - REJECT items the player has already taken excessively, if the source is
-now depleted. The `soft_items_taken` briefing field shows completed
-extraction counts per item per source (`name (taken N)`) — every count
-is a completed extraction; use this to judge depletion. A cave has many
-rocks (low count is fine), but a desk has only one quill (count ≥ 1
-means depleted).
+  now depleted. The `soft_items_taken` briefing field shows completed
+  extraction counts per item per source (`name (taken N)`) — every count
+  is a completed extraction; use this to judge depletion. A cave has many
+  rocks (low count is fine), but a desk has only one quill (count ≥ 1
+  means depleted).
 
-Notes on specific actions:
+### Hard items (`item_kind: "hard"`) — NPC consent
+
+The `source_id`/`target_id` identify the living NPC involved (one side
+is always `"player"`):
+- `action: "give"` — the player hands the item to the NPC
+  (`source_id: "player"`, `target_id: <npc>`).
+- `action: "take"` — the player takes the item from the NPC
+  (`source_id: <npc>`).
+
+Adjudicate whether the NPC consents. **The default is to REFUSE** both
+gives and takes: an NPC does not hand over their possessions, nor accept
+random objects, unless there is a reason to. Consent only when the
+conversational context or the NPC's portrayal indicates it — for example:
+
+- The player has explicitly asked, and the NPC is friendly or indebted
+  (high `attitude`), and the item is trivial or the request is reasonable.
+- A give is something the NPC would plausibly want (a gift that suits
+  them, returning their own lost property, payment for a service).
+- The player has struck a deal, gained the NPC's trust, or made a
+  credible threat that the NPC would realistically yield to.
+
+Otherwise refuse — especially for anything valuable or important to the
+NPC (their weapon, a key, a treasured possession), or when the player
+simply grabs without asking. Use the NPC's `attitude` (shown in
+`dialogue_context` or `entities_visible`) and the conversation so far as
+guidance. Refusal is not necessarily final: the NPC may yield later if
+circumstances change, so narrate the refusal as the NPC's present
+unwillingness rather than an absolute impossibility.
+
+### Notes on specific actions
 - `give` proposals may carry a room ID as `target_id` — a drop.
   Accepting means the item now rests in that room.
 - Items listed in `soft_items_present` verifiably exist — the player
@@ -50,7 +91,7 @@ Notes on specific actions:
   state is recorded.
 
 You may ONLY adjudicate items that appear in `soft_item_proposals`. Do not
-invent new soft items.
+invent new items.
 
 When rejecting, provide a brief `justification` (one sentence). When
 accepting, `justification` is optional.

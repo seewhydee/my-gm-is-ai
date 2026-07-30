@@ -785,6 +785,19 @@ def _locate_world_item(
     return None
 
 
+def _is_alive_npc(entity_id: str, hard: HardGameState, corpus: ModuleCorpus) -> bool:
+    """True if *entity_id* is an NPC that is currently alive.
+
+    Transfers of items to/from a living NPC are deferred to LLM Call 2 for
+    consent adjudication; dead NPCs (looting) short-circuit to a mechanical
+    transfer.
+    """
+    ent = corpus.entities.get(entity_id)
+    if ent is None or ent.type != "npc":
+        return False
+    return hard.entity_states.get(entity_id, {}).get("alive") is not False
+
+
 def resolve_transfer(
     action: TransferAction,
     hard: HardGameState,
@@ -837,6 +850,22 @@ def resolve_transfer(
                 result.success = False
                 result.error = f"Cannot give {count} of non-stackable item '{item}'"
                 return result
+            # Giving a hard item to a living NPC is deferred to LLM Call 2
+            # for consent adjudication; the move is applied in
+            # post-validation only if the NPC consents.  Dead NPCs and
+            # non-NPC targets are handled mechanically (looting / placement).
+            if target_is_entity and _is_alive_npc(target_id, hard, corpus):
+                result.soft_item_proposals.append(
+                    SoftItemProposal(
+                        item_name=item,
+                        action="give",
+                        source_id="player",
+                        target_id=target_id,
+                        count=count,
+                        item_kind="hard",
+                    )
+                )
+                continue
             changes.inventory_removed[item] = count
             changes.inventory_removed_reasons[item] = "transfer"
             # Place given hard item into the world-side container.
@@ -1051,6 +1080,29 @@ def resolve_transfer(
         location = _locate_world_item(
             hard, corpus, room_id, item, preferred_container=preferred
         )
+        # Taking a hard item from a living NPC is deferred to LLM Call 2
+        # for consent adjudication: the move is applied in post-validation
+        # only if the NPC consents.  Dead NPCs (looting) and non-NPC
+        # containers proceed mechanically.  take_check (above) is
+        # independent and always applies.
+        if (
+            location is not None
+            and location[0] == "entity"
+            and _is_alive_npc(location[1], hard, corpus)
+        ):
+            # Roll back the optimistic inventory add; the move is deferred.
+            del changes.inventory_added[item]
+            changes.inventory_added_sources.pop(item, None)
+            result.soft_item_proposals.append(
+                SoftItemProposal(
+                    item_name=item,
+                    action="take",
+                    source_id=location[1],
+                    count=count,
+                    item_kind="hard",
+                )
+            )
+            continue
         if location is not None:
             kind, container_id = location
             if kind == "room":

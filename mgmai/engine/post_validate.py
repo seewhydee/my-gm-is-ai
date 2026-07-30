@@ -159,25 +159,33 @@ def post_validate_soft_items(
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
-) -> tuple[list[SoftItemAdjudication], list[dict[str, Any]]]:
-    """Validate and apply soft-item adjudications from Call 2.
+) -> tuple[list[SoftItemAdjudication], list[dict[str, Any]], HardStateChanges]:
+    """Validate and apply item adjudications from Call 2.
 
-    Returns a tuple of (applied_adjudications, rejected_entries).  State is
-    mutated directly: accepted takes append to ``soft_inventory`` and
-    decrement ``soft_contents`` on the source first (retrieval of placed
-    items), with any remainder incrementing ``soft_items_taken`` (ambient
-    extraction); accepted gives remove from ``soft_inventory`` and
-    increment ``soft_contents`` on the target; accepted examines have no
-    state effect.
+    Returns a tuple of (applied_adjudications, rejected_entries,
+    hard_changes).  Soft-item state is mutated directly: accepted takes
+    append to ``soft_inventory`` and decrement ``soft_contents`` on the
+    source first (retrieval of placed items), with any remainder
+    incrementing ``soft_items_taken`` (ambient extraction); accepted
+    gives remove from ``soft_inventory`` and increment ``soft_contents``
+    on the target; accepted examines have no state effect.
+
+    Hard items (``item_kind == "hard"``) are deferred transfers to/from a
+    living NPC.  On acceptance, the deferred hard move is accumulated into
+    the returned ``hard_changes`` (the caller applies it via the state
+    manager); on rejection, no move occurs.  Defense-in-depth: the source
+    must still hold the item in the required quantity at apply time.
     """
     applied: list[SoftItemAdjudication] = []
     rejected: list[dict[str, Any]] = []
+    hard_changes = HardStateChanges()
 
     valid_source_ids = set(corpus.rooms.keys()) | set(corpus.entities.keys()) | {"player"}
     pending = list(proposals)
 
     for adj in adjudications:
         reason: str | None = None
+        matched_prop: SoftItemProposal | None = None
 
         if not adj.item_name or not adj.item_name.strip():
             reason = "item_name is empty"
@@ -209,16 +217,32 @@ def post_validate_soft_items(
                     break
             if match_index is None:
                 reason = "no matching soft_item_proposal"
-            elif _is_hard_entity_collision(adj.item_name, corpus):
-                reason = f"item_name '{adj.item_name}' collides with a hard entity"
-            elif adj.accepted and adj.action == "give":
-                available = sum(
-                    1
-                    for x in soft.soft_inventory
-                    if _normalize_item_name(x) == _normalize_item_name(adj.item_name)
-                )
-                if available < adj.count:
-                    reason = f"not enough '{adj.item_name}' in soft inventory to give"
+            else:
+                matched_prop = pending[match_index]
+                if matched_prop.item_kind == "soft":
+                    if _is_hard_entity_collision(adj.item_name, corpus):
+                        reason = f"item_name '{adj.item_name}' collides with a hard entity"
+                    elif adj.accepted and adj.action == "give":
+                        available = sum(
+                            1
+                            for x in soft.soft_inventory
+                            if _normalize_item_name(x) == _normalize_item_name(adj.item_name)
+                        )
+                        if available < adj.count:
+                            reason = f"not enough '{adj.item_name}' in soft inventory to give"
+                elif adj.accepted and adj.action == "give":
+                    # Hard give: player must still hold the item.
+                    available = hard.player.inventory.get(adj.item_name, 0)
+                    if available < adj.count:
+                        reason = f"not enough '{adj.item_name}' in inventory to give"
+                elif adj.accepted and adj.action == "take":
+                    # Hard take: the NPC source must still hold the item.
+                    available = hard.entity_contains.get(adj.source_id, {}).get(adj.item_name, 0)
+                    if available < adj.count:
+                        reason = (
+                            f"'{adj.item_name}' is no longer held by "
+                            f"'{adj.source_id}'"
+                        )
 
         if reason:
             rejected.append({
@@ -228,12 +252,33 @@ def post_validate_soft_items(
             continue
 
         # Consume the matched proposal.
-        if match_index is not None:
-            pending.pop(match_index)
+        if matched_prop is not None:
+            pending.remove(matched_prop)
 
         applied.append(adj)
 
         if not adj.accepted:
+            continue
+
+        if matched_prop is not None and matched_prop.item_kind == "hard":
+            # Apply the deferred hard move.
+            if adj.action == "give":
+                hard_changes.inventory_removed[adj.item_name] = (
+                    hard_changes.inventory_removed.get(adj.item_name, 0) + adj.count
+                )
+                hard_changes.inventory_removed_reasons[adj.item_name] = "transfer"
+                hard_changes.entity_contains_added.setdefault(
+                    adj.target_id, {}
+                )[adj.item_name] = adj.count
+            elif adj.action == "take":
+                hard_changes.inventory_added[adj.item_name] = (
+                    hard_changes.inventory_added.get(adj.item_name, 0) + adj.count
+                )
+                hard_changes.inventory_added_sources[adj.item_name] = "transfer"
+                hard_changes.entity_contains_removed.setdefault(
+                    adj.source_id, {}
+                )[adj.item_name] = adj.count
+            # Hard examines do not occur (examine targets are soft items).
             continue
 
         if adj.action == "take":
@@ -280,7 +325,7 @@ def post_validate_soft_items(
             "reason": "no adjudication received",
         })
 
-    return applied, rejected
+    return applied, rejected, hard_changes
 
 
 def post_validate_knowledge_tags(
@@ -553,13 +598,18 @@ def apply_post_validation(
         proposals = list(base_result.soft_item_proposals or [])
 
     if proposals or soft_item_adjudications:
-        soft_items_accepted, soft_items_rejected = post_validate_soft_items(
-            soft_item_adjudications or [],
-            proposals,
-            hard,
-            soft,
-            corpus,
+        soft_items_accepted, soft_items_rejected, item_hard_changes = (
+            post_validate_soft_items(
+                soft_item_adjudications or [],
+                proposals,
+                hard,
+                soft,
+                corpus,
+            )
         )
+        if item_hard_changes.has_changes():
+            state_manager.apply_hard_changes(item_hard_changes)
+            post_hard_changes.merge(item_hard_changes)
 
     notes_applied: list[SoftStateNote] = []
     notes_rejected: list[dict[str, Any]] = []
