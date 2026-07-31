@@ -56,10 +56,12 @@ For both these events, the context keys are:
 
 `source_type` should specify the action/event leading to the check –
 one of `"interaction"`, `"examine"`, `"traversal"`, `"dialogue_path"`,
-`"take"`, or `"reaction"`.  For example, a `then_check` inside a
-reaction result emits `source_type: "reaction"`.  The `source_id`
-field holds the corresponding interaction, exit, dialogue path, or
-reaction ID.
+`"take"`, `"reaction"`, or `"encounter"`.  For example, a `then_check`
+inside a reaction result emits `source_type: "reaction"`, while a check
+on an Encounter Rule emits `source_type: "encounter"`.  The `source_id`
+field holds the corresponding interaction, exit, dialogue path,
+reaction, or encounter source ID (the NPC's entity ID for `aggro`
+encounters, or the mechanic ID for encounter mechanics).
 
 ### Entering/Exiting Rooms, and Traversing Exits
 

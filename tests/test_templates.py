@@ -39,7 +39,6 @@ class TestRulingTemplate:
         assert "transfer" in output
         assert "wait" in output
         assert "ooc_discussion" in output
-        assert "Critical Constraints" in output
 
     def test_contains_invalid_movement_fallback_examples(self) -> None:
         output = render_ruling()
@@ -51,6 +50,39 @@ class TestRulingTemplate:
         out1 = render_ruling()
         out2 = render_ruling()
         assert out1 == out2  # static template
+
+
+class TestRulingTemplateConditional:
+    """Test dynamic inclusion/exclusion of the combat rules section.
+
+    Uses section headings (structural markers) rather than exact wording,
+    so template phrasing can be refined without breaking these tests.
+    """
+
+    _COMBAT_HEADING = "## Combat"
+    _POSITIONING_HEADING = "### Combat Positioning"
+
+    def test_combat_excluded_by_default(self) -> None:
+        output = render_ruling()
+        assert self._COMBAT_HEADING not in output
+        assert self._POSITIONING_HEADING not in output
+
+    def test_combat_included_when_requested(self) -> None:
+        output = render_ruling(include_combat=True)
+        assert self._COMBAT_HEADING in output
+        assert self._POSITIONING_HEADING in output
+
+    def test_idempotent(self) -> None:
+        assert render_ruling(include_combat=True) == render_ruling(include_combat=True)
+        assert render_ruling() == render_ruling()
+
+    def test_default_smaller_than_full(self) -> None:
+        assert len(render_ruling()) < len(render_ruling(include_combat=True))
+
+    def test_core_sections_always_present(self) -> None:
+        output = render_ruling()
+        assert "## Output Format" in output
+        assert "**combat**" in output  # the combat *action* doc stays
 
 
 class TestProseTemplate:

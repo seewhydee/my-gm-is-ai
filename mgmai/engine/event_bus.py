@@ -385,6 +385,7 @@ def _resolve_reaction_encounter(
     Returns a list of new events emitted by the encounter outcome.
     """
     from mgmai.engine.encounters import resolve_encounter as resolve_enc
+    from mgmai.engine.resolver import ResolutionResult
 
     encounter_rules = None
     source_id = encounter_id
@@ -403,8 +404,17 @@ def _resolve_reaction_encounter(
     if not encounter_rules:
         return []
 
-    enc_result = resolve_enc(encounter_rules, hard, soft, corpus, source_id)
-    events: list[tuple[str, dict[str, Any]]] = []
+    # Collect check.passed/check.failed (and any other events emitted during
+    # check resolution) into a throwaway accumulator; they are drained into
+    # the returned events below and dispatched recursively by the caller.
+    # state_manager is withheld so immediate reactions are not dispatched
+    # re-entrantly from inside reaction dispatch.
+    tmp_resolution = ResolutionResult(success=True)
+    enc_result = resolve_enc(
+        encounter_rules, hard, soft, corpus, source_id,
+        resolution=tmp_resolution,
+    )
+    events: list[tuple[str, dict[str, Any]]] = list(tmp_resolution.events)
 
     # Propagate encounter narrative
     if enc_result.get("narrative") and triggered_narration is not None:

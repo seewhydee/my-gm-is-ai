@@ -326,6 +326,118 @@ class TestReactionChainCheckEvents:
         assert hard.flags.get("reaction_check_seen") is True
 
 
+class TestEncounterCheckEvents:
+    """Encounter-rule checks emit check.passed/check.failed events with
+    source_type 'encounter' (previously they rolled silently)."""
+
+    @staticmethod
+    def _add_tracker(room, event_name, flag):
+        room.reactions.append(Reaction(
+            id=f"track_{flag}",
+            on=event_name,
+            condition=ConditionExpression(
+                require="event:source_type == encounter"
+            ),
+            effect=ReactionEffects(result=Result(set_flag={flag: True})),
+        ))
+
+    def test_reaction_encounter_check_passed(self, state_manager):
+        """A passing check on a reaction-triggered encounter rule emits
+        check.passed."""
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        corpus.mechanics["trap"] = Mechanic(
+            id="trap",
+            rules=[_mk_encounter_rule(
+                condition=ConditionExpression(
+                    require="entity:player.alive == true"
+                ),
+                outcome="roll",
+                threshold=1.0,
+                success=Result(narrative="You dodge the trap."),
+            )],
+        )
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="trigger_trap",
+            on="turn.start",
+            effect=ReactionEffects(trigger_encounter="trap"),
+        ))
+        self._add_tracker(room, "check.passed", "encounter_check_seen")
+
+        from mgmai.models.actions import WaitAction
+        engine_result = resolve(
+            WaitAction(action_type="wait", detail="wait"), state_manager
+        )
+
+        assert engine_result.success is True
+        assert hard.flags.get("encounter_check_seen") is True
+
+    def test_reaction_encounter_check_failed(self, state_manager):
+        """A failing check on a reaction-triggered encounter rule emits
+        check.failed."""
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        corpus.mechanics["trap"] = Mechanic(
+            id="trap",
+            rules=[_mk_encounter_rule(
+                condition=ConditionExpression(
+                    require="entity:player.alive == true"
+                ),
+                outcome="roll",
+                threshold=0.0,
+                failure=Result(narrative="The trap snags you."),
+            )],
+        )
+        room = corpus.rooms["bag_floor"]
+        room.reactions.append(Reaction(
+            id="trigger_trap",
+            on="turn.start",
+            effect=ReactionEffects(trigger_encounter="trap"),
+        ))
+        self._add_tracker(room, "check.failed", "encounter_check_seen")
+
+        from mgmai.models.actions import WaitAction
+        engine_result = resolve(
+            WaitAction(action_type="wait", detail="wait"), state_manager
+        )
+
+        assert engine_result.success is True
+        assert hard.flags.get("encounter_check_seen") is True
+
+    def test_engine_encounter_check_passed(self, state_manager):
+        """A check on an aggro encounter rule (main engine encounter path)
+        emits check.passed."""
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        korbar = corpus.entities["korbar"]
+        korbar.aggro = [_mk_encounter_rule(
+            condition=ConditionExpression(require="entity:player.alive == true"),
+            outcome="roll",
+            threshold=1.0,
+            success=Result(narrative="Korbar eyes you warily."),
+        )]
+        room = corpus.rooms["bag_floor"]
+        self._add_tracker(room, "check.passed", "encounter_check_seen")
+
+        action = InteractAction(
+            action_type="interact",
+            target="korbar",
+            interaction_id="attack",
+            detail="Attack Korbar",
+        )
+        engine_result = resolve(action, state_manager)
+
+        assert engine_result.success is True
+        assert hard.flags.get("encounter_check_seen") is True
+
+
 class TestReactionCombatLogPropagation:
     """Combat entries from reaction-triggered encounters propagate combat_log."""
 

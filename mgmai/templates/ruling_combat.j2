@@ -1,0 +1,65 @@
+{# My GM is AI — an AI-driven Game Master for tabletop RPG adventures -#}
+{# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com> -#}
+{# Licensed under the GNU GPL v3. -#}
+
+## Combat
+
+When `combat_state` is present in the briefing, combat is active and the turn economy applies. EVERY action except a non-rigorous `examine` or `ooc_discussion` costs the player's combat action (after it resolves, enemies take their turns). Any `gear` action may only involve equipping/unequipping a weapon.
+
+NPCs engaged in the fight are listed in `combat_state.combatants`; enemies have `side: "enemy"`, and allied NPCs have `side: "party"`.  Allied NPCs fight autonomously under engine control.
+
+`talk` is not allowed during combat, though the player is allowed to inject speech as part of another action, for flavor. If the player specifies no action other than talking, rule it as `wait`, with the speech in `detail`; do not automatically convert it into an attack.
+
+If the player talks about moving around the battlefield, you may emit a `combat` action with `positioning`, or, if the movement is part of another action, pair that action with a `positioning` spec; see *Combat Positioning*. Do not emit a `move` action unless the player is explicitly attempting to flee. If the player states an intent to flee without specifying a direction, you may choose an exit ID (if the room has no exits, fleeing is impossible).
+
+### Combat Positioning
+
+During combat, we track combatant positioning using the concept of **engagement**: an abstract "within melee reach" relation between pairs of combatants. Each combatant's `engaged_with` list in `combat_state.combatants` shows the current map. Leaving an enemy's reach provokes an **opportunity attack** (OA) from that enemy.
+
+For `combat` (attack), `wait`, and `interact` actions, you may assert additional positioning changes via the optional `positioning` field:
+
+- `engage`: array of pairs `[[a, b], ...]` — the two combatants are now
+  within melee reach of each other (symmetric).
+- `disengage`: array of **directional** pairs `[[mover, stationary], ...]`
+  — the mover leaves the stationary combatant's reach, provoking an OA
+  from the stationary combatant against the mover. For a mutual retreat
+  (both parties moving away from each other), issue two entries, one in
+  each direction — or use a Disengage `maneuver` for the player.
+- `impede`: array of enemy combatant ids — an obstacle the player's
+  action created or exploited (a kicked-over table, a slammed door,
+  scattered debris) delays those enemies: on their next turn they spend
+  it closing in instead of attacking. Each enemy can be impeded only
+  **once per combat** — an impede buys a round, not the fight.
+
+Rules: use ids of living combatants from `combat_state.combatants`;
+`disengage` pairs must be currently engaged; at most 4 entries total per
+turn. Malformed entries are dropped by the engine — the core action
+always proceeds.
+
+**Assert only what the declared action and the fiction justify.** The
+`positioning` field adjudicates the player's described action — it is
+not a free bonus. Do not assert engagement changes the player did not
+narrate, and do not use `impede` without an obstacle the player's action
+plausibly created or exploited.
+
+Worked recipes:
+
+- **Interpose to protect an ally** — "I step between the goblin and the
+  wounded merchant": `combat`/`attack` against the goblin with
+  `"positioning": {"engage": [["player", "goblin"]], "disengage": [["goblin", "merchant"]], "impede": []}`.
+  The goblin must now go through the player; if it leaves the player's
+  reach it provokes an OA — deterrence, not a wall.
+- **Create or exploit an obstacle** — "I kick the table over between us":
+  `combat` (e.g. a ranged attack) or `wait` with
+  `"positioning": {"engage": [], "disengage": [], "impede": ["goblin"]}`.
+  The goblin loses its next attack scrambling past the table.
+- **Drag a fallen ally out of reach** — "I grab the unconscious rogue
+  and pull her away from the skeleton": `wait` (the drag consumes the
+  turn) with `"positioning": {"engage": [], "disengage": [["rogue", "skeleton"]], "impede": []}`.
+  Directional convention: the dragged ally is the mover, so the skeleton
+  gets an OA against her.
+- **Mutual retreat** — "we both fall back from each other": two
+  directional entries, one per direction —
+  `"positioning": {"engage": [], "disengage": [["player", "orc"], ["orc", "player"]], "impede": []}`
+  (each direction provokes its own OA). If only the player retreats, the
+  Disengage `maneuver` avoids OAs entirely at the cost of the action.

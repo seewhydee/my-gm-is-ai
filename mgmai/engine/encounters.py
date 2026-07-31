@@ -36,6 +36,8 @@ def resolve_encounter(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     npc_id: str | None = None,
+    state_manager: Any | None = None,
+    resolution: Any | None = None,
 ) -> dict[str, Any]:
     """Evaluate encounter rules top-to-bottom. First matching condition wins.
 
@@ -47,10 +49,17 @@ def resolve_encounter(
         game_over: dict | None  -- {type: str, trigger: str}
         rolls: list[dict]
         branch_taken: str | None
+
+    If *resolution* is provided, check.passed/check.failed events are
+    recorded into it (and immediate reactions dispatched via
+    *state_manager*, if given).
     """
     for rule in encounter_rules:
         if rule.condition is None or evaluate(rule.condition, hard, soft, corpus):
-            return _apply_encounter_rule(rule, hard, soft, corpus, npc_id)
+            return _apply_encounter_rule(
+                rule, hard, soft, corpus, npc_id,
+                state_manager=state_manager, resolution=resolution,
+            )
 
     return _empty_result()
 
@@ -78,6 +87,8 @@ def _apply_encounter_rule(
     soft: SoftGameState,
     corpus: ModuleCorpus,
     npc_id: str | None,
+    state_manager: Any | None = None,
+    resolution: Any | None = None,
 ) -> dict[str, Any]:
     changes = HardStateChanges()
     narrative: list[str] = []
@@ -103,6 +114,7 @@ def _apply_encounter_rule(
             room_id=hard.player.location,
             changes=changes, narrative=narrative,
             revealed_hints=revealed_hints, rolls=rolls,
+            state_manager=state_manager, resolution=resolution,
             source_id=npc_id or "encounter",
             source_type="encounter",
         )

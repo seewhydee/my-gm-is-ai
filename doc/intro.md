@@ -266,6 +266,7 @@ mgmai/
 │   └── display.py       # Console UI (Rich-based)
 ├── templates/
 │   ├── ruling.j2        # System prompt for LLM Call 1
+│   ├── ruling_combat.j2 # Combat rules section (included during combat)
 │   └── prose.j2         # System prompt for LLM Call 2
 ├── tests/               # pytest unit tests
 ├── scripts/

@@ -228,7 +228,8 @@ def resolve(
 
         if encounter_rules:
             enc_result = resolve_encounter(
-                encounter_rules, hard, soft, corpus, encounter_source_id
+                encounter_rules, hard, soft, corpus, encounter_source_id,
+                state_manager=state_manager, resolution=resolution,
             )
             if enc_result["narrative"]:
                 resolution.triggered_narration.append(enc_result["narrative"])

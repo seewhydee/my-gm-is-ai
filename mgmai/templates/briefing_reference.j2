@@ -43,18 +43,16 @@ Soft items are mundane ambient objects with generic names ("rock",
 and narrative significance.
 
 To target the current room itself in a player action (`examine`,
-`interact`, `transfer`), use the reserved sentinel `"current_room"`. The
-room's own ID is intentionally not surfaced here, to avoid it being
-mistaken for a target value.
+`interact`, `transfer`), use the reserved sentinel `"current_room"`.
 
 ### current_room.entities_visible[]
 
 | Field | Meaning |
 |-------|---------|
-| `id` | snake_case identifier — use verbatim when referring to the entity |
+| `id` | snake_case identifier for an entity |
 | `name` | Display label |
 | `type` | `npc`, `item`, or `feature` (a fixed object that can't be picked up) |
-| `description` | Prose description; match the player's wording against it to find the right `id` |
+| `description` | Prose description of the entity |
 | `count` | Stack size for stackable items (usually 1) |
 | `state` | Mutable state fields, e.g. `attitude` for NPCs, `open` for containers |
 | `entity_notes` | Narrative ("soft") notes about the entity |

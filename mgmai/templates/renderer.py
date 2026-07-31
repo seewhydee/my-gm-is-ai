@@ -10,8 +10,15 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent
 _env = Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)),
                    autoescape=False)
 
-def render_ruling(**kwargs: Any) -> str:
-    return _env.get_template("ruling.j2").render(**kwargs)
+def render_ruling(*, include_combat: bool = False, **kwargs: Any) -> str:
+    combat_section = ""
+    if include_combat:
+        combat_section = _env.get_template("ruling_combat.j2").render()
+
+    return _env.get_template("ruling.j2").render(
+        combat_section=combat_section,
+        **kwargs,
+    )
 
 def render_prose(
     *,

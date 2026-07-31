@@ -465,7 +465,9 @@ class GameLoop:
         )
         from mgmai.templates.renderer import render_ruling
 
-        system_prompt = render_ruling()
+        system_prompt = render_ruling(
+            include_combat=briefing.combat_state is not None
+        )
         user_prompt = briefing.compact_dump_json(indent=None)
         self._positioning_warning = None
 
