@@ -29,9 +29,10 @@ The system has two parts: **soft state notes**, and **soft items**.
 
 - **Soft Items** – These are nondescript items that can be picked up,
   dropped, and/or used by the player.  Examples: rocks, loose stones,
-  and leaves in a forest.  They have generic names (e.g., `rock`) and
-  lack distinguishing features (tags, state fields, etc.), unlike
-  corpus-defined **hard items** (e.g., `old_key`, `excalibur_sword`).
+  and leaves in a forest.  They lack distinguishing features (tags,
+  state fields, etc.), and are identified by generic names (e.g.,
+  `rock`, `dog hair`), unlike corpus-defined **hard items** (which
+  have snake_case IDs like `old_key`, `excalibur_sword`).
 
   In each turn, LLM Call 1 may interpret the player's actions as
   taking, giving, or examining one or more soft items.  If so, the
@@ -87,8 +88,9 @@ For the patch format and validation rules,see the
 
 ## Soft Items
 
-Soft items identified by general name only; identically-named soft
-items (e.g. two "rock" entries) are deliberately indistinguishable.
+Each soft item is identified by its generic name, which can optionally
+have spaces (e.g., "rock", "dog hair").  Identically-named soft items
+(e.g. two "rock"s) are indistinguishable.
 
 ### Corpus guidance
 
@@ -100,13 +102,12 @@ an authoritative whitelist.
 ```json
 {
   "rooms": {
-    "axe_head": {
-      "soft_item_guidance": "Loose stones, dust, cobwebs"
+    "outer_courtyard": {
+	  "soft_item_guidance": "leaf, pebble, stick"
     }
   }
 }
 ```
-
 
 ### Tracking soft items
 

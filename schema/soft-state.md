@@ -30,22 +30,21 @@ document describes the schema used in-game to track soft state.
 ## `soft_inventory` — Generic carried items
 
 ```json
-["rock", "loose stone", "dusty rag"]
+["cobblestone", "metal shaving"]
 ```
 
-An array of soft item names the player is carrying. These items come from
-accepted soft-item takes and are identified by their general name only — no
-unique IDs. They can be:
-
-- Used in `transfer` actions (given to targets)
-- Referenced in LLM narration
+An array of soft item names the player is carrying. These items come
+from accepted soft-item takes and are identified by only their natural
+language name (which can include spaces). They can be examined, and
+moved between inventory and rooms or entities.
 
 ### Validation rules
 
-1. Adding a soft item: the engine creates a `SoftItemProposal`; LLM Call 2
-   adjudicates whether the item exists in the scene. Accepted takes are appended
-   to `soft_inventory`.
-2. Removing a soft item: the engine removes the first occurrence from the array.
+1. Adding a soft item: the engine creates a `SoftItemProposal`; LLM
+   Call 2 adjudicates whether the item exists in the scene. Accepted
+   takes are appended to `soft_inventory`.
+2. Removing a soft item: the engine removes the first occurrence from
+   the array.
 3. Duplicate entries are allowed (e.g., multiple "rock" entries).
 4. When a soft item is consumed or destroyed, the engine removes it.
 
@@ -194,8 +193,8 @@ Call 2's `knowledge_tags`.
 
 ```json
 {
-  "axe_head": { "loose stone": 1 },
-  "rubbish_pile": { "cork": 2 }
+  "outer_courtyard": { "loose stone": 1 },
+  "parlor_chest": { "cork": 2 }
 }
 ```
 
