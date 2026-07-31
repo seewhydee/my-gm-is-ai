@@ -866,3 +866,89 @@ class TestPositioningSoftFail:
         combat = state_manager.hard_state.combat
         assert "spider" in combat.impede_used
         assert "spider" not in combat.impeded
+
+
+class TestSoftPatchValidation:
+    """set_improvised_weapon patches: an invalid keyword or damage_type is
+    provably wrong and must earn a corrective retry."""
+
+    @staticmethod
+    def _wait_with_patch(new_value) -> WaitAction:
+        from mgmai.models.soft_state import SoftStatePatch
+
+        return WaitAction(
+            action_type="wait",
+            detail="improvise a weapon",
+            soft_state_patches=[SoftStatePatch(
+                field="set_improvised_weapon",
+                new_value=new_value,
+                reason="wield an object",
+            )],
+        )
+
+    def test_unknown_keyword_rejected(self, state_manager) -> None:
+        action = self._wait_with_patch({"keyword": "colossal"})
+        error = validate_ruling_action(
+            action, _combat_briefing(), state_manager.corpus
+        )
+        assert error is not None
+        assert "colossal" in error
+        assert "light" in error  # lists the valid keywords
+
+    def test_invalid_damage_type_rejected(self, state_manager) -> None:
+        action = self._wait_with_patch(
+            {"keyword": "light", "damage_type": "fire"}
+        )
+        error = validate_ruling_action(
+            action, _combat_briefing(), state_manager.corpus
+        )
+        assert error is not None
+        assert "fire" in error
+
+    def test_valid_patch_accepted(self, state_manager) -> None:
+        action = self._wait_with_patch(
+            {"keyword": "standard", "damage_type": "slashing"}
+        )
+        assert (
+            validate_ruling_action(action, _combat_briefing(), state_manager.corpus)
+            is None
+        )
+
+    def test_null_value_accepted(self, state_manager) -> None:
+        action = self._wait_with_patch(None)
+        assert (
+            validate_ruling_action(action, _combat_briefing(), state_manager.corpus)
+            is None
+        )
+
+    def test_non_object_value_rejected(self, state_manager) -> None:
+        action = self._wait_with_patch("a chair leg")
+        error = validate_ruling_action(
+            action, _combat_briefing(), state_manager.corpus
+        )
+        assert error is not None
+
+    def test_no_corpus_skips_check(self) -> None:
+        action = self._wait_with_patch({"keyword": "colossal"})
+        assert validate_ruling_action(action, _combat_briefing()) is None
+
+    def test_source_item_not_carried_rejected(self, state_manager) -> None:
+        action = self._wait_with_patch(
+            {"keyword": "light", "source_item": "rock"}
+        )
+        error = validate_ruling_action(
+            action, _combat_briefing(), state_manager.corpus
+        )
+        assert error is not None
+        assert "rock" in error
+
+    def test_source_item_carried_accepted(self, state_manager) -> None:
+        briefing = _combat_briefing()
+        briefing.player_state.soft_inventory.append("rock")
+        action = self._wait_with_patch(
+            {"keyword": "light", "source_item": "rock"}
+        )
+        assert (
+            validate_ruling_action(action, briefing, state_manager.corpus)
+            is None
+        )

@@ -30,11 +30,24 @@ class KnowledgeEntry(BaseModel):
 
 
 class ImprovisedWeapon(BaseModel):
-    """Temporary weapon created from a non-standard object."""
-    damage_expr: str = "1d6"
+    """Temporary weapon created from a non-standard object.
+
+    The ruling GM supplies only the ``keyword`` (a size class such as
+    ``"light"``), an optional ``damage_type``, and descriptive fields;
+    ``damage_expr`` and ``hit_bonus`` are resolved from the keyword by the
+    resolution system when the patch is applied.
+
+    ``source_item`` links the weapon to a carried soft item it was made
+    from: the item stays in ``soft_inventory`` while wielded, and is
+    consumed (removed) when a ``clears_after_turn`` weapon expires.
+    """
+    keyword: str
+    damage_expr: str
     hit_bonus: int = 0
+    damage_type: str = "bludgeoning"
     description: str = ""
     clears_after_turn: bool = False
+    source_item: str | None = None
 
 
 class SoftStatePatch(BaseModel):

@@ -76,6 +76,7 @@ To target the current room itself in a player action (`examine`,
 | `abilities` | Available/prepared abilities and spells: `{`id`, `name`, `description`, `target`, `uses_remaining`, `effect`, `effect_kind`}` entries; spells add `spell_level`, `slot_level`, `concentration`, `casting_time`, and a derived `save_dc` for save spells. Omitted during combat — use `combat_state.abilities` |
 | `spell_slots` | Spell level → slots remaining (cantrips cost no slot). Omitted during combat — use `combat_state.spell_slots` |
 | `status_effects` | Status effects active on the player: `{`id`, `rounds`, `description`}` entries |
+| `improvised_weapon` | Improvised weapon currently wielded, if any: `{`keyword`, `damage_expr`, `hit_bonus`, `damage_type`, `description`, `clears_after_turn`, `source_item`}` |
 | `usable_items` | Inventory items with a usable interaction (e.g. a potion's `drink`): `{`id`, `name`, `interactions`}` entries, each interaction being `{`id`, `description`}`. Omitted during combat — use `combat_state.usable_items` |
 
 ### combat_state (present only during combat)

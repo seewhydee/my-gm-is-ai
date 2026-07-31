@@ -465,19 +465,19 @@ class TestStateManagerEquipment:
 
 class TestImprovisedWeapon:
     def test_improvised_weapon_defaults(self):
-        iw = ImprovisedWeapon()
-        assert iw.damage_expr == "1d6"
+        iw = ImprovisedWeapon(keyword="light", damage_expr="1d4")
         assert iw.hit_bonus == 0
+        assert iw.damage_type == "bludgeoning"
         assert iw.clears_after_turn is False
 
     def test_set_improvised_weapon(self, state_manager):
-        """SoftStatePatch with set_improvised_weapon should update soft state."""
+        """A keyword-based patch resolves to concrete stats on apply."""
         soft = state_manager.soft_state
         patch = SoftStatePatch(
             field="set_improvised_weapon",
             new_value={
-                "damage_expr": "1d4",
-                "hit_bonus": 0,
+                "keyword": "light",
+                "damage_type": "piercing",
                 "description": "broken bottle",
                 "clears_after_turn": True,
             },
@@ -485,15 +485,39 @@ class TestImprovisedWeapon:
         )
         state_manager.apply_soft_patches([patch])
         assert soft.improvised_weapon is not None
-        assert soft.improvised_weapon.damage_expr == "1d4"
+        assert soft.improvised_weapon.keyword == "light"
+        assert soft.improvised_weapon.damage_expr == "1d4"  # resolved from keyword
+        assert soft.improvised_weapon.damage_type == "piercing"
         assert soft.improvised_weapon.clears_after_turn is True
+
+    def test_set_improvised_weapon_default_damage_type(self, state_manager):
+        """Omitting damage_type defaults to bludgeoning."""
+        soft = state_manager.soft_state
+        patch = SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "heavy", "description": "table"},
+            reason="Player swings a table",
+        )
+        state_manager.apply_soft_patches([patch])
+        assert soft.improvised_weapon.damage_expr == "1d8"
+        assert soft.improvised_weapon.damage_type == "bludgeoning"
+
+    def test_set_improvised_weapon_unknown_keyword(self, state_manager):
+        """An unknown keyword is rejected at apply time."""
+        patch = SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "colossal"},
+            reason="Player wields a boulder",
+        )
+        with pytest.raises(ValueError, match="unknown improvised weapon keyword"):
+            state_manager.apply_soft_patches([patch])
 
     def test_clear_improvised_weapon(self, state_manager):
         """Setting improvised_weapon to None should clear it."""
         soft = state_manager.soft_state
         from mgmai.models.soft_state import ImprovisedWeapon
         soft.improvised_weapon = ImprovisedWeapon(
-            damage_expr="1d4", description="stick"
+            keyword="light", damage_expr="1d4", description="stick"
         )
         patch = SoftStatePatch(
             field="set_improvised_weapon",
@@ -508,6 +532,7 @@ class TestImprovisedWeapon:
         soft = state_manager.soft_state
         from mgmai.models.soft_state import ImprovisedWeapon
         soft.improvised_weapon = ImprovisedWeapon(
+            keyword="light",
             damage_expr="1d4",
             description="broken bottle",
             clears_after_turn=True,
@@ -520,6 +545,7 @@ class TestImprovisedWeapon:
         soft = state_manager.soft_state
         from mgmai.models.soft_state import ImprovisedWeapon
         soft.improvised_weapon = ImprovisedWeapon(
+            keyword="standard",
             damage_expr="1d6",
             description="heavy rock",
             clears_after_turn=False,
@@ -527,6 +553,118 @@ class TestImprovisedWeapon:
         state_manager.clear_expired_improvised_weapon()
         assert soft.improvised_weapon is not None
         assert soft.improvised_weapon.description == "heavy rock"
+
+    def test_engine_validation_rejects_bad_improvised_patch(self, state_manager):
+        """The engine backstop rejects unknown keywords and damage types."""
+        from mgmai.engine.engine import _validate_soft_patches
+
+        bad_type = SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "light", "damage_type": "fire"},
+            reason="bad damage type",
+        )
+        bad_keyword = SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "colossal"},
+            reason="bad keyword",
+        )
+        good = SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "light", "damage_type": "piercing"},
+            reason="fine",
+        )
+        applied, rejected = _validate_soft_patches(
+            [bad_type, bad_keyword, good],
+            state_manager.hard_state,
+            state_manager.soft_state,
+            state_manager.corpus,
+        )
+        assert applied == [good]
+        assert len(rejected) == 2
+        assert "damage_type" in rejected[0]["reason"]
+        assert "keyword" in rejected[1]["reason"]
+
+    def test_source_item_linking_and_consume(self, state_manager):
+        """A wielded soft item stays in inventory; expiring a one-shot
+        weapon consumes it."""
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("rock")
+        patch = SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={
+                "keyword": "light",
+                "source_item": "rock",
+                "clears_after_turn": True,
+            },
+            reason="Player hurls the rock",
+        )
+        state_manager.apply_soft_patches([patch])
+        iw = soft.improvised_weapon
+        assert iw.source_item == "rock"
+        assert iw.description == "rock"  # description defaults to the item
+        assert "rock" in soft.soft_inventory  # still carried while wielded
+
+        state_manager.clear_expired_improvised_weapon()
+        assert soft.improvised_weapon is None
+        assert "rock" not in soft.soft_inventory  # consumed
+
+    def test_source_item_kept_on_explicit_clear(self, state_manager):
+        """Clearing a weapon explicitly (null patch) keeps the source item."""
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("chair leg")
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "standard", "source_item": "chair leg"},
+            reason="Player wields the chair leg",
+        )])
+        assert soft.improvised_weapon is not None
+
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value=None,
+            reason="Player puts the chair leg down",
+        )])
+        assert soft.improvised_weapon is None
+        assert "chair leg" in soft.soft_inventory
+
+    def test_source_item_persistent_survives_expiry_check(self, state_manager):
+        """A persistent source_item weapon keeps the item indefinitely."""
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("chair leg")
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "standard", "source_item": "chair leg"},
+            reason="Player wields the chair leg",
+        )])
+        state_manager.clear_expired_improvised_weapon()
+        assert soft.improvised_weapon is not None
+        assert "chair leg" in soft.soft_inventory
+
+    def test_source_item_not_in_inventory_rejected(self, state_manager):
+        patch = SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "light", "source_item": "anvil"},
+            reason="bad source item",
+        )
+        with pytest.raises(ValueError, match="not in soft inventory"):
+            state_manager.apply_soft_patches([patch])
+
+    def test_engine_validation_rejects_missing_source_item(self, state_manager):
+        from mgmai.engine.engine import _validate_soft_patches
+
+        patch = SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "light", "source_item": "anvil"},
+            reason="bad source item",
+        )
+        applied, rejected = _validate_soft_patches(
+            [patch],
+            state_manager.hard_state,
+            state_manager.soft_state,
+            state_manager.corpus,
+        )
+        assert applied == []
+        assert "source_item" in rejected[0]["reason"]
 
 
 # ------------------------------------------------------------------
@@ -778,7 +916,7 @@ class TestCombatEquipmentStats:
         system = FiveESystem()
 
         soft.improvised_weapon = ImprovisedWeapon(
-            damage_expr="1d4", description="broken bottle"
+            keyword="light", damage_expr="1d4", description="broken bottle"
         )
         expr = system.compute_player_damage_expr(hard, corpus, soft)
         assert "1d4" in expr
@@ -793,12 +931,86 @@ class TestCombatEquipmentStats:
         system = FiveESystem()
 
         soft.improvised_weapon = ImprovisedWeapon(
-            damage_expr="1d4", description="broken bottle"
+            keyword="light", damage_expr="1d4", description="broken bottle"
         )
         hard.player.equipped.append("toenail_sword")
         expr = system.compute_player_damage_expr(hard, corpus, soft)
         assert "1d4" not in expr
         assert "1d6" in expr
+
+    def test_improvised_attack_bonus_no_proficiency(self, state_manager):
+        """Improvised attacks add hit_bonus but never proficiency (5e)."""
+        from mgmai.engine.systems.five_e import FiveESystem
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        system = FiveESystem()
+        hard.player.stats = {"STR": 16}  # +3
+        hard.player.proficiency_bonus = 2
+
+        # Unarmed baseline: ability mod + proficiency (always proficient).
+        assert system.compute_player_attack_bonus(hard, corpus, soft) == 3 + 2
+
+        soft.improvised_weapon = ImprovisedWeapon(
+            keyword="standard", damage_expr="1d6", hit_bonus=1,
+        )
+        # Improvised: ability mod + hit_bonus, no proficiency.
+        assert system.compute_player_attack_bonus(hard, corpus, soft) == 3 + 1
+
+        # An equipped weapon supersedes the improvised one entirely.
+        hard.player.equipped.append("toenail_sword")
+        assert system.compute_player_attack_bonus(hard, corpus, soft) != 3 + 1
+
+    def test_improvised_damage_type(self, state_manager):
+        """The improvised weapon's damage_type is used when active."""
+        from mgmai.engine.systems.five_e import FiveESystem
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        system = FiveESystem()
+
+        assert system.compute_player_damage_type(hard, corpus, soft) == ""
+        soft.improvised_weapon = ImprovisedWeapon(
+            keyword="light", damage_expr="1d4", damage_type="piercing",
+        )
+        assert system.compute_player_damage_type(hard, corpus, soft) == "piercing"
+        # Equipped weapon takes priority (toenail_sword has no damage_type).
+        hard.player.equipped.append("toenail_sword")
+        assert system.compute_player_damage_type(hard, corpus, soft) == ""
+
+    def test_resolve_player_attack_uses_improvised_weapon(self, state_manager, monkeypatch):
+        """The production attack path consumes the improvised weapon's
+        damage expression and damage type (regression: soft was dropped)."""
+        import random
+
+        from mgmai.engine.systems.five_e import FiveESystem
+        from mgmai.models.corpus import CombatBlock
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        system = FiveESystem()
+
+        corpus.entities["spider"].combat = CombatBlock(hp=20, ac=5, atk=2, dmg="1d4")
+        hard.entity_states["spider"]["current_hp"] = 20
+        hard.player.stats = {"STR": 10}
+
+        soft.improvised_weapon = ImprovisedWeapon(
+            keyword="light", damage_expr="1d4", damage_type="piercing",
+            description="broken bottle",
+        )
+        # d20 = 15 → hit vs AC 5; damage die = 3.
+        rolls = iter([15, 3])
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rolls))
+
+        result = system.resolve_player_attack(hard, corpus, "spider", 5, 1, soft=soft)
+        entry = result.log_entries[0]
+        assert entry.hit
+        assert "1d4" in entry.damage_roll
+        assert entry.damage == 3
+        assert entry.damage_type == "piercing"
 
     def test_compute_effective_stats_no_stats(self, state_manager):
         """compute_effective_stats should return None when player has no stats."""

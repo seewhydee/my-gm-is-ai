@@ -654,6 +654,9 @@ def _validate_soft_patches(
             if item not in soft.soft_inventory:
                 reason = f"Soft item '{item}' not in soft inventory"
 
+        if patch.field == "set_improvised_weapon" and patch.new_value is not None:
+            reason = _validate_improvised_weapon_value(patch.new_value, soft, corpus)
+
         if not patch.reason or not patch.reason.strip():
             reason = "reason is empty"
 
@@ -666,6 +669,32 @@ def _validate_soft_patches(
             applied.append(patch)
 
     return applied, rejected
+
+
+def _validate_improvised_weapon_value(
+    value: Any, soft: SoftGameState, corpus: ModuleCorpus
+) -> str | None:
+    """Backstop check for a ``set_improvised_weapon`` patch value.
+
+    The ruling-GM validation (llm/ruling_validation.py) catches the same
+    problems earlier and triggers a corrective retry; here an invalid
+    patch is simply rejected (the action itself proceeds).
+    """
+    from mgmai.engine.systems import get_system_for_corpus
+
+    if not isinstance(value, dict):
+        return "set_improvised_weapon value must be an object"
+    system = get_system_for_corpus(corpus)
+    keyword = value.get("keyword")
+    if not isinstance(keyword, str) or system.improvised_weapon_stats(keyword) is None:
+        return f"unknown improvised weapon keyword {keyword!r}"
+    damage_type = value.get("damage_type")
+    if damage_type is not None and damage_type not in system.improvised_weapon_damage_types:
+        return f"invalid improvised weapon damage_type {damage_type!r}"
+    source_item = value.get("source_item")
+    if source_item is not None and source_item not in soft.soft_inventory:
+        return f"improvised weapon source_item {source_item!r} not in soft inventory"
+    return None
 
 
 def _build_room_after(

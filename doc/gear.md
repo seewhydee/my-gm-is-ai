@@ -335,19 +335,24 @@ soft state:
 SoftStatePatch
   field: "set_improvised_weapon"
   new_value: {
-    "damage_expr": "1d4",
-    "hit_bonus": 0,
+    "keyword": "light",
+    "damage_type": "piercing",
     "description": "broken bottle",
     "clears_after_turn": true
   }
 ```
 
-| Field               | Type    | Default  | Description |
-|---------------------|---------|----------|-------------|
-| `damage_expr`       | string  | `"1d6"`  | Damage dice. |
-| `hit_bonus`         | int     | `0`      | Flat bonus to hit rolls. |
-| `description`       | string  | `""`     | Narrative description ("chair leg", "broken bottle"). |
-| `clears_after_turn` | bool    | `false`  | If true, the improvised weapon is automatically cleared at the start of the next player turn (one-shot use like a shattering bottle). |
+The LLM picks a size `keyword` and (optionally) a `damage_type`; the
+resolution system maps the keyword to concrete stats when the patch is
+applied (5e: `light` → 1d4, `standard` → 1d6, `heavy` → 1d8).
+
+| Field               | Type    | Default         | Description |
+|---------------------|---------|-----------------|-------------|
+| `keyword`           | string  | (required)      | Size class: `light`, `standard`, or `heavy` (system-defined). |
+| `damage_type`       | string  | `"bludgeoning"` | One of the system's improvised damage types (5e: `bludgeoning`, `piercing`, `slashing`). |
+| `description`       | string  | `""`            | Narrative description ("chair leg", "broken bottle"). |
+| `source_item`       | string  | (omitted)       | Name of a carried soft item the weapon is made from. It stays in `soft_inventory` while wielded; when a `clears_after_turn` weapon expires, the item is consumed. |
+| `clears_after_turn` | bool    | `false`         | If true, the improvised weapon is automatically cleared at the start of the next player turn (one-shot use like a shattering bottle). |
 
 Clear it with `new_value: null`:
 
@@ -361,7 +366,9 @@ SoftStatePatch
 Improvised weapons take **lower priority** than properly equipped weapons
 but **higher priority** than unarmed combat.  The combat engine checks them
 in this order: equipped weapon → improvised weapon → inventory weapon tag
-(legacy) → unarmed.
+(legacy) → unarmed.  Improvised attacks add the weapon's `hit_bonus` (if
+any) but never a proficiency bonus, and the weapon's `damage_type`
+participates in resistance/vulnerability/immunity as usual.
 
 ---
 

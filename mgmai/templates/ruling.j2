@@ -174,7 +174,7 @@ So long as a soft item does not violate these criteria, you need not try to pred
 
 To dispose of a carried soft item, either use a `transfer` action (e.g., targeting `"current_room"` to drop on the floor), or emit a `soft_inventory_remove` patch if the item disappears into the environment (e.g., dropping a leaf onto a leaf-strewn forest floor).
 
-If the player grabs a non-standard object to use as a weapon, that is NOT a soft item take: propose a `set_improvised_weapon` patch instead, with the object's mechanical parameters.
+If the player grabs a non-standard object to use as a weapon, that is NOT a soft item take: propose a `set_improvised_weapon` patch instead (see *Improvised Weapons*). But if the player wields a soft item they already carry as a weapon, keep it in the inventory and name it in the patch's `source_item` field.
 
 ---
 
@@ -194,11 +194,15 @@ Equipping/unequipping several items at once (e.g. removing a helmet, wearing gau
 
 ### Improvised Weapons
 
-The player may improvise weapons from the environment. Propose a `set_improvised_weapon` soft-state patch (field: "set_improvised_weapon") with
-reasonable `damage_expr` and `hit_bonus` values when the player picks up and wields a non-standard object as a weapon. Use `clears_after_turn: true`
-for fragile or one-shot improvised items (a bottle shatters on impact). Otherwise the weapon persists; the player or a future turn can clear it by setting `set_improvised_weapon` to `null`.
+The player may improvise weapons from the environment. When the player picks up and wields a non-standard object as a weapon, propose a `set_improvised_weapon` soft-state patch (field: "set_improvised_weapon") whose value is an object with:
 
-Picking up an object from the ground as an improvised weapon is one action.
+- `keyword` (required): the object's size class — `light` (a rock, mug, or torch; handy one-handed objects), `standard` (a chair leg, hammer, or firewood), or `heavy` (a table, log, or anvil; bulky two-handed objects). The engine derives the weapon's damage from the keyword; do not invent damage dice or attack bonuses yourself.
+- `damage_type` (optional, default `bludgeoning`): one of `bludgeoning`, `piercing`, or `slashing`. Judge by the object's shape: a sharp point is `piercing`, a sharp edge is `slashing`, anything else is `bludgeoning`.
+- `description` (optional): a short phrase naming the object (e.g. "broken bottle").
+- `source_item` (optional): if the wielded object is a soft item the player already carries, its name from `player_state.soft_inventory`. The item stays in the inventory while wielded; when a `clears_after_turn` weapon expires, the item is consumed (a shattered bottle does not come back). Omit for objects grabbed from the environment.
+- `clears_after_turn` (optional): `true` for fragile or one-shot items (a bottle shatters on impact). Otherwise the weapon persists; the player or a future turn can clear it by setting `set_improvised_weapon` to `null`.
+
+An equipped regular weapon takes precedence over an improvised one. Picking up an object from the ground as an improvised weapon is one action.
 
 {{ combat_section }}
 
@@ -224,8 +228,11 @@ Output: `{"action_type": "examine", "target": "current_room", "rigorous": true, 
 Input: "I pick up the rusty key and unlock the padlock"
 Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "soft_state_patches": []}`
 
-Input: "I pull a loose rock from the wall and throw it at the spider"
-Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": "throw the rock at the spider", "soft_state_patches": []}`
+Input: "I pull a loose rock from the wall and keep it"
+Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": null, "soft_state_patches": []}`
+
+Input: "I hurl the rock at the spider" (the player carries a "rock" soft item; the spider is visible)
+Output: `{"action_type": "interact", "target": "spider", "interaction_id": "attack", "detail": "Player hurls the rock at the spider", "follow_up": null, "soft_state_patches": [{"field": "set_improvised_weapon", "new_value": {"keyword": "light", "source_item": "rock", "clears_after_turn": true}, "reason": "The hurled rock is a one-shot improvised weapon"}]}`
 
 Input: "ooc: wait, what room am I in again?"
 Output: `{"action_type": "ooc_discussion", "detail": "Player asks what room they are in", "follow_up": null, "soft_state_patches": []}`

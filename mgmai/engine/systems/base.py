@@ -195,6 +195,22 @@ class ResolutionSystem(ABC):
     #: (an inventory item tagged ``weapon`` with no explicit dice).
     default_weapon_damage: str = "1d8"
 
+    #: Damage types an improvised weapon may deal.
+    improvised_weapon_damage_types: tuple[str, ...] = (
+        "bludgeoning", "piercing", "slashing",
+    )
+
+    def improvised_weapon_stats(self, keyword: str) -> tuple[str, int] | None:
+        """``(damage_expr, hit_bonus)`` for an improvised-weapon size
+        keyword (e.g. ``"light"``), or ``None`` if the keyword is unknown
+        to this system."""
+        return None
+
+    def improvised_weapon_keywords(self) -> tuple[str, ...]:
+        """The size keywords this system recognizes for improvised
+        weapons (for validation error messages and prompts)."""
+        return ()
+
     # ------------------------------------------------------------------
     # Modifiers & dice
     # ------------------------------------------------------------------
@@ -336,13 +352,15 @@ class ResolutionSystem(ABC):
         target_id: str,
         target_ac: int,
         round_number: int,
+        soft: Any | None = None,
     ) -> PlayerAttackResult:
         """Resolve a player attack against target_id.
 
         The engine has already validated the target and computed its AC. The
         system computes the attack modifier, rolls to hit, determines
         hit/miss/critical, rolls damage, and returns log entries. It must not
-        mutate ``hard``.
+        mutate ``hard``.  ``soft`` (when provided) lets the attack use a
+        wielded improvised weapon's stats.
         """
 
     @abstractmethod

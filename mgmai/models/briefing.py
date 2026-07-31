@@ -175,6 +175,10 @@ class PlayerStateBriefing(BaseModel):
     # Status effects active on the player (e.g. an ongoing Mage Armor):
     # [{id, rounds, description?}]
     status_effects: list[dict[str, Any]] = Field(default_factory=list)
+    # Improvised weapon currently wielded, if any:
+    # {keyword, damage_expr, hit_bonus, damage_type, description,
+    #  clears_after_turn}
+    improvised_weapon: dict[str, Any] | None = None
     # Inventory items with a usable interaction (drink, read, etc.):
     # [{id, name, interactions: [{id, description}]}]
     # Omitted during combat — use combat_state.usable_items.

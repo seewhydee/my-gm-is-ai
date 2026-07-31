@@ -260,13 +260,69 @@ def _validate_gear(action: GearAction, briefing: GMBriefing) -> str | None:
     return None
 
 
-def validate_ruling_action(action, briefing: GMBriefing) -> str | None:
+def _validate_soft_patches(action, briefing: GMBriefing, corpus) -> str | None:
+    """Check ``soft_state_patches`` whose validity is knowable up front.
+
+    Currently this covers ``set_improvised_weapon``: the keyword and
+    damage type are chosen from fixed system-defined lists, and
+    ``source_item`` must name a carried soft item, so an invalid choice
+    is provably wrong and earns a corrective retry.
+    """
+    patches = getattr(action, "soft_state_patches", None) or []
+    if not patches or corpus is None:
+        return None
+    from mgmai.engine.systems import get_system_for_corpus
+
+    system = get_system_for_corpus(corpus)
+    for patch in patches:
+        if patch.field != "set_improvised_weapon" or patch.new_value is None:
+            continue
+        value = patch.new_value
+        if not isinstance(value, dict):
+            return (
+                "set_improvised_weapon's value must be an object with a "
+                "'keyword' field (or null to clear the weapon)."
+            )
+        keyword = value.get("keyword")
+        if not isinstance(keyword, str) or system.improvised_weapon_stats(keyword) is None:
+            valid = ", ".join(system.improvised_weapon_keywords())
+            return (
+                f"Unknown improvised weapon keyword {keyword!r}. "
+                f"Choose one of: {valid}."
+            )
+        damage_type = value.get("damage_type")
+        if (
+            damage_type is not None
+            and damage_type not in system.improvised_weapon_damage_types
+        ):
+            valid = ", ".join(system.improvised_weapon_damage_types)
+            return (
+                f"Invalid improvised weapon damage_type {damage_type!r}. "
+                f"Choose one of: {valid} (or omit it for the default)."
+            )
+        source_item = value.get("source_item")
+        if source_item is not None:
+            carried = briefing.player_state.soft_inventory
+            if source_item not in carried:
+                return (
+                    f"Improvised weapon source_item {source_item!r} is not "
+                    f"in the player's soft inventory "
+                    f"({', '.join(carried) or 'empty'}). Omit 'source_item' "
+                    f"for an object picked up from the environment."
+                )
+    return None
+
+
+def validate_ruling_action(action, briefing: GMBriefing, corpus=None) -> str | None:
     """Check a parsed PlayerAction for semantic consistency with the briefing.
 
     Returns ``None`` when the action is consistent (or when the briefing
     lacks the data needed to judge it).  Otherwise returns a short error
     string addressed to the model, suitable for the corrective retry prompt.
     """
+    patch_error = _validate_soft_patches(action, briefing, corpus)
+    if patch_error is not None:
+        return patch_error
     if briefing.combat_state is None:
         if isinstance(action, UseAbilityAction):
             return _validate_use_ability(action, briefing)

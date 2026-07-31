@@ -586,7 +586,7 @@ def _resolve_opportunity_attack(
     attack_def = None
     if stationary_id == "player":
         result = system.resolve_player_attack(
-            hard, corpus, mover_id, mover_ac, combat.round_number
+            hard, corpus, mover_id, mover_ac, combat.round_number, soft=soft
         )
     else:
         if entity.combat.attacks:
@@ -2743,7 +2743,7 @@ def resolve_combat_turn(
         pa_result = None
         if not game_over:
             target_ac = entity.combat.ac
-            pa_result = system.resolve_player_attack(hard, corpus, target_id, target_ac, combat.round_number)
+            pa_result = system.resolve_player_attack(hard, corpus, target_id, target_ac, combat.round_number, soft=soft)
             combat_log.extend(pa_result.log_entries)
 
         if pa_result is not None and pa_result.hit:

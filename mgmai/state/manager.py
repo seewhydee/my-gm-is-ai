@@ -1624,7 +1624,9 @@ class StateManager:
                 if patch.new_value is None:
                     self.soft_state.improvised_weapon = None
                 elif isinstance(patch.new_value, dict):
-                    self.soft_state.improvised_weapon = ImprovisedWeapon.model_validate(patch.new_value)
+                    self.soft_state.improvised_weapon = (
+                        self._build_improvised_weapon(patch.new_value)
+                    )
                 elif isinstance(patch.new_value, ImprovisedWeapon):
                     self.soft_state.improvised_weapon = patch.new_value
                 else:
@@ -1634,6 +1636,44 @@ class StateManager:
                 # Should not reach here because SoftStatePatch validates the field,
                 # but we keep it for defensiveness.
                 raise ValueError(f"Unsupported soft state patch field: {field}")
+
+    def _build_improvised_weapon(self, value: dict[str, Any]) -> "ImprovisedWeapon":
+        """Build an ImprovisedWeapon from a ruling-GM patch value.
+
+        The patch supplies a size ``keyword`` plus optional descriptive
+        fields; the resolution system maps the keyword to concrete
+        ``damage_expr``/``hit_bonus`` stats.
+        """
+        from mgmai.engine.systems import get_system_for_corpus
+        from mgmai.models.soft_state import ImprovisedWeapon
+
+        keyword = value.get("keyword")
+        stats = (
+            get_system_for_corpus(self.corpus).improvised_weapon_stats(keyword)
+            if isinstance(keyword, str)
+            else None
+        )
+        if stats is None:
+            raise ValueError(
+                f"unknown improvised weapon keyword {keyword!r}"
+            )
+        damage_expr, hit_bonus = stats
+        source_item = value.get("source_item")
+        if source_item is not None:
+            if self.soft_state is None or source_item not in self.soft_state.soft_inventory:
+                raise ValueError(
+                    f"improvised weapon source_item {source_item!r} "
+                    "not in soft inventory"
+                )
+        return ImprovisedWeapon(
+            keyword=keyword,
+            damage_expr=damage_expr,
+            hit_bonus=hit_bonus,
+            damage_type=value.get("damage_type") or "bludgeoning",
+            description=value.get("description", "") or (source_item or ""),
+            clears_after_turn=bool(value.get("clears_after_turn", False)),
+            source_item=source_item,
+        )
 
     def append_turn_history(self, entry: TurnHistoryEntry | dict[str, Any]) -> None:
         """Append a turn log entry to soft state.
@@ -1653,10 +1693,15 @@ class StateManager:
     def clear_expired_improvised_weapon(self) -> None:
         """Auto-clear improvised weapon if its clears_after_turn is true.
 
-        Called by the engine before each player turn resolution.
+        Called by the engine before each player turn resolution.  If the
+        expiring weapon was made from a carried soft item
+        (``source_item``), that item is consumed — a shattered bottle or
+        thrown rock does not return to the inventory.
         """
         if self.soft_state is None:
             return
         iw = self.soft_state.improvised_weapon
         if iw is not None and iw.clears_after_turn:
+            if iw.source_item and iw.source_item in self.soft_state.soft_inventory:
+                self.soft_state.soft_inventory.remove(iw.source_item)
             self.soft_state.improvised_weapon = None

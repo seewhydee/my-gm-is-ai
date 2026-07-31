@@ -1259,3 +1259,38 @@ class TestCombatStateInteractions:
             for i in self._entity(result, "handkerchief").interactions_available
         }
         assert by_id["search_handkerchief"].description
+
+
+class TestImprovisedWeaponBriefing:
+    """The briefing surfaces the currently wielded improvised weapon."""
+
+    def test_improvised_weapon_in_player_state(self, state_manager):
+        from mgmai.models.soft_state import ImprovisedWeapon
+
+        state_manager.soft_state.improvised_weapon = ImprovisedWeapon(
+            keyword="light",
+            damage_expr="1d4",
+            damage_type="piercing",
+            description="broken bottle",
+        )
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look around",
+        )
+        iw = result.player_state.improvised_weapon
+        assert iw is not None
+        assert iw["keyword"] == "light"
+        assert iw["damage_expr"] == "1d4"
+        assert iw["damage_type"] == "piercing"
+        assert iw["description"] == "broken bottle"
+
+    def test_no_improvised_weapon(self, state_manager):
+        result = assemble(
+            state_manager.corpus,
+            state_manager.hard_state,
+            state_manager.soft_state,
+            "look around",
+        )
+        assert result.player_state.improvised_weapon is None

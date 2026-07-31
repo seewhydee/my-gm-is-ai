@@ -145,6 +145,11 @@ def _build_player_state(
         abilities=abilities,
         spell_slots={} if in_combat else dict(hard.player.spell_slots),
         status_effects=_status_effect_briefs(hard.player.status_effects, corpus),
+        improvised_weapon=(
+            soft.improvised_weapon.model_dump(mode="json")
+            if soft.improvised_weapon is not None
+            else None
+        ),
         usable_items=[] if in_combat else _build_usable_items(hard, corpus),
     )
 

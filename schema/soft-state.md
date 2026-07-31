@@ -490,34 +490,47 @@ verbatim exchange indefinitely in the active dialogue state.
 
 ```json
 {
+  "keyword": "light",
   "damage_expr": "1d4",
   "hit_bonus": 0,
+  "damage_type": "piercing",
   "description": "broken bottle",
   "clears_after_turn": true
 }
 ```
 
-An `ImprovisedWeapon` object set by the LLM when the player grabs a non-standard
-object and uses it as a weapon (chair leg, broken bottle, heavy rock). It takes
-lower priority than a properly equipped weapon but higher than unarmed combat.
+An `ImprovisedWeapon` object set when the player grabs a non-standard
+object and uses it as a weapon (chair leg, broken bottle, heavy rock). It
+takes lower priority than a properly equipped weapon but higher than
+unarmed combat.
 
-| Field               | Type    | Default  | Description |
-|---------------------|---------|----------|-------------|
-| `damage_expr`       | string  | `"1d6"`  | Damage dice expression. |
-| `hit_bonus`         | int     | `0`      | Flat bonus to hit rolls. |
-| `description`       | string  | `""`     | Narrative description. |
-| `clears_after_turn` | bool    | `false`  | If true, automatically cleared at the start of the next player turn (one-shot use). |
+The ruling GM chooses only the `keyword` (a size class) and optional
+descriptive fields; the resolution system maps the keyword to concrete
+stats when the patch is applied (5e: `light` → 1d4, `standard` → 1d6,
+`heavy` → 1d8; see `ResolutionSystem.improvised_weapon_stats`).
+
+| Field               | Type    | Default        | Description |
+|---------------------|---------|----------------|-------------|
+| `keyword`           | string  | (required)     | Size class: `light`, `standard`, or `heavy` (system-defined). |
+| `damage_expr`       | string  | (from keyword) | Damage dice, resolved by the system — not LLM-supplied. |
+| `hit_bonus`         | int     | (from keyword) | Flat bonus to hit rolls, resolved by the system. Improvised attacks never add a proficiency bonus. |
+| `damage_type`       | string  | `"bludgeoning"`| One of the system's improvised damage types (5e: `bludgeoning`, `piercing`, `slashing`). |
+| `description`       | string  | `""`           | Narrative description. |
+| `clears_after_turn` | bool    | `false`        | If true, automatically cleared at the start of the next player turn (one-shot use). |
+| `source_item`       | string\|null | `null`    | Name of the carried soft item the weapon was made from, if any. The item stays in `soft_inventory` while wielded; when a `clears_after_turn` weapon expires, the item is removed from the inventory (consumed). |
 
 ### Patch format
 
-Set an improvised weapon:
+Set an improvised weapon (the LLM supplies `keyword` and, optionally,
+`damage_type`, `description`, `source_item`, `clears_after_turn` — never
+`damage_expr` or `hit_bonus`):
 
 ```json
 {
   "field": "set_improvised_weapon",
   "new_value": {
-    "damage_expr": "1d4",
-    "hit_bonus": 0,
+    "keyword": "light",
+    "damage_type": "piercing",
     "description": "broken bottle",
     "clears_after_turn": true
   },
@@ -537,9 +550,14 @@ Clear an improvised weapon (set to `null`):
 
 ### Validation rules
 
-1. `new_value` must be either a valid `ImprovisedWeapon` object or `null`.
-2. The combat engine consults this field in `get_player_damage_expr()`:
-   equipped weapon → improvised weapon → inventory weapon tag (legacy) → unarmed.
+1. `new_value` must be either a valid improvised-weapon object (with a
+   known `keyword` and an allowed `damage_type`) or `null`. Unknown
+   keywords/types are rejected by ruling validation (corrective retry)
+   and backstopped by the engine.
+2. The combat engine consults this field when computing the player's
+   damage expression, attack bonus, and damage type:
+   equipped weapon → improvised weapon → inventory weapon tag
+   (legacy) → unarmed.
 
 ---
 

@@ -478,7 +478,7 @@ class GameLoop:
         action = None
         try:
             action = parse_player_action(raw)
-            error = validate_ruling_action(action, briefing)
+            error = validate_ruling_action(action, briefing, self._state.corpus)
         except LLMOutputError:
             error = (
                 "Your JSON was invalid. "
@@ -498,7 +498,7 @@ class GameLoop:
         raw = self._llm.call_ruling(system_prompt, retry_prompt)
         log.debug("--- LLM Call 1 retry raw ---\n%s", raw)
         action = parse_player_action(raw)
-        semantic_error = validate_ruling_action(action, briefing)
+        semantic_error = validate_ruling_action(action, briefing, self._state.corpus)
         if semantic_error is not None:
             raise LLMOutputError(
                 f"Ruling still semantically invalid after retry: {semantic_error}"

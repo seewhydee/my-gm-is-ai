@@ -53,6 +53,21 @@ class FiveESystem(ResolutionSystem):
     unarmed_damage = "1d6"
     default_weapon_damage = "1d8"
 
+    #: Improvised weapon size keywords → (damage_expr, hit_bonus).
+    #: 5e SRD: an improvised weapon deals about 1d4, or matches a similar
+    #: real weapon; improvised attacks never add proficiency.
+    IMPROVISED_WEAPON_STATS = {
+        "light": ("1d4", 0),
+        "standard": ("1d6", 0),
+        "heavy": ("1d8", 0),
+    }
+
+    def improvised_weapon_stats(self, keyword: str) -> tuple[str, int] | None:
+        return self.IMPROVISED_WEAPON_STATS.get(keyword)
+
+    def improvised_weapon_keywords(self) -> tuple[str, ...]:
+        return tuple(self.IMPROVISED_WEAPON_STATS)
+
     #: Recognized damage types (SRD 5.2.1).
     DAMAGE_TYPES = frozenset({
         "acid", "bludgeoning", "cold", "fire", "force", "lightning",
@@ -320,19 +335,32 @@ class FiveESystem(ResolutionSystem):
         return weapon is not None and "ranged" in weapon.properties
 
     def compute_player_attack_bonus(
-        self, hard: HardGameState, corpus: ModuleCorpus
+        self, hard: HardGameState, corpus: ModuleCorpus, soft: object | None = None
     ) -> int:
         """5e attack bonus: weapon ability mod + proficiency (when
         proficient with the weapon) + weapon bonuses.
 
         A non-proficient weapon still hits with the ability modifier and
         the weapon's ``hit_bonus``; only the proficiency bonus is withheld.
-        Unarmed strikes are always proficient.
+        Unarmed strikes are always proficient.  An improvised weapon (only
+        relevant when no real weapon is equipped) adds its ``hit_bonus``
+        but is never proficient (5e SRD).
         """
         stats = hard.player.stats
         stat_mod = self.compute_modifier(
             self._player_stat(stats, self._weapon_attack_stat(hard, corpus))
         )
+
+        # Improvised weapon (only when no real weapon is equipped).
+        if self._equipped_weapon_block(hard, corpus) is None and soft is not None:
+            from mgmai.models.soft_state import SoftGameState
+
+            if (
+                isinstance(soft, SoftGameState)
+                and soft.improvised_weapon is not None
+            ):
+                return stat_mod + soft.improvised_weapon.hit_bonus
+
         prof = 0
         if self._player_proficient_with_weapon(hard, corpus):
             prof = getattr(hard.player, "proficiency_bonus", None) or 2
@@ -348,12 +376,23 @@ class FiveESystem(ResolutionSystem):
         return stat_mod + prof + weapon_bonus
 
     def compute_player_damage_type(
-        self, hard: HardGameState, corpus: ModuleCorpus
+        self, hard: HardGameState, corpus: ModuleCorpus, soft: object | None = None
     ) -> str:
-        """Damage type of the player's equipped weapon ("" when untyped —
-        unarmed, improvised, or legacy weapons apply no type modifiers)."""
+        """Damage type of the player's equipped weapon, or of the wielded
+        improvised weapon when no real weapon is equipped ("" when untyped —
+        unarmed and legacy weapons apply no type modifiers)."""
         weapon = self._equipped_weapon_block(hard, corpus)
-        return weapon.damage_type if weapon else ""
+        if weapon is not None:
+            return weapon.damage_type
+        if soft is not None:
+            from mgmai.models.soft_state import SoftGameState
+
+            if (
+                isinstance(soft, SoftGameState)
+                and soft.improvised_weapon is not None
+            ):
+                return soft.improvised_weapon.damage_type
+        return ""
 
     def attack_roll_mods(
         self, attacker_status_effects: dict, target_status_effects: dict, corpus: ModuleCorpus,
@@ -558,13 +597,14 @@ class FiveESystem(ResolutionSystem):
         target_id: str,
         target_ac: int,
         round_number: int,
+        soft: object | None = None,
     ) -> PlayerAttackResult:
         """Resolve a player melee attack against target_id."""
         entity = corpus.entities.get(target_id)
         if entity is None or entity.combat is None:
             raise ValueError(f"Invalid combat target '{target_id}'")
 
-        atk_bonus = self.compute_player_attack_bonus(hard, corpus)
+        atk_bonus = self.compute_player_attack_bonus(hard, corpus, soft)
         player_effects = get_status_effects("player", hard)
         target_effects = get_status_effects(target_id, hard)
         engaged_with_target = self._pair_engaged(hard, "player", target_id)
@@ -613,9 +653,9 @@ class FiveESystem(ResolutionSystem):
 
         npc_state = hard.entity_states.get(target_id, {})
         if hit:
-            dmg_expr = self.compute_player_damage_expr(hard, corpus)
+            dmg_expr = self.compute_player_damage_expr(hard, corpus, soft)
             damage, damage_roll = self.roll_damage(dmg_expr, critical=critical)
-            damage_type = self.compute_player_damage_type(hard, corpus)
+            damage_type = self.compute_player_damage_type(hard, corpus, soft)
             damage, mitigation = self.apply_damage_modifiers(
                 damage, damage_type, target_id, hard, corpus
             )
