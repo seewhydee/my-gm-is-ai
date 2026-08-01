@@ -603,7 +603,9 @@ def resolve_move(
     changes.room_state_changes[exit_data.target_room] = {**base_state, **existing_changes}
 
     # --- follower blacklist: stop followers who refuse this room ---
-    _check_follower_blacklist(hard, corpus, exit_data.target_room, narrative)
+    _check_follower_blacklist(
+        hard, corpus, exit_data.target_room, narrative, changes
+    )
 
     result.hard_changes = changes
     result.triggered_narration = narrative
@@ -2074,11 +2076,15 @@ def _check_follower_blacklist(
     corpus: ModuleCorpus,
     target_room: str,
     narrative: list[str],
+    changes: HardStateChanges,
 ) -> None:
     """Check if any following NPC refuses to enter the target room.
 
     If an NPC's follower.blacklist includes the target room, clear their
-    ``following`` state and add a narrative note.
+    ``following`` state and add a narrative note.  The state change is
+    routed through *changes* (rather than mutating ``hard`` directly) so
+    that an ``entity_state.changed`` event fires for it, consistent with
+    every other entity-state mutation.
     """
     for eid, state in hard.entity_states.items():
         if not state.get("following"):
@@ -2089,7 +2095,7 @@ def _check_follower_blacklist(
         if entity.follower is None:
             continue
         if target_room in entity.follower.blacklist:
-            state["following"] = False
+            changes.entity_state_changes.setdefault(eid, {})["following"] = False
             narrative.append(
                 f"{entity.description.split('.')[0]} refuses to follow you "
                 f"and stays behind."
@@ -2215,12 +2221,9 @@ def _resolve_combat_action(
             hard, soft, corpus, state_manager,
         )
 
-    if combat is None or not combat.active:
-        result = resolve_combat_turn(
-            action, hard, corpus, soft=soft, state_manager=state_manager
-        )
-    else:
-        result = resolve_combat_turn(action, hard, corpus, soft=soft, state_manager=state_manager)
+    result = resolve_combat_turn(
+        action, hard, corpus, soft=soft, state_manager=state_manager
+    )
     if not result["success"]:
         return ResolutionResult(
             success=False,
@@ -2399,7 +2402,11 @@ def _resolve_combat_environmental(
         elif hard.combat is None or not hard.combat.active:
             # The resolution itself ended combat already.
             combat_ended = True
-        elif delegate.hard_changes and delegate.hard_changes.player_location:
+        elif (
+            delegate.hard_changes
+            and delegate.hard_changes.player_location
+            and delegate.hard_changes.player_location != hard.player.location
+        ):
             # The Result moved the player to another room: combat ends.
             combat_ended = True
             end_reason = "fled"

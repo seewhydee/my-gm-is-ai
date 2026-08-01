@@ -69,9 +69,7 @@ def _check_note_contradiction(
         name_lower = name.lower()
         if name_lower not in text_lower.split():
             continue
-        if state.get("alive") is False and "dead" not in text_lower:
-            pass
-        elif state.get("alive") is True and "dead" in text_lower and name_lower in text_lower:
+        if state.get("alive") is True and "dead" in text_lower:
             return f"Note contradicts hard state: '{name}' is alive"
     return None
 
@@ -139,7 +137,7 @@ def post_validate_notes(
                     if contradiction:
                         reason = contradiction
 
-        if not note.reason or not note.reason.strip():
+        if (not note.reason or not note.reason.strip()) and reason is None:
             reason = "reason is empty"
 
         if reason:

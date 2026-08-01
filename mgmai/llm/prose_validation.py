@@ -33,8 +33,11 @@ if TYPE_CHECKING:
 
 
 # Regex that catches near-miss marker syntax: anything that looks like
-# [MECH:...] but isn't an exact valid marker.
-_MANGLED_MARKER_RE = re.compile(r"\[\s*MECH\s*[: ]", re.IGNORECASE)
+# [MECH:...] but isn't an exact valid marker.  Matching ``[MECH`` as a
+# whole token (via ``\b``) catches mangled separators such as a space
+# instead of the colon (``[MECH check:0]``) as well as ``[MECH :...]``;
+# exact valid markers are filtered out by the caller.
+_MANGLED_MARKER_RE = re.compile(r"\[\s*MECH\b", re.IGNORECASE)
 
 # Words that suggest success when the engine said failure (and vice versa).
 _SUCCESS_WORDS = frozenset({

@@ -436,7 +436,10 @@ def get_condition_detail(
     elif domain == "room":
         if "." in key:
             room_id, field = key.split(".", 1)
-            current_val = hard_state.room_states.get(room_id, {}).get(field)
+            if field == "is_current":
+                current_val = hard_state.player.location == room_id
+            else:
+                current_val = hard_state.room_states.get(room_id, {}).get(field)
         else:
             room_id, field = key, "?"
             current_val = None

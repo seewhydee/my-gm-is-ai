@@ -522,9 +522,9 @@ class StateFieldDecl(BaseModel):
                     f"initial must be a number for type 'number', got {self.initial!r}"
                 )
         elif self.type == "string" and not isinstance(self.initial, str):
-                raise ValueError(
-                    f"initial must be a string for type 'string', got {self.initial!r}"
-                )
+            raise ValueError(
+                f"initial must be a string for type 'string', got {self.initial!r}"
+            )
         return self
 
 

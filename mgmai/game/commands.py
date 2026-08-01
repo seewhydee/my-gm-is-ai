@@ -238,7 +238,9 @@ class Commands:
         self._render(f"  Prose temperature:  {pt}")
 
         self._render(f"  JSON mode:          {'on' if mc.supports_json_mode else 'off'}")
-        self._render(f"  Request timeout:    {mc.request_timeout:.0f}s")
+        timeout = mc.request_timeout
+        timeout_str = f"{timeout:.0f}s" if timeout is not None else "(default)"
+        self._render(f"  Request timeout:    {timeout_str}")
         self._render(f"  Max tokens (ruling): {mc.ruling_max_tokens}")
         self._render(f"  Max tokens (prose):  {mc.prose_max_tokens}")
 
@@ -285,7 +287,11 @@ class Commands:
             if 1 <= idx <= len(known):
                 new_model = known_names[idx - 1]
             elif idx == len(known) + 1:
-                new_model = input("  Enter model name: ").strip()
+                try:
+                    new_model = input("  Enter model name: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    self._render("")
+                    return
                 if not new_model:
                     self._render("[red]Model name cannot be empty.[/red]")
                     return

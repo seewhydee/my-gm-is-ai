@@ -379,7 +379,18 @@ def validate_positioning_assertion(action, briefing: GMBriefing) -> str | None:
         for c in combat.combatants
         if c.get("id") is not None
     }
-    valid_ids = ", ".join(sorted(combatants)) or "none"
+
+    def _is_living(cid: str) -> bool:
+        # Mirror engine ``_living_combatant``: the player is alive while in
+        # combat; non-player combatants additionally require current_hp > 0.
+        c = combatants.get(cid)
+        if c is None:
+            return False
+        if cid == "player":
+            return True
+        return (c.get("current_hp") or 0) > 0
+
+    valid_ids = ", ".join(sorted(cid for cid in combatants if _is_living(cid))) or "none"
     # The briefing exposes the engagement map via each combatant's
     # engaged_with list; when it is absent (older/hand-built briefings),
     # skip the currently-engaged check rather than guessing.
@@ -392,7 +403,7 @@ def validate_positioning_assertion(action, briefing: GMBriefing) -> str | None:
                 f"must be a pair of two distinct combatant IDs."
             )
         for cid in pair:
-            if not isinstance(cid, str) or cid not in combatants:
+            if not isinstance(cid, str) or not _is_living(cid):
                 return (
                     f"Invalid positioning.{kind} entry {pair!r}: '{cid}' "
                     f"is not a living combatant. Valid combatant IDs: "

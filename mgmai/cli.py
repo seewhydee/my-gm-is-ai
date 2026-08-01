@@ -199,8 +199,14 @@ def main(argv: list[str] | None = None) -> None:
         display.render_error(f"Failed to load state: {e}")
         sys.exit(1)
 
-    # Persist last-used adventure path
-    app_config.adventure_path = str(adventure_path.resolve())
+    # Persist last-used adventure path.  When resuming a save, prefer the
+    # adventure recorded inside the save (adv_path), which may differ from
+    # the CLI argument; fall back to the CLI argument for legacy saves
+    # that lack a recorded adventure_path.
+    if args.load_file and adv_path:
+        app_config.adventure_path = str(Path(adv_path).resolve())
+    else:
+        app_config.adventure_path = str(adventure_path.resolve())
     save_app_config(app_config, config_dir)
 
     llm_client = LLMClient(api_key=api_key, config=config)

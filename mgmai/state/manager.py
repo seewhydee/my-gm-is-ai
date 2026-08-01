@@ -533,6 +533,7 @@ class StateManager:
             if gc is None:
                 return
             _from_condition(gc.gating)
+            _from_checkable(gc)
             if gc.using_results is not None:
                 for override in gc.using_results.values():
                     _from_using_override(override)
@@ -638,13 +639,10 @@ class StateManager:
                 if field_name not in declared:
                     errors.append(f"Room '{room_id}' has undeclared state field: {field_name}")
 
-        # Entities with combat blocks must declare current_hp in state_fields
-        for entity_id, entity in self.corpus.entities.items():
-            if entity.combat is not None and "current_hp" not in entity.state_fields:
-                    errors.append(
-                        f"Entity '{entity_id}' has combat block but no "
-                        f"'current_hp' in state_fields"
-                    )
+        # current_hp is a reserved entity state field (see
+        # RESERVED_ENTITY_STATE_FIELDS): an entity with a combat block need
+        # not declare it, defaulting to the combat block's HP.  Do not
+        # reject such entities here.
 
         # Player location must be a valid room
         if self.hard_state.player.location not in self.corpus.rooms:
@@ -1605,12 +1603,6 @@ class StateManager:
                 if not isinstance(patch.new_value, str):
                     raise ValueError(f"entity_note patch has invalid value {type(patch.new_value).__name__}")
                 self.soft_state.entity_notes[target].append(patch.new_value)
-
-            elif field == "soft_inventory_add":
-                raise ValueError(
-                    "soft_inventory_add is deprecated; soft items are now "
-                    "adjudicated via soft_item_proposals / soft_item_adjudications"
-                )
 
             elif field == "soft_inventory_remove":
                 value = patch.new_value

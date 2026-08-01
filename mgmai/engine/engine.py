@@ -212,9 +212,6 @@ def resolve(
         npc = corpus.entities.get(trigger_id)
         encounter_rules = None
         encounter_source_id = trigger_id
-        npc = corpus.entities.get(trigger_id)
-        encounter_rules = None
-        encounter_source_id = trigger_id
 
         if npc and npc.aggro:
             encounter_rules = npc.aggro
@@ -453,9 +450,9 @@ def resolve(
     if action_type == "talk":
         pass
     elif action_type != "ooc_discussion" and soft.dialogue_state.active_npc is not None:
-            stall_exited = increment_stall(soft)
-            if stall_exited:
-                resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
+        stall_exited = increment_stall(soft)
+        if stall_exited:
+            resolution.dialogue_exited = exit_dialogue(soft, corpus, hard)
 
     # 8. Dispatch deferred reactions for action-level events.
     action_events: list[tuple[str, dict[str, Any]]] = list(resolution.events)
