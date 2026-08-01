@@ -1637,6 +1637,10 @@ class StateManager:
                 # but we keep it for defensiveness.
                 raise ValueError(f"Unsupported soft state patch field: {field}")
 
+        # If a patch removed the improvised weapon's source item from the
+        # inventory (soft_inventory_remove), the weapon cannot persist.
+        reconcile_improvised_weapon(self.soft_state)
+
     def _build_improvised_weapon(self, value: dict[str, Any]) -> "ImprovisedWeapon":
         """Build an ImprovisedWeapon from a ruling-GM patch value.
 
@@ -1705,3 +1709,23 @@ class StateManager:
             if iw.source_item and iw.source_item in self.soft_state.soft_inventory:
                 self.soft_state.soft_inventory.remove(iw.source_item)
             self.soft_state.improvised_weapon = None
+
+
+def reconcile_improvised_weapon(soft: SoftGameState) -> None:
+    """Clear the improvised weapon if its ``source_item`` is no longer carried.
+
+    A soft-item improvised weapon keeps its source item in
+    ``soft_inventory`` while wielded — there is no separate "equipped"
+    bucket as there is for hard item entities.  When the item is dropped,
+    given away, or consumed by any path, the weapon must be cleared too:
+    the player cannot keep wielding an object they no longer carry.  This
+    mirrors the hard-item invariant that dropping gear requires leaving
+    the equipped bucket first.
+    """
+    iw = soft.improvised_weapon
+    if (
+        iw is not None
+        and iw.source_item is not None
+        and iw.source_item not in soft.soft_inventory
+    ):
+        soft.improvised_weapon = None

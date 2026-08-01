@@ -34,7 +34,7 @@ from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.narration import AttitudeChange, SoftItemAdjudication
 from mgmai.models.soft_state import KnowledgeEntry, SoftGameState, SoftStateNote
-from mgmai.state.manager import StateManager
+from mgmai.state.manager import StateManager, reconcile_improvised_weapon
 
 
 def _is_hard_entity_collision(name: str, corpus: ModuleCorpus) -> bool:
@@ -316,6 +316,9 @@ def post_validate_soft_items(
             if adj.target_id:
                 placed = soft.soft_contents.setdefault(adj.target_id, {})
                 placed[adj.item_name] = placed.get(adj.item_name, 0) + adj.count
+            # Dropping/giving away the improvised weapon's source item
+            # ends the weapon: it cannot persist while the item is gone.
+            reconcile_improvised_weapon(soft)
         # Accepted examines have no state effect.
 
     # Any proposals still pending did not receive an adjudication.

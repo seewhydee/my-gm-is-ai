@@ -649,6 +649,110 @@ class TestImprovisedWeapon:
         with pytest.raises(ValueError, match="not in soft inventory"):
             state_manager.apply_soft_patches([patch])
 
+    def test_dropping_source_item_clears_weapon(self, state_manager):
+        """Dropping (soft_inventory_remove) the wielded source item must
+        clear the improvised weapon: the player cannot keep wielding an
+        object they no longer carry."""
+        from mgmai.engine.post_validate import post_validate_soft_items
+        from mgmai.engine.resolver import SoftItemProposal
+        from mgmai.models.actions import SoftItemAdjudication
+
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("chair leg")
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "standard", "source_item": "chair leg"},
+            reason="Player wields the chair leg",
+        )])
+        assert soft.improvised_weapon is not None
+
+        # Path 1: soft_inventory_remove patch (item vanishes into env).
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="soft_inventory_remove",
+            new_value="chair leg",
+            reason="Player drops the chair leg",
+        )])
+        assert soft.improvised_weapon is None
+        assert "chair leg" not in soft.soft_inventory
+
+    def test_transfer_give_source_item_clears_weapon(self, state_manager):
+        """Giving the wielded source item away via transfer (adjudicated
+        by Call 2) must also clear the improvised weapon."""
+        from mgmai.engine.post_validate import post_validate_soft_items
+        from mgmai.engine.resolver import SoftItemProposal
+        from mgmai.models.actions import SoftItemAdjudication
+
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("chair leg")
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "standard", "source_item": "chair leg"},
+            reason="Player wields the chair leg",
+        )])
+        room_id = state_manager.hard_state.player.location
+
+        prop = SoftItemProposal(
+            item_name="chair leg", action="give",
+            source_id="player", target_id=room_id, count=1, item_kind="soft",
+        )
+        adj = SoftItemAdjudication(
+            item_name="chair leg", action="give",
+            source_id="player", target_id=room_id, count=1,
+            accepted=True, justification="drops it on the floor",
+        )
+        applied, rejected, hard_changes = post_validate_soft_items(
+            [adj], [prop], state_manager.hard_state, soft, state_manager.corpus
+        )
+        assert soft.improvised_weapon is None
+        assert "chair leg" not in soft.soft_inventory
+
+    def test_unrelated_drop_keeps_weapon(self, state_manager):
+        """Removing a soft item that is NOT the source item leaves the
+        weapon intact."""
+        soft = state_manager.soft_state
+        soft.soft_inventory.extend(["chair leg", "rock"])
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "standard", "source_item": "chair leg"},
+            reason="Player wields the chair leg",
+        )])
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="soft_inventory_remove",
+            new_value="rock",
+            reason="Player drops the rock",
+        )])
+        assert soft.improvised_weapon is not None
+        assert "chair leg" in soft.soft_inventory
+
+    def test_refused_give_keeps_weapon(self, state_manager):
+        """A give rejected by Call 2 (NPC refuses) leaves both the item
+        and the weapon in place."""
+        from mgmai.engine.post_validate import post_validate_soft_items
+        from mgmai.engine.resolver import SoftItemProposal
+        from mgmai.models.actions import SoftItemAdjudication
+
+        soft = state_manager.soft_state
+        soft.soft_inventory.append("chair leg")
+        state_manager.apply_soft_patches([SoftStatePatch(
+            field="set_improvised_weapon",
+            new_value={"keyword": "standard", "source_item": "chair leg"},
+            reason="Player wields the chair leg",
+        )])
+        prop = SoftItemProposal(
+            item_name="chair leg", action="give",
+            source_id="player", target_id="rubbish_pile", count=1, item_kind="soft",
+        )
+        adj = SoftItemAdjudication(
+            item_name="chair leg", action="give",
+            source_id="player", target_id="rubbish_pile", count=1,
+            accepted=False, justification="the NPC refuses",
+        )
+        post_validate_soft_items(
+            [adj], [prop], state_manager.hard_state, soft, state_manager.corpus
+        )
+        assert soft.improvised_weapon is not None
+        assert "chair leg" in soft.soft_inventory
+
     def test_engine_validation_rejects_missing_source_item(self, state_manager):
         from mgmai.engine.engine import _validate_soft_patches
 

@@ -517,7 +517,7 @@ stats when the patch is applied (5e: `light` → 1d4, `standard` → 1d6,
 | `damage_type`       | string  | `"bludgeoning"`| One of the system's improvised damage types (5e: `bludgeoning`, `piercing`, `slashing`). |
 | `description`       | string  | `""`           | Narrative description. |
 | `clears_after_turn` | bool    | `false`        | If true, automatically cleared at the start of the next player turn (one-shot use). |
-| `source_item`       | string\|null | `null`    | Name of the carried soft item the weapon was made from, if any. The item stays in `soft_inventory` while wielded; when a `clears_after_turn` weapon expires, the item is removed from the inventory (consumed). |
+| `source_item`       | string\|null | `null`    | Name of the carried soft item the weapon was made from, if any. The item stays in `soft_inventory` while wielded; when a `clears_after_turn` weapon expires, the item is removed from the inventory (consumed). If the item is dropped or given away by any path (a `transfer` give or a `soft_inventory_remove` patch), the weapon is cleared automatically — it cannot persist while its source item is no longer carried. |
 
 ### Patch format
 
@@ -558,6 +558,9 @@ Clear an improvised weapon (set to `null`):
    damage expression, attack bonus, and damage type:
    equipped weapon → improvised weapon → inventory weapon tag
    (legacy) → unarmed.
+3. When a weapon's `source_item` leaves `soft_inventory` (a `transfer`
+   give or a `soft_inventory_remove` patch), the weapon is cleared: the
+   player cannot keep wielding an object they no longer carry.
 
 ---
 

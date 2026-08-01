@@ -72,9 +72,9 @@ An interaction is a named manipulation of the current room, or an entity in the 
 
 **transfer** — Move items (item entities and/or soft items) to/from the player's inventory
 
-If the player tries to place or gift an item entity that is in the scene, but isn't in inventory, construct a chained action whereby (i) they pick up the item, then (ii) place/gift it.
+If the player tries to give an item entity that is in the scene, but not in inventory, construct a chained action: first, move the item into inventory (if item is in the room or a container, take it; if it's equipped as gear, unequip it); then perform the give as a follow-up.
 
-If the player attempts a physically implausible transfer — e.g., taking features or NPCs rather than items, or transferring an item to another entity that seems incapable of holding items (not even placing items on top) — rule it as `wait`, rather than emitting `transfer`; explain the problem in `detail`.
+If the player attempts a physically implausible transfer — e.g., taking features or NPCs rather than items, or transferring an item to another entity that seems incapable of holding items (not even placing items on top) — rule it as `wait` rather than `transfer`; explain the problem in `detail`.
 
 If the player tries to transfer to/from an NPC, construct the `transfer` according to their intent; another agent will adjudicate whether the NPC (if alive) consents.
 
@@ -89,12 +89,12 @@ If the player tries to take an item that is not an existing item entity, you may
 
 **gear** — Equip and/or unequip items:
 
-Equippable items must have an `equip_block` (otherwise not equippable; omit and explain the problem in `detail`).
+Equippable items must have an `equip_block` (otherwise not equippable; omit and explain the problem in `detail`).  Equipped item entities are NOT considered to be in inventory.  See *Equipment Rules* for details.
 
 - `equip_targets` (array of strings, optional): Entity IDs of items to equip from inventory
 - `unequip_targets` (array of strings, optional): Entity IDs of currently equipped items to remove
 
-At least one of these two fields must be non-empty.  Both fields can be supplied (e.g., for gear swaps).
+At least one of these two fields must be non-empty.  Both fields can be non-empty (e.g., gear swaps).
 
 **combat** — Attack or perform a maneuver during combat.
 
@@ -121,7 +121,7 @@ This action is available outside combat only. You should judge, based on the bri
 **wait** — Pass time, or do something mechanically insignificant.
 You may use this as a catch-all for player activities that don't fit other types.  During combat, `wait` passes the player's turn.
 
-Use `detail` to describe any noteworthy actions by the player (e.g. scratching a mark into the dirt); another agent will record a note for future narrative continuity.
+Use `detail` to describe any noteworthy player actions (e.g. scratching a mark into the dirt); another agent will record a note for future narrative continuity.
 
 **ooc_discussion** — Out-of-character talk with the GM.
 
@@ -140,7 +140,7 @@ Use `soft_state_patches` to record certain intent-coupled soft state changes tha
 | `reason` | string | Brief description of why this change is being proposed |
 
 - `soft_inventory_remove` destroys/consumes a carried soft item (to place one, use a `transfer` action instead).
-- `set_improvised_weapon` sets or clears (`null`) an improvised weapon.
+- `set_improvised_weapon` sets or clears (`null`) an improvised weapon. See *Improvised Weapons*.
 
 ---
 
@@ -148,11 +148,9 @@ Use `soft_state_patches` to record certain intent-coupled soft state changes tha
 
 An entity can be a **container** (a chest, rubbish pile, corpse, NPC, etc.). Entities nested inside are listed in its `contains` field, each with `id`, `name`, `type`, `description`, etc.; instantiated (verified) soft item contents are listed in `soft_items_present`.  Such contents are **not** separately listed in the room's `entities_visible` field.
 
-To take an item from a container, propose a `transfer` with:
-- `target` = the **container's** entity `id` (not `"current_room"`, unless the item is loose on the floor),
-- `taken_items` or `taken_counts`, specifying the item ID (or soft item name) being taken
+To transfer items to/from a container, propose a `transfer` with the **container's** entity `id` as `target`; only use `"current_room"` as target for items directly present in the room (e.g., loose on the floor).
 
-To give an item to an NPC or place it into a container, use the same kind of `target`, along with `given_items` or `given_counts`.
+The `taken_items` and `taken_counts` specs are merged automatically; using the latter is more convenient for taking multiple items.  Likewise for `given_items` and `given_counts`.
 
 For entity IDs, remember to use verbatim from the briefing; do not invent your own.
 
@@ -163,46 +161,48 @@ Output: `{"action_type": "transfer", "target": "rubbish_pile", "taken_items": ["
 
 ## Soft Items
 
-Soft items are mundane objects identified by generic natural language names like "rock", "dog hair", "glass shard", or "scrap of cloth", without distinct entity IDs. You may propose new ambient soft items as the subjects of `examine` and `transfer` actions, based on the player's input, provided (i) there is no matching item entity or soft item already present according to the briefing (otherwise, target that instead), and (ii) the soft item is mundane and setting-appropriate. Do not propose soft items that are:
+Soft items are mundane objects identified by generic natural language names like "rock", "dog hair", "glass shard", or "scrap of cloth", without distinct entity IDs. You may propose new ambient soft items as the subjects of `examine` and `transfer` actions, based on the player's input, provided (i) there is no matching item entity or soft item already present according to the briefing (otherwise, target that instead), and (ii) the soft item is mundane and setting-appropriate.
+
+Do NOT propose soft items that are:
 
 - Obviously magical (wands, scrolls, potions)
 - Extremely valuable (gems, jewellery, gold bars)
 - Plot-critical or unique (lich's phylactery)
-- Obviously anachronistic or setting-inappropriate
+- Obviously setting-inappropriate (assault rifle in a fantasy game)
 
-So long as a soft item does not violate these criteria, you need not try to predict whether it should be present in the scene. Just construct the PlayerAction according to the player's intent; another agent (the narrator) will decide if it's OK.
+Provided these critera are met, don't try to guess whether the soft item should be present in the scene. Construct the PlayerAction matching the player's intent, and another agent (the narrator) will adjudicate.
 
-To dispose of a carried soft item, either use a `transfer` action (e.g., targeting `"current_room"` to drop on the floor), or emit a `soft_inventory_remove` patch if the item disappears into the environment (e.g., dropping a leaf onto a leaf-strewn forest floor).
+To dispose of a carried soft item, use a `transfer` action (e.g., targeting `"current_room"` to drop on the floor), or emit a `soft_inventory_remove` patch if the item disappears into the environment (e.g., dropping a leaf onto a leaf-strewn forest floor).
 
-If the player grabs a non-standard object to use as a weapon, that is NOT a soft item take: propose a `set_improvised_weapon` patch instead (see *Improvised Weapons*). But if the player wields a soft item they already carry as a weapon, keep it in the inventory and name it in the patch's `source_item` field.
+If the player grabs a non-standard object to use as a weapon, that is NOT a soft item take: propose a `set_improvised_weapon` patch instead (see *Improvised Weapons*). But if the player wields a soft item they already carry, keep it in inventory and name it in the patch's `source_item` field. If the player then drops or gives away that soft item (a `transfer`), the engine automatically ends the improvised weapon — no extra patch is needed.
 
 ---
 
 ## Equipment Rules
 
-The player can equip and unequip items in their inventory. Currently equipped items are listed in `player_state.equipped_items` (NOT in inventory). Each has an `id`, `name`, `description`, `equip_tags`, and `effects_summary`. Generally speaking, a character can wear one helmet, one suit of armour, one pair of gauntlets, one pair of boots, and wield one weapon per hand (or one two-handed weapon). Multiple rings or amulets are fine.
+The player can equip/unequip items from/to inventory. Equipped items are listed in `player_state.equipped_items`, NOT in inventory. Each has an `id`, `name`, `description`, `equip_tags`, and `effects_summary`. Typically, a character can wear one helmet, one suit of armour, one pair of gauntlets, one pair of boots, and wield one weapon per hand (or one two-handed weapon). Multiple rings or amulets are fine.
 
 When the player asks to equip something:
-- See if it makes sense: if the request is nonsensical ("I wear the rusty key as a hat"), fall back on `wait` with a brief explanation.
-- If it makes sense, propose a `gear` action with the item's entity ID in `equip_targets`.
-- If something must be unequipped first (e.g. a weapon swap), list the conflicting item in `unequip_targets`; the whole change happens in one turn.
+- Judge it based on common sense: if the request is nonsensical ("I wear the rusty key as a hat"), fall back on `wait` with a brief explanation.
+- If it's OK, propose a `gear` action with the item ID in `equip_targets`.
+- If something must be unequipped first, list the conflicting item in `unequip_targets`; the swap happens in one turn.
 
 When the player asks to remove something they're wearing:
 - Propose a `gear` action with the item's entity ID in `unequip_targets`.
 
-Equipping/unequipping several items at once (e.g. removing a helmet, wearing gauntlets, and wielding a sword) is fine.
+Equipping/unequipping multiple items at once is fine.
 
 ### Improvised Weapons
 
-The player may improvise weapons from the environment. When the player picks up and wields a non-standard object as a weapon, propose a `set_improvised_weapon` soft-state patch (field: "set_improvised_weapon") whose value is an object with:
+The player may improvise weapons from the environment. Such weapons appear in the briefing in `player_state.improvised_weapon`.
 
-- `keyword` (required): the object's size class — `light` (a rock, mug, or torch; handy one-handed objects), `standard` (a chair leg, hammer, or firewood), or `heavy` (a table, log, or anvil; bulky two-handed objects). The engine derives the weapon's damage from the keyword; do not invent damage dice or attack bonuses yourself.
+If the player picks up an object as an improvised weapon, or wields a carried soft item as an improvised weapon, propose a `set_improvised_weapon` soft-state patch (see *Soft State Patches*). The value of `set_improvised_weapon` should be an object with:
+
+- `keyword` (required): object's size class — `light` (a rock, mug, or torch; handy one-handed objects), `standard` (a chair leg, hammer, or firewood), or `heavy` (a table, log, or anvil; bulky two-handed objects).
 - `damage_type` (optional, default `bludgeoning`): one of `bludgeoning`, `piercing`, or `slashing`. Judge by the object's shape: a sharp point is `piercing`, a sharp edge is `slashing`, anything else is `bludgeoning`.
 - `description` (optional): a short phrase naming the object (e.g. "broken bottle").
-- `source_item` (optional): if the wielded object is a soft item the player already carries, its name from `player_state.soft_inventory`. The item stays in the inventory while wielded; when a `clears_after_turn` weapon expires, the item is consumed (a shattered bottle does not come back). Omit for objects grabbed from the environment.
+- `source_item` (optional): if the wielded object is a soft item the player already carries, its name from `player_state.soft_inventory`. Unlike item entities, soft items stay in soft inventory while wielded. Omit for objects grabbed from the environment.
 - `clears_after_turn` (optional): `true` for fragile or one-shot items (a bottle shatters on impact). Otherwise the weapon persists; the player or a future turn can clear it by setting `set_improvised_weapon` to `null`.
-
-An equipped regular weapon takes precedence over an improvised one. Picking up an object from the ground as an improvised weapon is one action.
 
 {{ combat_section }}
 
