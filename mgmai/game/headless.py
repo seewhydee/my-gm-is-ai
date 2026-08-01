@@ -69,6 +69,10 @@ class StatusSnapshot:
     #                 "fled": bool}}
     combatants: dict[str, dict[str, Any]] = field(default_factory=dict)
     active_flags: dict[str, bool] = field(default_factory=dict)
+    # Dialogue soft state for this turn: {"active_npc", "attitude",
+    # "topics_discussed", "stall_counter", "entered_turn", "log_length"}.
+    # Empty dict when no dialogue state is available.
+    dialogue: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -80,6 +84,7 @@ class StatusSnapshot:
             "player_max_hp": self.player_max_hp,
             "combatants": self.combatants,
             "active_flags": self.active_flags,
+            "dialogue": self.dialogue,
         }
 
 
@@ -238,6 +243,23 @@ def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
                 "impeded": cid in (combat.impeded or []),
             }
 
+    dialogue: dict[str, Any] = {}
+    soft = state_manager.soft_state
+    if soft is not None:
+        ds = soft.dialogue_state
+        dialogue = {
+            "active_npc": ds.active_npc,
+            "attitude": (
+                hard.entity_states.get(ds.active_npc, {}).get("attitude")
+                if ds.active_npc is not None
+                else None
+            ),
+            "topics_discussed": list(ds.topics_discussed),
+            "stall_counter": ds.stall_counter,
+            "entered_turn": ds.entered_turn,
+            "log_length": len(ds.conversation_log),
+        }
+
     return StatusSnapshot(
         turn_count=hard.turn_count,
         location=hard.player.location,
@@ -247,6 +269,7 @@ def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
         player_max_hp=hard.player.max_hp,
         combatants=combatants,
         active_flags={k: v for k, v in hard.flags.items() if v},
+        dialogue=dialogue,
     )
 
 
