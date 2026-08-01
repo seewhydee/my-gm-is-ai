@@ -220,6 +220,18 @@ def run_scenario(
                 "equipped": list(hard.player.equipped),
                 "abilities": list(hard.player.abilities),
             }
+        # Augment with soft state so conversation tests can inspect NPC
+        # memory (entity_notes), knowledge reveals, and the final
+        # dialogue state without relying on flags alone.
+        soft = session.soft_state
+        if soft is not None:
+            final_snapshot["entity_notes"] = {
+                eid: list(notes) for eid, notes in soft.entity_notes.items()
+            }
+            final_snapshot["player_knowledge"] = [
+                entry.model_dump() for entry in soft.player_knowledge
+            ]
+            final_snapshot["dialogue_state"] = soft.dialogue_state.model_dump()
         result.final_status = final_snapshot
 
         # Write the artifact regardless of pass/fail.

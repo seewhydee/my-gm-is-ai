@@ -218,6 +218,20 @@ def _format_situation(session: HeadlessSession) -> str:
             parts.append("Out of the fight: " + ", ".join(gone) + ".")
     else:
         parts.append(f"Not in combat. Player HP {snap.player_hp}/{snap.player_max_hp}.")
+        # Announce the active conversation partner so the driver can
+        # steer multi-topic dialogue sensibly.
+        dialogue = snap.dialogue or {}
+        active_npc = dialogue.get("active_npc")
+        if active_npc:
+            name = active_npc
+            ent = session.corpus.entities.get(active_npc) if session.corpus else None
+            if ent is not None and ent.name:
+                name = ent.name
+            conv = f"In conversation with {name}."
+            topics = dialogue.get("topics_discussed") or []
+            if topics:
+                conv += " Topics discussed: " + ", ".join(topics) + "."
+            parts.append(conv)
     if snap.active_flags:
         parts.append("Flags: " + ", ".join(snap.active_flags.keys()) + ".")
 
