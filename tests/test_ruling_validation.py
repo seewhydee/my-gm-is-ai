@@ -29,6 +29,7 @@ from mgmai.models.actions import (
     MoveAction,
     PositioningAssertion,
     TalkAction,
+    TransferAction,
     UseAbilityAction,
     WaitAction,
 )
@@ -937,3 +938,159 @@ class TestSoftPatchValidation:
             validate_ruling_action(action, briefing, state_manager.corpus)
             is None
         )
+
+
+class TestBudgetValidation:
+    """Budget-aware ruling validation (§3.3, §4.1a, §4.2): second actions,
+    second bonus actions, and second free interactions are rejected."""
+
+    @staticmethod
+    def _spent_briefing(
+        *,
+        action_available=True, bonus_action_available=True,
+        free_interaction_available=True,
+        usable_items=None,
+        abilities=None,
+    ) -> GMBriefing:
+        briefing = _combat_briefing(abilities=abilities)
+        briefing.combat_state.action_available = action_available
+        briefing.combat_state.bonus_action_available = bonus_action_available
+        briefing.combat_state.bonus_action_options = (
+            ["healing_word"] if bonus_action_available else []
+        )
+        briefing.combat_state.free_interaction_available = free_interaction_available
+        if usable_items is not None:
+            briefing.combat_state.usable_items = usable_items
+        return briefing
+
+    def test_second_action_rejected(self):
+        briefing = self._spent_briefing(action_available=False)
+        error = validate_ruling_action(_combat("attack", "goblin"), briefing)
+        assert error is not None
+        assert "no action left" in error
+
+    def test_second_action_transfer_rejected(self):
+        briefing = self._spent_briefing(action_available=False)
+        error = validate_ruling_action(
+            TransferAction(
+                action_type="transfer", target="current_room",
+                taken_items=["gem"], detail="test",
+            ),
+            briefing,
+        )
+        assert error is not None
+        assert "no action left" in error
+
+    def test_second_bonus_action_rejected(self):
+        abilities = [
+            {"id": "healing_word", "name": "Healing Word",
+             "description": "A word.", "target": "ally",
+             "uses_remaining": 1, "effect": "Heal 2d4",
+             "spell_level": 1, "casting_time": "bonus_action"},
+        ]
+        briefing = self._spent_briefing(
+            bonus_action_available=False, abilities=abilities,
+        )
+        error = validate_ruling_action(
+            _use_ability("healing_word", "player"), briefing
+        )
+        assert error is not None
+        assert "bonus action was already used" in error
+
+    def test_bonus_action_not_in_legal_set_rejected(self):
+        abilities = [
+            {"id": "healing_word", "name": "Healing Word",
+             "description": "A word.", "target": "ally",
+             "uses_remaining": 0, "effect": "Heal 2d4",
+             "spell_level": 1, "casting_time": "bonus_action"},
+        ]
+        # A DIFFERENT legal BA exists (fire_bolt cantrip), so the bonus
+        # action is available — but healing_word itself is out of uses.
+        briefing = self._spent_briefing(
+            abilities=abilities,
+        )
+        briefing.combat_state.bonus_action_options = ["fire_bolt"]
+        error = validate_ruling_action(
+            _use_ability("healing_word", "player"), briefing
+        )
+        assert error is not None
+        assert "not a legal bonus-action option" in error
+
+    def test_gear_with_no_budget_rejected(self):
+        briefing = self._spent_briefing(
+            action_available=False, free_interaction_available=False,
+        )
+        error = validate_ruling_action(
+            _gear(equip_targets=["sword"]), briefing
+        )
+        assert error is not None
+        assert "no object interaction remains" in error
+
+    def test_gear_with_free_interaction_available_passes(self):
+        briefing = self._spent_briefing(
+            action_available=False, free_interaction_available=True,
+        )
+        assert (
+            validate_ruling_action(_gear(equip_targets=["sword"]), briefing)
+            is None
+        )
+
+    def test_second_free_interaction_rejected(self):
+        briefing = self._spent_briefing(free_interaction_available=False)
+        error = validate_ruling_action(
+            InteractAction(
+                action_type="interact", target="goblin",
+                interaction_id="pull_lever", detail="test",
+                interaction_cost="free",
+            ),
+            briefing,
+        )
+        assert error is not None
+        assert "already used" in error
+
+    def test_potion_free_interaction_rejected(self):
+        briefing = self._spent_briefing()
+        error = validate_ruling_action(
+            InteractAction(
+                action_type="interact", target="health_potion",
+                interaction_id="drink", detail="test",
+                interaction_cost="free",
+            ),
+            briefing,
+        )
+        assert error is not None
+        assert "always require an action" in error
+
+    def test_carried_item_free_interaction_rejected(self):
+        """Mirrors the engine-side rule: any carried item (not just
+        usable_items) always requires an action to use."""
+        briefing = self._spent_briefing()
+        briefing.player_state.hard_inventory = {"torch": 1}
+        error = validate_ruling_action(
+            InteractAction(
+                action_type="interact", target="torch",
+                interaction_id="wave", detail="test",
+                interaction_cost="free",
+            ),
+            briefing,
+        )
+        assert error is not None
+        assert "always require an action" in error
+
+    def test_attack_carried_equip_without_free_interaction_rejected(self):
+        briefing = self._spent_briefing(free_interaction_available=False)
+        action = CombatAction(
+            action_type="combat", combat_action="attack",
+            target="goblin", equip_target="sword", detail="test",
+        )
+        error = validate_ruling_action(action, briefing)
+        assert error is not None
+        assert "free object interaction was already used" in error
+
+    def test_attack_carried_equip_passes_when_free_available(self):
+        briefing = self._spent_briefing()
+        action = CombatAction(
+            action_type="combat", combat_action="attack",
+            target="goblin", equip_target="sword", detail="test",
+        )
+        assert validate_ruling_action(action, briefing) is None

@@ -30,11 +30,13 @@ from __future__ import annotations
 
 from mgmai.models.actions import (
     CombatAction,
+    ExamineAction,
     GearAction,
     InteractAction,
     MoveAction,
     RestAction,
     TalkAction,
+    TransferAction,
     UseAbilityAction,
     WaitAction,
 )
@@ -240,7 +242,8 @@ def _validate_gear(action: GearAction, briefing: GMBriefing) -> str | None:
 
     The briefing exposes ``equip_tags`` only for currently equipped
     items, so only unequip targets can be judged here; equip targets are
-    left to the engine (when in doubt, return ``None``).
+    left to the engine (when in doubt, return ``None``).  The budget is
+    checked in :func:`_validate_budget`.
     """
     tags_by_id = {
         item.id: set(item.equip_tags)
@@ -257,6 +260,153 @@ def _validate_gear(action: GearAction, briefing: GMBriefing) -> str | None:
                 f"and 'unequip_targets' to weapons, or rule the attempt "
                 f"as 'wait'."
             )
+    return None
+
+
+def _validate_budget(action, briefing: GMBriefing) -> str | None:
+    """Reject actions that consume budget the player no longer has (§3.3).
+
+    Each action's cost is judged against the briefing's remaining budget
+    (``action_available`` / ``bonus_action_available`` /
+    ``free_interaction_available``, derived from ``CombatState``): a
+    second action, a second bonus action, or a second free interaction
+    with the corrective retry.
+    """
+    combat = briefing.combat_state
+    if combat is None:
+        return None
+
+    action_used = not combat.action_available
+    ba_used = not combat.bonus_action_available
+    free_used = not combat.free_interaction_available
+
+    def _no_action(what: str) -> str:
+        return (
+            f"Invalid {what}: the player has no action left this turn. "
+            f"Rule the attempt as 'wait' (pass, ending the turn), or if "
+            f"the bonus action is still available, a bonus-action ability "
+            f"instead."
+        )
+
+    if isinstance(action, CombatAction):
+        if (
+            action.combat_action != "maneuver"
+            and (action.equip_target is not None or action.unequip_target is not None)
+            and free_used
+        ):
+            # Attack-carried equip/unequip always costs the free object
+            # interaction (§4.2).
+            return (
+                "Invalid attack-carried equip: the free object "
+                "interaction was already used this turn. Do not attach "
+                "equip_target/unequip_target to the attack."
+            )
+        if action_used:
+            return _no_action("combat action")
+    elif isinstance(action, UseAbilityAction):
+        entry = next(
+            (
+                a
+                for a in combat.abilities
+                if str(a.get("id")) == action.ability_id
+            ),
+            None,
+        )
+        casting_time = (
+            (entry.get("casting_time") or "action") if entry else "action"
+        )
+        if casting_time == "bonus_action":
+            if ba_used:
+                return (
+                    f"Invalid use_ability '{action.ability_id}': the bonus "
+                    f"action was already used this turn, or no legal "
+                    f"bonus-action option remains. Cast it as the main "
+                    f"action instead (or rule a different action)."
+                )
+            if combat.bonus_action_options and (
+                action.ability_id not in combat.bonus_action_options
+            ):
+                return (
+                    f"Invalid use_ability '{action.ability_id}': it is not "
+                    f"a legal bonus-action option right now (see "
+                    f"bonus_action_options)."
+                )
+        elif action_used:
+            return _no_action("use_ability")
+    elif isinstance(action, MoveAction):
+        if action_used:
+            return _no_action("move (flee)")
+    elif isinstance(action, TransferAction):
+        if action_used:
+            return _no_action("transfer")
+    elif isinstance(action, ExamineAction):
+        if action.rigorous and action_used:
+            return _no_action("rigorous examine")
+    elif isinstance(action, InteractAction):
+        cost = getattr(action, "interaction_cost", "action") or "action"
+        if cost == "free":
+            if free_used:
+                return (
+                    "Invalid interaction_cost \"free\": the free object "
+                    "interaction was already used this turn. Rule it as an "
+                    "action-cost interaction (interaction_cost \"action\") "
+                    "if the action is still available."
+                )
+            usable_ids = {
+                str(u.get("id"))
+                for u in combat.usable_items
+                if u.get("id") is not None
+            }
+            # Mirrors the engine-side rule (resolver
+            # _resolve_combat_environmental): an interaction with a
+            # carried item — potions and other usable items included —
+            # always requires an action.
+            carried_ids = set(briefing.player_state.hard_inventory) | {
+                item.id for item in briefing.player_state.equipped_items
+            }
+            if action.target in usable_ids or action.target in carried_ids:
+                return (
+                    f"Invalid interaction_cost \"free\" on "
+                    f"'{action.target}': items you carry (potions and "
+                    f"other usable items) always require an action to "
+                    f"use. Set interaction_cost to \"action\"."
+                )
+        elif action_used:
+            return _no_action("interact")
+    elif isinstance(action, GearAction):
+        if free_used and action_used:
+            return (
+                "Invalid gear action: no object interaction remains this "
+                "turn (the free interaction and the action are both used). "
+                "Rule the attempt as 'wait' (pass, ending the turn)."
+            )
+    return None
+
+
+def validate_improvised_weapon_budget(action, briefing: GMBriefing) -> str | None:
+    """Soft-fail check for the optional ``set_improvised_weapon`` pickup.
+
+    Picking up an improvised weapon consumes an object interaction (§4.3).
+    Mirrors the engine backstop; like :func:`validate_positioning_assertion`,
+    an error here strips the patch (never the corrective retry) so the core
+    action proceeds.
+    """
+    combat = briefing.combat_state
+    if combat is None:
+        return None
+    patches = getattr(action, "soft_state_patches", None) or []
+    if not any(
+        p.field == "set_improvised_weapon" and p.new_value is not None
+        for p in patches
+    ):
+        return None
+    if not combat.free_interaction_available and not combat.action_available:
+        return (
+            "The set_improvised_weapon pickup consumes an object "
+            "interaction, and both the free interaction and the action are "
+            "already used this turn — the pickup cannot be part of this "
+            "action."
+        )
     return None
 
 
@@ -327,6 +477,11 @@ def validate_ruling_action(action, briefing: GMBriefing, corpus=None) -> str | N
         if isinstance(action, UseAbilityAction):
             return _validate_use_ability(action, briefing)
         return None
+    # Budget-aware rejection (second action / second bonus action / second
+    # free interaction) runs before the target-level checks.
+    budget_error = _validate_budget(action, briefing)
+    if budget_error is not None:
+        return budget_error
     if isinstance(action, CombatAction):
         if action.combat_action == "attack":
             return _validate_attack(action, briefing)

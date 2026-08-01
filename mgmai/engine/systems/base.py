@@ -317,7 +317,7 @@ class ResolutionSystem(ABC):
         return False, False
 
     def player_attack_is_ranged(
-        self, hard: HardGameState, corpus: ModuleCorpus
+        self, hard: HardGameState, corpus: ModuleCorpus, weapon_id: str | None = None
     ) -> bool:
         """Whether the player's attack with the equipped weapon is ranged.
         Default: False (melee/unarmed)."""
@@ -353,6 +353,7 @@ class ResolutionSystem(ABC):
         target_ac: int,
         round_number: int,
         soft: Any | None = None,
+        weapon_id: str | None = None,
     ) -> PlayerAttackResult:
         """Resolve a player attack against target_id.
 
@@ -360,7 +361,9 @@ class ResolutionSystem(ABC):
         system computes the attack modifier, rolls to hit, determines
         hit/miss/critical, rolls damage, and returns log entries. It must not
         mutate ``hard``.  ``soft`` (when provided) lets the attack use a
-        wielded improvised weapon's stats.
+        wielded improvised weapon's stats.  ``weapon_id`` (when given)
+        selects which equipped weapon is used; absent, the first equipped
+        weapon applies.
         """
 
     @abstractmethod

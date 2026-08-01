@@ -221,6 +221,18 @@ class CombatBriefing(BaseModel):
     # Spell level -> slots remaining (empty when the player has no
     # leveled spells; cantrips cost nothing).
     spell_slots: dict[int, int] = Field(default_factory=dict)
+    # Remaining per-turn budget (SRD 5.2.1): whether the player's action,
+    # bonus action, and free object interaction are still available this
+    # turn.  bonus_action_available is only True when at least one legal
+    # bonus-action option is available (a cheap §3.3 roster check), and
+    # bonus_action_options lists those legal ability ids.  reaction_available
+    # is whether the player's reaction (e.g. an opportunity attack) is
+    # still available this round.
+    action_available: bool = True
+    bonus_action_available: bool = True
+    bonus_action_options: list[str] = Field(default_factory=list)
+    free_interaction_available: bool = True
+    reaction_available: bool = True
 
 
 class GMBriefing(BaseModel):

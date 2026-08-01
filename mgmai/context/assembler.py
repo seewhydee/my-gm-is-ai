@@ -319,12 +319,15 @@ def _ability_briefing_entry(
         "uses_remaining": uses_remaining,  # null = unlimited
         "effect": ability.effect_summary(),
         "effect_kind": effect_kind,
+        # The ability's casting time drives its budget cost in combat
+        # (bonus-action abilities consume the bonus action, everything
+        # else the action).  Exposed for every ability, not just spells.
+        "casting_time": ability.casting_time,
     }
     if ability.spell_level is not None:
         entry["spell_level"] = ability.spell_level
         entry["concentration"] = ability.concentration
         entry["slot_level"] = ability.spell_level
-        entry["casting_time"] = ability.casting_time
         if ability.save is not None:
             entry["save_dc"] = system.compute_spell_save_dc(hard)
     return entry
@@ -426,6 +429,14 @@ def _build_combat_state(
             _ability_briefing_entry(aid, ability, system, hard, remaining)
         )
 
+    # The remaining per-turn budget (SRD 5.2.1) is derived from CombatState
+    # — never from chat history.  The legal bonus-action option set is the
+    # §3.3 cheap roster check; the auto-end rule uses the same set.
+    from mgmai.engine.combat import legal_bonus_action_ability_ids
+
+    budget = combat.player_budget
+    ba_ids = legal_bonus_action_ability_ids(combat, hard, corpus)
+
     return CombatBriefing(
         round_number=combat.round_number,
         initiative_order=list(initiative),
@@ -434,4 +445,9 @@ def _build_combat_state(
         usable_items=usable_items,
         abilities=abilities,
         spell_slots=dict(hard.player.spell_slots),
+        action_available=not budget.action_used,
+        bonus_action_available=(not budget.bonus_action_used) and bool(ba_ids),
+        bonus_action_options=ba_ids,
+        free_interaction_available=not budget.free_interaction_used,
+        reaction_available="player" not in combat.reactions_spent,
     )

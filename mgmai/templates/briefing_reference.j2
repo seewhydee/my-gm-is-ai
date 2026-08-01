@@ -86,6 +86,9 @@ To target the current room itself in a player action (`examine`,
 | `round_number`, `initiative_order`, `current_actor` | Turn order state |
 | `combatants` | Entries with `id`, `name`, `side`, `current_hp`, `max_hp`, `status_effects`, `engaged_with`, `impeded`, `impede_used` — `side` is `"party"` (the player and their allies) or `"enemy"` (hostiles); `engaged_with` lists combatants currently within melee reach; `impeded` means a pending obstacle delay will consume that combatant's next turn; `impede_used` means it has already been impeded this combat |
 | `abilities`, `spell_slots`, `usable_items` | Same shape as in `player_state`, but `abilities[].uses_remaining` tracks per-combat use. During combat these are the authoritative copies |
+| `action_available`, `bonus_action_available`, `free_interaction_available` | The player's remaining per-turn budget (SRD 5.2.1): whether the action, the bonus action, and the one free object interaction are still unused this turn. The turn stays open after a resolved action while meaningful budget remains (see the Combat section) |
+| `bonus_action_options` | Ids of the player's bonus-action abilities that are currently legal (uses/slot remaining, target available) — the only valid `use_ability` choices when the player wants to use their bonus action |
+| `reaction_available` | Whether the player still has their reaction (e.g. an opportunity attack) this round |
 
 ### dialogue_context (present only during conversation)
 

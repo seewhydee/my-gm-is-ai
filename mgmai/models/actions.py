@@ -76,6 +76,12 @@ class InteractAction(_BaseAction):
     target: str
     interaction_id: str
     using: str | None = None
+    # In combat: whether this object interaction costs the action
+    # (``"action"`` — the Utilize action, the default) or is the player's
+    # one free object interaction per turn (``"free"``).  Potions and other
+    # ``usable_items`` interactions are always action-cost; the ruling
+    # layer enforces this.
+    interaction_cost: Literal["action", "free"] = "action"
 
 
 class TalkAction(_BaseAction):
@@ -132,12 +138,24 @@ class CombatAction(_BaseAction):
     combat_action: Literal["attack", "maneuver"]
     target: str | None = None
     maneuver: Literal["disengage"] | None = None
+    # Attack-carried weapon equip/unequip (SRD: "You can either equip or
+    # unequip one weapon when you make an attack as part of this action").
+    # At most one of the two may be set; applied to the player's gear
+    # immediately before the attack roll, costing the free interaction.
+    equip_target: str | None = None
+    unequip_target: str | None = None
 
     @model_validator(mode="after")
     def check_target_requirement(self) -> CombatAction:
         if self.combat_action != "maneuver" and not self.target:
             raise ValueError(
                 f"combat action '{self.combat_action}' requires a target"
+            )
+        if self.equip_target is not None and self.unequip_target is not None:
+            raise ValueError(
+                "combat action cannot both equip and unequip a weapon "
+                "with the same action (SRD: either equip or unequip one "
+                "weapon)"
             )
         return self
 

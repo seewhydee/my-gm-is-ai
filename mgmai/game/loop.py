@@ -115,7 +115,7 @@ class GameLoop:
         self._chat_log: list[dict[str, str]] = []
         self._config_dir = Path(config_dir) if config_dir else None
         self._prose_validation_enabled = prose_validation_enabled
-        self._positioning_warning: str | None = None
+        self._positioning_warning: list[str] = []
         # Active rest-mode controller, or None during normal play.  Set
         # when a rest action resolves successfully; cleared when the
         # player picks *done* in the rest menu.
@@ -321,11 +321,12 @@ class GameLoop:
             chain_depth=chain_depth,
             player_input_echo=original_input,
         )
-        # Surface a stripped positioning assertion as a result warning so
-        # the ruling model can learn from the mistake on a later turn.
-        if self._positioning_warning is not None:
-            result.warnings.append(self._positioning_warning)
-            self._positioning_warning = None
+        # Surface stripped embellishments (positioning assertion,
+        # improvised-weapon pickup) as result warnings so the ruling model
+        # can learn from the mistake on a later turn.
+        if self._positioning_warning:
+            result.warnings.extend(self._positioning_warning)
+            self._positioning_warning = []
         self._last_result = result
         self._last_action = action
 
@@ -460,6 +461,7 @@ class GameLoop:
 
     def _call_ruling(self, briefing):
         from mgmai.llm.ruling_validation import (
+            validate_improvised_weapon_budget,
             validate_positioning_assertion,
             validate_ruling_action,
         )
@@ -469,7 +471,7 @@ class GameLoop:
             include_combat=briefing.combat_state is not None
         )
         user_prompt = briefing.compact_dump_json(indent=None)
-        self._positioning_warning = None
+        self._positioning_warning = []
 
         raw = self._llm.call_ruling(system_prompt, user_prompt)
         log.debug("--- LLM Call 1 raw ---\n%s", raw)
@@ -486,8 +488,9 @@ class GameLoop:
             )
 
         if error is None:
-            return self._strip_invalid_positioning(
-                action, briefing, validate_positioning_assertion
+            return self._strip_invalid_embellishments(
+                action, briefing, validate_positioning_assertion,
+                validate_improvised_weapon_budget,
             )
 
         log.debug("LLM Call 1 retry after invalid ruling: %s", error)
@@ -503,8 +506,9 @@ class GameLoop:
             raise LLMOutputError(
                 f"Ruling still semantically invalid after retry: {semantic_error}"
             )
-        return self._strip_invalid_positioning(
-            action, briefing, validate_positioning_assertion
+        return self._strip_invalid_embellishments(
+            action, briefing, validate_positioning_assertion,
+            validate_improvised_weapon_budget,
         )
 
     def _strip_invalid_positioning(self, action, briefing, validate_fn):
@@ -523,7 +527,28 @@ class GameLoop:
             return action
         log.warning("Stripping invalid positioning assertion: %s", error)
         action.positioning = None
-        self._positioning_warning = f"positioning assertion ignored: {error}"
+        self._positioning_warning.append(f"positioning assertion ignored: {error}")
+        return action
+
+    def _strip_invalid_embellishments(
+        self, action, briefing, positioning_fn, improvised_fn
+    ):
+        """Soft-fail for optional embellishments: the ``positioning`` block
+        and a ``set_improvised_weapon`` pickup.  Neither is a required
+        field, so an invalid one is stripped — never a corrective retry —
+        and a warning is stashed so the turn's EngineResult surfaces it."""
+        action = self._strip_invalid_positioning(action, briefing, positioning_fn)
+        error = improvised_fn(action, briefing)
+        if error is None:
+            return action
+        log.warning("Stripping invalid improvised-weapon pickup: %s", error)
+        patches = list(action.soft_state_patches or [])
+        action.soft_state_patches = [
+            p
+            for p in patches
+            if not (p.field == "set_improvised_weapon" and p.new_value is not None)
+        ]
+        self._positioning_warning.append(f"improvised-weapon pickup ignored: {error}")
         return action
 
     def _call_prose(self, briefing, action, result, *, indicators=None):

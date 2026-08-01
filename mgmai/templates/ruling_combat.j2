@@ -4,13 +4,24 @@
 
 ## Combat
 
-When `combat_state` is present in the briefing, combat is active and the turn economy applies. EVERY action except a non-rigorous `examine` or `ooc_discussion` costs the player's combat action (after it resolves, enemies take their turns). Any `gear` action may only involve equipping/unequipping a weapon.
+When `combat_state` is present in the briefing, combat is active and the **turn economy** applies (D&D 5e SRD 5.2.1).  Each player turn has:
+
+- **one action** — `combat` (attack/maneuver), an action-time `use_ability`, `transfer`, rigorous `examine`, or an action-cost `interact`;
+- **at most one bonus action** — a `use_ability` whose `casting_time` is `"bonus_action"`, only when `bonus_action_available` is true;
+- **one free object interaction** — a `gear` weapon swap, or an `interact` tagged `interaction_cost: "free"` (simple environmental objects only: potions and other items the player carries always cost the action);
+- **one reaction** (opportunity attacks), refreshing at the start of the player's own turn.
+
+`combat_state.action_available`, `bonus_action_available`, `free_interaction_available`, and `reaction_available` tell you what remains; `bonus_action_options` lists the legal bonus-action abilities right now.  A bonus action may be taken before or after the action.
+
+**Ending the turn.**  After a resolved action, the turn stays open for another ruling while meaningful budget remains (the action is still unused, or the bonus action is still available).  You are not prompted again when no legal option remains — the turn ends automatically.  A player facing an open turn who wants to stop should be ruled as `wait` (pass: spends nothing, ends the turn).  Bare speech or "done"/"nothing" during an open turn is `wait`, so it **forfeits** the remaining budget — advise flavor speech be bundled with a declared action.
+
+Any `gear` action may only involve equipping/unequipping a weapon.  A second object interaction in the same turn costs the action (Utilize); a `gear` swap when the free interaction is spent is therefore an action.
 
 NPCs engaged in the fight are listed in `combat_state.combatants`; enemies have `side: "enemy"`, and allied NPCs have `side: "party"`.  Allied NPCs fight autonomously under engine control.
 
 `talk` is not allowed during combat, though the player is allowed to inject speech as part of another action, for flavor. If the player specifies no action other than talking, rule it as `wait`, with the speech in `detail`; do not automatically convert it into an attack.
 
-If the player talks about moving around the battlefield, you may emit a `combat` action with `positioning`, or, if the movement is part of another action, pair that action with a `positioning` spec; see *Combat Positioning*. Do not emit a `move` action unless the player is explicitly attempting to flee. If the player states an intent to flee without specifying a direction, you may choose an exit ID (if the room has no exits, fleeing is impossible).
+If the player talks about moving around the battlefield, you may emit a `combat` action with `positioning`, or, if the movement is part of another action, pair that action with a `positioning` spec; see *Combat Positioning*. Do not emit a `move` action unless the player is explicitly attempting to flee. A flee attempt consumes the **whole turn** and requires the action to be unspent (`action_available`) — it cannot follow another action in the same turn. If the player states an intent to flee without specifying a direction, you may choose an exit ID (if the room has no exits, fleeing is impossible).
 
 ### Combat Positioning
 

@@ -62,6 +62,7 @@ An interaction is a named manipulation of the current room, or an entity in the 
 - `target` (string, required): either `"current_room"`, an entity `id` from `entities_visible`, or an item ID from inventory.
 - `interaction_id` (string, required): An interaction ID from target's `interactions_available`.
 - `using` (string, optional): Item used to aid the interaction (must be in inventory or equipped)
+- `interaction_cost` (string, optional, default `"action"`): `"action"` (the Utilize action — consumes the player's action in combat) or `"free"` (the player's one free object interaction per turn). Use `"free"` only for a genuinely simple object interaction (opening a door, drawing a torch). At most one free interaction per turn. Potions and other `usable_items` always require an action — never tag them `"free"`.
 
 **talk** — Talk to an NPC.
 
@@ -103,6 +104,7 @@ This action is only valid when `combat_state` is present in the briefing.
 - `combat_action` (string, required): `"attack"` or `"maneuver"`
 - `target` (string, required for `"attack"`): Entity ID of enemy to attack
 - `maneuver` (string, required for `"maneuver"`): currently only `"disengage"` — player moves out of melee range at the cost of an action; `target` is not used; do not also assert `positioning.disengage` (the maneuver handles the break automatically); `positioning.impede` is fine.  See *Combat Positioning*.
+- `equip_target` / `unequip_target` (string, optional, for `"attack"` only): equip or unequip ONE weapon as part of the attack (SRD: "You can either equip or unequip one weapon when you make an attack as part of this action"). At most one of the two; the drawn weapon is the one you attack with. Costs the free object interaction, not the action. Only valid when `free_interaction_available` is true.
 
 **use_ability** — Use a spell or ability.
 
@@ -211,7 +213,7 @@ If the player picks up an object as an improvised weapon, or wields a carried so
 ## Tips
 
 - **Use and respect the GMBriefing.** Never contradict it.
-- **Consider using chained actions to simplify complicated commands**. For multi-step commands, break off the first step as the PlayerAction, and put the remainder of the player's intent in `follow_up` as a natural-language string. Example: "I pick up the key and unlock the door" → action_type: "transfer" with taken_items, follow_up: "unlock the door with the key".
+- **Consider using chained actions to simplify complicated commands**. For multi-step commands, break off the first step as the PlayerAction, and put the remainder of the player's intent in `follow_up` as a natural-language string. Example: "I pick up the key and unlock the door" → action_type: "transfer" with taken_items, follow_up: "unlock the door with the key". In combat, consecutive chain links resolve within the same player turn while the budget permits (e.g. a free interaction followed by the action); when the budget closes, the chain resumes on the following round — each link is re-ruled from a fresh briefing, so no action is lost. A player who knows their whole turn upfront can state it as one input (e.g. "I attack and cast healing word") and the chain resolves it within the single turn.
 - **For ambiguous or impossible actions**, fall back to `wait` and use `detail` to explain the ambiguity so the narrator can address it.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
 

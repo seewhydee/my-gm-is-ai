@@ -145,13 +145,23 @@ def resolve(
     # action at step 6 below.
     encounter_fired_ref: list[bool] = [False]
 
+    # A combat continuation is a call that continues the same player turn
+    # (budget remains, the turn spans multiple engine calls): per-turn and
+    # game-start dispatches already ran on the first call of this player
+    # turn, so they are suppressed here to avoid double-firing reactions.
+    is_combat_continuation = (
+        hard.combat is not None and hard.combat.turn_continuation
+    )
+
     # 1a. Game-start events fire once on the first turn (turn_count == 0):
     #     adventure.start is the adventure-wide hook, and room.entered fires
     #     for the start room (events.md: "including at game start").  These
     #     run before the first action so start-room reactions apply first.
+    #     (Suppressed on a combat continuation: the first call of the turn
+    #     already fired them, and turn_count is still 0 mid-turn.)
     game_start_narration: list[str] = []
     game_start_reveals: list[str] = []
-    if hard.turn_count == 0:
+    if hard.turn_count == 0 and not is_combat_continuation:
         start_changes = HardStateChanges()
         _dispatch_events(
             [("adventure.start", {})],
@@ -170,19 +180,24 @@ def resolve(
         )
         _apply_and_merge(start_changes)
 
-    # 1. Turn-start reactions fire before the action resolves.
+    # 1. Turn-start reactions fire before the action resolves — except on
+    #    a combat continuation (the player's turn spans multiple engine
+    #    calls): turn.start already fired on the first call of this player
+    #    turn, and firing it again would double-fire turn.start reactions
+    #    per player turn.
     turn_start_changes = HardStateChanges()
     turn_start_narration: list[str] = []
     turn_start_reveals: list[str] = []
-    _dispatch_events(
-        [("turn.start", {"turn_number": hard.turn_count})],
-        hard, soft, corpus, state_manager, changes=turn_start_changes,
-        triggered_narration=turn_start_narration,
-        revealed_hints=turn_start_reveals,
-        combat_log=reaction_combat_log,
-        rolls=reaction_rolls,
-    )
-    _apply_and_merge(turn_start_changes)
+    if not is_combat_continuation:
+        _dispatch_events(
+            [("turn.start", {"turn_number": hard.turn_count})],
+            hard, soft, corpus, state_manager, changes=turn_start_changes,
+            triggered_narration=turn_start_narration,
+            revealed_hints=turn_start_reveals,
+            combat_log=reaction_combat_log,
+            rolls=reaction_rolls,
+        )
+        _apply_and_merge(turn_start_changes)
 
     # 2. Resolve the action.  Immediate reactions fire synchronously inside
     #    the resolvers and accumulate into resolution.immediate_changes.
@@ -392,6 +407,21 @@ def resolve(
     applied_patches, rejected_patches = soft_patches
     if applied_patches:
         state_manager.apply_soft_patches(applied_patches)
+        # A set_improvised_weapon pickup consumes the player's free object
+        # interaction in combat (or the action, if the free interaction was
+        # already spent) — the budget this turn, per §4.3.
+        if hard.combat is not None and hard.combat.active:
+            budget = hard.combat.player_budget
+            for patch in applied_patches:
+                if (
+                    patch.field == "set_improvised_weapon"
+                    and patch.new_value is not None
+                ):
+                    if not budget.free_interaction_used:
+                        budget.free_interaction_used = True
+                    elif not budget.action_used:
+                        budget.action_used = True
+                    break
 
     for hint in resolution.revealed_hints or []:
         if hint not in soft.revealed_hints:
@@ -653,6 +683,16 @@ def _validate_soft_patches(
 
         if patch.field == "set_improvised_weapon" and patch.new_value is not None:
             reason = _validate_improvised_weapon_value(patch.new_value, soft, corpus)
+            if reason is None and hard.combat is not None and hard.combat.active:
+                # Picking up an improvised weapon consumes the free object
+                # interaction (or, if that is spent, the action).
+                budget = hard.combat.player_budget
+                if budget.free_interaction_used and budget.action_used:
+                    reason = (
+                        "picking up an improvised weapon consumes an object "
+                        "interaction, and both the free interaction and the "
+                        "action are already used this turn"
+                    )
 
         if not patch.reason or not patch.reason.strip():
             reason = "reason is empty"

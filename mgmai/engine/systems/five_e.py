@@ -250,10 +250,25 @@ class FiveESystem(ResolutionSystem):
         return stats.get(key, 10)
 
     def _equipped_weapon(
-        self, hard: HardGameState, corpus: ModuleCorpus
+        self,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+        weapon_id: str | None = None,
     ) -> tuple[str, EquipBlock] | None:
-        """Return ``(item_id, EquipBlock)`` of the first equipped weapon,
-        else ``None``."""
+        """Return ``(item_id, EquipBlock)`` of the equipped weapon used for
+        an attack: the explicitly selected ``weapon_id`` when given (and
+        still equipped), else the first equipped weapon.  Returns ``None``
+        when no equipped weapon matches."""
+        if weapon_id is not None:
+            entity = corpus.entities.get(weapon_id)
+            if (
+                weapon_id in hard.player.equipped
+                and entity
+                and entity.equip_block
+                and "weapon" in entity.equip_block.equip_tags
+            ):
+                return weapon_id, entity.equip_block
+            return None
         for item_id in hard.player.equipped:
             entity = corpus.entities.get(item_id)
             if (
@@ -265,14 +280,18 @@ class FiveESystem(ResolutionSystem):
         return None
 
     def _equipped_weapon_block(
-        self, hard: HardGameState, corpus: ModuleCorpus
+        self,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+        weapon_id: str | None = None,
     ) -> EquipBlock | None:
-        """Return the EquipBlock of the first equipped weapon, else None."""
-        equipped = self._equipped_weapon(hard, corpus)
+        """Return the EquipBlock of the equipped weapon used for an attack
+        (explicit ``weapon_id`` or first match), else None."""
+        equipped = self._equipped_weapon(hard, corpus, weapon_id=weapon_id)
         return equipped[1] if equipped is not None else None
 
     def _player_proficient_with_weapon(
-        self, hard: HardGameState, corpus: ModuleCorpus
+        self, hard: HardGameState, corpus: ModuleCorpus, weapon_id: str | None = None
     ) -> bool:
         """Whether the player is proficient with the equipped weapon.
 
@@ -294,7 +313,7 @@ class FiveESystem(ResolutionSystem):
         A non-proficient weapon may still be used, but grants no
         proficiency bonus to the attack roll.
         """
-        equipped = self._equipped_weapon(hard, corpus)
+        equipped = self._equipped_weapon(hard, corpus, weapon_id=weapon_id)
         if equipped is None:
             return True
         item_id, block = equipped
@@ -311,13 +330,15 @@ class FiveESystem(ResolutionSystem):
                 return True
         return False
 
-    def _weapon_attack_stat(self, hard: HardGameState, corpus: ModuleCorpus) -> str:
+    def _weapon_attack_stat(
+        self, hard: HardGameState, corpus: ModuleCorpus, weapon_id: str | None = None
+    ) -> str:
         """Ability score for the equipped weapon's attack and damage rolls.
 
         ``ranged`` weapons use DEX; ``finesse`` weapons use the better of
         STR and DEX; everything else uses STR.
         """
-        weapon = self._equipped_weapon_block(hard, corpus)
+        weapon = self._equipped_weapon_block(hard, corpus, weapon_id=weapon_id)
         props = weapon.properties if weapon else []
         if "ranged" in props:
             return "DEX"
@@ -327,15 +348,21 @@ class FiveESystem(ResolutionSystem):
             return "DEX" if dex_mod > str_mod else "STR"
         return "STR"
 
-    def player_attack_is_ranged(self, hard: HardGameState, corpus: ModuleCorpus) -> bool:
+    def player_attack_is_ranged(
+        self, hard: HardGameState, corpus: ModuleCorpus, weapon_id: str | None = None
+    ) -> bool:
         """Whether the player's attack with the equipped weapon is ranged
         (5e: the weapon's ``properties`` carry ``ranged``).  Unarmed and
         improvised weapons count as melee."""
-        weapon = self._equipped_weapon_block(hard, corpus)
+        weapon = self._equipped_weapon_block(hard, corpus, weapon_id=weapon_id)
         return weapon is not None and "ranged" in weapon.properties
 
     def compute_player_attack_bonus(
-        self, hard: HardGameState, corpus: ModuleCorpus, soft: object | None = None
+        self,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+        soft: object | None = None,
+        weapon_id: str | None = None,
     ) -> int:
         """5e attack bonus: weapon ability mod + proficiency (when
         proficient with the weapon) + weapon bonuses.
@@ -348,11 +375,14 @@ class FiveESystem(ResolutionSystem):
         """
         stats = hard.player.stats
         stat_mod = self.compute_modifier(
-            self._player_stat(stats, self._weapon_attack_stat(hard, corpus))
+            self._player_stat(stats, self._weapon_attack_stat(hard, corpus, weapon_id))
         )
 
         # Improvised weapon (only when no real weapon is equipped).
-        if self._equipped_weapon_block(hard, corpus) is None and soft is not None:
+        if (
+            self._equipped_weapon_block(hard, corpus, weapon_id=weapon_id) is None
+            and soft is not None
+        ):
             from mgmai.models.soft_state import SoftGameState
 
             if (
@@ -362,10 +392,17 @@ class FiveESystem(ResolutionSystem):
                 return stat_mod + soft.improvised_weapon.hit_bonus
 
         prof = 0
-        if self._player_proficient_with_weapon(hard, corpus):
+        if self._player_proficient_with_weapon(hard, corpus, weapon_id):
             prof = getattr(hard.player, "proficiency_bonus", None) or 2
+        # Hit bonuses of equipped weapons.  When the attack names its
+        # weapon explicitly (``weapon_id`` — e.g. attack-carried equip),
+        # only that weapon's bonus applies: a second equipped weapon must
+        # not leak its bonus into the attack.  Without an explicit weapon
+        # the historical sum over all equipped weapons is kept.
         weapon_bonus = 0
         for item_id in hard.player.equipped:
+            if weapon_id is not None and item_id != weapon_id:
+                continue
             entity = corpus.entities.get(item_id)
             if (
                 entity
@@ -376,12 +413,16 @@ class FiveESystem(ResolutionSystem):
         return stat_mod + prof + weapon_bonus
 
     def compute_player_damage_type(
-        self, hard: HardGameState, corpus: ModuleCorpus, soft: object | None = None
+        self,
+        hard: HardGameState,
+        corpus: ModuleCorpus,
+        soft: object | None = None,
+        weapon_id: str | None = None,
     ) -> str:
         """Damage type of the player's equipped weapon, or of the wielded
         improvised weapon when no real weapon is equipped ("" when untyped —
         unarmed and legacy weapons apply no type modifiers)."""
-        weapon = self._equipped_weapon_block(hard, corpus)
+        weapon = self._equipped_weapon_block(hard, corpus, weapon_id=weapon_id)
         if weapon is not None:
             return weapon.damage_type
         if soft is not None:
@@ -551,16 +592,17 @@ class FiveESystem(ResolutionSystem):
         hard: HardGameState,
         corpus: ModuleCorpus,
         soft: object | None = None,
+        weapon_id: str | None = None,
     ) -> str:
         """5e damage expression: weapon dice + ability mod, or unarmed."""
         stats = hard.player.stats
         str_mod = self.compute_modifier(self._player_stat(stats, "STR"))
 
         # Equipped weapon (ability mod per its properties)
-        weapon = self._equipped_weapon_block(hard, corpus)
+        weapon = self._equipped_weapon_block(hard, corpus, weapon_id=weapon_id)
         if weapon is not None:
             stat_mod = self.compute_modifier(
-                self._player_stat(stats, self._weapon_attack_stat(hard, corpus))
+                self._player_stat(stats, self._weapon_attack_stat(hard, corpus, weapon_id))
             )
             return (
                 f"{weapon.damage_expr}+{stat_mod}"
@@ -598,13 +640,14 @@ class FiveESystem(ResolutionSystem):
         target_ac: int,
         round_number: int,
         soft: object | None = None,
+        weapon_id: str | None = None,
     ) -> PlayerAttackResult:
         """Resolve a player melee attack against target_id."""
         entity = corpus.entities.get(target_id)
         if entity is None or entity.combat is None:
             raise ValueError(f"Invalid combat target '{target_id}'")
 
-        atk_bonus = self.compute_player_attack_bonus(hard, corpus, soft)
+        atk_bonus = self.compute_player_attack_bonus(hard, corpus, soft, weapon_id)
         player_effects = get_status_effects("player", hard)
         target_effects = get_status_effects(target_id, hard)
         engaged_with_target = self._pair_engaged(hard, "player", target_id)
@@ -613,9 +656,9 @@ class FiveESystem(ResolutionSystem):
         )
         # Ranged attacks in close combat: Disadvantage while within reach
         # of a living, non-incapacitated enemy.
-        if self.player_attack_is_ranged(hard, corpus) and self._close_combat_threat(
-            "player", hard, corpus
-        ):
+        if self.player_attack_is_ranged(
+            hard, corpus, weapon_id
+        ) and self._close_combat_threat("player", hard, corpus):
             disadv = True
         attack_roll = self.roll_die(20, advantage=adv, disadvantage=disadv)
         attack_total = (
@@ -653,9 +696,9 @@ class FiveESystem(ResolutionSystem):
 
         npc_state = hard.entity_states.get(target_id, {})
         if hit:
-            dmg_expr = self.compute_player_damage_expr(hard, corpus, soft)
+            dmg_expr = self.compute_player_damage_expr(hard, corpus, soft, weapon_id)
             damage, damage_roll = self.roll_damage(dmg_expr, critical=critical)
-            damage_type = self.compute_player_damage_type(hard, corpus, soft)
+            damage_type = self.compute_player_damage_type(hard, corpus, soft, weapon_id)
             damage, mitigation = self.apply_damage_modifiers(
                 damage, damage_type, target_id, hard, corpus
             )

@@ -2244,6 +2244,10 @@ def _resolve_combat_action(
         warnings=list(result.get("warnings") or []),
         room_after_id=hard.player.location,
         events=events,
+        # A continuation segment (budget remains, turn open) does NOT cost
+        # the turn: no engine persistent tick, no turn.end, no turn_count
+        # bump.  Only a segment that actually ended the turn does.
+        costs_turn=bool(result.get("turn_ended", True)),
     )
 
 
@@ -2278,6 +2282,10 @@ def _resolve_combat_pass(
         warnings=list(result.get("warnings") or []),
         room_after_id=hard.player.location,
         events=events,
+        # A continuation segment (budget remains, turn open) does NOT cost
+        # the turn: no engine persistent tick, no turn.end, no turn_count
+        # bump.  Only a segment that actually ended the turn does.
+        costs_turn=bool(result.get("turn_ended", True)),
     )
 
 
@@ -2291,10 +2299,20 @@ def _resolve_combat_environmental(
     """Resolve a non-combat action during combat as the player's turn.
 
     Covers ``interact`` (non-attack), ``transfer``, rigorous ``examine``,
-    and weapon ``gear`` swaps while combat is active.  The action costs
-    the player's combat turn: start-of-turn status processing and
+    and weapon ``gear`` swaps while combat is active.  Each action costs
+    budget on the player's turn: start-of-turn status processing and
     positioning assertions apply, the normal resolver resolves the action
-    itself, and the enemies take their turns afterwards.
+    itself, then the §3.3 turn-end rule decides whether the turn stays
+    open (a free object interaction or a remaining bonus action) or the
+    enemies take their turns.
+
+    A ``gear`` action is the player's one free object interaction per
+    turn; a second object interaction (or a ``gear`` after the free
+    interaction is spent) costs the action (Utilize).  An ``interact``
+    tagged ``interaction_cost: "free"`` likewise consumes the free
+    interaction and the turn continues; potions and other carried
+    ``usable_items`` always require an action.  ``transfer`` and rigorous
+    ``examine`` cost the action.
 
     A failed validation returns without running NPC turns (failed
     validations never cost a turn — consistent with the engine's failed
@@ -2310,6 +2328,7 @@ def _resolve_combat_environmental(
         _clear_status_effects,
         _end_player_turn,
         _player_died,
+        meaningful_budget_remains,
     )
 
     combat = hard.combat
@@ -2326,6 +2345,37 @@ def _resolve_combat_environmental(
         system, hard_changes, combat_log, begin_events, warnings,
     )
 
+    budget = combat.player_budget
+    # What does this action cost?  ``"free"`` (one per turn, turn stays
+    # open) or ``"action"`` (the Utilize action).
+    if action.action_type == "gear":
+        cost = "free" if not budget.free_interaction_used else "action"
+    elif action.action_type == "interact":
+        cost = getattr(action, "interaction_cost", "action") or "action"
+        if cost == "free":
+            if budget.free_interaction_used:
+                return ResolutionResult(
+                    success=False,
+                    error=(
+                        "The free object interaction was already used this "
+                        "turn — a second one would cost the action"
+                    ),
+                )
+            # Potions and other carried usable items always require an
+            # action to use (SRD: "Some magic items and other special
+            # objects always require an action to use").
+            target = action.target
+            if target in hard.player.inventory or target in hard.player.equipped:
+                return ResolutionResult(
+                    success=False,
+                    error=(
+                        "Items such as potions always require an action to "
+                        "use — set interaction_cost to \"action\""
+                    ),
+                )
+    else:
+        cost = "action"
+
     delegate: ResolutionResult | None = None
     game_over = False
     combat_ended = False
@@ -2335,6 +2385,14 @@ def _resolve_combat_environmental(
         game_over = True
         end_reason = "defeat"
     elif not player_skips:
+        if cost == "action" and budget.action_used:
+            return ResolutionResult(
+                success=False,
+                error=(
+                    "The action was already used this turn — you can only "
+                    "take one action per turn"
+                ),
+            )
         # Log the player's action so the combat prefix can summarize it.
         combat_log.append(
             CombatLogEntry(
@@ -2394,7 +2452,13 @@ def _resolve_combat_environmental(
                 )
             )
 
-        # Hazard checks on the result, before NPC turns.
+        # Consume the budget the resolved action cost.
+        if cost == "free":
+            budget.free_interaction_used = True
+        else:
+            budget.action_used = True
+
+        # Hazard checks on the result, before the turn-end decision.
         if hard.game_over is not None:
             # An inline (scripted) game-over ended everything; no NPC turns.
             game_over = True
@@ -2411,16 +2475,32 @@ def _resolve_combat_environmental(
             combat_ended = True
             end_reason = "fled"
 
-    # --- Resolve NPC turns after the player ---
-    if not combat_ended and not game_over:
+    # --- Turn-end decision (§3.3) ---
+    if game_over or combat_ended:
+        combat.log.extend(combat_log)
+        _clear_status_effects(hard, corpus, end_events)
+        hard.combat = None
+        turn_ended = True
+    elif player_skips:
+        # A ``skip_turn`` status effect consumed the player's action: the
+        # turn ends and NPC turns proceed.
         game_over, combat_ended, end_reason = _end_player_turn(
             combat, hard, corpus, soft, state_manager, system,
             hard_changes, combat_log, end_events,
         )
-    else:
+        turn_ended = True
+    elif meaningful_budget_remains(combat, hard, corpus):
+        # The turn stays open: budget remains (e.g. a free interaction
+        # taken before the real action).  No NPC turns, no round advance.
         combat.log.extend(combat_log)
-        _clear_status_effects(hard, corpus, end_events)
-        hard.combat = None
+        combat.turn_continuation = True
+        turn_ended = False
+    else:
+        game_over, combat_ended, end_reason = _end_player_turn(
+            combat, hard, corpus, soft, state_manager, system,
+            hard_changes, combat_log, end_events,
+        )
+        turn_ended = True
 
     if end_reason is not None:
         end_events.append(("combat.ended", {"reason": end_reason}))
@@ -2435,6 +2515,7 @@ def _resolve_combat_environmental(
             warnings=warnings,
             room_after_id=hard.player.location,
             events=begin_events + end_events,
+            costs_turn=turn_ended,
         )
 
     # hard_changes already includes the delegate's changes (merged
@@ -2454,7 +2535,10 @@ def _resolve_combat_environmental(
         soft_item_proposals=delegate.soft_item_proposals,
         events=begin_events + delegate.events + end_events,
         immediate_changes=delegate.immediate_changes,
-        costs_turn=True,
+        # A continuation segment (budget remains, turn open) does NOT cost
+        # the turn: no engine persistent tick, no turn.end, no turn_count
+        # bump.  Only a segment that actually ended the turn does.
+        costs_turn=turn_ended,
     )
 
 
@@ -2493,18 +2577,27 @@ def _resolve_combat_flee(
             else hard.player.location
         ),
         events=events,
+        # A continuation segment (budget remains, turn open) does NOT cost
+        # the turn: no engine persistent tick, no turn.end, no turn_count
+        # bump.  Only a segment that actually ended the turn does.
+        costs_turn=bool(result.get("turn_ended", True)),
     )
 
 
-def resolve_gear(
+def _validate_gear_changes(
     action: GearAction,
     hard: HardGameState,
-    soft: SoftGameState,
     corpus: ModuleCorpus,
-    state_manager: Any | None = None,
-) -> ResolutionResult:
-    """Resolve a gear action (equip and/or unequip) with tag conflict
-    validation.
+    *,
+    combat_check: bool = True,
+) -> str | None:
+    """Validate a gear change, shared by :func:`resolve_gear` (which
+    returns the validated result as ``HardStateChanges``) and the
+    attack-carried equip/unequip path (which applies it to ``hard``
+    immediately, §4.2).
+
+    Returns an error message on failure, ``None`` when the change is valid
+    (the whole action is atomic — any failure rejects everything).
 
     Logic:
     0. Validate every unequip target is currently equipped.
@@ -2515,36 +2608,25 @@ def resolve_gear(
        d. Check conflicts against the evolving equipped set (which includes
           any items already equipped by this same action).
        e. Check max_equipped for the slot tag group.
-    2. On success: move equip targets from inventory to equipped, unequip
-       targets from equipped to inventory.  The whole action is atomic: any
-       failure rejects everything.
     """
-    room_id = hard.player.location
-
     # During combat only weapon swaps are allowed (matching the attack
     # code's weapon detection); changing armor or other gear mid-fight is
     # rejected.  Turn-costing behavior arrives via the combat wrapper in
     # resolve_action.
-    if hard.combat is not None and hard.combat.active:
+    if combat_check and hard.combat is not None and hard.combat.active:
         for target in list(action.equip_targets) + list(action.unequip_targets):
             item_entity = corpus.entities.get(target)
             eb = item_entity.equip_block if item_entity is not None else None
             if eb is None or "weapon" not in eb.equip_tags:
-                return ResolutionResult(
-                    success=False,
-                    error=(
-                        f"Cannot change '{target}' during combat: "
-                        "only weapon swaps are allowed"
-                    ),
+                return (
+                    f"Cannot change '{target}' during combat: "
+                    "only weapon swaps are allowed"
                 )
 
     # Step 0: Validate unequip_targets
     for uid in action.unequip_targets:
         if uid not in hard.player.equipped:
-            return ResolutionResult(
-                success=False,
-                error=f"Cannot unequip '{uid}': not currently equipped",
-            )
+            return f"Cannot unequip '{uid}': not currently equipped"
 
     # Post-unequip equipped set; grows as each equip target is validated so
     # that items equipped together conflict-check against each other.
@@ -2553,23 +2635,14 @@ def resolve_gear(
     # Step 1: Validate each equip target against the evolving equipped set
     for target in action.equip_targets:
         if target not in hard.player.inventory:
-            return ResolutionResult(
-                success=False,
-                error=f"Item '{target}' is not in your inventory",
-            )
+            return f"Item '{target}' is not in your inventory"
 
         item_entity = corpus.entities.get(target)
         if item_entity is None:
-            return ResolutionResult(
-                success=False,
-                error=f"Item '{target}' not found in corpus",
-            )
+            return f"Item '{target}' not found in corpus"
         eb = item_entity.equip_block
         if eb is None:
-            return ResolutionResult(
-                success=False,
-                error=f"Item '{target}' cannot be equipped (no equip_block)",
-            )
+            return f"Item '{target}' cannot be equipped (no equip_block)"
 
         # Build incompatible tags
         incompatible = set(eb.incompatible_with)
@@ -2584,10 +2657,9 @@ def resolve_gear(
                 continue
             eq_tags = set(eq_entity.equip_block.equip_tags)
             if eq_tags & incompatible:
-                return ResolutionResult(
-                    success=False,
-                    error=f"Cannot equip '{target}': conflicts with equipped item '{eid}' "
-                          f"(tags: {eq_tags & incompatible})",
+                return (
+                    f"Cannot equip '{target}': conflicts with equipped item '{eid}' "
+                    f"(tags: {eq_tags & incompatible})"
                 )
 
         # Check max_equipped
@@ -2610,13 +2682,93 @@ def resolve_gear(
                     and _e.equip_block.equip_tags and _e.equip_block.equip_tags[0] == slot_tag
                 )
                 if current_count >= max_limit:
-                    return ResolutionResult(
-                        success=False,
-                        error=f"Cannot equip '{target}': slot '{slot_tag}' limit "
-                              f"({max_limit}) would be exceeded (currently {current_count})",
+                    return (
+                        f"Cannot equip '{target}': slot '{slot_tag}' limit "
+                        f"({max_limit}) would be exceeded (currently {current_count})"
                     )
 
         still_equipped.append(target)
+
+    return None
+
+
+def _apply_gear_changes_immediate(
+    action: GearAction,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    state_manager: Any | None = None,
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+    immediate_changes: HardStateChanges | None = None,
+) -> str | None:
+    """Validate and immediately apply a gear change to ``hard``.
+
+    Used by the attack-carried equip/unequip path (§4.2): the swap must be
+    visible to the attack roll in the same engine call, so it mutates
+    ``hard.player`` in place and emits the ``equipment.changed`` event.  It
+    deliberately produces **no** ``HardStateChanges`` for the swap itself —
+    the state-manager apply is not idempotent for gear moves, and a second
+    apply would move the items back.
+
+    The ``equipment.changed`` event and any immediate reactions to it are
+    drained into the caller's collectors: pass the combat turn's ``events``
+    list so deferred reactions fire at end of turn, and its ``hard_changes``
+    as ``immediate_changes`` so immediate-reaction state mutations are
+    applied (the combat pipeline has no separate immediate-changes
+    channel).  Without collectors the event would be lost.
+
+    Returns an error message on validation failure (nothing applied),
+    ``None`` on success.
+    """
+    error = _validate_gear_changes(action, hard, corpus)
+    if error is not None:
+        return error
+
+    for target in action.equip_targets:
+        hard.player.inventory[target] -= 1
+        if hard.player.inventory[target] <= 0:
+            del hard.player.inventory[target]
+        hard.player.equipped.append(target)
+    for uid in action.unequip_targets:
+        hard.player.equipped.remove(uid)
+        hard.player.inventory[uid] = hard.player.inventory.get(uid, 0) + 1
+
+    result = ResolutionResult(
+        success=True,
+        hard_changes=HardStateChanges(),
+        room_after_id=hard.player.location,
+    )
+    _emit_event(
+        "equipment.changed",
+        {"added": action.equip_targets, "removed": action.unequip_targets},
+        hard, soft, corpus, state_manager, result,
+    )
+    if events is not None:
+        events.extend(result.events)
+    if immediate_changes is not None and result.immediate_changes:
+        immediate_changes.merge(result.immediate_changes)
+    return None
+
+
+def resolve_gear(
+    action: GearAction,
+    hard: HardGameState,
+    soft: SoftGameState,
+    corpus: ModuleCorpus,
+    state_manager: Any | None = None,
+) -> ResolutionResult:
+    """Resolve a gear action (equip and/or unequip) with tag conflict
+    validation.
+
+    On success: move equip targets from inventory to equipped, unequip
+    targets from equipped to inventory.  The whole action is atomic: any
+    failure rejects everything.
+    """
+    room_id = hard.player.location
+
+    error = _validate_gear_changes(action, hard, corpus)
+    if error is not None:
+        return ResolutionResult(success=False, error=error)
 
     # Step 2: Success — apply all movements
     changes = HardStateChanges()
@@ -2683,6 +2835,9 @@ def resolve_action(
             warnings=list(result.get("warnings") or []),
             room_after_id=hard.player.location,
             events=events,
+            # A bonus-action segment does NOT cost the turn: the turn stays
+            # open and the follow-up main action shares it.
+            costs_turn=bool(result.get("turn_ended", True)),
         )
 
     if in_combat:

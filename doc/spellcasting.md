@@ -146,23 +146,31 @@ effects out of combat via `PlayerStateBriefing`, and the merged
 ## Bonus-Action Casting
 
 A spell with `casting_time: "bonus_action"` is cast as a **bonus
-action** (`resolve_combat_turn`, `mgmai/engine/combat.py:2725-2769`):
-the cast resolves but does not end the player's turn — the player still
-takes their normal action that round.  The mechanics:
+action** (`resolve_combat_turn`, `mgmai/engine/combat.py`): the cast
+resolves but does not end the player's turn — the player still takes
+their normal action that round.  Bonus actions live on the shared
+per-turn budget:
 
-- `CombatState.bonus_action_used` — one bonus action per turn; a second
-  is rejected.
-- `CombatState.slot_cast_this_turn` — one **leveled** spell per turn, in
-  either order: after a bonus-action leveled spell, the main action can
-  only be a cantrip or a non-spell action (and vice versa).
+- `CombatState.player_budget.bonus_action_used` — one bonus action per
+  turn; a second is rejected.  A bonus action may be taken before *or*
+  after the main action (SRD-faithful ordering).
+- `CombatState.player_budget.slot_cast_this_turn` — one **leveled** spell
+  per turn, in either order: after a bonus-action leveled spell, the main
+  action can only be a cantrip or a non-spell action (and vice versa).
 - `CombatState.turn_continuation` — the follow-up main-action call skips
   start-of-turn processing so status effects tick exactly once per round;
   both the bonus-action cast and the main action appear in the combat
   log, and a bonus-action cast that ends combat still runs the
   combat-end epilogue.
 
-`casting_time: "reaction"` (e.g. Shield) remains data-only — there is no
-reaction economy yet.
+At the engine layer, only the segment that actually *ends* the turn
+reports `costs_turn=True`, so the persistent-status tick, `turn.end`, and
+the `turn_count` bump happen exactly once per player turn even when it
+spans two engine calls.
+
+`casting_time: "reaction"` (e.g. Shield) remains data-only — reactions
+are capped at one per combatant per round (opportunity attacks only) but
+reaction *spells* are not castable yet.
 
 ---
 
@@ -174,8 +182,9 @@ Deliberately not implemented:
   higher-level slot selection or scaling.
 - **Cantrip scaling** — cantrips use base dice at all levels
   (`PlayerState.level` is inert).
-- **Reactions** — no reaction economy; `casting_time: "reaction"` is
-  data-only.
+- **Reaction spells** — `casting_time: "reaction"` is data-only; the
+  reaction economy caps opportunity attacks at one per combatant per
+  round, but Shield/Counterspell-style casts are deferred (Phase 3).
 - **Ritual casting** — the `ritual` flag is data-only.
 - **NPC caster blocks** — NPC casters use authored DC/attack values and
   the flat `save_bonus` for concentration checks.

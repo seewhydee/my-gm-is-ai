@@ -332,31 +332,47 @@ only when `initiative_order[current_index] == "player"`.
 ### Player Actions in Combat
 
 Combat does not narrow the action space to a whitelist; the **turn
-economy** arbitrates it.  Almost every action costs the player's combat
-turn: after it resolves, the surviving enemies take their turns in
-initiative order and the round advances.  The exceptions — a
-non-rigorous `examine` and `ooc_discussion` — are free and do not run
-NPC turns.
+economy** arbitrates it (D&D 5e SRD 5.2.1).  Each player turn has **one
+action**, **at most one bonus action**, **one free object interaction**,
+and **one reaction**.  The engine tracks this on
+`CombatState.player_budget` (`TurnBudget`) plus the per-combatant
+`reactions_spent` set, and exposes the remainder to the ruling layer
+through `CombatBriefing` (`action_available`, `bonus_action_available`,
+`free_interaction_available`, `reaction_available`, and the legal
+`bonus_action_options`).
+
+After a resolved sub-action the turn **stays open** (a continuation, no
+NPC turns) while meaningful budget remains — the action is still
+unused, or the bonus action is still unused with a legal option
+available — and otherwise closes: the surviving enemies take their
+turns in initiative order and the round advances.  A player on an open
+turn can end it by `wait` (a pass that spends nothing).
 
 | Action | Turn cost | Description |
 |--------|-----------|-------------|
-| `combat` (`combat_action: "attack"`) | action | Attack a combatant.  `target` must be an enemy entity ID in `combatants`. |
+| `combat` (`combat_action: "attack"`) | action | Attack a combatant.  `target` must be an enemy entity ID in `combatants`.  May carry one `equip_target`/`unequip_target` (a weapon swap made as part of the attack), which costs the free interaction. |
 | `combat` (`combat_action: "maneuver"`) | action | Maneuver: Disengage (`maneuver: "disengage"`).  Breaks all of the player's engagement pairs without provoking opportunity attacks; no `target`. |
-| `use_ability` | action | Use a spell, class feature, or other ability.  `ability_id` plus a `target` matching the ability's target kind.  Bonus-action spells do not end the turn. |
-| `move` | action | Attempt to flee (see below). |
-| `wait` | action | Pass the turn: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply.  This is also how speech is ruled in combat — see `talk` below. |
-| `interact` | action | Use a non-attack interaction listed on the target entity's or the room's `interactions_available` (pull the lever, pick the lock).  `interaction_id: "attack"` converts to a normal combat attack — it never re-enters combat.  Inventory items with authored interactions (e.g. potion `drink`) also use this action; see [gear.md](gear.md). |
+| `use_ability` | action or bonus action | Use a spell, class feature, or other ability.  `ability_id` plus a `target` matching the ability's target kind.  `casting_time: "bonus_action"` abilities consume the bonus action; everything else the action. |
+| `move` | whole turn | Attempt to flee (see below).  Requires an unspent action, and consumes the entire turn even on failure — any remaining bonus action or free interaction is forfeited. |
+| `wait` | pass | End the turn, spending nothing: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply.  Also how speech is ruled in combat — see `talk` below. |
+| `interact` | action (default) or free | Use a non-attack interaction listed on the target entity's or the room's `interactions_available` (pull the lever, pick the lock).  `interaction_id: "attack"` converts to a normal combat attack — it never re-enters combat.  An `interaction_cost: "free"` tag consumes the free object interaction instead of the action (one per turn; potions and other `usable_items` always cost the action).  Inventory items with authored interactions (e.g. potion `drink`) also use this action; see [gear.md](gear.md). |
 | `transfer` | action | Give or take items mid-fight. |
-| `gear` | action | Weapon swaps only: every item in `equip_targets` and `unequip_targets` must have the `weapon` tag; armour or other gear changes are rejected. |
+| `gear` | free interaction (then action) | Weapon swaps only: every item in `equip_targets` and `unequip_targets` must have the `weapon` tag; armour or other gear changes are rejected.  The first swap in a turn is the free object interaction (the turn continues); a second swap costs the action (Utilize). |
 | `examine` (`rigorous: true`) | action | In-depth search; consumes the turn. |
 | `examine` (`rigorous: false`) | free | Cursory look; costs nothing and does not run NPC turns. |
 | `ooc_discussion` | free | Out-of-character talk to the GM; a no-op, as outside combat. |
 | `talk` | — | Not possible: conversations cannot be held in combat.  The ruling layer rejects `talk` with a corrective retry instructing a `wait` action with the speech in `detail`; the engine rejects it outright if one slips through. |
 
 A turn-costing action that fails *validation* (unknown interaction id,
-invalid target, non-weapon gear) does not cost the turn and does not
-run NPC turns; a failed *check* (e.g. the lever's roll) still consumes
-it.
+invalid target, non-weapon gear, a second action/bonus action/free
+interaction) does not cost the turn and does not run NPC turns; a
+failed *check* (e.g. the lever's roll) still consumes it.
+
+The turn-end rule is exposed to the ruling layer as a continuation
+prompt whenever meaningful budget remains.  `wait` (pass) and the
+auto-end rule together mean a plain fighter who spends the action is
+never re-prompted, while a character with a legal bonus action gets the
+option to use it after the action (SRD-faithful bonus-action ordering).
 
 A `combat`, `wait`, or `interact` action may also carry an optional
 `positioning` assertion (LLM-adjudicated engagement changes) — see
@@ -468,7 +484,12 @@ Breaking engagement with a living combatant other than via Disengage
 provokes **one free basic attack** from the combatant staying put
 against the mover (no multiattack, no abilities).  Enemy OAs use the
 block-level `atk`/`dmg` (or the first attack def); player OAs use the
-equipped weapon.  A combatant with a `skip_turn` status effect
+equipped weapon.  An OA is a **reaction** (SRD 5.2.1): each combatant
+can make at most one before the start of its own next turn — the spent
+reaction is tracked on `CombatState.reactions_spent` and cleared at the
+top of that combatant's own turn (the player's in `_begin_player_turn`,
+each NPC's at the top of its batched turn), which is stricter than a
+round-boundary clear.  A combatant with a `skip_turn` status effect
 (stunned, incapacitated, …) or a pending impede flag cannot make OAs.
 OAs are logged as `CombatLogEntry(action="opportunity_attack")`.
 
@@ -762,8 +783,6 @@ The combat system deliberately excludes:
 
 - Distance bands, ranges, zones, cover, flanking, and facing — the only
   spatial relation is engagement (see *Positioning*)
-- A full reaction economy — OA-lite is automatic, one basic attack, no
-  player opt-out; other reactions (Shield, Counterspell, …) don't exist
 - Opportunity attacks on fleeing — the flee DEX check abstracts the
   getaway
 - A guard/bodyguard mechanic — protective play works via OA deterrence
@@ -775,7 +794,20 @@ The combat system deliberately excludes:
 - NPC-initiated repositioning — enemies engage by attacking and never
   voluntarily move
 - Death saving throws (player 0 HP is death unless a rescue reaction intervenes)
-- Bonus actions and the 5e action/movement split (one action per turn)
+- Movement distances/speed, Dash, and the 5e movement/action split — the
+  turn budget covers action / bonus action / free object interaction /
+  reaction, but movement stays abstract (theater of the mind); Dash is
+  meaningless without distances
+- Dodge, Grapple, Shove, and the other maneuvers (Phase 2) — Disengage is
+  the only `maneuver` value; `wait` (pass) has no defensive benefit until
+  Dodge lands
+- Light-property off-hand attacks and weapon mastery (Phase 2) — a
+  weapon's `properties` are data only for now
+- The Ready action, reaction spells (Shield, Counterspell), and player
+  opportunity-attack opt-out (Phase 3) — OAs are automatic (one basic
+  attack, no opt-out) and capped at one reaction per combatant, refreshed
+  at the start of that combatant's own turn (see *Opportunity attacks*);
+  other reactions don't exist
 - Conversations (`talk`) during combat — speech mid-fight is narrated via
   `wait` with the speech in `detail`; dialogue mode stays mutually
   exclusive with combat

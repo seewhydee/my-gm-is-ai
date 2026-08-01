@@ -4045,7 +4045,7 @@ class TestBonusActionCasting:
         # The turn continues: no round advance, no NPC turn, one slot spent.
         combat = ba_hard.combat
         assert combat.round_number == 1
-        assert combat.bonus_action_used is True
+        assert combat.player_budget.bonus_action_used is True
         assert ba_hard.player.spell_slots == {1: 2}
         assert [e.action for e in combat.log] == ["heal"]
 
@@ -4196,7 +4196,7 @@ class TestBonusActionCasting:
             self._ability("healing_word", "player"), ba_hard, ba_corpus
         )
         assert r1["success"]
-        assert ba_hard.combat.bonus_action_used is True
+        assert ba_hard.combat.player_budget.bonus_action_used is True
         # End the turn with a wait; goblin misses.
         rand_vals = iter([1])
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))

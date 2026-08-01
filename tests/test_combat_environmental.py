@@ -300,12 +300,13 @@ class TestTalkDuringCombat:
 # ------------------------------------------------------------------
 
 class TestGearDuringCombat:
-    def test_weapon_swap_allowed_and_costs_turn(self, env_hard, env_corpus, monkeypatch):
+    def test_weapon_swap_is_free_interaction(self, env_hard, env_corpus, monkeypatch):
+        """A weapon swap is the player's one free object interaction per
+        turn: it does NOT consume the action, so no NPC turns run and the
+        round does not advance — the turn stays open."""
         _combat_state(env_hard)
         env_hard.player.inventory = {"dagger": 1}
         env_hard.player.equipped = ["sword"]
-        # goblin's attack after the swap: natural 1, miss
-        monkeypatch.setattr(random, "randint", lambda a, b: 1)
 
         action = GearAction(
             action_type="gear",
@@ -317,14 +318,83 @@ class TestGearDuringCombat:
         assert result.success
         assert result.hard_changes.equipped_added == ["dagger"]
         assert result.hard_changes.equipped_removed == ["sword"]
-        # The swap consumed the player's combat turn: NPC turns ran and
-        # the round advanced.
+        # The swap itself is logged as the player's (gear) action.
         assert result.combat_log[0].actor == "player"
         assert result.combat_log[0].action == "gear"
-        assert any(
+        # Free interaction: no NPC turns, no round advance; the turn stays
+        # open for the player's real action.
+        assert not any(
             e.actor == "goblin" and e.action == "attack" for e in result.combat_log
         )
+        assert env_hard.combat.round_number == 1
+        assert env_hard.combat.player_budget.free_interaction_used is True
+        assert env_hard.combat.turn_continuation is True
+        assert result.costs_turn is False
+
+    def test_second_weapon_swap_costs_action(self, env_hard, env_corpus, monkeypatch):
+        """A second object interaction in the same turn costs the action
+        (Utilize): the swap resolves and NPC turns run."""
+        _combat_state(env_hard)
+        env_hard.player.inventory = {"dagger": 1}
+        env_hard.player.equipped = ["sword"]
+
+        # First swap: the free interaction (turn continues, no NPC turns).
+        sm = build_state_manager(env_corpus, hard_state=env_hard)
+        first = GearAction(
+            action_type="gear",
+            equip_targets=["dagger"],
+            unequip_targets=["sword"],
+            detail="I swap my sword for the dagger.",
+        )
+        r1 = resolve(first, sm)
+        assert r1.success
+        assert env_hard.combat.player_budget.free_interaction_used is True
+        assert env_hard.combat.round_number == 1
+        assert env_hard.player.equipped == ["dagger"]
+
+        # Second swap on the same (continuation) turn: the free interaction
+        # is spent, so it costs the action and NPC turns run.
+        monkeypatch.setattr(random, "randint", lambda a, b: 1)
+        second = GearAction(
+            action_type="gear",
+            equip_targets=["sword"],
+            unequip_targets=["dagger"],
+            detail="I swap back to the sword.",
+        )
+        result = resolve(second, sm)
+        assert result.success
+        assert result.hard_state_changes.equipped_added == ["sword"]
+        assert result.hard_state_changes.equipped_removed == ["dagger"]
+        # The second interaction consumed the action: NPC turns ran and
+        # the round advanced.
+        assert any(
+            e.actor == "goblin" and e.action == "attack"
+            for e in result.combat_log
+        )
         assert env_hard.combat.round_number == 2
+
+    def test_gear_with_no_budget_rejected(self, env_hard, env_corpus):
+        """No budget left for a gear change (free interaction AND action
+        both spent) is rejected — costs nothing."""
+        _combat_state(env_hard)
+        env_hard.player.inventory = {"dagger": 1}
+        env_hard.player.equipped = ["sword"]
+        # Mid-turn state: the budget is already spent and the turn is a
+        # continuation (so _begin_player_turn does not reset it).
+        env_hard.combat.player_budget.free_interaction_used = True
+        env_hard.combat.player_budget.action_used = True
+        env_hard.combat.turn_continuation = True
+        action = GearAction(
+            action_type="gear",
+            equip_targets=["dagger"],
+            unequip_targets=["sword"],
+            detail="I swap my sword for the dagger.",
+        )
+        result = resolve_action(action, env_hard, SoftGameState(), env_corpus)
+        assert not result.success
+        assert "already used this turn" in result.error
+        assert env_hard.combat.round_number == 1
+        assert env_hard.player.equipped == ["sword"]
 
     def test_armor_equip_rejected(self, env_hard, env_corpus):
         _combat_state(env_hard)
@@ -572,12 +642,10 @@ class TestCombatEnvironmental:
             e.actor == "orc" and e.action == "attack" for e in combat.log
         )
 
-    def test_weapon_swap_ticks_persistent_status_exactly_once(
-        self, env_hard, env_corpus, monkeypatch
-    ):
-        """Turn-cost accounting: a wrapper turn keeps costs_turn=True, so
-        the engine's persistent status tick fires once — and the combat
-        start-of-turn tick ignores persistent effects (no double tick)."""
+    def test_gear_free_interaction_does_not_tick(self, env_hard, env_corpus, monkeypatch):
+        """A free-interaction gear swap does NOT cost the turn: no engine
+        persistent tick, no turn.end, no turn_count bump — the turn stays
+        open for the follow-up action."""
         corpus = env_corpus.model_copy(deep=True)
         from mgmai.models.corpus import StatusEffectDef
         corpus.status_effects["festering_wound"] = StatusEffectDef.model_validate({
@@ -600,7 +668,23 @@ class TestCombatEnvironmental:
         )
         result = resolve(action, sm)
         assert result.success
-        assert sm.hard_state.turn_count == 1  # the action cost a turn
+        assert result.costs_turn is False
+        assert sm.hard_state.turn_count == 0  # no turn-costing action yet
+        assert sm.hard_state.player.status_effects == {"festering_wound": 3}
+
+        # The follow-up main action (an attack) ends the turn: the
+        # persistent tick fires exactly once across both engine calls.
+        from mgmai.models.actions import CombatAction
+        attack = CombatAction(
+            action_type="combat",
+            combat_action="attack",
+            target="goblin",
+            detail="I strike the goblin!",
+        )
+        result2 = resolve(attack, sm)
+        assert result2.success
+        assert result2.costs_turn is True
+        assert sm.hard_state.turn_count == 1
         assert sm.hard_state.player.status_effects == {"festering_wound": 2}
 
 

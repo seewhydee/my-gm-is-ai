@@ -19,6 +19,23 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class TurnBudget(BaseModel):
+    """The player's per-turn action-economy budget (D&D 5e SRD 5.2.1).
+
+    Reset at the start of the player's turn (``_begin_player_turn``).
+    ``reaction_used`` tracks the player's reaction, which refreshes at the
+    start of their own turn like every other combatant's.
+    """
+    action_used: bool = False
+    bonus_action_used: bool = False
+    free_interaction_used: bool = False
+    reaction_used: bool = False
+    # One slot spell per turn (SRD 5.2.1): set when a leveled spell is cast
+    # this turn; a leveled bonus-action spell and a leveled main-action
+    # spell can't coexist.
+    slot_cast_this_turn: bool = False
+
+
 class CombatLogEntry(BaseModel):
     """A single combat event — one actor's action within a round.
 
@@ -92,14 +109,16 @@ class CombatState(BaseModel):
     # be impeded at most once per combat).
     impeded: list[str] = Field(default_factory=list)
     impede_used: list[str] = Field(default_factory=list)
-    # Bonus-action economy: set when the player casts a bonus-action spell
-    # this turn (one per turn; reset at the start of each player turn), and
-    # when a leveled spell (slot) was cast this turn — a bonus-action
-    # leveled spell and a main-action leveled spell can't coexist.
-    bonus_action_used: bool = False
-    slot_cast_this_turn: bool = False
-    # Set by the bonus-action cast branch so the follow-up
-    # resolve_combat_turn call for the player's main action skips
-    # start-of-turn processing (status effects tick once per round);
-    # cleared when the turn ends in _end_player_turn.
+    # The player's per-turn action-economy budget (action / bonus action /
+    # free object interaction / reaction / slot-cast flag).  Reset at the
+    # start of each player turn.  See TurnBudget.
+    player_budget: TurnBudget = Field(default_factory=TurnBudget)
+    # Combatant ids that have spent their reaction since their own last
+    # turn start (the player and every NPC).  An id is removed at the top
+    # of that combatant's own turn.  Consumed by opportunity attacks.
+    reactions_spent: set[str] = Field(default_factory=set)
+    # Set when a segment of the player's turn resolves but the turn stays
+    # open (budget remains): the follow-up resolve_combat_turn call for the
+    # player's next segment skips start-of-turn processing (status effects
+    # tick once per round); cleared when the turn ends in _end_player_turn.
     turn_continuation: bool = False

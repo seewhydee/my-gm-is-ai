@@ -159,6 +159,20 @@ A single player action controls equipment:
 At least one of the two fields must be non-empty; duplicates within a field
 are rejected.
 
+**In combat**, a `gear` action is the player's **one free object
+interaction per turn** (SRD 5.2.1): it consumes
+`player_budget.free_interaction_used` and the turn continues for the
+round's real action.  A second object interaction in the same turn (a
+second swap, or a swap after another free interaction) costs the action
+(Utilize) — and is rejected outright if no budget remains.  A weapon can
+also be **equipped or unequipped as part of an attack** via
+`CombatAction.equip_target` / `unequip_target` (at most one of the two):
+the swap is validated through the same code path as `gear`, applied to
+the player's gear immediately before the attack roll, and the drawn
+weapon is the one used for the attack.  This costs the free interaction,
+not the action, and is a single ruling (no chained action needed).
+Outside combat the action is unchanged (full turn).
+
 **Engine validation** (in order):
 1. Each `unequip_target` must be in `player.equipped`.
 2. For each `equip_target`, in order:

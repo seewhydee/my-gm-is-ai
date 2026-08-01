@@ -345,6 +345,17 @@ def _living_enemies(combat: CombatState, hard: HardGameState) -> list[str]:
     ]
 
 
+def _living_allies(combat: CombatState, hard: HardGameState) -> list[str]:
+    """Return living allied combatants (party members other than the
+    player), mirroring :func:`_living_enemies`."""
+    return [
+        c
+        for c in combat.combatants
+        if _side_of(combat, c) == "party"
+        and (hard.entity_states.get(c, {}).get("current_hp") or 0) > 0
+    ]
+
+
 def _same_side(a: str, b: str) -> bool:
     """True if two sides are the same: the player and party are one side."""
     return (a in ("player", "party")) == (b in ("player", "party"))
@@ -536,10 +547,14 @@ def _can_make_opportunity_attack(
     """True if the stationary party can make an opportunity attack.
 
     A combatant with a ``skip_turn`` status effect (stunned,
-    incapacitated, …) or a pending impede flag cannot make OAs (SRD:
-    the OA'ing creature must see you and not be incapacitated).
+    incapacitated, …), a pending impede flag, or no reaction left (spent
+    since its own last turn start) cannot make OAs (SRD: the OA'ing
+    creature must see you and not be incapacitated; the OA is a reaction,
+    one per round refreshed at the start of the creature's own turn).
     """
     if stationary_id not in combat.combatants:
+        return False
+    if stationary_id in combat.reactions_spent:
         return False
     if stationary_id != "player":
         if (hard.entity_states.get(stationary_id, {}).get("current_hp") or 0) <= 0:
@@ -581,6 +596,12 @@ def _resolve_opportunity_attack(
     mover_ac = _target_ac(mover_id, hard, corpus)
     if mover_ac is None:
         return False
+    # The OA attempt spends the stationary party's reaction: one per
+    # round, refreshed at the start of its own turn.  The player's
+    # reaction is mirrored onto the turn budget for briefing convenience.
+    combat.reactions_spent.add(stationary_id)
+    if stationary_id == "player":
+        combat.player_budget.reaction_used = True
 
     entity = corpus.entities.get(stationary_id)
     attack_def = None
@@ -1956,6 +1977,10 @@ def _resolve_npc_turn(
     if (npc_state.get("current_hp") or 0) <= 0:
         return False, False
 
+    # The combatant's reaction refreshes at the top of its own turn
+    # (SRD 5.2.1), like the player's in _begin_player_turn.
+    combat.reactions_spent.discard(actor_id)
+
     # Start-of-turn status-effect processing; combatants with a skip_turn
     # status effect (e.g. stunned) lose the turn.
     _tick_status_effects(actor_id, hard, corpus, events)
@@ -2443,6 +2468,72 @@ def enter_combat(
 # Combat turn resolution
 # ------------------------------------------------------------------
 
+def legal_bonus_action_ability_ids(
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> list[str]:
+    """Ids of the player's bonus-action abilities that are legal right now.
+
+    An ability is a legal bonus-action option this turn when all hold:
+    ``casting_time == "bonus_action"`` with uses remaining (and, for a
+    leveled spell, a slot remaining); the one-slot-per-turn rule permits
+    it (a leveled spell requires ``slot_cast_this_turn`` to be unset); and
+    a legal target exists — an ``enemy``-targeted ability needs at least
+    one living enemy combatant, an ``ally``-targeted one a living ally,
+    and ``self`` is always available.  This is a cheap roster check for
+    the turn-end rule and the briefing — never a full legality simulation:
+    a legal-but-pointless option (a heal with everyone at full HP) still
+    counts as available, matching tabletop, where casting it is allowed.
+    """
+    legal: list[str] = []
+    used_map = combat.ability_uses.get("player", {})
+    for aid in hard.player.abilities:
+        ability = corpus.abilities.get(aid)
+        if ability is None or ability.casting_time != "bonus_action":
+            continue
+        if (
+            ability.uses_per_combat >= 0
+            and used_map.get(aid, 0) >= ability.uses_per_combat
+        ):
+            continue
+        if ability.spell_level is not None and ability.spell_level >= 1:
+            if combat.player_budget.slot_cast_this_turn:
+                continue
+            if hard.player.spell_slots.get(ability.spell_level, 0) <= 0:
+                continue
+        if ability.target == "enemy" and not _living_enemies(combat, hard):
+            continue
+        if ability.target == "ally" and not _living_allies(combat, hard):
+            continue
+        legal.append(aid)
+    return legal
+
+
+def meaningful_budget_remains(
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> bool:
+    """True when the player's turn should stay open after a resolved
+    sub-action: the action is still unused, or the bonus action is still
+    unused *and* at least one legal bonus-action option is available.
+
+    This is the §3.3 auto-end rule: a plain fighter (no bonus-action
+    option) never gets re-prompted after spending the action; a character
+    with a legal bonus action keeps the turn open after the action so the
+    bonus action can still be taken.
+    """
+    budget = combat.player_budget
+    return (
+        not budget.action_used
+        or (
+            not budget.bonus_action_used
+            and bool(legal_bonus_action_ability_ids(combat, hard, corpus))
+        )
+    )
+
+
 def _begin_player_turn(
     action: Any,
     combat: CombatState,
@@ -2478,9 +2569,16 @@ def _begin_player_turn(
     if combat.turn_continuation:
         pass
     else:
-        # Per-turn action-economy bookkeeping resets.
-        combat.bonus_action_used = False
-        combat.slot_cast_this_turn = False
+        # Per-turn action-economy bookkeeping resets: the full budget and
+        # the player's reaction (which refreshes at the start of their own
+        # turn, like every combatant's).
+        budget = combat.player_budget
+        budget.action_used = False
+        budget.bonus_action_used = False
+        budget.free_interaction_used = False
+        budget.reaction_used = False
+        budget.slot_cast_this_turn = False
+        combat.reactions_spent.discard("player")
         # Start-of-turn status-effect processing for the player.
         _tick_status_effects("player", hard, corpus, events)
         if _skips_turn("player", hard, corpus):
@@ -2627,6 +2725,10 @@ def resolve_combat_turn(
     game_over = False
     combat_ended = False
     combat_end_reason: str | None = None
+    # A ``wait`` (pass) spends nothing but ends the turn, and a failed flee
+    # consumes the whole turn (the DEX check abstracts the getaway) — in
+    # both cases the turn must not stay open even when budget remains.
+    force_end_turn = False
 
     # Start-of-turn status-effect processing for the player; a player with a
     # skip_turn status effect (e.g. stunned) loses the action but the turn
@@ -2638,6 +2740,7 @@ def resolve_combat_turn(
     if died_to_oa:
         game_over = True
         combat_end_reason = "defeat"
+    budget = combat.player_budget
     if player_skips or died_to_oa:
         pass  # stunned, or died to a provoked OA; NPC turns are skipped below
     elif isinstance(action, UseAbilityAction):
@@ -2646,7 +2749,7 @@ def resolve_combat_turn(
         is_bonus_action = (
             ability is not None and ability.casting_time == "bonus_action"
         )
-        if is_bonus_action and combat.bonus_action_used:
+        if is_bonus_action and budget.bonus_action_used:
             return {
                 "success": False,
                 "error": (
@@ -2654,10 +2757,19 @@ def resolve_combat_turn(
                     f"bonus action was already used this turn"
                 ),
             }
+        if not is_bonus_action and budget.action_used:
+            return {
+                "success": False,
+                "error": (
+                    "The action was already used this turn — you can only "
+                    "take one action per turn (a bonus action may still be "
+                    "available)"
+                ),
+            }
         if (
             ability is not None
             and (ability.spell_level or 0) >= 1
-            and combat.slot_cast_this_turn
+            and budget.slot_cast_this_turn
         ):
             return {
                 "success": False,
@@ -2673,27 +2785,26 @@ def resolve_combat_turn(
         if err is not None:
             return err
         if ability is not None and (ability.spell_level or 0) >= 1:
-            combat.slot_cast_this_turn = True
+            budget.slot_cast_this_turn = True
+        if is_bonus_action:
+            budget.bonus_action_used = True
+        else:
+            budget.action_used = True
         if not _living_enemies(combat, hard):
             combat_ended = True
             combat_end_reason = "victory"
-        elif is_bonus_action:
-            combat.log.extend(combat_log)
-            combat.bonus_action_used = True
-            combat.turn_continuation = True
-            return {
-                "success": True,
-                "hard_changes": hard_changes,
-                "combat_log": combat_log,
-                "player_died": _player_died(hard, hard_changes),
-                "combat_ended_reason": None,
-                "events": events,
-                "warnings": warnings,
-            }
     elif isinstance(action, CombatAction) and action.combat_action == "maneuver":
         # --- Maneuver: Disengage ---
         # Breaks all of the player's engagement pairs without provoking
         # opportunity attacks; consumes the action.  NPC turns proceed.
+        if budget.action_used:
+            return {
+                "success": False,
+                "error": (
+                    "The action was already used this turn — you can only "
+                    "take one action per turn"
+                ),
+            }
         for other in sorted(_engaged_with(combat, "player")):
             _set_engagement(combat, "player", other, False)
         combat_log.append(
@@ -2701,8 +2812,18 @@ def resolve_combat_turn(
                 round=combat.round_number, actor="player", action="maneuver",
             )
         )
+        budget.action_used = True
     elif isinstance(action, CombatAction):
         # --- Player attack ---
+        if budget.action_used:
+            return {
+                "success": False,
+                "error": (
+                    "The action was already used this turn — you can only "
+                    "take one action per turn (a bonus action may still be "
+                    "available)"
+                ),
+            }
         target_id = action.target
         if target_id not in combat.combatants:
             return {"success": False, "error": f"Target '{target_id}' not in combat"}
@@ -2721,12 +2842,50 @@ def resolve_combat_turn(
         if (npc_state.get("current_hp") or 0) <= 0:
             return {"success": False, "error": f"Target '{target_id}' is already dead"}
 
+        # Attack-carried weapon equip/unequip (SRD 5.2.1): one weapon
+        # swap, validated through the shared gear helper and applied to
+        # ``hard`` immediately so the attack roll below sees it.  It costs
+        # the free object interaction, not the action.
+        weapon_id = None
+        if action.equip_target or action.unequip_target:
+            from mgmai.engine.resolver import (
+                _apply_gear_changes_immediate,
+                _validate_gear_changes,
+            )
+            from mgmai.models.actions import GearAction
+
+            gear_action = GearAction(
+                action_type="gear",
+                equip_targets=[action.equip_target] if action.equip_target else [],
+                unequip_targets=[action.unequip_target] if action.unequip_target else [],
+                detail=action.detail,
+            )
+            gear_error = _validate_gear_changes(gear_action, hard, corpus)
+            if gear_error is not None:
+                return {"success": False, "error": gear_error}
+            if budget.free_interaction_used:
+                return {
+                    "success": False,
+                    "error": (
+                        "The free object interaction was already used this "
+                        "turn — a second weapon swap would cost the action"
+                    ),
+                }
+            _apply_gear_changes_immediate(
+                gear_action, hard, soft, corpus, state_manager,
+                events=events, immediate_changes=hard_changes,
+            )
+            budget.free_interaction_used = True
+            # Attacking with the drawn weapon is the intent behind
+            # attack-carried equip; the old weapon is not considered.
+            weapon_id = action.equip_target
+
         combat.player_last_target = target_id
         # Melee attacks engage the player with the target; switching
         # targets breaks the player's previous engagements (provoking
         # opportunity attacks from the previous targets) unless the
         # action's positioning assertion explicitly preserved them.
-        if not system.player_attack_is_ranged(hard, corpus):
+        if not system.player_attack_is_ranged(hard, corpus, weapon_id=weapon_id):
             preserved = {
                 frozenset(p)
                 for p in (action.positioning.engage if action.positioning else [])
@@ -2743,7 +2902,10 @@ def resolve_combat_turn(
         pa_result = None
         if not game_over:
             target_ac = entity.combat.ac
-            pa_result = system.resolve_player_attack(hard, corpus, target_id, target_ac, combat.round_number, soft=soft)
+            pa_result = system.resolve_player_attack(
+                hard, corpus, target_id, target_ac, combat.round_number,
+                soft=soft, weapon_id=weapon_id,
+            )
             combat_log.extend(pa_result.log_entries)
 
         if pa_result is not None and pa_result.hit:
@@ -2756,6 +2918,7 @@ def resolve_combat_turn(
                 hard_changes, corpus, combat_log, events,
             )
 
+        budget.action_used = True
         # Check if all enemies are dead
         if not game_over and not _living_enemies(combat, hard):
             combat_ended = True
@@ -2763,6 +2926,14 @@ def resolve_combat_turn(
 
     elif isinstance(action, MoveAction):
         # --- Flee attempt ---
+        if budget.action_used:
+            return {
+                "success": False,
+                "error": (
+                    "You cannot flee in the middle of your turn after "
+                    "already spending your action"
+                ),
+            }
         flee_dc = max(
             (
                 corpus.entities.get(c).combat.flee_dc
@@ -2791,10 +2962,14 @@ def resolve_combat_turn(
                     if ex.id == action.target:
                         hard_changes.player_location = ex.target_room
                         break
-        # On failure: turn is consumed, combat continues
+        else:
+            # On failure: the whole turn is consumed, combat continues.
+            budget.action_used = True
+            force_end_turn = True
     elif isinstance(action, WaitAction):
         # --- Pass the turn ---
-        # The player forgoes their combat action; NPC turns and the round
+        # ``wait`` is a pass: it spends nothing but ends the turn — the
+        # player forgoes the remaining budget.  NPC turns and the round
         # advance proceed below.  The action's detail still drives the
         # narration, and soft-state patches apply as usual (engine-level).
         combat_log.append(
@@ -2802,21 +2977,44 @@ def resolve_combat_turn(
                 round=combat.round_number, actor="player", action="wait",
             )
         )
+        force_end_turn = True
     else:
         return {"success": False, "error": "Invalid action in combat"}
 
-    # --- Resolve NPC turns after the player ---
-    if not combat_ended and not game_over:
+    # --- Turn-end decision ---
+    # The turn stays open (``turn_continuation``) when meaningful budget
+    # remains after the resolved sub-action: the action is still unused,
+    # or the bonus action is still unused with a legal option available.
+    # Otherwise NPC turns run and the round advances.
+    if game_over or combat_ended:
+        combat.log.extend(combat_log)
+        _clear_status_effects(hard, corpus, events)
+        hard.combat = None
+        turn_ended = True
+    elif player_skips or force_end_turn:
+        # A ``skip_turn`` status effect (stunned, incapacitated, …)
+        # consumed the player's action, the player passed (``wait``), or a
+        # flee failed (whole turn): the turn ends and NPC turns proceed —
+        # the remaining budget is not offered.
         game_over, combat_ended, tail_reason = _end_player_turn(
             combat, hard, corpus, soft, state_manager, system,
             hard_changes, combat_log, events,
         )
         if tail_reason is not None:
             combat_end_reason = tail_reason
-    else:
+        turn_ended = True
+    elif meaningful_budget_remains(combat, hard, corpus):
         combat.log.extend(combat_log)
-        _clear_status_effects(hard, corpus, events)
-        hard.combat = None
+        combat.turn_continuation = True
+        turn_ended = False
+    else:
+        game_over, combat_ended, tail_reason = _end_player_turn(
+            combat, hard, corpus, soft, state_manager, system,
+            hard_changes, combat_log, events,
+        )
+        if tail_reason is not None:
+            combat_end_reason = tail_reason
+        turn_ended = True
 
     # HP-based death is reported separately from an inline (scripted)
     # game-over: the engine routes it through the ``player.died`` event,
@@ -2831,4 +3029,5 @@ def resolve_combat_turn(
         "combat_ended_reason": combat_end_reason,
         "events": events,
         "warnings": warnings,
+        "turn_ended": turn_ended,
     }

@@ -401,6 +401,7 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 | `target`         | string         | yes      | The entity ID being interacted with, or the reserved sentinel `"current_room"` to perform a room interaction. Soft items should be handled via `examine` or `transfer`. |
 | `interaction_id` | string         | yes      | The specific interaction to perform. Generic interactions include `attack`. Module authors define additional ones (e.g., `recharge`). Picking up or giving items should use the `transfer` action instead. |
 | `using`          | string\|null   | no       | An entity ID or soft item enabling the interaction (e.g., "iron_sword" for attack). |
+| `interaction_cost` | string       | no       | In combat only: `"action"` (default — the Utilize action) or `"free"` (the player's one free object interaction per turn). Potions and other `usable_items` are always action-cost. |
 
 **Engine validation:**
 - `target` must be a hard entity present in the room, a following NPC,
@@ -417,11 +418,16 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 - If no matching interaction exists, the engine returns `success: false` with
   a reason. The LLM may then retry with a different action or fall back to
   `wait`.
-- During combat, a non-attack `interact` costs the player's combat turn (the
-  enemies act and the round advances afterwards), and a `positioning`
-  assertion may be attached (see `doc/combat.md` — *Positioning*). An
-  `interact` with `interaction_id: "attack"` during combat converts to a
-  normal combat attack and never re-enters combat.
+- During combat, a non-attack `interact` costs the player's action by
+  default (the enemies act and the round advances afterwards), and a
+  `positioning` assertion may be attached (see `doc/combat.md` —
+  *Positioning*). An `interact` with `interaction_id: "attack"` during
+  combat converts to a normal combat attack and never re-enters combat.
+- An `interact` tagged `interaction_cost: "free"` is the player's one free
+  object interaction per turn (SRD 5.2.1): it consumes
+  `free_interaction_used` and the turn continues. A second free
+  interaction is rejected, and `"free"` is rejected on potions and other
+  carried `usable_items` (they always require an action).
 - Inventory items that carry interactions (e.g. a potion with a `drink`
   interaction) may be targeted; the item-authored `Result` (heal,
   remove_item_count, cure_status_effects, etc.) applies directly.  This is
@@ -631,6 +637,12 @@ rule questions, or meta-discussion.
 At least one of the two fields must be non-empty; duplicates within a field
 are rejected.
 
+During combat a `gear` action is the player's one free object interaction
+per turn (SRD 5.2.1) — the turn continues.  A second object interaction in
+the same turn costs the action (Utilize); with no budget left the action is
+rejected.  A weapon can alternatively be drawn/sheathed **as part of an
+`attack`** via `CombatAction.equip_target`/`unequip_target`.
+
 **Engine validation** (in order):
 1. Each `unequip_target` must be in `player.equipped`.
 2. For each `equip_target`, in order:
@@ -667,11 +679,14 @@ are rejected.
 | `combat_action` | string | yes      | One of `attack`, `maneuver`. |
 | `target`        | string | yes, except for `maneuver` | For `attack`: an enemy combatant. Ignored for `maneuver`. |
 | `maneuver`      | string | only for `maneuver` | The maneuver to perform; currently only `"disengage"` — the player breaks all engagement pairs without provoking opportunity attacks, at the cost of the action. |
+| `equip_target` / `unequip_target` | string | no, for `attack` only | Equip or unequip ONE weapon as part of the attack (at most one of the two). Validated like a `gear` change, applied immediately before the attack roll, and the drawn weapon is the one used for the attack. Costs the free object interaction. |
 | `positioning`   | object | no       | Optional engagement assertion (combat only, on `combat`, `wait`, and `interact` actions): `{"engage": [[a, b], ...], "disengage": [[mover, stationary], ...], "impede": [enemy_id, ...]}`. See `doc/combat.md` — *Positioning*. |
 
-This is the player's one action per combat round; after it resolves, the
-remaining combatants act and the round advances.  See `doc/combat.md`.
-Attack targets must be IDs from `combat_state.combatants` with `side: "enemy"`.
+The `combat` action consumes the player's action.  After it resolves, the
+turn stays open while meaningful budget remains (a bonus action still
+available); otherwise the remaining combatants act and the round advances.
+See `doc/combat.md`.  Attack targets must be IDs from
+`combat_state.combatants` with `side: "enemy"`.
 
 **Engine validation:**
 - `attack`: `target` must be a living enemy combatant.  Out of combat,
@@ -679,6 +694,10 @@ Attack targets must be IDs from `combat_state.combatants` with `side: "enemy"`.
   which starts combat with the target.
 - `maneuver`: no target; breaks the player's engagement pairs and
   consumes the action.
+- `equip_target`/`unequip_target`: exactly one of the two; validated
+  through the shared gear path (in-inventory, `equip_block`, weapon tag,
+  conflict/`max_equipped`).  Rejected if the free interaction is already
+  used this turn.
 - `positioning`: ids must be living combatants; `engage`/`disengage`
   pairs are two distinct combatants, may not appear in both lists, and
   `disengage` pairs must be currently engaged; `impede` names living

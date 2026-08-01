@@ -17,7 +17,9 @@ During combat, the player's `action_type` is usually `combat`, with a
 `combat_action` field saying what they attempted:
 
 - `"attack"` — attack an enemy combatant; `target` is the enemy's
-  combatant ID.
+  combatant ID. An attack may carry `equip_target` / `unequip_target` —
+  the player draws (equips) or sheathes (unequips) one weapon as part of
+  the attack. Narrate the weapon coming out/in as part of the swing.
 - `"maneuver"` — a combat maneuver; currently only Disengage
   (`maneuver: "disengage"`): the player carefully withdraws from melee,
   breaking all engagement without provoking opportunity attacks. Narrate
