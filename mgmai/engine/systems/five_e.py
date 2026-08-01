@@ -567,6 +567,19 @@ class FiveESystem(ResolutionSystem):
             if c in effect_defs
         )
 
+    def save_advantage(
+        self, stat: str, status_effects: dict, corpus: ModuleCorpus
+    ) -> bool:
+        """5e: the roller's active status effects grant advantage on a
+        saving throw against ``stat`` (e.g. the ``dodging`` effect's
+        ``save_advantage: ["DEX"]``)."""
+        effect_defs = corpus.effective_status_effects()
+        return any(
+            stat.upper() in (effect_defs[c].system_effects.get("5e", {}).get("save_advantage") or [])
+            for c in status_effects
+            if c in effect_defs
+        )
+
     def check_roll_mods(
         self, is_save: bool, status_effects: dict, corpus: ModuleCorpus
     ) -> tuple[bool, bool]:
@@ -593,8 +606,14 @@ class FiveESystem(ResolutionSystem):
         corpus: ModuleCorpus,
         soft: object | None = None,
         weapon_id: str | None = None,
+        exclude_ability_mod: bool = False,
     ) -> str:
-        """5e damage expression: weapon dice + ability mod, or unarmed."""
+        """5e damage expression: weapon dice + ability mod, or unarmed.
+
+        ``exclude_ability_mod`` drops the (positive) ability modifier from
+        the damage — the Light-property off-hand attack adds no ability mod
+        to damage.  A negative modifier still applies (SRD: "unless that
+        modifier is negative")."""
         stats = hard.player.stats
         str_mod = self.compute_modifier(self._player_stat(stats, "STR"))
 
@@ -604,6 +623,8 @@ class FiveESystem(ResolutionSystem):
             stat_mod = self.compute_modifier(
                 self._player_stat(stats, self._weapon_attack_stat(hard, corpus, weapon_id))
             )
+            if exclude_ability_mod and stat_mod >= 0:
+                return weapon.damage_expr
             return (
                 f"{weapon.damage_expr}+{stat_mod}"
                 if stat_mod >= 0
@@ -641,6 +662,7 @@ class FiveESystem(ResolutionSystem):
         round_number: int,
         soft: object | None = None,
         weapon_id: str | None = None,
+        exclude_ability_mod: bool = False,
     ) -> PlayerAttackResult:
         """Resolve a player melee attack against target_id."""
         entity = corpus.entities.get(target_id)
@@ -696,7 +718,9 @@ class FiveESystem(ResolutionSystem):
 
         npc_state = hard.entity_states.get(target_id, {})
         if hit:
-            dmg_expr = self.compute_player_damage_expr(hard, corpus, soft, weapon_id)
+            dmg_expr = self.compute_player_damage_expr(
+                hard, corpus, soft, weapon_id, exclude_ability_mod=exclude_ability_mod
+            )
             damage, damage_roll = self.roll_damage(dmg_expr, critical=critical)
             damage_type = self.compute_player_damage_type(hard, corpus, soft, weapon_id)
             damage, mitigation = self.apply_damage_modifiers(
@@ -744,6 +768,7 @@ class FiveESystem(ResolutionSystem):
         round_number: int,
         attack: NPCAttackDef | None = None,
         player_hp_pending: int = 0,
+        forced_advantage: bool = False,
     ) -> NPCAttackResult:
         """Resolve an NPC attack against a combatant (player or NPC).
 
@@ -779,6 +804,8 @@ class FiveESystem(ResolutionSystem):
         adv, disadv = self.attack_roll_mods(
             npc_effects, target_effects, corpus, engaged=engaged_with_target
         )
+        if forced_advantage:
+            adv = True
         # Ranged attacks in close combat: Disadvantage while within reach
         # of a living, non-incapacitated enemy.
         if is_ranged and self._close_combat_threat(npc_id, hard, corpus):

@@ -504,23 +504,31 @@ rejected.  A weapon can alternatively be drawn/sheathed **as part of an
 | Field           | Type   | Required | Description |
 |-----------------|--------|----------|-------------|
 | `combat_action` | string | yes      | One of `attack`, `maneuver`. |
-| `target`        | string | yes, except for `maneuver` | For `attack`: an enemy combatant. Ignored for `maneuver`. |
-| `maneuver`      | string | only for `maneuver` | The maneuver to perform; currently only `"disengage"` — the player breaks all engagement pairs without provoking opportunity attacks, at the cost of the action. |
+| `target`        | string | yes for `attack`; for `maneuver`, only `grapple`/`shove`/`help` | For `attack` and the `grapple`/`shove`/`help` maneuvers: an enemy combatant. Ignored otherwise. |
+| `maneuver`      | string | only for `maneuver` | The maneuver to perform: `"disengage"`, `"dodge"`, `"grapple"`, `"shove"`, or `"help"` — see `doc/combat.md` — *Maneuvers*.  (`"escape"` is reserved: accepted, but nothing currently grapples the player, so it always reports "not currently grappled".) |
 | `equip_target` / `unequip_target` | string | no, for `attack` only | Equip or unequip ONE weapon as part of the attack (at most one of the two). Validated like a `gear` change, applied immediately before the attack roll, and the drawn weapon is the one used for the attack. Costs the free object interaction. |
 | `positioning`   | object | no       | Optional engagement assertion (combat only, on `combat`, `wait`, and `interact` actions): `{"engage": [[a, b], ...], "disengage": [[mover, stationary], ...], "impede": [enemy_id, ...]}`. See `doc/combat.md` — *Positioning*. |
 
 The `combat` action consumes the player's action.  After it resolves, the
 turn stays open while meaningful budget remains (a bonus action still
-available); otherwise the remaining combatants act and the round advances.
+available — including the off-hand attack when `off_hand_attack_available`
+is true); otherwise the remaining combatants act and the round advances.
 See `doc/combat.md`.  Attack targets must be IDs from
 `combat_state.combatants` with `side: "enemy"`.
 
 **Engine validation:**
 - `attack`: `target` must be a living enemy combatant.  Out of combat,
   `attack` is routed to the generic `interact`/`attack` interaction,
-  which starts combat with the target.
-- `maneuver`: no target; breaks the player's engagement pairs and
-  consumes the action.
+  which starts combat with the target.  A second `attack` in the same turn
+  is the bonus-action off-hand attack (Light property), legal only when
+  `off_hand_attack_available` is true.
+- `maneuver`: `disengage`/`dodge` take no target; `grapple`/
+  `shove`/`help` require a living enemy `target`.  All consume the action.
+  `dodge` applies the `dodging` status effect; `grapple`/`shove` resolve
+  a target save vs `8 + STR mod + prof` (grapple is limited to one at a
+  time); `help` flags the target for the next allied NPC's attack,
+  expiring at the start of the player's next turn.  (`escape` is
+  reserved — nothing currently grapples the player.)
 - `equip_target`/`unequip_target`: exactly one of the two; validated
   through the shared gear path (in-inventory, `equip_block`, weapon tag,
   conflict/`max_equipped`).  Rejected if the free interaction is already

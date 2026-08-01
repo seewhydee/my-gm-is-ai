@@ -233,6 +233,11 @@ class CombatBriefing(BaseModel):
     bonus_action_options: list[str] = Field(default_factory=list)
     free_interaction_available: bool = True
     reaction_available: bool = True
+    # True when the player's Attack action this turn used a Light weapon
+    # and a different equipped Light weapon is available: a second
+    # ``combat``/``attack`` on this turn is then the bonus-action off-hand
+    # attack (Light property), not an illegal double-attack.
+    off_hand_attack_available: bool = False
 
 
 class GMBriefing(BaseModel):

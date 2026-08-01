@@ -34,7 +34,9 @@
   },
   "grappled": {
     "name": "Grappled",
-    "description": "Speed 0; ends when the grappler is incapacitated or the target is removed from the grappler's reach. (No movement model; adjudicated by the GM.)"
+    "description": "Speed 0 and stuck in the grappler's grip; ends when the target escapes, the grappler is incapacitated, or the target is removed from reach. (No movement model; the grapple's reach is the engagement relation.)",
+    "scope": "combat",
+    "duration": "until_cleared"
   },
   "incapacitated": {
     "name": "Incapacitated",
@@ -76,7 +78,7 @@
   },
   "petrified": {
     "name": "Petrified",
-    "description": "Transformed to stone: incapacitated, can't move or speak, unaware of its surroundings; loses its turns. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage; resistant to all damage and immune to poison (damage resistance not modeled per-effect — adjudicated by the GM).",
+    "description": "Transformed to stone: incapacitated, can't move or speak, unaware of its surroundings; loses its turns. Automatically fails Strength and Dexterity saving throws; attack rolls against it have advantage; resistant to all damage and immune to poison (damage resistance not modeled per-effect \u2014 adjudicated by the GM).",
     "skip_turn": true,
     "system_effects": {
       "5e": {
@@ -147,7 +149,9 @@
     "scope": "persistent",
     "duration": "until_cleared",
     "system_effects": {
-      "5e": { "d20_test_modifier": -2 }
+      "5e": {
+        "d20_test_modifier": -2
+      }
     }
   },
   "exhaustion-2": {
@@ -156,7 +160,9 @@
     "scope": "persistent",
     "duration": "until_cleared",
     "system_effects": {
-      "5e": { "d20_test_modifier": -4 }
+      "5e": {
+        "d20_test_modifier": -4
+      }
     }
   },
   "exhaustion-3": {
@@ -165,7 +171,9 @@
     "scope": "persistent",
     "duration": "until_cleared",
     "system_effects": {
-      "5e": { "d20_test_modifier": -6 }
+      "5e": {
+        "d20_test_modifier": -6
+      }
     }
   },
   "exhaustion-4": {
@@ -174,7 +182,9 @@
     "scope": "persistent",
     "duration": "until_cleared",
     "system_effects": {
-      "5e": { "d20_test_modifier": -8 }
+      "5e": {
+        "d20_test_modifier": -8
+      }
     }
   },
   "exhaustion-5": {
@@ -183,7 +193,9 @@
     "scope": "persistent",
     "duration": "until_cleared",
     "system_effects": {
-      "5e": { "d20_test_modifier": -10 }
+      "5e": {
+        "d20_test_modifier": -10
+      }
     }
   },
   "exhaustion-6": {
@@ -192,7 +204,23 @@
     "scope": "persistent",
     "duration": "until_cleared",
     "system_effects": {
-      "5e": { "d20_test_modifier": -12 }
+      "5e": {
+        "d20_test_modifier": -12
+      }
+    }
+  },
+  "dodging": {
+    "name": "Dodging",
+    "description": "The creature is Dodging: attack rolls against it have disadvantage, and it has advantage on Dexterity saving throws. Lasts until the start of its next turn.",
+    "scope": "combat",
+    "duration": "until_turn_start",
+    "system_effects": {
+      "5e": {
+        "disadvantage_against": true,
+        "save_advantage": [
+          "DEX"
+        ]
+      }
     }
   }
 }

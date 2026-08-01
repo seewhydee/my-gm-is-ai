@@ -967,7 +967,15 @@ class TestBudgetValidation:
         briefing = self._spent_briefing(action_available=False)
         error = validate_ruling_action(_combat("attack", "goblin"), briefing)
         assert error is not None
-        assert "no action left" in error
+        assert "off-hand attack" in error
+
+    def test_second_attack_allowed_when_off_hand_available(self):
+        briefing = self._spent_briefing(action_available=False)
+        briefing.combat_state.off_hand_attack_available = True
+        assert (
+            validate_ruling_action(_combat("attack", "goblin"), briefing)
+            is None
+        )
 
     def test_second_action_transfer_rejected(self):
         briefing = self._spent_briefing(action_available=False)
@@ -1094,3 +1102,56 @@ class TestBudgetValidation:
             target="goblin", equip_target="sword", detail="test",
         )
         assert validate_ruling_action(action, briefing) is None
+
+
+class TestManeuverValidation:
+    """Target checks for the target-requiring maneuvers (Grapple / Shove /
+    Help): the target must be a living enemy combatant."""
+
+    def _maneuver(self, kind, target=None) -> CombatAction:
+        return CombatAction(
+            action_type="combat", combat_action="maneuver",
+            maneuver=kind, target=target, detail="test",
+        )
+
+    def test_grapple_enemy_target_passes(self):
+        briefing = _combat_briefing()
+        assert validate_ruling_action(
+            self._maneuver("grapple", "goblin"), briefing
+        ) is None
+
+    def test_grapple_ally_target_rejected(self):
+        briefing = _combat_briefing()
+        error = validate_ruling_action(
+            self._maneuver("grapple", "korbar"), briefing
+        )
+        assert error is not None
+        assert "living enemy combatant" in error
+
+    def test_shove_unknown_target_rejected(self):
+        briefing = _combat_briefing()
+        error = validate_ruling_action(
+            self._maneuver("shove", "dragon"), briefing
+        )
+        assert error is not None
+        assert "living enemy combatant" in error
+
+    def test_help_player_target_rejected(self):
+        briefing = _combat_briefing()
+        error = validate_ruling_action(
+            self._maneuver("help", "player"), briefing
+        )
+        assert error is not None
+        assert "living enemy combatant" in error
+
+    def test_dodge_without_target_passes(self):
+        briefing = _combat_briefing()
+        assert validate_ruling_action(
+            self._maneuver("dodge"), briefing
+        ) is None
+
+    def test_disengage_without_target_passes(self):
+        briefing = _combat_briefing()
+        assert validate_ruling_action(
+            self._maneuver("disengage"), briefing
+        ) is None

@@ -1,7 +1,7 @@
 # SRD 5e Data-Pack Manifest
 This file is **auto-generated** by `scripts/generate_datapack_manifest.py`.  Do not edit by hand.
 Adventure-module authors can reference any ID listed below in their corpus, rooms, inventories, and character sheets without re-defining the item.  The engine pulls the full definition from its built-in data pack.
-**55 gear items**, **22 conditions**, and **7 spells** are currently available.
+**55 gear items**, **23 conditions**, and **7 spells** are currently available.
 ---
 ## Gear
 Each ID below is a valid reference for items, equipment, and consumables.
@@ -127,6 +127,7 @@ Each ID below is a valid reference for status effects and the `status_effects` b
 | `restrained` | Restrained |
 | `stunned` | Stunned |
 | `unconscious` | Unconscious |
+| `dodging` | Dodging |
 
 ### Exhaustion Levels
 

@@ -7,15 +7,22 @@
 When `combat_state` is present in the briefing, combat is active and the **turn economy** applies (D&D 5e SRD 5.2.1).  Each player turn has:
 
 - **one action** — `combat` (attack/maneuver), an action-time `use_ability`, `transfer`, rigorous `examine`, or an action-cost `interact`;
-- **at most one bonus action** — a `use_ability` whose `casting_time` is `"bonus_action"`, only when `bonus_action_available` is true;
+- **at most one bonus action** — a `use_ability` whose `casting_time` is `"bonus_action"` (only when `bonus_action_available` is true), **or** the off-hand attack (Light property) when `off_hand_attack_available` is true;
 - **one free object interaction** — a `gear` weapon swap, or an `interact` tagged `interaction_cost: "free"` (simple environmental objects only: potions and other items the player carries always cost the action);
 - **one reaction** (opportunity attacks), refreshing at the start of the player's own turn.
 
-`combat_state.action_available`, `bonus_action_available`, `free_interaction_available`, and `reaction_available` tell you what remains; `bonus_action_options` lists the legal bonus-action abilities right now.  A bonus action may be taken before or after the action.
+`combat_state.action_available`, `bonus_action_available`, `free_interaction_available`, and `reaction_available` tell you what remains; `bonus_action_options` lists the legal bonus-action abilities right now; `off_hand_attack_available` means a second `combat`/`attack` this turn is the bonus-action off-hand attack (the player attacked with a Light weapon and a different equipped Light weapon is available; it adds no ability modifier to damage).  A bonus action may be taken before or after the action.
 
 **Ending the turn.**  After a resolved action, the turn stays open for another ruling while meaningful budget remains (the action is still unused, or the bonus action is still available).  You are not prompted again when no legal option remains — the turn ends automatically.  A player facing an open turn who wants to stop should be ruled as `wait` (pass: spends nothing, ends the turn).  Bare speech or "done"/"nothing" during an open turn is `wait`, so it **forfeits** the remaining budget — advise flavor speech be bundled with a declared action.
 
 Any `gear` action may only involve equipping/unequipping a weapon.  A second object interaction in the same turn costs the action (Utilize); a `gear` swap when the free interaction is spent is therefore an action.
+
+**Maneuvers** (`combat_action: "maneuver"`), all costing the action:
+- `disengage` — break all engagement without provoking OAs (impossible while grappled).
+- `dodge` — defensive stance: attacks against the player have disadvantage and the player has advantage on DEX saves, until their next turn.
+- `grapple` — vs an enemy `target`: it makes a STR-or-DEX save vs 8 + STR mod + prof; on a failed save it is grappled (stuck in your reach; it must use its turn to escape). Only one grapple at a time.
+- `shove` — vs an enemy `target`: same save; on a failed save it falls prone.
+- `help` — vs an enemy `target`: the next allied NPC's attack against that enemy has advantage (consumed by that attack; expires at the start of your next turn).
 
 NPCs engaged in the fight are listed in `combat_state.combatants`; enemies have `side: "enemy"`, and allied NPCs have `side: "party"`.  Allied NPCs fight autonomously under engine control.
 

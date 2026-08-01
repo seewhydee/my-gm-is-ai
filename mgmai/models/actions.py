@@ -137,7 +137,9 @@ class CombatAction(_BaseAction):
     action_type: Literal["combat"]
     combat_action: Literal["attack", "maneuver"]
     target: str | None = None
-    maneuver: Literal["disengage"] | None = None
+    maneuver: Literal[
+        "disengage", "dodge", "grapple", "shove", "help", "escape"
+    ] | None = None
     # Attack-carried weapon equip/unequip (SRD: "You can either equip or
     # unequip one weapon when you make an attack as part of this action").
     # At most one of the two may be set; applied to the player's gear
@@ -145,11 +147,22 @@ class CombatAction(_BaseAction):
     equip_target: str | None = None
     unequip_target: str | None = None
 
+    # Target-requiring maneuvers: grapple/shove/help act on a combatant.
+    _MANEUVER_TARGETS = frozenset({"grapple", "shove", "help"})
+
     @model_validator(mode="after")
     def check_target_requirement(self) -> CombatAction:
         if self.combat_action != "maneuver" and not self.target:
             raise ValueError(
                 f"combat action '{self.combat_action}' requires a target"
+            )
+        if (
+            self.combat_action == "maneuver"
+            and self.maneuver in self._MANEUVER_TARGETS
+            and not self.target
+        ):
+            raise ValueError(
+                f"combat maneuver '{self.maneuver}' requires a target"
             )
         if self.equip_target is not None and self.unequip_target is not None:
             raise ValueError(

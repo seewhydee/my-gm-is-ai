@@ -221,7 +221,9 @@ The built-in defaults reproduce the 5e SRD conditions:
 | `invisible` | Its attack rolls have advantage; attack rolls against it have disadvantage. |
 | `incapacitated` / `paralyzed` / `petrified` / `unconscious` | The combatant loses its turn; `paralyzed`/`petrified`/`unconscious` also grant advantage to attackers and auto-fail STR and DEX saves; a hit from an engaged attacker against a `paralyzed` or `unconscious` combatant is an automatic critical. |
 | `restrained` | Disadvantage on own attack rolls; attack rolls against it have advantage. |
-| `charmed` / `deafened` / `grappled` | No roll modifiers; adjudicated by the GM from the description. |
+| `charmed` / `deafened` | No roll modifiers; adjudicated by the GM from the description. |
+| `grappled` | Stuck in the grappler's reach (cannot disengage away; positioning-asserted disengages are rejected).  Combat-scoped, lasts until the target escapes, the grappler is incapacitated, or combat ends — applied by the Grapple maneuver (see *Maneuvers*); adventure content that applies `grappled` directly gets the same `until_cleared` lifetime.  No roll modifiers. |
+| `dodging` | Attack rolls against it have disadvantage; it has advantage on Dexterity saving throws.  Until the start of its next turn — applied by the Dodge maneuver. |
 | `exhaustion-1` … `exhaustion-6` | Persistent; −2 × level on all of the combatant's d20 rolls (attacks, checks, saves). |
 
 Custom status effects declare their roll modifiers per system via
@@ -351,7 +353,8 @@ turn can end it by `wait` (a pass that spends nothing).
 | Action | Turn cost | Description |
 |--------|-----------|-------------|
 | `combat` (`combat_action: "attack"`) | action | Attack a combatant.  `target` must be an enemy entity ID in `combatants`.  May carry one `equip_target`/`unequip_target` (a weapon swap made as part of the attack), which costs the free interaction. |
-| `combat` (`combat_action: "maneuver"`) | action | Maneuver: Disengage (`maneuver: "disengage"`).  Breaks all of the player's engagement pairs without provoking opportunity attacks; no `target`. |
+| `combat` (`combat_action: "maneuver"`) | action | Maneuver (one of Disengage, Dodge, Grapple, Shove, Help — see *Maneuvers* below).  `grapple`/`shove`/`help` take an enemy `target`; `disengage` and `dodge` take none.  (`escape` is reserved — see *Maneuvers*.) |
+| `combat` (`combat_action: "attack"`) as a **second** attack | bonus action | The off-hand attack (Light property): legal only right after an Attack action made with a Light weapon, with a different equipped Light weapon — see *Maneuvers* below. |
 | `use_ability` | action or bonus action | Use a spell, class feature, or other ability.  `ability_id` plus a `target` matching the ability's target kind.  `casting_time: "bonus_action"` abilities consume the bonus action; everything else the action. |
 | `move` | whole turn | Attempt to flee (see below).  Requires an unspent action, and consumes the entire turn even on failure — any remaining bonus action or free interaction is forfeited. |
 | `wait` | pass | End the turn, spending nothing: no attack/item/ability, but the `detail` is narrated as usual and soft-state patches apply.  Also how speech is ruled in combat — see `talk` below. |
@@ -373,6 +376,56 @@ prompt whenever meaningful budget remains.  `wait` (pass) and the
 auto-end rule together mean a plain fighter who spends the action is
 never re-prompted, while a character with a legal bonus action gets the
 option to use it after the action (SRD-faithful bonus-action ordering).
+
+### Maneuvers
+
+All `combat_action: "maneuver"` values cost the action:
+
+- **Disengage** (`maneuver: "disengage"`) — break all of the player's
+  engagement pairs without provoking opportunity attacks.  Impossible
+  while grappled.
+- **Dodge** (`maneuver: "dodge"`) — apply the `dodging` status effect:
+  attack rolls against the player have disadvantage and the player has
+  advantage on Dexterity saving throws, until the start of their next
+  turn.
+- **Grapple** (`maneuver: "grapple"`, `target` = an enemy) — the target
+  makes a Strength-or-Dexterity saving throw (its choice; NPCs use their
+  flat `save_bonus`) against `8 + STR modifier + proficiency bonus`.  On
+  a failed save the target gains the `grappled` condition (it cannot
+  leave your reach — disengaging away is rejected) and the pair is
+  forced into engagement.  Only one grapple at a time (SRD: one hand
+  free).  A grappled combatant must spend its turn trying to escape; the
+  grapple also ends if the grappler is incapacitated.
+- **Shove** (`maneuver: "shove"`, `target` = an enemy) — same save; on a
+  failure the target gains the `prone` condition (auto-standing at the
+  start of its own turn).
+- **Help** (`maneuver: "help"`, `target` = an enemy) — flag the target so
+  the next allied NPC's attack against it has advantage; the flag is
+  consumed by that attack and expires at the start of the player's next
+  turn (the `help_flagged` list).
+- **Escape** (`maneuver: "escape"`) — reserved: a grappled combatant
+  breaks a grapple with a Strength-or-Dexterity check against the
+  grappler's grapple DC.  Today only NPCs can *be* grappled (they attempt
+  this on their own turn instead of attacking); nothing in the engine
+  grapples the player, so the player-facing maneuver is accepted but
+  always reports "not currently grappled" — a future NPC-maneuvers phase
+  will make it reachable.
+
+### Off-hand attack (Light property)
+
+After the player's Attack **action** made with a Light weapon, a second
+`combat`/`attack` in the same turn is the **bonus-action off-hand
+attack** (SRD 5.2.1 Light property): it must use a *different* equipped
+Light weapon, consumes the bonus action (not the action), and adds no
+ability modifier to its damage roll unless that modifier is negative.
+The ruling layer is told when it is legal via
+`CombatBriefing.off_hand_attack_available` (derived from
+`CombatState.action_weapon_id`, the weapon the Attack action used);
+a second attack without it is rejected.  Dual wielding is possible
+because pack weapons carry `max_equipped: 2` — see
+[gear.md](gear.md) — *Dual wielding*.  Two-handed weapons reject a
+second weapon outright.  (Nick/weapon mastery remain deferred; the
+off-hand attack may not carry an `equip_target`.)
 
 A `combat`, `wait`, or `interact` action may also carry an optional
 `positioning` assertion (LLM-adjudicated engagement changes) — see
@@ -798,11 +851,16 @@ The combat system deliberately excludes:
   turn budget covers action / bonus action / free object interaction /
   reaction, but movement stays abstract (theater of the mind); Dash is
   meaningless without distances
-- Dodge, Grapple, Shove, and the other maneuvers (Phase 2) — Disengage is
-  the only `maneuver` value; `wait` (pass) has no defensive benefit until
-  Dodge lands
-- Light-property off-hand attacks and weapon mastery (Phase 2) — a
-  weapon's `properties` are data only for now
+- Weapon mastery (including Nick) and per-hand weapon tracking — the
+  Light-property off-hand attack is supported (see *Off-hand attack*),
+  but a weapon's `properties` beyond `light`/`ranged`/`finesse`/`two_handed`
+  are data only
+- A push/slide distance for Shove and a movement model for grapple reach —
+  Shove applies the `prone` condition only (no 5ft push), and grapple
+  reach is the abstract engagement relation
+- NPC grapple/Help maneuvers and NPC bonus actions — authors use
+  abilities; NPCs only *escape* grapples and only *benefit from* the
+  player's Help flag
 - The Ready action, reaction spells (Shield, Counterspell), and player
   opportunity-attack opt-out (Phase 3) — OAs are automatic (one basic
   attack, no opt-out) and capped at one reaction per combatant, refreshed

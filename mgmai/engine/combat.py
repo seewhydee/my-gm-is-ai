@@ -838,6 +838,14 @@ def _apply_positioning_assertions(
                 f"the pair is not currently engaged"
             )
             continue
+        if combat.grapples.get(mover) == stationary:
+            # A grappled creature can't voluntarily leave its grappler's
+            # reach (SRD: speed becomes 0 while grappled).
+            warnings.append(
+                f"positioning disengage entry {pair!r} dropped: "
+                f"'{mover}' is grappled by '{stationary}' and cannot leave"
+            )
+            continue
         changes += 1
         _set_engagement(combat, mover, stationary, False)
         combat_log.append(
@@ -1414,8 +1422,11 @@ def _resolve_save_ability(
         flat = system.compute_save_modifier(
             save.stat, hard.player
         ) + system.d20_test_modifier(target_effects, corpus)
+        params: dict[str, Any] = {}
+        if system.save_advantage(save.stat, target_effects, corpus):
+            params["advantage"] = True
         check = system.roll_check(
-            save.stat, stat_value, dc, flat_modifier=flat
+            save.stat, stat_value, dc, flat_modifier=flat, params=params
         )
         save_success = check.success
         save_roll, save_total = check.raw_roll, check.total
@@ -2041,6 +2052,37 @@ def _resolve_npc_turn(
             _set_engagement(combat, actor_id, impede_target, True)
         return False, not _living_enemies(combat, hard)
 
+    # A grappled NPC spends its turn trying to escape (contested check
+    # against the grappler's grapple DC) instead of attacking.
+    grappler_id = combat.grapples.get(actor_id)
+    if grappler_id is not None:
+        system = get_system_for_corpus(corpus)
+        dc = _grapple_dc(grappler_id, hard, corpus, system)
+        save_bonus = entity.combat.save_bonus or 0
+        save_roll = system.roll_die(20)
+        save_total = save_roll + save_bonus + system.d20_test_modifier(
+            get_status_effects(actor_id, hard), corpus
+        )
+        escaped = save_total >= dc
+        if escaped:
+            combat.grapples.pop(actor_id, None)
+            remove_status_effect(
+                actor_id, "grappled", hard, corpus, "escaped", events
+            )
+        combat_log.append(
+            CombatLogEntry(
+                round=combat.round_number,
+                actor=actor_id,
+                action="escape",
+                target=grappler_id,
+                attack_roll=save_roll,
+                attack_total=save_total,
+                ac=dc,
+                hit=escaped,
+            )
+        )
+        return False, not _living_enemies(combat, hard)
+
     # Abilities take precedence over basic attacks: the NPC's first
     # usable ability (uses, cooldown, AI rules) wins.
     chosen = _choose_npc_ability(
@@ -2076,10 +2118,20 @@ def _resolve_npc_turn(
                 break
             if actor_id not in combat.combatants:
                 break  # killed by a provoked opportunity attack
+        # Help flag: a party-side attack against a help-flagged enemy has
+        # advantage, then the flag is consumed.
+        forced_advantage = False
+        if (
+            _side_of(combat, actor_id) != "enemy"
+            and target_id in combat.help_flagged
+        ):
+            forced_advantage = True
+            combat.help_flagged.remove(target_id)
         npc_result = system.resolve_npc_attack(
             actor_id, hard, corpus, target_id, target_ac,
             combat.round_number, attack=attack_def,
             player_hp_pending=hard_changes.player_hp_delta or 0,
+            forced_advantage=forced_advantage,
         )
         combat_log.extend(npc_result.log_entries)
         turn_entries = list(npc_result.log_entries)
@@ -2529,9 +2581,298 @@ def meaningful_budget_remains(
         not budget.action_used
         or (
             not budget.bonus_action_used
-            and bool(legal_bonus_action_ability_ids(combat, hard, corpus))
+            and (
+                bool(legal_bonus_action_ability_ids(combat, hard, corpus))
+                # The Light-property off-hand attack is also a bonus action.
+                or _off_hand_weapon(combat, hard, corpus) is not None
+            )
         )
     )
+
+
+def _prune_grapples(
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+) -> None:
+    """Free grapples whose grappler is gone or incapacitated.
+
+    A grapple ends when the grappler leaves combat, drops, or is
+    incapacitated (SRD: "ends if the grappler is incapacitated").  The
+    freed target's ``grappled`` status is removed; the forced engagement
+    is left intact (the two may still be within reach).
+    """
+    if not combat.grapples:
+        return
+    freed: list[str] = []
+    for grappled_id, grappler_id in list(combat.grapples.items()):
+        target_gone = grappled_id not in combat.combatants
+        if not target_gone and grappled_id != "player":
+            target_gone = (
+                hard.entity_states.get(grappled_id, {}).get("current_hp") or 0
+            ) <= 0
+        grappler_gone = grappler_id not in combat.combatants
+        if not grappler_gone and grappler_id != "player":
+            grappler_gone = (
+                hard.entity_states.get(grappler_id, {}).get("current_hp") or 0
+            ) <= 0
+        if (
+            target_gone
+            or grappler_gone
+            or _skips_turn(grappler_id, hard, corpus)
+        ):
+            freed.append(grappled_id)
+    for grappled_id in freed:
+        combat.grapples.pop(grappled_id, None)
+        remove_status_effect(
+            grappled_id, "grappled", hard, corpus, "grappler_incapacitated", events
+        )
+
+
+def _grappled_by(combat: CombatState, combatant_id: str) -> str | None:
+    """The id grappling *combatant_id*, or None when not grappled."""
+    return combat.grapples.get(combatant_id)
+
+
+def _grapple_dc(
+    grappler_id: str,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    system: Any,
+) -> int:
+    """The save DC / escape DC of a grapple from *grappler_id*: 8 + the
+    grappler's Strength modifier + proficiency bonus (SRD).  For NPC
+    grapplers the flat combat ``save_bonus`` stands in for the STR mod +
+    proficiency (NPCs have no per-stat scores)."""
+    if grappler_id == "player":
+        stats = hard.player.stats or {}
+        str_mod = system.compute_modifier(stats.get("STR", 10))
+        prof = getattr(hard.player, "proficiency_bonus", None) or 2
+        return 8 + str_mod + prof
+    entity = corpus.entities.get(grappler_id)
+    return 8 + ((entity.combat.save_bonus or 2) if entity and entity.combat else 2)
+
+
+def _resolve_unarmed_maneuver(
+    action: CombatAction,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+) -> dict[str, Any] | None:
+    """Resolve a Grapple or Shove (SRD 5.2.1 Unarmed Strike options).
+
+    The target makes a Strength or Dexterity saving throw (its choice —
+    for NPCs the flat ``save_bonus`` stands in) against
+    8 + STR mod + proficiency.  On a failed save a grapple applies the
+    ``grappled`` condition (and forces engagement), a shove applies
+    ``prone``.  A grapple is rejected while the player already grapples
+    someone (SRD: one hand, one grapple at a time).  Returns an error
+    dict on validation failure, None on success (a resisted maneuver is
+    still a spent action).
+    """
+    system = get_system_for_corpus(corpus)
+    maneuver = action.maneuver
+    target_id = action.target
+    if target_id not in combat.combatants:
+        return {"success": False, "error": f"Target '{target_id}' not in combat"}
+    if _side_of(combat, target_id) != "enemy":
+        return {
+            "success": False,
+            "error": f"Cannot {maneuver} '{target_id}': not an enemy combatant",
+        }
+    if (hard.entity_states.get(target_id, {}).get("current_hp") or 0) <= 0:
+        return {"success": False, "error": f"Target '{target_id}' is already dead"}
+    if maneuver == "grapple":
+        held = [k for k, v in combat.grapples.items() if v == "player"]
+        if held:
+            return {
+                "success": False,
+                "error": (
+                    f"You are already grappling '{held[0]}' — you can only "
+                    "grapple one creature at a time (SRD: one hand free)"
+                ),
+            }
+
+    dc = _grapple_dc("player", hard, corpus, system)
+    target_effects = get_status_effects(target_id, hard)
+    # The target must be an enemy combatant (checked above), so only the
+    # NPC save path is reachable: the flat ``save_bonus`` stands in for
+    # the target's choice of STR or DEX save.
+    tgt_entity = corpus.entities.get(target_id)
+    save_bonus = (
+        (tgt_entity.combat.save_bonus or 0)
+        if tgt_entity and tgt_entity.combat
+        else 0
+    )
+    save_roll = system.roll_die(20)
+    save_total = (
+        save_roll + save_bonus + system.d20_test_modifier(target_effects, corpus)
+    )
+    save_success = save_total >= dc
+    save_stat = "STR/DEX"
+
+    if not save_success:
+        combat.player_last_target = target_id
+        if maneuver == "grapple":
+            apply_status_effect(
+                target_id, "grappled", 1, hard, corpus, "maneuver", events
+            )
+            combat.grapples[target_id] = "player"
+            _set_engagement(combat, "player", target_id, True)
+        else:
+            apply_status_effect(target_id, "prone", 1, hard, corpus, "maneuver", events)
+
+    save_dict: dict[str, Any] = {
+        "save_stat": save_stat,
+        "save_dc": dc,
+        "save_roll": save_roll,
+        "save_total": save_total,
+        "save_success": save_success,
+        "status_effect": "grappled" if maneuver == "grapple" else "prone",
+    }
+    combat_log.append(
+        CombatLogEntry(
+            round=combat.round_number,
+            actor="player",
+            action=maneuver,
+            target=target_id,
+            attack_roll=save_roll,
+            attack_total=save_total,
+            ac=dc,
+            hit=not save_success,
+            on_hit_effects=[save_dict],
+        )
+    )
+    return None
+
+
+def _resolve_help(
+    action: CombatAction,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    combat_log: list[CombatLogEntry],
+) -> dict[str, Any] | None:
+    """Resolve the Help maneuver: flag the target enemy so the next
+    party-side attack against it has advantage (consumed by that attack)."""
+    target_id = action.target
+    if target_id not in combat.combatants:
+        return {"success": False, "error": f"Target '{target_id}' not in combat"}
+    if _side_of(combat, target_id) != "enemy":
+        return {
+            "success": False,
+            "error": f"Cannot help against '{target_id}': not an enemy combatant",
+        }
+    if target_id not in combat.help_flagged:
+        combat.help_flagged.append(target_id)
+    # Help directs the ally's focus to the target (party-NPC targeting
+    # defaults to the player's most recent target).
+    combat.player_last_target = target_id
+    combat_log.append(
+        CombatLogEntry(
+            round=combat.round_number, actor="player", action="help", target=target_id,
+        )
+    )
+    return None
+
+
+def _resolve_escape(
+    action: CombatAction,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+) -> dict[str, Any] | None:
+    """Resolve the Escape maneuver: the player breaks free of a grapple
+    with a contested Strength (Athletics) / Dexterity (Acrobatics) check
+    against the grappler's grapple DC."""
+    system = get_system_for_corpus(corpus)
+    grappler_id = _grappled_by(combat, "player")
+    if grappler_id is None:
+        return {"success": False, "error": "You are not currently grappled"}
+    dc = _grapple_dc(grappler_id, hard, corpus, system)
+    stats = hard.player.stats or {}
+    best_stat = max(
+        ("STR", "DEX"),
+        key=lambda s: system.compute_modifier(stats.get(s, 10)),
+    )
+    flat = system.compute_save_modifier(best_stat, hard.player) + (
+        system.d20_test_modifier(get_status_effects("player", hard), corpus)
+    )
+    check = system.roll_check(best_stat, stats.get(best_stat, 10), dc, flat_modifier=flat)
+    escaped = check.success
+    if escaped:
+        combat.grapples.pop("player", None)
+        remove_status_effect("player", "grappled", hard, corpus, "escaped", events)
+    combat_log.append(
+        CombatLogEntry(
+            round=combat.round_number,
+            actor="player",
+            action="escape",
+            target=grappler_id,
+            attack_roll=check.raw_roll,
+            attack_total=check.total,
+            ac=dc,
+            hit=escaped,
+            on_hit_effects=[{
+                "save_stat": best_stat,
+                "save_dc": dc,
+                "save_roll": check.raw_roll,
+                "save_total": check.total,
+                "save_success": escaped,
+            }],
+        )
+    )
+    return None
+
+
+def _equipped_weapon_id(
+    hard: HardGameState, corpus: ModuleCorpus
+) -> str | None:
+    """The id of the first equipped weapon, or None when unarmed."""
+    for item_id in hard.player.equipped:
+        entity = corpus.entities.get(item_id)
+        if (
+            entity
+            and entity.equip_block
+            and "weapon" in entity.equip_block.equip_tags
+        ):
+            return item_id
+    return None
+
+
+def _off_hand_weapon(
+    combat: CombatState, hard: HardGameState, corpus: ModuleCorpus
+) -> str | None:
+    """The equipped Light weapon available for a bonus-action off-hand
+    attack (§6): the player's Attack *action* this turn was made with a
+    Light weapon (``combat.action_weapon_id``), and a different equipped
+    weapon with the ``light`` property is available."""
+    action_weapon = combat.action_weapon_id
+    if action_weapon is None:
+        return None
+    action_entity = corpus.entities.get(action_weapon)
+    action_block = action_entity.equip_block if action_entity else None
+    if action_block is None or "light" not in (action_block.properties or []):
+        return None
+    for item_id in hard.player.equipped:
+        if item_id == action_weapon:
+            continue
+        entity = corpus.entities.get(item_id)
+        if (
+            entity
+            and entity.equip_block
+            and "weapon" in entity.equip_block.equip_tags
+            and "light" in (entity.equip_block.properties or [])
+        ):
+            return item_id
+    return None
 
 
 def _begin_player_turn(
@@ -2579,6 +2920,11 @@ def _begin_player_turn(
         budget.reaction_used = False
         budget.slot_cast_this_turn = False
         combat.reactions_spent.discard("player")
+        combat.action_weapon_id = None
+        # Help flags the player set expire at the start of their next turn
+        # (SRD: "This benefit expires at the start of your next turn").
+        combat.help_flagged.clear()
+        _prune_grapples(combat, hard, corpus, events)
         # Start-of-turn status-effect processing for the player.
         _tick_status_effects("player", hard, corpus, events)
         if _skips_turn("player", hard, corpus):
@@ -2794,9 +3140,7 @@ def resolve_combat_turn(
             combat_ended = True
             combat_end_reason = "victory"
     elif isinstance(action, CombatAction) and action.combat_action == "maneuver":
-        # --- Maneuver: Disengage ---
-        # Breaks all of the player's engagement pairs without provoking
-        # opportunity attacks; consumes the action.  NPC turns proceed.
+        # --- Maneuvers ---
         if budget.action_used:
             return {
                 "success": False,
@@ -2805,25 +3149,88 @@ def resolve_combat_turn(
                     "take one action per turn"
                 ),
             }
-        for other in sorted(_engaged_with(combat, "player")):
-            _set_engagement(combat, "player", other, False)
-        combat_log.append(
-            CombatLogEntry(
-                round=combat.round_number, actor="player", action="maneuver",
+        maneuver = action.maneuver
+        if maneuver == "disengage":
+            # Breaks all of the player's engagement pairs without provoking
+            # opportunity attacks; consumes the action.  A grappled player
+            # cannot disengage from the grappler.
+            if _grappled_by(combat, "player") is not None:
+                return {
+                    "success": False,
+                    "error": (
+                        "You cannot Disengage while grappled — you must "
+                        "use the Escape maneuver first"
+                    ),
+                }
+            for other in sorted(_engaged_with(combat, "player")):
+                _set_engagement(combat, "player", other, False)
+            combat_log.append(
+                CombatLogEntry(
+                    round=combat.round_number, actor="player", action="maneuver",
+                )
             )
-        )
+        elif maneuver == "dodge":
+            # The Dodge action: the player focuses on defense.  Attacks
+            # against them have disadvantage (the ``dodging`` effect's
+            # ``disadvantage_against``) and they get advantage on DEX saves
+            # (``save_advantage: ["DEX"]``).  Lasts until their next turn.
+            apply_status_effect("player", "dodging", 1, hard, corpus, "maneuver", events)
+            combat_log.append(
+                CombatLogEntry(
+                    round=combat.round_number, actor="player", action="dodge",
+                )
+            )
+        elif maneuver in ("grapple", "shove"):
+            err = _resolve_unarmed_maneuver(
+                action, combat, hard, corpus, hard_changes,
+                combat_log, events,
+            )
+            if err is not None:
+                return err
+        elif maneuver == "help":
+            err = _resolve_help(action, combat, hard, corpus, combat_log)
+            if err is not None:
+                return err
+        elif maneuver == "escape":
+            err = _resolve_escape(
+                action, combat, hard, corpus, hard_changes, combat_log, events,
+            )
+            if err is not None:
+                return err
+        else:
+            return {"success": False, "error": f"Unknown maneuver '{maneuver}'"}
         budget.action_used = True
     elif isinstance(action, CombatAction):
         # --- Player attack ---
+        # A second attack in the same turn can only be the bonus-action
+        # off-hand attack (Light property): after an Attack action made
+        # with a Light weapon, a different equipped Light weapon enables
+        # one bonus-action attack, with no ability mod to damage.
+        is_off_hand = False
         if budget.action_used:
-            return {
-                "success": False,
-                "error": (
-                    "The action was already used this turn — you can only "
-                    "take one action per turn (a bonus action may still be "
-                    "available)"
-                ),
-            }
+            if budget.bonus_action_used:
+                return {
+                    "success": False,
+                    "error": (
+                        "The action and the bonus action were both already "
+                        "used this turn"
+                    ),
+                }
+            off_hand = _off_hand_weapon(combat, hard, corpus)
+            if off_hand is None:
+                return {
+                    "success": False,
+                    "error": (
+                        "The action was already used this turn — a second "
+                        "attack is only possible as a bonus-action off-hand "
+                        "attack (Light property), which is not available"
+                    ),
+                }
+            is_off_hand = True
+            weapon_id = off_hand
+        else:
+            weapon_id = None
+
         target_id = action.target
         if target_id not in combat.combatants:
             return {"success": False, "error": f"Target '{target_id}' not in combat"}
@@ -2845,9 +3252,9 @@ def resolve_combat_turn(
         # Attack-carried weapon equip/unequip (SRD 5.2.1): one weapon
         # swap, validated through the shared gear helper and applied to
         # ``hard`` immediately so the attack roll below sees it.  It costs
-        # the free object interaction, not the action.
-        weapon_id = None
-        if action.equip_target or action.unequip_target:
+        # the free object interaction, not the action.  (Not on the
+        # off-hand attack.)
+        if not is_off_hand and (action.equip_target or action.unequip_target):
             from mgmai.engine.resolver import (
                 _apply_gear_changes_immediate,
                 _validate_gear_changes,
@@ -2905,6 +3312,7 @@ def resolve_combat_turn(
             pa_result = system.resolve_player_attack(
                 hard, corpus, target_id, target_ac, combat.round_number,
                 soft=soft, weapon_id=weapon_id,
+                exclude_ability_mod=is_off_hand,
             )
             combat_log.extend(pa_result.log_entries)
 
@@ -2918,7 +3326,13 @@ def resolve_combat_turn(
                 hard_changes, corpus, combat_log, events,
             )
 
-        budget.action_used = True
+        if is_off_hand:
+            budget.bonus_action_used = True
+        else:
+            budget.action_used = True
+            # Record the weapon used for the Attack *action* this turn so a
+            # bonus-action off-hand attack can select the other Light weapon.
+            combat.action_weapon_id = weapon_id or _equipped_weapon_id(hard, corpus)
         # Check if all enemies are dead
         if not game_over and not _living_enemies(combat, hard):
             combat_ended = True

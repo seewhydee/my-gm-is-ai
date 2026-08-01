@@ -173,16 +173,30 @@ weapon is the one used for the attack.  This costs the free interaction,
 not the action, and is a single ruling (no chained action needed).
 Outside combat the action is unchanged (full turn).
 
+**Dual wielding.**  The `weapon` slot is a two-item slot: the SRD pack's
+weapons carry `max_equipped: 2`, so two weapons can be equipped
+simultaneously (one per hand; a `max_equipped: 1` item still blocks a
+second of its own slot, e.g. armour).  Equipping a third weapon is
+rejected.  Two *Light* weapons in hand enable the **off-hand attack**
+(see [combat.md](combat.md) — *Off-hand attack (Light property)*).
+Two-handed weapons are incompatible with any second weapon (and with a
+shield), regardless of equip order.
+
 **Engine validation** (in order):
 1. Each `unequip_target` must be in `player.equipped`.
 2. For each `equip_target`, in order:
    a. It must be in `player.inventory`.
    b. It must have a non-null `equip_block`.
-   c. Build the set of incompatible tags from `incompatible_with`, and the
-      default self-conflict for items sharing the same slot tag.
+   c. Build the set of incompatible tags from `incompatible_with`; when
+      that is empty, the default self-conflict applies only for a
+      *single-item* slot (the slot group's `max_equipped` resolves to 1) —
+      a multi-item slot (e.g. `weapon` with `max_equipped: 2`) does not
+      self-conflict, the cap enforces the limit instead.
    d. Check each already-equipped item (post-unequip, plus any items already
       equipped by this same action) — if any of its `equip_tags` overlaps
-      the incompatible set, reject.
+      the incompatible set, reject; also reject when the equipped item's
+      own explicit `incompatible_with` covers the new item's tags (the
+      check is symmetric).
    e. Check `max_equipped` for the slot tag group.
 3. On success: decrement each `equip_target`'s count in `inventory` by 1
    (remove the key if the count reaches 0) and append it to `equipped`;

@@ -278,6 +278,14 @@ class ResolutionSystem(ABC):
         stunned, unconscious vs STR/DEX saves).  Default: False."""
         return False
 
+    def save_advantage(
+        self, stat: str, status_effects: dict, corpus: ModuleCorpus
+    ) -> bool:
+        """True when the roller's active status effects grant advantage on
+        a saving throw against ``stat`` (5e: the ``dodging`` effect).
+        Default: False."""
+        return False
+
     @abstractmethod
     def roll_check(
         self,
@@ -354,6 +362,7 @@ class ResolutionSystem(ABC):
         round_number: int,
         soft: Any | None = None,
         weapon_id: str | None = None,
+        exclude_ability_mod: bool = False,
     ) -> PlayerAttackResult:
         """Resolve a player attack against target_id.
 
@@ -363,7 +372,8 @@ class ResolutionSystem(ABC):
         mutate ``hard``.  ``soft`` (when provided) lets the attack use a
         wielded improvised weapon's stats.  ``weapon_id`` (when given)
         selects which equipped weapon is used; absent, the first equipped
-        weapon applies.
+        weapon applies.  ``exclude_ability_mod`` drops the (positive)
+        ability modifier from damage (the Light off-hand attack).
         """
 
     @abstractmethod
@@ -377,6 +387,7 @@ class ResolutionSystem(ABC):
         round_number: int,
         attack: NPCAttackDef | None = None,
         player_hp_pending: int = 0,
+        forced_advantage: bool = False,
     ) -> NPCAttackResult:
         """Resolve an NPC attack against a combatant.
 
@@ -387,9 +398,10 @@ class ResolutionSystem(ABC):
         attack built from block-level fields.  ``player_hp_pending`` is the
         player HP delta accumulated earlier this turn (heals and damage
         from prior actions), needed because ``hard.player.current_hp`` is
-        not mutated mid-turn.  The system computes the
-        attack and returns log entries plus the target HP delta.  It must
-        not mutate ``hard``.
+        not mutated mid-turn.  ``forced_advantage`` forces advantage on the
+        attack roll (the Help action's pending flag).  The system computes
+        the attack and returns log entries plus the target HP delta.  It
+        must not mutate ``hard``.
         """
 
     @abstractmethod

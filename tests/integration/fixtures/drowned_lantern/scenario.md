@@ -1,17 +1,66 @@
 # The Drowned Lantern
 
-An LLM-driven integration-test fixture for the NPC conversation system.
-Unlike the combat fixtures (which are bare arenas), this one is a small
-but complete dramatic scene: a marsh-edge tavern at night, three
-talking NPCs with interlocking secrets, and one very dead bird.  Every
-mechanic documented in `doc/npcs.md` and `schema/soft-state.md` is
-exercised here by *playing the scene*, not by poking a test chamber.
+An LLM-driven integration-test fixture for the NPC conversation
+system.  It consists of a small but complete scenario: two rooms,
+three talking NPCs with interlocking secrets, and one dead bird.
 
-This document is the design source for `corpus.json` (to be authored
-from it) and for the test module `tests/integration/test_drowned_lantern.py`.
-The other integration fixtures are plain JSON; this fixture is complex
-enough (tiered knowledge reveals, dialogue paths, cross-NPC state
-dependencies) that the design intent is written down here first.
+## Setting
+
+The Drowned Lantern is a tavern built on stilts over the reed-choked
+edge of Miremarsh.  It is night; a storm is threatening.  The player
+is a traveler needing to cross the marsh, but the ferry isn't running:
+the ferryman, BERRIN, vanished a tenday ago.  His widow MARTA keeps
+the tavern.  A toll-man, Sergeant DOVIC, has set up at the ferry pier
+gate and lets no one through.  Old FEN, a half-mad fisherman, mends
+nets on the dock and talks to the marsh.
+
+The truth (known in full to no one): Berrin followed a lantern-light
+out on the marsh — a corpse-light, not a boat — and never came back.
+Dovic saw the light that night, argued with Berrin on the pier, and
+let him row out alone; he is sick with guilt and covers it with
+bluster.  Marta still lights the signal lantern every night, and last
+night something out on the marsh lit a light in answer.  Fen knows the
+lights are not lanterns and has stopped trying to make anyone believe
+him.
+
+## RPG Mechanics
+
+Standard 5e-like checks as used throughout the engine, with CHA checks
+for persuasion attempts.  The player character is a capable but
+unremarkable traveler armed with a longsword.
+
+## Rooms
+
+### Common Room (START)
+
+The tavern's single warm room: peat fire, a few empty tables, damp
+lantern-glow.  MARTA is behind the bar.  On a shelf above the bar sits
+OLD WELLINGTON, a stuffed heron (implemented as a dead NPC).
+
+A cellar door behind the bar is locked (Marta has the key).
+
+A back door leads to the DOCK.
+
+The front door leads out to the main road and thence back to town, but
+the traveler is gently turned away if they try to return that way --
+the GM notes that they really need to get across the marsh.  (This is
+a strictly impassable exit.)
+
+### Dock
+
+A set of dilapidated wooden docks behind the tavern.  A door leads
+back into the tavern.  There is a single pier, blocked by a chained
+gate; beyond, the empty ferry is moored to the pier.  A dense fog is
+rolling in off the marsh, lit by a single dim lantern above the gate.
+
+Beside the gate slouches Sergeant DOVIC, looking bored.  He holds the
+key to the locked gate.
+
+Old FEN sits on the dock, mending a fishing net. His crickety rowboat
+is lashed to the dock.
+
+
+
 
 ## Purpose — what is under test
 
@@ -53,48 +102,7 @@ LLM-discretion behaviors (advisory judge rubric, never hard-gated):
 - Memory: after a conversation is archived, re-engaging the NPC should
   feel continuous (the GM sees the archived `entity_notes`).
 
-## Setting
 
-The Drowned Lantern is a tavern built on stilts over the reed-choked
-edge of Miremarsh.  It is night; a storm is threatening.  The player is
-a traveler who needs to cross the marsh, but the ferry isn't running:
-the ferryman, BERRIN, vanished on the water a tenday ago.  His widow
-MARTA keeps the tavern.  A toll-man, Sergeant DOVIC, has set up at the
-ferry pier gate and lets no one through.  Old FEN, a half-mad
-fisherman, mends nets on the dock and talks to the marsh.
-
-The truth (known in full to no one): Berrin followed a lantern-light
-out on the marsh — a corpse-light, not a boat — and never came back.
-Dovic saw the light that night, argued with Berrin on the pier, and let
-him row out alone; he is sick with guilt and covers it with bluster.
-Marta still lights the signal lantern every night, and last night
-something out on the marsh lit a light in answer.  Fen knows the lights
-are not lanterns and has stopped trying to make anyone believe him.
-
-## RPG Mechanics
-
-Standard 5e-like checks as used throughout the engine: CHA checks for
-persuasion/flattery in dialogue paths, with the DCs noted per path.
-The player character is a capable but unremarkable traveler (see
-`default-player.json`): armed with a longsword (needed so Dovic's
-aggro produces a survivable, fleeable fight rather than a massacre).
-
-## Rooms
-
-### Common Room (START)
-
-The tavern's single warm room: peat fire, a few empty tables, damp
-lantern-glow.  MARTA is behind the bar.  On a shelf above the bar sits
-OLD WELLINGTON, a stuffed heron (see NPCs — he counts as one, legally
-speaking).  A cellar door behind the bar is locked (Marta has the
-key).  A back door leads to the DOCK.
-
-### Dock
-
-A slick wooden pier behind the tavern, fog rolling off the marsh.
-Old FEN sits mending nets by a rowboat.  Sergeant DOVIC stands at the
-chained gate to the ferry pier, where the empty ferry is moored.
-The gate is locked; Dovic has the key.
 
 ## NPCs
 
@@ -109,8 +117,8 @@ locals.  She knows nothing about what actually lives in the marsh.
 
 `will_reveal` topics (tiered):
 
-- `ferryman_missing` — conditions: [] (unconditional, like the fly's
-  warning).  Her husband Berrin, the ferryman, vanished on the marsh a
+- `ferryman_missing` — conditions: [] (unconditional).
+  Her husband Berrin, the ferryman, vanished on the marsh a
   tenday ago; the ferry hasn't run since.  Sets flag
   `heard_ferryman_missing`.
 - `dovic_distrust` — conditions: attitude >= 3.  She saw Dovic arguing
@@ -125,8 +133,8 @@ locals.  She knows nothing about what actually lives in the marsh.
   bar — he wrote about the lights before he vanished.
 
 Positive conversation (respect, sympathy, actual effort) can raise her
-attitude at the GM's discretion — not handed out like candy (Korbar
-precedent).  Mockery lowers it.
+attitude at the GM's discretion — not handed out like candy.
+Mockery lowers it.
 
 `dialogue_paths`:
 
@@ -141,7 +149,7 @@ precedent).  Mockery lowers it.
 
 Half-mad, speaks in riddles and half-rhymes about the marsh and its
 lights.  Beyond caring what anyone thinks of him: attitude FROZEN at 0
-(limits min 0, max 0 — fly precedent).
+(limits min 0, max 0).
 
 NPC-initiated dialogue: a `room.entered` reaction on the dock fires
 `trigger_dialogue: fen` (condition: fen present and not yet departed).
@@ -160,18 +168,17 @@ answers to such questions should be riddling non-answers (judge-checked).
 Reactions:
 
 - `fen_departs_after_dialogue` — on `dialogue.ended`, condition
-  `event:npc_id == fen` and `entity:fen.delivered_warning == true`
-  (fly precedent).  He pushes his rowboat off into the fog and is gone:
-  `set_entity_state` fen `departed: true`, `location: null` (spider
-  precedent).  `fen_warning`'s reveal sets `delivered_warning: true`
-  via `set_entity_state`, mirroring the fly's warning wiring.
+  `event:npc_id == fen` and `entity:fen.delivered_warning == true`.
+  He pushes his rowboat off into the fog and is gone:
+  `set_entity_state` fen `departed: true`, `location: null`.
+  `fen_warning`'s reveal sets `delivered_warning: true`
+  via `set_entity_state`.
 
 ### Sergeant Dovic (toll-man, dock)
 
 Surly, officious, suspicious; secretly rattled by guilt about Berrin
 and covering it with bluster.  Attitude: initial -2, min -10, max 0,
-step_per_turn 1 — he can never be brought to actually like the player
-(spider precedent).
+step_per_turn 1 — he can never be brought to actually like the player.
 
 Knowledge scope: tolls, the gate, town business.  He volunteers
 NOTHING about Berrin — no `will_reveal` at all; his knowledge comes
@@ -185,7 +192,7 @@ out only through dialogue paths, or not at all.
   — `set_flag gate_open`, `set_entity_state` gate `locked: false`.
   Failure: **he lies** — in an oily, reasonable voice he agrees to open
   it "in just a moment", and does not move (narration only, NO state
-  change; spider-lying precedent).  The lie is the point of the test:
+  change).  The lie is the point of the test:
   hard state must stay closed while the narration says he agreed.
 - `press_about_berrin` — "Press Dovic about his argument with Berrin
   the night the ferryman vanished."  Condition: flag `suspects_dovic`
@@ -198,10 +205,10 @@ out only through dialogue paths, or not at all.
   `adjust_attitude` dovic -1.
 
 Aggro: an `attitude.changed` reaction (`dovic_aggro`, condition
-`event:entity_id == dovic` and `entity:dovic.attitude <= -10`) triggers
-combat (Korbar precedent; he is a competent but beatable veteran —
-tough enough that fleeing back into the tavern is the sane option).
-Insults and threats drop his attitude without any check.
+`event:entity_id == dovic` and `entity:dovic.attitude <= -10`)
+triggers combat (he is a competent but beatable veteran — tough enough
+that fleeing back into the tavern is the sane option).  Insults and
+threats drop his attitude without any check.
 
 ### Old Wellington (stuffed heron, common room)
 

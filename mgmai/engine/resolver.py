@@ -1371,8 +1371,10 @@ def _stat_check_params(
     """Roll params for a stat check: the check's authored extras
     (``advantage`` / ``disadvantage``) merged with any modifiers the
     player's active status effects impose on ability checks (5e: e.g.
-    poisoned).  Saving throws are unaffected (see
-    :meth:`ResolutionSystem.check_roll_mods`)."""
+    poisoned).  Saving throws get advantage from the roller's effects
+    where the system supports it (5e: ``save_advantage``, e.g. the
+    ``dodging`` effect) — see
+    :meth:`ResolutionSystem.check_roll_mods`."""
     params = dict(check.model_extra or {})
     status_adv, status_disadv = system.check_roll_mods(
         check.save, get_status_effects("player", hard), corpus
@@ -1381,6 +1383,10 @@ def _stat_check_params(
         params["advantage"] = True
     if status_disadv:
         params["disadvantage"] = True
+    if check.save and system.save_advantage(
+        check.stat, get_status_effects("player", hard), corpus
+    ):
+        params["advantage"] = True
     return params
 
 
@@ -2644,13 +2650,31 @@ def _validate_gear_changes(
         if eb is None:
             return f"Item '{target}' cannot be equipped (no equip_block)"
 
-        # Build incompatible tags
+        slot_tag = eb.equip_tags[0] if eb.equip_tags else None
+
+        # Compute the slot group's max_equipped across the evolving set
+        # (the highest value among all items sharing the slot tag).
+        max_limit = eb.max_equipped
+        if slot_tag is not None:
+            for eid in still_equipped:
+                eq_entity = corpus.entities.get(eid)
+                if eq_entity and eq_entity.equip_block and eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == slot_tag:
+                    other_max = eq_entity.equip_block.max_equipped
+                    if other_max is None:
+                        max_limit = None
+                    elif max_limit is not None:
+                        max_limit = max(max_limit, other_max)
+
+        # Default incompatibility: items sharing the same *single-item*
+        # slot conflict (one helmet, one armour).  A multi-item slot
+        # (max_equipped > 1, e.g. two rings or two weapons) does NOT
+        # self-conflict — the max_equipped cap enforces the limit instead.
         incompatible = set(eb.incompatible_with)
-        if not incompatible and eb.equip_tags:
-            # Default: conflicts with items sharing the same slot tag
-            incompatible.add(eb.equip_tags[0])
+        if not incompatible and slot_tag is not None and max_limit == 1:
+            incompatible.add(slot_tag)
 
         # Check conflicts with equipped items
+        new_tags = set(eb.equip_tags)
         for eid in still_equipped:
             eq_entity = corpus.entities.get(eid)
             if eq_entity is None or eq_entity.equip_block is None:
@@ -2661,31 +2685,30 @@ def _validate_gear_changes(
                     f"Cannot equip '{target}': conflicts with equipped item '{eid}' "
                     f"(tags: {eq_tags & incompatible})"
                 )
+            # Reverse direction: the equipped item's *explicit*
+            # incompatible_with may cover the new item's tags (e.g. a
+            # two-handed weapon rejects a second weapon or a shield
+            # regardless of equip order).  The default slot self-conflict
+            # is not applied in reverse — the max_equipped cap handles it.
+            eq_incompatible = set(eq_entity.equip_block.incompatible_with)
+            if new_tags & eq_incompatible:
+                return (
+                    f"Cannot equip '{target}': equipped item '{eid}' "
+                    f"conflicts with it (tags: {new_tags & eq_incompatible})"
+                )
 
         # Check max_equipped
-        if eb.equip_tags:
-            slot_tag = eb.equip_tags[0]
-            # Collect max_equipped from all items sharing this slot tag
-            max_limit = eb.max_equipped
-            for eid in still_equipped:
-                eq_entity = corpus.entities.get(eid)
-                if eq_entity and eq_entity.equip_block and eq_entity.equip_block.equip_tags and eq_entity.equip_block.equip_tags[0] == slot_tag:
-                        other_max = eq_entity.equip_block.max_equipped
-                        if other_max is None:
-                            max_limit = None
-                        elif max_limit is not None:
-                            max_limit = max(max_limit, other_max)
-            if max_limit is not None:
-                current_count = sum(
-                    1 for eid in still_equipped
-                    if (_e := corpus.entities.get(eid)) and _e.equip_block
-                    and _e.equip_block.equip_tags and _e.equip_block.equip_tags[0] == slot_tag
+        if max_limit is not None:
+            current_count = sum(
+                1 for eid in still_equipped
+                if (_e := corpus.entities.get(eid)) and _e.equip_block
+                and _e.equip_block.equip_tags and _e.equip_block.equip_tags[0] == slot_tag
+            )
+            if current_count >= max_limit:
+                return (
+                    f"Cannot equip '{target}': slot '{slot_tag}' limit "
+                    f"({max_limit}) would be exceeded (currently {current_count})"
                 )
-                if current_count >= max_limit:
-                    return (
-                        f"Cannot equip '{target}': slot '{slot_tag}' limit "
-                        f"({max_limit}) would be exceeded (currently {current_count})"
-                    )
 
         still_equipped.append(target)
 

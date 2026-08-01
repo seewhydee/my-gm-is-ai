@@ -117,6 +117,18 @@ class CombatState(BaseModel):
     # turn start (the player and every NPC).  An id is removed at the top
     # of that combatant's own turn.  Consumed by opportunity attacks.
     reactions_spent: set[str] = Field(default_factory=set)
+    # Active grapples: grappled combatant id -> grappler id.  The grappled
+    # party is stuck (can't leave reach) and must use the escape maneuver
+    # (or an incapacitated grappler) to break free.
+    grapples: dict[str, str] = Field(default_factory=dict)
+    # Help-flagged enemy combatant ids: the next party-side attack against
+    # a flagged enemy has advantage, then the flag is consumed (the
+    # Help action, §5).
+    help_flagged: list[str] = Field(default_factory=list)
+    # The weapon used for the player's Attack *action* this turn (None when
+    # the action wasn't an attack).  A second equipped Light weapon lets a
+    # bonus-action off-hand attack with a different weapon (Light property).
+    action_weapon_id: str | None = None
     # Set when a segment of the player's turn resolves but the turn stays
     # open (budget remains): the follow-up resolve_combat_turn call for the
     # player's next segment skips start-of-turn processing (status effects

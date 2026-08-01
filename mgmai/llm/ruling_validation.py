@@ -301,7 +301,17 @@ def _validate_budget(action, briefing: GMBriefing) -> str | None:
                 "interaction was already used this turn. Do not attach "
                 "equip_target/unequip_target to the attack."
             )
-        if action_used:
+        if action.combat_action == "attack" and action_used:
+            # A second attack is only the bonus-action off-hand attack
+            # (Light property).
+            if not combat.off_hand_attack_available:
+                return (
+                    "Invalid combat action: the action was already used "
+                    "this turn, and no bonus-action off-hand attack (Light "
+                    "property) is available. Rule the attempt as 'wait' "
+                    "(pass) or a bonus-action ability instead."
+                )
+        elif action_used:
             return _no_action("combat action")
     elif isinstance(action, UseAbilityAction):
         entry = next(
@@ -381,6 +391,25 @@ def _validate_budget(action, briefing: GMBriefing) -> str | None:
                 "Rule the attempt as 'wait' (pass, ending the turn)."
             )
     return None
+
+
+def _validate_maneuver(action: CombatAction, briefing: GMBriefing) -> str | None:
+    """Target checks for the target-requiring maneuvers (Grapple / Shove /
+    Help): the target must be a living enemy combatant.  Dodge and Escape
+    take no target.  (``disengage`` predates the budget model.)"""
+    combat = briefing.combat_state
+    if combat is None:
+        return None
+    if action.maneuver not in ("grapple", "shove", "help"):
+        return None
+    enemies = _enemy_ids(briefing)
+    if action.target in enemies:
+        return None
+    return (
+        f"Invalid maneuver '{action.maneuver}' target '{action.target}': "
+        f"'{action.maneuver}' requires a living enemy combatant ID. Valid "
+        f"enemy IDs: {', '.join(enemies) if enemies else 'none'}."
+    )
 
 
 def validate_improvised_weapon_budget(action, briefing: GMBriefing) -> str | None:
@@ -485,6 +514,8 @@ def validate_ruling_action(action, briefing: GMBriefing, corpus=None) -> str | N
     if isinstance(action, CombatAction):
         if action.combat_action == "attack":
             return _validate_attack(action, briefing)
+        if action.combat_action == "maneuver":
+            return _validate_maneuver(action, briefing)
     elif isinstance(action, UseAbilityAction):
         return _validate_use_ability(action, briefing)
     elif isinstance(action, MoveAction):

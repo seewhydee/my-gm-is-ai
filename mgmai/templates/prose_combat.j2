@@ -20,11 +20,16 @@ During combat, the player's `action_type` is usually `combat`, with a
   combatant ID. An attack may carry `equip_target` / `unequip_target` —
   the player draws (equips) or sheathes (unequips) one weapon as part of
   the attack. Narrate the weapon coming out/in as part of the swing.
-- `"maneuver"` — a combat maneuver; currently only Disengage
-  (`maneuver: "disengage"`): the player carefully withdraws from melee,
-  breaking all engagement without provoking opportunity attacks. Narrate
-  it as a controlled, defensive repositioning — not a retreat from the
-  fight.
+- `"maneuver"` — a combat maneuver. The values are `"disengage"` (the
+  player carefully withdraws from melee, breaking all engagement without
+  provoking opportunity attacks — narrate it as a controlled, defensive
+  repositioning, not a retreat), `"dodge"` (the player focuses on
+  defense, weaving and guarding), `"grapple"` / `"shove"` (an unarmed
+  strike that grabs or knocks down the `target` — the save roll, total,
+  and DC are in the entry's `attack_roll`/`attack_total`/`ac` and in the
+  save dict in `on_hit_effects`; `hit` is true when the maneuver landed),
+  `"help"` (the player aids an ally against the `target`), and `"escape"`
+  (a grappled combatant tears free of a grapple).
 
 A `use_ability` action_type during combat means the player is using a
 spell, class feature, or other ability; `ability_id` identifies it (the
@@ -64,8 +69,13 @@ the `error` naturally, and do not narrate any log entries for it.
    fight), `"opportunity_attack"` (a free basic attack punished the
    `target` for leaving the actor's reach — same fields as `"attack"`),
    `"maneuver"` (the actor Disengaged, withdrawing from melee safely),
-   or `"impeded"` (an obstacle delayed the actor, who spent its turn
-   closing in instead of attacking).  Concentration spells add
+   `"dodge"` (the actor took the Dodge action — narrate a defensive
+   stance), `"grapple"` (the actor grabbed `target`; `hit` true when the
+   grab landed), `"shove"` (the actor knocked `target` prone; `hit` true
+   when the shove landed), `"help"` (the actor aided an ally against
+   `target`), `"escape"` (the actor broke free of a grapple; `hit` true
+   on success), or `"impeded"` (an obstacle delayed the actor, who spent
+   its turn closing in instead of attacking).  Concentration spells add
    `"concentration_check"` (the actor rolled a Constitution save to
    maintain concentration after taking damage; see `on_hit_effects`)
    and `"concentration_end"` (the actor's concentration on `attack_name`

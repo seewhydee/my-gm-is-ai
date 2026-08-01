@@ -89,6 +89,7 @@ To target the current room itself in a player action (`examine`,
 | `action_available`, `bonus_action_available`, `free_interaction_available` | The player's remaining per-turn budget (SRD 5.2.1): whether the action, the bonus action, and the one free object interaction are still unused this turn. The turn stays open after a resolved action while meaningful budget remains (see the Combat section) |
 | `bonus_action_options` | Ids of the player's bonus-action abilities that are currently legal (uses/slot remaining, target available) — the only valid `use_ability` choices when the player wants to use their bonus action |
 | `reaction_available` | Whether the player still has their reaction (e.g. an opportunity attack) this round |
+| `off_hand_attack_available` | True when the player's Attack action this turn used a Light weapon and a different equipped Light weapon is available — a second `combat`/`attack` on this turn is then the bonus-action off-hand attack, not an illegal double-attack |
 
 ### dialogue_context (present only during conversation)
 

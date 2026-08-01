@@ -432,7 +432,10 @@ def _build_combat_state(
     # The remaining per-turn budget (SRD 5.2.1) is derived from CombatState
     # — never from chat history.  The legal bonus-action option set is the
     # §3.3 cheap roster check; the auto-end rule uses the same set.
-    from mgmai.engine.combat import legal_bonus_action_ability_ids
+    from mgmai.engine.combat import (
+        _off_hand_weapon,
+        legal_bonus_action_ability_ids,
+    )
 
     budget = combat.player_budget
     ba_ids = legal_bonus_action_ability_ids(combat, hard, corpus)
@@ -450,4 +453,9 @@ def _build_combat_state(
         bonus_action_options=ba_ids,
         free_interaction_available=not budget.free_interaction_used,
         reaction_available="player" not in combat.reactions_spent,
+        off_hand_attack_available=(
+            budget.action_used
+            and not budget.bonus_action_used
+            and _off_hand_weapon(combat, hard, corpus) is not None
+        ),
     )

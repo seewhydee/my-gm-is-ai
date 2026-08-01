@@ -102,9 +102,16 @@ At least one of these two fields must be non-empty.  Both fields can be non-empt
 This action is only valid when `combat_state` is present in the briefing.
 
 - `combat_action` (string, required): `"attack"` or `"maneuver"`
-- `target` (string, required for `"attack"`): Entity ID of enemy to attack
-- `maneuver` (string, required for `"maneuver"`): currently only `"disengage"` — player moves out of melee range at the cost of an action; `target` is not used; do not also assert `positioning.disengage` (the maneuver handles the break automatically); `positioning.impede` is fine.  See *Combat Positioning*.
+- `target` (string, required for `"attack"`, and for the `grapple`/`shove`/`help` maneuvers): Entity ID of enemy to target
+- `maneuver` (string, required for `"maneuver"`): one of
+  - `"disengage"` — player moves out of melee range at the cost of an action; `target` is not used; do not also assert `positioning.disengage` (the maneuver handles the break automatically); `positioning.impede` is fine.
+  - `"dodge"` — the player focuses on defense: attack rolls against them have disadvantage and they have advantage on DEX saves until their next turn. No `target`.
+  - `"grapple"` — grab an enemy (needs `target`): the target makes a STR-or-DEX save vs 8 + STR mod + prof; on a failed save it is grappled (stuck in reach, must escape). Only one grapple at a time.
+  - `"shove"` — knock an enemy prone (needs `target`): same save; on a failed save it falls prone.
+  - `"help"` — aid an ally against an enemy (needs `target`): the next allied NPC's attack against that enemy has advantage (the flag is consumed by that attack; expires at the start of your next turn).
+  See *Combat Positioning*.
 - `equip_target` / `unequip_target` (string, optional, for `"attack"` only): equip or unequip ONE weapon as part of the attack (SRD: "You can either equip or unequip one weapon when you make an attack as part of this action"). At most one of the two; the drawn weapon is the one you attack with. Costs the free object interaction, not the action. Only valid when `free_interaction_available` is true.
+- A second `"attack"` in the same turn is the bonus-action **off-hand attack** (Light property), legal only when `off_hand_attack_available` is true: the player attacked with a Light weapon and a different equipped Light weapon is available; the off-hand adds no ability modifier to damage.
 
 **use_ability** — Use a spell or ability.
 

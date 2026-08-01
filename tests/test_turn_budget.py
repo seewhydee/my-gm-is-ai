@@ -548,8 +548,9 @@ class TestAttackCarriedEquip:
         """Drawing a weapon as part of an attack uses that weapon's damage,
         costs only the free interaction, and is a single ruling."""
         _combat_state(economy_hard, "goblin")
-        # Start unarmed: the gear model conflicts weapons sharing the
-        # "weapon" slot, so drawing onto an equipped weapon is not expressible.
+        # Start unarmed: these fixture weapons leave max_equipped at its
+        # default of 1, so the weapon slot self-conflicts and drawing onto
+        # an equipped weapon is not expressible here.
         economy_hard.player.equipped = []
         economy_hard.player.inventory = {"longsword": 1}
         # Rolls read as (sides - 1): d20 -> 19 (hit, no crit), so the
@@ -982,8 +983,8 @@ class TestWeaponIdHitBonus:
     def test_hit_bonus_scoped_to_attacking_weapon(self, economy_hard, economy_corpus):
         """With an explicit ``weapon_id`` only that weapon's ``hit_bonus``
         applies; a second equipped weapon must not leak its bonus into the
-        attack.  (Co-equipped weapons are not reachable through gear
-        validation in Phase 1, so the state is set up directly.)"""
+        attack.  (The fixture weapons default to ``max_equipped: 1``, so
+        the co-equipped state is set up directly.)"""
         from mgmai.engine.systems import get_system_for_corpus
 
         economy_hard.player.equipped = ["sword", "longsword"]
