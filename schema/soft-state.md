@@ -447,11 +447,12 @@ text within quotes attributed to the NPC) or the LLM may include a structured
 ### Relationship to GMBriefing
 
 When `active_npc != null`, the Context Assembler includes a `dialogue_context`
-block in the GMBriefing with the last 5 entries from `conversation_log`, the
-NPC's `dialogue`, current attitude, and `topics_discussed`. This
-gives LLM Call 1 enough conversational awareness to parse player inputs that
-mix action narration with in-character speech, without exposing the full
-verbatim chat log.
+block in the GMBriefing (see [gm-briefing.md](gm-briefing.md)) with the last 5
+exchanges from `conversation_log` (adjacent player→NPC entries paired into
+`{player, npc}` dicts), the NPC's `dialogue`, current attitude, and
+`topics_discussed`. This gives LLM Call 1 enough conversational awareness to
+parse player inputs that mix action narration with in-character speech,
+without exposing the full verbatim chat log.
 
 If `active_npc` is null, `dialogue_context` is omitted from the GMBriefing.
 

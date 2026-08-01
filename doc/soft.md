@@ -253,6 +253,7 @@ Engine post-validation → removes "rock" from soft_inventory
 | `schema/corpus.md` | Defines `soft_item_guidance` fields on rooms and entities. |
 | `schema/soft-state.md` | Documents the full soft-state schema: `soft_inventory`, `room_notes`, `entity_notes`, `soft_items_taken`, `soft_contents`, and the `SoftStatePatch` / `SoftStateNote` references. |
 | `schema/actions.md` | Documents soft-item proposals and adjudications for `examine`, `transfer`, and narration output. |
+| `schema/gm-briefing.md` | Documents the GMBriefing — the per-turn world snapshot built by the Context Assembler and fed to both LLM calls. |
 | `mgmai/models/corpus.py` | Pydantic models: `Room.soft_item_guidance`, `Entity.soft_item_guidance`. |
 | `mgmai/models/briefing.py` | Pydantic models: `BriefingRoom.soft_item_guidance`, `BriefingEntity.soft_item_guidance`, and the `soft_items_taken` / `soft_items_present` briefing fields. |
 | `mgmai/models/soft_state.py` | Pydantic models: `SoftGameState` (incl. `soft_items_taken`, `soft_contents`, `room_notes`, `entity_notes`), `SoftStatePatch`, and `SoftStateNote`. |

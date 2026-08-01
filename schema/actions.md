@@ -109,186 +109,13 @@ placement in `soft_contents`; accepted examines carry no state effect.
 
 ## 1. GMBriefing -- Input to LLM Call 1
 
-Assembled by the Context Assembler from Module Corpus, Hard State, and
-Soft State, for the ruling LLM (call 1).
+The **GMBriefing** is the structured world snapshot the Context
+Assembler builds each turn from the Module Corpus, Hard State, and Soft
+State, and passes to LLM Call 1 (Ruling) alongside the player's input.
+LLM Call 2 (Prose) receives the same briefing for world context.
 
-```json
-{
-  "adventure_title": "You're Trapped in a Bag of Holding!",
-  "setting": "You are a person trapped inside a magical Bag of Holding — a pocket dimension full of discarded treasures, dangers, and a dwarf who has been lost here for years.",
-  "tone": "Whimsical and slightly dark. The world is absurd but coherent. Danger is real but the tone is more Pratchett than Lovecraft.",
-  "turn": 3,
-
-  "current_room": {
-    "id": "axe_handle_lower",
-    "name": "Axe Handle (Lower)",
-    "description": "You are on the lower section of the axe handle. The webs here are denser, blocking the path downward unless you push through. If you look carefully, you see the spider — huge and hungry for blood — lurking in the webs. Below, many irregularly shaped objects are coming into view. It looks like you could drop down safely. There is some muffled clanking from the shadows below.",
-    "soft_item_guidance": "Loose stones, dust, and cobwebs are common here.",
-    "soft_items_taken": ["rock (taken 1)", "loose stone (taken 1)"],
-    "entities_visible": [
-      {
-        "id": "spider",
-        "name": "Huge Spider",
-        "type": "npc",
-        "description": "A huge, hungry spider lurking in the dense webs.",
-        "state": { "alive": true },
-        "dialogue_paths": {
-          "flatter": "Praise the spider's hunting prowess to improve its attitude toward the player."
-        }
-      },
-      {
-        "id": "webs_dense",
-        "name": "Dense Webs",
-        "type": "feature",
-        "description": "Thick webs blocking the downward path.",
-      }
-    ],
-    "exits_available": [
-      { "id": "exit_up_handle_lower", "direction": "Walk up the axe handle" },
-      { "id": "exit_through_webs", "direction": "Push through the dense webs downward" },
-      { "id": "exit_drop_lower", "direction": "Drop safely down to the floor" }
-    ],
-    "room_notes": ["The webs here are partially cleared from the spider's flight."]
-  },
-
-  "player_state": {
-    "hard_inventory": {"iron_sword": 1},
-    "soft_inventory": ["rock"],
-    "equipped_items": [
-      {
-        "id": "toenail_sword",
-        "name": "Giant Toenail Clipping",
-        "description": "A giant toenail clipping, curved and razor-sharp...",
-        "equip_tags": ["weapon", "martial"],
-        "effects_summary": "1d6 damage"
-      }
-    ],
-    "active_flags": { "injured": false, "stunned": false },
-    "player_stats": {
-      "STR": { "value": 14, "modifier": 2 },
-      "DEX": { "value": 12, "modifier": 1 },
-      "CON": { "value": 13, "modifier": 1 },
-      "INT": { "value": 10, "modifier": 0 },
-      "WIS": { "value": 8, "modifier": -1 },
-      "CHA": { "value": 16, "modifier": 3 }
-    },
-    "combat_stats": {
-      "current_hp": 27,
-      "max_hp": 27,
-      "ac": 14,
-      "proficiency_bonus": 2,
-      "skill_proficiencies": ["acrobatics"],
-      "weapon_proficiencies": ["simple", "martial"]
-    }
-  },
-
-  "player_knowledge_topics": [
-    { "topic_id": "padlock_mechanism", "description": "How the exterior padlock can be opened from inside" }
-  ],
-
-  "recent_history": [
-    {
-      "turn": 2,
-      "summary": "Player climbed down the axe handle from axe_head, passing through axe_handle_upper where a dying fly warned about the spider. Now at axe_handle_lower.",
-      "location_after": "axe_handle_lower"
-    },
-    {
-      "turn": 1,
-      "summary": "Player woke up on the axe head inside the Bag of Holding. Examined surroundings. Noticed the rip in the canvas.",
-      "location_after": "axe_head"
-    }
-  ],
-
-  "dialogue_context": {
-    "active_npc": {
-      "id": "korbar",
-      "name": "Korbar the Dwarf",
-      "attitude": 2,
-      "dialogue": {
-        "guidelines": "Cynical dwarven rogue, heavy drinker, lonely but proud. Cannot leave the bag, stop drinking, or remember which way is north. Knows the padlock mechanism and the secret compartment in the axe head.",
-        "will_reveal": {
-          "padlock_mechanism": {
-            "description": "How the exterior padlock can be opened from inside",
-            "conditions": ["entity:korbar.attitude >= 2", "topic:abandonment"]
-          },
-          "secret_compartment": {
-            "description": "A hidden cache inside the axe head",
-            "conditions": ["entity:korbar.attitude >= 4", "inventory:rusty_key"]
-          }
-        }
-      }
-    },
-    "recent_exchanges": [
-      { "turn": 4, "speaker": "player", "text": "Who are you?" },
-      { "turn": 4, "speaker": "korbar", "text": "Arr, name's Korbar. Me party left me here." },
-      { "turn": 5, "speaker": "player", "text": "Tell me more about your party." }
-    ],
-    "topics_discussed": ["origin", "abandonment"],
-    "revealed_topics": ["padlock_mechanism"]
-  },
-
-  "player_input": "I pull up a chair to sit on and ask Korbar, 'What happened to your party?'"
-}
-```
-
-### GMBriefing assembly rules
-
-1. **Global setting**: `setting` and `tone` drawn from the module corpus
-   `adventure.atmosphere` block.  Some brief sentences about the world and
-   narrative style.
-
-2. **Current room**: fetched by ID from the module corpus. Includes 
-   `entities_visible`, listing all non-concealed entities in the room.
-   Each of these entity entries includes the entity ID, current hard
-   state, entity notes, and the entity's own `interactions_available`
-   (the room's own interactions are listed separately on the room).
-   For NPCs with
-   `dialogue.dialogue_paths`, `entities_visible[*].dialogue_paths`
-   is a map of `{path_id: description}` so LLM Call 1 can match player intent
-   to the correct special dialogue path.
-
-3. **Soft item guidance** is included from `room.soft_item_guidance` and each
-   visible entity's `soft_item_guidance` to inform the LLM about plausible generic
-   objects in the scene. Soft-item state is listed under
-   `current_room.soft_items_taken` / `current_room.soft_items_present` and
-   `entities_visible[*].soft_items_taken` / `entities_visible[*].soft_items_present`:
-   extraction counts formatted as `"name (taken N)"`, placed items as `"name xN"`.
-   Both lists are empty when nothing has been taken from or placed on the source.
-
-4. **Exits** whose conditions are met are included. Hidden exits (e.g., the
-   secret compartment) are omitted unless their reveal flag is set.
-
-5. **Player state** summarises hard inventory, soft inventory, active flags,
-   entity notes, and (when the corpus defines stats) a `player_stats` block
-   with each stat's effective (gear-adjusted) value and computed modifier
-   (e.g. `{ "value": 14, "modifier": 2 }`). This gives LLM Call 1 direct
-   knowledge of the player's capabilities without requiring it to do the
-   math. During combat, `abilities`, `spell_slots`, and `usable_items`
-   appear only on `combat_state` (which tracks per-combat remaining uses),
-   not on `player_state`.
-
-6. **Recent history** is drawn from soft state `turn_history`, which
-   summarizes the player's recent actions.  This includes the last 5
-   proper entries from non-`ooc_discussion` turns; `ooc_discussion`
-   entries are included but do not count toward the cap.  NO raw chat log.
-
-7. **NPC attitudes** includes attitudes for all known NPCs.
-
-8. **Player knowledge** is drawn from `soft_state.player_knowledge`. The
-   Context Assembler produces `player_knowledge_topics` — a list of
-   `{ "topic_id": "...", "description": "..." }` objects for each topic the
-   player has learned — so LLM Call 1 knows what the player has learned and
-   what each topic means.
-
-9. **Dialogue context** is included when `soft_state.dialogue_state.active_npc`
-   is non-null. The block contains the active NPC's identity, attitude,
-   full `dialogue`, last 5 entries from `conversation_log`,
-   `topics_discussed`, and `revealed_topics` (topic IDs already revealed to
-   the player). If `active_npc` is null, `dialogue_context` is omitted.
-
-10. **Player input** is the verbatim text entered this turn. For chained
-    actions (described below), this is the original input plus a clear
-	indication of where the chain currently stands.
+The full GMBriefing schema — every field, the assembly rules, and a
+worked example — is documented in [gm-briefing.md](gm-briefing.md).
 
 ---
 
@@ -996,7 +823,7 @@ LLM Call 2 receives:
 - The **adventure setting** (1-2 sentences from the module corpus).
 - The **verbatim chat log** (raw player–GM exchange, recent messages) for
   conversational continuity.
-- The **GMBriefing** (same as LLM Call 1 received) for current world context.
+- The **GMBriefing** (same as LLM Call 1 received — see [gm-briefing.md](gm-briefing.md)) for current world context.
 - The **PlayerAction** from LLM Call 1.
 - The **EngineResult** — the authoritative outcome.
 
@@ -1206,7 +1033,7 @@ EngineResult, mainly for audit.
 
 ```
 1. Player enters input
-2. Context Assembler builds GMBriefing
+2. Context Assembler builds GMBriefing (see [gm-briefing.md](gm-briefing.md))
 3. LLM Call 1 (Ruling) produces PlayerAction + SoftStatePatch[]
 4. Engine validates action
    +-- Valid:   resolve, apply hard state, validate soft patches,
