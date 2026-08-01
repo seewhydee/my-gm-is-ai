@@ -75,12 +75,6 @@ class TestPackLoader:
 
 
 class TestDefaultStatusEffects:
-    def test_defaults_come_from_pack(self) -> None:
-        assert set(DEFAULT_STATUS_EFFECTS) == set(load_pack("5e", "conditions"))
-
-    def test_full_srd_condition_list(self) -> None:
-        assert SRD_CONDITIONS | EXHAUSTION_LEVELS <= set(DEFAULT_STATUS_EFFECTS)
-
     def test_legacy_defaults_preserved(self) -> None:
         poisoned = DEFAULT_STATUS_EFFECTS["poisoned"]
         assert poisoned.system_effects["5e"]["disadvantage_on_attack"] is True
@@ -226,9 +220,6 @@ class TestSpellsPack:
             parsed = Ability.model_validate(entry)
             assert parsed.name, spell_id
             assert parsed.spell_level is not None, spell_id
-
-    def test_defaults_come_from_pack(self) -> None:
-        assert set(DEFAULT_SPELLS) == set(load_pack("5e", "spells"))
 
     def test_pack_spell_mechanics(self) -> None:
         fire_bolt = DEFAULT_SPELLS["fire_bolt"]

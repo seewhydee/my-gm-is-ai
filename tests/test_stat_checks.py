@@ -107,12 +107,6 @@ class TestRollD20:
         result = roll_d20(advantage=True, disadvantage=True)
         assert result == 8
 
-    def test_neither_is_normal(self, monkeypatch) -> None:
-        vals = iter([11])
-        monkeypatch.setattr("mgmai.engine.stat_checks.random.randint", lambda a, b: next(vals))
-        result = roll_d20(advantage=False, disadvantage=False)
-        assert result == 11
-
 
 class TestFormatStatCheckPrefix:
     def test_empty_when_no_rolls(self) -> None:

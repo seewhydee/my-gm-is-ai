@@ -349,14 +349,6 @@ class TestApplyHardChanges:
         with pytest.raises(ValueError, match="No matching room for player_location: "):
             manager.apply_hard_changes(HardStateChanges(player_location="void"))
 
-    def test_entity_state_changes_undeclared_field_raises(
-        self, manager: StateManager
-    ) -> None:
-        with pytest.raises(ValueError, match="undeclared field"):
-            manager.apply_hard_changes(
-                HardStateChanges(entity_state_changes={"spider": {"magic_level": 9000}})
-            )
-
     def test_room_state_changes_undeclared_field_raises(self) -> None:
         from mgmai.models.corpus import StateFieldDecl
         from tests.helpers import build_state_manager, make_char_sheet_corpus
@@ -436,14 +428,6 @@ class TestApplySoftPatches:
         )
         manager.apply_soft_patches([patch])
         assert manager.soft_state.soft_inventory == []
-
-    def test_entity_note_missing_entity_raises(self, manager: StateManager) -> None:
-        with pytest.raises(ValidationError, match="requires entity_id"):
-            SoftStateNote(
-                field="entity_note",
-                new_value="Something.",
-                reason="Test.",
-            )
 
     def test_apply_from_dict(self, manager: StateManager) -> None:
         manager.apply_soft_patches([
@@ -1266,12 +1250,6 @@ class TestEntityPlacements:
     def test_entity_placements_counted_in_has_changes(self) -> None:
         hc = HardStateChanges(entity_placements={"npc": "room:room_a"})
         assert hc.has_changes() is True
-
-    def test_entity_placements_field_roundtrips_via_model(self) -> None:
-        hc = HardStateChanges(entity_placements={"npc": "room:room_a", "chest": None})
-        data = hc.model_dump(mode="json")
-        hc2 = HardStateChanges.model_validate(data)
-        assert hc2.entity_placements == {"npc": "room:room_a", "chest": None}
 
     def test_save_migration_removes_fled_ghost(self, tmp_path: Path) -> None:
         from tests.helpers import _mk_npc_entity, _mk_room

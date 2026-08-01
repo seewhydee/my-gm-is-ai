@@ -146,7 +146,7 @@ class TestValidateProseOutput:
 
     def test_failure_contradiction_miss_allowed(self) -> None:
         """'miss' in combat narration on success should not be flagged."""
-        prose = NarrationOutput(narration="You dodge his attack and strike back.")
+        prose = NarrationOutput(narration="You miss, then strike back.")
         error = validate_prose_output(
             prose, [], _make_engine_result(success=True)
         )

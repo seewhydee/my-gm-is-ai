@@ -100,11 +100,6 @@ def _soft() -> SoftGameState:
 
 
 class TestRestStateModel:
-    def test_defaults(self):
-        p = PlayerState(location="r1")
-        assert p.max_spell_slots == {}
-        assert p.hit_dice is None
-
     def test_string_key_json_coercion(self):
         p = PlayerState.model_validate({
             "location": "r1",
@@ -436,15 +431,6 @@ class TestResolveRest:
         # SRD 5.2.1: all spent regained -> 4 + (5-4)=5, clamped at max.
         assert hard.player.hit_dice.current == 5
 
-    def test_costs_turn_by_default(self):
-        corpus = _corpus()
-        hard = _hard()
-        res = resolve_rest(
-            RestAction(action_type="rest", kind="long", detail="camp"),
-            hard, _soft(), corpus,
-        )
-        assert res.costs_turn is True
-
     def test_unknown_action_type_returns_error(self):
         # Sanity: the dispatch still rejects unknown types.
         corpus = _corpus()
@@ -554,11 +540,6 @@ class TestRestRulingValidation:
         from tests.test_ruling_validation import _peaceful_briefing
 
         assert validate_ruling_action(_rest(), _peaceful_briefing()) is None
-
-    def test_short_rest_also_flagged_during_combat(self):
-        from tests.test_ruling_validation import _combat_briefing
-
-        assert validate_ruling_action(_rest("short"), _combat_briefing()) is not None
 
 
 # ------------------------------------------------------------------

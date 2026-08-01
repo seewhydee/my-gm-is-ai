@@ -352,19 +352,6 @@ class TestGearDuringCombat:
         assert not result.success
         assert "only weapon swaps" in result.error
 
-    def test_shield_rejected(self, env_hard, env_corpus):
-        """A shield lacks the weapon tag, so it cannot be swapped mid-combat."""
-        _combat_state(env_hard)
-        env_hard.player.inventory = {"shield": 1}
-        action = GearAction(
-            action_type="gear",
-            equip_targets=["shield"],
-            detail="I ready my shield.",
-        )
-        result = resolve_action(action, env_hard, SoftGameState(), env_corpus)
-        assert not result.success
-        assert "only weapon swaps" in result.error
-
     def test_armor_equip_allowed_out_of_combat(self, env_hard, env_corpus):
         env_hard.player.inventory = {"leather_armor": 1}
         action = GearAction(

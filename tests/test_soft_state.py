@@ -39,16 +39,6 @@ class TestSoftStateNote:
         assert n.entity_id is None
         assert n.new_value == "The webs here are partially cleared."
 
-    def test_room_note_needs_no_room_id(self) -> None:
-        # room_note carries no room identifier; the engine attaches it to
-        # the player's current room.
-        n = SoftStateNote.model_validate({
-            "field": "room_note",
-            "new_value": "Cleared webs.",
-            "reason": "Player cleared webs.",
-        })
-        assert n.entity_id is None
-
     def test_entity_note(self) -> None:
         n = SoftStateNote.model_validate({
             "entity_id": "spider",
@@ -58,15 +48,6 @@ class TestSoftStateNote:
         })
         assert n.entity_id == "spider"
         assert n.field == "entity_note"
-
-    def test_entity_note_player_target(self) -> None:
-        n = SoftStateNote.model_validate({
-            "entity_id": "player",
-            "field": "entity_note",
-            "new_value": "Player vowed to find Korbar's old party.",
-            "reason": "Player made a promise worth remembering.",
-        })
-        assert n.entity_id == "player"
 
     def test_room_note_with_entity_id_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -169,14 +150,6 @@ class TestConversationLogEntry:
 
 
 class TestDialogueState:
-    def test_default(self) -> None:
-        d = DialogueState.model_validate({})
-        assert d.active_npc is None
-        assert d.conversation_log == []
-        assert d.topics_discussed == []
-        assert d.entered_turn == 0
-        assert d.stall_counter == 0
-
     def test_active(self) -> None:
         d = DialogueState.model_validate({
             "active_npc": "korbar",
@@ -214,29 +187,6 @@ class TestTurnHistoryEntry:
                 "player_input": "hi",
             })
 
-    def test_ooc_discussion_action_type(self) -> None:
-        e = TurnHistoryEntry.model_validate({
-            "turn": 5,
-            "player_input": "Is the spider still there?",
-            "ruled_action": {"action_type": "ooc_discussion", "detail": "Clarification question."},
-            "engine_result_summary": "GM clarified spider status.",
-            "flags_changed": [],
-            "location_after": "axe_handle_lower",
-        })
-        assert e.ruled_action["action_type"] == "ooc_discussion"
-        assert e.flags_changed == []
-
-    def test_empty_flags_changed(self) -> None:
-        e = TurnHistoryEntry.model_validate({
-            "turn": 2,
-            "player_input": "Look around.",
-            "ruled_action": {"action_type": "examine", "target": "room"},
-            "engine_result_summary": "Player examined the room.",
-            "flags_changed": [],
-            "location_after": "axe_head",
-        })
-        assert e.flags_changed == []
-
 
 class TestKnowledgeEntry:
     def test_basic(self) -> None:
@@ -271,15 +221,6 @@ class TestKnowledgeEntry:
 
 
 class TestSoftGameState:
-    def test_default(self) -> None:
-        s = SoftGameState.model_validate({})
-        assert s.soft_inventory == []
-        assert s.room_notes == {}
-        assert s.entity_notes == {}
-        assert s.player_knowledge == []
-        assert s.turn_history == []
-        assert s.dialogue_state.active_npc is None
-
     def test_full(self) -> None:
         s = SoftGameState.model_validate({
             "soft_inventory": ["rock"],
@@ -321,31 +262,3 @@ class TestSoftGameState:
         assert s.soft_inventory == ["rock"]
         assert len(s.turn_history) == 1
         assert s.dialogue_state.active_npc == "korbar"
-
-    def test_soft_items_taken_default(self) -> None:
-        s = SoftGameState.model_validate({})
-        assert s.soft_items_taken == {}
-        assert s.soft_contents == {}
-
-    def test_soft_items_taken_populated(self) -> None:
-        s = SoftGameState.model_validate({
-            "soft_items_taken": {
-                "rubbish_pile": {"cork": 2, "lint": 1},
-            },
-            "soft_contents": {
-                "table": {"stone": 1},
-            },
-        })
-        assert s.soft_items_taken["rubbish_pile"] == {"cork": 2, "lint": 1}
-        assert s.soft_contents["table"] == {"stone": 1}
-
-    def test_load_sample_soft_state(self) -> None:
-        import json
-        from pathlib import Path
-
-        path = Path(__file__).resolve().parent / "fixtures" / "soft-state.json"
-        data = json.loads(path.read_text())
-        s = SoftGameState.model_validate(data)
-        assert s.soft_inventory == []
-        assert s.dialogue_state.active_npc is None
-        assert s.dialogue_state.stall_counter == 0

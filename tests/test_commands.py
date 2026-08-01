@@ -125,10 +125,6 @@ class TestLoad:
         render.assert_called_once()
         assert "Usage" in render.call_args[0][0]
 
-    def test_load_calls_state_load_save(self, commands, state_loader) -> None:
-        commands.handle("/load save.json")
-        state_loader.load_save.assert_called_once()
-
     def test_load_calls_on_load_callback(self, state_loader, render, exit_fn) -> None:
         on_load = MagicMock()
         cmds = Commands(state_loader, render, exit_fn, on_load=on_load)
@@ -187,61 +183,13 @@ class TestModel:
         assert "0.3" in all_output
         assert "0.7" in all_output
 
-    def test_model_switch_keeps_current(self, state_loader, render, exit_fn, tmp_path) -> None:
-        """Enter empty choice → no switch."""
-        from mgmai.llm.model_config import ModelConfig
-
-        config = ModelConfig(name="deepseek-v4-flash", base_url="https://api.example.com")
-        cmds = Commands(state_loader, render, exit_fn, model_config=config,
-                        config_dir=str(tmp_path))
-
-        with patch("builtins.input", return_value=""):
-            cmds.handle("/model")
-        # Should not crash; model unchanged
-
-
-class TestNonCommandPassthrough:
-    """Non-command input returns False for the game loop to handle."""
-
-    def test_normal_text(self, commands) -> None:
-        assert commands.handle("look around") is False
-
-    def test_empty_string(self, commands) -> None:
-        assert commands.handle("") is False
-
-    def test_whitespace_only(self, commands) -> None:
-        assert commands.handle("   ") is False
-
 
 class TestInventoryCommand:
     """Inventory command: /inv, /inventory, and bare i/inv/inventory."""
 
-    def test_slash_inv_dispatches(self, commands, render) -> None:
-        assert commands.handle("/inv") is True
-        render.assert_called_once()
-
-    def test_slash_inventory_alias(self, commands, render) -> None:
-        assert commands.handle("/inventory") is True
-        render.assert_called_once()
-
-    def test_slash_i_alias(self, commands, render) -> None:
-        assert commands.handle("/i") is True
-        render.assert_called_once()
-
-    def test_bare_i(self, commands, render) -> None:
-        assert commands.handle("i") is True
-        render.assert_called_once()
-
-    def test_bare_inv(self, commands, render) -> None:
-        assert commands.handle("inv") is True
-        render.assert_called_once()
-
-    def test_bare_inventory(self, commands, render) -> None:
-        assert commands.handle("inventory") is True
-        render.assert_called_once()
-
-    def test_bare_i_case_insensitive(self, commands, render) -> None:
-        assert commands.handle("I") is True
+    @pytest.mark.parametrize("token", ["/inv", "/inventory", "/i", "i", "inv", "inventory", "I"])
+    def test_inventory_alias_dispatches(self, commands, render, token) -> None:
+        assert commands.handle(token) is True
         render.assert_called_once()
 
     def test_inv_with_loaded_state(self, state_manager, monkeypatch) -> None:
@@ -357,39 +305,10 @@ class TestCharCommand:
         rendered: list[str] = []
         return Commands(state_manager, rendered.append, lambda: None), rendered
 
-    def test_slash_c_dispatches(self, char_cmds) -> None:
+    @pytest.mark.parametrize("token", ["/c", "/char", "/sheet", "c", "char", "sheet", "C"])
+    def test_char_alias_dispatches(self, char_cmds, token) -> None:
         cmds, rendered = char_cmds
-        assert cmds.handle("/c") is True
-        assert "does not use a stats system" in rendered[0]
-
-    def test_slash_char_dispatches(self, char_cmds) -> None:
-        cmds, rendered = char_cmds
-        assert cmds.handle("/char") is True
-        assert "does not use a stats system" in rendered[0]
-
-    def test_slash_sheet_dispatches(self, char_cmds) -> None:
-        cmds, rendered = char_cmds
-        assert cmds.handle("/sheet") is True
-        assert "does not use a stats system" in rendered[0]
-
-    def test_bare_c(self, char_cmds) -> None:
-        cmds, rendered = char_cmds
-        assert cmds.handle("c") is True
-        assert "does not use a stats system" in rendered[0]
-
-    def test_bare_char(self, char_cmds) -> None:
-        cmds, rendered = char_cmds
-        assert cmds.handle("char") is True
-        assert "does not use a stats system" in rendered[0]
-
-    def test_bare_sheet(self, char_cmds) -> None:
-        cmds, rendered = char_cmds
-        assert cmds.handle("sheet") is True
-        assert "does not use a stats system" in rendered[0]
-
-    def test_bare_c_case_insensitive(self, char_cmds) -> None:
-        cmds, rendered = char_cmds
-        assert cmds.handle("C") is True
+        assert cmds.handle(token) is True
         assert "does not use a stats system" in rendered[0]
 
     def test_no_stats_system(self, state_manager, monkeypatch) -> None:

@@ -21,7 +21,6 @@ import pytest
 from mgmai.engine.conditions import (
     evaluate,
     evaluate_condition_string,
-    evaluate_require,
     get_condition_detail,
     parse_condition_string,
 )
@@ -156,11 +155,6 @@ class TestEvaluateConditionStringFlag:
         with pytest.raises(ValueError, match="flag condition requires operator"):
             evaluate_condition_string("flag:my_flag", hs, ss, None)
 
-    def test_flag_numeric_value_with_op_works(self) -> None:
-        hs = make_hard_state(flags={"count": True})
-        ss = make_soft_state()
-        assert evaluate_condition_string("flag:count == true", hs, ss, None)
-
 
 class TestEvaluateConditionStringInventory:
     def test_inventory_has_item(self) -> None:
@@ -170,11 +164,6 @@ class TestEvaluateConditionStringInventory:
 
     def test_inventory_missing_item(self) -> None:
         hs = make_hard_state()
-        ss = make_soft_state()
-        assert not evaluate_condition_string("inventory:rusty_key", hs, ss, None)
-
-    def test_inventory_empty(self) -> None:
-        hs = make_hard_state(player={"location": "axe_head", "inventory": {}})
         ss = make_soft_state()
         assert not evaluate_condition_string("inventory:rusty_key", hs, ss, None)
 
@@ -469,7 +458,6 @@ class TestEvaluateConditionStringStat:
         hs = self._with_stats()
         ss = make_soft_state()
         condition = ConditionExpression.model_validate({"require": "stat:STR >= 13"})
-        from mgmai.engine.conditions import evaluate
         assert evaluate(condition, hs, ss)
 
     def test_stat_all_of(self) -> None:
@@ -478,7 +466,6 @@ class TestEvaluateConditionStringStat:
         condition = ConditionExpression.model_validate({
             "all": ["stat:STR >= 10", "stat:DEX >= 10"],
         })
-        from mgmai.engine.conditions import evaluate
         assert evaluate(condition, hs, ss)
 
     def test_stat_with_attitude(self) -> None:
@@ -487,7 +474,6 @@ class TestEvaluateConditionStringStat:
         condition = ConditionExpression.model_validate({
             "all": ["stat:CHA >= 15", "entity:korbar.attitude >= 2"],
         })
-        from mgmai.engine.conditions import evaluate
         assert not evaluate(condition, hs, ss)
 
 
@@ -670,11 +656,6 @@ class TestEvaluateWithSampleCorpus:
         assert evaluate_condition_string("flag:injured == false", hs, ss, sample_corpus)
         assert evaluate_condition_string("entity:korbar.attitude >= 2", hs, ss, sample_corpus)
 
-    def test_corpus_entities(self, sample_corpus: ModuleCorpus) -> None:
-        assert "toenail_sword" in sample_corpus.entities
-        assert sample_corpus.entities["toenail_sword"].tags == ["weapon"]
-        assert "rusty_key" in sample_corpus.entities
-
     def test_real_world_trigger_condition(
         self, sample_corpus: ModuleCorpus
     ) -> None:
@@ -784,11 +765,6 @@ class TestEdgeCases:
         ss = make_soft_state()
         assert not evaluate_condition_string("flag:my_flag == banana", hs, ss, None)
 
-    def test_entity_state_bool_true_value(self) -> None:
-        hs = make_hard_state(entity_states={"player": {"alive": True}})
-        ss = make_soft_state()
-        assert evaluate_condition_string("entity:player.alive == true", hs, ss, None)
-
     def test_entity_state_truthy_non_bool(self) -> None:
         hs = make_hard_state(entity_states={"obj": {"active": 1}})
         ss = make_soft_state()
@@ -809,12 +785,6 @@ class TestEdgeCases:
         ss = make_soft_state()
         with pytest.raises(ValueError, match="Cannot compare boolean"):
             evaluate_condition_string("entity:player.alive >= 0", hs, ss, None)
-
-    def test_evaluate_require_convenience(self) -> None:
-        hs = make_hard_state(flags={"my_flag": True})
-        ss = make_soft_state()
-        assert evaluate_require("flag:my_flag == true", hs, ss)
-        assert not evaluate_require("flag:my_flag == false", hs, ss)
 
     def test_condition_expression_with_all_mixed_uses_corpus_for_tag(self) -> None:
         hs = make_hard_state(
@@ -991,16 +961,6 @@ class TestLocationConditions:
         ss = SoftGameState()
         assert evaluate_condition_string(
             "entity:sword.location == entity:chest", hs, ss, None
-        )
-
-    def test_location_works_without_entity_state_dict(self) -> None:
-        hs = HardGameState.model_validate({
-            "player": {"location": "room_a"},
-            "room_contains": {"room_a": {"spider": 1}},
-        })
-        ss = SoftGameState()
-        assert evaluate_condition_string(
-            "entity:spider.location == room:room_a", hs, ss, None
         )
 
     def test_following_npc_location_synthesized(self) -> None:

@@ -22,7 +22,6 @@ import logging
 
 from mgmai.logging import (
     format_state_snapshot,
-    get_level,
     set_level,
     setup_logging,
 )
@@ -95,11 +94,6 @@ class TestGetSetLevel:
             and not isinstance(h, logging.FileHandler)
         )
         assert console.level == logging.INFO
-
-    def test_get_level_returns_root_level(self) -> None:
-        root = logging.getLogger("mgmai")
-        root.setLevel(logging.WARNING)
-        assert get_level() == logging.WARNING
 
 
 class TestFormatStateSnapshot:

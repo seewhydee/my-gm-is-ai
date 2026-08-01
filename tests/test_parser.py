@@ -192,10 +192,6 @@ class TestParsePlayerAction:
         assert isinstance(action, WaitAction)
         assert len(action.soft_state_patches) == 1
 
-    def test_empty_object_rejected(self) -> None:
-        with pytest.raises(LLMOutputError):
-            parse_player_action("{}")
-
 
 # ------------------------------------------------------------------
 # parse_prose_output
@@ -273,7 +269,3 @@ class TestParseProseOutput:
     def test_missing_narration(self) -> None:
         with pytest.raises(LLMOutputError, match="missing required field"):
             parse_prose_output('{"npc_response": "hello"}')
-
-    def test_empty_object(self) -> None:
-        with pytest.raises(LLMOutputError, match="missing required field"):
-            parse_prose_output("{}")

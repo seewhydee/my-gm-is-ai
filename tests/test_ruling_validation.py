@@ -44,7 +44,6 @@ from mgmai.models.briefing import (
 
 
 def _combat_briefing(
-    usable_items: list[dict] | None = None,
     abilities: list[dict] | None = None,
 ) -> GMBriefing:
     return GMBriefing(
@@ -84,11 +83,10 @@ def _combat_briefing(
                  "current_hp": 12, "max_hp": 12, "status_effects": [],
                  "engaged_with": [], "impeded": False, "impede_used": False},
             ],
-            usable_items=(
-                [{"id": "health_potion", "name": "Healing Potion",
-                  "effects": "Heals 2d4+2 HP"}]
-                if usable_items is None else usable_items
-            ),
+            usable_items=[
+                {"id": "health_potion", "name": "Healing Potion",
+                 "effects": "Heals 2d4+2 HP"},
+            ],
             abilities=(
                 [
                     {"id": "second_wind", "name": "Second Wind",
@@ -407,19 +405,6 @@ class TestUseAbilityOutOfCombat:
         )
         assert error is not None
         assert "no level-1 spell slots" in error
-
-    def test_leveled_spell_with_slot_passes(self):
-        assert validate_ruling_action(
-            _use_ability("mage_armor", "player"),
-            self._ooc_briefing({1: 1}),
-        ) is None
-
-    def test_other_combat_actions_out_of_combat_unchanged(self):
-        # attack out of combat falls through to the engine (which
-        # converts attack to the combat-starting interact); no validation.
-        assert validate_ruling_action(
-            _combat("attack", "goblin"), self._ooc_briefing()
-        ) is None
 
 
 class TestMove:

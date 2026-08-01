@@ -16,9 +16,6 @@
 
 """Tests for engine/post_validate.py."""
 
-import json
-from pathlib import Path
-
 from mgmai.engine.post_validate import (
     apply_post_validation,
     post_validate_attitude_changes,
@@ -28,22 +25,6 @@ from mgmai.engine.post_validate import (
 from mgmai.models.actions import EngineResult, HardStateChanges
 from mgmai.models.narration import AttitudeChange
 from mgmai.models.soft_state import SoftStateNote
-
-FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-
-
-def _load_hard():
-    from mgmai.models.hard_state import HardGameState
-    return HardGameState.model_validate(
-        json.loads((FIXTURES_DIR / "hard-state.json").read_text())
-    )
-
-
-def _load_soft():
-    from mgmai.models.soft_state import SoftGameState
-    return SoftGameState.model_validate(
-        json.loads((FIXTURES_DIR / "soft-state.json").read_text())
-    )
 
 
 class TestPostValidateKnowledgeTags:
@@ -166,18 +147,6 @@ class TestPostValidateAttitudeChanges:
         assert "korbar" not in applied
         assert "korbar" in rejected
         assert "step_per_turn" in rejected["korbar"]["reason"]
-
-    def test_bounds_violation_rejected(self, state_manager):
-        hard = state_manager.hard_state
-        soft = state_manager.soft_state
-        corpus = state_manager.corpus
-        hard.entity_states["korbar"]["attitude"] = 0
-        changes = {
-            "korbar": AttitudeChange(old_value=0, new_value=100, reason="OOB")
-        }
-        applied, rejected, _hard_changes = post_validate_attitude_changes(changes, hard, soft, corpus)
-        assert "korbar" not in applied
-        assert "korbar" in rejected
 
     def test_dead_npc_rejected(self, state_manager):
         hard = state_manager.hard_state

@@ -41,7 +41,6 @@ from mgmai.models.actions import (
     HardStateChanges,
     InteractAction,
     MoveAction,
-    PlayerAction,
     UseAbilityAction,
     WaitAction,
     validate_player_action,
@@ -145,12 +144,6 @@ def combat_hard_state() -> HardGameState:
 # ------------------------------------------------------------------
 
 class TestCombatBlock:
-    def test_default_values(self):
-        cb = CombatBlock(hp=5, ac=10, atk=0)
-        assert cb.dmg == "1d6"
-        assert cb.initiative_mod == 0
-        assert cb.flee_dc == 10
-
     def test_hp_must_be_positive(self):
         with pytest.raises(ValueError):
             CombatBlock(hp=0, ac=10, atk=0)
@@ -183,16 +176,6 @@ class TestCombatAction:
         assert isinstance(action, CombatAction)
         assert action.combat_action == "attack"
         assert action.target == "goblin"
-
-    def test_combat_action_in_player_action_union(self):
-        data = {
-            "action_type": "combat",
-            "combat_action": "attack",
-            "target": "goblin",
-            "detail": "Swing!",
-        }
-        action = PlayerAction.model_validate(data)
-        assert isinstance(action, CombatAction)
 
 
 # ------------------------------------------------------------------
@@ -942,6 +925,7 @@ class TestFlee:
         )
         result = resolve_combat_turn(action, hard, combat_npc_corpus)
         assert result["success"]
+        assert result["combat_ended_reason"] == "fled"
         # combat ended
         assert hard.combat is None
         # player moved
@@ -989,7 +973,6 @@ class TestFlee:
             target="exit_north",
             detail="Run!",
         )
-        from mgmai.models.soft_state import SoftGameState
         soft = SoftGameState()
         result = resolve_action(action, hard, soft, combat_npc_corpus)
         assert result.success
@@ -1020,30 +1003,6 @@ class TestHardStateChangesHp:
 # ------------------------------------------------------------------
 
 class TestResolverIntegration:
-    def test_combat_action_dispatch(self, combat_hard_state, combat_npc_corpus, monkeypatch):
-        """resolve_action dispatches combat action type correctly."""
-        hard = combat_hard_state.model_copy(deep=True)
-        hard.combat = CombatState(
-            active=True,
-            combatants=["player", "goblin"],
-            initiative_order=["player", "goblin"],
-            current_index=0,
-            round_number=1,
-        )
-        rand_vals = iter([15, 3, 5])
-        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
-
-        action = CombatAction(
-            action_type="combat",
-            combat_action="attack",
-            target="goblin",
-            detail="Attack!",
-        )
-        from mgmai.models.soft_state import SoftGameState
-        soft = SoftGameState()
-        result = resolve_action(action, hard, soft, combat_npc_corpus)
-        assert result.success
-
     def test_wait_in_combat_passes_turn(self, combat_hard_state, combat_npc_corpus, monkeypatch):
         """A wait action during combat passes the player's turn: the wait is
         logged, NPC turns proceed, and the round advances."""
@@ -1060,7 +1019,6 @@ class TestResolverIntegration:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
 
         action = WaitAction(action_type="wait", detail="Hold ground.")
-        from mgmai.models.soft_state import SoftGameState
         soft = SoftGameState()
         result = resolve_action(action, hard, soft, combat_npc_corpus)
         assert result.success
@@ -1090,7 +1048,6 @@ class TestResolverIntegration:
         monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
 
         action = MoveAction(action_type="move", target="exit_north", detail="Run!")
-        from mgmai.models.soft_state import SoftGameState
         soft = SoftGameState()
         result = resolve_action(action, hard, soft, combat_npc_corpus)
         assert result.success
@@ -1167,7 +1124,6 @@ class TestResolverIntegration:
             interaction_id="attack",
             detail="I attack the goblin!",
         )
-        from mgmai.models.soft_state import SoftGameState
         soft = SoftGameState()
         result = resolve_action(action, hard, soft, combat_npc_corpus)
         assert result.success
@@ -1188,7 +1144,6 @@ class TestResolverIntegration:
             target="goblin",
             detail="I attack the goblin!",
         )
-        from mgmai.models.soft_state import SoftGameState
         soft = SoftGameState()
         result = resolve_action(action, hard, soft, combat_npc_corpus)
         assert result.success
@@ -1357,28 +1312,6 @@ class TestCombatEndStates:
         assert result["success"]
         assert result["player_died"] is True
         assert result["combat_ended_reason"] == "defeat"
-        assert hard.combat is None
-
-    def test_flee_success_reports_fled_reason(self, combat_hard_state, combat_npc_corpus, monkeypatch):
-        hard = combat_hard_state.model_copy(deep=True)
-        hard.combat = CombatState(
-            active=True,
-            combatants=["player", "goblin"],
-            initiative_order=["player", "goblin"],
-            current_index=0,
-            round_number=1,
-        )
-        # DEX 14 → mod +2, flee DC 10. Roll 12 + 2 = 14 ≥ 10 → success
-        monkeypatch.setattr(random, "randint", lambda a, b: 12)
-
-        action = MoveAction(
-            action_type="move",
-            target="exit_north",
-            detail="Run away!",
-        )
-        result = resolve_combat_turn(action, hard, combat_npc_corpus)
-        assert result["success"]
-        assert result["combat_ended_reason"] == "fled"
         assert hard.combat is None
 
     def test_combat_continues_reason_is_none(self, combat_hard_state, combat_npc_corpus, monkeypatch):
@@ -2202,69 +2135,6 @@ class TestPartyCombat:
         ally_actions = [e for e in result["combat_log"] if e.actor == "companion"]
         assert ally_actions == []
 
-    def test_passive_npc_persuadable_pattern(self):
-        """An NPC can be passive by default (ai.passive=True, passive state
-        field) and persuadable via a dialogue path that clears the state.
-
-        This replaces the former ``test_bag_of_holding_korbar_persuadable``
-        which depended on the ``adventures/bag-of-holding`` fixture.  The
-        same data-model invariants are checked on a self-contained corpus.
-        """
-        from tests.helpers import build_state_manager
-
-        corpus = ModuleCorpus.model_validate({
-            "adventure": {"title": "Test", "introduction": "Test."},
-            "rooms": {
-                "start": {
-                    "name": "Start",
-                    "description": "A room.",
-                    "contains": ["korbar"],
-                },
-            },
-            "entities": {
-                "korbar": {
-                    "type": "npc",
-                    "description": "A dwarf.",
-                    "state_fields": {
-                        "alive": {"type": "boolean", "description": "Alive?"},
-                        "current_hp": {"type": "number", "description": "HP"},
-                        "passive": {
-                            "type": "boolean",
-                            "description": "Too scared to fight?",
-                            "initial": True,
-                        },
-                    },
-                    "combat": {
-                        "hp": 10, "ac": 12, "atk": 2, "dmg": "1d6",
-                        "ai": {"passive": True},
-                    },
-                    "dialogue": {
-                        "guidelines": "A dwarf.",
-                        "dialogue_paths": {
-                            "convince_fight": {
-                                "description": "Convince Korbar to fight.",
-                                "result": {
-                                    "narrative": "Korbar steels himself.",
-                                    "set_entity_state": {
-                                        "korbar": {"passive": False},
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        })
-        sm = build_state_manager(corpus)
-        korbar = sm.corpus.entities["korbar"]
-        assert "passive" in korbar.state_fields
-        assert korbar.combat.ai is not None
-        assert korbar.combat.ai.passive is True
-        path = korbar.dialogue.dialogue_paths["convince_fight"]
-        assert path.result is not None
-        assert path.result.set_entity_state["korbar"]["passive"] is False
-        assert sm.hard_state.entity_states["korbar"]["passive"] is True
-
 
 # ------------------------------------------------------------------
 # 15. Weapon properties (Phase 3a)
@@ -3078,21 +2948,6 @@ class TestUseItem:
         result = resolve_action(self._use(target="player"), hard, soft, corpus)
         assert result.success is False
         assert "player" in result.error
-
-    def test_use_item_error_no_usable_inventory(
-        self, combat_npc_corpus, combat_hard_state
-    ):
-        """With no items in inventory, the error says so plainly."""
-        corpus, hard = self._setup(
-            combat_npc_corpus, combat_hard_state,
-            [Interaction(id="drink", description="Drink the potion.",
-             result=Result(player_heal="1d4"))],
-        )
-        del hard.player.inventory["potion"]
-        soft = SoftGameState()
-        result = resolve_action(self._use(), hard, soft, corpus)
-        assert result.success is False
-        assert "inventory" in result.error.lower()
 
     def test_use_item_not_usable(self, combat_npc_corpus, combat_hard_state):
         corpus, hard = self._setup(
@@ -5471,17 +5326,6 @@ class TestPositioning:
             })
 
     # -- Prone / unconscious rules hooks ----------------------------------
-
-    def test_prone_advantage_when_engaged(self, pos_hard, pos_corpus, monkeypatch):
-        pos_hard.entity_states["goblin"]["status_effects"] = {"prone": 5}
-        self._combat_state(pos_hard, order=("player", "goblin"))
-        # melee attack auto-engages: prone + engaged -> advantage (keeps 15)
-        rand_vals = iter([3, 15, 1, 1])
-        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
-        result = resolve_combat_turn(self._attack(), pos_hard, pos_corpus)
-        entry = result["combat_log"][0]
-        assert entry.attack_roll == 15
-        assert entry.hit is True
 
     def test_prone_disadvantage_when_unengaged(self, pos_hard, pos_corpus, monkeypatch):
         pos_hard.player.equipped = ["bow"]

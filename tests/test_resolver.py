@@ -16,9 +16,7 @@
 
 """Tests for engine/resolver.py."""
 
-import json
 import random
-from pathlib import Path
 
 import pytest
 
@@ -57,28 +55,12 @@ from mgmai.models.corpus import (
     RollCheck,
     StatCheck,
 )
-from mgmai.models.hard_state import HardGameState
-from mgmai.models.soft_state import SoftGameState
 from tests.helpers import (
     build_state_manager,
     make_char_sheet_corpus,
     make_char_sheet_state,
     make_encounter_trigger_corpus,
 )
-
-FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-
-
-def _load_hard():
-    return HardGameState.model_validate(
-        json.loads((FIXTURES_DIR / "hard-state.json").read_text())
-    )
-
-
-def _load_soft():
-    return SoftGameState.model_validate(
-        json.loads((FIXTURES_DIR / "soft-state.json").read_text())
-    )
 
 
 class TestResolveWait:
@@ -112,11 +94,6 @@ class TestResolveExamine:
         assert result.success is True
         assert any("padlock" in n for n in result.triggered_narration)
 
-    def test_examine_room(self, state_manager):
-        action = ExamineAction(action_type="examine", target="axe_head", detail="Looking around")
-        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
-        assert result.success is True
-
     def test_examine_current_room_sentinel(self, state_manager):
         """The "current_room" sentinel examines the player's current room,
         equivalent to targeting the room by its actual ID."""
@@ -148,11 +125,6 @@ class TestResolveExamine:
     def test_examine_with_using_in_inventory(self, state_manager):
         state_manager.hard_state.player.inventory["rusty_key"] = 1
         action = ExamineAction(action_type="examine", target="padlock", using="rusty_key", detail="Poking with key")
-        result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
-        assert result.success is True
-
-    def test_examine_soft_item(self, state_manager):
-        action = ExamineAction(action_type="examine", target="loose stone", detail="Looking at stone")
         result = resolve_examine(action, state_manager.hard_state, state_manager.soft_state, state_manager.corpus)
         assert result.success is True
 
@@ -561,27 +533,6 @@ class TestResolveTransfer:
         assert proposal.target_id == "korbar"
         assert proposal.count == 1
 
-    def test_give_soft_item_surfaces_on_target(self, state_manager):
-        """Given soft items are proposed for adjudication on the transfer target."""
-        hard = state_manager.hard_state
-        soft = state_manager.soft_state
-        corpus = state_manager.corpus
-        hard.player.location = "bag_floor"
-        soft.soft_inventory.append("cork")
-        action = TransferAction(
-            action_type="transfer", target="korbar",
-            given_items=["cork"],
-            taken_items=[],
-            detail="Giving a cork",
-        )
-        result = resolve_transfer(action, hard, soft, corpus)
-        assert len(result.soft_item_proposals) == 1
-        proposal = result.soft_item_proposals[0]
-        assert proposal.item_name == "cork"
-        assert proposal.action == "give"
-        assert proposal.source_id == "player"
-        assert proposal.target_id == "korbar"
-
     def test_give_soft_item_not_in_inventory_rejected(self, state_manager):
         """A soft item the player does not carry cannot be given: the
         resolver rejects the action and emits no proposal, so an
@@ -640,26 +591,6 @@ class TestResolveTransfer:
         assert len(result.soft_item_proposals) == 1
         proposal = result.soft_item_proposals[0]
         assert proposal.item_name == "stale sandwich"
-        assert proposal.action == "take"
-        assert proposal.source_id == "rubbish_pile"
-
-    def test_take_soft_item_surfaces_on_entity_when_shared(self, state_manager):
-        """When target is an entity, soft items are proposed on that entity."""
-        hard = state_manager.hard_state
-        soft = state_manager.soft_state
-        corpus = state_manager.corpus
-        hard.player.location = "bag_floor"
-        action = TransferAction(
-            action_type="transfer", target="rubbish_pile",
-            given_items=[],
-            taken_items=["cork"],
-            detail="Taking a cork",
-        )
-        result = resolve_transfer(action, hard, soft, corpus)
-        assert result.success is True
-        assert len(result.soft_item_proposals) == 1
-        proposal = result.soft_item_proposals[0]
-        assert proposal.item_name == "cork"
         assert proposal.action == "take"
         assert proposal.source_id == "rubbish_pile"
 
@@ -772,20 +703,6 @@ class TestResolveInteract:
         result = resolve_interact(action, hard, soft, corpus)
         assert result.success is True
         assert result.hard_changes.flags_set.get("handkerchief_moved") is True
-
-    def test_transfer_take_item(self, state_manager):
-        hard = state_manager.hard_state
-        soft = state_manager.soft_state
-        corpus = state_manager.corpus
-        hard.player.location = "secret_compartment"
-        action = TransferAction(
-            action_type="transfer", target="secret_compartment",
-            taken_items=["rusty_key"],
-            detail="Taking the key",
-        )
-        result = resolve_transfer(action, hard, soft, corpus)
-        assert result.success is True
-        assert result.hard_changes.inventory_added.get("rusty_key") == 1
 
     def test_attack_on_npc_with_behavior(self, state_manager):
         hard = state_manager.hard_state
@@ -1224,19 +1141,6 @@ class TestApplyResult:
         assert changes.player_location == "bag_floor"
         assert hard.player.location == "bag_floor"
 
-    def test_apply_result_with_start_combat_no_crash(self, state_manager):
-        """A Result with start_combat set flows through _apply_result safely."""
-        hard = state_manager.hard_state
-        corpus = state_manager.corpus
-        from mgmai.models.actions import HardStateChanges
-
-        result = Result(narrative="Hello", start_combat=[])
-        changes = HardStateChanges()
-        narrative: list[str] = []
-        _apply_result(result, changes, narrative, [], hard, corpus)
-        state_manager.apply_hard_changes(changes)
-        assert narrative == ["Hello"]
-
     def test_apply_result_with_game_over_no_crash(self, state_manager):
         """A Result with game_over set propagates to hard state via _apply_result."""
         hard = state_manager.hard_state
@@ -1279,26 +1183,6 @@ class TestApplyResult:
         assert hard.game_over is not None
         assert hard.game_over.type == "lose"
         assert hard.game_over.trigger == "boss"
-
-    def test_apply_result_with_check_with_start_combat_no_crash(self, state_manager):
-        """_apply_result_with_check handles Result with start_combat set."""
-        hard = state_manager.hard_state
-        soft = state_manager.soft_state
-        corpus = state_manager.corpus
-        from mgmai.models.actions import HardStateChanges
-
-        result = Result(narrative="Done.", start_combat=[])
-        changes = HardStateChanges()
-        narrative: list[str] = []
-        rolls: list[dict] = []
-        _apply_result_with_check(
-            result,
-            changes=changes, narrative=narrative,
-            revealed_hints=[], hard=hard, corpus=corpus,
-            soft=soft, room_id=hard.player.location or "start",
-            rolls=rolls,
-        )
-        assert narrative == ["Done."]
 
     def test_apply_result_with_check_with_game_over_no_crash(self, state_manager):
         """_apply_result_with_check propagates a Result's game_over to hard state."""

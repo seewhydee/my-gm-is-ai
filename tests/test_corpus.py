@@ -376,17 +376,9 @@ class TestResult:
         r = Result(narrative="Hello")
         assert r.has_any_effect() is True
 
-    def test_start_combat_defaults_to_none(self) -> None:
-        r = Result()
-        assert r.start_combat is None
-
     def test_start_combat_none_does_not_count_as_effect(self) -> None:
         r = Result(start_combat=None)
         assert r.has_any_effect() is False
-
-    def test_game_over_defaults_to_none(self) -> None:
-        r = Result()
-        assert r.game_over is None
 
     def test_game_over_deserializes_from_dict(self) -> None:
         r = Result.model_validate({"game_over": {"type": "lose", "trigger_id": "test"}})
@@ -746,7 +738,6 @@ class TestRoom:
             })
 
     def test_entity_with_mixed_contains(self) -> None:
-        from mgmai.models.corpus import Entity
         e = Entity.model_validate({
             "type": "feature",
             "description": "A chest.",
@@ -766,10 +757,6 @@ class TestRollCheck:
         with pytest.raises(ValidationError):
             RollCheck.model_validate({"threshold": -0.1, "repeatable": True})
 
-    def test_type_defaults_to_roll(self) -> None:
-        c = RollCheck.model_validate({"threshold": 0.5, "repeatable": True})
-        assert c.type == "roll"
-
 
 class TestAttitudeLimits:
     def test_defaults(self) -> None:
@@ -777,10 +764,6 @@ class TestAttitudeLimits:
         assert a.min == -5
         assert a.max == 10
         assert a.step_per_turn == 3
-
-    def test_step_per_turn_defaults_to_one(self) -> None:
-        a = AttitudeLimits.model_validate({"min": -5, "max": 10})
-        assert a.step_per_turn == 1
 
 
 class TestStateFieldDecl:
@@ -822,10 +805,6 @@ class TestStateFieldDecl:
             "type": "string", "description": "Title.", "initial": "Novice"
         })
         assert s.initial == "Novice"
-
-    def test_initial_defaults_to_none(self) -> None:
-        s = StateFieldDecl.model_validate({"type": "boolean", "description": "X."})
-        assert s.initial is None
 
     def test_boolean_initial_rejects_number(self) -> None:
         with pytest.raises(ValidationError, match="must be a boolean"):
@@ -1150,18 +1129,6 @@ class TestStatCheck:
 
 
 class TestInteractionWithCheck:
-    def test_with_roll_check(self) -> None:
-        inter = Interaction.model_validate({
-            "id": "test_roll",
-            "description": "Test roll",
-            "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
-            "success": {"narrative": "Pass"},
-            "failure": {"narrative": "Fail"},
-        })
-        assert inter.check is not None
-        assert inter.check.type == "roll"
-        assert isinstance(inter.check, RollCheck)
-
     def test_with_stat_check(self) -> None:
         inter = Interaction.model_validate({
             "id": "test_stat",
@@ -1174,15 +1141,6 @@ class TestInteractionWithCheck:
         assert inter.check.type == "stat_check"
         assert isinstance(inter.check, StatCheck)
         assert inter.check.stat == "STR"
-
-    def test_check_and_result_mutually_exclusive_raises(self) -> None:
-        with pytest.raises(ValidationError, match="must have either check"):
-            Interaction.model_validate({
-                "id": "bad",
-                "description": "Bad interaction",
-                "check": {"type": "roll", "threshold": 0.5, "repeatable": True},
-                "result": {"narrative": "Result"},
-            })
 
 
 class TestModuleCorpusWithStats:

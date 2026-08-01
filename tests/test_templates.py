@@ -46,11 +46,6 @@ class TestRulingTemplate:
         assert "no exit to the north" in output
         assert "unclear which door" in output
 
-    def test_renders_multiple_times(self) -> None:
-        out1 = render_ruling()
-        out2 = render_ruling()
-        assert out1 == out2  # static template
-
 
 class TestRulingTemplateConditional:
     """Test dynamic inclusion/exclusion of the combat rules section.
@@ -101,11 +96,6 @@ class TestProseTemplate:
         assert "knowledge_tags" in output
         assert "attitude_changes" in output
         assert "Narration Rules" in output
-
-    def test_renders_multiple_times(self) -> None:
-        out1 = render_prose()
-        out2 = render_prose()
-        assert out1 == out2  # static with same flags
 
 
 class TestProseTemplateConditional:

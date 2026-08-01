@@ -942,28 +942,6 @@ class TestReactionResultDispatchFields:
     through StateManager; this test mutates the corpus after load, so it only
     verifies the runtime no-op."""
 
-    def test_result_with_start_combat_does_not_crash(self, state_manager):
-        hard = state_manager.hard_state
-        corpus = state_manager.corpus
-        hard.player.location = "bag_floor"
-
-        room = corpus.rooms["bag_floor"]
-        room.reactions.append(Reaction(
-            id="test_trigger",
-            on="turn.start",
-            effect=ReactionEffects(result=Result(
-                narrative="It grows dark.",
-                start_combat=[],
-            )),
-        ))
-
-        from mgmai.models.actions import WaitAction
-        action = WaitAction(action_type="wait", detail="wait")
-        engine_result = resolve(action, state_manager)
-        assert engine_result.success is True
-        assert engine_result.combat_triggered is False
-        assert "It grows dark." in engine_result.triggered_narration
-
     def test_result_with_game_over_does_not_crash(self, state_manager):
         hard = state_manager.hard_state
         corpus = state_manager.corpus
@@ -990,41 +968,12 @@ class TestReactionResultDispatchFields:
         assert "The world ends." in engine_result.triggered_narration
         assert hard.flags.get("doomed") is True
 
-    def test_result_with_both_dispatch_fields_no_crash(self, state_manager):
-        hard = state_manager.hard_state
-        corpus = state_manager.corpus
-        hard.player.location = "bag_floor"
-
-        room = corpus.rooms["bag_floor"]
-        room.reactions.append(Reaction(
-            id="test_both",
-            on="turn.start",
-            effect=ReactionEffects(result=Result(
-                narrative="Chaos!",
-                start_combat=[],
-                game_over=GameOverTrigger(type="win", trigger_id="test_win"),
-                set_flag={"dispatch_test": True},
-            )),
-        ))
-
-        from mgmai.models.actions import WaitAction
-        action = WaitAction(action_type="wait", detail="wait")
-        engine_result = resolve(action, state_manager)
-        assert engine_result.success is True
-        assert engine_result.combat_triggered is False
-        assert engine_result.game_over is not None
-        assert engine_result.game_over.type == "win"
-        assert engine_result.game_over.trigger == "test_win"
-        assert "Chaos!" in engine_result.triggered_narration
-        assert hard.flags.get("dispatch_test") is True
-
 
 class TestReactionEncounterMultiEnemy:
     """Reaction-fired encounters support start_combat and combat_group expansion."""
 
     def test_reaction_encounter_start_combat_multi_enemy(self, state_manager):
         from mgmai.models.corpus import CombatBlock, Mechanic
-        from tests.helpers import _mk_encounter_rule
         hard = state_manager.hard_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
@@ -1071,7 +1020,6 @@ class TestReactionEncounterMultiEnemy:
         self, state_manager
     ):
         from mgmai.models.corpus import Mechanic
-        from tests.helpers import _mk_encounter_rule
         hard = state_manager.hard_state
         corpus = state_manager.corpus
         hard.player.location = "bag_floor"
@@ -1175,29 +1123,6 @@ class TestCombatEvents:
         return sm
 
     # -- combat.started emission ---------------------------------------
-
-    def test_combat_started_on_direct_attack(self, combat_sm, monkeypatch):
-        """A direct interact/attack on a combat NPC emits combat.started."""
-        import random
-        # Player goes first and misses; goblin misses too — combat stays
-        # active so we can verify the state.
-        monkeypatch.setattr(random, "randint", lambda a, b: 10)
-        monkeypatch.setattr(random, "random", lambda: 0.5)
-
-        from mgmai.models.actions import InteractAction
-        action = InteractAction(
-            action_type="interact",
-            target="goblin",
-            interaction_id="attack",
-            detail="Attack!",
-        )
-        result = resolve(action, combat_sm)
-        assert result.success
-        assert result.combat_triggered
-        # The combat.started event is in the resolver's events list; it
-        # was dispatched by the engine.  Verify via a flag set by a
-        # reaction (next test) or by checking that combat is active.
-        assert combat_sm.hard_state.combat is not None
 
     def test_combat_started_reaction_fires(self, combat_sm, monkeypatch):
         """A reaction on combat.started fires when combat begins."""

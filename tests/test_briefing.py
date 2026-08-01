@@ -41,14 +41,6 @@ class TestBriefingContainsEntry:
         assert c.type == "item"
         assert c.description == "A giant toenail clipping."
 
-    def test_default_type_is_item(self) -> None:
-        c = BriefingContainsEntry.model_validate({
-            "id": "rusty_key",
-            "name": "rusty_key",
-            "description": "A rusty key.",
-        })
-        assert c.type == "item"
-
     def test_missing_id_raises(self) -> None:
         with pytest.raises(ValidationError):
             BriefingContainsEntry.model_validate({

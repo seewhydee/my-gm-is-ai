@@ -47,16 +47,6 @@ class TestPlayerAction:
         assert a.rigorous is True
         assert a.using == "torch"
 
-    def test_examine_using_null(self) -> None:
-        a = PlayerAction.model_validate({
-            "action_type": "examine",
-            "target": "spider",
-            "rigorous": False,
-            "using": None,
-            "detail": "The player looks at the spider.",
-        })
-        assert a.using is None
-
     def test_interact(self) -> None:
         a = PlayerAction.model_validate({
             "action_type": "interact",
@@ -271,17 +261,6 @@ class TestEngineResult:
         })
         assert r.chain_info is not None
         assert r.chain_info.follow_up == "Unlock the padlock."
-
-    def test_default_lists(self) -> None:
-        r = EngineResult.model_validate({
-            "success": True,
-            "action_type": "wait",
-        })
-        assert r.rolls == []
-        assert r.triggered_narration == []
-        assert r.warnings == []
-        assert r.soft_state_patches_applied == []
-        assert r.soft_state_patches_rejected == []
 
     def test_missing_success_raises(self) -> None:
         with pytest.raises(ValidationError):

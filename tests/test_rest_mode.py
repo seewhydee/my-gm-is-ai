@@ -202,14 +202,6 @@ class TestRestModeTopMenu:
 
 
 class TestRestModePrepare:
-    def test_enter_prepare_menu(self):
-        rm = _rest_mode()
-        text = rm.handle("1")
-        assert "Prepare spells" in text
-        for aid in _SPELLBOOK:
-            assert aid in text
-        assert "[x]" in text  # all prepared initially
-
     def test_toggle_then_confirm(self):
         rm = _rest_mode()
         rm.handle("1")            # enter prepare

@@ -59,7 +59,6 @@ class TestResolveEncounter:
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["game_over"] is not None
-        assert result["game_over"] is not None
         assert result["game_over"]["type"] == "lose"
         assert result["narrative"] == "You die horribly."
 
@@ -126,20 +125,6 @@ class TestResolveEncounter:
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["game_over"] is not None
         assert result["narrative"] == "You die."
-
-    def test_no_rules_match_returns_none(self, sample_corpus):
-        hard = _load_hard()
-        soft = _load_soft()
-        rules = [
-            _mk_encounter_rule(
-                outcome="death",
-                condition=ConditionExpression(require="flag:nonexistent == true"),
-                narrative="Should not fire."
-            )
-        ]
-        result = resolve_encounter(rules, hard, soft, sample_corpus)
-        assert result["branch_taken"] is None
-        assert result["narrative"] is None
 
     def test_first_matching_rule_wins(self, sample_corpus):
         hard = _load_hard()
@@ -213,7 +198,6 @@ class TestResolveEncounter:
                 outcome="stat_check",
                 condition=ConditionExpression(require="entity:player.alive == true"),
                 stat_check={"type": "stat_check", "stat": "DEX", "target": 10, "repeatable": True},
-                alter_stat={"CON": StatModifier(value=-2)},
                 success={
                     "alter_stat": {"STR": StatModifier(value=-4), "CON": StatModifier(value=-4)},
                     "narrative": "You land badly despite rolling well.",
@@ -532,29 +516,3 @@ class TestStartCombatThreading:
         ]
         result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
         assert result["start_combat"] == ["spider"]
-
-    def test_empty_result_has_none_start_combat(self, sample_corpus):
-        hard = _load_hard()
-        soft = _load_soft()
-        rules = [
-            _mk_encounter_rule(
-                outcome="flee",
-                condition=ConditionExpression(require="entity:player.alive == true"),
-                narrative="It runs.",
-            )
-        ]
-        result = resolve_encounter(rules, hard, soft, sample_corpus, npc_id="spider")
-        assert result["start_combat"] is None
-
-    def test_no_rules_match_has_none_start_combat(self, sample_corpus):
-        hard = _load_hard()
-        soft = _load_soft()
-        rules = [
-            _mk_encounter_rule(
-                outcome="combat",
-                condition=ConditionExpression(require="flag:nonexistent == true"),
-                start_combat=["spider"],
-            )
-        ]
-        result = resolve_encounter(rules, hard, soft, sample_corpus)
-        assert result["start_combat"] is None

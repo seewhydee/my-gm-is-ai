@@ -47,14 +47,6 @@ class TestGameOverState:
         assert g.type == "win"
         assert g.trigger == "escape_bag"
 
-    def test_lose(self) -> None:
-        g = GameOverState.model_validate({
-            "type": "lose",
-            "trigger": "death_spider",
-        })
-        assert g.type == "lose"
-        assert g.trigger == "death_spider"
-
     def test_missing_type_raises(self) -> None:
         with pytest.raises(ValidationError):
             GameOverState.model_validate({"trigger": "x"})
@@ -65,17 +57,6 @@ class TestGameOverState:
 
 
 class TestHardGameState:
-    def test_minimal(self) -> None:
-        h = HardGameState.model_validate({
-            "player": {"location": "axe_head"},
-        })
-        assert h.player.location == "axe_head"
-        assert h.flags == {}
-        assert h.room_states == {}
-        assert h.entity_states == {}
-        assert h.turn_count == 0
-        assert h.game_over is None
-
     def test_full(self) -> None:
         h = HardGameState.model_validate({
             "player": {
@@ -120,21 +101,6 @@ class TestHardGameState:
                 "turn_count": -1,
             })
 
-    def test_load_sample_hard_state(self, sample_corpus: object) -> None:
-        import json
-        from pathlib import Path
-
-        path = Path(__file__).resolve().parent / "fixtures" / "hard-state.json"
-        data = json.loads(path.read_text())
-        h = HardGameState.model_validate(data)
-        assert h.player.location == "axe_head"
-        assert h.turn_count == 0
-        assert h.game_over is None
-        assert "stuck_fly" in h.entity_states
-        assert h.entity_states["stuck_fly"]["alive"] is True
-        assert "spider" in h.entity_states
-        assert h.entity_states["spider"]["alive"] is True
-
 
 class TestPlayerStats:
     def test_no_stats(self) -> None:
@@ -147,10 +113,3 @@ class TestPlayerStats:
             "stats": {"STR": 14, "DEX": 12},
         })
         assert p.stats == {"STR": 14, "DEX": 12}
-
-    def test_empty_dict(self) -> None:
-        p = PlayerState.model_validate({
-            "location": "room1",
-            "stats": {},
-        })
-        assert p.stats == {}

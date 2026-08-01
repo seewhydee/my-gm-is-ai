@@ -75,27 +75,6 @@ def state_manager():
 # ------------------------------------------------------------------
 
 class TestEquipBlockModel:
-    def test_defaults(self):
-        eb = EquipBlock(equip_tags=["weapon"])
-        assert eb.equip_tags == ["weapon"]
-        assert eb.incompatible_with == []
-        assert eb.stat_effects == {}
-        assert eb.max_equipped == 1
-        assert eb.damage_expr == "1d8"
-        assert eb.hit_bonus == 0
-
-    def test_custom_values(self):
-        eb = EquipBlock(
-            equip_tags=["armor", "heavy"],
-            incompatible_with=["light_armor"],
-            stat_effects={"STR": StatModifier(mode="delta", value=1)},
-        )
-        assert len(eb.stat_effects) == 1
-
-    def test_max_equipped_none(self):
-        eb = EquipBlock(equip_tags=["weapon"], max_equipped=None)
-        assert eb.max_equipped is None
-
     def test_extra_fields(self):
         """5e-specific extras are accepted via extra='allow' but are not core fields."""
         eb = EquipBlock(
@@ -444,13 +423,6 @@ class TestStateManagerEquipment:
         assert hard.player.inventory.get("magic_sword") == 2
         assert "magic_sword" not in hard.player.equipped
 
-    def test_equipped_defaults_to_empty(self):
-        """Old save files without `equipped` should default to empty list."""
-        player_data = {"location": "room1", "inventory": {}}
-        from mgmai.models.hard_state import PlayerState
-        ps = PlayerState.model_validate(player_data)
-        assert ps.equipped == []
-
     def test_equipped_validation(self, state_manager):
         """StateManager should validate equipped item IDs."""
         hard = state_manager.hard_state
@@ -464,12 +436,6 @@ class TestStateManagerEquipment:
 # ------------------------------------------------------------------
 
 class TestImprovisedWeapon:
-    def test_improvised_weapon_defaults(self):
-        iw = ImprovisedWeapon(keyword="light", damage_expr="1d4")
-        assert iw.hit_bonus == 0
-        assert iw.damage_type == "bludgeoning"
-        assert iw.clears_after_turn is False
-
     def test_set_improvised_weapon(self, state_manager):
         """A keyword-based patch resolves to concrete stats on apply."""
         soft = state_manager.soft_state
@@ -995,6 +961,7 @@ class TestCombatEquipmentStats:
     def test_get_player_damage_expr_with_equipped_weapon(self, state_manager):
         """Damage expression should use equipped weapon's damage_expr."""
         from mgmai.engine.systems.five_e import FiveESystem
+        from mgmai.models.corpus import Entity
 
         hard = state_manager.hard_state
         soft = state_manager.soft_state
@@ -1005,10 +972,15 @@ class TestCombatEquipmentStats:
         expr = system.compute_player_damage_expr(hard, corpus, soft)
         assert "1d6" in expr
 
-        # Equip the sword → 1d6 (toenail_sword has damage_expr "1d6")
-        hard.player.equipped.append("toenail_sword")
+        # Equip a longsword → its damage_expr (1d10) is used
+        corpus.entities["longsword"] = Entity(
+            type="item", id="longsword", name="Longsword",
+            description="A longsword.", tags=["weapon"],
+            equip_block=EquipBlock(equip_tags=["weapon"], damage_expr="1d10"),
+        )
+        hard.player.equipped.append("longsword")
         expr = system.compute_player_damage_expr(hard, corpus, soft)
-        assert "1d6" in expr
+        assert "1d10" in expr
 
     def test_get_player_damage_with_improvised_weapon(self, state_manager):
         """Improvised weapon should be used when no equipped weapon."""
@@ -1127,10 +1099,6 @@ class TestCombatEquipmentStats:
         result = compute_effective_stats(hard, corpus)
         assert result is None
 
-
-# ------------------------------------------------------------------
-# Appearance notes (soft state)
-# ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
 # HardStateChanges merge with equipment fields

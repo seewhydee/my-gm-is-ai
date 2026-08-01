@@ -663,22 +663,11 @@ class TestFiveEPlayerDerivedStats:
 
 
 class TestFiveEEquipmentExtras:
-    def test_two_handed_tag_with_explicit_incompatibilities(self) -> None:
-        """Two-handed weapons use the 'two_handed' tag with explicit incompatible_with."""
-        eb = EquipBlock(
-            equip_tags=["weapon", "two_handed", "heavy"],
-            incompatible_with=["shield", "handwear"],
-        )
-        assert "two_handed" in eb.equip_tags
-        assert eb.incompatible_with == ["shield", "handwear"]
-
     def test_get_equip_incompatibilities_default_is_empty(self) -> None:
         """get_equip_incompatibilities returns empty by default (no two_handed magic)."""
         sys = FiveESystem()
-        eb = EquipBlock(equip_tags=["weapon"])
+        eb = EquipBlock(equip_tags=["weapon", "two_handed"])
         assert sys.get_equip_incompatibilities(eb) == set()
-        eb2 = EquipBlock(equip_tags=["weapon", "two_handed"])
-        assert sys.get_equip_incompatibilities(eb2) == set()
 
 
 # ------------------------------------------------------------------

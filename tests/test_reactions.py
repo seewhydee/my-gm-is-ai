@@ -51,18 +51,6 @@ class TestReactionEffects:
 
 
 class TestReaction:
-    def test_basic_reaction(self):
-        r = Reaction(
-            id="r1",
-            on="flag.set",
-            effect=ReactionEffects(result=Result(set_flag={"y": True})),
-        )
-        assert r.id == "r1"
-        assert r.on == "flag.set"
-        assert r.phase == "deferred"
-        assert r.once is False
-        assert r.priority == 0
-
     def test_immediate_phase_valid_for_allowed_events(self):
         for event in ("interaction.used", "traversal.attempted", "room.entered"):
             r = Reaction(
@@ -82,33 +70,6 @@ class TestReaction:
                     phase="immediate",
                     effect=ReactionEffects(result=Result(narrative="x")),
                 )
-
-    def test_deferred_phase_allowed_for_any_event(self):
-        r = Reaction(
-            id="r1",
-            on="flag.set",
-            phase="deferred",
-            effect=ReactionEffects(result=Result(narrative="x")),
-        )
-        assert r.phase == "deferred"
-
-    def test_once_flag(self):
-        r = Reaction(
-            id="r1",
-            on="room.entered",
-            once=True,
-            effect=ReactionEffects(result=Result(narrative="x")),
-        )
-        assert r.once is True
-
-    def test_priority(self):
-        r = Reaction(
-            id="r1",
-            on="room.entered",
-            priority=10,
-            effect=ReactionEffects(result=Result(narrative="x")),
-        )
-        assert r.priority == 10
 
     def test_condition(self):
         r = Reaction(

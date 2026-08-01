@@ -310,31 +310,6 @@ class TestRunTurn:
         fake_display.render_narration.assert_called_once_with("You wait.")
         fake_display.render_status.assert_called_once()
 
-    def test_chain_turns(self, state_manager, fake_display) -> None:
-        ruling = json.dumps({
-            "action_type": "move",
-            "target": "exit_climb_down_handle",
-            "detail": "Climb down",
-            "follow_up": "look around",
-            "soft_state_patches": [],
-        })
-        prose = _prose_json("You climb down.")
-        llm = FakeLLMClient(ruling_response=ruling, prose_response=prose)
-        loop = GameLoop(state_manager, llm, display=fake_display)
-
-        loop._run_turn("Climb down and look around")
-
-        # Two LLM calls for ruling (one for each chain link)
-        # Actually, each chain link does ruling + prose. But wait — our fake
-        # LLM returns the same ruling every time, which has follow_up again.
-        # This would loop forever. Let's make the second ruling have no follow_up.
-        # Instead, let's verify that with a single ruling call that has follow_up,
-        # the loop calls _execute_turn twice.
-        # Actually our fake returns the same response every time, so it would chain
-        # forever until MAX_CHAIN_LENGTH. That's actually a valid test!
-        # But let's be more precise.
-        # Will write a better test below
-
     def test_chain_executes_two_turns(self, state_manager, fake_display) -> None:
         """Verify that a follow_up causes two engine resolutions."""
         responses = [

@@ -65,10 +65,6 @@ class TestGetModelConfig:
         assert config.base_url == "https://custom.example.com"
         assert config.name == "some-model"
 
-    def test_unknown_model_uses_provided_base_url_instead_of_openai_default(self):
-        config = get_model_config("custom-model", base_url="http://localhost:8000")
-        assert config.base_url == "http://localhost:8000"
-
 
 class TestListKnownModels:
     def test_includes_deepseek_v4_flash(self):

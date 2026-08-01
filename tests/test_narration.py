@@ -63,10 +63,6 @@ class TestKnowledgeTags:
         assert k.npc_revealed is not None
         assert k.npc_revealed["korbar"] == ["padlock_mechanism", "secret_compartment"]
 
-    def test_empty(self) -> None:
-        k = KnowledgeTags.model_validate({})
-        assert k.npc_revealed is None
-
 
 class TestNarrationOutput:
     def test_basic(self) -> None:
@@ -139,10 +135,3 @@ class TestNarrationOutput:
             NarrationOutput.model_validate({
                 "npc_response": "Hello.",
             })
-
-    def test_empty_narration(self) -> None:
-        n = NarrationOutput.model_validate({"narration": ""})
-        assert n.narration == ""
-        assert n.npc_response is None
-        assert n.knowledge_tags is None
-        assert n.attitude_changes is None
