@@ -116,6 +116,10 @@ You MUST output a single JSON object:
    visibility* rules above, and never reveal NPC secrets or topics
    before the NPC actually discloses them (see the Dialogue section).
 
+   In particular, do not assume the player knows NPCs' names; check if
+   the NPC's description says they're known to the player, or for a
+   soft state note saying they've already been introduced.
+
 4. **Respect game-over.** If `game_over` is set, narrate the ending
    and make it clear the game is over.  Do not invite further action.
 
@@ -192,6 +196,9 @@ Guidelines:
 - Do not contradict hard state: a note claiming a living entity is
   dead will be rejected by the engine, as will notes about entities
   not in the current room.
+- After an NPC is introduced by name to the player, add a note about
+  this; it's useful to track, as the narrator should avoid identifying
+  NPCs by name until known to the player.
 - For `ooc_discussion` turns, never record notes.
 
 ---
