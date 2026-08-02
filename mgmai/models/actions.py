@@ -284,6 +284,11 @@ class HardStateChanges(BaseModel):
     flags_cleared: list[str] = Field(default_factory=list)
     room_state_changes: dict[str, dict[str, Any]] = Field(default_factory=dict)
     entity_state_changes: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # Relative adjustments to declared numeric state fields, applied as
+    # read-modify-write at apply time.  Keys mirror room_state_changes /
+    # entity_state_changes; negative deltas (decrements) are allowed.
+    increment_room_state: dict[str, dict[str, int]] = Field(default_factory=dict)
+    increment_entity_state: dict[str, dict[str, int]] = Field(default_factory=dict)
     stat_modifiers: dict[str, StatModifier] = Field(default_factory=dict)
     old_stat_values: dict[str, int] = Field(default_factory=dict)
     player_hp_delta: int | None = None
@@ -338,6 +343,18 @@ class HardStateChanges(BaseModel):
             self.room_state_changes.setdefault(room_id, {}).update(changes)
         for entity_id, changes in other.entity_state_changes.items():
             self.entity_state_changes.setdefault(entity_id, {}).update(changes)
+        for room_id, deltas in other.increment_room_state.items():
+            for field, delta in deltas.items():
+                self.increment_room_state.setdefault(room_id, {})
+                self.increment_room_state[room_id][field] = (
+                    self.increment_room_state[room_id].get(field, 0) + delta
+                )
+        for entity_id, deltas in other.increment_entity_state.items():
+            for field, delta in deltas.items():
+                self.increment_entity_state.setdefault(entity_id, {})
+                self.increment_entity_state[entity_id][field] = (
+                    self.increment_entity_state[entity_id].get(field, 0) + delta
+                )
         for stat_key, mod in other.stat_modifiers.items():
             if mod.mode == "set":
                 self.stat_modifiers[stat_key] = mod
@@ -396,6 +413,8 @@ class HardStateChanges(BaseModel):
             or bool(self.flags_cleared)
             or bool(self.room_state_changes)
             or bool(self.entity_state_changes)
+            or bool(self.increment_room_state)
+            or bool(self.increment_entity_state)
             or bool(self.stat_modifiers)
             or self.player_hp_delta is not None
             or self.player_damage_delta is not None

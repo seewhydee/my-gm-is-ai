@@ -56,6 +56,43 @@ class TestApplyResultAccumulator:
         state_manager.apply_hard_changes(changes)
         assert hard.room_states[room_id]["foo"] == "bar"
 
+    def test_increment_room_state_accumulates_not_mutates(self, state_manager):
+        from mgmai.models.corpus import StateFieldDecl
+
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        corpus.rooms["bag_floor"].state_fields["stage"] = StateFieldDecl(
+            type="number", description="Stage.", initial=0
+        )
+        original = dict(hard.room_states.get("bag_floor", {}))
+
+        result = Result(increment_room_state={"bag_floor": {"stage": 1}})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard, corpus)
+
+        assert hard.room_states.get("bag_floor") == original
+        assert changes.increment_room_state == {"bag_floor": {"stage": 1}}
+        state_manager.apply_hard_changes(changes)
+        assert hard.room_states["bag_floor"]["stage"] == 1
+
+    def test_increment_entity_state_accumulates_not_mutates(self, state_manager):
+        from mgmai.models.corpus import StateFieldDecl
+
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        corpus.entities["korbar"].state_fields["rapport"] = StateFieldDecl(
+            type="number", description="Rapport.", initial=0
+        )
+        original = dict(hard.entity_states.get("korbar", {}))
+
+        result = Result(increment_entity_state={"korbar": {"rapport": 2}})
+        changes = HardStateChanges()
+        _apply_result(result, changes, [], [], hard, corpus)
+
+        assert hard.entity_states.get("korbar") == original
+        state_manager.apply_hard_changes(changes)
+        assert hard.entity_states["korbar"]["rapport"] == 2
+
 
 class TestDispatchReactionsAccumulator:
     """dispatch_reactions merges state mutations into a changes object."""
@@ -82,6 +119,71 @@ class TestDispatchReactionsAccumulator:
 
         state_manager.apply_hard_changes(changes)
         assert hard.flags["reaction_fired"] is True
+
+    def test_increment_reaction_drives_staged_sequence(self, state_manager):
+        """A turn.end reaction chain advances one numeric stage field, with
+        each beat's condition observing the previous beat's increment."""
+        from mgmai.models.corpus import StateFieldDecl
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        bag_floor = corpus.rooms["bag_floor"]
+        # Declared numeric fields are materialised into hard state at
+        # game start (_init_world_state_from_corpus); mirror that here.
+        bag_floor.state_fields["stage"] = StateFieldDecl(
+            type="number", description="Stage.", initial=0
+        )
+        hard.room_states["bag_floor"]["stage"] = 0
+        bag_floor.reactions.extend([
+            Reaction(
+                id="beat_1",
+                on="turn.end",
+                condition=ConditionExpression(require="room:bag_floor.stage == 0"),
+                effect=ReactionEffects(
+                    result=Result(
+                        narrative="beat 1",
+                        increment_room_state={"bag_floor": {"stage": 1}},
+                    )
+                ),
+            ),
+            Reaction(
+                id="beat_2",
+                on="turn.end",
+                condition=ConditionExpression(require="room:bag_floor.stage == 1"),
+                effect=ReactionEffects(
+                    result=Result(
+                        narrative="beat 2",
+                        increment_room_state={"bag_floor": {"stage": 1}},
+                    )
+                ),
+            ),
+        ])
+
+        matched = find_matching_reactions(
+            "turn.end", {}, hard, soft, corpus,
+        )
+        assert [r.id for r, _ in matched] == ["beat_1"]
+        changes = HardStateChanges()
+        dispatch_reactions(
+            matched, hard, soft, corpus, state_manager, changes=changes,
+        )
+        assert changes.increment_room_state["bag_floor"]["stage"] == 1
+        state_manager.apply_hard_changes(changes)
+        assert hard.room_states["bag_floor"]["stage"] == 1
+
+        matched = find_matching_reactions(
+            "turn.end", {}, hard, soft, corpus,
+        )
+        assert [r.id for r, _ in matched] == ["beat_2"]
+        changes = HardStateChanges()
+        dispatch_reactions(
+            matched, hard, soft, corpus, state_manager, changes=changes,
+        )
+        assert changes.increment_room_state["bag_floor"]["stage"] == 1
+        state_manager.apply_hard_changes(changes)
+        assert hard.room_states["bag_floor"]["stage"] == 2
 
 
 class TestFindMatchingReactions:
@@ -317,6 +419,14 @@ class TestSelfResolution:
         assert "spider" in resolved.result.set_entity_state
         assert "self" not in resolved.result.set_entity_state
 
+    def test_self_in_increment_entity_state(self):
+        effects = ReactionEffects(
+            result=Result(increment_entity_state={"self": {"rapport": 1}})
+        )
+        resolved = _resolve_self(effects, "spider")
+        assert "spider" in resolved.result.increment_entity_state
+        assert "self" not in resolved.result.increment_entity_state
+
     def test_self_in_adjust_attitude(self):
         effects = ReactionEffects(
             result=Result(adjust_attitude={"self": -5})
@@ -386,6 +496,32 @@ class TestStateChangeEventDerivation:
             and e[1]["delta"] == 2
             for e in events
         )
+
+    def test_increment_emits_state_changed_event(self):
+        """apply_hard_changes folds the increment's final value into the
+        set-maps so state-change events fire with the new value."""
+        from mgmai.models.corpus import StateFieldDecl
+        from tests.helpers import build_state_manager, make_char_sheet_corpus
+
+        corpus = make_char_sheet_corpus()
+        corpus.rooms["axe_head"].state_fields["stage"] = StateFieldDecl(
+            type="number", description="Stage.", initial=0
+        )
+        sm = build_state_manager(corpus)
+        changes = HardStateChanges(increment_room_state={"axe_head": {"stage": 3}})
+        sm.apply_hard_changes(changes)
+        events = _derive_state_events(
+            changes,
+            old_flags={},
+            old_stats={},
+            old_entity_states={},
+            hard=sm.hard_state,
+        )
+        assert ("room_state.changed", {
+            "room_id": "axe_head",
+            "field": "stage",
+            "new_value": 3,
+        }) in events
 
     def test_attitude_changed_event(self):
         from mgmai.models.hard_state import PlayerState

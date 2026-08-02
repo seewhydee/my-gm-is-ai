@@ -387,6 +387,136 @@ class TestApplyHardChanges:
             sm.apply_hard_changes(HardStateChanges())
 
 
+class TestIncrementStateFields:
+    """Relative adjustment of declared numeric state fields."""
+
+    def _corpus(self) -> ModuleCorpus:
+        from mgmai.models.corpus import StateFieldDecl
+
+        corpus = make_char_sheet_corpus()
+        corpus.rooms["axe_head"].state_fields = {
+            "stage": StateFieldDecl(
+                type="number", description="Sequence stage.", initial=0
+            ),
+        }
+        corpus.entities["toenail_sword"].state_fields = {
+            "charges": StateFieldDecl(
+                type="number", description="Charge count.", initial=3
+            ),
+        }
+        return corpus
+
+    def test_increment_room_state_applies(self) -> None:
+        sm = build_state_manager(self._corpus())
+        changes = HardStateChanges(
+            increment_room_state={"axe_head": {"stage": 1}}
+        )
+        sm.apply_hard_changes(changes)
+        assert sm.hard_state.room_states["axe_head"]["stage"] == 1
+        assert changes.room_state_changes["axe_head"]["stage"] == 1
+
+    def test_increment_entity_state_applies(self) -> None:
+        sm = build_state_manager(self._corpus())
+        sm.apply_hard_changes(
+            HardStateChanges(increment_entity_state={"toenail_sword": {"charges": 1}})
+        )
+        assert sm.hard_state.entity_states["toenail_sword"]["charges"] == 1
+        sm.apply_hard_changes(
+            HardStateChanges(increment_entity_state={"toenail_sword": {"charges": 1}})
+        )
+        assert sm.hard_state.entity_states["toenail_sword"]["charges"] == 2
+
+    def test_increment_reads_current_value_then_applies(self) -> None:
+        sm = build_state_manager(self._corpus())
+        sm.apply_hard_changes(
+            HardStateChanges(increment_room_state={"axe_head": {"stage": 2}})
+        )
+        sm.apply_hard_changes(
+            HardStateChanges(increment_room_state={"axe_head": {"stage": 3}})
+        )
+        assert sm.hard_state.room_states["axe_head"]["stage"] == 5
+
+    def test_increment_negative_decrements(self) -> None:
+        sm = build_state_manager(self._corpus())
+        sm.apply_hard_changes(
+            HardStateChanges(increment_room_state={"axe_head": {"stage": -1}})
+        )
+        assert sm.hard_state.room_states["axe_head"]["stage"] == -1
+
+    def test_increment_uses_declared_initial_when_unset(self) -> None:
+        sm = build_state_manager(self._corpus(), hard_state=make_char_sheet_state())
+        sm.apply_hard_changes(
+            HardStateChanges(increment_entity_state={"toenail_sword": {"charges": 2}})
+        )
+        assert sm.hard_state.entity_states["toenail_sword"]["charges"] == 5
+
+    def test_increment_room_state_undeclared_rejected(self) -> None:
+        sm = build_state_manager(self._corpus())
+        with pytest.raises(ValueError, match="undeclared field"):
+            sm.apply_hard_changes(
+                HardStateChanges(increment_room_state={"axe_head": {"magic": 1}})
+            )
+
+    def test_increment_room_state_non_numeric_rejected(self) -> None:
+        from mgmai.models.corpus import StateFieldDecl
+
+        corpus = make_char_sheet_corpus()
+        corpus.rooms["axe_head"].state_fields = {
+            "is_lit": StateFieldDecl(type="boolean", description="Lit?"),
+        }
+        sm = build_state_manager(corpus)
+        with pytest.raises(ValueError, match="non-numeric field"):
+            sm.apply_hard_changes(
+                HardStateChanges(increment_room_state={"axe_head": {"is_lit": 1}})
+            )
+
+    def test_increment_entity_state_reserved_field_rejected(self) -> None:
+        sm = build_state_manager(self._corpus())
+        with pytest.raises(ValueError, match="reserved field"):
+            sm.apply_hard_changes(
+                HardStateChanges(increment_entity_state={"toenail_sword": {"attitude": 1}})
+            )
+
+    def test_increment_delta_must_be_integer(self) -> None:
+        with pytest.raises(ValidationError, match="valid integer"):
+            HardStateChanges(increment_room_state={"axe_head": {"stage": 1.5}})
+
+    def test_increment_conflicts_with_set_rejected(self) -> None:
+        sm = build_state_manager(self._corpus())
+        with pytest.raises(ValueError, match="both set and incremented"):
+            sm.apply_hard_changes(
+                HardStateChanges(
+                    room_state_changes={"axe_head": {"stage": 5}},
+                    increment_room_state={"axe_head": {"stage": 1}},
+                )
+            )
+        with pytest.raises(ValueError, match="both set and incremented"):
+            sm.apply_hard_changes(
+                HardStateChanges(
+                    entity_state_changes={"toenail_sword": {"charges": 0}},
+                    increment_entity_state={"toenail_sword": {"charges": 1}},
+                )
+            )
+
+    def test_increment_merge_sums_deltas(self) -> None:
+        a = HardStateChanges(increment_room_state={"axe_head": {"stage": 1}})
+        b = HardStateChanges(increment_room_state={"axe_head": {"stage": 2}})
+        a.merge(b)
+        assert a.increment_room_state["axe_head"]["stage"] == 3
+
+    def test_has_changes_sees_increments(self) -> None:
+        assert HardStateChanges(
+            increment_entity_state={"toenail_sword": {"charges": 1}}
+        ).has_changes()
+
+    def test_result_has_any_effect_sees_increments(self) -> None:
+        from mgmai.models.corpus import Result
+
+        assert Result(
+            increment_room_state={"axe_head": {"stage": 1}}
+        ).has_any_effect()
+
+
 class TestApplySoftPatches:
     def test_room_note(self, manager: StateManager) -> None:
         # room_note attaches to the player's current room (axe_head).

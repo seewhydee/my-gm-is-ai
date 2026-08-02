@@ -423,12 +423,14 @@ Revisit the entity list, and add the following to each entity:
   the entity) is managed entirely by the engine: never declare it,
   though you may reference it in conditions.
 
-  Avoid planning counter-style numeric fields (e.g., `rapport_count`)
-  that need to be incremented by interactions or dialogue paths:
-  Results cannot do arithmetic, so there is no way to add 1 to a
-  state field.  Instead, plan a short chain of boolean flags
-  (`rapport_1`, `rapport_2`, `rapport_3`) and gate successive
-  interactions on them.
+  Declared numeric state fields can be *adjusted* by effects:
+  `increment_room_state` / `increment_entity_state` on a
+  [Result](corpus.md#result) add (or subtract, with a negative delta)
+  an integer to a declared `type: "number"` field.  This is the right
+  tool for counters and staged sequences: advance a single `stage`
+  field across successive room reactions instead of chaining boolean
+  flags.  Reserve boolean flags for genuinely boolean state — do not
+  encode an ordinal as `stage_1`/`stage_2`/`stage_3` flags.
 
 - **Reactions** — describe any consequential reaction tied to the
   entity.  Each reaction can occur only if the entity is in the

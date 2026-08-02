@@ -343,6 +343,8 @@ ALL fields in a Result object are optional.
 | `set_flag`          | object   | Set flag IDs → values               |
 | `set_room_state`    | object   | Room IDs → { fields → values }      |
 | `set_entity_state`  | object   | Entity IDs → { fields → values }    |
+| `increment_room_state`   | object   | Room IDs → { fields → integer deltas } |
+| `increment_entity_state` | object   | Entity IDs → { fields → integer deltas } |
 | `alter_stat`        | object   | Stat IDs → `{ "mode": "delta"\|"set", "value": <int> }` |
 | `set_player_location`| string  | Relocate player to given Room ID    |
 | `player_damage`     | string   | Deal damage to player, e.g. `"1d4"` |
@@ -377,6 +379,18 @@ Notes:
 - `set_room_state` sets [Room](#room) state fields; `set_entity_state`
   sets [Entity](#entity) state fields.  Values must match the types
   declared in the room or entity's `state_field`.
+
+- `increment_room_state` / `increment_entity_state` add integer deltas
+  to declared numeric state fields (read-modify-write; the current
+  value, or the field's declared `initial` if never set, plus the
+  delta).  Negative deltas are allowed.  The targeted field must be
+  declared with `type: "number"`; increments to undeclared,
+  non-numeric, or reserved fields are rejected, as is combining a
+  `set_*` and an `increment_*` for the same field in one Result.  Use
+  this for counters and scripted stage progression (e.g. a
+  `stage` field advanced by successive room reactions); do not use it
+  to adjust NPC attitude, which has its own bounds machinery via
+  `adjust_attitude`.
 
 - In `set_entity_state`, the special state field `location` denotes
   the locations of NPCs, features, and non-stackable items; values can

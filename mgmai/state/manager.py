@@ -1453,6 +1453,51 @@ class StateManager:
                     if field_name not in declared:
                         errors.append(f"Entity '{entity_id}' state change has undeclared field {field_name}")
 
+        # --- increment validation: declared numeric fields only ---
+        for room_id, deltas in changes.increment_room_state.items():
+            if corpus is None or room_id not in corpus.rooms:
+                errors.append(f"No matching room: {room_id}")
+            else:
+                declared = corpus.rooms[room_id].state_fields
+                for field_name in deltas:
+                    if field_name in RESERVED_ROOM_STATE_FIELDS:
+                        errors.append(
+                            f"Room '{room_id}' increment targets reserved field: {field_name}"
+                        )
+                        continue
+                    decl = declared.get(field_name)
+                    if decl is None:
+                        errors.append(
+                            f"Room '{room_id}' increment has undeclared field: {field_name}"
+                        )
+                        continue
+                    if decl.type != "number":
+                        errors.append(
+                            f"Room '{room_id}' increment on non-numeric field: {field_name}"
+                        )
+
+        for entity_id, deltas in changes.increment_entity_state.items():
+            if corpus is None or entity_id not in corpus.entities:
+                errors.append(f"No matching entity: {entity_id}")
+            else:
+                declared = corpus.entities[entity_id].state_fields
+                for field_name in deltas:
+                    if field_name in RESERVED_ENTITY_STATE_FIELDS:
+                        errors.append(
+                            f"Entity '{entity_id}' increment targets reserved field: {field_name}"
+                        )
+                        continue
+                    decl = declared.get(field_name)
+                    if decl is None:
+                        errors.append(
+                            f"Entity '{entity_id}' increment has undeclared field: {field_name}"
+                        )
+                        continue
+                    if decl.type != "number":
+                        errors.append(
+                            f"Entity '{entity_id}' increment on non-numeric field: {field_name}"
+                        )
+
         for stat_key in changes.stat_modifiers:
             if corpus is None or corpus.stats is None:
                 errors.append(f"stat_modifiers references '{stat_key}' but corpus has no stats block")
@@ -1509,6 +1554,25 @@ class StateManager:
                     f"containment delta in the same change; use one path"
                 )
 
+        # Reject changes that both set and increment the same state field in
+        # one batch: the two operations cannot be reconciled atomically.
+        for room_id, deltas in changes.increment_room_state.items():
+            room_sets = changes.room_state_changes.get(room_id, {})
+            for field_name in deltas:
+                if field_name in room_sets:
+                    errors.append(
+                        f"Room '{room_id}' field '{field_name}' is both set and "
+                        f"incremented in the same change; use one path"
+                    )
+        for entity_id, deltas in changes.increment_entity_state.items():
+            entity_sets = changes.entity_state_changes.get(entity_id, {})
+            for field_name in deltas:
+                if field_name in entity_sets:
+                    errors.append(
+                        f"Entity '{entity_id}' field '{field_name}' is both set and "
+                        f"incremented in the same change; use one path"
+                    )
+
         if errors:
             raise ValueError("\n".join(errors))
 
@@ -1546,6 +1610,32 @@ class StateManager:
             if entity_id not in self.hard_state.entity_states:
                 self.hard_state.entity_states[entity_id] = {}
             self.hard_state.entity_states[entity_id].update(entity_changes)
+
+        # Apply increments read-modify-write.  Validation guarantees the room/
+        # entity exists and each field is declared numeric.  The final value is
+        # folded back into the set-maps so state-change event derivation sees
+        # it, consistent with set_room_state / set_entity_state.
+        for room_id, deltas in changes.increment_room_state.items():
+            current_state = self.hard_state.room_states.setdefault(room_id, {})
+            for field_name, delta in deltas.items():
+                decl = corpus.rooms[room_id].state_fields[field_name]
+                base = current_state.get(
+                    field_name, decl.initial if decl.initial is not None else 0
+                )
+                new_value = base + delta
+                current_state[field_name] = new_value
+                changes.room_state_changes.setdefault(room_id, {})[field_name] = new_value
+
+        for entity_id, deltas in changes.increment_entity_state.items():
+            current_state = self.hard_state.entity_states.setdefault(entity_id, {})
+            for field_name, delta in deltas.items():
+                decl = corpus.entities[entity_id].state_fields[field_name]
+                base = current_state.get(
+                    field_name, decl.initial if decl.initial is not None else 0
+                )
+                new_value = base + delta
+                current_state[field_name] = new_value
+                changes.entity_state_changes.setdefault(entity_id, {})[field_name] = new_value
 
         if changes.player_hp_delta is not None:
             self.hard_state.player.current_hp = (

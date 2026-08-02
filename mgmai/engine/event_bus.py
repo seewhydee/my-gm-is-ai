@@ -314,8 +314,8 @@ def _resolve_self(
     """Return a copy of *effects* with ``"self"`` replaced by *owner_id*.
 
     Resolves both the top-level trigger fields and ``Result`` fields
-    ``set_entity_state`` / ``adjust_attitude`` that use ``"self"`` as an
-    entity key.
+    ``set_entity_state`` / ``increment_entity_state`` / ``adjust_attitude``
+    that use ``"self"`` as an entity key.
     """
     if owner_id is None:
         return effects
@@ -355,6 +355,12 @@ def _resolve_self_in_result(
         new_es = dict(set_entity_state)
         new_es[owner_id] = new_es.pop("self")
         kwargs["set_entity_state"] = new_es
+
+    increment_entity_state = pydantic_fields.get("increment_entity_state")
+    if increment_entity_state is not None and "self" in increment_entity_state:
+        new_ies = dict(increment_entity_state)
+        new_ies[owner_id] = new_ies.pop("self")
+        kwargs["increment_entity_state"] = new_ies
 
     adjust_attitude = pydantic_fields.get("adjust_attitude")
     if adjust_attitude is not None and "self" in adjust_attitude:

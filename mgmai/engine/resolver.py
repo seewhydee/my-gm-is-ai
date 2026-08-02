@@ -1742,6 +1742,16 @@ def _apply_result(
     if result.set_room_state:
         for room_id, state_changes in result.set_room_state.items():
             changes.room_state_changes.setdefault(room_id, {}).update(state_changes)
+    if result.increment_entity_state:
+        for ent_id, deltas in result.increment_entity_state.items():
+            merged = changes.increment_entity_state.setdefault(ent_id, {})
+            for field, delta in deltas.items():
+                merged[field] = merged.get(field, 0) + delta
+    if result.increment_room_state:
+        for room_id, deltas in result.increment_room_state.items():
+            merged = changes.increment_room_state.setdefault(room_id, {})
+            for field, delta in deltas.items():
+                merged[field] = merged.get(field, 0) + delta
     if result.set_player_location is not None:
         changes.player_location = result.set_player_location
     if result.adjust_attitude and hard is not None and corpus is not None:

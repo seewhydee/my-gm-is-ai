@@ -269,6 +269,8 @@ class Result(BaseModel):
     alter_stat: dict[str, StatModifier] | None = None
     set_entity_state: dict[str, dict[str, Any]] | None = None
     set_room_state: dict[str, dict[str, Any]] | None = None
+    increment_entity_state: dict[str, dict[str, int]] | None = None
+    increment_room_state: dict[str, dict[str, int]] | None = None
     adjust_attitude: dict[str, int] | None = None
     reveals: str | None = None
     apply_status_effect: ApplyStatusEffect | None = None
@@ -287,6 +289,7 @@ class Result(BaseModel):
                 "narrative", "add_item", "add_item_count",
                 "remove_item", "remove_item_count",
                 "set_flag", "alter_stat", "set_entity_state", "set_room_state",
+                "increment_entity_state", "increment_room_state",
                 "adjust_attitude", "reveals", "apply_status_effect",
                 "cure_status_effects", "then_check",
                 "player_damage", "player_heal", "set_player_location",
@@ -846,6 +849,8 @@ def _validate_combat_safe_effects(
         "remove_item_count",
         "set_entity_state",
         "set_room_state",
+        "increment_entity_state",
+        "increment_room_state",
         "adjust_attitude",
         "set_player_location",
         "start_combat",
