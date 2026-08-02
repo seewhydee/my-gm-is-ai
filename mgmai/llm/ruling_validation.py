@@ -227,6 +227,37 @@ def _validate_talk(action: TalkAction, briefing: GMBriefing) -> str | None:
     )
 
 
+def validate_dialogue_path(action: TalkAction, briefing: GMBriefing, corpus) -> str | None:
+    """Reject ``dialogue_path`` IDs unknown to the target NPC.
+
+    The resolver hard-fails the entire turn on an unknown dialogue path
+    (silently freezing the conversation while narration continues), so
+    an unknown ID earns a corrective retry here.  If the retry does not
+    fix it, the caller strips the field and lets the conversation
+    proceed freeform rather than failing the turn.
+    """
+    path_id = action.dialogue_path
+    if not path_id or corpus is None:
+        return None
+    entity = corpus.entities.get(action.target)
+    if entity is None or entity.dialogue is None:
+        # Can't judge (dead/missing NPCs are the resolver's business).
+        return None
+    paths = entity.dialogue.dialogue_paths
+    if path_id in paths:
+        return None
+    available = (
+        ", ".join(sorted(paths))
+        if paths
+        else "none (this NPC has no dialogue paths)"
+    )
+    return (
+        f"Unknown dialogue_path {path_id!r} for NPC '{action.target}'. "
+        f"Available dialogue paths: {available}. Do NOT invent path IDs; "
+        "omit 'dialogue_path' for normal conversation."
+    )
+
+
 def _validate_rest(action: RestAction, briefing: GMBriefing) -> str | None:
     return (
         "Invalid action_type 'rest' during combat: you cannot rest in the "
@@ -502,6 +533,12 @@ def validate_ruling_action(action, briefing: GMBriefing, corpus=None) -> str | N
     patch_error = _validate_soft_patches(action, briefing, corpus)
     if patch_error is not None:
         return patch_error
+    # Hallucinated dialogue paths are rejected in and out of combat:
+    # the resolver hard-fails the whole turn on an unknown path.
+    if isinstance(action, TalkAction):
+        path_error = validate_dialogue_path(action, briefing, corpus)
+        if path_error is not None:
+            return path_error
     if briefing.combat_state is None:
         if isinstance(action, UseAbilityAction):
             return _validate_use_ability(action, briefing)

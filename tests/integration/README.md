@@ -49,9 +49,13 @@ LLM-vs-LLM runs:
 | **Narration quality** | No verbatim repetition, no degenerate loops, consistent HP tracking across turns (advisory judge) |
 | **Error resilience** | Empty input, malformed LLM output, and edge-case state transitions don't crash the harness |
 | **Follower KO** | An ally dropped to 1 HP at start is correctly handled (death logged, removed from combat) |
+| **NPC conversation** | Attitude ladders with per-turn caps, frozen attitudes, tiered `will_reveal` reveals (unconditional / attitude-gated / flag-gated / cross-NPC), reveal side effects (`set_flag`, `set_entity_state`), knowledge recording into `player_knowledge` |
+| **Dialogue paths** | Condition-gated paths (refusal vs. success branches), CHA-checked persuasion (repeatable), no-check narrative paths, `adjust_attitude` outcomes, authored lies (narration contradicts, hard state stays clean) |
+| **Dialogue lifecycle** | NPC-initiated dialogue (`trigger_dialogue`), stall auto-exit after 3 non-talk turns, conversation-note archival into `entity_notes`, partner switching, dead-NPC talk rejection, follower dialogue mid-travel |
+| **Scripted sequences** | Multi-beat `turn.end` reaction chains driven by `increment_room_state` / `increment_entity_state` (ghost-light set-piece, marsh crossing, pier approach), `topic:`-gated mid-dialogue events, scripted room transitions (`set_player_location`), take-check gating, gated exits, inline `game_over` win/loss |
 
-The integration tests **do not** test adventuring mechanics (dialogues,
-puzzles, exploration) — those are exercised by the unit suite.
+The integration tests do not test puzzles or deep exploration mechanics
+— those are exercised by the unit suite.
 
 ## Architecture
 
@@ -116,10 +120,16 @@ containing:
 
 - The scenario name and directive
 - Every turn's command, GM narration, combat log, and status snapshot
+  (including the per-turn dialogue snapshot: active NPC, their
+  attitude, topics discussed, stall counter)
 - Whether the driver aborted and why
 - The advisory judge's verdict (pass/fail, per-criterion scores and
   notes), when it runs successfully — informational only
-- Final entity states (HP, alive/fled) for post-run inspection
+- Final entity states (HP, alive/fled, attitude) and derived entity
+  locations (`room:<id>` / `entity:<id>` / null) for post-run
+  inspection
+- Final soft state: `entity_notes` (archived NPC conversation memory),
+  `player_knowledge` (revealed topics), and the final `dialogue_state`
 
 The artifact is written regardless of pass/fail, so you can inspect
 even broken runs.
@@ -127,10 +137,13 @@ even broken runs.
 ### Cost expectations
 
 Each game turn makes 2 GM LLM calls (ruling + prose) plus 1 driver
-call.  With `stop_when`, a typical fight is ~10 turns ≈ 30 calls.  A
-full `pytest tests/integration` run (12 driver scenarios) is roughly
-350–450 calls, plus the scripted single-turn scenarios (1 GM call
-each) and one judge call per scenario.
+call.  With `stop_when`, a typical fight is ~10 turns ≈ 30 calls.  The
+combat suites total roughly 350–450 calls, plus the scripted
+single-turn scenarios (1 GM call each) and one judge call per
+scenario.  The conversation suite (`test_drowned_lantern.py`) is the
+largest: ~450 budgeted turns across 10 scenarios (conversation runs
+are deliberately long), on the order of 1,400 calls plus judges at the
+outside — most runs stop early via `stop_when`.
 
 ## Scenarios
 
@@ -159,6 +172,31 @@ Three scenarios use the `ambush_alley` fixture (`test_ambush_alley.py`):
 | `ambush_trigger` | Confront and grab the cutpurse (no attack), then fight | Combat entered via the encounter: `ambush_triggered` flag set and all three gang members enemy combatants on the combat-start turn; combat concluded |
 | `targeting_and_frenzy` | Ambush, then fight howler-first | Every thug attack targets the player; `frenzy` entries only at/after the howler first dropped below half HP; pack mule a party combatant with zero attack entries |
 | `hold_and_talk_rejected` | Ambush, hold ground first turn, then try to talk, then fight | A `wait` player entry; no exceptions or empty narrations across the talk attempt; combat concluded |
+
+## The NPC-conversation scenarios
+
+`test_drowned_lantern.py` is the conversation suite, run against the
+`drowned_lantern` fixture (see below).  Scenarios are grouped in three
+tiers: per-NPC arcs, dialogue-lifecycle micro-behaviors, and the
+endgame plus an unguided playthrough.  Several scenarios start from a
+**preset starting point** — a pre-built `StateManager` with knowledge
+flags flipped (e.g. "you already heard the name Janis from Fen"),
+using the `state_manager=` path of `run_scenario` (the venom_pit
+precedent).  RNG-gated outcomes (CHA checks, GM-discretion reveals)
+follow the warn-don't-fail convention.
+
+| Scenario | Directive | Key assertions |
+|----------|-----------|----------------|
+| `fen_arc` | Talk to Fen on the dock through his whole rambling arc | `trigger_dialogue` active on dock entry; frozen attitude stays 0; reveal chain (`night_crossings` → ghost-light beats → `lights_malevolent`, `janis_blurt`) with flags and `player_knowledge` entries; ghost-light `stage` runs to completion; `dialogue.ended` departure (`departed`, location null); note archived |
+| `marta_ladder` (preset: `heard_janis_name`) | Warm up Marta over a long evening | Attitude rises with per-turn steps ≤ 2; unconditional and attitude ≥ 2 reveal tiers; crate unhidden via `set_entity_state`; attitude ≥ 5 tier warn-only |
+| `berrin_confront` (preset: name + link) | Cold-ask, confront with evidence, press for the crossing | Refusal precedes `berrin_confessed`; no-check confront path; `crossing_agreed` + `confided_crate`; attitude steps ≤ 2 |
+| `berrin_bluff` (preset: name only) | Drop the name and bluff | `knows_janis_link` never set; on failure branches attitude drops with no state leaked; CHA-14 success branch warn-only |
+| `old_wellington_and_stall` | Talk to the stuffed heron, chat with Marta, get distracted, re-engage | Dialogue never opens with the dead NPC; stall counter climbs and dialogue auto-exits; memory note archived; re-engagement warn-only |
+| `npc_switching` | Marta → Berrin → Marta, warm then curt | Partner sequence M→B→M; both conversations archived; attitudes independent (his drops, hers rises) |
+| `loss_enter_water` | Jump into the marsh | Game over, type `lose` |
+| `loss_violence` | Attack Fen | Fen dead; game over, type `lose` (`violence_ends_it`) |
+| `crate_and_crossing` (preset: confessed + agreed) | Move the crate, ride out the crossing, moor the ferry | Win; crate ends at `entity:ferry`; follower dialogue with Berrin in `mid_marsh`; scripted beats ran (lights unhidden); Berrin `departed`/null; `janis_vanishing` warn-only |
+| `free_play` | "Play the adventure" (unguided, 100 turns) | Clean run; at least one knowledge milestone; full win warn-only until pass rates are known |
 
 ## The narrative-indicator scenarios
 
@@ -342,6 +380,44 @@ thus the indicator set) of each fixed action is deterministic.
 - **Rooms**: Proving Hall (start, pillar + bridge, exit east) →
   Sparring Chamber (golem + dummy)
 
+## The drowned lantern fixture
+
+Located at `tests/integration/fixtures/drowned_lantern/`, validated by
+a non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
+A conversation-centric mini-adventure (human-playable in its own
+right); the design is documented in `scenario.md` and mapped to engine
+mechanics in `scenario-map.md` (both in the fixture directory).  No
+`hard-state.json` — all initial state derives from corpus
+declarations.
+
+- **Player** (level 3 fighter): longsword (1d8 slashing, from the SRD
+  data pack), HP 24, AC 13, CHA 12 (persuasion-centric)
+- **Berrin** (ferryman): attitude ±10/step 2; dialogue paths
+  `ask_crossing_cold` (refusal), `bluff_janis` (CHA 14, lie on
+  failure), `confront_janis` (no check, evidence-gated),
+  `convince_crossing`; becomes a follower during the crossing
+- **Marta** (barkeep): attitude ±10/step 2; `sympathetic_ear` (CHA 9)
+  path; tiered reveals `ferryman_duty` (unconditional),
+  `crate_concern` (attitude ≥ 2, unhides the crate), `janis_payout`
+  (attitude ≥ 5 + `heard_janis_name` — cross-NPC gating)
+- **Fen** (fisherman): frozen attitude (0/0); `trigger_dialogue`
+  greeting; reveals gated on the ghost-light set-piece; departs on
+  `dialogue.ended` once his dialogue is exhausted
+- **Old Wellington**: a stuffed heron — an NPC with `alive: false`
+  (dead-NPC talk rejection)
+- **Scripted sequences** (numeric stage fields + increment effects):
+  the 3-beat ghost light (`topic:`-gated), the 5-beat marsh crossing
+  (ends in a scripted `set_player_location` transition), and the
+  2-beat pier approach (ungates the `rope_end` take and the
+  `exit_pier` win exit)
+- **Losses**: the `enter_water` dummy exits (drowning in the
+  `in_the_water` room) and the `violence_ends_it` reaction mechanic
+  (any living NPC killed)
+- **Rooms**: Common Room (start) ⇄ Dock → (one-way, gated) Mid-Marsh →
+  (scripted) Far Shore → (gated) Muddy Track (win); The Black Water
+  (terminal drowning room, reachable via `enter_water` from any
+  waterside room)
+
 ## How to modify
 
 ### Changing the fixture
@@ -376,7 +452,9 @@ pytest tests/test_headless.py -k integration_fixture_smoke -v
 ### Adding a new fixture adventure
 
 1. Create a new directory under `tests/integration/fixtures/` with the
-   four JSON files.
+   JSON files (`corpus.json`, `default-player.json`, `soft-state.json`;
+   `hard-state.json` only if you need to override the generated
+   initial state — `drowned_lantern` does without).
 2. Add a fixture in `tests/integration/conftest.py` exposing the
    directory path.
 3. Add a smoke test in `test_headless.py` verifying the fixture loads.

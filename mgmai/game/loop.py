@@ -25,7 +25,6 @@ from typing import Any
 
 from mgmai.context.assembler import assemble
 from mgmai.engine.engine import MAX_CHAIN_LENGTH, resolve
-from mgmai.models.actions import CURRENT_ROOM_SENTINEL
 from mgmai.engine.narrative_indicators import (
     build_indicators,
     format_indicators_fallback,
@@ -39,6 +38,7 @@ from mgmai.game.rest_mode import RestMode
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
 from mgmai.logging import format_state_snapshot
+from mgmai.models.actions import CURRENT_ROOM_SENTINEL, TalkAction
 from mgmai.state.manager import StateManager
 
 try:
@@ -461,6 +461,7 @@ class GameLoop:
 
     def _call_ruling(self, briefing):
         from mgmai.llm.ruling_validation import (
+            validate_dialogue_path,
             validate_improvised_weapon_budget,
             validate_positioning_assertion,
             validate_ruling_action,
@@ -502,6 +503,22 @@ class GameLoop:
         log.debug("--- LLM Call 1 retry raw ---\n%s", raw)
         action = parse_player_action(raw)
         semantic_error = validate_ruling_action(action, briefing, self._state.corpus)
+        if (
+            semantic_error is not None
+            and isinstance(action, TalkAction)
+            and action.dialogue_path is not None
+            and validate_dialogue_path(action, briefing, self._state.corpus) is not None
+        ):
+            # Degrade rather than fail the turn: a dialogue_path the model
+            # insists on despite the corrective retry is stripped, and the
+            # conversation proceeds freeform.  (The resolver would
+            # otherwise hard-fail the whole turn with no visible trace.)
+            action.dialogue_path = None
+            self._positioning_warning.append(
+                "invalid dialogue_path ignored (unknown to the target NPC); "
+                "proceeding with freeform conversation"
+            )
+            semantic_error = validate_ruling_action(action, briefing, self._state.corpus)
         if semantic_error is not None:
             raise LLMOutputError(
                 f"Ruling still semantically invalid after retry: {semantic_error}"

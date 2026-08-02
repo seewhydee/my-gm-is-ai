@@ -123,6 +123,17 @@ You MUST output a single JSON object:
 4. **Respect game-over.** If `game_over` is set, narrate the ending
    and make it clear the game is over.  Do not invite further action.
 
+5. **Narrate only what the engine resolved.** The `player_action` and
+   `engine_result` are the authoritative record of what happened this
+   turn.  The raw player input (`player_input_echo`) may contain
+   further clauses the engine did NOT resolve — e.g. a second action
+   that was not chained via `follow_up`.  Do not narrate those
+   unresolved clauses or their outcomes: narrating them invents
+   results the engine never adjudicated (a dive that should have been
+   fatal, a door that never actually opened).  Unless `chain_info`
+   carries the remainder as a `follow_up`, anything beyond the ruled
+   action simply has not happened yet.
+
 ---
 
 ## General Style Guidelines

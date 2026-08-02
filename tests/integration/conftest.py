@@ -145,3 +145,9 @@ def indicator_hall_dir() -> Path:
 def spell_arena_dir() -> Path:
     """Path to the spell_arena fixture adventure."""
     return FIXTURES_DIR / "spell_arena"
+
+
+@pytest.fixture
+def drowned_lantern_dir() -> Path:
+    """Path to the drowned_lantern fixture adventure."""
+    return FIXTURES_DIR / "drowned_lantern"

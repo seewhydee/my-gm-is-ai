@@ -623,3 +623,158 @@ class TestIntegrationFixtureSmoke:
         # Two enemies are defined.
         assert sm.corpus.entities["goblin_grunt"].combat.hp == 11
         assert sm.corpus.entities["hobgoblin"].combat.hp == 18
+
+    def test_drowned_lantern_loads(self):
+        """StateManager successfully loads the drowned_lantern fixture."""
+        from pathlib import Path
+
+        from mgmai.state.manager import StateManager
+
+        fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "drowned_lantern"
+        sm = StateManager(adventure_dir=str(fixture))
+
+        assert sm.hard_state is not None
+        assert sm.corpus is not None
+        assert sm.soft_state is not None
+
+        # Player starts in the common room with the longsword equipped.
+        player = sm.hard_state.player
+        assert player.location == "common_room"
+        assert player.current_hp == 24
+        assert player.ac == 13
+        assert player.equipped == ["longsword"]
+        # The longsword comes from the SRD data pack (not declared in
+        # the fixture corpus).
+        assert sm.corpus.entities["longsword"].equip_block.damage_expr == "1d8"
+
+        # The six rooms exist, with common_room as the start room.
+        assert set(sm.corpus.rooms) == {
+            "common_room", "dock", "mid_marsh", "far_shore", "muddy_track",
+            "in_the_water",
+        }
+        assert sm.corpus.rooms["common_room"].is_start_room is True
+
+        # The three conversational NPCs have dialogue blocks and
+        # attitude declarations; Fen's attitude is frozen at 0/0.
+        for npc_id in ("berrin", "marta", "fen"):
+            npc = sm.corpus.entities[npc_id]
+            assert npc.dialogue is not None
+            assert "attitude" in npc.state_fields
+        assert sm.corpus.entities["fen"].dialogue.attitude_limits.max == 0
+        # Berrin has the four persuasion paths.
+        assert set(sm.corpus.entities["berrin"].dialogue.dialogue_paths) == {
+            "ask_crossing_cold", "bluff_janis", "confront_janis",
+            "convince_crossing",
+        }
+
+        # Old Wellington starts dead; the crate starts hidden in the bar.
+        assert sm.hard_state.entity_states["old_wellington"]["alive"] is False
+        assert sm.hard_state.entity_states["sealed_crate"]["hidden"] is True
+        assert "sealed_crate" in sm.hard_state.entity_contains["bar"]
+        assert "rope_end" in sm.hard_state.entity_contains["ferry"]
+
+        # Knowledge flags are seeded false; sequence counters start at 0.
+        assert sm.hard_state.flags.get("heard_janis_name") is False
+        assert sm.hard_state.room_states["mid_marsh"]["crossing_stage"] == 0
+        assert sm.hard_state.room_states["far_shore"]["approach_stage"] == 0
+
+
+# ------------------------------------------------------------------
+# TurnTranscript engine-outcome fields (success / engine_error /
+# ruled_action) and dialogue_path degradation
+# ------------------------------------------------------------------
+
+
+def _talk_action_json(target: str, dialogue_path: str | None = None) -> str:
+    return json.dumps({
+        "action_type": "talk",
+        "target": target,
+        "utterance": "Tell me what you know.",
+        "dialogue_path": dialogue_path,
+        "detail": f"Player asks {target} for information",
+        "follow_up": None,
+        "soft_state_patches": [],
+    })
+
+
+def _drowned_lantern_session(llm, tmp_path) -> HeadlessSession:
+    from pathlib import Path
+
+    fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "drowned_lantern"
+    return HeadlessSession(
+        llm_client=llm, adventure_dir=str(fixture), config_dir=tmp_path,
+    )
+
+
+class TestTranscriptEngineOutcome:
+    """A turn can fail silently (narration still flows); the transcript
+    must expose the engine outcome so artifacts reveal it."""
+
+    def test_successful_turn_records_outcome(self, state_manager, tmp_path) -> None:
+        llm = FakeLLMClient(
+            ruling_response=_wait_action_json(),
+            prose_response=_prose_json("Time passes."),
+        )
+        session = HeadlessSession(
+            llm_client=llm, state_manager=state_manager, config_dir=tmp_path,
+        )
+        transcript = session.submit("I wait.")
+        assert transcript.success is True
+        assert transcript.engine_error is None
+        assert transcript.ruled_action["action_type"] == "wait"
+        # Serialized form carries the new fields too.
+        d = transcript.to_dict()
+        assert d["success"] is True and d["ruled_action"] is not None
+
+    def test_failed_turn_records_engine_error(self, tmp_path) -> None:
+        """Talking to a dead NPC fails resolution; the transcript must
+        surface it (the narration itself gives no hint)."""
+        llm = FakeLLMClient(
+            ruling_response=_talk_action_json("old_wellington"),
+            prose_response=_prose_json("The heron stares glassily back."),
+        )
+        session = _drowned_lantern_session(llm, tmp_path)
+        transcript = session.submit("I talk to the stuffed heron.")
+        assert transcript.success is False
+        assert "old_wellington" in (transcript.engine_error or "")
+        assert transcript.ruled_action["target"] == "old_wellington"
+
+
+class TestDialoguePathDegradation:
+    """A hallucinated dialogue_path earns a corrective retry; if the
+    retry insists, the path is stripped and the conversation proceeds
+    freeform instead of the turn hard-failing."""
+
+    def test_bogus_path_stripped_after_retry(self, tmp_path) -> None:
+        bad_talk = _talk_action_json("marta", dialogue_path="tell_secrets")
+        llm = FakeLLMClient(
+            ruling_response=bad_talk,  # same bogus path on every attempt
+            prose_response=_prose_json("Marta shrugs noncommittally."),
+        )
+        session = _drowned_lantern_session(llm, tmp_path)
+        transcript = session.submit("Marta, tell me your secrets.")
+
+        # The corrective retry fired, feeding the validation error back.
+        assert len(llm.ruling_calls) == 2
+        assert "tell_secrets" in llm.ruling_calls[1][1]
+
+        # The turn degraded gracefully instead of failing.
+        assert transcript.success is True
+        assert transcript.engine_error is None
+        assert transcript.ruled_action["dialogue_path"] is None
+        assert session.soft_state.dialogue_state.active_npc == "marta"
+        warnings = session.loop._last_result.warnings or []
+        assert any("dialogue_path" in w for w in warnings)
+
+    def test_valid_path_no_retry(self, tmp_path) -> None:
+        good_talk = _talk_action_json("marta", dialogue_path="sympathetic_ear")
+        llm = FakeLLMClient(
+            ruling_response=good_talk,
+            prose_response=_prose_json("Marta thaws a little."),
+        )
+        session = _drowned_lantern_session(llm, tmp_path)
+        transcript = session.submit("I lend Marta a sympathetic ear.")
+
+        assert len(llm.ruling_calls) == 1
+        assert transcript.success is True
+        assert transcript.ruled_action["dialogue_path"] == "sympathetic_ear"

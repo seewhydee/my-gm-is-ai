@@ -101,6 +101,13 @@ class TurnTranscript:
     # Serialized combat-log entries for this turn (list of dicts), used
     # by the LLM judge to cross-reference narration against engine truth.
     combat_log: list[dict[str, Any]] = field(default_factory=list)
+    # Engine outcome for this turn: whether resolution succeeded, its
+    # error string if not, and the ruled PlayerAction.  A turn can fail
+    # silently (narration still flows), so these are the only reliable
+    # way to spot it in an artifact.
+    success: bool | None = None
+    engine_error: str | None = None
+    ruled_action: dict[str, Any] | None = None
     # Exception raised during the turn, if any (so callers can record
     # artifacts even when the harness blows up).
     exception: BaseException | None = None
@@ -114,6 +121,9 @@ class TurnTranscript:
             "game_over_type": self.game_over_type,
             "errors": list(self.errors),
             "combat_log": list(self.combat_log),
+            "success": self.success,
+            "engine_error": self.engine_error,
+            "ruled_action": self.ruled_action,
             "exception": (
                 f"{type(self.exception).__name__}: {self.exception}"
                 if self.exception is not None
@@ -399,6 +409,17 @@ class HeadlessSession:
         game_over = hard is not None and hard.game_over is not None
         game_over_type = hard.game_over.type if game_over and hard else None
 
+        # Capture the engine outcome so silent turn failures (narration
+        # flows despite a failed resolution) are visible in artifacts.
+        success = getattr(last_result, "success", None)
+        engine_error = getattr(last_result, "error", None)
+        last_action = getattr(self._loop, "_last_action", None)
+        ruled_action = (
+            last_action.model_dump(mode="json")
+            if last_action is not None and hasattr(last_action, "model_dump")
+            else None
+        )
+
         transcript = TurnTranscript(
             command=command,
             narration=narration,
@@ -407,6 +428,9 @@ class HeadlessSession:
             game_over_type=game_over_type,
             errors=new_errors,
             combat_log=combat_log,
+            success=success,
+            engine_error=engine_error,
+            ruled_action=ruled_action,
             exception=exception,
         )
         if exception is not None:

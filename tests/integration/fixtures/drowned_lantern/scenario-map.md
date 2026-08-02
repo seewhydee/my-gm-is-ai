@@ -227,6 +227,12 @@ A muddy track leading away from the marsh, up toward the road.
 Terminal epilogue room: entering it plays the endgame narration and
 wins the adventure (see Errata, item 3).  There is no going back.
 
+### `in_the_water` — "The Black Water"
+
+Freezing, peat-black marsh water, entered from any waterside room
+via the `enter_water` exit.  Terminal: entering the room drowns the
+player (a room-entered reaction with an inline game-over loss).
+
 ---
 
 ## 1C. Entities (Pass 1)
@@ -466,13 +472,16 @@ also §1F.  Engine-default HP death is not listed, per convention.)
     lashed tight; without Berrin at the pole and his cargo aboard,
     there is no crossing).  Narrative reason for no return: the marsh
     current and fog; Berrin would not agree twice.
+  - **`enter_water`** — "into the black marsh water" →
+    `in_the_water`.  One-way, always visible (entering the marsh is
+    lethal; see the `in_the_water` room).  Modelling the water as an
+    exit — rather than an interaction — lets the ruling GM classify
+    "jump/dive/wade into the water" as the movement it naturally is,
+    and reserves lethality for actual entry (a mere hand-dip doesn't
+    kill).
 - **Entities present:** `fen`, `ferry`, `fens_lantern`, `ghost_light`
   (hidden).
-- **Special interactions:**
-  - **`enter_water`** — jumping or wading into the marsh.  Result:
-    inline `game_over` (lose) — the water is far colder than
-    expected, and some mysterious force paralyzes the player's limbs;
-    they drown in the black water.
+- **Special interactions:** none.
 - **Reactions:** none room-scoped (Fen's greeting is Fen-scoped, and
   the ghost-light beats are `ghost_light`-scoped, §1G).
 - **State fields:** none.
@@ -486,13 +495,15 @@ also §1F.  Engine-default HP death is not listed, per convention.)
 
 ### `mid_marsh` — "Miremarsh"
 
-- **Exits:** none.  Departure is scripted: the final crossing beat
-  moves the player to `far_shore` (`set_player_location` — Berrin
-  rows; the player does not steer).
+- **Exits:**
+  - **`enter_water`** — "over the side, into the black marsh water" →
+    `in_the_water`.  One-way, always visible (lethal).  There is no
+    exit to `far_shore`: departure is scripted — the final crossing
+    beat moves the player (`set_player_location` — Berrin rows; the
+    player does not steer).
 - **Entities present:** `ferry` (multi-room feature), `berrin`
   (following), `ghost_lights_mid_marsh` (hidden).
-- **Special interactions:**
-  - **`enter_water`** — as on `dock`: inline `game_over` (lose).
+- **Special interactions:** none.
 - **Reactions:**
   - **`begin_crossing`** (one-off): Trigger — player enters
     `mid_marsh`.  Consequences — narrate casting off into the fog;
@@ -532,10 +543,11 @@ also §1F.  Engine-default HP death is not listed, per convention.)
     2` (the ferry has closed with the pier and Berrin has called for
     the rope) AND `inventory:rope_end` (the player is carrying the
     rope end).  This is the adventure's sole winning route.
+  - **`enter_water`** — "into the black marsh water" →
+    `in_the_water`.  One-way, always visible (lethal).
 - **Entities present:** `ferry` (multi-room feature), `berrin`
   (following), `ghost_lights_shore` (hidden), `pier`.
-- **Special interactions:**
-  - **`enter_water`** — as on `dock`: inline `game_over` (lose).
+- **Special interactions:** none.
 - **Reactions:**
   - **`approach_begins`** (one-off): Trigger — player enters
     `far_shore`.  Consequences — narrate the ferry nosing toward the
@@ -570,6 +582,21 @@ also §1F.  Engine-default HP death is not listed, per convention.)
     `berrin.location = null` (his fate is deliberately ambiguous —
     he stays `alive` in hard state).  Inline `Result.game_over`
     (win).
+- **State fields:** none.
+- **On-Examine Effects:** none.
+- **Soft-item guidance:** none.
+
+### `in_the_water` — "The Black Water"
+
+- **Exits:** none (terminal).
+- **Entities present:** none.
+- **Special interactions:** none.
+- **Reactions:**
+  - **`marsh_claims_you`** (one-off): Trigger — player enters
+    `in_the_water`.  Consequences — the water is far colder than
+    expected, and some mysterious force paralyzes the player's limbs;
+    they drown in the black water.  Inline `Result.game_over`
+    (lose, trigger_id `enter_water`).
 - **State fields:** none.
 - **On-Examine Effects:** none.
 - **Soft-item guidance:** none.
@@ -935,8 +962,8 @@ Assignments reviewed against the Step 1 checklist:
   `muddy_track`'s `berrin_vanishes` room reaction, inline
   `game_over`).  Losses: `violence_ends_it` (global reaction
   mechanic — an entity cannot react to its own death) and the
-  route-specific `enter_water` room interactions (inline
-  `game_over`).  Engine-default HP death is not listed.
+  route-specific `enter_water` dummy exits (the `in_the_water` room's
+  entry reaction carries the inline `game_over`).  Engine-default HP death is not listed.
 - No encounters or combat: all NPCs have no combat stats by design
   (Errata, item 4).
 - Every NPC with shiftable attitude has bounds, per-turn cap, and
@@ -1147,3 +1174,20 @@ Assignments reviewed against the Step 1 checklist:
 1. **`soft-state.json` is the full default serialization** (empty
    inventories, notes, knowledge, and dialogue state), replacing the
    `{}` stub from Step 2 — no seeded soft content was needed.
+
+---
+
+## Post-playtest Revisions (water remodelled as an exit)
+
+Found during integration playtesting (`loss_enter_water`): the
+`enter_water` room *interaction* asked the ruling GM to map
+"jump/dive into the water" — which it naturally reads as movement —
+onto an interaction, and it repeatedly failed to do so (ruling
+`wait`, or mis-routing the chained move).  It also over-matched
+("dip my hand into the water" was lethal).  The water is now
+modelled as a visible one-way dummy exit `enter_water` from `dock`,
+`mid_marsh`, and `far_shore`, leading to a terminal `in_the_water`
+room whose `marsh_claims_you` entry reaction carries the inline
+`game_over` (lose, trigger_id `enter_water` — unchanged).  This
+aligns the mechanic with the ruling model's strongest classification
+instinct (movement → exits) and reserves lethality for actual entry.

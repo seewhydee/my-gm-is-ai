@@ -437,6 +437,88 @@ class TestTalk:
         assert validate_ruling_action(_talk(), _peaceful_briefing()) is None
 
 
+class TestValidateDialoguePath:
+    """Hallucinated dialogue_path IDs are rejected (corrective retry
+    fodder); unknown IDs must never reach the resolver, which would
+    hard-fail the whole turn."""
+
+    def _corpus(self):
+        from mgmai.models.corpus import (
+            Adventure,
+            DialogueGuidelines,
+            Entity,
+            ModuleCorpus,
+            Resolvable,
+            Result,
+        )
+        return ModuleCorpus(
+            adventure=Adventure(title="T", introduction="i"),
+            rooms={},
+            entities={
+                "marta": Entity(
+                    type="npc", name="Marta", description="Barkeep.",
+                    dialogue=DialogueGuidelines(
+                        guidelines="Warm, guarded.",
+                        dialogue_paths={
+                            "sympathetic_ear": Resolvable(
+                                description="Listen warmly.",
+                                result=Result(narrative="She thaws."),
+                            ),
+                        },
+                    ),
+                ),
+                "fen": Entity(
+                    type="npc", name="Fen", description="Old fisherman.",
+                    dialogue=DialogueGuidelines(guidelines="Rambles."),
+                ),
+            },
+        )
+
+    def test_known_path_accepted(self):
+        action = TalkAction(
+            action_type="talk", target="marta", detail="test",
+            dialogue_path="sympathetic_ear",
+        )
+        assert validate_ruling_action(
+            action, _peaceful_briefing(), self._corpus()
+        ) is None
+
+    def test_unknown_path_rejected(self):
+        action = TalkAction(
+            action_type="talk", target="marta", detail="test",
+            dialogue_path="tell_secrets",
+        )
+        error = validate_ruling_action(
+            action, _peaceful_briefing(), self._corpus()
+        )
+        assert error is not None
+        assert "tell_secrets" in error
+        assert "sympathetic_ear" in error  # available paths listed
+
+    def test_unknown_path_on_pathless_npc_rejected(self):
+        action = TalkAction(
+            action_type="talk", target="fen", detail="test",
+            dialogue_path="night_crossings",
+        )
+        error = validate_ruling_action(
+            action, _peaceful_briefing(), self._corpus()
+        )
+        assert error is not None
+        assert "no dialogue paths" in error
+
+    def test_no_path_passes(self):
+        assert validate_ruling_action(
+            _talk("marta"), _peaceful_briefing(), self._corpus()
+        ) is None
+
+    def test_no_corpus_no_judgment(self):
+        action = TalkAction(
+            action_type="talk", target="marta", detail="test",
+            dialogue_path="anything",
+        )
+        assert validate_ruling_action(action, _peaceful_briefing()) is None
+
+
 class TestGear:
     _SWORD = EquippedItemBriefing(
         id="sword", name="Sword", description="A blade.",

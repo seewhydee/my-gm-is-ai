@@ -232,6 +232,18 @@ def run_scenario(
                 entry.model_dump() for entry in soft.player_knowledge
             ]
             final_snapshot["dialogue_state"] = soft.dialogue_state.model_dump()
+        # Augment with derived entity locations ("room:<id>",
+        # "entity:<id>", or None) so tests can verify placements (e.g.
+        # a crate ending up aboard the ferry, an NPC leaving the scene).
+        corpus = session.corpus
+        if hard is not None and corpus is not None:
+            from mgmai.engine.utils import get_entity_location
+
+            final_snapshot["entity_locations"] = {
+                eid: get_entity_location(eid, hard, corpus)
+                for eid in corpus.entities
+                if eid != "player"
+            }
         result.final_status = final_snapshot
 
         # Write the artifact regardless of pass/fail.

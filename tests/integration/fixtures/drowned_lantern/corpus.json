@@ -77,16 +77,12 @@
               "narrative": "The ferry is lashed tight to the pier, and the ferryman isn't running it. Without Berrin at the pole — and his cargo aboard — there is no crossing tonight."
             }
           }
-        }
-      ],
-      "interactions": [
+        },
         {
           "id": "enter_water",
-          "description": "Jump or wade into the marsh water.",
-          "result": {
-            "narrative": "The water is far colder than you expect — and something in it seems to seize your limbs. The black water closes over your head.",
-            "game_over": {"type": "lose", "trigger_id": "enter_water"}
-          }
+          "direction": "into the black marsh water",
+          "target_room": "in_the_water",
+          "one_way": true
         }
       ]
     },
@@ -97,14 +93,12 @@
       "state_fields": {
         "crossing_stage": {"type": "number", "initial": 0, "description": "Beat counter for the crossing sequence."}
       },
-      "interactions": [
+      "exits": [
         {
           "id": "enter_water",
-          "description": "Jump or wade into the marsh water.",
-          "result": {
-            "narrative": "The water is far colder than you expect — and something in it seems to seize your limbs. The black water closes over your head.",
-            "game_over": {"type": "lose", "trigger_id": "enter_water"}
-          }
+          "direction": "over the side, into the black marsh water",
+          "target_room": "in_the_water",
+          "one_way": true
         }
       ],
       "reactions": [
@@ -200,16 +194,12 @@
               "inventory:rope_end"
             ]
           }
-        }
-      ],
-      "interactions": [
+        },
         {
           "id": "enter_water",
-          "description": "Jump or wade into the marsh water.",
-          "result": {
-            "narrative": "The water is far colder than you expect — and something in it seems to seize your limbs. The black water closes over your head.",
-            "game_over": {"type": "lose", "trigger_id": "enter_water"}
-          }
+          "direction": "into the black marsh water",
+          "target_room": "in_the_water",
+          "one_way": true
         }
       ],
       "reactions": [
@@ -253,6 +243,23 @@
                 "berrin": {"following": false, "departed": true, "location": null}
               },
               "game_over": {"type": "win", "trigger_id": "crossing_complete"}
+            }
+          }
+        }
+      ]
+    },
+    "in_the_water": {
+      "name": "The Black Water",
+      "description": "Freezing, peat-black marsh water. Reeds clutch at your clothes; the fog above is already a distant, grey ceiling.",
+      "reactions": [
+        {
+          "id": "marsh_claims_you",
+          "on": "room.entered",
+          "once": true,
+          "effect": {
+            "result": {
+              "narrative": "The water is far colder than you expect — and something in it seems to seize your limbs. The black water closes over your head, and the marsh keeps you.",
+              "game_over": {"type": "lose", "trigger_id": "enter_water"}
             }
           }
         }

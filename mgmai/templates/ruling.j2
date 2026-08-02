@@ -237,8 +237,11 @@ Output: `{"action_type": "examine", "target": "current_room", "rigorous": true, 
 Input: "I pick up the rusty key and unlock the padlock"
 Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "soft_state_patches": []}`
 
-Input: "I pull a loose rock from the wall and keep it"
+Input: "I pull a loose rock from the wall and keep it" (taking an item automatically puts it into the player's inventory, so "and keep it" needs no follow_up)
 Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": null, "soft_state_patches": []}`
+
+Input: "I stride out the back door and dive into the marsh water" (travel-then-act: the move is resolved first; the dive is re-ruled from the destination room)
+Output: `{"action_type": "move", "target": "back_door", "detail": "Player strides out the back door to the dock", "follow_up": "dive into the marsh water", "soft_state_patches": []}`
 
 Input: "I hurl the rock at the spider" (the player carries a "rock" soft item; the spider is visible)
 Output: `{"action_type": "interact", "target": "spider", "interaction_id": "attack", "detail": "Player hurls the rock at the spider", "follow_up": null, "soft_state_patches": [{"field": "set_improvised_weapon", "new_value": {"keyword": "light", "source_item": "rock", "clears_after_turn": true}, "reason": "The hurled rock is a one-shot improvised weapon"}]}`
