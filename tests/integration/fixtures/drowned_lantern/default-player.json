@@ -1,0 +1,23 @@
+{
+  "system": "5e",
+  "player": {
+    "stats": {
+      "STR": 14,
+      "DEX": 12,
+      "CON": 13,
+      "INT": 10,
+      "WIS": 11,
+      "CHA": 12
+    },
+    "level": 3,
+    "max_hp": 24,
+    "current_hp": 24,
+    "ac": 13,
+    "proficiency_bonus": 2,
+    "save_proficiencies": ["STR", "CON"],
+    "weapon_proficiencies": ["simple", "martial"],
+    "inventory": {},
+    "equipped": ["longsword"],
+    "abilities": []
+  }
+}

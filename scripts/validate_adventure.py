@@ -481,6 +481,34 @@ def validate_adventure(adventure_dir: Path) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def _result_player_location(result) -> str | None:
+    """Extract a scripted ``set_player_location`` target from a Result, if any."""
+    if result is None:
+        return None
+    return getattr(result, "set_player_location", None)
+
+
+def _scripted_transition_targets(room) -> set[str]:
+    """Room-transition targets scripted via ``set_player_location`` in a
+    room's reactions or interactions (e.g. a cutscene move that bypasses
+    the exit graph)."""
+    targets: set[str] = set()
+
+    def from_result(result) -> None:
+        loc = _result_player_location(result)
+        if loc:
+            targets.add(loc)
+
+    for reaction in room.reactions:
+        effect = reaction.effect
+        if effect is not None:
+            from_result(effect.result)
+    for interaction in room.interactions:
+        for res in (interaction.result, interaction.success, interaction.failure):
+            from_result(res)
+    return targets
+
+
 def _find_reachable_rooms(start_room: str, corpus) -> set[str]:
     """BFS to find all rooms reachable from the start room."""
     visited: set[str] = set()
@@ -496,6 +524,11 @@ def _find_reachable_rooms(start_room: str, corpus) -> set[str]:
         for ex in room.exits:
             if ex.target_room not in visited:
                 queue.append(ex.target_room)
+        # Scripted transitions (set_player_location in room reactions or
+        # interactions) also move the player, bypassing the exit graph.
+        for target in _scripted_transition_targets(room):
+            if target not in visited:
+                queue.append(target)
     return visited
 
 

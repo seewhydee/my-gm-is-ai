@@ -1,0 +1,690 @@
+{
+  "adventure": {
+    "id": "drowned_lantern",
+    "title": "The Drowned Lantern",
+    "credits": {
+      "author": "Chong Yidong",
+      "source": "Integration-test fixture for the My GM is AI engine",
+      "license": "GPL v3+"
+    },
+    "introduction": "Fog sits heavy on Miremarsh tonight, and you need to be across it by morning. The only crossing for miles is the ferry tied up beside the Drowned Lantern, a tavern on stilts at the marsh's edge — but the ferry isn't running. Warm lamplight spills from the tavern door. Someone inside will know why.",
+    "atmosphere": {
+      "setting": "a lonely stilted tavern on the edge of a fog-drowned marsh at night — peat smoke, damp lamplight, creaking pilings",
+      "tone": "melancholy folk-horror: everyone here keeps a small guilty secret, and the marsh keeps a bigger one"
+    }
+  },
+  "flags_declared": [
+    "knows_ferryman_duty",
+    "confided_crate",
+    "knows_janis_link",
+    "knows_night_crossings",
+    "saw_ghost_light",
+    "knows_lights_malevolent",
+    "heard_janis_name",
+    "berrin_confessed",
+    "crossing_agreed"
+  ],
+  "rooms": {
+    "common_room": {
+      "name": "Common Room",
+      "description": "The Drowned Lantern's single common room is low-ceilinged and warm, lit by a peat fire smoldering in a stone hearth and a few tallow lamps. A handful of empty tables stand on warped floorboards, and a long oak bar runs along one wall, backed by bottles and hanging tankards. The windows are shuttered against the fog. A back door leads out toward the water.",
+      "contains": ["berrin", "marta", "old_wellington", "bar", "peat_fire"],
+      "is_start_room": true,
+      "soft_item_guidance": "ale mugs, stew bowls, cutlery, a deck of dog-eared playing cards, bar rags",
+      "exits": [
+        {
+          "id": "back_door",
+          "direction": "out the back door to the dock",
+          "target_room": "dock"
+        }
+      ],
+      "on_examine": [
+        {
+          "id": "notice_berrins_fear",
+          "rigorous_only": true,
+          "result": {
+            "narrative": "Watching the ferryman over the rim of your mug, you notice his hands are not steady — and that his eyes keep flicking to the shuttered windows, toward the marsh."
+          }
+        }
+      ]
+    },
+    "dock": {
+      "name": "Dock",
+      "description": "A slick wooden pier juts into the fog behind the tavern, its pilings creaking with the slow swell. The marsh beyond is a wall of grey: black water, ghostly reed-banks, and no visible far shore. A flat-bottomed ferry is lashed alongside. Lamplight spills from the tavern's back door.",
+      "contains": ["fen", "ferry", "fens_lantern", "ghost_light"],
+      "soft_item_guidance": "netting twine, fishhooks, a bait knife, cork floats",
+      "exits": [
+        {
+          "id": "tavern_door",
+          "direction": "back into the tavern",
+          "target_room": "common_room"
+        },
+        {
+          "id": "board_ferry",
+          "direction": "climb aboard the ferry",
+          "target_room": "mid_marsh",
+          "one_way": true,
+          "traversal_check": {
+            "skip_check_if": {
+              "all": [
+                "flag:crossing_agreed == true",
+                "entity:sealed_crate.location == entity:ferry"
+              ]
+            },
+            "check": {"type": "roll", "threshold": 0.0, "repeatable": true},
+            "success": {"narrative": "You climb aboard the ferry."},
+            "failure": {
+              "narrative": "The ferry is lashed tight to the pier, and the ferryman isn't running it. Without Berrin at the pole — and his cargo aboard — there is no crossing tonight."
+            }
+          }
+        }
+      ],
+      "interactions": [
+        {
+          "id": "enter_water",
+          "description": "Jump or wade into the marsh water.",
+          "result": {
+            "narrative": "The water is far colder than you expect — and something in it seems to seize your limbs. The black water closes over your head.",
+            "game_over": {"type": "lose", "trigger_id": "enter_water"}
+          }
+        }
+      ]
+    },
+    "mid_marsh": {
+      "name": "Miremarsh",
+      "description": "Open black water in every direction. Reed-banks loom and vanish in the fog as the ferry slides between them, and the tavern's lights are already gone astern. The pole lantern at the bow throws a small, steady glow.",
+      "contains": ["ferry", "ghost_lights_mid_marsh"],
+      "state_fields": {
+        "crossing_stage": {"type": "number", "initial": 0, "description": "Beat counter for the crossing sequence."}
+      },
+      "interactions": [
+        {
+          "id": "enter_water",
+          "description": "Jump or wade into the marsh water.",
+          "result": {
+            "narrative": "The water is far colder than you expect — and something in it seems to seize your limbs. The black water closes over your head.",
+            "game_over": {"type": "lose", "trigger_id": "enter_water"}
+          }
+        }
+      ],
+      "reactions": [
+        {
+          "id": "begin_crossing",
+          "on": "room.entered",
+          "once": true,
+          "effect": {
+            "result": {
+              "narrative": "Berrin casts off and leans on the pole. The ferry slides out into the fog, and the marsh takes you.",
+              "set_entity_state": {
+                "berrin": {"following": true},
+                "ferry_lantern": {"lit": true}
+              }
+            }
+          }
+        },
+        {
+          "id": "crossing_beat_1",
+          "on": "turn.end",
+          "condition": {"require": "room:mid_marsh.crossing_stage == 0"},
+          "effect": {
+            "result": {
+              "narrative": "The ferry moves on in silence but for the drip of the pole and the creak of the hull. Berrin says nothing.",
+              "increment_room_state": {"mid_marsh": {"crossing_stage": 1}}
+            }
+          }
+        },
+        {
+          "id": "crossing_beat_2",
+          "on": "turn.end",
+          "condition": {"require": "room:mid_marsh.crossing_stage == 1"},
+          "effect": {
+            "result": {
+              "narrative": "Still silence. The fog seems to thicken around the ferry, swallowing the reed-banks one by one.",
+              "increment_room_state": {"mid_marsh": {"crossing_stage": 1}}
+            }
+          }
+        },
+        {
+          "id": "crossing_beat_3",
+          "on": "turn.end",
+          "condition": {"require": "room:mid_marsh.crossing_stage == 2"},
+          "effect": {
+            "result": {
+              "narrative": "Lights kindle out on the black water — one, then several, then a scattered multitude, pale and sourceless.",
+              "set_entity_state": {"ghost_lights_mid_marsh": {"hidden": false}},
+              "increment_room_state": {"mid_marsh": {"crossing_stage": 1}}
+            }
+          }
+        },
+        {
+          "id": "crossing_beat_4",
+          "on": "turn.end",
+          "condition": {"require": "room:mid_marsh.crossing_stage == 3"},
+          "effect": {
+            "result": {
+              "narrative": "The lights seem to pace the ferry, drifting alongside at a distance, never nearer, never farther. Berrin's knuckles are white on the pole, but he rows on.",
+              "increment_room_state": {"mid_marsh": {"crossing_stage": 1}}
+            }
+          }
+        },
+        {
+          "id": "crossing_beat_5",
+          "on": "turn.end",
+          "condition": {"require": "room:mid_marsh.crossing_stage == 4"},
+          "effect": {
+            "result": {
+              "narrative": "A rotting pier looms out of the fog ahead. Berrin puts his back into the last few strokes.",
+              "set_player_location": "far_shore",
+              "increment_room_state": {"mid_marsh": {"crossing_stage": 1}}
+            }
+          }
+        }
+      ]
+    },
+    "far_shore": {
+      "name": "Far Shore",
+      "description": "A half-rotted pier rises out of the fog — slick planks, a barnacled mooring post, and the dark suggestion of solid ground beyond. Black water stretches away behind, and pale lights hang over it, watching.",
+      "contains": ["ferry", "ghost_lights_shore", "pier"],
+      "state_fields": {
+        "approach_stage": {"type": "number", "initial": 0, "description": "Beat counter for the pier-approach sequence."}
+      },
+      "exits": [
+        {
+          "id": "exit_pier",
+          "direction": "spring onto the pier",
+          "target_room": "muddy_track",
+          "one_way": true,
+          "condition": {
+            "all": [
+              "room:far_shore.approach_stage >= 2",
+              "inventory:rope_end"
+            ]
+          }
+        }
+      ],
+      "interactions": [
+        {
+          "id": "enter_water",
+          "description": "Jump or wade into the marsh water.",
+          "result": {
+            "narrative": "The water is far colder than you expect — and something in it seems to seize your limbs. The black water closes over your head.",
+            "game_over": {"type": "lose", "trigger_id": "enter_water"}
+          }
+        }
+      ],
+      "reactions": [
+        {
+          "id": "approach_begins",
+          "on": "room.entered",
+          "once": true,
+          "effect": {
+            "result": {
+              "narrative": "The ferry noses toward the rotting pier through the fog. The ghost lights have followed; they hang over the water behind you, watching.",
+              "set_entity_state": {"ghost_lights_shore": {"hidden": false}},
+              "increment_room_state": {"far_shore": {"approach_stage": 1}}
+            }
+          }
+        },
+        {
+          "id": "approach_beat_2",
+          "on": "turn.end",
+          "condition": {"require": "room:far_shore.approach_stage == 1"},
+          "effect": {
+            "result": {
+              "narrative": "Very close now. 'Take the rope,' Berrin says tightly, nodding at the coil. 'Jump for the pier and make her fast.'",
+              "increment_room_state": {"far_shore": {"approach_stage": 1}}
+            }
+          }
+        }
+      ]
+    },
+    "muddy_track": {
+      "name": "Muddy Track",
+      "description": "A muddy track climbs away from the marsh through dripping reeds and stunted willows, up toward the distant road.",
+      "reactions": [
+        {
+          "id": "berrin_vanishes",
+          "on": "room.entered",
+          "once": true,
+          "effect": {
+            "result": {
+              "narrative": "You land on the slick planks, rope in hand — and behind you there is a strangled cry and a splash. You turn: the ferry drifts empty. No ripple, no sign of Berrin in the black water. Out on the marsh, the ghost lights wink out one by one, until only the fog remains, lit by the pole lantern's small glow. You make the ferry fast, gloomily turn your back on the marsh, and trudge away along the muddy track.",
+              "set_entity_state": {
+                "berrin": {"following": false, "departed": true, "location": null}
+              },
+              "game_over": {"type": "win", "trigger_id": "crossing_complete"}
+            }
+          }
+        }
+      ]
+    }
+  },
+  "entities": {
+    "player": {
+      "type": "player",
+      "description": "You are a human fighter, a road-worn traveler with a longsword at your hip and urgent business across Miremarsh. The night is foggy, and you are running out of it."
+    },
+    "berrin": {
+      "type": "npc",
+      "name": "Berrin",
+      "description": "A broad, weathered ferryman with rope-burned hands and a permanent stoop. His eyes are red-rimmed, and he startles at sudden sounds.",
+      "state_fields": {
+        "attitude": {"type": "number", "initial": 0, "description": "Attitude toward the player, -10 to 10."},
+        "departed": {"type": "boolean", "initial": false, "description": "Whether Berrin vanished at the end of the crossing."}
+      },
+      "follower": {"blacklist": []},
+      "dialogue": {
+        "guidelines": "Berrin is glum, terse, and guilt-ridden. He talks about the ferry, the weather, and the tavern readily enough, but deflects anything about night work, the marsh after dark, or why he won't run the ferry: his stock answer is a rehearsed 'I don't work at night — the marsh kills; come back in daylight.' This is a lie — he is afraid — and until he confesses (via the bluff_janis or confront_janis path) he sticks to it. He knows the smuggling scheme in full, Janis, the ghost light that took Janis, and that the lights have kept appearing since; he will NOT volunteer any of this. He knows the crates were Marta's side of the arrangement but nothing of her feelings. He knows nothing of Fen's watching, nor what the lights actually are. Once he has confessed, the fight goes out of him: he is honest, shaken, and grimly cooperative.",
+        "attitude_limits": {"min": -10, "max": 10, "step_per_turn": 2},
+        "dialogue_paths": {
+          "ask_crossing_cold": {
+            "description": "The player asks or demands to be ferried across the marsh tonight, without leverage.",
+            "condition": {"unless": "flag:berrin_confessed == true"},
+            "result": {
+              "narrative": "Berrin refuses, rehearsed and hollow: he doesn't work at night, the marsh kills, come back in daylight."
+            }
+          },
+          "bluff_janis": {
+            "description": "The player drops the name 'Janis', bluffing that they know more than they do.",
+            "condition": {
+              "all": [
+                "flag:heard_janis_name == true",
+                {"unless": "flag:berrin_confessed == true"}
+              ]
+            },
+            "check": {"type": "stat_check", "stat": "CHA", "target": 14, "repeatable": true},
+            "success": {
+              "narrative": "The bluff lands. Berrin thinks the player knows everything; he breaks down and confesses — the smuggling runs with Janis, the ghost light, the night Janis went over the side, the lights he has seen since.",
+              "set_flag": {"berrin_confessed": true}
+            },
+            "failure": {
+              "narrative": "A flicker of fear crosses Berrin's face, then nothing. 'Never heard of any Janis,' he says flatly, and shuts down. He is lying.",
+              "adjust_attitude": {"berrin": -1}
+            }
+          },
+          "confront_janis": {
+            "description": "The player confronts Berrin with the name Janis and lays out the evidence that Janis was his accomplice.",
+            "condition": {
+              "all": [
+                "flag:heard_janis_name == true",
+                "flag:knows_janis_link == true"
+              ]
+            },
+            "result": {
+              "narrative": "Faced with the name and the whole arrangement laid bare, Berrin breaks down and confesses — the smuggling, the ghost light, the night Janis went over the side, the lights he still sees.",
+              "set_flag": {"berrin_confessed": true},
+              "adjust_attitude": {"berrin": 2}
+            }
+          },
+          "convince_crossing": {
+            "description": "The player presses Berrin to make the crossing tonight, now that his secret is out.",
+            "condition": {"require": "flag:berrin_confessed == true"},
+            "result": {
+              "narrative": "Berrin gives in — better to face the water with company and finish it. He agrees to one final nighttime run, and asks the player to help him shift the last crate (mentioning it behind the bar, if the player didn't already know).",
+              "set_flag": {"crossing_agreed": true, "confided_crate": true}
+            }
+          }
+        },
+        "will_reveal": {
+          "janis_vanishing": {
+            "description": "Berrin relives the night Janis died: the light out on the water that wasn't a boat, how Janis stood up as if called and went over the side, and how the water barely rippled.",
+            "conditions": ["flag:berrin_confessed == true"]
+          }
+        }
+      }
+    },
+    "marta": {
+      "type": "npc",
+      "name": "Marta",
+      "description": "A sturdy, sharp-eyed widow in a clean apron, her grey hair pinned back. She moves behind the bar with practiced economy.",
+      "state_fields": {
+        "attitude": {"type": "number", "initial": 0, "description": "Attitude toward the player, -10 to 10."}
+      },
+      "dialogue": {
+        "guidelines": "Marta is warm, shrewd, and a good listener. She gossips freely about the tavern, the village, and the ferry schedule, and she knows the ferryman is supposed to work nights (though she doesn't pry into others' affairs). She is guarded about anything touching the crates behind the bar. Genuine warmth or sympathy earns her trust: raise her attitude only for real conversational effort, not handed out like candy. Blunt prying earns polite deflection; rudeness lowers her attitude. She knows that Janis paid her cash to stash crates, no questions asked, that Janis drank little, and that Berrin and Janis kept each other's company. She does NOT know about the ghost light, the purpose of the night crossings, or what became of Janis — she assumes he moved on — and she dismisses marsh lights as marsh gas.",
+        "attitude_limits": {"min": -10, "max": 10, "step_per_turn": 2},
+        "dialogue_paths": {
+          "sympathetic_ear": {
+            "description": "The player listens warmly, commiserates with Marta, or otherwise earns her goodwill.",
+            "check": {"type": "stat_check", "stat": "CHA", "target": 9, "repeatable": true},
+            "success": {
+              "narrative": "Marta's reserve thaws a little; she is glad of the company.",
+              "adjust_attitude": {"marta": 1}
+            },
+            "failure": {
+              "narrative": "Marta smiles politely and turns back to her work."
+            }
+          }
+        },
+        "will_reveal": {
+          "ferryman_duty": {
+            "description": "Marta mentions that the ferryman is supposed to work nights — it's odd that Berrin won't — but she doesn't pry into others' affairs.",
+            "conditions": [],
+            "set_flag": {"knows_ferryman_duty": true}
+          },
+          "crate_concern": {
+            "description": "Marta confides that there is a crate behind the bar that Berrin was supposed to move out days ago; she is becoming concerned, and would be grateful if someone pressed him on it. She nods toward it.",
+            "conditions": ["entity:marta.attitude >= 2"],
+            "set_flag": {"confided_crate": true},
+            "set_entity_state": {"sealed_crate": {"hidden": false}}
+          },
+          "janis_payout": {
+            "description": "Marta admits it was Janis who paid her to stash the crates, cash, no questions asked — and that Janis used to go out on the ferry at night.",
+            "conditions": ["entity:marta.attitude >= 5", "flag:heard_janis_name == true"],
+            "set_flag": {"knows_janis_link": true}
+          }
+        }
+      }
+    },
+    "fen": {
+      "type": "npc",
+      "name": "Fen",
+      "description": "A gnarled old fisherman with a wild white beard and clouded eyes, bundled in oilskins. His hands never stop mending his net.",
+      "state_fields": {
+        "attitude": {"type": "number", "initial": 0, "description": "Attitude toward the player (frozen; Fen is beyond caring)."},
+        "greeted": {"type": "boolean", "initial": false, "description": "Whether Fen has hailed the player stepping onto the dock."},
+        "departed": {"type": "boolean", "initial": false, "description": "Whether Fen has shuffled off into the night."}
+      },
+      "dialogue": {
+        "guidelines": "Fen is old and addled: he speaks in rambling, half-riddling fragments about the marsh, its tides, and its lights, in his own time — he cannot be persuaded, intimidated, or steered. He is beyond caring what anyone thinks of him (his attitude never changes). He knows the marsh, its channels, and its lights. He knows NOTHING of tavern gossip, Marta's crates, or smuggling arrangements; questions about such things get riddling non-answers. He believes the marsh lights are malevolent and increasingly frequent — an ill omen.",
+        "attitude_limits": {"min": 0, "max": 0},
+        "will_reveal": {
+          "night_crossings": {
+            "description": "Fen reveals that Berrin took the ferry out at night, many times, with a stranger aboard — until a week ago.",
+            "conditions": [],
+            "set_flag": {"knows_night_crossings": true}
+          },
+          "lights_malevolent": {
+            "description": "Fen shares his belief that the marsh lights are not lanterns and not boats, that they are appearing more often, and that it is an ill omen.",
+            "conditions": ["flag:saw_ghost_light == true"],
+            "set_flag": {"knows_lights_malevolent": true}
+          },
+          "janis_blurt": {
+            "description": "Rattled, Fen blurts that the stranger had a name — 'Janis', that's it — though a moment later he swears he never said it.",
+            "conditions": ["flag:saw_ghost_light == true"],
+            "set_flag": {"heard_janis_name": true}
+          }
+        }
+      },
+      "reactions": [
+        {
+          "id": "fen_speaks_first",
+          "on": "room.entered",
+          "condition": {
+            "all": [
+              "entity:fen.greeted == false",
+              "entity:fen.departed == false"
+            ]
+          },
+          "effect": {
+            "result": {
+              "set_entity_state": {"fen": {"greeted": true}}
+            },
+            "trigger_dialogue": "self"
+          }
+        },
+        {
+          "id": "fen_departs",
+          "on": "dialogue.ended",
+          "once": true,
+          "condition": {
+            "all": [
+              "event:npc_id == fen",
+              "flag:knows_night_crossings == true",
+              "flag:knows_lights_malevolent == true",
+              "flag:heard_janis_name == true"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "Fen abruptly gets up, mumbles something incoherent, gathers his net, and shuffles off into the night.",
+              "set_entity_state": {"fen": {"departed": true, "location": null}}
+            }
+          }
+        }
+      ]
+    },
+    "old_wellington": {
+      "type": "npc",
+      "name": "Old Wellington",
+      "description": "A moth-eaten stuffed heron mounted on a wooden plaque, one glass eye missing, its feathers grey with dust.",
+      "state_fields": {
+        "alive": {"type": "boolean", "initial": false, "description": "Old Wellington has been dead and stuffed for years."}
+      }
+    },
+    "bar": {
+      "type": "feature",
+      "name": "the bar",
+      "description": "A long oak bar polished by generations of elbows, lined with bottles, jars of pickled eggs, and hanging tankards.",
+      "contains": ["sealed_crate"],
+      "soft_item_guidance": "bar rags, corks, a dented tankard",
+      "on_examine": [
+        {
+          "id": "spot_crate",
+          "condition": {
+            "all": [
+              "flag:confided_crate == true",
+              "entity:sealed_crate.hidden == true"
+            ]
+          },
+          "result": {
+            "narrative": "Behind the bar, half-covered by sacking, sits a sealed crate — the one that was pointed out to you.",
+            "set_entity_state": {"sealed_crate": {"hidden": false}}
+          }
+        }
+      ]
+    },
+    "sealed_crate": {
+      "type": "feature",
+      "name": "sealed crate",
+      "description": "A stout wooden crate stenciled with a chandler's mark, rope-sealed and heavy.",
+      "state_fields": {
+        "hidden": {"type": "boolean", "initial": true, "description": "Whether the crate has been spotted behind the bar."}
+      },
+      "interactions": [
+        {
+          "id": "move_crate_to_dock",
+          "description": "Lug the crate out of the tavern to the dock, with Berrin's help.",
+          "condition": {
+            "all": [
+              "entity:sealed_crate.hidden == false",
+              "flag:crossing_agreed == true",
+              "entity:sealed_crate.location == entity:bar"
+            ]
+          },
+          "result": {
+            "narrative": "Between you and Berrin, the crate comes up off the floorboards and out the back door to the dock. Berrin hops aboard the ferry and lights its pole lantern.",
+            "set_player_location": "dock",
+            "set_entity_state": {
+              "sealed_crate": {"location": "room:dock"},
+              "berrin": {"location": "room:dock"},
+              "ferry_lantern": {"lit": true}
+            }
+          }
+        },
+        {
+          "id": "move_crate_to_ferry",
+          "description": "Lug the crate from the dock aboard the ferry, with Berrin's help.",
+          "condition": {
+            "all": [
+              "flag:crossing_agreed == true",
+              "entity:sealed_crate.location == room:dock"
+            ]
+          },
+          "result": {
+            "narrative": "Together you and Berrin heave the crate over the gunwale and settle it amidships.",
+            "set_entity_state": {"sealed_crate": {"location": "entity:ferry"}}
+          }
+        }
+      ]
+    },
+    "ferry": {
+      "type": "feature",
+      "name": "marsh ferry",
+      "description": "A flat-bottomed pole-ferry, damp-heavy and sturdily built, with a pole lantern mounted at the bow. Handling it on a black, fog-bound marsh plainly takes an experienced hand.",
+      "contains": ["rope_end", "ferry_lantern"]
+    },
+    "ferry_lantern": {
+      "type": "feature",
+      "name": "pole lantern",
+      "description": "A battered tin lantern mounted on a pole at the ferry's bow. Once lit, its small glow is the only steady light on the marsh.",
+      "state_fields": {
+        "lit": {"type": "boolean", "initial": false, "description": "Whether the pole lantern is lit."}
+      }
+    },
+    "rope_end": {
+      "type": "item",
+      "name": "rope end",
+      "description": "The loose end of a coil of mooring rope; the other end is firmly attached to the ferry.",
+      "take_check": {
+        "gating": {"unless": "room:far_shore.approach_stage >= 2"},
+        "check": {"type": "roll", "threshold": 0.0, "repeatable": true},
+        "failure": {
+          "narrative": "You hesitate. Even if you untied the ferry, there is no way you could run it in the dark, across an unfamiliar marsh."
+        }
+      }
+    },
+    "ghost_light": {
+      "type": "feature",
+      "name": "ghost light",
+      "description": "A pale, sourceless light hovering over the black water — neither lantern nor boat.",
+      "state_fields": {
+        "hidden": {"type": "boolean", "initial": true, "description": "Whether the ghost light is currently visible."},
+        "stage": {"type": "number", "initial": 0, "description": "Beat counter for the ghost-light appearance sequence."}
+      },
+      "reactions": [
+        {
+          "id": "ghost_light_stirs",
+          "on": "turn.end",
+          "condition": {
+            "all": [
+              "entity:ghost_light.stage == 0",
+              "flag:saw_ghost_light == false",
+              "topic:night_crossings"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "Fen's hands go still on the net. 'There,' he breathes. Far out on the black water, a pale light kindles where no boat should be.",
+              "set_entity_state": {"ghost_light": {"hidden": false}},
+              "increment_entity_state": {"ghost_light": {"stage": 1}}
+            }
+          }
+        },
+        {
+          "id": "ghost_light_beckons",
+          "on": "turn.end",
+          "condition": {
+            "all": [
+              "entity:ghost_light.stage == 1",
+              "entity:ghost_light.hidden == false"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "The light bobs once, twice — slow and deliberate, as though beckoning.",
+              "increment_entity_state": {"ghost_light": {"stage": 1}}
+            }
+          }
+        },
+        {
+          "id": "ghost_light_winks_out",
+          "on": "turn.end",
+          "condition": {"require": "entity:ghost_light.stage == 2"},
+          "effect": {
+            "result": {
+              "narrative": "The light winks out, as mysteriously as it appeared. Fen shakes his head and mutters something pensive into his beard.",
+              "set_entity_state": {"ghost_light": {"hidden": true}},
+              "set_flag": {"saw_ghost_light": true},
+              "increment_entity_state": {"ghost_light": {"stage": 1}}
+            }
+          }
+        }
+      ]
+    },
+    "ghost_lights_mid_marsh": {
+      "type": "feature",
+      "name": "ghost lights",
+      "description": "A scattered multitude of pale lights on the black water, pacing the ferry at a distance.",
+      "state_fields": {
+        "hidden": {"type": "boolean", "initial": true, "description": "Whether the ghost lights have appeared."}
+      }
+    },
+    "ghost_lights_shore": {
+      "type": "feature",
+      "name": "ghost lights",
+      "description": "A multitude of pale lights hanging over the water behind the ferry, watching.",
+      "state_fields": {
+        "hidden": {"type": "boolean", "initial": true, "description": "Whether the ghost lights have followed the ferry."}
+      }
+    },
+    "pier": {
+      "type": "feature",
+      "name": "rotting pier",
+      "description": "A half-rotted wooden pier with slick planks and a barnacled mooring post; solid ground lies beyond."
+    },
+    "peat_fire": {
+      "type": "feature",
+      "name": "peat fire",
+      "description": "A smoldering peat fire in the hearth, giving off earthy smoke and the common room's only real warmth."
+    },
+    "fens_lantern": {
+      "type": "feature",
+      "name": "flickering lantern",
+      "description": "A battered tin lantern with a guttering flame; for a moment, its reflection on the black water can look like a second light."
+    }
+  },
+  "mechanics": {
+    "violence_ends_it": {
+      "reactions": [
+        {
+          "id": "violence_witnessed",
+          "on": "entity_state.changed",
+          "condition": {
+            "all": [
+              {"any": ["event:entity_id == berrin", "event:entity_id == marta", "event:entity_id == fen"]},
+              "event:field == alive",
+              "event:new_value == false",
+              {"any": ["room:common_room.is_current == true", "room:dock.is_current == true"]}
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "The cry carries. A door bangs — footsteps fleeing into the fog. By morning the whole marsh edge will know what you did, and no one here will ever ferry you across. There is no crossing the marsh now, and no point remaining.",
+              "game_over": {"type": "lose", "trigger_id": "violence_ends_it"}
+            }
+          }
+        },
+        {
+          "id": "violence_on_ferry",
+          "on": "entity_state.changed",
+          "condition": {
+            "all": [
+              {"any": ["event:entity_id == berrin", "event:entity_id == marta", "event:entity_id == fen"]},
+              "event:field == alive",
+              "event:new_value == false",
+              {"any": ["room:mid_marsh.is_current == true", "room:far_shore.is_current == true"]}
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "He topples into the black water without a sound. Alone on the marsh, you watch the pale lights drift closer — and closer — until they are all around the ferry, and the fog closes in. What happens next, no one will ever know.",
+              "game_over": {"type": "lose", "trigger_id": "violence_ends_it"}
+            }
+          }
+        }
+      ]
+    }
+  },
+  "stats": {
+    "system": "5e",
+    "definitions": {
+      "STR": {"name": "Strength"},
+      "DEX": {"name": "Dexterity"},
+      "CON": {"name": "Constitution"},
+      "INT": {"name": "Intelligence"},
+      "WIS": {"name": "Wisdom"},
+      "CHA": {"name": "Charisma"}
+    }
+  }
+}

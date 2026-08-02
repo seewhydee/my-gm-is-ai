@@ -18,10 +18,7 @@ document.
 ### Ghost light seen from the dock
 
 The adventure's first set-piece occurs when the player and Fen,
-conversing on the dock, sees a ghost light on the marsh.
-
-[Implementation note: I'm not sure how this should be implemented. A
-conversation trigger on Fen, or what?]
+conversing on the dock, see a ghost light on the marsh.
 
 The ghost light lingers for two turns, giving the player a fleeting
 chance to *attempt* interacting with it (no such attempts will
@@ -71,7 +68,7 @@ player to discover the crate if they haven't already.
 ### The sealed crate
 
 The `sealed_crate` behind the bar is initially `hidden` (state field).
-The `hidden` state is set to null if the player does an `examine`
+The `hidden` state is cleared if the player does an `examine`
 action on `bar`, gated by `confided_crate` (Marta or Berrin revealing
 its existence to the player).  If the examination fails (gate active),
 the player merely observes a bunch of empty bottles and other junk.
@@ -88,15 +85,8 @@ Successfully using this interaction does the following:
 
 - If `sealed_crate` is in `dock`, move the crate to `ferry`.
   Narratively, the player and Berrin lug the crate onto the ferry.
-  This sets the `crate_loaded` flag, ungating the `board_ferry` exit.
-  
-  [Implementation note: maybe we should add a `contains` condition
-  string to the corpus schema, so that `crate_loaded` can be replaced
-  with direct game logic.]
-  
-  [Implementation note: the player and Berrin are narratively in the
-  ferry, but I think they shouldn't be placed in it, right?  Check the
-  engine.  Might need to clarify this in the schema docs.]
+  With the crate physically aboard (`entity:sealed_crate.location ==
+  entity:ferry`), the `board_ferry` exit is ungated.
 
 ### Endgame: on the marsh
 
@@ -111,10 +101,6 @@ in silence – mood setting, (ii) still rowing in silence – more mood
 setting and tension building, (iii) ghost lights appear, (iv) Berrin
 is terrified but continues rowing; ghost lights track the ferry; (v)
 transition to `far_shore`.
-
-[Implementation note: do we implement these sequential-turn events by
-chaining global flags (requires a proliferation of flags, bit ugly)?
-Or is there a better way (maybe requiring changes to game schema)?]
 
 Entering `far_shore` begins the final sequence of scripted events also
 implemented as room-scoped reaction mechanics: (i) the ferry
@@ -142,10 +128,10 @@ the player expects, and some mysterious force paralyzes their limbs,
 causing them to drown.)
 
 The sole winning endgame is reached by traversing the `exit_pier` exit
-of the `far_shore` room.  This exit is made available by the ferry
-approaching the pier (we can use a state field on `far_shore` for
-this), AND the player carrying `rope_end`.  Upon using this exit, the
-endgame narration triggers:
+of the `far_shore` room.  This exit is made available once the ferry
+has closed with the pier (`far_shore.approach_stage >= 2`, set by the
+approach sequence) AND the player is carrying `rope_end`.  Upon using
+this exit, the endgame narration triggers:
 
 - The player hears Berrin's cry and a splash, turns, and sees that
   Berrin has disappeared.  No splashing in the water — he is gone
@@ -198,10 +184,8 @@ endgame narration triggers:
     succeed often enough to keep the story moving.
   - **Starting inventory:** a longsword (equipped; standard SRD item,
     not redeclared in the module corpus).
-  - *Omissions (for the post-task report):* the scenario gives no
-    player stats at all; the above are reasonable defaults chosen for
-    the fixture.  No initiative modifier or unarmed damage specified;
-    5e-flavored defaults will be needed if combat stats are written.
+  - *The scenario gives no player stats; the above are reasonable
+    defaults chosen for the fixture (see Errata, item 7).*
 
 ---
 
@@ -217,15 +201,15 @@ A back door leads out to `dock`.
 
 ### `dock` — "Dock"
 
-A slick wooden pier beside the tavern, fog rolling off the marsh.  FEN
-sits mending his net beside a flickering lantern.  The empty marsh
-ferry is lashed here.  The only way on or off the water is the ferry.
+A slick wooden pier beside the tavern, fog rolling off the marsh.
+FEN sits mending his net beside a flickering lantern.  The marsh ferry
+is lashed here.  The only way on or off the water is the ferry.
 
 ### `mid_marsh` — "Miremarsh"
 
 Open black water in the heart of the marsh: the ferry mid-crossing,
 reed-banks looming and vanishing in the fog.  Transitional room for
-the endgame crossing (see Errata, item 3).  The far shore lies ahead.
+the endgame crossing (see Errata, item 3).
 
 Moving from `mid_marsh` to `far_shore` occurs by scripting only
 (Berrin rows).  Jumping into the water is a game-over.
@@ -233,8 +217,15 @@ Moving from `mid_marsh` to `far_shore` occurs by scripting only
 ### `far_shore` — "Far Shore"
 
 A rotting pier on the far side of Miremarsh, solid ground at last.
-Entering this room ends the adventure (the endgame sequence plays out
-here).  Jumping into the water is a game-over.
+The final scripted sequence plays out here (the ferry approaches the
+pier; the player moors it), ending with the `exit_pier` exit to
+`muddy_track`.  Jumping into the water is a game-over.
+
+### `muddy_track` — "Muddy Track"
+
+A muddy track leading away from the marsh, up toward the road.
+Terminal epilogue room: entering it plays the endgame narration and
+wins the adventure (see Errata, item 3).  There is no going back.
 
 ---
 
@@ -248,13 +239,14 @@ cross the marsh tonight.  Starts in `common_room`, longsword equipped.
 ### `berrin` — "Berrin" (type: `npc`, in `common_room`)
 
 The marsh ferryman, initially found sitting in `common_room` glumly
-nursing an ale (he moves to other rooms in the endgame sequence).  He
-refuses to ferry anyone at night ("I don't work at night" — a lie).
-Secret: for the past month he ran a smuggling scheme with JANIS; a
-week ago Janis leapt off the ferry mid-crossing, mesmerized by a ghost
-light, and vanished.  Berrin fled back to shore, terrified; he has
-seen lights on the water since and fears they are coming for him.  He
-is the only one who can pole the ferry.
+nursing an ale (he travels with the player as a follower during the
+endgame crossing).  He refuses to ferry anyone at night ("I don't
+work at night" — a lie).  Secret: for the past month he ran a
+smuggling scheme with JANIS; a week ago Janis leapt off the ferry
+mid-crossing, mesmerized by a ghost light, and vanished.  Berrin fled
+back to shore, terrified; he has seen lights on the water since and
+fears they are coming for him.  He is the only one who can pole the
+ferry.
 
 ### `marta` — "Marta" (type: `npc`, in `common_room`)
 
@@ -283,89 +275,102 @@ missing.  Authored as an NPC who is dead from the start (`alive:
 false`): talking to him must be rejected by the engine.  (He is the
 fixture's dead-NPC test target; see Errata, item 1.)
 
-### `bar` — (type: `feature`, in `common_room`)
+### `bar` — "the bar" (type: `feature`, in `common_room`)
 
-The bar in the tavern's common room.  The sealed crate is modelled as
-a feature contained in (hidden behind) the bar.
+The bar in the tavern's common room, Marta's station.  The sealed
+crate is stashed behind it (modelled as contained in `bar` and
+hidden); examining the bar only spots it once the player knows to
+look.  Otherwise: bottles, jars, and tavern junk.
 
-### `sealed_crate` — (type: `feature`, in `bar`)
+### `sealed_crate` — "sealed crate" (type: `feature`, in `bar`)
 
 The last of Janis's crates, stashed behind the bar in `common_room`.
 Sealed; contents unknown (and never opened in this module).  Initially
-hidden behind the bar.  Too heavy and bulky for the player to pick up
-into inventory, hence a feature not an item.  Moving it requires
-Berrin's cooperation (it goes to the ferry at night).
+hidden.  Too heavy and bulky for the player to pick up into inventory,
+hence a feature not an item.  Moving it requires Berrin's cooperation:
+first out to `dock`, then aboard the `ferry` (it goes out at night).
 
-### `ferry` — (type: `feature`, in `dock`)
+### `ferry` — "the marsh ferry" (type: `feature`, spans `dock`, `mid_marsh`, `far_shore`)
 
-A flat-bottomed pole-ferry lashed to the dock.  An examination makes
-clear that it needs an experienced hand; the player does not know how
-to handle it.  Boarding it (when Berrin agrees) begins the endgame
-crossing.
+A flat-bottomed pole-ferry, initially lashed to `dock`.  An
+examination makes clear that it needs an experienced hand; the player
+does not know how to handle it.  As a multi-room feature it is present
+throughout the endgame crossing, so its contents (the rope, its
+lantern, and eventually the crate) travel with it.  Boarding it (when
+Berrin agrees and the crate is loaded) begins the endgame crossing.
 
-### `ferry_lantern` — (type: `feature`, in `ferry`)
+### `ferry_lantern` — "pole lantern" (type: `feature`, in `ferry`)
 
-A lantern hung on a pole, built into the ferry.  It is initially
-unlit, but Berrin lights it during the endgame marsh crossing.
+A lantern hung on a pole, built into the ferry.  Initially unlit;
+Berrin lights it when the crate is carried out to the dock.
 
-### `peat_fire` — (type: `feature`, in `common_room`)
+### `peat_fire` — "peat fire" (type: `feature`, in `common_room`)
 
 The smoldering peat fire in the Drowned Lantern's common room.  Flavor
 / examination texture.
 
-### `fens_lantern` — (type: `feature`, in `dock`)
+### `fens_lantern` — "flickering lantern" (type: `feature`, in `dock`)
 
 Fen's battered lantern, sitting on the dock, its flame guttering in
 the marsh air.  Flavor / examination texture; echoes the ghost lights.
 
 ### `ghost_light` — "ghost light" (type: `feature`, in `dock`)
 
-A ghost light that appears in the distance, during the player's
-conversation with Fen on `dock`, then disappears shortly thereafter.
+A ghost light that appears in the distance during the player's
+conversation with Fen on `dock`, lingers briefly, then disappears.
 Narratively, it serves to establish that the spooky lights on the
-marsh are real.  Cannot be physically accessed, but the player can
-examine it (looking from afar).
+marsh are real.  Initially hidden.  Cannot be physically accessed, but
+the player can examine it (looking from afar); all attempts to
+interact with it fail.
 
 ### `ghost_lights_mid_marsh` — "ghost lights" (type: `feature`, in `mid_marsh`)
 
 A multitude of ghost lights that appear on the marsh while the player
 and Berrin are crossing.  They seem to track the ferry as it moves,
-but always at a distance.  Cannot be accessed, only looked at.
+but always at a distance.  Initially hidden.  Cannot be accessed, only
+looked at.
 
 ### `ghost_lights_shore` — "ghost lights" (type: `feature`, in `far_shore`)
 
-A multitude of ghost lights on the marsh as the player and Berrin
-approach the far shore.  Cannot be accessed, only looked at.
+A multitude of ghost lights on the marsh as the ferry approaches the
+far shore.  Initially hidden.  Cannot be accessed, only looked at.
 
 ### `rope_end` — "rope end" (type: `item`, in `ferry`)
 
 The end of a coil of rope, the other end of which is attached to the
-ferry.  Modelled as an item contained in `ferry`.  Initially, the rope
-is tied to the wooden pier (`dock`), and the GM overrules the player
-taking it (e.g., "You hesitate.  Even if you untie the ferry, there's
-no way you can run the ferry in the dark, across an unfamiliar
-marsh.").  During the endgame sequence, Berrin will instruct the
-player to take the rope and jump onto the pier to moor the ferry;
-doing so triggers the endgame.
+ferry.  Modelled as an item contained in `ferry`.  Taking it is
+overruled until the endgame approach ("You hesitate.  Even if you
+untie the ferry, there's no way you can run the ferry in the dark,
+across an unfamiliar marsh.").  During the final approach, Berrin
+tells the player to take the rope and jump onto the pier to moor the
+ferry; doing so (via the `exit_pier` exit) triggers the endgame.
 
-### `pier` — (type: `feature`, contained in `ferry`)
+### `pier` — "rotting pier" (type: `feature`, in `far_shore`)
 
+The rotting wooden pier on the far shore, with a mooring post.  The
+player springs onto it at the end of the crossing.  Examination
+texture.
 
 ---
 
 ## 1D. Global Flags
 
 Knowledge flags track what the player has learned; leverage flags
-track what has been unlocked toward the objective.
+track what has been unlocked toward the objective.  (Staged
+multi-turn sequences do NOT use flag chains; they use numeric
+room/entity state fields advanced by the `increment_room_state` /
+`increment_entity_state` Result effects — see `mid_marsh`,
+`far_shore`, and `ghost_light`.)
 
 - **`knows_ferryman_duty`** — The player has learned (from Marta) that
   the ferryman is supposed to work nights — so Berrin's refusal is
   odd.  Initial value: `false`.
 
-- **`confided_crate`** — Marta or Berrin have told the player about the
-  last crate and her worry that Berrin hasn't moved it (and implicitly
-  asked the player to press him on it).  Gates Berrin's `press_crate`
-  path.  Initial value: `false`.
+- **`confided_crate`** — Marta or Berrin has told the player about the
+  last crate (Marta confides her worry that Berrin hasn't moved it;
+  Berrin asks for help shifting it after agreeing to the crossing).
+  Gates the `bar` examination that reveals the crate.  Initial value:
+  `false`.
 
 - **`knows_janis_link`** — Marta has admitted that Janis paid her to
   stash the crates — the piece that ties Janis to Berrin's night
@@ -378,7 +383,7 @@ track what has been unlocked toward the objective.
 
 - **`saw_ghost_light`** — A ghost light appeared on the marsh during
   the player's conversation with Fen, then vanished (scripted
-  mid-dialogue event).  Initial value: `false`.
+  mid-dialogue event; see `ghost_light`).  Initial value: `false`.
 
 - **`knows_lights_malevolent`** — Fen has shared his belief that the
   lights are malevolent, appearing more often — an ill omen.  Initial
@@ -389,54 +394,41 @@ track what has been unlocked toward the objective.
   `bluff_janis` / `confront_janis` paths and Marta's `janis_payout`
   topic.  Initial value: `false`.
 
-- **`berrin_confessed`** — The player confronted Berrin with the name
-  Janis *and* the knowledge of the accomplice link; he broke down and
-  confessed the smuggling and the night Janis vanished.  Initial
-  value: `false`.
+- **`berrin_confessed`** — Berrin has broken down and confessed: the
+  smuggling, the ghost light, the night Janis vanished (via either
+  the `bluff_janis` or `confront_janis` dialogue path).  Gates
+  `convince_crossing`.  Initial value: `false`.
 
-- **`berrin_agreed_crate`** — Berrin has agreed to move the last crate
-  tonight (pressed on Marta's behalf).  Initial value: `false`.
-
-- **`crossing_agreed`** — Berrin has agreed to ferry the player across
-  tonight.  Initial value: `false`.
-
-- **`crate_loaded`** — The last crate has been lugged down and stowed
-  aboard the ferry (done together with Berrin).  Gates the
-  `board_ferry` exit.  Initial value: `false`.
+- **`crossing_agreed`** — Berrin has agreed to ferry the player
+  across tonight.  Gates the crate's `move` interactions and, with
+  the crate aboard, the `board_ferry` exit.  Initial value: `false`.
 
 ---
 
 ## 1E. Mechanics
 
-### `begin_crossing` — Kind: Reaction mechanic (endgame sequence)
+### `violence_ends_it` — Kind: Reaction mechanic (global rule)
 
-The `begin_crossing` reaction moves the player to the `mid_marsh`
-room.
+Attacking any of the three living NPCs kills them (no combat stats;
+default non-combat handling) and ends the adventure as a loss.  An
+entity cannot react to its own death, so this lives here as a global
+reaction mechanic: Trigger — an `entity_state.changed` event sets
+`alive` to `false` for `berrin`, `marta`, or `fen`.  Two narrative
+branches, both ending in inline `Result.game_over` (lose):
 
-- Entering : narrate ghost lights appearing on the water,
-  seeming to track the ferry (room-entered narration; see §1F,
-  `mid_marsh` reaction `lights_track_the_ferry`).
+- **Witnessed** (player in `common_room` or `dock`): the other NPCs
+  become aware of the player's aggression (if Fen is attacked, one of
+  the others appears at the tavern door); they flee into the night.
+  With no ferryman and no allies, crossing the marsh is impossible.
+- **Alone on the ferry** (player in `mid_marsh` or `far_shore`,
+  Berrin the victim): he topples into the black water.  The ghost
+  lights close in, and the player comes to an unknown, grisly fate in
+  the marsh.
 
-- Entering `far_shore`: the pier is within arm's reach; a strangled
-  cry — Berrin is simply *gone*, no sign of him in the water; the
-  ghost lights wink out one by one (room reaction
-  `berrin_vanishes`: set Berrin `departed = true`, `location =
-  null`, narrate; Berrin stays `alive` in hard state — his fate is
-  deliberately ambiguous, and a dead Berrin would trip the
-  `ferryman_lost` loss condition below).
-
-### `crossing_complete` — Kind: Global game-over condition (WIN)
-
-The player wins upon reaching `far_shore` — they made the crossing,
-whatever it cost Berrin.  Checked continuously: player present in
-`far_shore`.
-
-### `ferryman_lost` — Kind: Global game-over condition (LOSS)
-
-If Berrin dies (`alive == false`) at any point, the crossing becomes
-impossible — there is no one left to pole the ferry.  (This module
-has no combat, but the player *can* attack NPCs; see Errata, item 4.)
-Checked continuously.
+(There are no other global mechanics.  The win is route-specific —
+the `exit_pier` exit — and lives with the `muddy_track` room reaction
+in §1F.  The drowning losses are route-specific room interactions,
+also §1F.  Engine-default HP death is not listed, per convention.)
 
 ---
 
@@ -447,8 +439,9 @@ Checked continuously.
 - **Exits:**
   - **`back_door`** — "out the back door to the dock" → `dock`.
     Always available.
-- **Entities present:** `berrin`, `marta`, `old_wellington`,
-  `sealed_crate` (hidden), `peat_fire`.
+- **Entities present:** `berrin`, `marta`, `old_wellington`, `bar`,
+  `peat_fire`.  (`sealed_crate` is inside `bar`, not directly in the
+  room.)
 - **Special interactions:** none.
 - **Reactions:** none.
 - **State fields:** none.
@@ -466,16 +459,22 @@ Checked continuously.
   - **`tavern_door`** — "back into the tavern" → `common_room`.
     Always available.
   - **`board_ferry`** — "climb aboard the ferry" → `mid_marsh`.
-    Available only when `crossing_agreed == true` AND
-    `crate_loaded == true`.  Attempting it otherwise is refused in
-    narration (the ferry is lashed tight; without Berrin at the pole
-    and his cargo aboard, there is no crossing).  One-way: once the
-    crossing begins there is no turning back (narrative reason: the
-    marsh current and fog; Berrin would not agree twice).
-- **Entities present:** `fen`, `ferry`, `fens_lantern`.
-- **Special interactions:** none (boarding is the exit above).
-- **Reactions:** none room-scoped (Fen's greeting and ghost-light
-  event are Fen-scoped, §1G).
+    One-way.  Available only when `crossing_agreed == true` AND
+    `entity:sealed_crate.location == entity:ferry` (the crate is
+    physically aboard — direct game logic, no tracking flag).
+    Attempting it otherwise is refused in narration (the ferry is
+    lashed tight; without Berrin at the pole and his cargo aboard,
+    there is no crossing).  Narrative reason for no return: the marsh
+    current and fog; Berrin would not agree twice.
+- **Entities present:** `fen`, `ferry`, `fens_lantern`, `ghost_light`
+  (hidden).
+- **Special interactions:**
+  - **`enter_water`** — jumping or wading into the marsh.  Result:
+    inline `game_over` (lose) — the water is far colder than
+    expected, and some mysterious force paralyzes the player's limbs;
+    they drown in the black water.
+- **Reactions:** none room-scoped (Fen's greeting is Fen-scoped, and
+  the ghost-light beats are `ghost_light`-scoped, §1G).
 - **State fields:** none.
 - **On-Examine Effects:**
   - *Any examination:* the ferry is sturdily built but heavy with
@@ -485,39 +484,92 @@ Checked continuously.
 - **Soft-item guidance:** netting twine, fishhooks, a bait knife,
   cork floats.
 
-### `mid_marsh` — "Mid-Marsh"
+### `mid_marsh` — "Miremarsh"
 
-- **Exits:**
-  - **`far_shore_ahead`** — "toward the far shore" → `far_shore`.
-    Always available once here.  One-way.
-- **Entities present:** none statically (Berrin is narrated at the
-  pole; he remains located in `dock`/`common_room` in hard state
-  until `berrin_vanishes` clears him — see implementation notes,
-  Errata item 3).
-- **Special interactions:** none.
+- **Exits:** none.  Departure is scripted: the final crossing beat
+  moves the player to `far_shore` (`set_player_location` — Berrin
+  rows; the player does not steer).
+- **Entities present:** `ferry` (multi-room feature), `berrin`
+  (following), `ghost_lights_mid_marsh` (hidden).
+- **Special interactions:**
+  - **`enter_water`** — as on `dock`: inline `game_over` (lose).
 - **Reactions:**
-  - **`lights_track_the_ferry`** (one-off): Trigger — player enters
-    `mid_marsh`.  Consequences — narrate multiple ghost lights
-    appearing on the black water, seeming to pace and track the
-    ferry.  No state change (pure narration; the horror stays
-    offstage).
-- **State fields:** none.
+  - **`begin_crossing`** (one-off): Trigger — player enters
+    `mid_marsh`.  Consequences — narrate casting off into the fog;
+    set `berrin.following = true` (he travels with the player from
+    here on); set `ferry_lantern.lit = true` if not already.
+  - **`crossing_beat_1`** (recurring): Trigger — turn end.
+    Condition — `room:mid_marsh.crossing_stage == 0`.  Consequences —
+    narrate rowing in silence (mood setting).  `increment_room_state`
+    `mid_marsh.crossing_stage +1`.
+  - **`crossing_beat_2`** (recurring): Trigger — turn end.
+    Condition — `crossing_stage == 1`.  Consequences — still rowing
+    in silence; tension builds (the fog seems to thicken).  Increment
+    `crossing_stage`.
+  - **`crossing_beat_3`** (recurring): Trigger — turn end.
+    Condition — `crossing_stage == 2`.  Consequences — ghost lights
+    appear on the black water: set `ghost_lights_mid_marsh.hidden =
+    false`, narrate.  Increment `crossing_stage`.
+  - **`crossing_beat_4`** (recurring): Trigger — turn end.
+    Condition — `crossing_stage == 3`.  Consequences — the lights
+    seem to pace and track the ferry; Berrin is terrified but rows
+    on.  Increment `crossing_stage`.
+  - **`crossing_beat_5`** (recurring): Trigger — turn end.
+    Condition — `crossing_stage == 4`.  Consequences — a rotting pier
+    looms out of the fog: `set_player_location` to `far_shore`;
+    increment `crossing_stage` (terminal).
+- **State fields:**
+  - `crossing_stage` (number, initial `0`) — beat counter for the
+    crossing sequence, advanced by the beat reactions above.
 - **On-Examine Effects:** none.
 - **Soft-item guidance:** none (open water).
 
 ### `far_shore` — "Far Shore"
+
+- **Exits:**
+  - **`exit_pier`** — "spring onto the pier" → `muddy_track`.
+    One-way.  Available only when `room:far_shore.approach_stage >=
+    2` (the ferry has closed with the pier and Berrin has called for
+    the rope) AND `inventory:rope_end` (the player is carrying the
+    rope end).  This is the adventure's sole winning route.
+- **Entities present:** `ferry` (multi-room feature), `berrin`
+  (following), `ghost_lights_shore` (hidden), `pier`.
+- **Special interactions:**
+  - **`enter_water`** — as on `dock`: inline `game_over` (lose).
+- **Reactions:**
+  - **`approach_begins`** (one-off): Trigger — player enters
+    `far_shore`.  Consequences — narrate the ferry nosing toward the
+    rotting pier through the fog; set `ghost_lights_shore.hidden =
+    false` (the lights have followed them); `increment_room_state`
+    `far_shore.approach_stage +1`.
+  - **`approach_beat_2`** (recurring): Trigger — turn end.
+    Condition — `room:far_shore.approach_stage == 1`.  Consequences —
+    very close now; Berrin tells the player to grab the rope end and
+    be ready to jump and moor the ferry.  Increment `approach_stage`
+    (now `>= 2`, ungating `rope_end`'s take check and the
+    `exit_pier` exit).
+- **State fields:**
+  - `approach_stage` (number, initial `0`) — beat counter for the
+    pier-approach sequence.
+- **On-Examine Effects:** none.
+- **Soft-item guidance:** none.
+
+### `muddy_track` — "Muddy Track"
 
 - **Exits:** none (end of the adventure).
 - **Entities present:** none.
 - **Special interactions:** none.
 - **Reactions:**
   - **`berrin_vanishes`** (one-off): Trigger — player enters
-    `far_shore`.  Consequences — narrate the endgame: as the player
-    leans forward to spring onto the pier, a strangled cry; turning,
-    Berrin has disappeared without a ripple; the ghost lights wink
-    out one by one.  Set `berrin.departed = true` and
-    `berrin.location = null` (spider precedent).  The win itself is
-    handled by the `crossing_complete` game-over mechanic (§1E).
+    `muddy_track`.  Consequences — the endgame narration: the player
+    hears Berrin's cry and a splash, turns, and sees he has
+    disappeared without a ripple; the ghost lights wink out one by
+    one until only the fog remains, lit by the ferry's pole lantern;
+    the player gloomily trudges away along the muddy track.  Set
+    `berrin.following = false`, `berrin.departed = true`,
+    `berrin.location = null` (his fate is deliberately ambiguous —
+    he stays `alive` in hard state).  Inline `Result.game_over`
+    (win).
 - **State fields:** none.
 - **On-Examine Effects:** none.
 - **Soft-item guidance:** none.
@@ -533,17 +585,22 @@ Checked continuously.
 
 ### `berrin` — "Berrin" (type: `npc`)
 
-- **Location:** `common_room`, at a table alone.
+- **Location:** `common_room`, at a table alone.  During the endgame
+  he travels with the player (see Follower Behavior).
 - **State fields:**
   - `attitude` (number, initial `0`) — non-default bounds below.
-  - `departed` (boolean, initial `false`) — he vanished during the
-    crossing; set by `berrin_vanishes`.
+  - `departed` (boolean, initial `false`) — he vanished at the end of
+    the crossing; set by `berrin_vanishes`.
 - **Attitude Limits:** min −10, max +10, at most ±2 change per turn
   (engine-enforced).  Glum and guarded, but can be won around.
+- **Follower Behavior:** from `begin_crossing` onward he follows the
+  player (`following = true`) — he poles the ferry while remaining
+  present and talkable during the crossing and the pier approach.
+  No refused rooms.  `berrin_vanishes` clears the follow.
 - **Dialogue availability:** talks freely but deflects anything about
   nights, the marsh, or why he won't work (see Knowledge).  His flat
   refusal — "I don't work at night" — is a *lie*: he is afraid.
-  Until confronted, he sticks to it.
+  Until he confesses, he sticks to it.
 - **Dialogue paths:**
   - **`ask_crossing_cold`** — availability: in dialogue,
     `berrin_confessed == false` (i.e. the player lacks leverage).
@@ -553,56 +610,51 @@ Checked continuously.
     change.  (Contrast with `convince_crossing`: the same request
     *with* leverage.)
   - **`bluff_janis`** — availability: in dialogue,
-    `heard_janis_name == true` AND `knows_janis_link == false` (the
-    player drops the name without understanding it).  No check.
-    Result: a flicker of fear, then a flat **lie** — "Never heard of
-    any Janis." — and he shuts down.  Narration only; `adjust_attitude`
-    Berrin −1 (respecting the ±2/turn cap).  This is the fixture's
-    authored-lie surface: the narration says one thing, hard state
-    confirms he gave nothing.
-	
-	FIXME: turn this into a moderately hard CHA check
-
-
-- **`confront_janis`** — availability: in dialogue,
+    `heard_janis_name == true` AND `berrin_confessed == false` (the
+    player drops the name, bluffing that they know more than they
+    do).  Success gating: CHA check (DC 14, repeatable — a
+    moderately hard check).  On success: the bluff lands — Berrin
+    thinks the player knows everything, and he breaks down and
+    confesses (the smuggling, the ghost light, the night Janis went
+    over the side): set flag `berrin_confessed = true`.  On failure:
+    a flicker of fear, then a flat **lie** — "Never heard of any
+    Janis." — and he shuts down: narration only (no state change
+    beyond `adjust_attitude` Berrin −1, respecting the ±2/turn cap).
+    This is the fixture's authored-lie surface: the narration denies
+    everything, and hard state confirms he gave nothing.
+  - **`confront_janis`** — availability: in dialogue,
     `heard_janis_name == true` AND `knows_janis_link == true` (the
     player can name Janis *and* lay out the accomplice link).  No
     check — the evidence is overwhelming.  Result: he breaks down and
-    confesses: the smuggling, the ghost light, the night Janis went
-    over the side, the lights he still sees.  Set flag
-    `berrin_confessed = true`; `adjust_attitude` Berrin +2
-    (unburdened, respecting caps).
-  - **`press_crate`** — availability: in dialogue,
-    `confided_crate == true`.  The player presses him, on
-    Marta's behalf, to move the last crate tonight.  Success gating:
-    CHA check (DC 11, repeatable).  On success: he agrees, grimly —
-    set flag `berrin_agreed_crate = true`.  On failure: he balks
-    ("Not tonight.") — `adjust_attitude` Berrin −1.
+    confesses, as above.  Set flag `berrin_confessed = true`;
+    `adjust_attitude` Berrin +2 (unburdened, respecting caps).
   - **`convince_crossing`** — availability: in dialogue,
-    `berrin_confessed == true` AND `berrin_agreed_crate == true`
-    (both leverage pieces in place, per the scenario's Objective).
-    The player presses him to make the crossing tonight.  Success
-    gating: CHA check (DC 12, repeatable).  On success: he gives in —
-    better to face the water with company and finish it.  Set flag
-    `crossing_agreed = true` (unlocks the `board_ferry` exit).
-    On failure: "I can't.  Not tonight." — `adjust_attitude` Berrin
-    −1; the player may work on him further and retry.
+    `berrin_confessed == true`.  The player presses him to make the
+    crossing tonight.  No check — with his secret out, the fight has
+    gone out of him.  Result: he gives in — better to face the water
+    with company and finish it.  He agrees to one final nighttime
+    run, and asks the player to help shift the last crate (telling
+    them about it if they didn't already know): set flag
+    `crossing_agreed = true`, set flag `confided_crate = true` (if
+    not already).  This ungates the crate's `move` interactions and,
+    once the crate is physically aboard, the `board_ferry` exit.
 - **Will-Reveal Topics:**
   - **`janis_vanishing`** — gating: in dialogue,
     `berrin_confessed == true`.  Conveys: the full memory of the
     night Janis died — the light that wasn't a boat, how Janis stood
     up as if called, the water that barely rippled.  Consequences:
     none (flavor/payoff; demonstrates a reveal gated on a dialogue
-    *path* outcome rather than attitude).
+    *path* outcome rather than attitude).  Particularly atmospheric
+    if drawn out of him mid-crossing.
 - **Knowledge:** knows the smuggling scheme in full, Janis, the ghost
   light, and that the lights have kept appearing since.  Will NOT
-  volunteer any of it; deflects or lies until confronted.  Knows the
-  crates were Marta's side of the arrangement but nothing of her
+  volunteer any of it; deflects or lies until he confesses.  Knows
+  the crates were Marta's side of the arrangement but nothing of her
   feelings about it.  Knows nothing of Fen's watching or what the
   lights are.
 - **Aggro / combat stats / combat group:** none — no combat stats;
   if attacked, he dies by the default non-combat handling (and the
-  `ferryman_lost` loss fires).  He never initiates violence.
+  `violence_ends_it` loss fires).  He never initiates violence.
 - **First-Meeting Behavior:** none scripted; he barely looks up from
   his ale.
 
@@ -635,8 +687,8 @@ Checked continuously.
     Conveys: there's a crate behind the bar Berrin was supposed to
     move out days ago; she's becoming concerned; she'd be grateful if
     someone pressed him on it.  Consequences: set flag
-    `confided_crate = true`; set `sealed_crate.hidden =
-    false` (she nods toward it behind the bar).
+    `confided_crate = true`; set `sealed_crate.hidden = false` (she
+    nods toward it behind the bar).
   - **`janis_payout`** — gating: in dialogue, `attitude >= 5` AND
     `heard_janis_name == true` (she won't say the name to someone who
     hasn't already heard it somewhere — a cross-NPC knowledge
@@ -651,8 +703,7 @@ Checked continuously.
   Janis — she assumes he moved on.  Dismisses marsh lights as marsh
   gas.
 - **Aggro / combat stats / combat group:** none — default non-combat
-  handling if attacked (she simply dies; there is no special loss for
-  this beyond the story curdling).
+  handling if attacked (the `violence_ends_it` loss fires).
 - **First-Meeting Behavior:** welcomes the traveler in out of the
   fog; mentions the kitchen's closed but the fire's warm.
 
@@ -673,14 +724,6 @@ Checked continuously.
     (`trigger_dialogue`): he speaks first, a cryptic mutter — "You.
     You've the look of a crossing."  Set `greeted = true`.
 - **Reactions:**
-  - **`ghost_light_appears`** (one-off): Trigger — turn end.
-    Condition — dialogue active with Fen AND the `night_crossings`
-    topic has been discussed in the current dialogue (`topic:`
-    condition domain) AND `saw_ghost_light == false`.  Consequences —
-    narrate: mid-conversation, a pale light kindles far out on the
-    water, drifts, and winks out; Fen goes very quiet.  Set flag
-    `saw_ghost_light = true`.  (The scenario's scripted mid-dialogue
-    event; "midway" is mechanized as "after the first topic".)
   - **`fen_departs`** (one-off): Trigger — dialogue with Fen ends
     (`dialogue.ended`, any reason).  Condition — `event:npc_id ==
     fen` AND all of his dialogue is exhausted: `knows_night_crossings
@@ -689,6 +732,10 @@ Checked continuously.
     mumbles something incoherent, gathers his net, and shuffles off
     into the night: set `departed = true`, `location = null` (spider
     precedent); narrate accordingly.
+
+  (The ghost-light set-piece is authored on the `ghost_light` entity
+  — see below.  Its first beat is gated on the `night_crossings`
+  topic being discussed, which can only happen in Fen's dialogue.)
 - **Dialogue paths:** none — Fen cannot be persuaded, intimidated, or
   steered; he talks in his own time or not at all.  (Contrast with
   Berrin and Marta; this is deliberate.)
@@ -714,7 +761,7 @@ Checked continuously.
   non-answers.  (Knowledge-scope discipline is judge-checked in the
   integration tests.)
 - **Aggro / combat stats / combat group:** none — default non-combat
-  handling if attacked (he simply dies; a pointless, ugly act).
+  handling if attacked (the `violence_ends_it` loss fires).
 
 ### `old_wellington` — "Old Wellington" (type: `npc`)
 
@@ -731,22 +778,43 @@ Checked continuously.
   one glass eye missing, dusty enough to suggest Marta hasn't the
   heart to take him down.  Flavor.
 
+### `bar` — "the bar" (type: `feature`)
+
+- **Location:** `common_room`.
+- **Contained entities:** `sealed_crate` (hidden behind it).
+- **On-Examine Effects:**
+  - *Any examination, gated on `confided_crate == true`:* the player
+    spots the sealed crate stashed behind the bar, where it was
+    pointed out to them: set `sealed_crate.hidden = false`.
+  - *Any examination, ungated (fallback):* empty bottles, jars of
+    pickled eggs, and other tavern junk.  (If the gate is active the
+    crate stays unnoticed.)
+- **Soft-item guidance:** bar rags, corks, a dented tankard.
+
 ### `sealed_crate` — "sealed crate" (type: `feature`)
 
-- **Location:** `common_room`, behind the bar.  Initially `hidden`
-  (unnoticed).
+- **Location:** inside `bar` in `common_room`.  Initially `hidden`.
 - **State fields:**
-  - `hidden` (boolean, initial `true`) — revealed when Marta confides
-    (`crate_concern` topic sets it `false`).
+  - `hidden` (boolean, initial `true`) — revealed by Marta's
+    `crate_concern` topic or by examining `bar` once
+    `confided_crate` is set.
 - **Special interactions:**
-  - **`move_crate`** — availability: `hidden == false` AND
-    `berrin_agreed_crate == true` (Berrin has agreed; he does the
-    heavy end).  Result: the player and Berrin lug the crate down to
-    the dock and stow it aboard the ferry.  Set flag `crate_loaded =
-    true`; set `sealed_crate.location = null` (aboard the ferry,
-    out of play).  Attempting it before Berrin agrees is rebuffed in
-    narration (Marta won't have her side of the stash manhandled, and
-    the player can't shift it alone).
+  - **`move_crate_to_dock`** — availability: `hidden == false` AND
+    `crossing_agreed == true` AND `entity:sealed_crate.location ==
+    entity:bar`.  Result: the player and Berrin lug the crate out of
+    the tavern.  `set_player_location` to `dock`; set
+    `sealed_crate.location = room:dock`; set `berrin.location =
+    room:dock`; set `ferry_lantern.lit = true` (Berrin hops aboard
+    and lights it — atmospherics).  Narrate accordingly.
+  - **`move_crate_to_ferry`** — availability: `crossing_agreed ==
+    true` AND `entity:sealed_crate.location == room:dock`.  Result:
+    the player and Berrin lug the crate aboard: set
+    `sealed_crate.location = entity:ferry` (this physically ungates
+    the `board_ferry` exit — direct game logic, no tracking flag).
+    Narrate accordingly.
+  - Attempting to shift the crate before `crossing_agreed` is
+    rebuffed in narration (Marta won't have her side of the stash
+    manhandled, and the player can't move it alone).
 - **Contained entities:** none (sealed; never opened in this module).
 - **On-Examine Effects:** *any examination* (once unhidden) —
   stenciled with a chandler's mark, rope-sealed, heavy.  Marta
@@ -754,12 +822,92 @@ Checked continuously.
 
 ### `ferry` — "the marsh ferry" (type: `feature`)
 
-- **Location:** `dock`, lashed to the pier.
+- **Location:** spans `dock`, `mid_marsh`, and `far_shore` — it is
+  present throughout the endgame, so its contents travel with it
+  (see Errata, item 3).
+- **Contained entities:** `rope_end`, `ferry_lantern` (and
+  `sealed_crate`, once loaded).
 - **Special interactions:** none (boarding is the `board_ferry`
-  exit; loading the crate is the crate's `move_crate` interaction).
+  exit; loading is the crate's `move_crate_to_*` interactions).
 - **On-Examine Effects:** *any examination* — flat-bottomed,
   pole-driven, damp-heavy; crossing a black marsh in fog takes an
   experienced hand.  Flavor reinforcing the objective.
+
+### `ferry_lantern` — "pole lantern" (type: `feature`)
+
+- **Location:** in `ferry`.
+- **State fields:**
+  - `lit` (boolean, initial `false`) — lit by Berrin when the crate
+    is carried out (see `move_crate_to_dock` / `begin_crossing`).
+- **On-Examine Effects:** *any examination* — a tin pole-lantern;
+  once lit, its small glow is the only steady light on the marsh.
+  Flavor.
+
+### `rope_end` — "rope end" (type: `item`)
+
+- **Location:** in `ferry` (the other end is attached to the ferry).
+- **Take Check:** overruled until the final approach — any attempt to
+  take it while `room:far_shore.approach_stage < 2` fails with a
+  hesitation narrative ("Even if you untie the ferry, there's no way
+  you can run it in the dark, across an unfamiliar marsh.").  Once
+  Berrin calls for the rope (`approach_stage >= 2`), the take
+  succeeds normally.  Repeatable (the player may retry after the
+  approach beat).  Carrying it gates the `exit_pier` exit.
+
+### `ghost_light` — "ghost light" (type: `feature`)
+
+- **Location:** `dock`.  Initially `hidden`.
+- **State fields:**
+  - `hidden` (boolean, initial `true`) — visible only during the
+    set-piece.
+  - `stage` (number, initial `0`) — beat counter for the appearance
+    sequence, advanced by the reactions below
+    (`increment_entity_state`).
+- **Reactions:**
+  - **`ghost_light_stirs`** (recurring): Trigger — turn end.
+    Condition — `stage == 0` AND `saw_ghost_light == false` AND the
+    `night_crossings` topic has been discussed in the current
+    dialogue (`topic:` condition domain — i.e. the player is talking
+    with Fen).  Consequences — a pale light kindles far out on the
+    water; Fen draws attention to it: set `hidden = false`, narrate,
+    `increment_entity_state` `ghost_light.stage +1`.
+  - **`ghost_light_beckons`** (recurring): Trigger — turn end.
+    Condition — `stage == 1` AND `hidden == false`.  Consequences —
+    the light bobs twice, as though beckoning (narration only — this
+    beat proceeds even if the player broke off the conversation to
+    point at the light).  Increment `stage`.
+  - **`ghost_light_winks_out`** (recurring): Trigger — turn end.
+    Condition — `stage == 2`.  Consequences — the light winks out as
+    mysteriously as it appeared; Fen shakes his head and mutters
+    something pensively: set `hidden = true`, set flag
+    `saw_ghost_light = true`, increment `stage` (terminal).
+- **On-Examine Effects:** *any examination* (while visible) — a
+  pale, sourceless light over black water, neither lantern nor boat.
+  Flavor.  All other interaction attempts (hailing it, throwing
+  something, wading toward it) have no authored success — the GM
+  adjudicates them as failures; wading in is `enter_water` (§1F).
+
+### `ghost_lights_mid_marsh` — "ghost lights" (type: `feature`)
+
+- **Location:** `mid_marsh`.  Initially `hidden`; unhidden by
+  `crossing_beat_3`.
+- **On-Examine Effects:** *any examination* (while visible) — a
+  scattered multitude of pale lights on the black water, pacing the
+  ferry at a distance.  Flavor.
+
+### `ghost_lights_shore` — "ghost lights" (type: `feature`)
+
+- **Location:** `far_shore`.  Initially `hidden`; unhidden by
+  `approach_begins`.
+- **On-Examine Effects:** *any examination* (while visible) — the
+  lights have followed the ferry; they hang over the water behind
+  you, watching.  Flavor.
+
+### `pier` — "rotting pier" (type: `feature`)
+
+- **Location:** `far_shore`.
+- **On-Examine Effects:** *any examination* — slick, half-rotted
+  planks and a barnacled mooring post; solid ground beyond.  Flavor.
 
 ### `peat_fire` — "peat fire" (type: `feature`)
 
@@ -783,23 +931,35 @@ ID cross-check done: all room, entity, flag, reaction, interaction,
 dialogue-path, and topic IDs above are snake_case and consistent.
 Assignments reviewed against the Step 1 checklist:
 
-- Win/loss: win is global (`crossing_complete`); loss is global
-  (`ferryman_lost`) plus the engine-default HP death (not listed).
+- Win/loss: the win is route-specific (the `exit_pier` exit →
+  `muddy_track`'s `berrin_vanishes` room reaction, inline
+  `game_over`).  Losses: `violence_ends_it` (global reaction
+  mechanic — an entity cannot react to its own death) and the
+  route-specific `enter_water` room interactions (inline
+  `game_over`).  Engine-default HP death is not listed.
 - No encounters or combat: all NPCs have no combat stats by design
   (Errata, item 4).
 - Every NPC with shiftable attitude has bounds, per-turn cap, and
   initial value noted (Berrin, Marta); frozen attitude noted (Fen).
 - Every NPC-divulged info piece has either a dialogue path or a
   will-reveal topic ID, and a global knowledge flag where applicable.
-- The only hidden entity (`sealed_crate`) has a reveal mechanism
-  (Marta's `crate_concern` topic).
-- Gated exit (`board_ferry`) has explicit gating flags and a refusal
-  behavior; one-way exits (`board_ferry`, `far_shore_ahead`) have a
-  narrative reason for no return.
-- `heard_janis_name` → Marta's `janis_payout` → `knows_janis_link` →
-  Berrin's `confront_janis`: the cross-NPC chain is fully flag-wired.
-- Scripted mid-dialogue event (`ghost_light_appears`) uses the
-  `topic:` condition domain, gated to fire once, only in dialogue.
+- Every hidden entity (`sealed_crate`, `ghost_light`,
+  `ghost_lights_mid_marsh`, `ghost_lights_shore`) has a planned
+  unhide mechanism (Marta's topic or the `bar` examination; the
+  ghost-light beat reactions; the crossing and approach beats).
+- Gated exits: `board_ferry` (flags + the crate's physical location)
+  and `exit_pier` (approach stage + `inventory:rope_end`), both with
+  refusal behaviors; one-way exits (`board_ferry`, `exit_pier`) have
+  narrative reasons for no return.
+- `heard_janis_name` → (Marta's `janis_payout` → `knows_janis_link`)
+  → Berrin's `confront_janis`, or `heard_janis_name` alone →
+  `bluff_janis`: both routes to `berrin_confessed` are fully wired.
+- Scripted sequences use numeric state fields advanced by
+  `increment_room_state` / `increment_entity_state`
+  (`ghost_light.stage`, `mid_marsh.crossing_stage`,
+  `far_shore.approach_stage`) — no boolean flag chains.  The first
+  ghost-light beat uses the `topic:` condition domain, so it can
+  only fire in Fen's dialogue.
 
 ### Errata (deviations and interpretations)
 
@@ -812,33 +972,39 @@ Assignments reviewed against the Step 1 checklist:
    through to him"; for NPC-initiated-dialogue coverage, Fen also
    hails the player on first stepping onto the dock (`trigger_dialogue`,
    with a `greeted` guard).  `scenario.md` amended with the greeting.
-3. **Two transitional rooms added.**  The scenario says "just two
-   locations", but the endgame crossing needs somewhere to happen:
-   `mid_marsh` (lights track the ferry) and `far_shore` (Berrin
-   vanishes; the win).  Both are one-way transitions, not explorable
-   spaces.  Berrin is narrated aboard but is not moved room-to-room
-   in hard state until `berrin_vanishes` clears him — simplest
-   wiring, and the player has no meaningful interaction targets
-   mid-crossing.
-4. **No combat or aggro.**  Unlike earlier drafts of this fixture,
-   no NPC has combat stats or an attitude-floor aggro trigger; it
-   would cut against the scene's melancholy tone.  Talk-in-combat
-   rejection is already covered by `test_ambush_alley.py`
-   (`hold_and_talk_rejected`).  The `ferryman_lost` loss condition
-   backstops the player attacking Berrin.
+3. **Transitional and epilogue rooms added.**  The scenario says
+   "just two locations", but the endgame needs somewhere to happen:
+   `mid_marsh` (the crossing), `far_shore` (the pier approach), and
+   `muddy_track` (the winning epilogue).  All are one-way
+   transitions, not explorable spaces.  Berrin travels through them
+   as a **follower** (`following = true` from `begin_crossing`) —
+   the engine synthesizes followers as present in the player's room,
+   so he stays talkable mid-crossing and no NPC location juggling is
+   needed.  The `ferry` is a multi-room feature spanning
+   `dock`/`mid_marsh`/`far_shore`, so its contents (rope, lantern,
+   crate) travel with it automatically.
+4. **No combat or aggro.**  No NPC has combat stats or an
+   attitude-floor aggro trigger; combat would cut against the scene's
+   melancholy tone.  Attacking any living NPC kills them by the
+   default non-combat handling and fires the `violence_ends_it`
+   loss.  Talk-in-combat rejection is covered separately by
+   `test_ambush_alley.py` (`hold_and_talk_rejected`).
 5. **"The knowledge that Janis was his accomplice" mechanized.**
    The scenario's objective leaves where the player learns the
    accomplice link implicit.  Mapped to Marta's attitude-5
    `janis_payout` topic, additionally gated on Fen's `heard_janis_name`
    blurt — so both NPCs must be worked, in either order, before
-   `confront_janis` unlocks.
+   `confront_janis` unlocks.  The `bluff_janis` path (name-drop plus
+   a hard CHA check) provides the alternate route for a player who
+   skips Marta's ladder.
 6. **"After exhausting all his dialogue" mechanized** as: Fen's
    `fen_departs` reaction fires on `dialogue.ended` only once all
    three of his reveal flags are set.  If the player leaves early,
    Fen stays put and the conversation can be resumed later.
 7. **Player stats unspecified by the scenario** — defaults chosen in
    §1A (Fighter 3, CHA 12) so persuasion DCs land in the 50–65%
-   band; noted for the post-task report.
+   band.  No initiative modifier or unarmed damage is specified;
+   5e-flavored defaults will be needed if combat stats are written.
 
 ### Conversation subsystem coverage (fixture purpose)
 
@@ -853,13 +1019,131 @@ Assignments reviewed against the Step 1 checklist:
 | Will-reveal: flag-gated / cross-NPC | `janis_payout` (needs `heard_janis_name`), `lights_malevolent`, `janis_blurt` (need `saw_ghost_light`), `janis_vanishing` (needs `berrin_confessed`) |
 | Will-reveal side effects | `crate_concern` unhides the crate (`set_entity_state`); all set knowledge flags |
 | Dialogue path: refusal/branch by condition | `ask_crossing_cold` vs `convince_crossing` |
-| Dialogue path: no-check narrative path | `confront_janis` |
-| Dialogue path: CHA check, repeatable | `press_crate`, `convince_crossing` |
-| Dialogue path: adjust_attitude on outcomes | all of Berrin's paths |
-| Authored lie (narration, no state change) | `bluff_janis`; Berrin's cold-refusal persona |
+| Dialogue path: no-check narrative path | `confront_janis`, `convince_crossing` |
+| Dialogue path: CHA check, repeatable | `bluff_janis` (DC 14) |
+| Dialogue path: adjust_attitude on outcomes | `bluff_janis` failure, `confront_janis` success |
+| Authored lie (narration, no state change) | `bluff_janis` failure branch; Berrin's cold-refusal persona |
 | NPC-initiated dialogue (`trigger_dialogue`) | `fen_speaks_first` |
-| Scripted mid-dialogue event (`topic:` domain) | `ghost_light_appears` |
+| Scripted mid-dialogue event (`topic:` domain) | `ghost_light_stirs` (beat 1 of the ghost-light set-piece) |
+| Multi-beat scripted sequences (increments) | `ghost_light` (3 beats), `mid_marsh` crossing (5 beats), `far_shore` approach (2 beats) |
 | `dialogue.ended` reaction | `fen_departs` |
 | Dead-NPC talk rejection | Old Wellington (`alive: false`) |
+| Follower NPC mid-dialogue presence | Berrin during the crossing (`following`) |
 | Knowledge-scope discipline (judge-checked) | all three NPCs' Knowledge blocks |
 | Stall / switching / memory archival | emergent from multi-NPC, multi-visit flow; asserted via harness snapshots, no authoring needed |
+
+---
+
+## Step 2 Revisions (deviations found while building the entities block)
+
+1. **Player entity declared in `corpus.json`.**  Per §2E, a minimal
+   `player` entity (type + description) is declared, matching the
+   bag-of-holding precedent (the combat fixtures omit it and rely on
+   `default-player.json`, which arrives in Step 5).
+2. **Pure-flavor On-Examine Effects folded into descriptions.**  The
+   §1G "flavor" examination entries for `ferry`, `ferry_lantern`,
+   `ghost_light`, `ghost_lights_mid_marsh`, `ghost_lights_shore`,
+   `pier`, `peat_fire`, `fens_lantern`, and `old_wellington` have no
+   mechanical effect, so they were merged into the entities'
+   `description` fields (which the GM narrates ordinary examinations
+   from) rather than authored as `on_examine` events.  Only the
+   effect-bearing examination — `bar`'s `spot_crate` reveal — is an
+   actual `on_examine` event.
+3. **`bluff_janis` gained an availability guard.**  The path's
+   condition is `heard_janis_name == true` AND `berrin_confessed ==
+   false` (the latter not in §1G): once Berrin has confessed, the
+   bluff route is moot and path matching should fall through to
+   `convince_crossing`.
+4. **`rope_end` take gate uses the always-fail idiom.**  Per §2C's
+   "untakeable while a condition holds" pattern: `gating` on
+   `unless: room:far_shore.approach_stage >= 2`, with a `roll`
+   check at threshold 0.0 (repeatable) and the hesitation narrative
+   as its `failure`.
+5. **`fen_speaks_first` carries no narration.**  Its effect is
+   `trigger_dialogue: self` plus setting `fen.greeted`; the greeting
+   itself is left to the GM's dialogue handling.
+6. **No entity `on_examine` for hidden-only flavor.**  `ghost_light`
+   and the `ghost_lights_*` entities are examinable only while
+   unhidden, so no visibility condition was needed anywhere.
+7. **Deferred to later steps (no map change needed):** rooms, exits,
+   and room reactions/beats (`enter_water`, `begin_crossing`,
+   `crossing_beat_*`, `approach_*`, `berrin_vanishes`, the
+   `common_room` rigorous-examine hint) to Step 3; the
+   `violence_ends_it` reaction mechanic to Step 4 (already in §1E);
+   `default-player.json` to Step 5; `soft-state.json` content to
+   Step 6 (a minimal `{}` stub exists so
+   `scripts/validate_adventure.py` runs).
+
+---
+
+## Step 3 Revisions (deviations found while building the rooms block)
+
+1. **`board_ferry` is a visible exit with an always-fail
+   `traversal_check`**, not a condition-hidden exit.  Per §3C, a
+   `condition` exit is *hidden* until true, which would silently
+   swallow boarding attempts; the Preamble calls for an authored
+   refusal ("the ferry is lashed tight…").  Implementation:
+   `skip_check_if` on the ready condition (`crossing_agreed` AND
+   `entity:sealed_crate.location == entity:ferry`), with a `roll`
+   check at threshold 0.0 (repeatable) whose `failure` carries the
+   refusal narration.  `exit_pier`, by contrast, uses a plain
+   `condition` (hidden until ungated) — its gating is guided by
+   Berrin's scripted instruction, so no refusal text is needed.
+2. **Room flavor examinations folded into descriptions.**  The §1F
+   "any examination" flavor entries for `dock`/`mid_marsh`/
+   `far_shore`/`muddy_track` were merged into room descriptions
+   (same consolidation as Step 2, item 2).  The only authored room
+   `on_examine` is `common_room`'s rigorous-only hint about Berrin's
+   fear (ambiguity resolved as *rigorous*: it is an inference drawn
+   from watching him, not a glance).
+3. **Validator extended for scripted transitions.**  The
+   `mid_marsh` → `far_shore` move is scripted
+   (`set_player_location` in `crossing_beat_5`), so the exit-graph
+   reachability check in `scripts/validate_adventure.py` reported
+   `far_shore`/`muddy_track` as unreachable.  The check now also
+   follows `set_player_location` targets in room reactions and
+   interactions.  bag-of-holding validation is unaffected (still
+   passes with its pre-existing warning).
+4. **`berrin_vanishes` clears `following` explicitly** (in addition
+   to `location: null`, whose placement handling would stop the
+   follow anyway) — belt-and-braces, no behavioral difference.
+5. **Win `trigger_id` is `crossing_complete`** (the retired
+   game-over mechanic's ID, repurposed as the inline
+   `Result.game_over` trigger in `berrin_vanishes`); the drowning
+   losses share trigger_id `enter_water`.
+
+---
+
+## Step 4 Revisions (deviations found while building mechanics and stats)
+
+1. **`violence_ends_it` implemented as one reaction-only mechanic**
+   with two reactions (`violence_witnessed` for
+   `common_room`/`dock`, `violence_on_ferry` for
+   `mid_marsh`/`far_shore`), both firing on `entity_state.changed`
+   (`alive` → `false` for any of the three living NPCs) and ending in
+   inline `Result.game_over` (lose, trigger_id `violence_ends_it`).
+   No top-level `game_over_conditions` are used anywhere in the
+   module: the win is inline in `berrin_vanishes` and the drowning
+   losses are inline in `enter_water`.
+2. **Stats block added** (`stats.system: "5e"` with the six ability
+   scores), matching the other fixtures.
+
+## Step 5 Revisions (deviations found while building default-player.json)
+
+1. **AC 13 sourced to studded leather.**  §1A says "leather + DEX",
+   but leather (11) + DEX +1 = 12.  AC 13 implies studded leather
+   (12) + DEX +1; only the numeric `ac` field is declared (armor is
+   not modelled as an entity, matching the combat fixtures).
+2. **No `hard-state.json` override.**  Every initial value (Old
+   Wellington's `alive: false`, the crate's `hidden`, stage counters,
+   Fen's `greeted`) derives from corpus declarations and
+   `flags_declared`; verified by loading the module and inspecting
+   the generated world state.  (The combat fixtures carry a
+   hard-state override only because they seed non-default states like
+   a pre-following mule.)
+
+## Step 6 Revisions (deviations found while building soft-state.json)
+
+1. **`soft-state.json` is the full default serialization** (empty
+   inventories, notes, knowledge, and dialogue state), replacing the
+   `{}` stub from Step 2 — no seeded soft content was needed.
