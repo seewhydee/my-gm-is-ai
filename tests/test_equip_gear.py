@@ -619,10 +619,6 @@ class TestImprovisedWeapon:
         """Dropping (soft_inventory_remove) the wielded source item must
         clear the improvised weapon: the player cannot keep wielding an
         object they no longer carry."""
-        from mgmai.engine.post_validate import post_validate_soft_items
-        from mgmai.engine.resolver import SoftItemProposal
-        from mgmai.models.actions import SoftItemAdjudication
-
         soft = state_manager.soft_state
         soft.soft_inventory.append("chair leg")
         state_manager.apply_soft_patches([SoftStatePatch(
@@ -666,7 +662,7 @@ class TestImprovisedWeapon:
             source_id="player", target_id=room_id, count=1,
             accepted=True, justification="drops it on the floor",
         )
-        applied, rejected, hard_changes = post_validate_soft_items(
+        post_validate_soft_items(
             [adj], [prop], state_manager.hard_state, soft, state_manager.corpus
         )
         assert soft.improvised_weapon is None

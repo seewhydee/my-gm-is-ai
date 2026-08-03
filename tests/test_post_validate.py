@@ -375,7 +375,6 @@ class TestPostValidateNotes:
         assert "reason" in rejected[0]["reason"]
 
     def test_apply_post_validation_applies_notes(self, state_manager):
-        hard = state_manager.hard_state
         soft = state_manager.soft_state
         notes = [
             SoftStateNote(

@@ -90,9 +90,8 @@ class SoftStateNote(BaseModel):
                     "room_note must not carry entity_id; it attaches "
                     "to the player's current room"
                 )
-        elif self.field == "entity_note":
-            if self.entity_id is None:
-                raise ValueError("entity_note requires entity_id")
+        elif self.field == "entity_note" and self.entity_id is None:
+            raise ValueError("entity_note requires entity_id")
         return self
 
 

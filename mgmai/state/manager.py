@@ -36,6 +36,7 @@ from mgmai.models.corpus import (
 )
 from mgmai.models.hard_state import HardGameState, PlayerState
 from mgmai.models.soft_state import (
+    ImprovisedWeapon,
     SoftGameState,
     SoftStateNote,
     SoftStatePatch,
@@ -1723,7 +1724,7 @@ class StateManager:
         # inventory (soft_inventory_remove), the weapon cannot persist.
         reconcile_improvised_weapon(self.soft_state)
 
-    def _build_improvised_weapon(self, value: dict[str, Any]) -> "ImprovisedWeapon":
+    def _build_improvised_weapon(self, value: dict[str, Any]) -> ImprovisedWeapon:
         """Build an ImprovisedWeapon from a ruling-GM patch value.
 
         The patch supplies a size ``keyword`` plus optional descriptive
@@ -1731,7 +1732,6 @@ class StateManager:
         ``damage_expr``/``hit_bonus`` stats.
         """
         from mgmai.engine.systems import get_system_for_corpus
-        from mgmai.models.soft_state import ImprovisedWeapon
 
         keyword = value.get("keyword")
         stats = (
@@ -1745,12 +1745,13 @@ class StateManager:
             )
         damage_expr, hit_bonus = stats
         source_item = value.get("source_item")
-        if source_item is not None:
-            if self.soft_state is None or source_item not in self.soft_state.soft_inventory:
-                raise ValueError(
-                    f"improvised weapon source_item {source_item!r} "
-                    "not in soft inventory"
-                )
+        if source_item is not None and (
+            self.soft_state is None or source_item not in self.soft_state.soft_inventory
+        ):
+            raise ValueError(
+                f"improvised weapon source_item {source_item!r} "
+                "not in soft inventory"
+            )
         return ImprovisedWeapon(
             keyword=keyword,
             damage_expr=damage_expr,

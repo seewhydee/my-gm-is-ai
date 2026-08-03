@@ -56,7 +56,7 @@ class FiveESystem(ResolutionSystem):
     #: Improvised weapon size keywords → (damage_expr, hit_bonus).
     #: 5e SRD: an improvised weapon deals about 1d4, or matches a similar
     #: real weapon; improvised attacks never add proficiency.
-    IMPROVISED_WEAPON_STATS = {
+    IMPROVISED_WEAPON_STATS: ClassVar[dict[str, tuple[str, int]]] = {
         "light": ("1d4", 0),
         "standard": ("1d6", 0),
         "heavy": ("1d8", 0),

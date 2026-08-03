@@ -813,7 +813,6 @@ class TestSoftContentFlow:
 
     def test_hard_give_to_living_npc_deferred_then_accepted(self, state_manager):
         hard = state_manager.hard_state
-        soft = state_manager.soft_state
         hard.player.location = "bag_floor"
         hard.player.inventory["toenail_sword"] = 1
 
