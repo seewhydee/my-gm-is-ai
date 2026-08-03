@@ -37,13 +37,11 @@ class SoftItemAdjudication(BaseModel):
     count: int = 1
     justification: str | None = None
 
-class KnowledgeTags(BaseModel):
-    npc_revealed: dict[str, list[str]] | None = None
-
 class NarrationOutput(BaseModel):
     narration: str
     npc_response: str | None = None
-    knowledge_tags: KnowledgeTags | None = None
+    # Map of NPC id -> will_reveal topic ids the NPC revealed this turn.
+    knowledge_tags: dict[str, list[str]] | None = None
     attitude_changes: dict[str, AttitudeChange] | None = None
     conversation_note: str | None = None
     terminate_chain: bool = False

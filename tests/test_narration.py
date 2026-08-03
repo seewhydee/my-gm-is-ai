@@ -17,7 +17,7 @@
 import pytest
 from pydantic import ValidationError
 
-from mgmai.models.narration import AttitudeChange, KnowledgeTags, NarrationOutput
+from mgmai.models.narration import AttitudeChange, NarrationOutput
 
 
 class TestAttitudeChange:
@@ -53,17 +53,6 @@ class TestAttitudeChange:
             })
 
 
-class TestKnowledgeTags:
-    def test_npc_revealed(self) -> None:
-        k = KnowledgeTags.model_validate({
-            "npc_revealed": {
-                "korbar": ["padlock_mechanism", "secret_compartment"],
-            },
-        })
-        assert k.npc_revealed is not None
-        assert k.npc_revealed["korbar"] == ["padlock_mechanism", "secret_compartment"]
-
-
 class TestNarrationOutput:
     def test_basic(self) -> None:
         n = NarrationOutput.model_validate({
@@ -85,14 +74,11 @@ class TestNarrationOutput:
         n = NarrationOutput.model_validate({
             "narration": "Korbar leans in close. 'See that padlock? It's got a mechanism...'",
             "knowledge_tags": {
-                "npc_revealed": {
-                    "korbar": ["padlock_mechanism"],
-                },
+                "korbar": ["padlock_mechanism"],
             },
         })
         assert n.knowledge_tags is not None
-        assert n.knowledge_tags.npc_revealed is not None
-        assert n.knowledge_tags.npc_revealed["korbar"] == ["padlock_mechanism"]
+        assert n.knowledge_tags["korbar"] == ["padlock_mechanism"]
 
     def test_with_attitude_changes(self) -> None:
         n = NarrationOutput.model_validate({
@@ -114,9 +100,7 @@ class TestNarrationOutput:
             "narration": "'Aye, I know the way out,' Korbar whispers, 'but it'll cost ya.'",
             "npc_response": "Aye, I know the way out, but it'll cost ya.",
             "knowledge_tags": {
-                "npc_revealed": {
-                    "korbar": ["escape_route"],
-                },
+                "korbar": ["escape_route"],
             },
             "attitude_changes": {
                 "korbar": {

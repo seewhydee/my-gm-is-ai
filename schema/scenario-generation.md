@@ -269,6 +269,20 @@ Revisit the room list, and add the following info to each room:
   Be specific: e.g., if a secret door appears when a lever is pulled,
   state the lever's entity ID, the interaction ID for pulling, etc.
 
+  **The dummy exit pattern.** When the player can move into a place or
+  situation that is not really a "room" in the scenario — leaping into
+  water, stepping through a portal, jumping aboard a departing wagon —
+  model it as an exit leading to a small destination room, even a
+  contentless "dummy" one, and put the consequences in that room's
+  `room.entered` reaction (narration, state changes, inline game-over,
+  etc.).  Prefer this over a room interaction whenever the player's
+  intent is fundamentally *movement*: the ruling GM classifies "jump
+  into the lake" as a move action far more reliably than it maps such
+  commands to a room interaction, and traversal/entry events give the
+  consequence a clean, deterministic hook.  The destination room can
+  be a set-piece in its own right or a thin shell existing only to
+  receive the transition.
+
 - **Entities present** — list IDs of every entity present in the room
   at start (from §1C), including hidden ones (e.g., lurking thief).
 

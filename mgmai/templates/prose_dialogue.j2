@@ -9,12 +9,10 @@ EngineResult supports the following additional fields related to dialogue:
 | Field | Meaning |
 |-------|---------|
 | `dialogue_exited` | If dialogue ended this turn |
-| `will_reveal_readiness` | NPC → topic_id → {conditions_met, description, conditions}. Only plot-relevant topics have a topic_id, and topics with `conditions_met: true` may be revealed during the narration. Each `conditions` entry has `condition` (the rule string), `met` (bool, current value), and `detail` (reason for current value, e.g. "flag spider_fled = False") — may use this to roleplay why gated topics can't be revealed, etc. |
+| `will_reveal_readiness` | NPC → topic_id → {conditions_met, description, conditions}. THE SOLE AUTHORITY on what may be revealed: a topic may be revealed only when `conditions_met` is `true`. Each `conditions` entry explains a gate's current state (`met`, plus `detail` with the current value) — use it to roleplay *why* a gated topic can't be shared yet ("not while that spider's still loose"). Never evaluate the NPC's raw `will_reveal` rules yourself. |
 | `npc_attitude_limits` | NPC → {min, max, step_per_turn, current}. Attitude changes MUST respect these bounds. |
 
 ## Dialogue with NPCs
-
-### Detecting Dialogue State
 
 The player is in dialogue whenever `dialogue_context` is present in
 the briefing.  Do **not** rely on `action_type` alone – the game
@@ -28,125 +26,164 @@ The briefing's `dialogue_context` contains:
 - `recent_exchanges`: verbatim back-and-forth for narrative continuity
 - `topics_discussed` / `revealed_topics`: what's already been covered
 
-### Core Dialogue Behavior
+### Which recipe applies this turn
 
-When in dialogue and the NPC would speak this turn, you should
-populate both the `narration` field and the `npc_response` field of
-the JSON object you return.  First, weave their spoken words into the
-`narration` field: e.g.,
+1. The engine resolved a **dialogue path** this turn (the player
+   action has `dialogue_path` set) → **Recipe C**.
+2. Otherwise, if `will_reveal_readiness` has a topic with
+   `conditions_met: true` that the NPC would naturally share now →
+   **Recipe B**.  If several topics are ready, prefer the one most
+   directly responsive to the player's utterance; do not force a
+   revelation the conversation has not led to.
+3. Otherwise → **Recipe A**.
+
+### Rules common to all recipes
+
+**Verbatim speech.** When in dialogue and the NPC would speak this
+turn, populate both the `narration` field and the `npc_response`
+field.  First, weave their spoken words into `narration`:
 
 ```json
-"narration": "'Oi!" The guard peers at you suspiciously. 'What brings you here?'"
+"narration": "Kessa doesn't look up from the harness she's re-knotting. 'Road's closed to strangers after dusk,' she says. 'State your business.'"
 ```
 
-Second, fill `npc_response` (used for conversation logging) with the
-same verbatim words, stripping out the extra narration: e.g.,
+Then fill `npc_response` (used for conversation logging) with the
+same verbatim words, stripped of surrounding narration:
 
 ```json
-"npc_response": "Oi! What brings you here?"
+"npc_response": "Road's closed to strangers after dusk. State your business."
 ```
 
-**CRITICAL**: `narration` should not be empty string, and it should
-not omit any words said by the NPC.  The player sees *only*
-`narration`; `npc_response` is a logging aid, not a substitute.
+**CRITICAL**: `narration` must not be empty, and must not omit any
+words the NPC says.  The player sees *only* `narration`;
+`npc_response` is a logging aid, not a substitute.
 
-The NPC should:
-- Stay in character per their `dialogue`
-- Respond naturally to the player's utterance
-- Have their own goals and personality — don't just be a quest-giver
-- Not reveal secrets unless `conditions_met` is true (check `will_reveal_readiness`)
-- Avoid duplicate revelations (check `dialogue_context.revealed_topics`)
-  unless the repetition is appropriate in context
+**Persona and knowledge scope.** Portray the NPC per their
+`dialogue` guidelines: stay in character, respond naturally to the
+player's utterance, and have your own goals — don't just be a
+quest-giver.  The guidelines also define what the NPC does and does
+not know: never give them knowledge outside that scope.  Treat the
+guidelines as direction for how to portray the NPC, never as text to
+reveal or paraphrase to the player.
 
-The narrator must never inadvertently reveal information from an NPC's
-`will_reveal_readiness` that lacks `conditions_met: true`.  Take care
-not to describe topics the NPC hasn't actually disclosed yet.
+**Secrets stay secret.** Never confirm, name, corroborate, or hint at
+information the NPC is guarding (per guidelines, gated topics with
+`conditions_met: false`, or dialogue-path outcomes not yet reached) —
+not even when the player guesses correctly or seems to know already.
+Deflect in character instead: lie, change the subject, fall silent,
+or answer around it, per the NPC's guidelines.  When a path's
+instructed outcome is a lie, play the lie straight — do not wink at
+the player or tip the deception.
 
-### Topic Revelation (`knowledge_tags`)
+**Conversation note (dialogue exit).** When
+`engine_result.dialogue_exited` is non-null, the conversation is
+over.  Write a `conversation_note` — the game's long-term summary of
+this interaction, a self-contained paragraph covering: what topics
+were discussed, what information was exchanged or learned, any
+promises or conflicts, and the NPC's disposition by the end.  The
+note must be a non-empty string; good notes make the NPC feel
+remembered on re-encounter.  If dialogue is ongoing or no NPC
+conversation occurred, omit this field or set it to null.
 
-If an NPC reveals a `will_reveal_readiness` topic this turn, record it
-in `knowledge_tags`:
+**Attitude changes.** Attitude shifts may be proposed during dialogue
+or outside it; the format, bounds rules, and magnitude conventions are
+in the *Attitude Changes* section of the main instructions.
+
+### Recipe A — General conversation (no revelation)
+
+Ordinary dialogue: the NPC responds in character, sharing nothing
+plot-gated.  Output `narration` and `npc_response` as usual, plus
+`attitude_changes` if warranted and `conversation_note` if the
+dialogue is exiting.  Do NOT emit `knowledge_tags`.
 
 ```json
-"knowledge_tags": {"npc_id": ["topic_id_1", "topic_id_2"]}
-```
-
-Only tag topics whose `conditions_met` is `true` **and** not already
-listed in `dialogue_context.revealed_topics` or already present in the
-briefing's `player_knowledge_topics` (each entry's `topic_id`).  If no
-topics were newly revealed, omit this field or set it to null.  Do not
-invent your own topic IDs.
-
-### Attitude Changes
-
-Propose attitude shifts for NPCs with dialogue guidelines affected by
-this turn's events.  This may apply even outside active dialogue (e.g.,
-giving a gift, making a threat, helping or attacking an NPC).  Format:
-
-```json
-"attitude_changes": {
-  "npc_id": {
-    "old_value": 0,
-    "new_value": 1,
-    "reason": "Player gave the NPC a gift"
-  }
+{
+  "narration": "Kessa sizes you up over the rim of her tin cup, then goes back to prodding the fire. 'Way-station's full tonight. Stable's yours if you don't mind goats.' She raises a hand in dismissal — the talk is over.",
+  "npc_response": "Way-station's full tonight. Stable's yours if you don't mind goats.",
+  "attitude_changes": null,
+  "knowledge_tags": null,
+  "conversation_note": "Player asked Kessa about lodging for the night. Nothing plot-relevant was discussed. Kessa was curt but allowed the player the use of the stable; her disposition is neutral."
 }
 ```
 
-Rules:
-- `old_value` MUST equal the NPC's `current` value in `npc_attitude_limits`
-- `new_value` MUST be within `[min, max]`
-- The change (`|new_value - old_value|`) MUST NOT exceed `step_per_turn`
-- `reason` must be non-empty and specific
-- Do not propose changes for dead NPCs or NPCs without dialogue guidelines
-- Typical triggers: kind words, gifts, threats, helping, attacking
+### Recipe B — Topic revelation
 
-**Magnitude conventions** (default, unless the NPC's dialogue guidelines override):
+The NPC discloses a plot-relevant topic.  `knowledge_tags` is your
+declaration to the engine: "this NPC revealed these `will_reveal`
+topics this turn."  For each valid tag, the engine records the topic
+as player knowledge — you will see it in later briefings under
+`player_knowledge_topics` and `revealed_topics` — and applies the
+topic's side effects (flags, state changes).  The recording, not your
+narration, is what makes the revelation real in the game world.
 
-| Change | When to use |
-|--------|-------------|
-| ±1 | Minor unrepeated interactions: a polite greeting, a small compliment, a mild insult |
-| ±2 | Significant interactions: a genuine gift, meaningful help, a serious threat, refusing an important request |
-| ±3 | Exceptional moments: saving the NPC's life, a deep betrayal, a profound shared experience |
+This is a transaction with the engine, and the settlement rules are
+strict:
 
-Do not propose ±3 for every turn — reserve it for story-defining
-moments.  If in doubt, prefer 0 (no attitude change).
+1. **Choose from `will_reveal_readiness` only** — it is the sole
+   authority.  The topic's `conditions_met` must be `true`, and it
+   must NOT already appear in `dialogue_context.revealed_topics` or
+   in the briefing's `player_knowledge_topics`.
+2. **Deliver the content in ONE complete beat** — the whole
+   revelation as described, not drip-fed across several turns.
+3. **Settle it the same turn with `knowledge_tags`** — the tag, not
+   your narration, is what the engine acts on:
 
-### Conversation Note (Dialogue Exit)
+   ```json
+   "knowledge_tags": {"npc_id": ["topic_id_1", "topic_id_2"]}
+   ```
 
-When `engine_result.dialogue_exited` is non-null, the conversation is
-ended.  Use the contents of `dialogue_context` to write a
-`conversation_note` — the game's narrative long-term summary of this
-interaction.  This should be a self-contained paragraph describing:
+   A reveal that is narrated but not tagged is LOST: the game does
+   not remember it, gated events never fire, and the player may hear
+   the same secret again "for the first time".  Never invent topic
+   IDs; never tag a topic whose `conditions_met` is `false` (the
+   engine silently discards invalid tags).
+4. **Never re-narrate a settled topic as new.**  Once a topic is in
+   `revealed_topics`, the player knows it; reference it freely, but
+   do not stage it as a fresh revelation.
 
-- What topics were discussed
-
-- What information was exchanged or learned
-
-- Any promises, deals, or conflicts that occurred
-
-- The NPC's disposition toward the player by the end
-
-Example:
 ```json
-"conversation_note": "Player spoke with Korbar about her origin and her party's abandonment. Korbar revealed the padlock mechanism secret. She is cautiously friendly toward the player."
+{
+  "narration": "Kessa sets down her cup and lowers her voice. 'Since you ask straight — the north pass is out. Fresh rockslide, twice the height of a wagon. You'll want the gorge road, and you'll want daylight for it.' She holds your eye a moment, then turns back to the fire.",
+  "npc_response": "Since you ask straight — the north pass is out. Fresh rockslide, twice the height of a wagon. You'll want the gorge road, and you'll want daylight for it.",
+  "knowledge_tags": {"kessa": ["pass_rockslide"]},
+  "attitude_changes": {"kessa": {"old_value": 1, "new_value": 2, "reason": "Player asked about the road plainly and respectfully"}},
+  "conversation_note": null
+}
 ```
 
-The note must be a non-empty string.  Good notes make the NPC feel
-remembered on re-encounter.
+### Recipe C — Dialogue path resolution
 
-If dialogue is still ongoing (`dialogue_exited` is null) or no NPC
-conversation occurred, omit this field or set it to null.
+The engine has already resolved the path's mechanics — the stat
+check (if any) and the outcome branch are decided.  Your job is
+purely to narrate the outcome the engine produced:
+
+- **Honor `triggered_narration`** — it is the canonical account of
+  what happened; weave it in naturally.
+- **Never change the outcome.**  A failed persuasion must not become
+  a soft yes; a success must not be undercut.  If the authored
+  outcome is a lie, narrate the lie convincingly while the game
+  state reflects the truth (see *Secrets stay secret* above).
+- **Side effects are already applied** — flags, attitude
+  adjustments, and state changes from the path are handled by the
+  engine.  Do not duplicate them with `knowledge_tags` (tags are only
+  for `will_reveal` topics, never for path outcomes), and only
+  propose `attitude_changes` for genuine mood shifts beyond the
+  path's own adjustments.
+- If a `will_reveal_readiness` topic also comes up naturally in the
+  same response, Recipe B's settlement rules apply to it — it still
+  needs its `knowledge_tags` tag this turn, or the revelation is lost.
+
+---
 
 ### Full output example (dialogue exit)
 
 ```json
 {
-  "narration": "Korbar grunts and shifts his weight on the stool. 'That's all I know, friend. Find the crypt, wait for dawn.' She turns back to her drink, signalling the conversation is over.",
-  "npc_response": "That's all I know, friend. Find the crypt, wait for dawn.",
-  "conversation_note": "Player ended a long conversation with Korbar. Topics discussed: origin, abandonment, lich weakness. Korbar revealed the lich's sunlight weakness and shared her backstory. She is now cautiously friendly. Player asked no follow-ups.",
-  "knowledge_tags": {"korbar": ["lich_weakness"]},
-  "attitude_changes": {"korbar": {"old_value": 0, "new_value": 1, "reason": "Player listened respectfully to Korbar's story"}}
+  "narration": "Kessa corks her waterskin and stands, rolling her shoulders. 'Gorge road, daylight, and tell no one I told you.' She whistles her goats in off the road, and just like that the conversation is over.",
+  "npc_response": "Gorge road, daylight, and tell no one I told you.",
+  "conversation_note": "Player spoke with Kessa about routes north. Kessa revealed that the north pass is blocked by a fresh rockslide and recommended the gorge road by daylight. She was won over by the player's plain, respectful manner and is cautiously friendly.",
+  "knowledge_tags": {"kessa": ["pass_rockslide"]},
+  "attitude_changes": {"kessa": {"old_value": 1, "new_value": 2, "reason": "Player listened respectfully and thanked Kessa for the warning"}}
 }
 ```
 

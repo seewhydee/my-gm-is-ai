@@ -153,9 +153,8 @@ fisherman mending his net there.
 
 - He rambles; be patient with him.  Ask about the marsh, about the
   ferryman Berrin, and about the lights out on the water.
-- If a strange light appears over the marsh, react naturally — point
-  it out, hail it, or toss something toward it — then keep talking to
-  Fen.
+- If anything unusual happens while you are out there, respond to it
+  naturally, in character.
 - Keep the conversation going until he has said everything he seems to
   have to say, then say goodbye.
 """

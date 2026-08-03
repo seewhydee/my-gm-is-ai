@@ -778,3 +778,49 @@ class TestDialoguePathDegradation:
         assert len(llm.ruling_calls) == 1
         assert transcript.success is True
         assert transcript.ruled_action["dialogue_path"] == "sympathetic_ear"
+
+
+# ------------------------------------------------------------------
+# Briefing dialogue-path condition filtering
+# ------------------------------------------------------------------
+
+
+class TestDialoguePathFiltering:
+    """The briefing exposes only currently-available dialogue paths
+    (condition-gated ones filtered), so the ruling GM cannot select a
+    path whose conditions are unmet."""
+
+    def _berrin_paths(self, sm):
+        from mgmai.engine.utils import build_briefing_entity
+
+        ent = build_briefing_entity(
+            "berrin", 1, sm.hard_state, sm.soft_state, sm.corpus,
+        )
+        return set(ent.dialogue_paths)
+
+    def test_paths_filtered_by_flag_conditions(self, tmp_path) -> None:
+        from pathlib import Path
+
+        from mgmai.state.manager import StateManager
+
+        fixture = Path(__file__).resolve().parent / "integration" / "fixtures" / "drowned_lantern"
+        sm = StateManager(adventure_dir=str(fixture))
+
+        # Pre-leverage: only the cold-ask path is available.
+        assert self._berrin_paths(sm) == {"ask_crossing_cold"}
+
+        # With the name heard, the bluff route opens up.
+        sm.hard_state.flags["heard_janis_name"] = True
+        assert self._berrin_paths(sm) == {"ask_crossing_cold", "bluff_janis"}
+
+        # With the accomplice link known, the confront route opens too.
+        sm.hard_state.flags["knows_janis_link"] = True
+        assert self._berrin_paths(sm) == {
+            "ask_crossing_cold", "bluff_janis", "confront_janis",
+        }
+
+        # After the confession, cold-ask and bluff close and
+        # convince_crossing opens (confront stays available — it has no
+        # post-confession guard by design, only bluff does).
+        sm.hard_state.flags["berrin_confessed"] = True
+        assert self._berrin_paths(sm) == {"confront_janis", "convince_crossing"}

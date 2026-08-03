@@ -381,7 +381,7 @@ class TestRunTurn:
         prose = json.dumps({
             "narration": "Korbar tells you a secret.",
             "npc_response": None,
-            "knowledge_tags": {"npc_revealed": {"korbar": ["padlock_mechanism"]}},
+            "knowledge_tags": {"korbar": ["padlock_mechanism"]},
             "attitude_changes": None,
         })
         llm = FakeLLMClient(
@@ -461,7 +461,7 @@ class TestRunTurn:
         prose = json.dumps({
             "narration": "Korbar explains the padlock.",
             "npc_response": None,
-            "knowledge_tags": {"npc_revealed": {"korbar": ["padlock_mechanism"]}},
+            "knowledge_tags": {"korbar": ["padlock_mechanism"]},
             "attitude_changes": None,
         })
         llm = FakeLLMClient(

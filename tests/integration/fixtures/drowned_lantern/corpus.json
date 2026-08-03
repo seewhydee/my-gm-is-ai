@@ -397,17 +397,17 @@
         "attitude_limits": {"min": 0, "max": 0},
         "will_reveal": {
           "night_crossings": {
-            "description": "Fen reveals that Berrin took the ferry out at night, many times, with a stranger aboard — until a week ago.",
+            "description": "Fen reveals that Berrin took the ferry out at night, many times, with a stranger aboard — until a week ago. Deliver this as ONE complete rambling beat, not drip-fed across several turns. The turn this content is conveyed, it MUST be recorded in knowledge_tags as 'night_crossings' — an untagged reveal is lost.",
             "conditions": [],
             "set_flag": {"knows_night_crossings": true}
           },
           "lights_malevolent": {
-            "description": "Fen shares his belief that the marsh lights are not lanterns and not boats, that they are appearing more often, and that it is an ill omen.",
+            "description": "Fen shares his belief that the marsh lights are not lanterns and not boats, that they are appearing more often, and that it is an ill omen. Deliver this as ONE complete beat, and record it in knowledge_tags as 'lights_malevolent' the same turn — an untagged reveal is lost.",
             "conditions": ["flag:saw_ghost_light == true"],
             "set_flag": {"knows_lights_malevolent": true}
           },
           "janis_blurt": {
-            "description": "Rattled, Fen blurts that the stranger had a name — 'Janis', that's it — though a moment later he swears he never said it.",
+            "description": "Rattled, Fen blurts that the stranger had a name — 'Janis', that's it — though a moment later he swears he never said it. Deliver this as ONE complete beat, and record it in knowledge_tags as 'janis_blurt' the same turn — an untagged reveal is lost.",
             "conditions": ["flag:saw_ghost_light == true"],
             "set_flag": {"heard_janis_name": true}
           }

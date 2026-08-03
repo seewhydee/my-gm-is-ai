@@ -114,6 +114,10 @@ To target the current room itself in a player action (`examine`,
 | `round_number`, `initiative_order`, `current_actor` | Turn order state. |
 | `combatants` | Entries with `id`, `name`, `side`, `current_hp`, `max_hp`, `status_effects`, `engaged_with`, `impeded`, `impede_used`. `side` is `"party"` (the player and their allies) or `"enemy"` (hostiles); `engaged_with` lists combatants currently within melee reach; `impeded` means a pending obstacle delay will consume that combatant's next turn; `impede_used` means it has already been impeded this combat. |
 | `abilities`, `spell_slots`, `usable_items` | Same shapes as in `player_state`, but `abilities[].uses_remaining` tracks per-combat remaining uses. During combat these are the authoritative copies. |
+| `action_available`, `bonus_action_available`, `free_interaction_available` | The player's remaining per-turn budget (SRD 5.2.1): whether the action, the bonus action, and the one free object interaction are still unused this turn. The turn stays open after a resolved action while meaningful budget remains. |
+| `bonus_action_options` | IDs of the player's bonus-action abilities that are currently legal (uses/slot remaining, target available) — the only valid `use_ability` choices when the player wants to use their bonus action. |
+| `reaction_available` | Whether the player still has their reaction (e.g. an opportunity attack) this round. |
+| `off_hand_attack_available` | True when the player's Attack action this turn used a Light weapon and a different equipped Light weapon is available — a second `combat`/`attack` on this turn is then the bonus-action off-hand attack, not an illegal double-attack. |
 
 ## Worked Example
 
@@ -403,8 +407,12 @@ The Context Assembler builds the briefing each turn as follows:
     one `combatants` entry per combatant (with `side`, HP, status effects,
     and positioning: `engaged_with`, `impeded`, `impede_used`), plus
     `usable_items`, `abilities` (with per-combat remaining uses), and
-    `spell_slots`.  During combat these are the authoritative copies;
-    the corresponding `player_state` fields are omitted.
+    `spell_slots`.  Also the player's per-turn budget: `action_available`,
+    `bonus_action_available`, `free_interaction_available`,
+    `bonus_action_options`, `reaction_available`, and
+    `off_hand_attack_available` (see the `combat_state` table).  During
+    combat these are the authoritative copies; the corresponding
+    `player_state` fields are omitted.
 
 12. **Player input**: the verbatim text entered this turn.  For chained
     actions (see [actions.md](actions.md) §2.2), this is the original

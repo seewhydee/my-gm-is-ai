@@ -226,12 +226,12 @@ class TestParseProseOutput:
         raw = json.dumps({
             "narration": "Korbar reveals the secret.",
             "npc_response": "The lich is weak to sunlight.",
-            "knowledge_tags": {"npc_revealed": {"korbar": ["lich_weakness"]}},
+            "knowledge_tags": {"korbar": ["lich_weakness"]},
             "attitude_changes": None,
         })
         output = parse_prose_output(raw)
         assert output.knowledge_tags is not None
-        assert output.knowledge_tags.npc_revealed == {"korbar": ["lich_weakness"]}
+        assert output.knowledge_tags == {"korbar": ["lich_weakness"]}
 
     def test_with_attitude_changes(self) -> None:
         raw = json.dumps({

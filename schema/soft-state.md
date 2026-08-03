@@ -172,7 +172,7 @@ Call 2's `knowledge_tags`.
 
 | Trigger                                             | Engine action |
 |-----------------------------------------------------|---------------|
-| LLM Call 2 emits `knowledge_tags.npc_revealed`      | For each topic ID, the engine checks against the active NPC's `will_reveal` entries. If the topic exists and all its `conditions` are met, the engine applies the topic's `set_flag` and `set_entity_state` side effects, then appends a `KnowledgeEntry` to `player_knowledge`. |
+| LLM Call 2 emits `knowledge_tags` (NPC ID → topic IDs) | For each topic ID, the engine checks against the active NPC's `will_reveal` entries. If the topic exists and all its `conditions` are met, the engine applies the topic's `set_flag` and `set_entity_state` side effects, then appends a `KnowledgeEntry` to `player_knowledge`. |
 | Tag references unknown topic                        | Silently rejected. |
 | Tag references topic with unmet conditions          | Silently rejected. |
 | Duplicate topic ID (already in `player_knowledge`)  | Skipped (no duplicate entries). |

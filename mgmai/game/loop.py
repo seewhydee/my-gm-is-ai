@@ -362,8 +362,8 @@ class GameLoop:
                     prose.npc_response,
                 )
 
-            if prose.knowledge_tags and prose.knowledge_tags.npc_revealed:
-                for npc_id, topics in prose.knowledge_tags.npc_revealed.items():
+            if prose.knowledge_tags:
+                for npc_id, topics in prose.knowledge_tags.items():
                     for topic in topics:
                         track_topic(soft, topic)
 
@@ -375,7 +375,7 @@ class GameLoop:
                 soft.entity_notes.setdefault(npc_id, []).append(note)
 
         # 5. Post-validate knowledge_tags + attitude_changes + soft_items + notes
-        kt = prose.knowledge_tags.npc_revealed if prose.knowledge_tags else None
+        kt = dict(prose.knowledge_tags) if prose.knowledge_tags else None
         ac = dict(prose.attitude_changes) if prose.attitude_changes else None
         sia = list(prose.soft_item_adjudications) if prose.soft_item_adjudications else None
         notes = list(prose.soft_state_notes) if prose.soft_state_notes else None
@@ -581,6 +581,10 @@ class GameLoop:
             include_dialogue=(
                 briefing.dialogue_context is not None
                 or result.dialogue_exited is not None
+                # The briefing is pre-action state, so on the turn the
+                # player *starts* a conversation dialogue_context is absent;
+                # include the dialogue instructions for that turn too.
+                or action.action_type == "talk"
             ),
             include_soft_items=bool(result.soft_item_proposals),
             indicators=[
@@ -596,14 +600,15 @@ class GameLoop:
             "chat_log": self._chat_log[-10:],
         }
 
-        if result.will_reveal_readiness:
-            user_data["will_reveal_readiness"] = {
-                npc: {
-                    tid: entry.model_dump(mode="json")
-                    for tid, entry in topics.items()
-                }
-                for npc, topics in result.will_reveal_readiness.items()
-            }
+        # Hide the raw will_reveal block (unevaluated condition strings)
+        # from the narrator: will_reveal_readiness (an EngineResult field)
+        # is the sole authority on what may be revealed.  The ruling call
+        # keeps the full block for topic classification.
+        try:
+            dlg = user_data["briefing"]["dialogue_context"]["active_npc"]["dialogue"]
+            dlg.pop("will_reveal", None)
+        except (KeyError, TypeError):
+            pass
 
         if result.chain_info and result.chain_info.follow_up:
             user_data["chained_action"] = True

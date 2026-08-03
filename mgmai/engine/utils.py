@@ -257,9 +257,16 @@ def build_briefing_entity(
 
     path_descriptions: dict[str, str] = {}
     if entity.type == "npc" and entity.dialogue:
+        from mgmai.engine.conditions import evaluate
+
+        # Only currently-available paths: showing a condition-gated path
+        # the NPC can't take yet invites the ruling GM to select it,
+        # and the resolver then hard-fails the whole turn.
         path_descriptions = {
             path_id: resolvable.description
             for path_id, resolvable in entity.dialogue.dialogue_paths.items()
+            if resolvable.condition is None
+            or evaluate(resolvable.condition, hard, soft, corpus)
         }
 
     return BriefingEntity(

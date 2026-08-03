@@ -111,7 +111,11 @@ class TestProseTemplateConditional:
     _DIALOGUE_HEADING = "## Dialogue with NPCs"
     _SOFT_ITEMS_HEADING = "## Item Adjudication"
     _COMBAT_FIELDS = ("combat_triggered", "combat_log")
-    _DIALOGUE_FIELDS = ("dialogue_exited", "npc_attitude_limits")
+    # `npc_attitude_limits` is deliberately NOT dialogue-only: the engine
+    # supplies it every turn and the base template's Attitude Changes
+    # section documents it, since attitude shifts may also be proposed
+    # outside dialogue.
+    _DIALOGUE_FIELDS = ("dialogue_exited",)
     _SOFT_ITEMS_FIELDS = ("soft_item_proposals", "soft_item_adjudications")
 
     # -- default mode (neither combat nor dialogue) --
