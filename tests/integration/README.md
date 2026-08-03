@@ -132,7 +132,10 @@ containing:
   `player_knowledge` (revealed topics), and the final `dialogue_state`
 
 The artifact is written regardless of pass/fail, so you can inspect
-even broken runs.
+even broken runs.  Alongside it, the runner writes a DEBUG log to
+`tests/integration/artifacts/<scenario>_<ts>.log` with the full
+turn-by-turn LLM traffic (briefings, raw ruling/prose outputs, engine
+results) — the first place to look when diagnosing a failure.
 
 ### Cost expectations
 

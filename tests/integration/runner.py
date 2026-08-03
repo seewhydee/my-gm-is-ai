@@ -128,6 +128,18 @@ def run_scenario(
     if config_dir is None:
         config_dir = Path(tempfile.mkdtemp(prefix="mgmai_scenario_"))
 
+    timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+
+    # Per-run debug log next to the artifact: the full turn-by-turn
+    # LLM traffic (briefings, rulings, raw outputs) that post-mortem
+    # failure analysis needs.  Console stays quiet; the file gets DEBUG.
+    from mgmai.logging import setup_logging
+
+    setup_logging(
+        level="WARNING",
+        log_file=artifacts_dir / f"{scenario_name}_{timestamp}.log",
+    )
+
     if state_manager is not None:
         session = HeadlessSession(
             llm_client=gm_client,
@@ -146,7 +158,6 @@ def run_scenario(
     driver = PlayerDriver(driver_client, directive)
 
     result = ScenarioResult(scenario_name=scenario_name, directive=directive)
-    timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
 
     try:
         for i in range(max_turns):

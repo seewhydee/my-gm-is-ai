@@ -287,7 +287,7 @@ def build_briefing_entity(
         ],
         interactions_available=build_entity_interactions(
             entity, entity_state, hard, soft, corpus),
-        contains=build_contains(entity, hard, corpus, entity_id=eid),
+        contains=build_contains(entity, hard, soft, corpus, entity_id=eid),
         dialogue_paths=path_descriptions,
         can_fight=True if entity.combat is not None else None,
         count=count)
@@ -362,6 +362,7 @@ def build_briefing_room(
 def build_contains(
     entity: object,
     hard: HardGameState,
+    soft: SoftGameState,
     corpus: ModuleCorpus,
     entity_id: str = "",
 ) -> list[BriefingContainsEntry]:
@@ -403,5 +404,7 @@ def build_contains(
             type=contained_entity.type,
             description=contained_entity.description,
             count=count,
+            interactions_available=build_entity_interactions(
+                contained_entity, cstate, hard, soft, corpus),
         ))
     return contained

@@ -113,9 +113,9 @@ class TestRunTurnReturnsNarration:
         result = loop._run_turn("I wait")
         assert result == "Time passes quietly."
 
-    def test_fallback_returns_none(self, state_manager, tmp_path) -> None:
-        """When LLM Call 1 fails to parse twice, _run_turn returns None;
-        the fallback narration was still rendered to the display."""
+    def test_fallback_returns_narration(self, state_manager, tmp_path) -> None:
+        """When LLM Call 1 fails to parse twice, _run_turn returns the
+        fallback narration — the same text a REPL player sees."""
         from mgmai.game.loop import FALLBACK_NARRATION
 
         rd = RecordingDisplay()
@@ -125,7 +125,7 @@ class TestRunTurnReturnsNarration:
         )
         loop = GameLoop(state_manager, llm, display=rd, config_dir=tmp_path)
         result = loop._run_turn("garbage")
-        assert result is None
+        assert result == FALLBACK_NARRATION
         assert FALLBACK_NARRATION in rd.narrations
 
     def test_chain_returns_final_narration(self, state_manager, tmp_path) -> None:

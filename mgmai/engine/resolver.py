@@ -935,6 +935,19 @@ def resolve_transfer(
     rolls: list[dict[str, Any]] = []
 
     for item, count in _merge_item_counts(taken_items, taken_counts).items():
+        # Only items can be taken.  A feature or NPC targeted by name is a
+        # clean failure, never a containment delta (a non-item delta crashes
+        # state validation) and never a soft-item fallback (the id names a
+        # real corpus entity, so no phantom copy may be invented).
+        taken_ent = corpus.entities.get(item)
+        if taken_ent is not None and taken_ent.type != "item":
+            return ResolutionResult(
+                success=False,
+                error=(
+                    f"Cannot take '{item}': it is a {taken_ent.type}, not an "
+                    "item that can be picked up"
+                ),
+            )
         # Soft names (no corpus entity) are exempt from the stackable
         # guard — their counts are bounded by soft_contents or by
         # Call 2 adjudication, not by corpus tags.
@@ -2009,6 +2022,40 @@ def _find_entity_in_room(
     return None
 
 
+def _find_nested_entity(
+    entity_id: str,
+    room_id: str,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+) -> Any | None:
+    """Find an entity nested inside a container in the room, when visible.
+
+    Walks the containment tree rooted at room-level entities.  Hidden
+    entities and the contents of closed containers are not visible, so
+    they cannot be targeted — mirroring what the briefing shows.
+    """
+    stack: list[str] = [
+        eid
+        for eid, count in hard.room_contains.get(room_id, {}).items()
+        if count > 0
+    ]
+    visited: set[str] = set(stack)
+    while stack:
+        container_id = stack.pop()
+        if not _container_is_open(container_id, hard, corpus):
+            continue
+        for cid, count in hard.entity_contains.get(container_id, {}).items():
+            if count <= 0 or cid in visited:
+                continue
+            visited.add(cid)
+            if hard.entity_states.get(cid, {}).get("hidden", False):
+                continue
+            if cid == entity_id:
+                return corpus.entities.get(entity_id)
+            stack.append(cid)
+    return None
+
+
 def _find_entity_in_room_followers(
     entity_id: str,
     room_id: str,
@@ -2018,6 +2065,11 @@ def _find_entity_in_room_followers(
     """Like _find_entity_in_room but also matches following NPCs and
     inventory items (so the player can interact with items they carry)."""
     result = _find_entity_in_room(entity_id, room_id, hard, corpus)
+    if result is not None:
+        return result
+    # Entities nested inside containers in the room (e.g. a crate stowed
+    # behind the bar) are visible in the briefing and targetable.
+    result = _find_nested_entity(entity_id, room_id, hard, corpus)
     if result is not None:
         return result
     follower_ids = get_following_npc_ids(hard, corpus)

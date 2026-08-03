@@ -963,7 +963,7 @@ class TestBuildContainedEntities:
         hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": False}
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
+            corpus.entities["rubbish_pile"], hard, state_manager.soft_state, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 1
         assert result[0].id == "toenail_sword"
@@ -977,7 +977,7 @@ class TestBuildContainedEntities:
         hard.entity_contains["rubbish_pile"] = {"toenail_sword": 1}
         hard.entity_states["toenail_sword"] = {"hidden": True}
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
+            corpus.entities["rubbish_pile"], hard, state_manager.soft_state, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 0
 
@@ -990,7 +990,7 @@ class TestBuildContainedEntities:
         hard.entity_states["toenail_sword"] = {"hidden": False}
         hard.player.inventory = {"toenail_sword": 1}
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
+            corpus.entities["rubbish_pile"], hard, state_manager.soft_state, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 0
 
@@ -1006,7 +1006,7 @@ class TestBuildContainedEntities:
         hard.player.inventory = {}
         hard.player.equipped = ["toenail_sword"]
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
+            corpus.entities["rubbish_pile"], hard, state_manager.soft_state, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 0
 
@@ -1017,7 +1017,7 @@ class TestBuildContainedEntities:
         corpus.entities["battleaxe"].contains = []
         hard.entity_contains["battleaxe"] = {}
         result = build_contains(
-            corpus.entities["battleaxe"], hard, corpus, entity_id="battleaxe",
+            corpus.entities["battleaxe"], hard, state_manager.soft_state, corpus, entity_id="battleaxe",
         )
         assert result == []
 
@@ -1028,9 +1028,34 @@ class TestBuildContainedEntities:
         corpus.entities["rubbish_pile"].contains = ["nonexistent"]
         hard.entity_contains["rubbish_pile"] = {"nonexistent": 1}
         result = build_contains(
-            corpus.entities["rubbish_pile"], hard, corpus, entity_id="rubbish_pile",
+            corpus.entities["rubbish_pile"], hard, state_manager.soft_state, corpus, entity_id="rubbish_pile",
         )
         assert len(result) == 0
+
+    def test_contained_entity_carries_interactions(self, state_manager):
+        """Nested entities are targetable by interact, so their available
+        interactions must be visible on the contains entry for the
+        ruling GM to select them."""
+        corpus = state_manager.corpus
+        hard = state_manager.hard_state
+        hard.player.location = "bag_floor"
+        from mgmai.models.corpus import Entity, Interaction
+        corpus.entities["secret_lever"] = Entity(
+            type="feature", id="secret_lever", name="secret lever",
+            description="A lever tucked inside the rubbish pile.",
+            interactions=[Interaction.model_validate({
+                "id": "pull_lever",
+                "description": "Pull the lever.",
+                "result": {"set_flag": {"lever_pulled": True}},
+            })],
+        )
+        corpus.entities["rubbish_pile"].contains = ["secret_lever"]
+        hard.entity_contains["rubbish_pile"] = {"secret_lever": 1}
+        result = build_contains(
+            corpus.entities["rubbish_pile"], hard, state_manager.soft_state, corpus, entity_id="rubbish_pile",
+        )
+        assert len(result) == 1
+        assert [i.id for i in result[0].interactions_available] == ["pull_lever"]
 
 
 class TestContainedEntitiesSurfacing:

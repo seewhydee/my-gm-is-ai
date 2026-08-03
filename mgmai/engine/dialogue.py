@@ -151,6 +151,15 @@ def _archive_and_exit(
         f"Conversation summary: {summary}"
     )
 
+    # Snapshot the ended conversation's exchanges before clearing, so
+    # LLM Call 2 has the material at hand when writing the archival
+    # conversation_note (on partner-switch turns the ended conversation
+    # is otherwise invisible next to the new one being narrated).
+    recent_exchanges = [
+        {"speaker": entry.speaker, "text": entry.text}
+        for entry in soft.dialogue_state.conversation_log
+    ]
+
     exit_narrative = None
 
     soft.dialogue_state.active_npc = None
@@ -166,6 +175,7 @@ def _archive_and_exit(
         "npc_id": npc_id,
         "exit_narrative": exit_narrative,
         "archival_fallback": archival_fallback,
+        "recent_exchanges": recent_exchanges,
     }
 
 

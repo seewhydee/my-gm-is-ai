@@ -316,6 +316,128 @@ class TestEngineFullFlow:
         assert manager.hard_state.flags.get("room_b_entered") is True
         assert any("welcomes you" in n for n in result.triggered_narration)
 
+    def test_turn_end_relocation_triggers_room_entered_reaction(self):
+        # A turn.end reaction that relocates the player (a scripted
+        # set-piece transition) must also go through the room-transition
+        # pipeline: room.entered reactions fire and the destination is
+        # marked visited.
+        room_b = _mk_room(
+            "room_b",
+            "Room B",
+            reactions=[
+                _mk_reaction(
+                    "welcome",
+                    on="room.entered",
+                    effect=ReactionEffects(
+                        result=Result(
+                            narrative="The room welcomes you.",
+                            set_flag={"room_b_entered": True},
+                        )
+                    ),
+                    phase="immediate",
+                ),
+            ],
+        )
+        room_a = _mk_room(
+            "room_a",
+            "Room A",
+            reactions=[
+                _mk_reaction(
+                    "ferry_arrives",
+                    on="turn.end",
+                    effect=ReactionEffects(
+                        result=Result(
+                            narrative="The ferry noses against the far pier.",
+                            set_player_location="room_b",
+                        )
+                    ),
+                ),
+            ],
+            is_start_room=True,
+        )
+        corpus = ModuleCorpus(
+            adventure=Adventure(
+                title="Test",
+                introduction="Test",
+                atmosphere=Atmosphere(setting="test", tone="neutral"),
+            ),
+            rooms={"room_a": room_a, "room_b": room_b},
+            entities={},
+            mechanics={},
+            stats=None,
+        )
+        manager = build_state_manager(
+            corpus,
+            hard_state=_mk_hard_state(player_location="room_a"),
+        )
+
+        action = WaitAction(action_type="wait", detail="Waiting on the ferry")
+        result = resolve(action, manager)
+        assert result.success is True
+        assert manager.hard_state.player.location == "room_b"
+        assert manager.hard_state.flags.get("room_b_entered") is True
+        assert manager.hard_state.room_states.get("room_b", {}).get("visited") is True
+        assert result.room_after is not None and result.room_after.id == "room_b"
+
+    def test_turn_end_relocation_chains_once_capped(self):
+        # A room.entered reaction that relocates the player again is
+        # followed too (capped loop), so chained scripted transitions
+        # each fire their destination's room.entered reactions.
+        room_c = _mk_room("room_c", "Room C")
+        room_b = _mk_room(
+            "room_b",
+            "Room B",
+            reactions=[
+                _mk_reaction(
+                    "swept_onward",
+                    on="room.entered",
+                    effect=ReactionEffects(
+                        result=Result(
+                            narrative="The current sweeps you onward.",
+                            set_player_location="room_c",
+                        )
+                    ),
+                    phase="immediate",
+                ),
+            ],
+        )
+        room_a = _mk_room(
+            "room_a",
+            "Room A",
+            reactions=[
+                _mk_reaction(
+                    "ferry_arrives",
+                    on="turn.end",
+                    effect=ReactionEffects(
+                        result=Result(set_player_location="room_b"),
+                    ),
+                ),
+            ],
+            is_start_room=True,
+        )
+        corpus = ModuleCorpus(
+            adventure=Adventure(
+                title="Test",
+                introduction="Test",
+                atmosphere=Atmosphere(setting="test", tone="neutral"),
+            ),
+            rooms={"room_a": room_a, "room_b": room_b, "room_c": room_c},
+            entities={},
+            mechanics={},
+            stats=None,
+        )
+        manager = build_state_manager(
+            corpus,
+            hard_state=_mk_hard_state(player_location="room_a"),
+        )
+
+        action = WaitAction(action_type="wait", detail="Waiting")
+        result = resolve(action, manager)
+        assert result.success is True
+        assert manager.hard_state.player.location == "room_c"
+        assert manager.hard_state.room_states.get("room_b", {}).get("visited") is True
+        assert manager.hard_state.room_states.get("room_c", {}).get("visited") is True
+
     def test_turn_history_appended(self, state_manager):
         action = WaitAction(
             action_type="wait",

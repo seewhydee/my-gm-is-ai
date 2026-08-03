@@ -79,6 +79,16 @@ def find_matching_reactions(
         entity_ids: set[str] = set(hard.room_contains.get(room_id, {}))
         for eid in get_following_npc_ids(hard, corpus):
             entity_ids.add(eid)
+        # Events that name an entity reach that entity's reactions even
+        # when it is not in the player's current room: dialogue.ended via
+        # a room change fires *because* the player left the NPC behind,
+        # and doc/npcs.md promises the NPC's entity-scoped dialogue.ended
+        # reaction fires on it (e.g. Fen shuffling off once his dialogue
+        # is exhausted).  Same for entity_state.changed naming its entity.
+        for key in ("npc_id", "entity_id"):
+            named = context.get(key)
+            if isinstance(named, str):
+                entity_ids.add(named)
 
         for eid in sorted(entity_ids):
             entity = corpus.entities.get(eid)
@@ -262,7 +272,17 @@ def dispatch_reactions(
 
             current_npc = soft.dialogue_state.active_npc
             if current_npc is not None and current_npc != npc_id:
-                exit_dialogue(soft, corpus, hard)
+                exit_info = exit_dialogue(soft, corpus, hard)
+                # Archive the interrupted conversation immediately.  This
+                # exit is invisible to the game loop's post-Call-2 archival
+                # (which keys off the turn's single dialogue_exited slot),
+                # so without this the conversation would leave no memory
+                # note at all.  The fallback summary is used; LLM enrichment
+                # is unavailable on this path.
+                if exit_info and exit_info.get("archival_fallback"):
+                    soft.entity_notes.setdefault(current_npc, []).append(
+                        exit_info["archival_fallback"]
+                    )
                 new_events.append(("dialogue.ended", {
                     "npc_id": current_npc,
                     "reason": "triggered",

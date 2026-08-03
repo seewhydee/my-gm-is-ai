@@ -77,6 +77,10 @@ class BriefingContainsEntry(BaseModel):
     type: str = "item"
     description: str
     count: int = 1
+    # The nested entity's own usable interactions (condition-gated ones
+    # filtered) — nested entities are visible and targetable, so the
+    # ruling GM must be able to see what they offer.
+    interactions_available: list[BriefingInteraction] = Field(default_factory=list)
 
 
 class BriefingEntity(BaseModel):

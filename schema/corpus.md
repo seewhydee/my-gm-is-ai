@@ -368,6 +368,12 @@ Notes:
   atomically.  Deferred reactions (`room.entered`, `turn.end`, etc.)
   fire afterward and see the new state.
 
+- A `set_player_location` relocation — whether from an action result
+  or from any reaction, including a scripted `turn.end` set-piece —
+  runs the full room-transition pipeline: the destination is marked
+  visited, and `room.exited` / `room.entered` reactions fire for the
+  move.
+
 - During a check, `check.passed`/`check.failed` events and their
   immediate [Reactions](#reaction) fire before success/failure results
   are run.  These effects are then batched and processed before

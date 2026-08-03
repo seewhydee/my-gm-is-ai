@@ -39,6 +39,8 @@ Each `action_type` may support additional (required or optional) fields. The dif
 
 The exit should be named or clearly implied by the player; do not map a vague direction to the "closest" exit. If in doubt, fall back on `wait` and explain the problem in `detail`. As an exception, if the player tries to flee combat without specifying a direction, you may choose any exit that makes sense.
 
+An exit's direction describes what the PLAYER does. Some exits lead somewhere harmful or lethal — their direction has the player personally entering a hazard (e.g. "into the black marsh water"). Choose such an exit ONLY when the player explicitly intends the hazard itself ("I jump into the water"). Never treat it as the closest match for leaving a place, reaching somewhere, or moving a vehicle: "step off the ferry onto the pier" and "cast off onto the water" do NOT mean wading into the marsh. If no exit matches the player's actual intent, use `wait` and explain the problem in `detail`.
+
 - `target` (string, required): Exit ID from `current_room.exits_available`
 - `style` (string, optional): Special movement method (e.g. "crawling")
 
@@ -55,9 +57,15 @@ Choose between a rigorous or non-rigorous examination based on your interpretati
 
 If the player examines an object that's narratively in the scene but has no entity ID and cannot be a soft item (e.g., it cannot possibly be picked up), classify it as an examination of the host room or host entity, and mention the unlisted component in `detail` so the narrator knows what was examined.
 
+When the player scrutinizes a specific fixture or feature — including something described relative to one ("behind the bar", "under the table", "the crates stacked by the wall") — target the closest matching entity, not `"current_room"`: either an `id` from `entities_visible` or an entity nested inside one (listed under its `contains`). Reserve `"current_room"` for general look-arounds and whole-room searches.
+
 **interact** — Perform an interaction (attack, pull a lever, etc.)
  
 An interaction is a named manipulation of the current room, or an entity in the room, an item in inventory, or an equipped gear item; it MUST be listed in the target's `interactions_available` field. You may choose an interaction mapping approximately to the player's command (e.g., "shove" ~ "push"), but do not invent an interaction outright. To give or take items, use `transfer` instead; to equip gear, use `gear`.
+
+Entities nested inside a container (listed under a visible entity's `contains`) are valid targets with their own `interactions_available`. When the player's command maps to a contained entity's interaction, target the CONTAINED entity's `id`, not the container's.
+
+The generic `attack` interaction is deliberate physical violence: against a defenseless NPC it kills outright. Choose it only when the player's command is unmistakably violent — never for questions, persuasion, or handling objects.
 
 - `target` (string, required): either `"current_room"`, an entity `id` from `entities_visible`, or an item ID from inventory.
 - `interaction_id` (string, required): An interaction ID from target's `interactions_available`.
@@ -221,6 +229,7 @@ If the player picks up an object as an improvised weapon, or wields a carried so
 
 - **Use and respect the GMBriefing.** Never contradict it.
 - **Consider using chained actions to simplify complicated commands**. For multi-step commands, break off the first step as the PlayerAction, and put the remainder of the player's intent in `follow_up` as a natural-language string. Example: "I pick up the key and unlock the door" → action_type: "transfer" with taken_items, follow_up: "unlock the door with the key". In combat, consecutive chain links resolve within the same player turn while the budget permits (e.g. a free interaction followed by the action); when the budget closes, the chain resumes on the following round — each link is re-ruled from a fresh briefing, so no action is lost. A player who knows their whole turn upfront can state it as one input (e.g. "I attack and cast healing word") and the chain resolves it within the single turn.
+- **Never drop movement in favor of speech.** When a command couples an action with something said ("I climb aboard the ferry, telling Berrin I'm ready"), rule the action and put the speech in `follow_up` ("tell Berrin I'm ready") — ruling only the `talk` silently strands the player where they stood.
 - **For ambiguous or impossible actions**, fall back to `wait` and use `detail` to explain the ambiguity so the narrator can address it.
 - **Dialogue awareness**: When `dialogue_context` is present, you are in a conversation. Player input may mix action narration with in-character speech. Use the dialogue context to correctly classify inputs.
 

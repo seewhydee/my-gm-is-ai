@@ -50,6 +50,12 @@ narrating:
   "the guard took my key").  If the briefing and EngineResult do not
   corroborate a player's claim, do not incorporate it as real — treat
   it as their mistake or imagination, or leave it unaddressed.
+- **Never invent state changes.** Presence, location, ownership, life
+  and death are hard state: an NPC or object may leave, arrive, move,
+  change hands, be destroyed, or die ONLY when `hard_state_changes` or
+  `triggered_narration` say so.  No matter how the scene feels — an
+  NPC who has been insulted, dismissed, or ignored is still exactly
+  where the briefing says they are, and can still speak and react.
 
 ### EngineResult fields for general player actions:
 
@@ -262,6 +268,13 @@ Rules:
 - `reason` must be non-empty and specific
 - Do not propose changes for dead NPCs or NPCs without dialogue guidelines
 - Typical triggers: kind words, gifts, threats, helping, attacking
+- The SIGN of the change reflects how the NPC receives the player's
+  behavior: warmth, respect, help, and gifts RAISE attitude; insults,
+  threats, dismissiveness, and hostility LOWER it.  An NPC cracking
+  under pressure — confessing, pleading, unburdening themselves — is
+  fear or guilt, not fondness: it does not by itself raise attitude.
+  Never raise attitude in response to rudeness or hostility unless the
+  NPC's guidelines explicitly call for it.
 
 **Magnitude conventions** (default, unless the NPC's guidelines override):
 

@@ -246,6 +246,96 @@ class TestDialogueEndedNoDuplicate:
         assert hard.player.inventory.get("rusty_key") == 1
 
 
+class TestDialogueEndedOffRoom:
+    """Entity-scoped dialogue.ended reactions fire even when the player
+    left the NPC's room — a room-change exit happens *because* the NPC
+    was left behind (doc/npcs.md §Exiting Dialogue)."""
+
+    def test_room_change_exit_fires_npc_dialogue_ended_reaction(
+        self, state_manager
+    ):
+        from mgmai.models.actions import MoveAction
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        # Korbar departs when his dialogue ends, however it ends.
+        korbar = corpus.entities["korbar"]
+        korbar.reactions.append(Reaction(
+            id="korbar_departs",
+            on="dialogue.ended",
+            condition=ConditionExpression.model_validate(
+                {"require": "event:npc_id == korbar"}
+            ),
+            effect=ReactionEffects(
+                result=Result(set_flag={"korbar_departed": True})
+            ),
+        ))
+
+        enter = TalkAction(
+            action_type="talk", target="korbar", detail="talk to korbar",
+        )
+        resolve(enter, state_manager)
+        assert soft.dialogue_state.active_npc == "korbar"
+
+        # Walk away mid-conversation: the room-change exit ends the
+        # dialogue with Korbar now in a different room.
+        leave = MoveAction(
+            action_type="move", target="exit_climb_up_handle_floor",
+            detail="leave",
+        )
+        result = resolve(leave, state_manager)
+
+        assert result.success is True
+        assert hard.player.location == "axe_handle_lower"
+        assert soft.dialogue_state.active_npc is None
+        assert hard.flags.get("korbar_departed") is True
+
+
+class TestTriggerDialogueInterruptArchival:
+    """A trigger_dialogue that interrupts an active conversation must
+    still archive the interrupted one (event_bus trigger path)."""
+
+    def test_interrupted_conversation_is_archived(self, state_manager):
+        from mgmai.models.actions import MoveAction
+
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+
+        # The spider hails the player on entering axe_handle_lower.
+        spider = corpus.entities["spider"]
+        spider.reactions.append(Reaction(
+            id="spider_speaks_first",
+            on="room.entered",
+            effect=ReactionEffects(trigger_dialogue="self"),
+        ))
+
+        enter = TalkAction(
+            action_type="talk", target="korbar", detail="talk to korbar",
+            utterance="Hello, Korbar.",
+        )
+        resolve(enter, state_manager)
+        assert soft.dialogue_state.active_npc == "korbar"
+
+        leave = MoveAction(
+            action_type="move", target="exit_climb_up_handle_floor",
+            detail="leave",
+        )
+        result = resolve(leave, state_manager)
+
+        assert result.success is True
+        # The spider's greeting took over the dialogue...
+        assert soft.dialogue_state.active_npc == "spider"
+        # ...and Korbar's interrupted conversation was archived.
+        assert soft.entity_notes.get("korbar"), (
+            "Interrupted conversation left no memory note"
+        )
+
+
 class TestTalkPathSourceType:
     """Dialogue path checks report source_type 'dialogue_path'."""
 

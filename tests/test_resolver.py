@@ -1745,6 +1745,149 @@ class TestResolveTransferContainment:
         assert result.hard_changes.inventory_added.get("gold_coin") == 10
         assert result.hard_changes.entity_contains_removed.get("rubbish_pile", {}).get("gold_coin") == 10
 
+    def test_take_feature_fails_cleanly(self, state_manager):
+        """Taking a non-item entity (a feature) must fail cleanly, never
+        raise: a non-item containment delta crashes state validation."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        # rubbish_pile is a feature present in bag_floor; try to take it.
+        action = TransferAction(
+            action_type="transfer", target="bag_floor",
+            taken_items=["rubbish_pile"],
+            detail="Picking up the rubbish pile",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "not an item" in (result.error or "")
+        assert result.hard_changes is None or not (
+            result.hard_changes.entity_contains_removed
+            or result.hard_changes.room_contains_removed
+        )
+
+    def test_take_nested_feature_fails_cleanly(self, state_manager):
+        """The same guard covers a feature nested inside a container."""
+        hard = state_manager.hard_state
+        soft = state_manager.soft_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from mgmai.models.corpus import Entity
+        corpus.entities["anvil"] = Entity(
+            type="feature", id="anvil", description="A heavy anvil.",
+        )
+        corpus.entities["rubbish_pile"].contains = ["anvil"]
+        hard.entity_contains["rubbish_pile"] = {"anvil": 1}
+
+        action = TransferAction(
+            action_type="transfer", target="rubbish_pile",
+            taken_items=["anvil"],
+            detail="Taking the anvil out of the rubbish pile",
+        )
+        result = resolve_transfer(action, hard, soft, corpus)
+        assert result.success is False
+        assert "not an item" in (result.error or "")
+
+
+class TestNestedEntityTargeting:
+    """Entities nested inside containers (e.g. a crate stowed behind a
+    bar) are visible in the briefing and must be targetable by
+    interact/examine; hidden entities and the contents of closed
+    containers remain untargetable."""
+
+    def _nest_lever(self, state_manager, *, hidden=False, container_open=None):
+        hard = state_manager.hard_state
+        corpus = state_manager.corpus
+        hard.player.location = "bag_floor"
+        from mgmai.models.corpus import Entity, Interaction
+        state_fields = {}
+        if hidden:
+            state_fields["hidden"] = {"type": "boolean", "description": "Hidden?"}
+            hard.entity_states["secret_lever"] = {"hidden": True}
+        corpus.entities["secret_lever"] = Entity(
+            type="feature", id="secret_lever", name="secret lever",
+            description="A lever tucked inside the rubbish pile.",
+            state_fields=state_fields,
+            interactions=[Interaction.model_validate({
+                "id": "pull_lever",
+                "description": "Pull the lever.",
+                "result": {"set_flag": {"lever_pulled": True}},
+            })],
+        )
+        if container_open is not None:
+            pile = corpus.entities["rubbish_pile"]
+            pile.tags = ["container"]
+            pile.state_fields = {
+                "open": {"type": "boolean", "description": "Open?"},
+            }
+            hard.entity_states["rubbish_pile"] = {"open": container_open}
+        corpus.entities["rubbish_pile"].contains = ["secret_lever"]
+        hard.entity_contains["rubbish_pile"] = {"secret_lever": 1}
+
+    def test_interact_nested_entity(self, state_manager):
+        self._nest_lever(state_manager)
+        action = InteractAction(
+            action_type="interact", target="secret_lever",
+            interaction_id="pull_lever", detail="Pulling the lever",
+        )
+        result = resolve_interact(
+            action, state_manager.hard_state, state_manager.soft_state,
+            state_manager.corpus,
+        )
+        assert result.success is True
+        assert result.hard_changes.flags_set.get("lever_pulled") is True
+
+    def test_examine_nested_entity(self, state_manager):
+        self._nest_lever(state_manager)
+        action = ExamineAction(
+            action_type="examine", target="secret_lever",
+            detail="Looking at the lever",
+        )
+        result = resolve_examine(
+            action, state_manager.hard_state, state_manager.soft_state,
+            state_manager.corpus,
+        )
+        assert result.success is True
+        assert result.soft_item_proposals == []
+
+    def test_interact_hidden_nested_entity_not_found(self, state_manager):
+        self._nest_lever(state_manager, hidden=True)
+        action = InteractAction(
+            action_type="interact", target="secret_lever",
+            interaction_id="pull_lever", detail="Pulling the lever",
+        )
+        result = resolve_interact(
+            action, state_manager.hard_state, state_manager.soft_state,
+            state_manager.corpus,
+        )
+        assert result.success is False
+        assert "not found" in (result.error or "")
+
+    def test_interact_nested_in_closed_container_not_found(self, state_manager):
+        self._nest_lever(state_manager, container_open=False)
+        action = InteractAction(
+            action_type="interact", target="secret_lever",
+            interaction_id="pull_lever", detail="Pulling the lever",
+        )
+        result = resolve_interact(
+            action, state_manager.hard_state, state_manager.soft_state,
+            state_manager.corpus,
+        )
+        assert result.success is False
+        assert "not found" in (result.error or "")
+
+    def test_interact_nested_in_open_container_found(self, state_manager):
+        self._nest_lever(state_manager, container_open=True)
+        action = InteractAction(
+            action_type="interact", target="secret_lever",
+            interaction_id="pull_lever", detail="Pulling the lever",
+        )
+        result = resolve_interact(
+            action, state_manager.hard_state, state_manager.soft_state,
+            state_manager.corpus,
+        )
+        assert result.success is True
+
 
 class TestResolveExamineWithStackedItems:
     """Regression: examine soft item in room that also has stacked items."""

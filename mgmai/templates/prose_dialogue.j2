@@ -76,14 +76,20 @@ instructed outcome is a lie, play the lie straight — do not wink at
 the player or tip the deception.
 
 **Conversation note (dialogue exit).** When
-`engine_result.dialogue_exited` is non-null, the conversation is
-over.  Write a `conversation_note` — the game's long-term summary of
-this interaction, a self-contained paragraph covering: what topics
-were discussed, what information was exchanged or learned, any
-promises or conflicts, and the NPC's disposition by the end.  The
-note must be a non-empty string; good notes make the NPC feel
-remembered on re-encounter.  If dialogue is ongoing or no NPC
-conversation occurred, omit this field or set it to null.
+`engine_result.dialogue_exited` is non-null, a conversation has just
+ended.  Write a `conversation_note` — the game's long-term memory of
+THAT ended conversation, which the engine files under
+`dialogue_exited.npc_id`.  Base it ONLY on that conversation: its
+verbatim exchanges are in `dialogue_exited.recent_exchanges` (older
+exchanges may also appear in the `chat_log`).  Cover what topics were
+discussed, what information was exchanged or learned, any promises or
+conflicts, and the NPC's disposition by the end.  If the player
+switched directly to another NPC this turn, the note still concerns
+the conversation that ENDED (with `dialogue_exited.npc_id`) — never
+the new conversation just beginning.  The note must be a non-empty
+string; good notes make the NPC feel remembered on re-encounter.  If
+dialogue is ongoing or no NPC conversation occurred, omit this field
+or set it to null.
 
 **Attitude changes.** Attitude shifts may be proposed during dialogue
 or outside it; the format, bounds rules, and magnitude conventions are

@@ -567,6 +567,46 @@ def resolve(
         )
         hard.turn_count += 1
 
+    # 10.5 Scripted room transitions.  A reaction (e.g. a turn.end
+    # set-piece) may relocate the player via set_player_location after the
+    # action-level room check at step 7.  Run the same transition pipeline
+    # for such moves — visited marking, room.exited / room.entered
+    # reactions, dialogue room-change exit — so a scripted arrival is
+    # indistinguishable from a walked one.  Loop (capped) in case a
+    # room.entered reaction itself relocates the player again.
+    for _ in range(5):
+        if new_room == hard.player.location:
+            break
+        previous_room = new_room
+        new_room = hard.player.location
+        transition_changes = HardStateChanges()
+        # Mark the scripted destination as visited, matching resolve_move.
+        # (Only the visited field: copying the whole state dict here would
+        # collide with room.entered reactions incrementing the same fields.)
+        transition_changes.room_state_changes[new_room] = {"visited": True}
+        _dispatch_events(
+            [("room.exited", {"room_id": previous_room})],
+            hard, soft, corpus, state_manager, changes=transition_changes,
+            triggered_narration=resolution.triggered_narration,
+            revealed_hints=resolution.revealed_hints,
+            encounter_fired_ref=encounter_fired_ref,
+            combat_log=reaction_combat_log,
+            rolls=reaction_rolls,
+        )
+        # room.entered immediate reactions fire before deferred reactions.
+        _dispatch_room_entered(
+            new_room, hard, soft, corpus, state_manager, transition_changes,
+            resolution.triggered_narration, resolution.revealed_hints,
+            encounter_fired_ref, reaction_combat_log,
+            rolls=reaction_rolls,
+        )
+        _apply_and_merge(transition_changes)
+
+        dialogue_exit = check_room_change_exit(soft, previous_room, new_room, corpus, hard)
+        if dialogue_exit:
+            resolution.dialogue_exited = dialogue_exit
+            dialogue_exit_reason = "room_change"
+
     # 9.4 Player death check (after all reactions settle): dropping to 0 HP
     # from any source fires player.died; corpus reactions may avert the
     # death by restoring HP above 0 (alongside other effects, e.g.

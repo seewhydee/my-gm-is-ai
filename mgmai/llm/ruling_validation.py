@@ -523,6 +523,72 @@ def _validate_soft_patches(action, briefing: GMBriefing, corpus) -> str | None:
     return None
 
 
+def validate_interact(action: InteractAction, briefing: GMBriefing) -> str | None:
+    """Out-of-combat interact rulings: the interaction must actually be
+    offered by the target (or by the room).  A wrong-target ruling would
+    otherwise sail through validation and fail at resolution, wasting the
+    turn — so flag it here, naming the right target when we can."""
+    interaction_id = action.interaction_id
+    if not interaction_id or interaction_id == "attack":
+        return None  # generic interactions are always available
+    room = briefing.current_room
+    if room is None:
+        return None
+    room_offers = {i.id for i in (room.interactions_available or [])}
+    if interaction_id in room_offers:
+        return None  # room-scoped interactions match any target (resolver behavior)
+    # Map every visible entity — and every entity nested in one — to the
+    # interactions it offers.
+    offers: dict[str, set[str]] = {}
+    target_types: dict[str, str] = {}
+    for ent in room.entities_visible or []:
+        offers.setdefault(ent.id, set()).update(
+            i.id for i in (ent.interactions_available or [])
+        )
+        target_types[ent.id] = ent.type
+        for cont in ent.contains or []:
+            offers.setdefault(cont.id, set()).update(
+                i.id for i in (cont.interactions_available or [])
+            )
+            target_types[cont.id] = cont.type
+    if action.target not in offers:
+        return None  # unknown target (inventory item etc.) — resolver reports it
+    offered_by = sorted(
+        eid for eid, ids in offers.items() if interaction_id in ids
+    )
+    if action.target in offered_by:
+        return None
+    if offered_by:
+        return (
+            f"Invalid interact target '{action.target}': interaction "
+            f"'{interaction_id}' is not offered by '{action.target}'. It is "
+            f"offered by: {', '.join(offered_by)}. Target that entity instead."
+        )
+    # Offered nowhere: name what the target DOES offer, plus the right
+    # action kind for the common category confusions (talk vs interact,
+    # take vs interact).
+    available = offers.get(action.target) or set()
+    if available:
+        avail_txt = f" It offers: {', '.join(sorted(available))}."
+    else:
+        avail_txt = " It offers no interactions."
+    target_type = target_types.get(action.target)
+    if target_type == "npc":
+        hint = " To converse with an NPC, use a talk action instead."
+    elif target_type == "item":
+        hint = (
+            " To pick up an item, use a transfer action with taken_items "
+            "instead."
+        )
+    else:
+        hint = ""
+    return (
+        f"Invalid interaction_id '{interaction_id}': '{action.target}' "
+        f"does not offer it.{avail_txt}{hint} Choose an interaction from "
+        "the target's interactions_available, or a different action."
+    )
+
+
 def validate_ruling_action(action, briefing: GMBriefing, corpus=None) -> str | None:
     """Check a parsed PlayerAction for semantic consistency with the briefing.
 
@@ -542,6 +608,8 @@ def validate_ruling_action(action, briefing: GMBriefing, corpus=None) -> str | N
     if briefing.combat_state is None:
         if isinstance(action, UseAbilityAction):
             return _validate_use_ability(action, briefing)
+        if isinstance(action, InteractAction):
+            return validate_interact(action, briefing)
         return None
     # Budget-aware rejection (second action / second bonus action / second
     # free interaction) runs before the target-level checks.

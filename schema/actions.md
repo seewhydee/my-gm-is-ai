@@ -183,7 +183,8 @@ The LLM must output a single structured action, corresponding to the player's in
 | `using`    | string\|null  | no       | A valid entity ID or soft item used to assist the examination (e.g., using a torch to look at a dark corner). Tool-assisted examines should usually be `rigorous: true`. |
 
 **Engine validation:**
-- If `target` matches a valid entity in the current room's `contains` or is
+- If `target` matches a valid entity in the current room's `contains`
+  (including a visible entity nested inside a container in the room) or is
   the `"current_room"` sentinel, the engine performs a normal examine and
   fires any matching `on_examine` events.
 - If `target` does not match a hard entity and is not `"current_room"`, the
@@ -233,8 +234,11 @@ via `room_note`/`entity_note` patches (see `soft-state.md`).
 **Engine validation:**
 - `target` must be a hard entity present in the room, a following NPC,
   an item in the player's inventory, or the `"current_room"` sentinel.
-  Interactions with generic soft items are not directly supported; use
-  `examine` or `transfer` for soft items instead.
+  Entities nested inside a container in the room (e.g. a crate stowed
+  behind a bar) count as present when visible — not `hidden`, and not
+  inside a closed [container](corpus.md#container).  Interactions with
+  generic soft items are not directly supported; use `examine` or
+  `transfer` for soft items instead.
 - `interaction_id` must match a defined interaction on the target entity, the
   current room (when `target` is `"current_room"`), or a generic interaction
   (e.g., `attack`).

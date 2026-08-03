@@ -549,9 +549,16 @@ barkeep is behind the bar; Berrin the ferryman sits alone.
 
 - Chat warmly with Marta for a few exchanges — ask about the tavern
   and the marsh.
-- Then turn away from her and talk to Berrin instead.  Be curt and
-  dismissive with him.
+- Then turn away from her and talk to Berrin instead.  Be openly rude
+  to him: mock his fear of the marsh, call him a coward, tell him he
+  is useless as a ferryman.  Do NOT say anything friendly, sympathetic,
+  or validating to him — no agreement, no drinks, no thanks, no
+  patient listening.  Every line to him is a jab.
 - Then turn back to Marta and resume your friendly chat with her.
+  Whenever you are talking to Marta, keep every word genuinely warm
+  and NEVER mention Berrin, your mockery of him, or anything insulting
+  or confrontational — talk only about her, the tavern, the ale, and
+  the marsh.
 """
 
 

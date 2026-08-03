@@ -38,7 +38,7 @@ from mgmai.game.rest_mode import RestMode
 from mgmai.llm.client import LLMClient
 from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
 from mgmai.logging import format_state_snapshot
-from mgmai.models.actions import CURRENT_ROOM_SENTINEL, TalkAction
+from mgmai.models.actions import CURRENT_ROOM_SENTINEL, InteractAction, TalkAction
 from mgmai.state.manager import StateManager
 
 try:
@@ -216,10 +216,10 @@ class GameLoop:
         """Run a single player-input turn (possibly chained) end to end.
 
         Returns the final narration string rendered to the display, or
-        ``None`` if the turn aborted before producing any narration
-        (e.g. LLM Call 1 failed to parse on both attempts and the
-        fallback was rendered directly by ``_execute_turn``).  The REPL
-        ignores the return value; the headless harness uses it.
+        ``None`` only when the turn cannot run at all (game state not
+        loaded).  A double-failed LLM Call 1 yields ``FALLBACK_NARRATION``
+        — the same text a REPL player sees.  The REPL ignores the return
+        value; the headless harness uses it.
         """
         self._chat_log.append({"role": "player", "content": player_input})
 
@@ -309,8 +309,11 @@ class GameLoop:
         try:
             action = self._call_ruling(briefing)
         except LLMOutputError:
-            self._display.render_narration(FALLBACK_NARRATION)
-            return None
+            # Both ruling attempts failed.  Return the fallback through
+            # the normal path so the REPL renders it exactly once and the
+            # headless harness records the same player-facing text a REPL
+            # player would see (rather than a None narration).
+            return FALLBACK_NARRATION
 
         log.debug("--- PlayerAction ---\n%s", action.model_dump_json(indent=2))
 
@@ -463,6 +466,7 @@ class GameLoop:
         from mgmai.llm.ruling_validation import (
             validate_dialogue_path,
             validate_improvised_weapon_budget,
+            validate_interact,
             validate_positioning_assertion,
             validate_ruling_action,
         )
@@ -519,6 +523,20 @@ class GameLoop:
                 "proceeding with freeform conversation"
             )
             semantic_error = validate_ruling_action(action, briefing, self._state.corpus)
+        if (
+            semantic_error is not None
+            and isinstance(action, InteractAction)
+            and validate_interact(action, briefing) is not None
+        ):
+            # Degrade rather than fail the turn: an interact ruling the
+            # model insists on despite the corrective retry goes to the
+            # engine as-is — resolve_interact fails it cleanly and the
+            # narrator covers the fizzle.  (Otherwise a persistent model
+            # error would kill the whole turn's narration.)
+            self._positioning_warning.append(
+                f"interact ruling proceeded despite validation: {semantic_error}"
+            )
+            semantic_error = None
         if semantic_error is not None:
             raise LLMOutputError(
                 f"Ruling still semantically invalid after retry: {semantic_error}"

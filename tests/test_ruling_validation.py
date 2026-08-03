@@ -437,6 +437,100 @@ class TestTalk:
         assert validate_ruling_action(_talk(), _peaceful_briefing()) is None
 
 
+def _tavern_briefing() -> GMBriefing:
+    """Peaceful briefing with a nested entity offering an interaction."""
+    from mgmai.models.briefing import BriefingContainsEntry, BriefingInteraction
+
+    room = BriefingRoom(
+        id="common_room",
+        name="Common Room",
+        description="A tavern.",
+        entities_visible=[
+            BriefingEntity(
+                id="bar", name="the bar", type="feature",
+                description="An oak bar.",
+                contains=[
+                    BriefingContainsEntry(
+                        id="sealed_crate", name="sealed crate", type="feature",
+                        description="A stout crate.",
+                        interactions_available=[
+                            BriefingInteraction(
+                                id="move_crate_to_dock",
+                                description="Lug the crate out to the dock.",
+                            ),
+                        ],
+                    ),
+                    BriefingContainsEntry(
+                        id="rusty_key", name="rusty key", type="item",
+                        description="A rusty key.",
+                    ),
+                ],
+            ),
+            BriefingEntity(
+                id="berrin", name="Berrin", type="npc",
+                description="The ferryman.",
+            ),
+        ],
+    )
+    return _peaceful_briefing().model_copy(update={"current_room": room})
+
+
+class TestInteractOutOfCombat:
+    def test_nested_entity_target_passes(self):
+        assert validate_ruling_action(
+            _interact("sealed_crate", "move_crate_to_dock"), _tavern_briefing()
+        ) is None
+
+    def test_container_target_for_nested_interaction_flagged(self):
+        error = validate_ruling_action(
+            _interact("bar", "move_crate_to_dock"), _tavern_briefing()
+        )
+        assert error is not None
+        assert "Invalid interact target 'bar'" in error
+        assert "sealed_crate" in error
+
+    def test_wrong_entity_for_interaction_flagged(self):
+        error = validate_ruling_action(
+            _interact("berrin", "move_crate_to_dock"), _tavern_briefing()
+        )
+        assert error is not None
+        assert "sealed_crate" in error
+
+    def test_unknown_interaction_flagged(self):
+        error = validate_ruling_action(
+            _interact("bar", "dance_a_jig"), _tavern_briefing()
+        )
+        assert error is not None
+        assert "dance_a_jig" in error
+
+    def test_item_target_suggests_transfer(self):
+        error = validate_ruling_action(
+            _interact("rusty_key", "turn_key"), _tavern_briefing()
+        )
+        assert error is not None
+        assert "turn_key" in error
+        assert "transfer" in error and "taken_items" in error
+
+    def test_npc_target_suggests_talk(self):
+        error = validate_ruling_action(
+            _interact("berrin", "talk"), _tavern_briefing()
+        )
+        assert error is not None
+        assert "talk action" in error
+
+    def test_generic_attack_passes(self):
+        assert validate_ruling_action(
+            _interact("berrin", "attack"), _tavern_briefing()
+        ) is None
+
+    def test_unknown_target_passes_to_resolver(self):
+        # Inventory items and the like are not in the briefing's entity
+        # map; the resolver reports genuinely unknown targets.
+        assert validate_ruling_action(
+            _interact("potion_of_healing", "quaff"), _tavern_briefing()
+        ) is None
+
+
 class TestValidateDialoguePath:
     """Hallucinated dialogue_path IDs are rejected (corrective retry
     fodder); unknown IDs must never reach the resolver, which would

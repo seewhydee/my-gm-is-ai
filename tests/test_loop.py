@@ -153,9 +153,9 @@ class TestExecuteTurn:
 
         narration = loop._execute_turn("bad", "bad", 0)
 
-        # _execute_turn renders fallback via display but returns None
-        assert narration is None
-        fake_display.render_narration.assert_called_once_with(FALLBACK_NARRATION)
+        # The player-facing fallback narration is returned (what a REPL
+        # player sees), not None.
+        assert narration == FALLBACK_NARRATION
         # Should have retried once
         assert len(llm.ruling_calls) == 2
 
@@ -548,7 +548,9 @@ class TestRulingSemanticRetry:
     def test_persistent_semantic_error_falls_back(
         self, state_manager, fake_display
     ) -> None:
-        """If the retry is also semantically invalid, fall back."""
+        """If the retry is also semantically invalid, the turn still
+        produces the player-facing fallback narration (what a REPL
+        player would see)."""
         self._enter_combat(state_manager)
         llm = FakeLLMClient(
             ruling_response=self._invalid_attack_ruling(),
@@ -560,9 +562,39 @@ class TestRulingSemanticRetry:
             "I attack the spider.", "I attack the spider.", 0
         )
 
-        assert narration is None
-        fake_display.render_narration.assert_called_once_with(FALLBACK_NARRATION)
+        assert narration == FALLBACK_NARRATION
         assert len(llm.ruling_calls) == 2
+
+    def test_persistent_invalid_interact_degrades_to_engine_failure(
+        self, state_manager, fake_display
+    ) -> None:
+        """An interact ruling the model insists on (unknown interaction)
+        is passed through to the engine — which fails it cleanly — rather
+        than killing the whole turn's narration."""
+        state_manager.hard_state.player.location = "bag_floor"
+        ruling = json.dumps({
+            "action_type": "interact",
+            "target": "handkerchief",
+            "interaction_id": "nonexistent_interaction",
+            "detail": "Player fiddles with the handkerchief",
+            "follow_up": None,
+            "soft_state_patches": [],
+        })
+        llm = FakeLLMClient(
+            ruling_response=ruling,
+            prose_response=_prose_json("Nothing comes of it."),
+        )
+        loop = GameLoop(state_manager, llm, display=fake_display)
+
+        narration = loop._execute_turn(
+            "I fiddle with the handkerchief.", "I fiddle with the handkerchief.", 0
+        )
+
+        assert narration == "Nothing comes of it."
+        assert len(llm.ruling_calls) == 2  # the corrective retry happened
+        assert loop._last_result is not None
+        assert loop._last_result.success is False
+        assert loop._last_result.error is not None
 
     def test_json_parse_retry_message_preserved(
         self, state_manager, fake_display

@@ -493,6 +493,7 @@ class DialogueExitedResult(BaseModel):
     npc_id: str
     exit_narrative: str | None = None
     archival_fallback: str | None = None
+    recent_exchanges: list[dict[str, str]] = Field(default_factory=list)
 
 
 class WillRevealReadinessEntry(BaseModel):
