@@ -2911,8 +2911,8 @@ def _begin_player_turn(
         pass
     else:
         # Per-turn action-economy bookkeeping resets: the full budget and
-        # the player's reaction (which refreshes at the start of their own
-        # turn, like every combatant's).
+        # the player's reaction (also refreshed at turn end, so
+        # pre-resolution readers never see it stale).
         budget = combat.player_budget
         budget.action_used = False
         budget.bonus_action_used = False
@@ -3013,6 +3013,24 @@ def _end_player_turn(
         for cds in combat.npc_cooldowns.values():
             for aid in list(cds):
                 cds[aid] = max(0, cds[aid] - 1)
+        # Reset the player's action-economy budget at turn end (in
+        # addition to the start-of-turn reset in _begin_player_turn):
+        # pre-resolution readers — the GM briefing's availability flags
+        # and ruling validation — must not see a stale spent budget from
+        # the just-finished turn when the player's next turn begins.
+        budget = combat.player_budget
+        budget.action_used = False
+        budget.bonus_action_used = False
+        budget.free_interaction_used = False
+        budget.reaction_used = False
+        budget.slot_cast_this_turn = False
+        combat.action_weapon_id = None
+        # The player's reaction refreshes here too (the briefing's
+        # reaction_available derives from reactions_spent, not the
+        # budget).  Safe to clear after this round's NPC turns: enemies
+        # only move on their own turns, so no player OA can be provoked
+        # between this reset and the player's next turn.
+        combat.reactions_spent.discard("player")
 
     combat.log.extend(combat_log)
 

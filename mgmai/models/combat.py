@@ -22,9 +22,12 @@ from pydantic import BaseModel, Field
 class TurnBudget(BaseModel):
     """The player's per-turn action-economy budget (D&D 5e SRD 5.2.1).
 
-    Reset at the start of the player's turn (``_begin_player_turn``).
-    ``reaction_used`` tracks the player's reaction, which refreshes at the
-    start of their own turn like every other combatant's.
+    Reset when the player's turn cycles — at the start of the player's
+    turn (``_begin_player_turn``) and again at turn end
+    (``_end_player_turn``) so pre-resolution readers never see a stale
+    spent budget.  ``reaction_used`` mirrors the player's reaction onto
+    the budget; the briefing instead derives reaction availability from
+    ``CombatState.reactions_spent``, which is cleared on the same cycle.
     """
     action_used: bool = False
     bonus_action_used: bool = False
@@ -111,7 +114,7 @@ class CombatState(BaseModel):
     impede_used: list[str] = Field(default_factory=list)
     # The player's per-turn action-economy budget (action / bonus action /
     # free object interaction / reaction / slot-cast flag).  Reset at the
-    # start of each player turn.  See TurnBudget.
+    # start and at the end of each player turn.  See TurnBudget.
     player_budget: TurnBudget = Field(default_factory=TurnBudget)
     # Combatant ids that have spent their reaction since their own last
     # turn start (the player and every NPC).  An id is removed at the top

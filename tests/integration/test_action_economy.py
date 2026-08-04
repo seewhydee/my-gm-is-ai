@@ -282,7 +282,9 @@ def test_open_turn_continuation(
         e for e in _entries(seg2) if e.get("actor") in ("goblin_grunt", "bugbear")
     ], "No NPC turns after the turn-closing segment"
     _assert_turn_closed(sm, round_number=2)
-    assert _combat(sm).player_budget.action_used is True
+    # Budget reset at turn end; the attack's consumption is evidenced by
+    # the attack entry above and the turn closing.
+    assert _combat(sm).player_budget.action_used is False
 
     record_judge_verdict(judge_client, seg2)
 
@@ -361,8 +363,10 @@ def test_over_budget_rejection(
         artifacts_dir,
     )
     assert (seg3.engine_result or {}).get("success") is True
-    assert _combat(sm).player_budget.bonus_action_used is True
     _assert_turn_closed(sm, round_number=2)
+    # Budget reset at turn end; the bonus action's consumption is
+    # evidenced by the turn closing (both budgets spent).
+    assert _combat(sm).player_budget.bonus_action_used is False
 
     record_judge_verdict(judge_client, seg3)
 
@@ -428,10 +432,11 @@ def test_off_hand_attack(
     off_hand = list(_entries(seg2, actor="player", action="attack"))
     assert len(off_hand) == 1 and off_hand[0].get("round") == 1
     combat = _combat(sm)
-    assert combat.player_budget.bonus_action_used is True
-    # The off-hand attack does not overwrite the Attack-action weapon
-    # bookkeeping.
-    assert combat.action_weapon_id == "shortsword"
+    # Budget and weapon bookkeeping reset at turn end; the off-hand
+    # attack's bonus-action consumption is evidenced by the second
+    # attack entry above and the turn closing.
+    assert combat.player_budget.bonus_action_used is False
+    assert combat.action_weapon_id is None
     _assert_turn_closed(sm, round_number=2)
 
     # Segment 3: a third attack with the action and the bonus action
@@ -878,8 +883,17 @@ def test_action_economy_playtest(
 
     # Over-budget attempts (advisory): the directive tempts them, but
     # whether the GM actually over-rules depends on its rulings — an
-    # absent rejection only warns.
-    if not any(t.success is False for t in result.turns):
+    # absent rejection only warns.  Either layer counts: an engine-level
+    # rejection (success False) or a ruling that budget validation
+    # rejected and sent to corrective retry (recorded as ruling_retries;
+    # budget-validation messages all reference the turn's budget with
+    # "this turn").
+    def _budget_rejected(t) -> bool:
+        if t.success is False:
+            return True
+        return any("this turn" in err for err in t.ruling_retries)
+
+    if not any(_budget_rejected(t) for t in result.turns):
         warnings.warn(
             "No over-budget rejection occurred (GM never ruled an "
             "over-budget action); see artifact: " + str(result.artifacts_path),

@@ -114,6 +114,11 @@ class TurnTranscript:
     success: bool | None = None
     engine_error: str | None = None
     ruled_action: dict[str, Any] | None = None
+    # Validation errors that triggered a corrective ruling retry (LLM
+    # Call 1) during this turn — e.g. over-budget rulings rejected by
+    # budget validation.  Empty when the first ruling passed (or the
+    # retry is what failed, in which case the first error is recorded).
+    ruling_retries: list[str] = field(default_factory=list)
     # Exception raised during the turn, if any (so callers can record
     # artifacts even when the harness blows up).
     exception: BaseException | None = None
@@ -130,6 +135,7 @@ class TurnTranscript:
             "success": self.success,
             "engine_error": self.engine_error,
             "ruled_action": self.ruled_action,
+            "ruling_retries": list(self.ruling_retries),
             "exception": (
                 f"{type(self.exception).__name__}: {self.exception}"
                 if self.exception is not None
@@ -392,9 +398,11 @@ class HeadlessSession:
         the partial transcript after catching the exception.
         """
         errors_before = len(self._display.errors)
+        retries_before = len(self._loop.ruling_retries)
 
         exception: BaseException | None = None
         narration: str | None = None
+        turn_ran = False
         try:
             # Rest-mode bookkeeping (and slash-commands) bypass the turn
             # pipeline entirely.  _dispatch_input returns the rendered
@@ -404,6 +412,7 @@ class HeadlessSession:
                 narration = rest_output or None
             else:
                 narration = self._loop._run_turn(command)
+                turn_ran = True
         except BaseException as exc:  # noqa: BLE001 — record + reraise
             exception = exc
 
@@ -411,16 +420,23 @@ class HeadlessSession:
         status = _snapshot_status(self._state)
         new_errors = self._display.errors[errors_before:]
 
-        # Capture the combat log from the last engine result so the
-        # judge can cross-reference narration against mechanical truth.
+        # The turn's combat log, accumulated by the game loop across
+        # every resolution of this turn (a multi-part command chains
+        # several, each overwriting ``_last_result``), so the judge can
+        # cross-reference narration against mechanical truth.  Reading
+        # the loop's accumulator also covers combat that starts AND
+        # ends within a single turn (no live ``hard.combat`` to diff).
+        # Rest-mode / slash-command submits never reach _run_turn, so the
+        # accumulator still holds the PREVIOUS turn's entries — skip it.
         combat_log: list[dict[str, Any]] = []
-        last_result = getattr(self._loop, "_last_result", None)
-        if last_result is not None and getattr(last_result, "combat_log", None):
-            for entry in last_result.combat_log:
+        if turn_ran:
+            for entry in self._loop.turn_combat_log:
                 if hasattr(entry, "model_dump"):
                     combat_log.append(entry.model_dump())
                 elif isinstance(entry, dict):
                     combat_log.append(entry)
+
+        last_result = getattr(self._loop, "_last_result", None)
 
         game_over = hard is not None and hard.game_over is not None
         game_over_type = hard.game_over.type if game_over and hard else None
@@ -447,6 +463,7 @@ class HeadlessSession:
             success=success,
             engine_error=engine_error,
             ruled_action=ruled_action,
+            ruling_retries=list(self._loop.ruling_retries[retries_before:]),
             exception=exception,
         )
         if exception is not None:

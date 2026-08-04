@@ -245,10 +245,10 @@ def _attack(target="goblin", **kwargs) -> CombatAction:
     )
 
 
-def _ability(ability_id, target="player") -> UseAbilityAction:
+def _ability(ability_id, target="player", **kwargs) -> UseAbilityAction:
     return UseAbilityAction(
         action_type="use_ability", ability_id=ability_id,
-        target=target, detail="Cast!",
+        target=target, detail="Cast!", **kwargs,
     )
 
 
@@ -269,7 +269,9 @@ class TestTurnEndRule:
         result = resolve_combat_turn(_attack(), economy_hard, economy_corpus)
         assert result["success"]
         assert result["turn_ended"] is True
-        assert economy_hard.combat.player_budget.action_used is True
+        # The attack consumed the action (the turn auto-ended); the budget
+        # itself was reset at turn end.
+        assert economy_hard.combat.player_budget.action_used is False
         assert economy_hard.combat.round_number == 2
         assert not economy_hard.combat.turn_continuation
 
@@ -321,7 +323,10 @@ class TestTurnEndRule:
         r1 = resolve_combat_turn(_ability("magic_missile", "goblin"), economy_hard, economy_corpus)
         assert r1["success"]
         assert r1["turn_ended"] is True
-        assert economy_hard.combat.player_budget.slot_cast_this_turn is True
+        # The leveled spell was cast: the slot is spent.  The
+        # slot_cast_this_turn flag itself was reset at turn end.
+        assert economy_hard.player.spell_slots[1] == 2
+        assert economy_hard.combat.player_budget.slot_cast_this_turn is False
         assert economy_hard.combat.round_number == 2
 
     def test_wait_passes_and_ends_turn(self, economy_hard, economy_corpus, monkeypatch):
@@ -339,19 +344,23 @@ class TestTurnEndRule:
         assert economy_hard.combat.round_number == 2
 
     def test_budget_resets_next_round(self, economy_hard, economy_corpus, monkeypatch):
-        """The budget resets at the start of the player's next turn."""
+        """The budget resets at the end of the player's turn, so it is
+        already fresh when the player's next turn begins."""
         _combat_state(economy_hard, "goblin")
         economy_hard.player.abilities = []
         r1 = resolve_combat_turn(_attack(), economy_hard, economy_corpus)
         assert r1["turn_ended"] is True
         assert economy_hard.combat.round_number == 2
-        assert economy_hard.combat.player_budget.action_used is True
-        # Round 2: a fresh budget means a second attack is a legal new
-        # action, not a rejected "second action".
+        # Fresh immediately after the turn ended.
+        assert economy_hard.combat.player_budget.action_used is False
+        # Round 2: the budget is still fresh at the start of the player's
+        # next turn — a second attack is a legal new action, not a
+        # rejected "second action".
         r2 = resolve_combat_turn(_attack(), economy_hard, economy_corpus)
         assert r2["success"]
         assert r2["turn_ended"] is True
         assert economy_hard.combat.round_number == 3
+        assert economy_hard.combat.player_budget.action_used is False
 
     def test_second_action_rejected(self, economy_hard, economy_corpus, monkeypatch):
         """A second action-costing action on an open turn (action spent,
@@ -583,10 +592,12 @@ class TestAttackCarriedEquip:
             _attack(unequip_target="sword"), economy_hard, economy_corpus
         )
         assert result["success"]
+        # The sheathe happened (the sword is back in the inventory); the
+        # free-interaction flag itself was reset at turn end.
         assert economy_hard.player.equipped == []
         assert "sword" in economy_hard.player.inventory
         assert economy_hard.entity_states["goblin"]["current_hp"] == 27
-        assert economy_hard.combat.player_budget.free_interaction_used is True
+        assert economy_hard.combat.player_budget.free_interaction_used is False
 
     def test_invalid_equip_rejected_costs_nothing(self, economy_hard, economy_corpus):
         _combat_state(economy_hard, "goblin")
@@ -774,7 +785,10 @@ class TestReactionCap:
             if e.action == "opportunity_attack" and e.actor == "player"
         ]
         assert len(oas) == 1
-        assert "player" in economy_hard.combat.reactions_spent
+        # The spent reaction is cleared at turn end (alongside the rest
+        # of the budget) so the next turn's briefing sees it fresh; the
+        # single OA above is the evidence the cap applied this round.
+        assert "player" not in economy_hard.combat.reactions_spent
 
     def test_player_reaction_resets_next_turn(self, economy_hard, economy_corpus, monkeypatch):
         _combat_state(economy_hard, "goblin", "orc")
@@ -789,9 +803,12 @@ class TestReactionCap:
             economy_hard, economy_corpus,
         )
         assert r1["success"]
-        assert "player" in economy_hard.combat.reactions_spent
+        # The reaction refreshes at turn end (was: only at the start of
+        # the next turn), so the flag is already clear.
+        assert "player" not in economy_hard.combat.reactions_spent
         assert economy_hard.combat.round_number == 2
-        # Next round: the player's reaction refreshed at turn start.
+        # Next round: the player's reaction has refreshed (cleared at
+        # the previous turn's end), so a fresh OA is possible.
         combat.engagement = [["goblin", "player"], ["orc", "player"]]
         r2 = resolve_combat_turn(
             _attack("goblin", positioning=PositioningAssertion(
@@ -909,17 +926,19 @@ class TestImprovisedPickupBudget:
         )
         assert validate_improvised_weapon_budget(action, briefing) is None
 
-    def test_engine_backstop_rejects_pickup_when_both_budgets_spent(self, economy_hard, economy_corpus):
+    def test_engine_backstop_rejects_pickup_when_both_budgets_spent(self, economy_hard, economy_corpus, monkeypatch):
         """The engine-level soft-patch backstop rejects the pickup and lets
-        the (wait) action proceed."""
+        the action proceed."""
         sm = build_state_manager(economy_corpus, hard_state=economy_hard)
         _combat_state(sm.hard_state, "goblin")
+        # Mid-turn state (continuation) with the free interaction spent.
+        # The attack spends the action but leaves the turn open (a bonus
+        # action remains), so both budgets are still spent when the patch
+        # is validated — a turn-ending action would reset them first.
         sm.hard_state.combat.player_budget.free_interaction_used = True
-        sm.hard_state.combat.player_budget.action_used = True
         sm.hard_state.combat.turn_continuation = True
-        action = WaitAction(
-            action_type="wait",
-            detail="I grab a rock.",
+        monkeypatch.setattr(random, "randint", lambda a, b: 1)
+        action = _attack(
             soft_state_patches=[
                 SoftStatePatch(
                     field="set_improvised_weapon",
@@ -930,6 +949,7 @@ class TestImprovisedPickupBudget:
         )
         result = resolve(action, sm)
         assert result.success
+        assert result.costs_turn is False  # turn still open
         assert result.soft_state_patches_applied == []
         assert result.soft_state_patches_rejected
         assert "object interaction" in result.soft_state_patches_rejected[0]["reason"]
@@ -965,13 +985,30 @@ class TestImprovisedPickupBudget:
         sm = build_state_manager(economy_corpus, hard_state=economy_hard)
         _combat_state(sm.hard_state, "goblin")
         # Mid-turn state (continuation): the preset survives
-        # _begin_player_turn's budget reset.
+        # _begin_player_turn's budget reset.  The patch rides a bonus
+        # action so the turn stays open — a turn-ending action would
+        # reset the spent budget before the patch is validated.
         sm.hard_state.combat.player_budget.free_interaction_used = True
         sm.hard_state.combat.turn_continuation = True
-        result = resolve(self._pickup_wait(), sm)
+        action = _ability(
+            "healing_word",
+            soft_state_patches=[
+                SoftStatePatch(
+                    field="set_improvised_weapon",
+                    new_value={"keyword": "light", "description": "a rock"},
+                    reason="Picking up a rock as a weapon.",
+                )
+            ],
+        )
+        result = resolve(action, sm)
         assert result.success
+        assert result.costs_turn is False  # turn still open
         assert result.soft_state_patches_applied
-        assert sm.hard_state.combat.player_budget.action_used is True
+        budget = sm.hard_state.combat.player_budget
+        # The bonus action went to the spell; the pickup fell back to the
+        # action.
+        assert budget.bonus_action_used is True
+        assert budget.action_used is True
 
 
 # ------------------------------------------------------------------

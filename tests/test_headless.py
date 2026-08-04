@@ -310,6 +310,76 @@ class TestHeadlessSession:
         with pytest.raises(RuntimeError, match="boom"):
             session.submit("wait")
 
+    def _chained_combat_session(self, state_manager, tmp_path, end_combat=False):
+        """Session in combat whose two-segment chained turn resolves one
+        engine ``wait`` per segment (each resolution overwrites
+        ``_last_result``; with ``end_combat`` the second segment also
+        ends combat mid-turn)."""
+        from mgmai.models.combat import CombatState
+
+        hard = state_manager.hard_state
+        hard.combat = CombatState(
+            active=True, combatants=["player"], initiative_order=["player"],
+        )
+
+        rulings = [
+            json.dumps({
+                "action_type": "wait",
+                "detail": "first segment",
+                "follow_up": "second segment",
+                "soft_state_patches": [],
+            }),
+            _wait_action_json("second segment"),
+        ]
+        proses = [_prose_json("First."), _prose_json("Second.")]
+        llm = FakeLLMClient()
+        llm._ruling_iter = iter(rulings)
+        llm._prose_iter = iter(proses)
+        seg = {"n": 0}
+
+        def _ruling(sp, up):
+            return next(llm._ruling_iter)
+
+        def _prose(sp, up):
+            out = next(llm._prose_iter)
+            seg["n"] += 1
+            if end_combat and seg["n"] == 2:
+                # Combat ends during the second segment's resolution
+                # (e.g. the player's death) — afterwards hard.combat
+                # is gone, but its log entries still belong to the turn.
+                hard.combat = None
+            return out
+
+        llm.call_ruling = _ruling
+        llm.call_prose = _prose
+        return HeadlessSession(
+            llm_client=llm, state_manager=state_manager, config_dir=tmp_path,
+        )
+
+    def test_submit_captures_combat_log_across_chain_segments(
+        self, state_manager, tmp_path
+    ) -> None:
+        """A chained turn's combat_log covers ALL engine resolutions,
+        not just the last segment's ``_last_result``."""
+        session = self._chained_combat_session(state_manager, tmp_path)
+        transcript = session.submit("wait, then wait again")
+        # One engine "wait" entry per segment (the old _last_result-only
+        # capture would see just the second).
+        waits = [e for e in transcript.combat_log if e["action"] == "wait"]
+        assert len(waits) == 2
+
+    def test_submit_captures_combat_log_when_combat_ends_mid_turn(
+        self, state_manager, tmp_path
+    ) -> None:
+        """Entries stay capturable when combat ends during the turn
+        (``hard.combat`` is None afterwards)."""
+        session = self._chained_combat_session(
+            state_manager, tmp_path, end_combat=True
+        )
+        transcript = session.submit("wait, then wait again")
+        waits = [e for e in transcript.combat_log if e["action"] == "wait"]
+        assert len(waits) == 2
+
     def test_status_snapshot_without_turn(self, state_manager, tmp_path) -> None:
         llm = FakeLLMClient(
             ruling_response=_wait_action_json(),
@@ -324,6 +394,50 @@ class TestHeadlessSession:
         assert snap.turn_count == 0
         assert snap.location == state_manager.hard_state.player.location
         assert snap.in_combat is False
+
+    def test_fallback_turn_does_not_record_stale_result(
+        self, state_manager, tmp_path
+    ) -> None:
+        """A turn where LLM Call 1 double-fails must not inherit the
+        previous turn's success/ruled_action (the fallback path clears
+        ``_last_result``/``_last_action``)."""
+        from mgmai.game.loop import FALLBACK_NARRATION
+
+        llm = FakeLLMClient(
+            ruling_response=_wait_action_json(),
+            prose_response=_prose_json("A quiet moment."),
+        )
+        session = HeadlessSession(
+            llm_client=llm,
+            state_manager=state_manager,
+            config_dir=tmp_path,
+        )
+        ok = session.submit("wait")
+        assert ok.success is not None
+
+        llm._ruling = "not valid json"
+        bad = session.submit("garbage")
+        assert bad.narration == FALLBACK_NARRATION
+        assert bad.success is None
+        assert bad.ruled_action is None
+
+    def test_ruling_retries_recorded_in_transcript(
+        self, state_manager, tmp_path
+    ) -> None:
+        """A corrective ruling retry (first output invalid) is exposed
+        on the turn's transcript."""
+        rulings = ["not valid json", _wait_action_json()]
+        llm = FakeLLMClient(prose_response=_prose_json("Time passes."))
+        llm._ruling_iter = iter(rulings)
+        llm.call_ruling = lambda sp, up: next(llm._ruling_iter)
+        session = HeadlessSession(
+            llm_client=llm,
+            state_manager=state_manager,
+            config_dir=tmp_path,
+        )
+        transcript = session.submit("wait")
+        assert len(transcript.ruling_retries) == 1
+        assert "invalid" in transcript.ruling_retries[0].lower()
 
     def test_snapshot_combatants_include_conditions_and_fled(
         self, state_manager

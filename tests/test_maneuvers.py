@@ -198,7 +198,9 @@ class TestDodge:
         assert result["success"]
         assert result["turn_ended"] is True
         assert mvr_hard.player.status_effects.get("dodging") == 1
-        assert mvr_hard.combat.player_budget.action_used is True
+        # The dodge consumed the action (the turn ended); the budget
+        # itself was reset at turn end.
+        assert mvr_hard.combat.player_budget.action_used is False
         assert mvr_hard.combat.round_number == 2
 
     def test_dodging_grants_attackers_disadvantage(self, mvr_corpus):
@@ -322,7 +324,9 @@ class TestGrapple:
         assert result["success"]
         assert mvr_hard.combat.grapples == {}
         assert "grappled" not in mvr_hard.entity_states["goblin"]
-        assert mvr_hard.combat.player_budget.action_used is True
+        # The action was spent (the turn ended and the round advanced);
+        # the budget itself was reset at turn end.
+        assert mvr_hard.combat.player_budget.action_used is False
         assert mvr_hard.combat.round_number == 2
 
     def test_grapple_requires_enemy_target(self, mvr_hard, mvr_corpus, monkeypatch):
@@ -511,7 +515,9 @@ class TestHelp:
         assert r1["success"]
         assert combat.help_flagged == []  # consumed by the ally's attack
         assert mvr_hard.entity_states["goblin"]["current_hp"] == 30 - 6
-        assert mvr_hard.combat.player_budget.action_used is True
+        # Help consumed the action (the NPC phase ran); the budget itself
+        # was reset at turn end.
+        assert mvr_hard.combat.player_budget.action_used is False
 
     def test_help_flag_expires_at_players_next_turn(self, mvr_hard, mvr_corpus, monkeypatch):
         """SRD: the Help benefit expires at the start of the helper's next
@@ -588,8 +594,10 @@ class TestOffHandAttack:
         r2 = resolve_combat_turn(_attack(), mvr_hard, mvr_corpus)
         assert r2["success"]
         assert mvr_hard.entity_states["goblin"]["current_hp"] == 19
-        assert combat.player_budget.bonus_action_used is True
         assert r2["turn_ended"] is True  # action + bonus action both spent
+        # Both were spent (the turn ended); the budget itself was reset
+        # at turn end.
+        assert combat.player_budget.bonus_action_used is False
 
     def test_off_hand_not_available_without_second_light_weapon(self, mvr_hard, mvr_corpus, monkeypatch):
         _combat_state(mvr_hard, "goblin")
@@ -741,7 +749,10 @@ class TestOffHandLightRequirement:
         r1 = resolve_combat_turn(_attack(), mvr_hard, mvr_corpus)
         assert r1["success"]
         assert r1["turn_ended"] is True  # longsword is not light: no off-hand
-        assert combat.action_weapon_id == "longsword"
+        assert combat.action_weapon_id is None  # reset at turn end
+        # Simulate the mid-turn state: the longsword attack spent the
+        # action and the turn is still open.
+        combat.action_weapon_id = "longsword"
         combat.player_budget.action_used = True
         combat.turn_continuation = True
         r2 = resolve_combat_turn(_attack(), mvr_hard, mvr_corpus)

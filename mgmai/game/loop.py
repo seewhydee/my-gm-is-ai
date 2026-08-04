@@ -116,6 +116,18 @@ class GameLoop:
         self._config_dir = Path(config_dir) if config_dir else None
         self._prose_validation_enabled = prose_validation_enabled
         self._positioning_warning: list[str] = []
+        # Validation errors that triggered a corrective ruling retry
+        # (LLM Call 1), accumulated across turns.  The headless harness
+        # slices this per submit to expose retries in the transcript.
+        self.ruling_retries: list[str] = []
+        # Combat-log entries produced during the current _run_turn,
+        # accumulated across every resolution (a single player input can
+        # chain several).  Cleared at the start of each _run_turn; the
+        # headless harness reads it for the turn transcript — unlike
+        # _last_result this survives chained segments, and unlike
+        # diffing hard.combat.log it survives combat starting AND
+        # ending within a single turn.
+        self.turn_combat_log: list = []
         # Active rest-mode controller, or None during normal play.  Set
         # when a rest action resolves successfully; cleared when the
         # player picks *done* in the rest menu.
@@ -222,6 +234,7 @@ class GameLoop:
         value; the headless harness uses it.
         """
         self._chat_log.append({"role": "player", "content": player_input})
+        self.turn_combat_log.clear()
 
         chain_depth = 0
         current_input = normalize_player_input(player_input)
@@ -309,10 +322,17 @@ class GameLoop:
         try:
             action = self._call_ruling(briefing)
         except LLMOutputError:
-            # Both ruling attempts failed.  Return the fallback through
-            # the normal path so the REPL renders it exactly once and the
-            # headless harness records the same player-facing text a REPL
-            # player would see (rather than a None narration).
+            # Both ruling attempts failed.  Clear the stale turn state so
+            # the headless harness doesn't record the PREVIOUS turn's
+            # result/action against this one, and return the fallback
+            # through the normal path so the REPL renders it exactly once
+            # and the headless harness records the same player-facing
+            # text a REPL player would see (rather than a None narration).
+            # turn_combat_log is deliberately NOT cleared: earlier chain
+            # segments of this same input really resolved, and their
+            # mechanics belong in the transcript alongside success=None.
+            self._last_result = None
+            self._last_action = None
             return FALLBACK_NARRATION
 
         log.debug("--- PlayerAction ---\n%s", action.model_dump_json(indent=2))
@@ -332,6 +352,7 @@ class GameLoop:
             self._positioning_warning = []
         self._last_result = result
         self._last_action = action
+        self.turn_combat_log.extend(getattr(result, "combat_log", None) or [])
 
         log.debug("--- EngineResult ---\n%s", result.model_dump_json(indent=2))
 
@@ -499,6 +520,7 @@ class GameLoop:
             )
 
         log.debug("LLM Call 1 retry after invalid ruling: %s", error)
+        self.ruling_retries.append(error)
         retry_prompt = (
             user_prompt
             + "\n\n[ERROR FROM PREVIOUS ATTEMPT: " + error + "]"
@@ -666,6 +688,8 @@ class GameLoop:
     def _on_game_loaded(self) -> None:
         self._chat_log.clear()
         self._last_result = None
+        self.ruling_retries.clear()
+        self.turn_combat_log.clear()
 
     def _on_model_change(self, api_key: str, config: object) -> None:
         self._llm = LLMClient(api_key=api_key, config=config)
