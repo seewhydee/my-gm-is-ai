@@ -477,8 +477,8 @@ def test_reaction_cap(
 ):
     """Two enemies leaving the player's reach in the same round provoke
     only ONE player opportunity attack — the second is blocked by
-    ``reactions_spent``.  The reaction refreshes at the start of the
-    player's next turn, so the next round's provocation lands again."""
+    ``reactions_spent``.  The reaction refreshes when the player's turn
+    cycles, so the next round's provocation lands again."""
     sm = _sm_in_combat(
         combat_arena_dir,
         _GRUNT_AND_BUGBEAR,
@@ -516,10 +516,11 @@ def test_reaction_cap(
     assert oas[0].get("round") == 1
     # The declared action still proceeded after the OA.
     assert list(_entries(seg1, actor="player", action="attack"))
-    # The player's reaction stays spent through the NPC turns (it
-    # refreshes at the start of the player's own turn).
-    assert "player" in _combat(sm).reactions_spent
     _assert_turn_closed(sm, round_number=2)
+    # The spent reaction is cleared at turn end (so the next turn's
+    # briefing sees it fresh); the single OA above is the evidence the
+    # cap held through this round's provocations.
+    assert "player" not in _combat(sm).reactions_spent
 
     # Segment 2 (next round): same provocation — the refreshed reaction
     # fires again.  (Re-assert the engagement pairs; NPC attacks already
@@ -542,7 +543,7 @@ def test_reaction_cap(
     oas = list(_entries(seg2, actor="player", action="opportunity_attack"))
     assert len(oas) == 1
     assert oas[0].get("round") == 2
-    assert "player" in _combat(sm).reactions_spent
+    assert "player" not in _combat(sm).reactions_spent
 
     record_judge_verdict(judge_client, seg2)
 
