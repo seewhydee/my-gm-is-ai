@@ -73,6 +73,11 @@ class StatusSnapshot:
     # "topics_discussed", "stall_counter", "entered_turn", "log_length"}.
     # Empty dict when no dialogue state is available.
     dialogue: dict[str, Any] = field(default_factory=dict)
+    # Action economy for the player's current combat turn: the five
+    # TurnBudget booleans plus "reactions_spent" (sorted combatant ids),
+    # "action_weapon_id", and "turn_continuation".  Empty dict when not
+    # in combat.
+    player_budget: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -85,6 +90,7 @@ class StatusSnapshot:
             "combatants": self.combatants,
             "active_flags": self.active_flags,
             "dialogue": self.dialogue,
+            "player_budget": self.player_budget,
         }
 
 
@@ -253,6 +259,15 @@ def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
                 "impeded": cid in (combat.impeded or []),
             }
 
+    player_budget: dict[str, Any] = {}
+    if combat is not None:
+        player_budget = {
+            **combat.player_budget.model_dump(),
+            "reactions_spent": sorted(combat.reactions_spent),
+            "action_weapon_id": combat.action_weapon_id,
+            "turn_continuation": combat.turn_continuation,
+        }
+
     dialogue: dict[str, Any] = {}
     soft = state_manager.soft_state
     if soft is not None:
@@ -280,6 +295,7 @@ def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
         combatants=combatants,
         active_flags={k: v for k, v in hard.flags.items() if v},
         dialogue=dialogue,
+        player_budget=player_budget,
     )
 
 
