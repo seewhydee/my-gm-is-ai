@@ -29,6 +29,7 @@ import logging
 from typing import Any
 
 from mgmai.llm.client import LLMClient
+from tests.integration.artifact import JudgeRecord
 from tests.integration.indicator_runner import IndicatorTurnResult
 from tests.integration.judge import JudgeError, parse_judge_output
 
@@ -124,29 +125,42 @@ def judge_indicator_turn(
     *,
     temperature: float | None = 0.2,
     max_tokens: int = 1000,
-) -> dict[str, Any]:
+) -> JudgeRecord:
     """Run the judge LLM over a single indicator turn.
 
-    Returns the parsed verdict dict (with ``pass``, ``overall_score``,
-    ``criteria``, ``summary``).  Raises ``JudgeError`` if the output
-    can't be parsed as JSON.
+    Returns a :class:`JudgeRecord` with the parsed verdict (or
+    ``verdict=None`` and ``error`` set when the output can't be
+    parsed), the exact payload the judge was shown, and the verbatim
+    raw output.  Never raises ``JudgeError`` — parse failures are
+    captured in the record.
     """
     payload = _build_payload_for_judge(result)
     raw = judge_client.call(
         system_prompt=_INDICATOR_JUDGE_SYSTEM_PROMPT,
-        user_prompt=payload,
+        user_prompt=json.dumps(payload, indent=2, default=str),
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    return parse_judge_output(raw)
+    record = JudgeRecord(
+        verdict=None,
+        raw_output=raw,
+        payload=payload,
+        judge_model=judge_client.model_name,
+    )
+    try:
+        record.verdict = parse_judge_output(raw)
+    except JudgeError as exc:
+        record.error = f"JudgeError: {exc}"
+    return record
 
 
-def _build_payload_for_judge(result: IndicatorTurnResult) -> str:
-    """Build the JSON payload the judge will score.
+def _build_payload_for_judge(result: IndicatorTurnResult) -> dict[str, Any]:
+    """Build the payload the judge will score.
 
     The engine result is trimmed to the mechanically relevant fields
     (rolls, combat log, state changes, triggered narration) to keep
-    the prompt small.
+    the prompt small.  Returned as a dict so the caller can persist
+    exactly what the judge was shown.
     """
     engine = result.engine_result or {}
     mechanical_events = {
@@ -178,7 +192,7 @@ def _build_payload_for_judge(result: IndicatorTurnResult) -> str:
             else None
         ),
     }
-    return json.dumps(payload, indent=2, default=str)
+    return payload
 
 
 __all__ = [

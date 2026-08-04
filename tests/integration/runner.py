@@ -24,16 +24,24 @@ functions; this module just runs and records.
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from mgmai.game.headless import HeadlessSession, TurnTranscript
 from mgmai.llm.client import LLMClient
+from tests.integration.artifact import (
+    SCHEMA_VERSION,
+    JudgeRecord,
+    Metadata,
+    build_git_metadata,
+    new_timestamp,
+    summarize_scenario,
+    utc_now_iso,
+    write_artifact,
+)
 from tests.integration.driver import PlayerDriver, is_abort
 
 log = logging.getLogger(__name__)
@@ -47,12 +55,19 @@ class ScenarioResult:
     directive: str = ""
     turns: list[TurnTranscript] = field(default_factory=list)
     driver_raw_outputs: list[str] = field(default_factory=list)
+    driver_contexts: list[dict] = field(default_factory=list)
     final_status: dict[str, Any] | None = None
     artifacts_path: Path | None = None
-    judge_verdict: dict[str, Any] | None = None
+    judge_record: JudgeRecord | None = None
+    metadata: Metadata = field(default_factory=Metadata)
+    created_utc: str = ""
     error: BaseException | None = None
     aborted: bool = False
     abort_reason: str | None = None
+    # Write-path state, set by run_scenario so rewrite_artifact() can
+    # re-emit through write_artifact (keeping index.json current).
+    _artifacts_dir: Path | None = None
+    _timestamp: str = ""
 
     @property
     def turn_count(self) -> int:
@@ -64,36 +79,48 @@ class ScenarioResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": SCHEMA_VERSION,
+            "harness": "scenario",
             "scenario_name": self.scenario_name,
             "directive": self.directive,
-            "turns": [t.to_dict() for t in self.turns],
-            "driver_raw_outputs": list(self.driver_raw_outputs),
-            "final_status": self.final_status,
-            "judge_verdict": self.judge_verdict,
+            "created_utc": self.created_utc,
+            "turn_count": self.turn_count,
+            "metadata": self.metadata.to_dict(),
+            "summary": summarize_scenario(self),
+            "judge": self.judge_record.to_dict() if self.judge_record else None,
+            "data": {
+                "turns": [t.to_dict() for t in self.turns],
+                "driver_raw_outputs": list(self.driver_raw_outputs),
+                "driver_contexts": list(self.driver_contexts),
+                "final_status": self.final_status,
+                "aborted": self.aborted,
+                "abort_reason": self.abort_reason,
+            },
             "error": (
                 f"{type(self.error).__name__}: {self.error}"
                 if self.error is not None
                 else None
             ),
-            "aborted": self.aborted,
-            "abort_reason": self.abort_reason,
         }
 
     def rewrite_artifact(self) -> None:
         """Re-write the artifact file with the current state.
 
-        Called after the judge updates ``judge_verdict`` so the artifact
-        on disk reflects the final, complete result.
+        Called after the judge updates ``judge_record`` so the artifact
+        on disk (and ``index.json``) reflects the final, complete
+        result.
         """
-        if self.artifacts_path is None:
+        if self._artifacts_dir is None:
             return
         try:
-            self.artifacts_path.write_text(
-                json.dumps(self.to_dict(), indent=2, default=str),
-                encoding="utf-8",
+            write_artifact(
+                self._artifacts_dir,
+                self.scenario_name,
+                self._timestamp,
+                self.to_dict(),
             )
         except OSError as exc:
-            log.warning("Failed to re-write artifact %s: %s", self.artifacts_path, exc)
+            log.warning("Failed to re-write artifact: %s", exc)
 
 
 def run_scenario(
@@ -128,7 +155,7 @@ def run_scenario(
     if config_dir is None:
         config_dir = Path(tempfile.mkdtemp(prefix="mgmai_scenario_"))
 
-    timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+    timestamp = new_timestamp()
 
     # Per-run debug log next to the artifact: the full turn-by-turn
     # LLM traffic (briefings, rulings, raw outputs) that post-mortem
@@ -157,7 +184,21 @@ def run_scenario(
 
     driver = PlayerDriver(driver_client, directive)
 
-    result = ScenarioResult(scenario_name=scenario_name, directive=directive)
+    git_commit, git_dirty = build_git_metadata()
+    result = ScenarioResult(
+        scenario_name=scenario_name,
+        directive=directive,
+        metadata=Metadata(
+            gm_model=gm_client.model_name,
+            driver_model=driver_client.model_name,
+            max_turns=max_turns,
+            git_commit=git_commit,
+            git_dirty=git_dirty,
+        ),
+        created_utc=utc_now_iso(),
+    )
+    result._artifacts_dir = artifacts_dir
+    result._timestamp = timestamp
 
     try:
         for i in range(max_turns):
@@ -213,6 +254,7 @@ def run_scenario(
                 break
     finally:
         result.driver_raw_outputs = list(driver.raw_outputs)
+        result.driver_contexts = driver.contexts
         final_snapshot = session.status_snapshot().to_dict()
         # Augment with entity states so the artifact and tests can
         # inspect post-combat HP/alive/fled without relying on
@@ -258,14 +300,11 @@ def run_scenario(
         result.final_status = final_snapshot
 
         # Write the artifact regardless of pass/fail.
-        artifact_path = artifacts_dir / f"{scenario_name}_{timestamp}.json"
         try:
-            artifact_path.write_text(
-                json.dumps(result.to_dict(), indent=2, default=str),
-                encoding="utf-8",
+            result.artifacts_path = write_artifact(
+                artifacts_dir, scenario_name, timestamp, result.to_dict()
             )
-            result.artifacts_path = artifact_path
         except OSError as exc:
-            log.warning("Failed to write artifact to %s: %s", artifact_path, exc)
+            log.warning("Failed to write artifact: %s", exc)
 
     return result

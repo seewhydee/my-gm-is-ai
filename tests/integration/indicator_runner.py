@@ -39,7 +39,6 @@ import json
 import logging
 import random
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +54,16 @@ from mgmai.llm.client import LLMClient
 from mgmai.models.actions import PlayerAction
 from mgmai.models.combat import CombatState
 from mgmai.state.manager import StateManager
+from tests.integration.artifact import (
+    SCHEMA_VERSION,
+    JudgeRecord,
+    Metadata,
+    build_git_metadata,
+    new_timestamp,
+    summarize_indicator,
+    utc_now_iso,
+    write_artifact,
+)
 
 log = logging.getLogger(__name__)
 
@@ -72,25 +81,43 @@ class IndicatorTurnResult:
     raw_narration: str | None = None
     final_narration: str | None = None
     engine_result: dict[str, Any] | None = None
-    judge_verdict: dict[str, Any] | None = None
+    judge_record: JudgeRecord | None = None
+    metadata: Metadata = field(default_factory=Metadata)
+    created_utc: str = ""
     error: BaseException | None = None
     artifacts_path: Path | None = None
+    # Write-path state, set by run_indicator_turn so rewrite_artifact()
+    # can re-emit through write_artifact (keeping index.json current).
+    _artifacts_dir: Path | None = None
+    _timestamp: str = ""
 
     @property
     def placed_count(self) -> int:
         return sum(1 for ind in self.indicators if ind["placed_inline"])
 
+    @property
+    def turn_count(self) -> int:
+        return 1 if self.engine_result is not None else 0
+
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": SCHEMA_VERSION,
+            "harness": "indicator",
             "scenario_name": self.scenario_name,
-            "player_input": self.player_input,
-            "action": self.action,
-            "indicators": self.indicators,
-            "markers_placed_inline": f"{self.placed_count}/{len(self.indicators)}",
-            "raw_narration": self.raw_narration,
-            "final_narration": self.final_narration,
-            "engine_result": self.engine_result,
-            "judge_verdict": self.judge_verdict,
+            "directive": None,
+            "created_utc": self.created_utc,
+            "turn_count": self.turn_count,
+            "metadata": self.metadata.to_dict(),
+            "summary": summarize_indicator(self),
+            "judge": self.judge_record.to_dict() if self.judge_record else None,
+            "data": {
+                "player_input": self.player_input,
+                "action": self.action,
+                "indicators": self.indicators,
+                "raw_narration": self.raw_narration,
+                "final_narration": self.final_narration,
+                "engine_result": self.engine_result,
+            },
             "error": (
                 f"{type(self.error).__name__}: {self.error}"
                 if self.error is not None
@@ -101,18 +128,21 @@ class IndicatorTurnResult:
     def rewrite_artifact(self) -> None:
         """Re-write the artifact file with the current state.
 
-        Called after the judge updates ``judge_verdict`` so the artifact
-        on disk reflects the final, complete result.
+        Called after the judge updates ``judge_record`` so the artifact
+        on disk (and ``index.json``) reflects the final, complete
+        result.
         """
-        if self.artifacts_path is None:
+        if self._artifacts_dir is None:
             return
         try:
-            self.artifacts_path.write_text(
-                json.dumps(self.to_dict(), indent=2, default=str),
-                encoding="utf-8",
+            write_artifact(
+                self._artifacts_dir,
+                self.scenario_name,
+                self._timestamp,
+                self.to_dict(),
             )
         except OSError as exc:
-            log.warning("Failed to re-write artifact %s: %s", self.artifacts_path, exc)
+            log.warning("Failed to re-write artifact: %s", exc)
 
 
 def run_indicator_turn(
@@ -143,12 +173,32 @@ def run_indicator_turn(
     regardless of pass/fail.  The caller is responsible for hard
     assertions on the returned ``IndicatorTurnResult``.
     """
+    timestamp = new_timestamp()
+
+    # Per-run debug log next to the artifact, same as scenario runs:
+    # the file gets DEBUG, console stays quiet.
+    from mgmai.logging import setup_logging
+
+    setup_logging(
+        level="WARNING",
+        log_file=artifacts_dir / f"{scenario_name}_{timestamp}.log",
+    )
+
+    git_commit, git_dirty = build_git_metadata()
     result = IndicatorTurnResult(
         scenario_name=scenario_name,
         player_input=player_input,
         action=action,
+        metadata=Metadata(
+            gm_model=gm_client.model_name,
+            seed=seed,
+            git_commit=git_commit,
+            git_dirty=git_dirty,
+        ),
+        created_utc=utc_now_iso(),
     )
-    timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+    result._artifacts_dir = artifacts_dir
+    result._timestamp = timestamp
 
     try:
         hard = state_manager.hard_state
@@ -216,14 +266,11 @@ def run_indicator_turn(
         result.error = exc
         log.exception("Indicator turn failed for scenario %s", scenario_name)
     finally:
-        artifact_path = artifacts_dir / f"{scenario_name}_{timestamp}.json"
         try:
-            artifact_path.write_text(
-                json.dumps(result.to_dict(), indent=2, default=str),
-                encoding="utf-8",
+            result.artifacts_path = write_artifact(
+                artifacts_dir, scenario_name, timestamp, result.to_dict()
             )
-            result.artifacts_path = artifact_path
         except OSError as exc:
-            log.warning("Failed to write artifact to %s: %s", artifact_path, exc)
+            log.warning("Failed to write artifact: %s", exc)
 
     return result

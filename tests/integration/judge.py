@@ -30,9 +30,11 @@ from __future__ import annotations
 
 import json
 import logging
+import warnings
 from typing import Any
 
 from mgmai.llm.client import LLMClient
+from tests.integration.artifact import JudgeRecord
 from tests.integration.runner import ScenarioResult
 
 log = logging.getLogger(__name__)
@@ -114,21 +116,71 @@ def judge_scenario(
     *,
     temperature: float | None = 0.2,
     max_tokens: int = 1000,
-) -> dict[str, Any]:
+) -> JudgeRecord:
     """Run the judge LLM over a scenario result.
 
-    Returns the parsed verdict dict (with ``pass``, ``overall_score``,
-    ``criteria``, ``summary``).  Raises ``JudgeError`` if the output
-    can't be parsed as JSON.
+    Returns a :class:`JudgeRecord` with the parsed verdict (or
+    ``verdict=None`` and ``error`` set when the output can't be
+    parsed), the exact payload the judge was shown, and the verbatim
+    raw output.  Never raises ``JudgeError`` — parse failures are
+    captured in the record.
     """
-    transcript_json = _build_transcript_for_judge(result)
+    payload = _build_transcript_for_judge(result)
     raw = judge_client.call(
         system_prompt=_JUDGE_SYSTEM_PROMPT,
-        user_prompt=transcript_json,
+        user_prompt=json.dumps(payload, indent=2, default=str),
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    return parse_judge_output(raw)
+    record = JudgeRecord(
+        verdict=None,
+        raw_output=raw,
+        payload=payload,
+        judge_model=judge_client.model_name,
+    )
+    try:
+        record.verdict = parse_judge_output(raw)
+    except JudgeError as exc:
+        record.error = f"JudgeError: {exc}"
+    return record
+
+
+def record_judge_verdict(judge_client: LLMClient, result) -> None:
+    """Run the advisory LLM judge and record its verdict in the artifact.
+
+    Dispatches to the scenario or indicator judge by result shape.
+    The judge does not gate the test: deterministic assertions decide
+    pass/fail.  An unparseable verdict or a judge "fail" verdict only
+    produces a warning, so the test signal stays stable across reruns.
+    """
+    if hasattr(result, "turns"):
+        record = judge_scenario(judge_client, result)
+        rejected_msg = "Advisory judge rejected the run.\n"
+    else:
+        from tests.integration.indicator_judge import judge_indicator_turn
+
+        record = judge_indicator_turn(judge_client, result)
+        rejected_msg = "Advisory judge rejected the turn.\n"
+
+    result.judge_record = record
+    metadata = getattr(result, "metadata", None)
+    if metadata is not None:
+        metadata.judge_model = record.judge_model
+    result.rewrite_artifact()
+
+    if record.error is not None:
+        warnings.warn(
+            f"Judge LLM produced unparseable output: {record.error}; "
+            f"see artifact: {result.artifacts_path}",
+            stacklevel=2,
+        )
+    elif record.verdict is not None and not record.verdict.get("pass"):
+        warnings.warn(
+            rejected_msg
+            + format_verdict_for_failure(record.verdict)
+            + f"\nSee artifact: {result.artifacts_path}",
+            stacklevel=2,
+        )
 
 
 def parse_judge_output(raw: str) -> dict[str, Any]:
@@ -174,12 +226,13 @@ def parse_judge_output(raw: str) -> dict[str, Any]:
     )
 
 
-def _build_transcript_for_judge(result: ScenarioResult) -> str:
-    """Build the JSON transcript the judge will score.
+def _build_transcript_for_judge(result: ScenarioResult) -> dict[str, Any]:
+    """Build the transcript payload the judge will score.
 
     Compact form: one entry per turn with command, narration, and
     combat log.  Status snapshots are summarised to HP values and
-    location to keep the prompt small.
+    location to keep the prompt small.  Returned as a dict so the
+    caller can persist exactly what the judge was shown.
     """
     turns: list[dict[str, Any]] = []
     for i, t in enumerate(result.turns, 1):
@@ -226,7 +279,7 @@ def _build_transcript_for_judge(result: ScenarioResult) -> str:
         "abort_reason": result.abort_reason,
         "turns": turns,
     }
-    return json.dumps(payload, indent=2, default=str)
+    return payload
 
 
 def format_verdict_for_failure(verdict: dict[str, Any]) -> str:

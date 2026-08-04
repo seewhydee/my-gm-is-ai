@@ -95,6 +95,7 @@ class PlayerDriver:
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._raw_outputs: list[str] = []
+        self._contexts: list[dict] = []
         self._command_history: list[str] = []
 
     def next_command(self, session: HeadlessSession) -> str:
@@ -114,6 +115,14 @@ class PlayerDriver:
             json_mode=False,
         )
         self._raw_outputs.append(raw)
+        # Record what the driver was shown (not the full prompt: the
+        # static system prompt and directive are already known), so a
+        # baffling command is explainable from the artifact alone.
+        self._contexts.append({
+            "turn": len(self._contexts) + 1,
+            "situation": situation,
+            "transcript": transcript,
+        })
         cmd = sanitize_command(raw)
         self._command_history.append(cmd)
         return cmd
@@ -122,6 +131,11 @@ class PlayerDriver:
     def raw_outputs(self) -> list[str]:
         """Raw LLM responses, for the transcript artifact."""
         return list(self._raw_outputs)
+
+    @property
+    def contexts(self) -> list[dict]:
+        """Per-call situation/transcript the driver was shown."""
+        return list(self._contexts)
 
 
 # ------------------------------------------------------------------

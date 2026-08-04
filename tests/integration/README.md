@@ -116,26 +116,68 @@ from polluting the judge transcript.
 ### Artifacts
 
 Every run writes a JSON file to `tests/integration/artifacts/`
-containing:
+(`<scenario>_<timestamp>.json`; the timestamp has microsecond
+resolution, so same-second reruns never clobber each other).  The
+artifact is a self-describing envelope (`schema_version: 2`):
 
-- The scenario name and directive
-- Every turn's command, GM narration, combat log, and status snapshot
-  (including the per-turn dialogue snapshot: active NPC, their
-  attitude, topics discussed, stall counter)
-- Whether the driver aborted and why
-- The advisory judge's verdict (pass/fail, per-criterion scores and
-  notes), when it runs successfully — informational only
-- Final entity states (HP, alive/fled, attitude) and derived entity
-  locations (`room:<id>` / `entity:<id>` / null) for post-run
-  inspection
-- Final soft state: `entity_notes` (archived NPC conversation memory),
-  `player_knowledge` (revealed topics), and the final `dialogue_state`
+- `scenario_name`, `directive`, `created_utc`, `turn_count`, `error`
+- `metadata` — the models used for each role (gm/driver/judge),
+  `max_turns`/`seed`, and the git commit + dirty flag of the working
+  tree, so any two runs can be correlated with the code that produced
+  them
+- `summary` — the at-a-glance digest: outcome, player HP trajectory,
+  combat entered/concluded/rounds, milestones (flags), knowledge
+  topics, archived NPC notes, abilities/items used, enemy outcomes,
+  and a compact judge digest.  Computed by
+  `tests/integration/artifact.py`, which doubles as the shared query
+  layer for the scripts below
+- `judge` — the advisory judge's full evidence: parsed verdict, the
+  exact payload it was shown, its verbatim raw output, the judge
+  model, and any parse error
+- `data` — the harness-specific payload.  Scenario runs: every turn's
+  command, GM narration, combat log, and status snapshot (including
+  the per-turn dialogue snapshot), `driver_raw_outputs` plus
+  `driver_contexts` (the situation/transcript the driver was shown
+  each turn), whether the driver aborted and why, final entity states
+  (HP, alive/fled, attitude), derived entity locations
+  (`room:<id>` / `entity:<id>` / null), final soft state
+  (`entity_notes`, `player_knowledge`, `dialogue_state`).  Indicator
+  runs: `player_input`, `action`, `indicators`, `raw_narration`,
+  `final_narration`, `engine_result`
 
 The artifact is written regardless of pass/fail, so you can inspect
 even broken runs.  Alongside it, the runner writes a DEBUG log to
-`tests/integration/artifacts/<scenario>_<ts>.log` with the full
-turn-by-turn LLM traffic (briefings, raw ruling/prose outputs, engine
-results) — the first place to look when diagnosing a failure.
+`tests/integration/artifacts/<scenario>_<ts>.log` with the full LLM
+traffic — `LLMClient` logs every request/response at DEBUG, so the
+log covers GM, driver, and judge calls alike, for both harnesses —
+the first place to look when diagnosing a failure.
+
+`artifacts/index.json` is maintained automatically (keyed by
+scenario, newest first; judge pass/score, turn count, abort/error per
+run) for "latest run per scenario" lookups without globbing.
+
+Artifacts written before schema version 2 have a flat legacy shape;
+the scripts below read both.
+
+### Query scripts
+
+Three prewritten, stdlib-only scripts answer the common orchestration
+questions directly from the artifacts — no throwaway parse scripts
+needed:
+
+```bash
+# Digest of one run: metadata, summary, judge, first N turns, log pointer
+python tests/integration/inspect_artifact.py artifacts/fight_to_completion_20260804_100000_123456.json
+python tests/integration/inspect_artifact.py <file> --json --turns 10
+
+# Inventory across runs (uses index.json when present)
+python tests/integration/list_runs.py artifacts/
+python tests/integration/list_runs.py artifacts/ --scenario venom_pit --latest
+
+# Side-by-side diff of two runs: models/commit, judge criteria,
+# HP trajectory, milestones, abilities/items, commands
+python tests/integration/compare_runs.py <fileA> <fileB>
+```
 
 ### Cost expectations
 

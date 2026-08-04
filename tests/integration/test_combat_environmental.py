@@ -42,10 +42,8 @@ import pytest
 
 from tests.integration.helpers import assert_combat_concluded, combat_log_entries
 from tests.integration.runner import run_scenario
-from tests.integration.test_combat_arena import (
-    _record_judge_verdict,
-    _stop_when_combat_ended,
-)
+from tests.integration.judge import record_judge_verdict
+from tests.integration.test_combat_arena import _stop_when_combat_ended
 
 pytestmark = pytest.mark.llm
 
@@ -213,4 +211,4 @@ def test_environmental_actions_in_combat(
         )
 
     # Advisory judge verdict (recorded in the artifact; not a gate).
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)

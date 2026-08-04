@@ -1,0 +1,95 @@
+{
+  "schema_version": 2,
+  "harness": "scenario",
+  "scenario_name": "golden_fight",
+  "directive": "Defeat all enemies.",
+  "created_utc": "2026-08-04T10:00:00Z",
+  "turn_count": 1,
+  "metadata": {
+    "gm_model": "gm-test-model",
+    "driver_model": "driver-test-model",
+    "judge_model": "judge-test-model",
+    "max_turns": 25,
+    "seed": null,
+    "git_commit": "17d7c532",
+    "git_dirty": false
+  },
+  "summary": {
+    "turn_count": 1,
+    "aborted": false,
+    "abort_reason": null,
+    "error": null,
+    "game_over": false,
+    "game_over_type": null,
+    "player_hp": 24,
+    "player_max_hp": 24,
+    "combat": {"entered": true, "concluded": false, "rounds": 1},
+    "milestones": ["fight_started"],
+    "knowledge_topics": [],
+    "npc_notes_archived": [],
+    "abilities_used": [],
+    "items_used": [],
+    "enemy_outcomes": {},
+    "hp_over_turns": [24],
+    "judge": {
+      "pass": false,
+      "overall_score": 2,
+      "criteria": {"mechanical_fidelity": 2, "consistency": 3},
+      "error": null
+    }
+  },
+  "judge": {
+    "verdict": {
+      "pass": false,
+      "overall_score": 2,
+      "criteria": {
+        "mechanical_fidelity": {"score": 2, "note": "Missed the miss."},
+        "consistency": {"score": 3, "note": "Minor drift."}
+      },
+      "summary": "Mediocre run."
+    },
+    "raw_output": "{\"pass\": false, \"overall_score\": 2}",
+    "payload": {"scenario": "golden_fight", "turns": []},
+    "judge_model": "judge-test-model",
+    "error": null
+  },
+  "data": {
+    "turns": [
+      {
+        "command": "I attack the bugbear.",
+        "narration": "Your swing goes wide.",
+        "status": {
+          "turn_count": 1,
+          "location": "arena",
+          "in_combat": true,
+          "combat_round": 1,
+          "player_hp": 24,
+          "player_max_hp": 24,
+          "combatants": {},
+          "active_flags": {"fight_started": true},
+          "dialogue": {}
+        },
+        "game_over": false,
+        "game_over_type": null,
+        "errors": [],
+        "combat_log": [
+          {"round": 1, "actor": "player", "action": "attack", "target": "bugbear",
+           "attack_id": null, "attack_name": null, "hit": false, "damage": null}
+        ],
+        "success": true,
+        "engine_error": null,
+        "ruled_action": {"action_type": "combat"},
+        "exception": null
+      }
+    ],
+    "driver_raw_outputs": ["I attack the bugbear."],
+    "driver_contexts": [
+      {"turn": 1, "situation": "Turn 0, location: arena. Not in combat.",
+       "transcript": "(no history yet — this is the first turn)"}
+    ],
+    "final_status": {"turn_count": 1, "player_hp": 24, "player_max_hp": 24},
+    "aborted": false,
+    "abort_reason": null
+  },
+  "error": null
+}

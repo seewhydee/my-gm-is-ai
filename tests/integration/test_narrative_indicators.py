@@ -64,9 +64,8 @@ import pytest
 
 from mgmai.models.combat import CombatState
 from mgmai.state.manager import StateManager
-from tests.integration.indicator_judge import judge_indicator_turn
 from tests.integration.indicator_runner import run_indicator_turn
-from tests.integration.judge import JudgeError, format_verdict_for_failure
+from tests.integration.judge import record_judge_verdict
 
 pytestmark = pytest.mark.llm
 
@@ -173,33 +172,6 @@ def _assert_indicator_turn(
         )
 
 
-def _record_judge_verdict(judge_client, result) -> None:
-    """Run the advisory LLM judge and record its verdict in the artifact.
-
-    The judge does not gate the test: deterministic assertions decide
-    pass/fail.  An unparseable verdict or a judge "fail" verdict only
-    produces a warning, so the test signal stays stable across reruns.
-    """
-    try:
-        verdict = judge_indicator_turn(judge_client, result)
-    except JudgeError as exc:
-        warnings.warn(
-            f"Judge LLM produced unparseable output: {exc}; "
-            f"see artifact: {result.artifacts_path}",
-            stacklevel=2,
-        )
-        return
-    result.judge_verdict = verdict
-    result.rewrite_artifact()
-    if not verdict.get("pass"):
-        warnings.warn(
-            "Advisory judge rejected the turn.\n"
-            + format_verdict_for_failure(verdict)
-            + f"\nSee artifact: {result.artifacts_path}",
-            stacklevel=2,
-        )
-
-
 # ------------------------------------------------------------------
 # Scenario 1: a single stat check indicator
 # ------------------------------------------------------------------
@@ -233,7 +205,7 @@ def test_single_check_indicator(
 
     _assert_indicator_turn(result, expected_categories={"check": 1})
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -275,7 +247,7 @@ def test_multiple_check_and_hp_indicators(
     # The HP indicator reflects real damage taken this turn.
     assert sm.hard_state.player.current_hp < hp_before
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -322,7 +294,7 @@ def test_combat_round_indicators(
     # Combat is still ongoing (the golem is far from dead).
     assert sm.hard_state.combat is not None and sm.hard_state.combat.active
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -367,4 +339,4 @@ def test_attack_and_death_indicators(
     )
     assert sm.hard_state.combat is None or not sm.hard_state.combat.active
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)

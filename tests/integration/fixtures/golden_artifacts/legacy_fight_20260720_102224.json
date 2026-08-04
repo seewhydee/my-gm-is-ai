@@ -1,0 +1,92 @@
+{
+  "scenario_name": "legacy_fight",
+  "directive": "Defeat all enemies.",
+  "turns": [
+    {
+      "command": "I attack the goblin grunt with my longsword.",
+      "narration": "You swing your longsword at the goblin grunt, catching it across the shoulder.",
+      "status": {
+        "turn_count": 1,
+        "location": "arena",
+        "in_combat": true,
+        "combat_round": 1,
+        "player_hp": 24,
+        "player_max_hp": 24,
+        "combatants": {
+          "player": {"hp": 24, "max_hp": 24, "side": "party", "alive": true},
+          "goblin_grunt": {"hp": 6, "max_hp": 11, "side": "enemy", "alive": true}
+        },
+        "active_flags": {"fight_started": true},
+        "dialogue": {}
+      },
+      "game_over": false,
+      "game_over_type": null,
+      "errors": [],
+      "combat_log": [
+        {"round": 1, "actor": "player", "action": "attack", "target": "goblin_grunt",
+         "attack_id": null, "attack_name": null, "hit": true, "damage": 5}
+      ]
+    },
+    {
+      "command": "I unleash flame strike on the goblin grunt, then drink a healing potion.",
+      "narration": "Flames engulf the goblin; it collapses. You quaff a potion.",
+      "status": {
+        "turn_count": 2,
+        "location": "arena",
+        "in_combat": false,
+        "combat_round": null,
+        "player_hp": 20,
+        "player_max_hp": 24,
+        "combatants": {},
+        "active_flags": {"fight_started": true, "first_blood": true},
+        "dialogue": {}
+      },
+      "game_over": false,
+      "game_over_type": null,
+      "errors": [],
+      "combat_log": [
+        {"round": 2, "actor": "player", "action": "ability_save", "target": "goblin_grunt",
+         "attack_id": "flame_strike", "attack_name": "Flame Strike", "hit": null, "damage": 8},
+        {"round": 2, "actor": "goblin_grunt", "action": "death", "target": null,
+         "attack_id": null, "attack_name": null, "hit": null, "damage": null},
+        {"round": 2, "actor": "player", "action": "use_item", "target": "health_potion",
+         "attack_id": null, "attack_name": null, "hit": null, "damage": 4}
+      ]
+    }
+  ],
+  "driver_raw_outputs": [
+    "I attack the goblin grunt with my longsword.",
+    "I unleash flame strike on the goblin grunt, then drink a healing potion."
+  ],
+  "final_status": {
+    "turn_count": 2,
+    "location": "arena",
+    "in_combat": false,
+    "combat_round": null,
+    "player_hp": 20,
+    "player_max_hp": 24,
+    "combatants": {},
+    "active_flags": {"fight_started": true, "first_blood": true},
+    "entity_states": {"goblin_grunt": {"alive": false}},
+    "entity_notes": {"fen": ["Fen mentioned the night crossings."]},
+    "player_knowledge": [
+      {"topic_id": "night_crossings", "description": "Fen crosses at night.",
+       "source_type": "npc_dialogue", "source_id": "fen", "turn_learned": 2}
+    ]
+  },
+  "judge_verdict": {
+    "pass": true,
+    "overall_score": 4,
+    "criteria": {
+      "mechanical_fidelity": {"score": 5, "note": "All log events narrated."},
+      "consistency": {"score": 4, "note": "No contradictions."},
+      "narration_quality": {"score": 4, "note": "Varied prose."},
+      "coherent_arc": {"score": 4, "note": "Clean arc."},
+      "command_appropriateness": {"score": 5, "note": "Commands fit the directive."}
+    },
+    "summary": "A short, clean fight."
+  },
+  "error": null,
+  "aborted": false,
+  "abort_reason": null
+}

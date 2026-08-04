@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "harness": "indicator",
+  "scenario_name": "golden_check",
+  "directive": null,
+  "created_utc": "2026-08-04T10:00:01Z",
+  "turn_count": 1,
+  "metadata": {
+    "gm_model": "gm-test-model",
+    "driver_model": null,
+    "judge_model": "judge-test-model",
+    "max_turns": null,
+    "seed": 7,
+    "git_commit": "17d7c532",
+    "git_dirty": true
+  },
+  "summary": {
+    "placed_count": 1,
+    "total_indicators": 1,
+    "markers_placed_inline": "1/1",
+    "engine_success": true,
+    "raw_narration_len": 42,
+    "final_narration_len": 58,
+    "leftover_markers": 0,
+    "error": null,
+    "judge": {
+      "pass": true,
+      "overall_score": 5,
+      "criteria": {"marker_interpretation": 5},
+      "error": null
+    }
+  },
+  "judge": {
+    "verdict": {
+      "pass": true,
+      "overall_score": 5,
+      "criteria": {
+        "marker_interpretation": {"score": 5, "note": "Placed perfectly."}
+      },
+      "summary": "Clean marker placement."
+    },
+    "raw_output": "{\"pass\": true, \"overall_score\": 5}",
+    "payload": {"scenario": "golden_check"},
+    "judge_model": "judge-test-model",
+    "error": null
+  },
+  "data": {
+    "player_input": "I shove the cracked pillar.",
+    "action": {"action_type": "interact", "target": "cracked_pillar"},
+    "indicators": [
+      {"marker": "[MECH:check:0]", "category": "check",
+       "formatted": "**[STR check: success]**",
+       "plain_description": "STR check: success",
+       "placed_inline": true}
+    ],
+    "raw_narration": "You heave. [MECH:check:0] The pillar topples.",
+    "final_narration": "You heave. **[STR check: success]** The pillar topples.",
+    "engine_result": {"success": true, "rolls": [{"expr": "1d20+3", "total": 18}]}
+  },
+  "error": null
+}

@@ -52,13 +52,8 @@ from mgmai.game.headless import _snapshot_status
 from mgmai.models.combat import CombatState
 from mgmai.state.manager import StateManager
 from tests.integration.helpers import assert_combat_concluded
-from tests.integration.indicator_judge import judge_indicator_turn
 from tests.integration.indicator_runner import run_indicator_turn
-from tests.integration.judge import (
-    JudgeError,
-    format_verdict_for_failure,
-    judge_scenario,
-)
+from tests.integration.judge import record_judge_verdict
 from tests.integration.runner import run_scenario
 
 pytestmark = pytest.mark.llm
@@ -153,32 +148,6 @@ def _engagement_pairs(sm) -> set[frozenset]:
     return {frozenset(p) for p in combat.engagement}
 
 
-def _record_indicator_judge_verdict(judge_client, result) -> None:
-    """Run the advisory indicator judge and record its verdict.
-
-    Same contract as ``test_narrative_indicators``: the judge never
-    gates the test; unparseable or negative verdicts only warn.
-    """
-    try:
-        verdict = judge_indicator_turn(judge_client, result)
-    except JudgeError as exc:
-        warnings.warn(
-            f"Judge LLM produced unparseable output: {exc}; "
-            f"see artifact: {result.artifacts_path}",
-            stacklevel=2,
-        )
-        return
-    result.judge_verdict = verdict
-    result.rewrite_artifact()
-    if not verdict.get("pass"):
-        warnings.warn(
-            "Advisory judge rejected the turn.\n"
-            + format_verdict_for_failure(verdict)
-            + f"\nSee artifact: {result.artifacts_path}",
-            stacklevel=2,
-        )
-
-
 # ------------------------------------------------------------------
 # Scenario 1: engagement exposure after a plain melee exchange
 # ------------------------------------------------------------------
@@ -238,7 +207,7 @@ def test_positioning_engagement_exposure(
     for cid in _ARENA_COMBATANTS:
         assert snap.combatants[cid]["impeded"] is False
 
-    _record_indicator_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -319,7 +288,7 @@ def test_positioning_opportunity_attack(
     # No warnings: the whole positioning block was valid and applied.
     assert (result.engine_result or {}).get("warnings") == []
 
-    _record_indicator_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -385,7 +354,7 @@ def test_positioning_disengage_maneuver(
     assert _engagement_pairs(sm) == {frozenset(("player", "bugbear"))}
     assert list(_combat_entries(result, actor="goblin_grunt", action="stunned"))
 
-    _record_indicator_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -447,7 +416,7 @@ def test_positioning_impede(
     assert combat.impeded == []
     assert combat.impede_used == ["bugbear"]
 
-    _record_indicator_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -531,7 +500,7 @@ def test_positioning_soft_fail(
     grunt_hp_after = sm.hard_state.entity_states["goblin_grunt"]["current_hp"]
     assert grunt_hp_after == grunt_hp_before - attacks[0]["damage"]
 
-    _record_indicator_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -641,21 +610,4 @@ def test_positioning_playtest(
         )
 
     # Advisory judge verdict (recorded in the artifact; not a gate).
-    try:
-        verdict = judge_scenario(judge_client, result)
-    except JudgeError as exc:
-        warnings.warn(
-            f"Judge LLM produced unparseable output: {exc}; "
-            f"see artifact: {result.artifacts_path}",
-            stacklevel=2,
-        )
-        return
-    result.judge_verdict = verdict
-    result.rewrite_artifact()
-    if not verdict.get("pass"):
-        warnings.warn(
-            "Advisory judge rejected the run.\n"
-            + format_verdict_for_failure(verdict)
-            + f"\nSee artifact: {result.artifacts_path}",
-            stacklevel=2,
-        )
+    record_judge_verdict(judge_client, result)

@@ -29,11 +29,7 @@ import warnings
 
 import pytest
 
-from tests.integration.judge import (
-    JudgeError,
-    format_verdict_for_failure,
-    judge_scenario,
-)
+from tests.integration.judge import record_judge_verdict
 from tests.integration.runner import ScenarioResult, run_scenario
 
 pytestmark = pytest.mark.llm
@@ -185,33 +181,6 @@ def _stop_when_combat_ended(session, turns):
     return combat_was_active and not session.in_combat
 
 
-def _record_judge_verdict(judge_client, result) -> None:
-    """Run the advisory LLM judge and record its verdict in the artifact.
-
-    The judge does not gate the test: deterministic assertions decide
-    pass/fail.  An unparseable verdict or a judge "fail" verdict only
-    produces a warning, so the test signal stays stable across reruns.
-    """
-    try:
-        verdict = judge_scenario(judge_client, result)
-    except JudgeError as exc:
-        warnings.warn(
-            f"Judge LLM produced unparseable output: {exc}; "
-            f"see artifact: {result.artifacts_path}",
-            stacklevel=2,
-        )
-        return
-    result.judge_verdict = verdict
-    result.rewrite_artifact()
-    if not verdict.get("pass"):
-        warnings.warn(
-            "Advisory judge rejected the run.\n"
-            + format_verdict_for_failure(verdict)
-            + f"\nSee artifact: {result.artifacts_path}",
-            stacklevel=2,
-        )
-
-
 @pytest.mark.llm
 def test_fight_to_completion(
     gm_client,
@@ -242,7 +211,7 @@ def test_fight_to_completion(
     _assert_combat_concluded(result)
 
     # Advisory judge verdict (recorded in the artifact; not a gate).
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -362,7 +331,7 @@ def test_flee_scenario(
         )
 
     # Advisory judge verdict (recorded in the artifact; not a gate).
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -450,7 +419,7 @@ def test_consumable_ability_scenario(
         )
 
     # Advisory judge verdict (recorded in the artifact; not a gate).
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -557,4 +526,4 @@ def test_ally_death_scenario(
         )
 
     # Advisory judge verdict (recorded in the artifact; not a gate).
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)

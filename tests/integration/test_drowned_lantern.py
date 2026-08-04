@@ -33,7 +33,7 @@ import warnings
 import pytest
 
 from tests.integration.runner import run_scenario
-from tests.integration.test_combat_arena import _record_judge_verdict
+from tests.integration.judge import record_judge_verdict
 
 pytestmark = pytest.mark.llm
 
@@ -231,7 +231,7 @@ def test_fen_arc(
         f"see artifact: {result.artifacts_path}"
     )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 MARTA_DIRECTIVE = """\
@@ -307,7 +307,7 @@ def test_marta_ladder(
             "in this run", stacklevel=2,
         )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 BERRIN_CONFRONT_DIRECTIVE = """\
@@ -378,7 +378,7 @@ def test_berrin_confront(
             stacklevel=2,
         )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 BERRIN_BLUFF_DIRECTIVE = """\
@@ -450,7 +450,7 @@ def test_berrin_bluff(
         )
     _assert_attitude_steps_capped(result, "berrin", 2)
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -540,7 +540,7 @@ def test_old_wellington_and_stall(
             "after the stall exit", stacklevel=2,
         )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 SWITCHING_DIRECTIVE = """\
@@ -614,7 +614,7 @@ def test_npc_switching(
         f"see artifact: {result.artifacts_path}"
     )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 ENTER_WATER_DIRECTIVE = """\
@@ -652,7 +652,7 @@ def test_loss_enter_water(
         f"see artifact: {result.artifacts_path}"
     )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 VIOLENCE_DIRECTIVE = """\
@@ -694,7 +694,7 @@ def test_loss_violence(
         f"Fen survived the attack; see artifact: {result.artifacts_path}"
     )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 # ------------------------------------------------------------------
@@ -773,7 +773,7 @@ def test_crate_and_crossing(
             "mid-crossing in this run", stacklevel=2,
         )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)
 
 
 FREE_PLAY_DIRECTIVE = """\
@@ -827,4 +827,4 @@ def test_free_play(
             "100 turns", stacklevel=2,
         )
 
-    _record_judge_verdict(judge_client, result)
+    record_judge_verdict(judge_client, result)

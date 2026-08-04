@@ -48,6 +48,11 @@ class LLMClient:
     # public API
     # ------------------------------------------------------------------
 
+    @property
+    def model_name(self) -> str:
+        """The configured model name (for run metadata / logging)."""
+        return self._config.name
+
     def call_ruling(self, system_prompt: str, user_prompt: str) -> str:
         """LLM Call 1: interpret player input → PlayerAction JSON.
 
@@ -123,10 +128,17 @@ class LLMClient:
         if self._config.extra_body is not None:
             kwargs["extra_body"] = self._config.extra_body
 
+        log.debug(
+            "LLM request: model=%s temperature=%s max_tokens=%s json_mode=%s\n"
+            "SYSTEM:\n%s\nUSER:\n%s",
+            self._config.name, temperature, max_tokens, json_mode,
+            system_prompt, user_prompt,
+        )
         response = self._client.chat.completions.create(**kwargs)
 
         choice = response.choices[0]
         if choice.message.content is None:
             raise RuntimeError("LLM returned empty content")
 
+        log.debug("LLM response:\n%s", choice.message.content)
         return choice.message.content
