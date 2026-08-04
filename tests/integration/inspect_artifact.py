@@ -119,6 +119,10 @@ def render_text(view: dict) -> str:
 
     if view["error"]:
         _print_kv(lines, "ERROR", view["error"])
+        if view.get("error_traceback"):
+            lines.append("")
+            lines.append("Traceback:")
+            lines.extend(f"  {ln}" for ln in view["error_traceback"].splitlines())
 
     preview = view.get("turns_preview")
     if preview:

@@ -380,14 +380,10 @@ def test_consumable_ability_scenario(
     _assert_combat_concluded(result)
 
     # The combat log across all turns must contain at least one
-    # ability use for flame_strike (by the player) and may contain a
-    # health potion use (by the player).
+    # ability use for flame_strike (by the player).
     #
     # Flame strike is a save ability → engine logs action="ability_save"
     # with attack_id="flame_strike" (or attack_name="Flame Strike").
-    # Health potion is used via InteractAction — the engine no longer
-    # logs a dedicated "use_item" combat entry for it, so the check
-    # below is advisory only (it was for the old use_item mechanic).
     _PLAYER_ABILITY_ACTIONS = {"ability_save", "attack"}
     has_ability_use = any(
         entry.get("actor") == "player"
@@ -405,17 +401,41 @@ def test_consumable_ability_scenario(
         f"see artifact: {result.artifacts_path}"
     )
 
-    has_heal = any(
-        entry.get("actor") == "player"
-        and entry.get("action") == "use_item"
+    # Potion use: drinking a potion mid-combat logs a player "interact"
+    # entry targeting the potion (with a companion "heal" entry).
+    # Potions always cost the action, so in any round where the player
+    # drank one there must be no player attack/ability entry for that
+    # same round (one action per turn).  This is asserted only on
+    # rounds where a potion was actually used; if none was (HP may not
+    # have dropped low enough), keep the advisory warning.
+    potion_rounds = {
+        entry.get("round")
         for t in result.turns
         for entry in t.combat_log
-    )
-    if not has_heal:
+        if entry.get("actor") == "player"
+        and entry.get("action") == "interact"
+        and entry.get("target") == "potion_of_healing"
+    }
+    if not potion_rounds:
         warnings.warn(
             "Driver did not use a healing potion (HP may not have dropped "
             "low enough); see artifact: " + str(result.artifacts_path),
             stacklevel=2,
+        )
+    for rnd in sorted(potion_rounds):
+        same_round_actions = [
+            entry
+            for t in result.turns
+            for entry in t.combat_log
+            if entry.get("actor") == "player"
+            and entry.get("round") == rnd
+            and entry.get("action")
+            in {"attack", "ability_save", "ability_auto", "maneuver", "dodge"}
+        ]
+        assert not same_round_actions, (
+            f"Round {rnd}: the player drank a potion AND has attack/ability "
+            f"entries in the same round (potions cost the action): "
+            f"{same_round_actions}; see artifact: {result.artifacts_path}"
         )
 
     # Advisory judge verdict (recorded in the artifact; not a gate).

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -25,6 +26,15 @@ from mgmai.llm.model_config import ModelConfig
 
 log = logging.getLogger(__name__)
 
+# Degenerate-response retry: providers under load occasionally answer a
+# well-formed request with a 200 carrying ``choices: null`` (or an empty
+# message).  This is a transport-level anomaly, distinct from malformed
+# *content* (which is the game loop's responsibility, via corrective
+# retry prompts); the SDK's own retry only covers HTTP error statuses,
+# so we re-ask a few times with a short backoff before giving up.
+_MAX_ATTEMPTS = 3
+_RETRY_BACKOFF_S = (1.0, 2.0)
+
 
 class LLMClient:
     """Thin wrapper around the OpenAI-compatible client for the two LLM calls.
@@ -32,8 +42,9 @@ class LLMClient:
     Call 1 (ruling) — low-temperature, strict JSON, interprets player input.
     Call 2 (prose)  — moderate-temperature, creative, narrates engine outcomes.
 
-    The client does **not** handle retries — that is the game loop's
-    responsibility.
+    The client retries only degenerate transport-level responses (no
+    choices, empty content).  Retries of malformed *content* are the
+    game loop's responsibility.
     """
 
     def __init__(self, api_key: str, config: ModelConfig) -> None:
@@ -134,11 +145,24 @@ class LLMClient:
             self._config.name, temperature, max_tokens, json_mode,
             system_prompt, user_prompt,
         )
-        response = self._client.chat.completions.create(**kwargs)
+        response = None
+        content = None
+        for attempt in range(_MAX_ATTEMPTS):
+            response = self._client.chat.completions.create(**kwargs)
+            choices = getattr(response, "choices", None)
+            if choices:
+                content = choices[0].message.content
+            if content is not None:
+                break
+            log.warning(
+                "LLM returned a degenerate response (attempt %d/%d): %r",
+                attempt + 1, _MAX_ATTEMPTS, response,
+            )
+            if attempt + 1 < _MAX_ATTEMPTS:
+                time.sleep(_RETRY_BACKOFF_S[attempt])
 
-        choice = response.choices[0]
-        if choice.message.content is None:
+        if content is None:
             raise RuntimeError("LLM returned empty content")
 
-        log.debug("LLM response:\n%s", choice.message.content)
-        return choice.message.content
+        log.debug("LLM response:\n%s", content)
+        return content

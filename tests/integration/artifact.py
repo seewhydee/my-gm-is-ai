@@ -328,6 +328,7 @@ def normalize_artifact(d: dict[str, Any]) -> dict[str, Any]:
             "judge_block": d.get("judge"),
             "data": d.get("data") or {},
             "error": d.get("error"),
+            "error_traceback": d.get("error_traceback"),
         }
     harness, data, judge_block = split_artifact(d)
     summary = (
@@ -347,6 +348,7 @@ def normalize_artifact(d: dict[str, Any]) -> dict[str, Any]:
         "judge_block": None,
         "data": data,
         "error": d.get("error"),
+        "error_traceback": d.get("error_traceback"),
     }
 
 

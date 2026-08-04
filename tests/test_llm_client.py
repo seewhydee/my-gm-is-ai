@@ -57,16 +57,61 @@ class TestLLMClient:
             assert "temperature" not in kwargs
 
     def test_raises_on_empty_content(self):
-        """RuntimeError when LLM returns content=None."""
+        """RuntimeError when LLM returns content=None on every attempt."""
         config = ModelConfig(
             name="test-model",
             base_url="https://api.example.com",
         )
         client = LLMClient(api_key="fake-key", config=config)
 
-        with patch.object(client._client.chat.completions, "create") as mock_create:
+        with (
+            patch.object(client._client.chat.completions, "create") as mock_create,
+            patch("mgmai.llm.client.time.sleep") as mock_sleep,
+        ):
             mock_create.return_value = MagicMock(
                 choices=[MagicMock(message=MagicMock(content=None))]
             )
             with pytest.raises(RuntimeError, match="empty content"):
                 client.call_ruling("system", "user")
+
+        assert mock_create.call_count == 3
+        assert mock_sleep.call_count == 2
+
+    def test_retries_degenerate_choices_then_succeeds(self):
+        """A response with choices=None is retried, not subscripted."""
+        config = ModelConfig(
+            name="test-model",
+            base_url="https://api.example.com",
+        )
+        client = LLMClient(api_key="fake-key", config=config)
+
+        with (
+            patch.object(client._client.chat.completions, "create") as mock_create,
+            patch("mgmai.llm.client.time.sleep"),
+        ):
+            mock_create.side_effect = [
+                MagicMock(choices=None),
+                MagicMock(choices=[MagicMock(message=MagicMock(content='{"x": 1}'))]),
+            ]
+            result = client.call_ruling("system", "user")
+
+        assert result == '{"x": 1}'
+        assert mock_create.call_count == 2
+
+    def test_raises_on_persistent_null_choices(self):
+        """RuntimeError (not TypeError) when choices stays None."""
+        config = ModelConfig(
+            name="test-model",
+            base_url="https://api.example.com",
+        )
+        client = LLMClient(api_key="fake-key", config=config)
+
+        with (
+            patch.object(client._client.chat.completions, "create") as mock_create,
+            patch("mgmai.llm.client.time.sleep"),
+        ):
+            mock_create.return_value = MagicMock(choices=None)
+            with pytest.raises(RuntimeError, match="empty content"):
+                client.call_ruling("system", "user")
+
+        assert mock_create.call_count == 3

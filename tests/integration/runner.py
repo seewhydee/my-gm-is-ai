@@ -25,6 +25,7 @@ functions; this module just runs and records.
 from __future__ import annotations
 
 import logging
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,6 +63,7 @@ class ScenarioResult:
     metadata: Metadata = field(default_factory=Metadata)
     created_utc: str = ""
     error: BaseException | None = None
+    error_traceback: str | None = None
     aborted: bool = False
     abort_reason: str | None = None
     # Write-path state, set by run_scenario so rewrite_artifact() can
@@ -101,6 +103,7 @@ class ScenarioResult:
                 if self.error is not None
                 else None
             ),
+            "error_traceback": self.error_traceback,
         }
 
     def rewrite_artifact(self) -> None:
@@ -215,6 +218,7 @@ def run_scenario(
                 command = driver.next_command(session)
             except Exception as exc:
                 result.error = exc
+                result.error_traceback = traceback.format_exc()
                 log.exception("Driver LLM call failed on turn %d", i + 1)
                 break
 
@@ -245,6 +249,7 @@ def run_scenario(
                 )
                 result.turns.append(transcript)
                 result.error = exc
+                result.error_traceback = traceback.format_exc()
                 log.exception("Game loop failed on turn %d", i + 1)
                 break
 

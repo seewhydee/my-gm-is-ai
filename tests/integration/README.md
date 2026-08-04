@@ -44,6 +44,7 @@ LLM-vs-LLM runs:
 | **Combat AI** | `player` targeting, HP-gated NPC abilities (`use_below_own_hp_pct`), passive NPCs (join combat, never act) |
 | **Encounter-driven combat** | Combat started by an encounter (`trigger_encounter` → `start_combat`) instead of a direct attack; the player's `wait` action; out-of-bounds talk attempts handled gracefully |
 | **Combat positioning** | Engagement auto-forms on melee attacks and is exposed in status snapshots; scripted `positioning` rulings (engage/disengage/impede) produce `reposition` / `opportunity_attack` / `maneuver` / `impeded` log entries and indicator lines; the Disengage maneuver; impede turn-consumption; graceful degradation of invalid positioning blocks |
+| **Action economy** | Per-turn budget (one action / bonus action / free interaction / reaction, one slot spell): open-turn continuation across commands, over-budget rejection costing nothing, Light-weapon off-hand attacks, the opportunity-attack reaction cap, potions always costing the action, the bonus-action slot rule; `status.player_budget` exposure in headless snapshots |
 | **GM rulings** | LLM Call 1 correctly classifies player commands in natural language as combat actions, ability uses, item uses, and flee attempts |
 | **GM prose** | LLM Call 2 produces a coherent narration that reflects the engine outcome, without hallucinating hits/misses/KOs that didn't happen |
 | **Narration quality** | No verbatim repetition, no degenerate loops, consistent HP tracking across turns (advisory judge) |
@@ -121,6 +122,8 @@ resolution, so same-second reruns never clobber each other).  The
 artifact is a self-describing envelope (`schema_version: 2`):
 
 - `scenario_name`, `directive`, `created_utc`, `turn_count`, `error`
+  (plus `error_traceback` when the run died on an exception, so crash
+  post-mortems don't need the pytest session's stderr)
 - `metadata` — the models used for each role (gm/driver/judge),
   `max_turns`/`seed`, and the git commit + dirty flag of the working
   tree, so any two runs can be correlated with the code that produced
@@ -198,7 +201,7 @@ Four scenarios use the `combat_arena` fixture:
 |----------|-----------|----------------|
 | `fight_to_completion` | Defeat all four enemies | Combat started and concluded cleanly; on a win, all enemies have death/flee entries in the combat log; on a loss, the game-over is handled gracefully (player survival is not required — the arena fight is swingy by design) |
 | `flee_scenario` | Attack once, then flee north | Combat started, at least one flee attempt logged; escape → player reached corridor alive, no game-over; death → gracefully handled loss |
-| `consumable_ability` | Use flame strike on bugbear, potion when HP < 14, then fight to end | Flame strike entry in combat log, combat concluded (win or graceful loss) |
+| `consumable_ability` | Use flame strike on bugbear, potion when HP < 14, then fight to end | Flame strike entry in combat log, combat concluded (win or graceful loss); in any round where the player drank a potion, no player attack/ability entry that same round (potions cost the action); potion never used → warn-only |
 | `ally_death` | Korbar at 1 HP / AC 1, fight to end | Combat concluded (win or gracefully handled loss); Korbar's fate consistent between combat log and entity state — death recorded on both when she falls (she almost always does) |
 
 Four scenarios use the `venom_pit` fixture (`test_venom_pit.py`):
@@ -237,7 +240,7 @@ follow the warn-don't-fail convention.
 | `berrin_confront` (preset: name + link) | Cold-ask, confront with evidence, press for the crossing | Refusal precedes `berrin_confessed`; no-check confront path; `crossing_agreed` + `confided_crate`; attitude steps ≤ 2 |
 | `berrin_bluff` (preset: name only) | Drop the name and bluff | `knows_janis_link` never set; on failure branches attitude drops with no state leaked; CHA-14 success branch warn-only |
 | `old_wellington_and_stall` | Talk to the stuffed heron, chat with Marta, get distracted, re-engage | Dialogue never opens with the dead NPC; stall counter climbs and dialogue auto-exits; memory note archived; re-engagement warn-only |
-| `npc_switching` | Marta → Berrin → Marta, warm then curt | Partner sequence M→B→M; both conversations archived; attitudes independent (his drops, hers rises) |
+| `npc_switching` | Marta → Berrin → Marta, warm then curt | Partner sequence M→B→M; both conversations archived; attitudes tracked independently (his drops under mockery; her ladder rises under warmth — her final value is GM discretion, since she witnesses the mockery, so the gate is her peak, warn-only on a soured final) |
 | `loss_enter_water` | Jump into the marsh | Game over, type `lose` |
 | `loss_violence` | Attack Fen | Fen dead; game over, type `lose` (`violence_ends_it`) |
 | `crate_and_crossing` (preset: confessed + agreed) | Move the crate, ride out the crossing, moor the ferry | Win; crate ends at `entity:ferry`; follower dialogue with Berrin in `mid_marsh`; scripted beats ran (lights unhidden); Berrin `departed`/null; `janis_vanishing` warn-only |
@@ -317,6 +320,45 @@ One **playtest** scenario uses the driver-vs-GM harness
 | Scenario | Directive | Key assertions |
 |----------|-----------|----------------|
 | `positioning_playtest` | Defeat all enemies while fighting mobile: switch targets mid-fight, create an obstacle to slow an enemy, withdraw when surrounded | Hard gates: combat concludes cleanly; every in-combat status snapshot exposes `engaged_with`/`impeded` on every combatant and at least one snapshot shows a live engagement pair.  Whether the GM actually asserts positioning blocks (reposition/OA/maneuver/impeded entries) depends on its rulings, so it is surfaced as a warning, never a gate |
+
+## The action-economy scenarios
+
+`test_action_economy.py` covers the per-turn action economy
+(`TurnBudget` on `CombatState`: one action, one bonus action, one free
+object interaction, one reaction, one slot spell per turn) in two
+styles.
+
+Seven **scripted** scenarios reuse the single-turn indicator harness
+(`run_indicator_turn`) against the `combat_arena` and `spell_arena`
+fixtures with a preset `CombatState` and pinned dice (`seed=7`).  A
+player turn that stays open (`turn_continuation`) spans several
+commands, so the multi-segment scenarios chain several
+`run_indicator_turn` calls on one shared `StateManager` — the harness
+resolves one fixed action per call, but the budget flags,
+`turn_continuation`, `reactions_spent`, and `action_weapon_id` persist
+on the StateManager between calls, and each segment still gets the real
+GM prose call.  The fixtures declare no bonus-action ability and no
+Light weapons, so those are preset on the loaded player state: the SRD
+spell pack's `healing_word` (plus level-1 slots) and the SRD gear
+pack's `shortsword` + `dagger` for dual-wielding.  Each segment costs 1
+GM call; the last segment of each scenario gets 1 judge call:
+
+| Scenario | Fixed actions | Key assertions |
+|----------|---------------|----------------|
+| `open_turn_continuation` | `healing_word` (bonus), then attack (action) | Both log entries land in round 1; no NPC turns after the bonus segment; `turn_continuation` set then cleared; budget flags and slot consumption correct |
+| `over_budget_rejection` | Attack, second attack (rejected), then `healing_word` | `success: False` with an engine error; empty log; turn still open with the budget unchanged; the legal bonus action still closes the turn |
+| `off_hand_attack` | Attack (Light shortsword), off-hand attack (dagger), third attack (rejected, mid-turn budget preset) | Both attacks land in the same round; `action_weapon_id` bookkeeping; the both-spent rejection costs nothing |
+| `reaction_cap` | Two enemies disengage from the player, two rounds running | Exactly one player `opportunity_attack` per round — the second provocation is blocked by `reactions_spent`; the reaction refreshes at the player's next turn start |
+| `potion_costs_the_action` | Drink potion, attack (rejected), then `healing_word` | The drink logs `interact` + `heal` and spends the action; the attack is rejected; the turn stays open for the bonus action |
+| `potion_never_a_free_interaction` | Potion with `interaction_cost: "free"` | Rejected ("always require an action"); potion unconsumed; budget untouched |
+| `slot_rule` | `healing_word` (leveled bonus), `magic_missile` (rejected), `fire_bolt` (cantrip) | Leveled bonus spell + leveled main spell can't coexist; the rejected cast consumes no slot; the cantrip closes the turn |
+
+One **playtest** scenario uses the driver-vs-GM harness
+(`run_scenario`):
+
+| Scenario | Directive | Key assertions |
+|----------|-----------|----------------|
+| `action_economy_playtest` | Defeat all enemies while combining attack + flame strike + potion every turn | Combat concludes cleanly; at most one action-costing player log entry per round; every failed turn carries an engine error; every in-combat snapshot exposes `status.player_budget`.  Whether an over-budget ruling actually occurred is a warning, never a gate |
 
 ## The combat arena fixture
 
