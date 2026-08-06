@@ -171,7 +171,7 @@ class TestModel:
             prose_max_tokens=1024,
         )
         cmds = Commands(state_loader, render, exit_fn, model_config=config,
-                        config_dir=str(tmp_path))
+                        config_dir=str(tmp_path), interactive=True)
         with patch("builtins.input", side_effect=[EOFError]):
             cmds.handle("/model")
         # Aggregate all render calls; model details appear across multiple prints
@@ -182,6 +182,37 @@ class TestModel:
         assert "https://api.example.com" in all_output
         assert "0.3" in all_output
         assert "0.7" in all_output
+
+    def test_model_non_interactive_never_prompts(
+        self, state_loader, render, exit_fn, tmp_path
+    ) -> None:
+        """Non-interactive front-ends (headless, Telegram) get the config
+        block plus a hint, and never block on input()/getpass()."""
+        from mgmai.llm.model_config import ModelConfig
+
+        config = ModelConfig(
+            name="test-model",
+            base_url="https://api.example.com",
+            label="Test Model",
+            ruling_temperature=0.3,
+            prose_temperature=0.7,
+            supports_json_mode=True,
+            request_timeout=30,
+            ruling_max_tokens=512,
+            prose_max_tokens=1024,
+        )
+        cmds = Commands(state_loader, render, exit_fn, model_config=config,
+                        config_dir=str(tmp_path), interactive=False)
+        with (
+            patch("builtins.input",
+                  side_effect=AssertionError("input() must not be called")),
+            patch("getpass.getpass",
+                  side_effect=AssertionError("getpass() must not be called")),
+        ):
+            cmds.handle("/model")
+        all_output = " ".join(c[0][0] for c in render.call_args_list)
+        assert "test-model" in all_output
+        assert "requires a terminal" in all_output
 
 
 class TestInventoryCommand:

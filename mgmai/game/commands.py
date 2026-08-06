@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import getpass
 import logging
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,20 @@ except ImportError:
 _BARE_INV_WORDS = frozenset({"i", "inv", "inventory"})
 _BARE_CHAR_WORDS = frozenset({"c", "char", "character", "sheet"})
 
+
+def _stdin_is_interactive() -> bool:
+    """True when stdin is a terminal and can safely block on input().
+
+    Some environments (pytest's capture, headless harnesses) expose a
+    stdin object whose ``isatty`` is unavailable or raises; treat those
+    as non-interactive so shared command handlers never block.
+    """
+    try:
+        return sys.stdin.isatty()
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 class Commands:
     def __init__(
         self,
@@ -57,6 +72,7 @@ class Commands:
         config_dir: str | Path | None = None,
         model_config: object | None = None,
         on_model_change: Callable[[str, object], None] | None = None,
+        interactive: bool | None = None,
     ):
         self._state = state_loader
         self._render = render
@@ -66,6 +82,10 @@ class Commands:
         self._config_dir = Path(config_dir) if config_dir else None
         self._model_config = model_config
         self._on_model_change = on_model_change
+        # Interactive prompters (input()/getpass()) are terminal-only;
+        # non-interactive front-ends (headless, Telegram) must never
+        # block on stdin.  Default to the terminal state of stdin.
+        self._interactive = _stdin_is_interactive() if interactive is None else interactive
 
     @property
     def debug(self) -> bool:
@@ -272,6 +292,14 @@ class Commands:
             marker = " [dim](current)[/dim]" if name == current_model else ""
             self._render(f"  {i}. [cyan]{label}[/cyan]{marker} — {cfg.base_url}")
         self._render(f"  {len(known) + 1}. [yellow]Custom model...[/yellow]")
+
+        if not self._interactive:
+            self._render(
+                "[yellow]Interactive model switching requires a terminal.[/yellow]\n"
+                "[dim]Set MGMAI_MODEL / MGMAI_BASE_URL / MGMAI_API_KEY, or edit "
+                "config.json / credentials.json in your config directory.[/dim]"
+            )
+            return
 
         try:
             choice = input("\n  Select model number: ").strip()

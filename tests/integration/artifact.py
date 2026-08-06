@@ -105,12 +105,14 @@ def build_git_metadata(cwd: Path | None = None) -> tuple[str | None, bool | None
         commit = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True, text=True, timeout=5, cwd=cwd,
+            check=False,
         )
         if commit.returncode != 0:
             return None, None
         status = subprocess.run(
             ["git", "status", "--porcelain"],
             capture_output=True, text=True, timeout=5, cwd=cwd,
+            check=False,
         )
         dirty = bool(status.stdout.strip()) if status.returncode == 0 else None
         return commit.stdout.strip(), dirty

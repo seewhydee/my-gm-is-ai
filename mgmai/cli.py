@@ -166,8 +166,7 @@ def main(argv: list[str] | None = None) -> None:
 
     adventure_path = Path(args.adventure)
 
-    state_manager = StateManager()
-    state_manager._config_dir = config_dir
+    state_manager = StateManager(config_dir=config_dir)
 
     if args.load_file and args.char_sheet:
         display.render_error("Cannot specify both --char-sheet and --load")

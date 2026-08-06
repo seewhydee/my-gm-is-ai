@@ -42,6 +42,7 @@ def _run(script: str, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(SCRIPTS / script), *map(str, args)],
         capture_output=True, text=True, timeout=30,
+        check=False,
     )
 
 

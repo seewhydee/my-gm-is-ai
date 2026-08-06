@@ -107,6 +107,7 @@ class GameLoop:
         display: Display | None = None,
         config_dir: str | Path | None = None,
         prose_validation_enabled: bool = True,
+        interactive: bool | None = None,
     ):
         self._state = state_manager
         self._llm = llm_client
@@ -141,6 +142,7 @@ class GameLoop:
             config_dir=config_dir,
             model_config=getattr(llm_client, "_config", None),
             on_model_change=self._on_model_change,
+            interactive=interactive,
         )
 
     @property
@@ -241,6 +243,7 @@ class GameLoop:
         room_changed = False
         examined_room = False
         narration: str | None = None
+        result = None
 
         while chain_depth < MAX_CHAIN_LENGTH:
             narration = self._execute_turn(current_input, player_input, chain_depth)

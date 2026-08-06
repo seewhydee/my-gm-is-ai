@@ -161,11 +161,11 @@ The design documentation is in the `doc/` folder:
 My GM Is AI is (C) 2026 Chong Yidong (cyd@stupidchicken.com).
 
 This is free software licensed under the terms of the GNU General
-Public Licencse (GPL), version 3.0.  See [LICENSE](LICENSE).
+Public License (GPL), version 3.0.  See [LICENSE](LICENSE).
 
 Dedicated to the memory of Logan Goh (1980-2026): programmer, gamer, dreamer.
 
-The sample adventure(s) in the `adventure/` folder are based on
+The sample adventure(s) in the `adventures/` folder are based on
 original works copyrighted by various authors, used and distributed
 under GPL-compatible (e.g., Creative Commons-type) licenses.  Refer to
 those files for copyright and licensing information.

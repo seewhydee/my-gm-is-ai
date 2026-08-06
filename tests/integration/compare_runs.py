@@ -34,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tests.integration.artifact import normalize_artifact  # noqa: E402
+from tests.integration.artifact import normalize_artifact
 
 
 def _diff_lines(label: str, a, b) -> list[str]:

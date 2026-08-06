@@ -60,12 +60,18 @@ class StateManager:
     operations.  No component other than the engine should modify state.
     """
 
-    def __init__(self, adventure_dir: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        adventure_dir: str | Path | None = None,
+        config_dir: str | Path | None = None,
+    ) -> None:
         self.corpus: ModuleCorpus | None = None
         self.hard_state: HardGameState | None = None
         self.soft_state: SoftGameState | None = None
         self._adventure_dir: Path | None = None
-        self._config_dir: Path | None = None
+        self.config_dir: Path | None = (
+            Path(config_dir) if config_dir else None
+        )
 
         if adventure_dir is not None:
             self.load_all(adventure_dir)

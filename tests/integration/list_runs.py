@@ -33,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tests.integration.artifact import INDEX_FILENAME, judge_digest  # noqa: E402
+from tests.integration.artifact import INDEX_FILENAME, judge_digest
 
 _TS_RE = re.compile(r"_\d{8}_\d{6}(_\d+)?\.json$")
 

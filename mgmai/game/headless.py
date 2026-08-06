@@ -334,7 +334,7 @@ class HeadlessSession:
         if adventure_dir is not None and state_manager is None:
             self._state.load_all(adventure_dir)
         # Sandbox the autosave path so it never lands in the CWD.
-        self._state._config_dir = Path(config_dir)
+        self._state.config_dir = Path(config_dir)
 
         self._loop = GameLoop(
             self._state,
@@ -342,6 +342,7 @@ class HeadlessSession:
             debug=debug,
             display=self._display,
             config_dir=config_dir,
+            interactive=False,
         )
         # Render the intro so the recording captures the adventure title
         # and starting room — same UX as a real game start.
