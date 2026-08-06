@@ -126,8 +126,8 @@ mode** (`mgmai/game/rest_mode.py`) before returning to normal play:
   narrated — re-preparing spells is out-of-fiction.
 
 Rest mode is a single-step controller: each input line is one menu
-step, and it never calls `input()`.  The loop routes input through a
-shared `_dispatch_input` helper (`mgmai/game/loop.py`), so
+step, and it never calls `input()`.  The session routes input through a
+shared `_dispatch_input` helper (`mgmai/game/session.py`), so
 `HeadlessSession.submit("3")` drives it one step at a time — tests and
 non-terminal front-ends play through rests exactly as a human at a
 terminal does.  (This plumbing also makes the slash commands reachable

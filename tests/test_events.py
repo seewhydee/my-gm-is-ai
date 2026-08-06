@@ -25,7 +25,6 @@ to ``triggered_narration`` in dispatch order.
 import random
 
 from mgmai.engine.engine import resolve
-from mgmai.engine.event_bus import reset_disabled_once
 from mgmai.models.actions import CombatAction, InteractAction, WaitAction
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
@@ -130,7 +129,6 @@ def _hard(**overrides) -> HardGameState:
 
 
 def _sm(corpus, hard):
-    reset_disabled_once()
     return build_state_manager(corpus, hard_state=hard)
 
 

@@ -1,0 +1,831 @@
+# My GM is AI — an AI-driven Game Master for tabletop RPG adventures
+# Copyright (C) 2026  Chong Yidong <cyd@stupidchicken.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""Front-end-agnostic game session core.
+
+``GameSession`` owns the turn pipeline, input dispatch, rest mode,
+autosave, and game-over detection.  It renders through an injected
+``GameView`` and is driven exclusively by ``begin()`` / ``submit()`` —
+no ``input()``, no Rich, no REPL — so any number of sessions can run
+concurrently in one process (each with its own ``StateManager``) and
+any front-end (CLI, headless harness, Telegram) can compose it.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from mgmai.context.assembler import assemble
+from mgmai.engine.engine import MAX_CHAIN_LENGTH, resolve
+from mgmai.engine.narrative_indicators import (
+    build_indicators,
+    format_indicators_fallback,
+    process_narration,
+)
+from mgmai.engine.post_validate import apply_post_validation
+from mgmai.game.commands import Commands
+from mgmai.game.input_normalizer import normalize_player_input
+from mgmai.game.rest_mode import RestMode
+from mgmai.game.status import StatusSnapshot, format_exits, snapshot_status
+from mgmai.game.view import GameView
+from mgmai.llm.client import LLMClient
+from mgmai.llm.parser import LLMOutputError, parse_player_action, parse_prose_output
+from mgmai.logging import format_state_snapshot
+from mgmai.models.actions import CURRENT_ROOM_SENTINEL, InteractAction, TalkAction
+from mgmai.state.manager import StateManager, StateNotLoadedError
+
+log = logging.getLogger(__name__)
+
+
+FALLBACK_NARRATION = (
+    "You try, but something about the situation confuses you. "
+    "Perhaps try a different approach?"
+)
+
+TURN_ERROR_NARRATION = (
+    "Your senses blur for a moment. You can't quite make sense of what "
+    "you were trying to do. Perhaps try again?"
+)
+
+
+@dataclass
+class TurnResult:
+    """Structured outcome of one ``GameSession.submit()`` call.
+
+    Carries everything a front-end (or the headless adapter) needs to
+    report the turn: narration, post-turn status, game-over state,
+    errors, the turn's combat log and engine outcome.  For inputs
+    consumed by rest mode or a slash command (no turn ran), the
+    engine-outcome fields stay ``None``/empty and ``narration`` holds
+    the rendered menu/command output, if any.
+    """
+
+    narration: str | None
+    status: StatusSnapshot
+    game_over: bool
+    game_over_type: str | None
+    errors: list[str] = field(default_factory=list)
+    combat_log: list[dict[str, Any]] = field(default_factory=list)
+    success: bool | None = None
+    engine_error: str | None = None
+    ruled_action: dict[str, Any] | None = None
+    ruling_retries: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+class GameSession:
+    """One playable game session, decoupled from any front-end.
+
+    Drive it with ``begin()`` (renders the intro) and ``submit(line)``
+    (runs one player input: rest-mode step, slash command, or full
+    turn).  Rendering flows to the injected ``view``; ``finished``
+    flips when the game ends or the player exits, and the front-end
+    decides what that means (exit the REPL, offer restart buttons…).
+    """
+
+    def __init__(
+        self,
+        state_manager: StateManager,
+        llm_client: LLMClient,
+        *,
+        view: GameView,
+        config_dir: str | Path | None = None,
+        saves_dir: str | Path | None = None,
+        debug: bool = False,
+        interactive: bool | None = None,
+        prose_validation_enabled: bool = True,
+    ):
+        self._state = state_manager
+        self._llm = llm_client
+        self._view = view
+        self._finished = False
+        self._chat_log: list[dict[str, str]] = []
+        self._config_dir = Path(config_dir) if config_dir else None
+        self._saves_dir = Path(saves_dir) if saves_dir else None
+        self._prose_validation_enabled = prose_validation_enabled
+        self._positioning_warning: list[str] = []
+        # Validation errors that triggered a corrective ruling retry
+        # (LLM Call 1), accumulated across turns.  The headless harness
+        # slices this per submit to expose retries in the transcript.
+        self.ruling_retries: list[str] = []
+        # Combat-log entries produced during the current _run_turn,
+        # accumulated across every resolution (a single player input can
+        # chain several).  Cleared at the start of each _run_turn; the
+        # headless harness reads it for the turn transcript — unlike
+        # _last_result this survives chained segments, and unlike
+        # diffing hard.combat.log it survives combat starting AND
+        # ending within a single turn.
+        self.turn_combat_log: list = []
+        # Active rest-mode controller, or None during normal play.  Set
+        # when a rest action resolves successfully; cleared when the
+        # player picks *done* in the rest menu.
+        self._rest_mode: RestMode | None = None
+        # render_error events, tracked so submit() can report them.
+        self._errors: list[str] = []
+        self._last_result: Any = None
+        self._last_action: Any = None
+        self._commands = Commands(
+            state_loader=state_manager,
+            render=self._view.print,
+            exit_fn=self._do_exit,
+            debug=debug,
+            on_load=self._on_game_loaded,
+            config_dir=config_dir,
+            saves_dir=saves_dir,
+            model_config=getattr(llm_client, "_config", None),
+            on_model_change=self._on_model_change,
+            interactive=interactive,
+            latest_narration=self._last_narration,
+        )
+
+    # --- public API ---
+
+    def begin(self) -> None:
+        """Render the adventure intro (no REPL, no input)."""
+        self._view.render_intro(self._state)
+
+    def submit(self, line: str) -> TurnResult:
+        """Run one player input end to end and return the outcome.
+
+        The line may be consumed by rest mode or a slash command (no
+        turn runs), or go through the full turn pipeline.  Any
+        exception raised during the turn propagates to the caller.
+        """
+        errors_before = len(self._errors)
+        retries_before = len(self.ruling_retries)
+
+        # Rest-mode bookkeeping (and slash-commands) bypass the turn
+        # pipeline entirely.  _dispatch_input returns the rendered
+        # output string when it consumed the line, None otherwise.
+        rest_output = self._dispatch_input(line)
+        turn_ran = False
+        if rest_output is not None:
+            narration = rest_output or None
+        else:
+            narration = self._run_turn(line)
+            turn_ran = True
+
+        hard = self._state.hard_state
+        status = snapshot_status(self._state)
+
+        # The turn's combat log, accumulated across every resolution of
+        # this turn (a multi-part command chains several, each
+        # overwriting _last_result).  Rest-mode / slash-command submits
+        # never reach _run_turn, so the accumulator still holds the
+        # PREVIOUS turn's entries — skip it.
+        combat_log: list[dict[str, Any]] = []
+        if turn_ran:
+            for entry in self.turn_combat_log:
+                if hasattr(entry, "model_dump"):
+                    combat_log.append(entry.model_dump())
+                elif isinstance(entry, dict):
+                    combat_log.append(entry)
+
+        last_result = self._last_result
+        game_over = hard is not None and hard.game_over is not None
+        game_over_type = hard.game_over.type if game_over and hard else None
+
+        # Engine-outcome fields belong only to turns that actually ran.
+        # Rest-mode / slash-command submits consumed the line without
+        # touching _last_result, which still holds the PREVIOUS turn's
+        # outcome — leaking it here would misreport the submit.
+        if turn_ran:
+            last_action = self._last_action
+            ruled_action = (
+                last_action.model_dump(mode="json")
+                if last_action is not None and hasattr(last_action, "model_dump")
+                else None
+            )
+            success = getattr(last_result, "success", None)
+            engine_error = getattr(last_result, "error", None)
+            warnings = list(getattr(last_result, "warnings", None) or [])
+        else:
+            ruled_action = None
+            success = None
+            engine_error = None
+            warnings = []
+
+        errors = list(self._errors[errors_before:])
+        self._errors.clear()
+
+        return TurnResult(
+            narration=narration,
+            status=status,
+            game_over=game_over,
+            game_over_type=game_over_type,
+            errors=errors,
+            combat_log=combat_log,
+            success=success,
+            engine_error=engine_error,
+            ruled_action=ruled_action,
+            ruling_retries=list(self.ruling_retries[retries_before:]),
+            warnings=warnings,
+        )
+
+    @property
+    def finished(self) -> bool:
+        """True once game over (or /exit) has been reached."""
+        return self._finished
+
+    @property
+    def in_rest_mode(self) -> bool:
+        return self._rest_mode is not None
+
+    @property
+    def rest_mode(self) -> RestMode | None:
+        """The active rest-mode controller (for structured menu access)."""
+        return self._rest_mode
+
+    @property
+    def state_manager(self) -> StateManager:
+        return self._state
+
+    @property
+    def hard_state(self):
+        return self._state.hard_state
+
+    @property
+    def soft_state(self):
+        return self._state.soft_state
+
+    @property
+    def corpus(self):
+        return self._state.corpus
+
+    @property
+    def debug(self) -> bool:
+        return self._commands.debug
+
+    # --- input dispatch ---
+
+    def _dispatch_input(self, line: str) -> str | None:
+        """Handle a line of input outside the turn pipeline.
+
+        Returns the rendered output string when the line was consumed
+        (rest-mode step, or a slash-command which already printed its
+        own output and returns ``""``); returns ``None`` when the line
+        should go to ``_run_turn``.  This is the single pre-turn
+        dispatch shared by all front-ends so that rest mode and
+        commands behave identically everywhere.
+        """
+        if self._rest_mode is not None:
+            text = self._rest_mode.handle(line)
+            self._view.render_rest_menu(text)
+            if self._rest_mode.exited:
+                self._rest_mode = None
+            # Rest steps mutate state outside the turn pipeline; persist
+            # them so resume-after-restart never loses bookkeeping.
+            self._auto_save(self._last_narration())
+            return text
+        if self._commands.handle(line):
+            return ""
+        return None
+
+    def _maybe_enter_rest_mode(self) -> None:
+        """Enter rest mode if the just-resolved action was a successful rest.
+
+        Called from ``_finalize_turn`` after a turn completes.  Renders
+        the entry summary + top menu.  No-op if rest mode is already
+        active, the action wasn't a rest, or the rest failed.
+        """
+        if self._rest_mode is not None:
+            return
+        action = self._last_action
+        result = self._last_result
+        if (
+            action is None
+            or getattr(action, "action_type", None) != "rest"
+            or result is None
+            or not result.success
+        ):
+            return
+        hard = self._state.hard_state
+        corpus = self._state.corpus
+        if hard is None or corpus is None:
+            return
+        self._rest_mode = RestMode(action.kind, result, hard, corpus)
+        self._view.render_rest_menu(self._rest_mode.initial_text())
+
+    # --- turn running ---
+
+    def _run_turn(self, player_input: str) -> str | None:
+        """Run a single player-input turn (possibly chained) end to end.
+
+        Returns the final narration string rendered to the view, or
+        ``None`` only when the turn cannot run at all (game state not
+        loaded).  A double-failed LLM Call 1 yields ``FALLBACK_NARRATION``
+        — the same text a REPL player sees.
+        """
+        self._chat_log.append({"role": "player", "content": player_input})
+        self.turn_combat_log.clear()
+
+        chain_depth = 0
+        current_input = normalize_player_input(player_input)
+        room_changed = False
+        examined_room = False
+        narration: str | None = None
+        result = None
+
+        while chain_depth < MAX_CHAIN_LENGTH:
+            narration = self._execute_turn(current_input, player_input, chain_depth)
+            if narration is None:
+                return None
+
+            result = self._last_result
+            action = self._last_action
+
+            if result and result.success:
+                if action and action.action_type == "move" and \
+                   result.hard_state_changes and \
+                   result.hard_state_changes.player_location is not None:
+                    room_changed = True
+                elif action and action.action_type == "examine" and \
+                     result.room_after and action.target in (
+                         result.room_after.id,
+                         CURRENT_ROOM_SENTINEL,
+                     ):
+                    examined_room = True
+
+            if (
+                result
+                and result.chain_info
+                and result.chain_info.follow_up
+                and not result.chain_info.termination_reason
+            ):
+                current_input = result.chain_info.follow_up
+                chain_depth += 1
+                continue
+
+            if result and result.room_after and (room_changed or examined_room):
+                exits_text = format_exits(result.room_after)
+                if exits_text:
+                    narration = narration + exits_text
+
+            self._chat_log.append({"role": "gm", "content": narration})
+            self._view.render_narration(narration)
+
+            # Check for game over and handle end-of-turn bookkeeping
+            self._finalize_turn(narration)
+            return narration
+
+        if narration:
+            if result and result.room_after and (room_changed or examined_room):
+                exits_text = format_exits(result.room_after)
+                if exits_text:
+                    narration = narration + exits_text
+            self._chat_log.append({"role": "gm", "content": narration})
+            self._view.render_narration(narration)
+            self._finalize_turn(narration)
+            return narration
+        return None
+
+    # ------------------------------------------------------------------
+    # single-turn execution
+    # ------------------------------------------------------------------
+
+    def _execute_turn(
+        self,
+        current_input: str,
+        original_input: str,
+        chain_depth: int,
+    ) -> str | None:
+        corpus = self._state.corpus
+        hard = self._state.hard_state
+        soft = self._state.soft_state
+
+        if corpus is None or hard is None or soft is None:
+            self._render_error("Game state is not loaded.")
+            return None
+
+        # 1. Context Assembler → GMBriefing
+        briefing = assemble(corpus, hard, soft, current_input)
+
+        log.debug("--- GMBriefing ---\n%s", briefing.compact_dump_json(indent=2))
+
+        # 2. LLM Call 1 → PlayerAction (with retry on malformed output)
+        try:
+            action = self._call_ruling(briefing)
+        except LLMOutputError:
+            # Both ruling attempts failed.  Clear the stale turn state so
+            # consumers don't record the PREVIOUS turn's result/action
+            # against this one, and return the fallback through the
+            # normal path so the player sees it exactly once (rather
+            # than a None narration).
+            # turn_combat_log is deliberately NOT cleared: earlier chain
+            # segments of this same input really resolved, and their
+            # mechanics belong in the transcript alongside success=None.
+            self._last_result = None
+            self._last_action = None
+            return FALLBACK_NARRATION
+
+        log.debug("--- PlayerAction ---\n%s", action.model_dump_json(indent=2))
+
+        # 3. Engine → EngineResult
+        result = resolve(
+            action,
+            self._state,
+            chain_depth=chain_depth,
+            player_input_echo=original_input,
+        )
+        # Surface stripped embellishments (positioning assertion,
+        # improvised-weapon pickup) as result warnings so the ruling model
+        # can learn from the mistake on a later turn.
+        if self._positioning_warning:
+            result.warnings.extend(self._positioning_warning)
+            self._positioning_warning = []
+        self._last_result = result
+        self._last_action = action
+        self.turn_combat_log.extend(getattr(result, "combat_log", None) or [])
+
+        log.debug("--- EngineResult ---\n%s", result.model_dump_json(indent=2))
+
+        log.debug(
+            "--- State After Turn ---\n%s",
+            json.dumps(format_state_snapshot(hard, soft), indent=2),
+        )
+
+        # 4. LLM Call 2 → ProseOutput
+        indicators = build_indicators(result, hard, corpus)
+        try:
+            prose = self.call_prose(briefing, action, result, indicators=indicators)
+        except LLMOutputError:
+            narration = result.triggered_narration[0] if result.triggered_narration else TURN_ERROR_NARRATION
+            fallback_prefix = format_indicators_fallback(result, hard, corpus)
+            if fallback_prefix:
+                narration = fallback_prefix + narration
+            return narration
+
+        log.debug("--- ProseOutput ---\n%s", prose.model_dump_json(indent=2))
+
+        # 4.5 Feed dialogue state from prose output
+        if action.action_type != "ooc_discussion":
+            from mgmai.engine.dialogue import append_npc_response, track_topic
+
+            if prose.npc_response and soft.dialogue_state.active_npc is not None:
+                append_npc_response(
+                    soft,
+                    soft.dialogue_state.active_npc,
+                    hard.turn_count,
+                    prose.npc_response,
+                )
+
+            if prose.knowledge_tags:
+                for npc_id, topics in prose.knowledge_tags.items():
+                    for topic in topics:
+                        track_topic(soft, topic)
+
+        # 4.6 Archive conversation note if dialogue just ended
+        if result.dialogue_exited is not None:
+            npc_id = result.dialogue_exited.npc_id
+            note = prose.conversation_note or result.dialogue_exited.archival_fallback
+            if note:
+                soft.entity_notes.setdefault(npc_id, []).append(note)
+
+        # 5. Post-validate knowledge_tags + attitude_changes + soft_items + notes
+        kt = dict(prose.knowledge_tags) if prose.knowledge_tags else None
+        ac = dict(prose.attitude_changes) if prose.attitude_changes else None
+        sia = list(prose.soft_item_adjudications) if prose.soft_item_adjudications else None
+        notes = list(prose.soft_state_notes) if prose.soft_state_notes else None
+        if kt or ac or result.soft_item_proposals or sia or notes:
+            result = apply_post_validation(
+                kt, ac, self._state, result, soft_item_adjudications=sia,
+                soft_state_notes=notes,
+            )
+            self._last_result = result
+
+        # LLM Call 2 may narratively terminate an ongoing chained action
+        if prose.terminate_chain:
+            result = self._last_result
+            if result and result.chain_info and not result.chain_info.termination_reason:
+                from mgmai.models.actions import ChainInfo
+                result.chain_info = ChainInfo(
+                    follow_up=result.chain_info.follow_up,
+                    termination_reason="narrative termination by LLM Call 2",
+                )
+                self._last_result = result
+
+        narration = prose.narration
+        # The LLM is instructed to include NPC speech inline in
+        # narration; npc_response is a logging aid.  Only fall back if
+        # the narrator somehow produced an empty narration.
+        if not narration.strip() and prose.npc_response:
+            narration = prose.npc_response.strip()
+        narration = process_narration(narration, indicators)
+        return narration
+
+    # ------------------------------------------------------------------
+    # turn finalization
+    # ------------------------------------------------------------------
+
+    def _finalize_turn(self, narration: str) -> None:
+        hard = self._state.hard_state
+        if hard is None:
+            return
+
+        if hard.game_over is not None:
+            # Build a lightweight result object for the display
+            from mgmai.models.actions import GameOverResult
+
+            go = GameOverResult(
+                type=hard.game_over.type,
+                trigger=hard.game_over.trigger,
+            )
+            # _do_exit persists the final state, so resume-after-restart
+            # captures the game-over turn too.
+            self._view.render_game_over(go)
+            self._do_exit()
+            return
+
+        self._view.render_status(self._state)
+        self._auto_save(narration)
+        self._maybe_enter_rest_mode()
+
+    def _auto_save(self, narration: str | None) -> None:
+        try:
+            save_path = self.get_autosave_path()
+            if save_path is None:
+                # No explicit config_dir/saves_dir: autosave is
+                # disabled (there is deliberately no CWD fallback).
+                return
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            self._state.save_state(
+                save_path.parent, save_path.name, latest_narration=narration
+            )
+        except (OSError, ValueError, StateNotLoadedError):
+            # Auto-save failure is non-fatal; don't interrupt the player
+            pass
+
+    def get_autosave_path(self) -> Path | None:
+        """Where autosaves land, or None when autosave is disabled.
+
+        The explicit ``saves_dir`` override wins (per-chat save
+        sandboxes); otherwise the adventure-scoped autosave under
+        ``config_dir``.  There is no CWD-relative fallback.
+        """
+        from mgmai.config import get_autosave_path
+
+        adv_name = self._adventure_name()
+        if self._saves_dir:
+            return self._saves_dir / "autosave.json"
+        if self._config_dir:
+            return get_autosave_path(adv_name, self._config_dir)
+        return None
+
+    def _adventure_name(self) -> str:
+        if self._state.adventure_dir:
+            return self._state.adventure_dir.name
+        return "game"
+
+    def _last_narration(self) -> str | None:
+        """The most recent GM narration (for saves between turns)."""
+        for entry in reversed(self._chat_log):
+            if entry["role"] == "gm":
+                return entry["content"]
+        return None
+
+    def _render_error(self, text: str) -> None:
+        self._errors.append(text)
+        self._view.render_error(text)
+
+    # ------------------------------------------------------------------
+    # LLM helpers
+    # ------------------------------------------------------------------
+
+    def _call_ruling(self, briefing):
+        from mgmai.llm.ruling_validation import (
+            validate_dialogue_path,
+            validate_improvised_weapon_budget,
+            validate_interact,
+            validate_positioning_assertion,
+            validate_ruling_action,
+        )
+        from mgmai.templates.renderer import render_ruling
+
+        system_prompt = render_ruling(
+            include_combat=briefing.combat_state is not None
+        )
+        user_prompt = briefing.compact_dump_json(indent=None)
+        self._positioning_warning = []
+
+        raw = self._llm.call_ruling(system_prompt, user_prompt)
+        log.debug("--- LLM Call 1 raw ---\n%s", raw)
+
+        error = None
+        action = None
+        try:
+            action = parse_player_action(raw)
+            error = validate_ruling_action(action, briefing, self._state.corpus)
+        except LLMOutputError:
+            error = (
+                "Your JSON was invalid. "
+                "Please ensure valid JSON with a correct 'action_type' discriminator."
+            )
+
+        if error is None:
+            return self._strip_invalid_embellishments(
+                action, briefing, validate_positioning_assertion,
+                validate_improvised_weapon_budget,
+            )
+
+        log.debug("LLM Call 1 retry after invalid ruling: %s", error)
+        self.ruling_retries.append(error)
+        retry_prompt = (
+            user_prompt
+            + "\n\n[ERROR FROM PREVIOUS ATTEMPT: " + error + "]"
+        )
+        raw = self._llm.call_ruling(system_prompt, retry_prompt)
+        log.debug("--- LLM Call 1 retry raw ---\n%s", raw)
+        action = parse_player_action(raw)
+        semantic_error = validate_ruling_action(action, briefing, self._state.corpus)
+        if (
+            semantic_error is not None
+            and isinstance(action, TalkAction)
+            and action.dialogue_path is not None
+            and validate_dialogue_path(action, briefing, self._state.corpus) is not None
+        ):
+            # Degrade rather than fail the turn: a dialogue_path the model
+            # insists on despite the corrective retry is stripped, and the
+            # conversation proceeds freeform.  (The resolver would
+            # otherwise hard-fail the whole turn with no visible trace.)
+            action.dialogue_path = None
+            self._positioning_warning.append(
+                "invalid dialogue_path ignored (unknown to the target NPC); "
+                "proceeding with freeform conversation"
+            )
+            semantic_error = validate_ruling_action(action, briefing, self._state.corpus)
+        if (
+            semantic_error is not None
+            and isinstance(action, InteractAction)
+            and validate_interact(action, briefing) is not None
+        ):
+            # Degrade rather than fail the turn: an interact ruling the
+            # model insists on despite the corrective retry goes to the
+            # engine as-is — resolve_interact fails it cleanly and the
+            # narrator covers the fizzle.  (Otherwise a persistent model
+            # error would kill the whole turn's narration.)
+            self._positioning_warning.append(
+                f"interact ruling proceeded despite validation: {semantic_error}"
+            )
+            semantic_error = None
+        if semantic_error is not None:
+            raise LLMOutputError(
+                f"Ruling still semantically invalid after retry: {semantic_error}"
+            )
+        return self._strip_invalid_embellishments(
+            action, briefing, validate_positioning_assertion,
+            validate_improvised_weapon_budget,
+        )
+
+    def _strip_invalid_positioning(self, action, briefing, validate_fn):
+        """Soft-fail for the optional ``positioning`` embellishment.
+
+        A ``positioning`` assertion that fails validation is an optional
+        extra, not a required field: it must never trigger the corrective
+        retry or raise ``LLMOutputError``.  The invalid block is stripped,
+        the core action proceeds, and a warning is stashed so the turn's
+        EngineResult can surface it (the model learns from it next turn).
+        """
+        if getattr(action, "positioning", None) is None:
+            return action
+        error = validate_fn(action, briefing)
+        if error is None:
+            return action
+        log.warning("Stripping invalid positioning assertion: %s", error)
+        action.positioning = None
+        self._positioning_warning.append(f"positioning assertion ignored: {error}")
+        return action
+
+    def _strip_invalid_embellishments(
+        self, action, briefing, positioning_fn, improvised_fn
+    ):
+        """Soft-fail for optional embellishments: the ``positioning`` block
+        and a ``set_improvised_weapon`` pickup.  Neither is a required
+        field, so an invalid one is stripped — never a corrective retry —
+        and a warning is stashed so the turn's EngineResult surfaces it."""
+        action = self._strip_invalid_positioning(action, briefing, positioning_fn)
+        error = improvised_fn(action, briefing)
+        if error is None:
+            return action
+        log.warning("Stripping invalid improvised-weapon pickup: %s", error)
+        patches = list(action.soft_state_patches or [])
+        action.soft_state_patches = [
+            p
+            for p in patches
+            if not (p.field == "set_improvised_weapon" and p.new_value is not None)
+        ]
+        self._positioning_warning.append(f"improvised-weapon pickup ignored: {error}")
+        return action
+
+    def call_prose(self, briefing, action, result, *, indicators=None):
+        """LLM Call 2 — the narrator call (public for harnesses that
+        drive the engine directly and need the production prose path)."""
+        from mgmai.llm.prose_validation import validate_prose_output
+        from mgmai.templates.renderer import render_prose
+
+        system_prompt = render_prose(
+            include_combat=(
+                briefing.combat_state is not None
+                or result.combat_triggered
+                or bool(result.combat_log)
+            ),
+            include_dialogue=(
+                briefing.dialogue_context is not None
+                or result.dialogue_exited is not None
+                # The briefing is pre-action state, so on the turn the
+                # player *starts* a conversation dialogue_context is absent;
+                # include the dialogue instructions for that turn too.
+                or action.action_type == "talk"
+            ),
+            include_soft_items=bool(result.soft_item_proposals),
+            indicators=[
+                {"marker": ind.marker, "plain_description": ind.plain_description}
+                for ind in (indicators or [])
+            ],
+        )
+
+        user_data = {
+            "briefing": briefing.compact_dump(),
+            "player_action": action.model_dump(mode="json"),
+            "engine_result": result.model_dump(mode="json"),
+            "chat_log": self._chat_log[-10:],
+        }
+
+        # Hide the raw will_reveal block (unevaluated condition strings)
+        # from the narrator: will_reveal_readiness (an EngineResult field)
+        # is the sole authority on what may be revealed.  The ruling call
+        # keeps the full block for topic classification.
+        try:
+            dlg = user_data["briefing"]["dialogue_context"]["active_npc"]["dialogue"]
+            dlg.pop("will_reveal", None)
+        except (KeyError, TypeError):
+            pass
+
+        if result.chain_info and result.chain_info.follow_up:
+            user_data["chained_action"] = True
+
+        user_prompt = json.dumps(user_data)
+
+        raw = self._llm.call_prose(system_prompt, user_prompt)
+        log.debug("--- LLM Call 2 raw ---\n%s", raw)
+
+        prose = parse_prose_output(raw)
+
+        if self._prose_validation_enabled and indicators:
+            error = validate_prose_output(prose, indicators, result)
+            if error is not None:
+                log.debug("LLM Call 2 retry after invalid prose: %s", error)
+                retry_prompt = (
+                    user_prompt
+                    + "\n\n[ERROR FROM PREVIOUS ATTEMPT: " + error + "]"
+                )
+                raw = self._llm.call_prose(system_prompt, retry_prompt)
+                log.debug("--- LLM Call 2 retry raw ---\n%s", raw)
+                prose = parse_prose_output(raw)
+                retry_error = validate_prose_output(prose, indicators, result)
+                if retry_error is not None:
+                    log.warning(
+                        "LLM Call 2 prose still invalid after retry: %s",
+                        retry_error,
+                    )
+
+        return prose
+
+    # --- internal ---
+
+    def _on_game_loaded(self) -> None:
+        self._chat_log.clear()
+        self._last_result = None
+        self._last_action = None
+        self.ruling_retries.clear()
+        self.turn_combat_log.clear()
+
+    def _on_model_change(self, api_key: str, config: object) -> None:
+        self._llm = LLMClient(api_key=api_key, config=config)
+
+    def _do_exit(self) -> None:
+        """Mark the session finished (game over or /exit).
+
+        Persists the current state one last time (covers rest-mode
+        bookkeeping and any turn since the last autosave) and renders
+        the farewell; what "finished" means is the front-end's call.
+        """
+        self._auto_save(self._last_narration())
+        self._finished = True
+        self._view.render_goodbye()

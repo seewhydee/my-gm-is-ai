@@ -112,14 +112,16 @@ class TestExecuteTurn:
             prose_response=_prose_json("You survey the room."),
         )
         loop = GameLoop(state_manager, llm, display=fake_display)
-        fake_display.format_exits.return_value = " [EXITS]"
 
-        narration = loop._run_turn("look around")
+        with patch(
+            "mgmai.game.session.format_exits", return_value=" [EXITS]"
+        ) as fmt:
+            narration = loop._run_turn("look around")
 
         assert narration == "You survey the room. [EXITS]"
-        fake_display.format_exits.assert_called_once()
+        fmt.assert_called_once()
         # The exits were formatted from the post-examine room_after.
-        room_after = fake_display.format_exits.call_args.args[0]
+        room_after = fmt.call_args.args[0]
         assert room_after.id == "axe_head"
 
     def test_examine_room_by_raw_id_appends_exits(self, state_manager, fake_display) -> None:
@@ -137,12 +139,11 @@ class TestExecuteTurn:
             prose_response=_prose_json("You survey the room."),
         )
         loop = GameLoop(state_manager, llm, display=fake_display)
-        fake_display.format_exits.return_value = " [EXITS]"
 
-        narration = loop._run_turn("look around")
+        with patch("mgmai.game.session.format_exits", return_value=" [EXITS]"):
+            narration = loop._run_turn("look around")
 
         assert narration == "You survey the room. [EXITS]"
-        fake_display.format_exits.assert_called_once()
 
     def test_fallback_on_llm1_parse_error(self, state_manager, fake_display) -> None:
         llm = FakeLLMClient(
@@ -188,7 +189,7 @@ class TestExecuteTurn:
         )
         loop = GameLoop(state_manager, llm, display=fake_display)
 
-        with patch("mgmai.game.loop.resolve", return_value=engine_result):
+        with patch("mgmai.game.session.resolve", return_value=engine_result):
             narration = loop._execute_turn("attack spider", "attack spider", 0)
 
         assert narration.startswith("**[STR check: failed]**")
@@ -212,7 +213,7 @@ class TestExecuteTurn:
         )
         loop = GameLoop(state_manager, llm, display=fake_display)
 
-        with patch("mgmai.game.loop.resolve", return_value=engine_result):
+        with patch("mgmai.game.session.resolve", return_value=engine_result):
             narration = loop._execute_turn("dodge trap", "dodge trap", 0)
 
         assert narration.startswith("**[DEX check: success]**")
@@ -240,7 +241,7 @@ class TestExecuteTurn:
         )
         loop = GameLoop(state_manager, llm, display=fake_display)
 
-        with patch("mgmai.game.loop.resolve", return_value=engine_result):
+        with patch("mgmai.game.session.resolve", return_value=engine_result):
             narration = loop._execute_turn("lift statue", "lift statue", 0)
 
         # Marker should be replaced, not prepended
@@ -269,7 +270,7 @@ class TestExecuteTurn:
         )
         loop = GameLoop(state_manager, llm, display=fake_display)
 
-        with patch("mgmai.game.loop.resolve", return_value=engine_result):
+        with patch("mgmai.game.session.resolve", return_value=engine_result):
             loop._execute_turn("dodge", "dodge", 0)
 
         # Check the prose system prompt contains the indicator
@@ -333,7 +334,8 @@ class TestRunTurn:
         llm.call_prose = lambda sp, up: next(llm._prose_iter)
 
         loop = GameLoop(state_manager, llm, display=fake_display)
-        loop._run_turn("Climb down and look around")
+        with patch("mgmai.game.session.format_exits", return_value=""):
+            loop._run_turn("Climb down and look around")
 
         # Only the final narration is rendered; chain intermediates are not
         fake_display.render_narration.assert_called_once_with("You look around.")

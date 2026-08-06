@@ -262,8 +262,12 @@ mgmai/
 │   ├── model_config.py  # Model configuration and selection
 │   └── parser.py        # Parse structured JSON from LLM output
 ├── game/
-│   ├── loop.py          # Main turn loop
-│   └── display.py       # Console UI (Rich-based)
+│   ├── session.py        # Front-end-agnostic GameSession core (turn pipeline)
+│   ├── loop.py           # CLI REPL front-end over GameSession
+│   ├── status.py         # Shared status/combat view-models
+│   ├── view.py           # GameView rendering contract
+│   ├── commands.py       # Slash-command handlers
+│   └── display.py        # Rich console UI (implements GameView)
 ├── templates/
 │   ├── ruling.j2        # System prompt for LLM Call 1
 │   ├── ruling_combat.j2 # Combat rules section (included during combat)

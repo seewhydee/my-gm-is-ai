@@ -34,12 +34,16 @@ log = logging.getLogger(__name__)
 
 MAX_RECURSION_DEPTH = 5
 
-_disabled_once: set[str] = set()
+# Once-reaction tracking is per-session state, owned by the
+# StateManager (``state_manager.disabled_once``) so that multiple
+# sessions in one process never corrupt each other.  The functions
+# below receive the set explicitly; ``None`` means "nothing disabled".
+_NO_DISABLED: frozenset[str] = frozenset()
 
 
-def reset_disabled_once() -> None:
-    """Reset the in-memory once-reaction disabled set (called on reload)."""
-    _disabled_once.clear()
+def reset_disabled_once(state_manager: Any) -> None:
+    """Reset a session's once-reaction disabled set (called on reload)."""
+    state_manager.disabled_once.clear()
 
 
 # ------------------------------------------------------------------
@@ -53,9 +57,13 @@ def find_matching_reactions(
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
+    disabled_once: set[str] | None = None,
 ) -> list[tuple[Reaction, str | None]]:
     """Find all reactions whose ``on`` matches *event_type* and whose
     condition (if any) holds given *context* as ``event_ctx``.
+
+    *disabled_once* is the session's set of disabled once-reaction IDs
+    (``StateManager.disabled_once``); reactions in it never match.
 
     Returns a list of ``(reaction, owner_id)`` tuples sorted by:
     1. ``priority`` ascending (lower = fires earlier)
@@ -66,6 +74,8 @@ def find_matching_reactions(
     or ``None`` for room-scoped and mechanic-scoped reactions.
     """
     from mgmai.engine.utils import get_following_npc_ids
+
+    disabled = disabled_once if disabled_once is not None else _NO_DISABLED
 
     room_id = hard.player.location
     room = corpus.rooms.get(room_id)
@@ -100,14 +110,14 @@ def find_matching_reactions(
                 continue
             for idx, reaction in enumerate(entity.reactions):
                 if _reaction_matches(reaction, event_type, context,
-                                     hard, soft, corpus):
+                                     hard, soft, corpus, disabled):
                     tagged.append((reaction, eid, 0, idx))
 
     # --- Room-scoped reactions ---
     if room is not None:
         for idx, reaction in enumerate(room.reactions):
             if _reaction_matches(reaction, event_type, context,
-                                 hard, soft, corpus):
+                                 hard, soft, corpus, disabled):
                 tagged.append((reaction, None, 1, idx))
 
     # --- Mechanic-scoped reactions (global) ---
@@ -115,7 +125,7 @@ def find_matching_reactions(
         mechanic = corpus.mechanics[mech_id]
         for idx, reaction in enumerate(mechanic.reactions):
             if _reaction_matches(reaction, event_type, context,
-                                 hard, soft, corpus):
+                                 hard, soft, corpus, disabled):
                 tagged.append((reaction, None, 2, idx))
 
     # Sort: priority asc, scope rank asc, definition order asc
@@ -131,8 +141,9 @@ def _reaction_matches(
     hard: HardGameState,
     soft: SoftGameState,
     corpus: ModuleCorpus,
+    disabled_once: frozenset[str] | set[str] = _NO_DISABLED,
 ) -> bool:
-    if reaction.id in _disabled_once:
+    if reaction.id in disabled_once:
         return False
     if reaction.on != event_type:
         return False
@@ -200,12 +211,15 @@ def dispatch_reactions(
     if encounter_fired_ref is None:
         encounter_fired_ref = [False]
 
+    # Per-session once-reaction tracking (owned by the StateManager).
+    disabled_once = getattr(state_manager, "disabled_once", None)
+
     new_events: list[tuple[str, dict[str, Any]]] = []
 
     for reaction, owner_id in reactions:
         # --- once tracking ---
-        if reaction.once:
-            _disabled_once.add(reaction.id)
+        if reaction.once and disabled_once is not None:
+            disabled_once.add(reaction.id)
 
         # --- "self" resolution ---
         resolved = _resolve_self(reaction.effect, owner_id)
@@ -305,6 +319,7 @@ def dispatch_reactions(
         for ev_type, ev_ctx in list(new_events):
             more = find_matching_reactions(
                 ev_type, ev_ctx, hard, soft, corpus,
+                disabled_once=disabled_once,
             )
             more_events = dispatch_reactions(
                 more, hard, soft, corpus, state_manager,

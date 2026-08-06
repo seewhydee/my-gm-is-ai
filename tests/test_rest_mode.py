@@ -262,6 +262,64 @@ class TestRestModeSpend:
 
 
 # ------------------------------------------------------------------
+# Structured menu snapshot (button-based front-ends)
+# ------------------------------------------------------------------
+
+
+class TestRestMenuSnapshot:
+    def test_top_menu_snapshot(self):
+        rm = _rest_mode()
+        snap = rm.menu()
+        assert snap.kind == "long"
+        assert snap.state == "top"
+        assert snap.options == ["Prepare spells", "Spend hit dice", "Done"]
+        assert snap.summary  # rest result summary
+        assert "HP" in snap.status_line
+        assert snap.feedback == ""
+
+    def test_short_rest_kind(self):
+        rm = _rest_mode(kind="short")
+        assert rm.menu().kind == "short"
+
+    def test_prepare_snapshot_tracks_selection(self):
+        rm = _rest_mode()
+        rm.handle("1")  # enter prepare
+        snap = rm.menu()
+        assert snap.state == "prepare"
+        # Options are the spellbook entries, in numbering order.
+        assert len(snap.options) == 3
+        assert snap.prepared == list(_SPELLBOOK)
+
+        # Toggle fire_bolt off; the snapshot reflects the new selection.
+        rm.handle("1")
+        snap = rm.menu()
+        assert snap.prepared == ["mage_armor", "magic_missile"]
+
+    def test_spend_snapshot(self):
+        rm = _rest_mode()
+        rm.handle("2")  # spend one die -> submenu
+        snap = rm.menu()
+        assert snap.state == "spend"
+        assert snap.options == ["Spend another hit die", "Done"]
+        assert "regain" in snap.feedback
+
+    def test_invalid_choice_feedback(self):
+        rm = _rest_mode()
+        rm.handle("9")
+        snap = rm.menu()
+        assert snap.state == "top"
+        assert "Invalid" in snap.feedback
+
+    def test_exited_snapshot(self):
+        rm = _rest_mode()
+        rm.handle("3")  # Done
+        assert rm.exited
+        snap = rm.menu()
+        assert snap.state == "exited"
+        assert snap.options == []
+
+
+# ------------------------------------------------------------------
 # Headless drive-through
 # ------------------------------------------------------------------
 
@@ -353,7 +411,7 @@ class TestHeadlessRestMode:
         # Rest mode entered: an entry menu was rendered.
         assert session.display.rest_menus
         assert "[3] Done" in session.display.rest_menus[-1]
-        assert session.loop._rest_mode is not None
+        assert session.session.rest_mode is not None
 
     def test_full_drive_through(self, tmp_path):
         # Long rest: recharge + prepare-spells flow + done.  (Hit-dice
@@ -371,7 +429,7 @@ class TestHeadlessRestMode:
 
         # 1. Long rest → enters rest mode.
         session.submit("rest long")
-        assert session.loop._rest_mode is not None
+        assert session.session.rest_mode is not None
         assert sm.hard_state.player.current_hp == 11  # recharged to full
 
         # 2. Prepare spells → toggle fire_bolt off → confirm.
@@ -384,7 +442,7 @@ class TestHeadlessRestMode:
 
         # 3. Done → exit rest mode.
         t = session.submit("3")
-        assert session.loop._rest_mode is None
+        assert session.session.rest_mode is None
         assert "finish" in t.narration
 
     def test_short_rest_spend_hit_dice(self, tmp_path):
@@ -402,7 +460,7 @@ class TestHeadlessRestMode:
         hd_before = sm.hard_state.player.hit_dice.current
 
         session.submit("rest short")
-        assert session.loop._rest_mode is not None
+        assert session.session.rest_mode is not None
         # Short rest: no auto-heal.
         assert sm.hard_state.player.current_hp == 4
 
@@ -415,7 +473,7 @@ class TestHeadlessRestMode:
         # Done spending → back to top → done.
         session.submit("2")
         t = session.submit("3")
-        assert session.loop._rest_mode is None
+        assert session.session.rest_mode is None
         assert "finish" in t.narration
 
     def test_done_resumes_normal_play(self, tmp_path):
@@ -428,9 +486,9 @@ class TestHeadlessRestMode:
             state_manager=sm, llm_client=llm, config_dir=tmp_path,
         )
         session.submit("rest long")
-        assert session.loop._rest_mode is not None
+        assert session.session.rest_mode is not None
         session.submit("3")              # done
-        assert session.loop._rest_mode is None
+        assert session.session.rest_mode is None
         # Normal play resumes: a wait turn runs the LLM pipeline.
         t = session.submit("I wait")
         assert t.narration == "Time passes."

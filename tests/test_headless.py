@@ -282,10 +282,10 @@ class TestHeadlessSession:
         assert len(autosaves) == 1, (
             f"expected exactly one autosave under {tmp_path}, found {autosaves}"
         )
-        # The autosave path the loop *would* use must resolve inside the
-        # sandbox, proving it never falls back to ./autosave.json.
-        loop = session.loop
-        resolved = loop._get_autosave_path()
+        # The autosave path the session *would* use must resolve inside
+        # the sandbox, proving it never falls back to ./autosave.json.
+        resolved = session.session.get_autosave_path()
+        assert resolved is not None
         assert tmp_path in resolved.parents
 
     def test_submit_captures_exception_and_reraises(
@@ -877,7 +877,7 @@ class TestDialoguePathDegradation:
         assert transcript.engine_error is None
         assert transcript.ruled_action["dialogue_path"] is None
         assert session.soft_state.dialogue_state.active_npc == "marta"
-        warnings = session.loop._last_result.warnings or []
+        warnings = transcript.warnings
         assert any("dialogue_path" in w for w in warnings)
 
     def test_valid_path_no_retry(self, tmp_path) -> None:

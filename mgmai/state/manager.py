@@ -72,6 +72,11 @@ class StateManager:
         self.config_dir: Path | None = (
             Path(config_dir) if config_dir else None
         )
+        # Per-session once-reaction tracking: IDs of once=True reactions
+        # that have already fired since the last load.  Owned here (not
+        # at module level) so multiple sessions in one process never
+        # corrupt each other.
+        self.disabled_once: set[str] = set()
 
         if adventure_dir is not None:
             self.load_all(adventure_dir)
@@ -82,6 +87,11 @@ class StateManager:
             x is not None
             for x in (self.corpus, self.hard_state, self.soft_state)
         )
+
+    @property
+    def adventure_dir(self) -> Path | None:
+        """The adventure directory this state was loaded from, if any."""
+        return self._adventure_dir
 
     # ------------------------------------------------------------------
     # Load helpers
@@ -143,7 +153,7 @@ class StateManager:
         # once-reactions are not carried over between saves or tests.
         from mgmai.engine.event_bus import reset_disabled_once
 
-        reset_disabled_once()
+        reset_disabled_once(self)
 
         self.validate_cross_references()
         self._validate_start_combat_scope()
@@ -1106,13 +1116,15 @@ class StateManager:
                              encoding="utf-8")
         return save_path
 
-    def save(self, path: str | Path) -> None:
+    def save(self, path: str | Path,
+             latest_narration: str | None = None) -> None:
         """Convenience method compatible with StateLoader interface.
 
         Write a save file at *path*.  The parent directory must exist.
         """
         path = Path(path)
-        self.save_state(path.parent, path.name)
+        self.save_state(path.parent, path.name,
+                        latest_narration=latest_narration)
 
     def load_save(self, path: str | Path) -> str:
         """Convenience method compatible with StateLoader interface.

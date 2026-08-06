@@ -1101,6 +1101,7 @@ def _dispatch_room_entered(
     """
     matches = find_matching_reactions(
         "room.entered", {"room_id": room_id}, hard, soft, corpus,
+        disabled_once=getattr(state_manager, "disabled_once", None),
     )
     immediate = [(r, o) for r, o in matches if r.phase == "immediate"]
     if immediate:
@@ -1156,6 +1157,7 @@ def _dispatch_events(
     for event_type, context in events:
         matches = find_matching_reactions(
             event_type, context, hard, soft, corpus,
+            disabled_once=getattr(state_manager, "disabled_once", None),
         )
         deferred.extend(
             (r, o) for r, o in matches if r.phase != "immediate"

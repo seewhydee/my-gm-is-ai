@@ -356,15 +356,18 @@ class TestFindMatchingReactions:
 
         matches = find_matching_reactions(
             "flag.set", {"flag_id": "x"}, hard, soft, corpus,
+            disabled_once=state_manager.disabled_once,
         )
         assert len(matches) == 1
 
-        # Dispatch (this disables the once reaction)
+        # Dispatch (this disables the once reaction in the session's set)
         dispatch_reactions(matches, hard, soft, corpus, state_manager)
+        assert "once_react" in state_manager.disabled_once
 
         # Should not match anymore
         matches2 = find_matching_reactions(
             "flag.set", {"flag_id": "x"}, hard, soft, corpus,
+            disabled_once=state_manager.disabled_once,
         )
         ids = [r.id for r, _ in matches2]
         assert "once_react" not in ids

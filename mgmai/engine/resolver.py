@@ -116,7 +116,10 @@ def _emit_event(
 
     from mgmai.engine.event_bus import dispatch_reactions, find_matching_reactions
 
-    matches = find_matching_reactions(event_type, context, hard, soft, corpus)
+    matches = find_matching_reactions(
+        event_type, context, hard, soft, corpus,
+        disabled_once=getattr(state_manager, "disabled_once", None),
+    )
     immediate = [(r, o) for r, o in matches if r.phase == "immediate"]
     if not immediate:
         return

@@ -26,7 +26,6 @@ at 0 HP after the dispatch, the game ends (lose / player_death).
 import random
 
 from mgmai.engine.engine import resolve
-from mgmai.engine.event_bus import reset_disabled_once
 from mgmai.models.actions import CombatAction, WaitAction
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
@@ -110,7 +109,6 @@ def _hard_state(hp: int = 5, location: str = "start") -> HardGameState:
 
 
 def _sm(corpus, hard):
-    reset_disabled_once()
     return build_state_manager(corpus, hard_state=hard)
 
 

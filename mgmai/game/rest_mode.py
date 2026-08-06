@@ -30,6 +30,7 @@ Mutations go through the deterministic engine helpers in
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from mgmai.engine.rest_helpers import set_prepared_spells, spend_hit_die
@@ -41,10 +42,32 @@ if TYPE_CHECKING:
 
 
 def _ordinal(n: int) -> str:
-    """English ordinal suffix: 1st, 2nd, 3rd, 4th, …, 11th, 21st, …"""
+    """English ordinal suffix: 1st, 2nd, 3rd, …, 11th, 21st, …"""
     if 10 <= n % 100 <= 20:
         return f"{n}th"
     return f"{n}" + {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+
+@dataclass
+class RestMenuSnapshot:
+    """Read-only snapshot of the rest menu for button-based front-ends.
+
+    ``options`` lists the choices accepted by ``handle(str(index))`` in
+    numbering order (1-based).  In the ``prepare`` state they are the
+    spellbook entries (toggle buttons); ``prepared`` holds the working
+    selection so a button UI can mark toggles without parsing menu
+    text.  Confirm is always ``handle("0")``.  The ``exited`` state is
+    the post-"Done" condition: no menu remains and the front-end
+    should tear its keyboard down.
+    """
+
+    kind: str            # "short" | "long"
+    state: str           # "top" | "prepare" | "spend" | "exited"
+    summary: str         # rest result summary
+    status_line: str     # HP / hit dice / slots
+    feedback: str
+    options: list[str] = field(default_factory=list)
+    prepared: list[str] = field(default_factory=list)
 
 
 class RestMode:
@@ -78,6 +101,9 @@ class RestMode:
             a for a in hard.player.abilities if not spellbook or a in spellbook
         ]
         self._exited = False
+        # Feedback from the most recent handle() step (validation
+        # errors, spend results); surfaced via menu() snapshots.
+        self._feedback = ""
 
     @property
     def exited(self) -> bool:
@@ -86,6 +112,31 @@ class RestMode:
     def initial_text(self) -> str:
         """The entry summary + top menu (rendered when rest mode starts)."""
         return self._top_menu()
+
+    def menu(self) -> RestMenuSnapshot:
+        """Structured snapshot of the current menu (for button UIs)."""
+        if self._exited:
+            return RestMenuSnapshot(
+                kind=self.kind, state="exited", summary=self._summary,
+                status_line=self._status_line(), feedback=self._feedback,
+            )
+        if self._state == "prepare":
+            spellbook = self._hard.player.spellbook
+            return RestMenuSnapshot(
+                kind=self.kind, state="prepare", summary=self._summary,
+                status_line=self._status_line(), feedback=self._feedback,
+                options=[self._ability_name(aid) for aid in spellbook],
+                prepared=list(self._prepared),
+            )
+        if self._state == "spend":
+            options = ["Spend another hit die", "Done"]
+        else:
+            options = self._top_options()
+        return RestMenuSnapshot(
+            kind=self.kind, state=self._state, summary=self._summary,
+            status_line=self._status_line(), feedback=self._feedback,
+            options=list(options),
+        )
 
     def handle(self, line: str) -> str:
         """Process one input line; return the text to display next."""
@@ -116,6 +167,7 @@ class RestMode:
         return options
 
     def _top_menu(self, feedback: str = "") -> str:
+        self._feedback = feedback
         label = "Long rest" if self.kind == "long" else "Short rest"
         lines = [f"── {label} ──"]
         lines.append(self._summary)
@@ -170,6 +222,7 @@ class RestMode:
     # ------------------------------------------------------------------
 
     def _prepare_menu(self, feedback: str = "") -> str:
+        self._feedback = feedback
         spellbook = self._hard.player.spellbook
         if not spellbook:
             return self._top_menu(
@@ -225,6 +278,7 @@ class RestMode:
         return self._spend_menu(feedback=msg)
 
     def _spend_menu(self, feedback: str = "") -> str:
+        self._feedback = feedback
         lines = [feedback]
         lines.append(self._status_line())
         lines.append("")

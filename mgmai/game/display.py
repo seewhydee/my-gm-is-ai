@@ -14,11 +14,21 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+"""Rich terminal implementation of the GameView contract."""
+
 from __future__ import annotations
 
+import io
 from typing import Any
 
 from mgmai.engine.utils import is_exit_visible
+from mgmai.game.status import (
+    build_combat_view,
+    snapshot_status,
+)
+from mgmai.game.status import (
+    format_exits as _format_exits,
+)
 
 try:
     from rich.console import Console
@@ -32,7 +42,7 @@ except ImportError:
     RICH_AVAILABLE = False
 
 
-class Display:
+class RichView:
     def __init__(self):
         if RICH_AVAILABLE:
             self._console = Console(highlight=False)
@@ -44,12 +54,6 @@ class Display:
             self._console.print(text)
         else:
             print(text)
-
-    def rule(self, title: str = "") -> None:
-        if RICH_AVAILABLE:
-            self._console.print(Rule(title))
-        elif title:
-            print(f"--- {title} ---")
 
     # --- game screens ---
 
@@ -174,9 +178,12 @@ class Display:
         status effects and, for enemies, damage mitigations the party has
         already discovered by landing hits (derived from the combat log,
         so nothing the player hasn't learned is leaked).
+
+        The panel data comes from the shared ``CombatView`` builder
+        (``mgmai.game.status``); only the terminal-specific rendering
+        (bar width, columns, Rich markup) lives here.
         """
-        corpus = state_loader.corpus
-        combat = hard.combat
+        view_model = build_combat_view(hard, state_loader.corpus)
 
         if RICH_AVAILABLE:
             width = self._console.width
@@ -193,106 +200,22 @@ class Display:
             empty = bar_width - filled
             return "█" * filled + "░" * empty
 
-        effect_defs = corpus.effective_status_effects() if corpus else {}
-
-        def _status_effects_text(status_effects: dict) -> str:
-            """e.g. 'poisoned 2, stunned 1' (StatusEffectDef.name when set)"""
-            def _label(c: str) -> str:
-                cdef = effect_defs.get(c)
-                return cdef.name if cdef is not None and cdef.name else c
-            return ", ".join(f"{_label(c)} {n}" for c, n in status_effects.items())
-
-        def _row_data(cid: str) -> dict:
-            # Positioning: engagement partners (display names) and the
-            # pending impede flag, shown as row markers.
-            engaged_with = sorted(
-                _cid_name(p[1] if p[0] == cid else p[0])
-                for p in (combat.engagement or [])
-                if cid in p
-            )
-            impeded = cid in (combat.impeded or [])
-            if cid == "player":
-                return {
-                    "name": "Player",
-                    "hp": hard.player.current_hp or 0,
-                    "max_hp": hard.player.max_hp or 0,
-                    "status_effects": dict(hard.player.status_effects or {}),
-                    "fled": False,
-                    "engaged_with": engaged_with,
-                    "impeded": impeded,
-                }
-            entity = corpus.entities.get(cid) if corpus else None
-            state = hard.entity_states.get(cid, {})
-            return {
-                "name": (entity.name or cid) if entity else cid,
-                "hp": int(state.get("current_hp") or 0),
-                "max_hp": (entity.combat.hp if entity and entity.combat else 0),
-                "status_effects": dict(state.get("status_effects") or {}),
-                "fled": bool(state.get("fled")),
-                "engaged_with": engaged_with,
-                "impeded": impeded,
-            }
-
-        def _cid_name(pid: str) -> str:
-            """Display name for a combatant id (engagement partners)."""
-            if pid == "player":
-                return "Player"
-            ent = corpus.entities.get(pid) if corpus else None
-            return (ent.name or pid) if ent else pid
-
-        def _positioning_text(d: dict) -> str:
-            """e.g. '⚔ Goblin, Wolf (impeded)' — engagement partners and
-            the pending impede flag."""
-            parts: list[str] = []
-            if d["engaged_with"]:
-                parts.append(f"⚔ {', '.join(d['engaged_with'])}")
-            if d["impeded"]:
-                parts.append("(impeded)")
-            return " ".join(parts)
-
-        # Damage mitigations the party has discovered by landing hits on
-        # each enemy (damage type -> mitigation), taken from the combat
-        # log so nothing unlearned is revealed.
-        discovered: dict[str, dict[str, str]] = {}
-        for entry in combat.log or []:
-            target = getattr(entry, "target", None)
-            mitigation = getattr(entry, "mitigation", None)
-            damage_type = getattr(entry, "damage_type", "") or ""
-            if target and target != "player" and mitigation and damage_type:
-                discovered.setdefault(target, {})[damage_type] = mitigation
-
-        def _mitigation_text(cid: str) -> str:
-            """e.g. 'resists piercing; vulnerable to fire'"""
-            parts: list[str] = []
-            for damage_type, mitigation in discovered.get(cid, {}).items():
-                if mitigation == "resisted":
-                    parts.append(f"resists {damage_type}")
-                elif mitigation == "vulnerable":
-                    parts.append(f"vulnerable to {damage_type}")
-                elif mitigation == "immune":
-                    parts.append(f"immune to {damage_type}")
-            return "; ".join(parts)
-
-        def _status_tag(d: dict) -> str:
-            if d["fled"]:
+        def _status_tag(row: Any) -> str:
+            if row.fled:
                 return "(fled)"
-            if d["hp"] <= 0:
+            if row.dead:
                 return "†"
             return ""
 
-        # Current actor in the initiative order.  The panel renders while
-        # awaiting the player's command, so this is normally the player.
-        current_cid = None
-        if 0 <= combat.current_index < len(combat.initiative_order):
-            current_cid = combat.initiative_order[combat.current_index]
-
-        party = [
-            c for c in combat.combatants
-            if c == "player" or c in combat.allies
-        ]
-        enemies = [c for c in combat.combatants if c not in party]
-
-        footer = self._combat_player_footer(hard, corpus, combat)
+        def _positioning_text(row: Any) -> str:
+            """e.g. '⚔ Goblin, Wolf (impeded)' — engagement partners and
+            the pending impede flag."""
+            parts: list[str] = []
+            if row.engaged_with:
+                parts.append(f"⚔ {', '.join(row.engaged_with)}")
+            if row.impeded:
+                parts.append("(impeded)")
+            return " ".join(parts)
 
         if RICH_AVAILABLE:
             from rich.console import Group
@@ -301,46 +224,44 @@ class Display:
             from rich.text import Text
 
             init_parts: list[str] = []
-            for c in combat.initiative_order:
+            for c in view_model.initiative_order:
                 label = c
-                if c == current_cid:
+                if c == view_model.current_cid:
                     label = f"[bold underline]{label}[/bold underline]"
                 if c == "player":
                     label = f"[cyan]{label}[/cyan]"
                 init_parts.append(label)
             initiative_str = " → ".join(init_parts)
 
-            def _rich_row(cid: str) -> str:
-                d = _row_data(cid)
-                name = f"{d['name']} {_status_tag(d)}".strip()
+            def _rich_row(row: Any) -> str:
+                name = f"{row.name} {_status_tag(row)}".strip()
                 padded = f"{name:<18}"
-                if cid == "player":
+                if row.cid == "player":
                     padded = f"[bold bright_white]{padded}[/bold bright_white]"
                 line = (
-                    f"{padded} HP {_hp_bar(d['hp'], d['max_hp'])} "
-                    f"{d['hp']}/{d['max_hp']}"
+                    f"{padded} HP {_hp_bar(row.hp, row.max_hp)} "
+                    f"{row.hp}/{row.max_hp}"
                 )
-                if d["status_effects"]:
-                    line += f" [yellow]\\[{_status_effects_text(d['status_effects'])}][/yellow]"
-                mit = _mitigation_text(cid)
-                if mit:
-                    line += f" [dim]({mit})[/dim]"
-                pos = _positioning_text(d)
+                if row.status_effects:
+                    line += f" [yellow]\\[{row.status_effects_text}][/yellow]"
+                if row.mitigation_text:
+                    line += f" [dim]({row.mitigation_text})[/dim]"
+                pos = _positioning_text(row)
                 if pos:
                     line += f" [dim]{pos}[/dim]"
-                if d["hp"] <= 0 or d["fled"]:
+                if row.dead or row.fled:
                     line = f"[dim]{line}[/dim]"
                 return line
 
             header = Text.from_markup(
-                f"[bold]Combat: Round {combat.round_number}[/bold]\n"
+                f"[bold]Combat: Round {view_model.round_number}[/bold]\n"
                 f"[dim]Initiative:[/dim] {initiative_str}"
             )
             footer_text = Text.from_markup(
-                f"[dim]{footer}[/dim]\n[dim italic]It's your turn.[/dim italic]"
+                f"[dim]{view_model.footer}[/dim]\n[dim italic]It's your turn.[/dim italic]"
             )
-            party_lines = ["[bold]Party[/bold]"] + [_rich_row(c) for c in party]
-            enemy_lines = ["[bold]Enemies[/bold]"] + [_rich_row(c) for c in enemies]
+            party_lines = ["[bold]Party[/bold]"] + [_rich_row(r) for r in view_model.party]
+            enemy_lines = ["[bold]Enemies[/bold]"] + [_rich_row(r) for r in view_model.enemies]
             if wide:
                 grid = Table.grid(padding=(0, 0, 0, 4))
                 grid.add_column()
@@ -365,94 +286,40 @@ class Display:
             self._console.print()
         else:
             print()
-            print(f"=== Combat: Round {combat.round_number} ===")
+            print(f"=== Combat: Round {view_model.round_number} ===")
             initiative_str = " -> ".join(
-                f"»{c}«" if c == current_cid else c
-                for c in combat.initiative_order
+                f"»{c}«" if c == view_model.current_cid else c
+                for c in view_model.initiative_order
             )
             print(f"Initiative: {initiative_str}")
             print()
 
-            def _plain_row(cid: str) -> str:
-                d = _row_data(cid)
-                name = f"{d['name']} {_status_tag(d)}".strip()
+            def _plain_row(row: Any) -> str:
+                name = f"{row.name} {_status_tag(row)}".strip()
                 line = (
-                    f"  {name:<18} HP {_hp_bar(d['hp'], d['max_hp'])} "
-                    f"{d['hp']}/{d['max_hp']}"
+                    f"  {name:<18} HP {_hp_bar(row.hp, row.max_hp)} "
+                    f"{row.hp}/{row.max_hp}"
                 )
-                if d["status_effects"]:
-                    line += f" [{_status_effects_text(d['status_effects'])}]"
-                mit = _mitigation_text(cid)
-                if mit:
-                    line += f" ({mit})"
-                pos = _positioning_text(d)
+                if row.status_effects:
+                    line += f" [{row.status_effects_text}]"
+                if row.mitigation_text:
+                    line += f" ({row.mitigation_text})"
+                pos = _positioning_text(row)
                 if pos:
                     line += f" {pos}"
                 return line
 
             print("Party:")
-            for cid in party:
-                print(_plain_row(cid))
+            for row in view_model.party:
+                print(_plain_row(row))
             print()
             print("Enemies:")
-            for cid in enemies:
-                print(_plain_row(cid))
+            for row in view_model.enemies:
+                print(_plain_row(row))
             print()
-            print(f"  {footer}")
+            print(f"  {view_model.footer}")
             print("  It's your turn.")
             print()
-
-    def _combat_player_footer(self, hard: Any, corpus: Any, combat: Any) -> str:
-        """One-line summary of the player's combat-relevant resources:
-        AC, equipped weapon, ability uses left, and usable items."""
-        parts: list[str] = []
-        try:
-            from mgmai.engine.combat import compute_player_ac
-            ac = compute_player_ac(hard, corpus) if corpus else hard.player.ac
-        except Exception:  # noqa: BLE001 — display must never crash a turn
-            ac = hard.player.ac
-        if ac is not None:
-            parts.append(f"AC {ac}")
-        if corpus:
-            for item_id in hard.player.equipped:
-                entity = corpus.entities.get(item_id)
-                if (
-                    entity
-                    and entity.equip_block
-                    and "weapon" in entity.equip_block.equip_tags
-                ):
-                    dmg = entity.equip_block.damage_expr + (
-                        f" {entity.equip_block.damage_type}"
-                        if entity.equip_block.damage_type
-                        else ""
-                    )
-                    parts.append(f"{entity.name or item_id} ({dmg})")
-                    break
-            for aid in hard.player.abilities:
-                ability = corpus.abilities.get(aid)
-                if ability is None:
-                    continue
-                if ability.spell_level is not None and ability.spell_level >= 1:
-                    # Leveled spells draw on the slot pool, not uses.
-                    slots = hard.player.spell_slots.get(ability.spell_level, 0)
-                    parts.append(
-                        f"{ability.name} (level {ability.spell_level} slots: {slots})"
-                    )
-                elif ability.uses_per_combat < 0:
-                    parts.append(ability.name)
-                else:
-                    used = (combat.ability_uses.get("player", {}) or {}).get(aid, 0)
-                    remaining = ability.uses_per_combat - used
-                    parts.append(f"{ability.name} {remaining}/{ability.uses_per_combat}")
-            items: list[str] = []
-            for item_id, count in (hard.player.inventory or {}).items():
-                if count <= 0:
-                    continue
-                entity = corpus.entities.get(item_id)
-                if entity is not None and entity.interactions:
-                    items.append(f"{entity.name or item_id} x{count}")
-            parts.append("Items: " + (", ".join(items) if items else "none"))
-        return " · ".join(parts)
 
     def render_game_over(self, result: Any) -> None:
         go_type = getattr(result, "type", "unknown")
@@ -501,35 +368,9 @@ class Display:
 
     @staticmethod
     def format_exits(room: Any, indent: int = 0) -> str:
-        """Format a room's visible exits as a string suitable for appending
-        to narration.  ``room`` is a BriefingRoom or a corpus Room.
-
-        Returns an empty string if there are no visible exits.
-        """
-        exits: list = getattr(room, "exits_available", None)
-        if exits is None:
-            exits = getattr(room, "exits", [])
-
-        visible: list = []
-        for e in exits:
-            hidden = getattr(e, "hidden", False)
-            if hidden:
-                continue
-            direction = getattr(e, "direction", "")
-            one_way = getattr(e, "one_way", False)
-            label = f"* {direction}"
-            if one_way:
-                label += " (one-way)"
-            visible.append(label)
-
-        if not visible:
-            return ""
-
-        prefix = " " * indent
-        lines = [f"\n\n{prefix}**Exits:**"]
-        for v in visible:
-            lines.append(f"{prefix}{v}")
-        return "\n".join(lines)
+        """Format a room's visible exits (delegates to the shared
+        front-end-agnostic helper in ``mgmai.game.status``)."""
+        return _format_exits(room, indent)
 
     def _render_room(self, state_loader: Any) -> None:
         corpus = state_loader.corpus
@@ -582,3 +423,79 @@ class Display:
                         parts.append("(one-way)")
                     print("  ".join(parts))
             print()
+
+
+class RecordingView(RichView):
+    """A ``RichView`` that suppresses terminal output and records events.
+
+    Output is redirected to an in-memory buffer (so rich formatting
+    still runs, just nowhere visible).  Each ``render_*`` call is
+    recorded into a typed list so the harness can inspect what was
+    shown to a real player.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Replace the rich Console with one writing to a sink so that
+        # super().render_*() calls produce no terminal output.  The
+        # pinned width of 120 keeps the combat panel's wide layout
+        # deterministic under tests.
+        if RICH_AVAILABLE:
+            self._console = Console(
+                file=io.StringIO(),
+                highlight=False,
+                width=120,
+                record=False,
+            )
+        self.narrations: list[str] = []
+        self.status_snapshots: list[dict[str, Any]] = []
+        self.errors: list[str] = []
+        self.game_over_events: list[dict[str, Any]] = []
+        self.intros: list[dict[str, Any]] = []
+        self.rest_menus: list[str] = []
+
+    # --- game screens (override: record + suppress output) ---
+
+    def render_intro(self, state_loader: Any) -> None:
+        corpus = state_loader.corpus
+        adv = corpus.adventure if corpus else None
+        self.intros.append({
+            "title": getattr(adv, "title", None) if adv else None,
+            "introduction": getattr(adv, "introduction", None) if adv else None,
+        })
+        # Skip super().render_intro() — it would dump the room panel,
+        # which we don't want in headless mode.
+
+    def render_narration(self, text: str) -> None:
+        self.narrations.append(text)
+        # Deliberately do NOT call super(): we want zero terminal output.
+
+    def render_status(self, state_loader: Any) -> None:
+        snapshot = snapshot_status(state_loader)
+        self.status_snapshots.append(snapshot.to_dict())
+        # Skip super(): no terminal output.
+
+    def render_error(self, text: str) -> None:
+        self.errors.append(text)
+
+    def render_rest_menu(self, text: str) -> None:
+        self.rest_menus.append(text)
+        # Deliberately do NOT call super(): zero terminal output.
+
+    def render_game_over(self, result: Any) -> None:
+        self.game_over_events.append({
+            "type": getattr(result, "type", None),
+            "trigger": getattr(result, "trigger", None),
+            "narrative": getattr(result, "narrative", None),
+        })
+
+    def render_goodbye(self) -> None:
+        # Nothing to record; the game-over event above carries the
+        # relevant info.  Suppress terminal output.
+        pass
+
+
+# Back-compat aliases: these classes were introduced under these names
+# and existing imports/tests keep using them.
+Display = RichView
+RecordingDisplay = RecordingView

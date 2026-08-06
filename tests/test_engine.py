@@ -1223,8 +1223,6 @@ class TestMultiCombatantEncounters:
             effect=ReactionEffects(trigger_encounter="empty_combat"),
         ))
         manager = build_state_manager(corpus)
-        from mgmai.engine.event_bus import reset_disabled_once
-        reset_disabled_once()
 
         action = WaitAction(action_type="wait", detail="Wait")
         result = resolve(action, manager)
@@ -1272,8 +1270,6 @@ class TestMultiCombatantEncounters:
         hard.entity_states["cultist"] = {"alive": True}
         hard.entity_states["zombie"] = {"alive": False, "current_hp": 0}
 
-        from mgmai.engine.event_bus import reset_disabled_once
-        reset_disabled_once()
         action = InteractAction(
             action_type="interact",
             target="cultist",

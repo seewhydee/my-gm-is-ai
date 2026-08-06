@@ -16,8 +16,8 @@
 
 """Headless composition layer for programmatic play and integration tests.
 
-``HeadlessSession`` composes a ``StateManager`` + ``GameLoop`` +
-``RecordingDisplay`` and exposes a single-turn ``submit()`` entry point
+``HeadlessSession`` composes a ``StateManager`` + ``GameSession`` +
+``RecordingView`` and exposes a single-turn ``submit()`` entry point
 that returns the narration, a combat-status snapshot, and the game-over
 flag.  It bypasses the interactive REPL entirely (no ``input()``,
 no terminal rendering), making it suitable for:
@@ -26,72 +26,32 @@ no terminal rendering), making it suitable for:
 - Replay/automation scripts that feed a scripted command list.
 - Programmatic smoke tests of the full two-call LLM pipeline.
 
-The interactive REPL is untouched; this module is a sibling composition
-layer, not a refactor of it.
+Everything runs through the public ``GameSession`` API — no private
+access — so this harness exercises exactly the surface the CLI and
+Telegram front-ends use.
 """
 
 from __future__ import annotations
 
-import io
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mgmai.game.display import Display
-from mgmai.game.loop import GameLoop
+from mgmai.game.display import (
+    RecordingDisplay,  # noqa: F401  (re-exported for compat)
+    RecordingView,
+)
+from mgmai.game.session import GameSession
+from mgmai.game.status import (  # noqa: F401  (re-exported for compat)
+    StatusSnapshot,
+    _snapshot_status,
+    snapshot_status,
+)
 from mgmai.llm.client import LLMClient
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
 from mgmai.state.manager import StateManager
-
-try:
-    from rich.console import Console
-
-    _RICH_AVAILABLE = True
-except ImportError:
-    _RICH_AVAILABLE = False
-
-
-@dataclass
-class StatusSnapshot:
-    """Compact, JSON-serialisable view of the post-turn game status."""
-
-    turn_count: int
-    location: str
-    in_combat: bool
-    combat_round: int | None
-    player_hp: int | None
-    player_max_hp: int | None
-    # {combatant_id: {"hp", "max_hp", "side": "party"|"enemy", "alive",
-    #                 "status_effects": {status_effect: rounds},
-    #                 "status_effect_names": {status_effect: display name},
-    #                 "fled": bool}}
-    combatants: dict[str, dict[str, Any]] = field(default_factory=dict)
-    active_flags: dict[str, bool] = field(default_factory=dict)
-    # Dialogue soft state for this turn: {"active_npc", "attitude",
-    # "topics_discussed", "stall_counter", "entered_turn", "log_length"}.
-    # Empty dict when no dialogue state is available.
-    dialogue: dict[str, Any] = field(default_factory=dict)
-    # Action economy for the player's current combat turn: the five
-    # TurnBudget booleans plus "reactions_spent" (sorted combatant ids),
-    # "action_weapon_id", and "turn_continuation".  Empty dict when not
-    # in combat.
-    player_budget: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "turn_count": self.turn_count,
-            "location": self.location,
-            "in_combat": self.in_combat,
-            "combat_round": self.combat_round,
-            "player_hp": self.player_hp,
-            "player_max_hp": self.player_max_hp,
-            "combatants": self.combatants,
-            "active_flags": self.active_flags,
-            "dialogue": self.dialogue,
-            "player_budget": self.player_budget,
-        }
 
 
 @dataclass
@@ -119,6 +79,9 @@ class TurnTranscript:
     # budget validation.  Empty when the first ruling passed (or the
     # retry is what failed, in which case the first error is recorded).
     ruling_retries: list[str] = field(default_factory=list)
+    # EngineResult warnings surfaced during the turn (e.g. stripped
+    # embellishments the ruling model should learn from).
+    warnings: list[str] = field(default_factory=list)
     # Exception raised during the turn, if any (so callers can record
     # artifacts even when the harness blows up).
     exception: BaseException | None = None
@@ -136,6 +99,7 @@ class TurnTranscript:
             "engine_error": self.engine_error,
             "ruled_action": self.ruled_action,
             "ruling_retries": list(self.ruling_retries),
+            "warnings": list(self.warnings),
             "exception": (
                 f"{type(self.exception).__name__}: {self.exception}"
                 if self.exception is not None
@@ -144,171 +108,10 @@ class TurnTranscript:
         }
 
 
-class RecordingDisplay(Display):
-    """A ``Display`` that suppresses terminal output and records events.
-
-    Output is redirected to an in-memory buffer (so rich formatting
-    still runs, just nowhere visible).  Each ``render_*`` call is
-    recorded into a typed list so the harness can inspect what was
-    shown to a real player.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        # Replace the rich Console with one writing to a sink so that
-        # super().render_*() calls produce no terminal output.
-        if _RICH_AVAILABLE:
-            self._console = Console(
-                file=io.StringIO(),
-                highlight=False,
-                width=120,
-                record=False,
-            )
-        self.narrations: list[str] = []
-        self.status_snapshots: list[dict[str, Any]] = []
-        self.errors: list[str] = []
-        self.game_over_events: list[dict[str, Any]] = []
-        self.intros: list[dict[str, Any]] = []
-        self.rest_menus: list[str] = []
-
-    # --- game screens (override: record + suppress output) ---
-
-    def render_intro(self, state_loader: Any) -> None:
-        corpus = state_loader.corpus
-        adv = corpus.adventure if corpus else None
-        self.intros.append({
-            "title": getattr(adv, "title", None) if adv else None,
-            "introduction": getattr(adv, "introduction", None) if adv else None,
-        })
-        # Skip super().render_intro() — it would dump the room panel,
-        # which we don't want in headless mode.
-
-    def render_narration(self, text: str) -> None:
-        self.narrations.append(text)
-        # Deliberately do NOT call super(): we want zero terminal output.
-
-    def render_status(self, state_loader: Any) -> None:
-        snapshot = _snapshot_status(state_loader)
-        self.status_snapshots.append(snapshot.to_dict() if isinstance(snapshot, StatusSnapshot) else snapshot)
-        # Skip super(): no terminal output.
-
-    def render_error(self, text: str) -> None:
-        self.errors.append(text)
-
-    def render_rest_menu(self, text: str) -> None:
-        self.rest_menus.append(text)
-        # Deliberately do NOT call super(): zero terminal output.
-
-    def render_game_over(self, result: Any) -> None:
-        self.game_over_events.append({
-            "type": getattr(result, "type", None),
-            "trigger": getattr(result, "trigger", None),
-            "narrative": getattr(result, "narrative", None),
-        })
-
-    def render_goodbye(self) -> None:
-        # Nothing to record; the game-over event above carries the
-        # relevant info.  Suppress terminal output.
-        pass
-
-
-def _snapshot_status(state_manager: StateManager) -> StatusSnapshot:
-    """Build a ``StatusSnapshot`` from a ``StateManager``."""
-    hard = state_manager.hard_state
-    corpus = state_manager.corpus
-    if hard is None:
-        return StatusSnapshot(
-            turn_count=0, location="", in_combat=False,
-            combat_round=None, player_hp=None, player_max_hp=None,
-        )
-
-    combat = hard.combat
-    combatants: dict[str, dict[str, Any]] = {}
-    if combat is not None:
-        effect_defs = corpus.effective_status_effects() if corpus else {}
-
-        def _effect_label(c: str) -> str:
-            cdef = effect_defs.get(c)
-            return cdef.name if cdef is not None and cdef.name else c
-
-        allies = set(combat.allies)
-        for cid in combat.combatants:
-            if cid == "player":
-                hp = hard.player.current_hp or 0
-                max_hp = hard.player.max_hp or 0
-                side = "party"
-                status_effects = dict(hard.player.status_effects or {})
-                fled = False
-            else:
-                state = hard.entity_states.get(cid, {})
-                hp = int(state.get("current_hp") or 0)
-                ent = corpus.entities.get(cid) if corpus else None
-                max_hp = (ent.combat.hp if ent and ent.combat else 0)
-                side = "party" if cid in allies else "enemy"
-                status_effects = dict(state.get("status_effects") or {})
-                fled = bool(state.get("fled"))
-            combatants[cid] = {
-                "hp": hp,
-                "max_hp": max_hp,
-                "side": side,
-                "alive": hp > 0,
-                "status_effects": status_effects,
-                "status_effect_names": {c: _effect_label(c) for c in status_effects},
-                "fled": fled,
-                # Positioning: engagement partners (combatant ids) and
-                # the pending impede flag.
-                "engaged_with": sorted(
-                    p[1] if p[0] == cid else p[0]
-                    for p in (combat.engagement or [])
-                    if cid in p
-                ),
-                "impeded": cid in (combat.impeded or []),
-            }
-
-    player_budget: dict[str, Any] = {}
-    if combat is not None:
-        player_budget = {
-            **combat.player_budget.model_dump(),
-            "reactions_spent": sorted(combat.reactions_spent),
-            "action_weapon_id": combat.action_weapon_id,
-            "turn_continuation": combat.turn_continuation,
-        }
-
-    dialogue: dict[str, Any] = {}
-    soft = state_manager.soft_state
-    if soft is not None:
-        ds = soft.dialogue_state
-        dialogue = {
-            "active_npc": ds.active_npc,
-            "attitude": (
-                hard.entity_states.get(ds.active_npc, {}).get("attitude")
-                if ds.active_npc is not None
-                else None
-            ),
-            "topics_discussed": list(ds.topics_discussed),
-            "stall_counter": ds.stall_counter,
-            "entered_turn": ds.entered_turn,
-            "log_length": len(ds.conversation_log),
-        }
-
-    return StatusSnapshot(
-        turn_count=hard.turn_count,
-        location=hard.player.location,
-        in_combat=combat is not None and combat.active,
-        combat_round=combat.round_number if combat is not None else None,
-        player_hp=hard.player.current_hp,
-        player_max_hp=hard.player.max_hp,
-        combatants=combatants,
-        active_flags={k: v for k, v in hard.flags.items() if v},
-        dialogue=dialogue,
-        player_budget=player_budget,
-    )
-
-
 class HeadlessSession:
-    """Programmatic, single-turn entry point around ``GameLoop``.
+    """Programmatic, single-turn entry point around ``GameSession``.
 
-    Composes ``StateManager`` + ``GameLoop`` + ``RecordingDisplay``.
+    Composes ``StateManager`` + ``GameSession`` + ``RecordingView``.
     Callers provide either an adventure directory (loaded via
     ``StateManager.load_all``) or a pre-built ``StateManager``, plus an
     ``LLMClient`` and a temp ``config_dir`` (so autosaves land in a
@@ -329,26 +132,30 @@ class HeadlessSession:
                 "HeadlessSession requires either state_manager or adventure_dir"
             )
 
-        self._display = RecordingDisplay()
+        self._display = RecordingView()
         self._state = state_manager if state_manager is not None else StateManager()
         if adventure_dir is not None and state_manager is None:
             self._state.load_all(adventure_dir)
         # Sandbox the autosave path so it never lands in the CWD.
         self._state.config_dir = Path(config_dir)
 
-        self._loop = GameLoop(
+        self._session = GameSession(
             self._state,
             llm_client,
-            debug=debug,
-            display=self._display,
+            view=self._display,
             config_dir=config_dir,
+            debug=debug,
             interactive=False,
         )
         # Render the intro so the recording captures the adventure title
         # and starting room — same UX as a real game start.
-        self._loop._display.render_intro(self._state)
+        self._session.begin()
 
     # --- properties ---
+
+    @property
+    def session(self) -> GameSession:
+        return self._session
 
     @property
     def state_manager(self) -> StateManager:
@@ -367,16 +174,12 @@ class HeadlessSession:
         return self._state.corpus
 
     @property
-    def display(self) -> RecordingDisplay:
+    def display(self) -> RecordingView:
         return self._display
 
     @property
-    def loop(self) -> GameLoop:
-        return self._loop
-
-    @property
     def is_over(self) -> bool:
-        """True if the game has ended (win or lose)."""
+        """True when the game has ended (win or lose)."""
         hard = self._state.hard_state
         return hard is not None and hard.game_over is not None
 
@@ -392,66 +195,47 @@ class HeadlessSession:
     # --- single-turn entry point ---
 
     def submit(self, command: str) -> TurnTranscript:
-        """Run one player-input turn end to end and return a transcript.
+        """Run one player input end to end and return a transcript.
 
-        Any exception raised during the turn is caught, recorded in the
-        transcript, and then re-raised so the caller can still access
+        Any exception raised during the turn is recorded in the
+        transcript and then re-raised, so the caller can still inspect
         the partial transcript after catching the exception.
         """
-        errors_before = len(self._display.errors)
-        retries_before = len(self._loop.ruling_retries)
-
         exception: BaseException | None = None
-        narration: str | None = None
-        turn_ran = False
         try:
-            # Rest-mode bookkeeping (and slash-commands) bypass the turn
-            # pipeline entirely.  _dispatch_input returns the rendered
-            # output string when it consumed the line, None otherwise.
-            rest_output = self._loop._dispatch_input(command)
-            if rest_output is not None:
-                narration = rest_output or None
-            else:
-                narration = self._loop._run_turn(command)
-                turn_ran = True
+            result = self._session.submit(command)
         except BaseException as exc:  # noqa: BLE001 — record + reraise
             exception = exc
+            result = None
 
-        hard = self._state.hard_state
-        status = _snapshot_status(self._state)
-        new_errors = self._display.errors[errors_before:]
-
-        # The turn's combat log, accumulated by the game loop across
-        # every resolution of this turn (a multi-part command chains
-        # several, each overwriting ``_last_result``), so the judge can
-        # cross-reference narration against mechanical truth.  Reading
-        # the loop's accumulator also covers combat that starts AND
-        # ends within a single turn (no live ``hard.combat`` to diff).
-        # Rest-mode / slash-command submits never reach _run_turn, so the
-        # accumulator still holds the PREVIOUS turn's entries — skip it.
-        combat_log: list[dict[str, Any]] = []
-        if turn_ran:
-            for entry in self._loop.turn_combat_log:
-                if hasattr(entry, "model_dump"):
-                    combat_log.append(entry.model_dump())
-                elif isinstance(entry, dict):
-                    combat_log.append(entry)
-
-        last_result = getattr(self._loop, "_last_result", None)
-
-        game_over = hard is not None and hard.game_over is not None
-        game_over_type = hard.game_over.type if game_over and hard else None
-
-        # Capture the engine outcome so silent turn failures (narration
-        # flows despite a failed resolution) are visible in artifacts.
-        success = getattr(last_result, "success", None)
-        engine_error = getattr(last_result, "error", None)
-        last_action = getattr(self._loop, "_last_action", None)
-        ruled_action = (
-            last_action.model_dump(mode="json")
-            if last_action is not None and hasattr(last_action, "model_dump")
-            else None
-        )
+        if result is not None:
+            narration = result.narration
+            status = result.status
+            game_over = result.game_over
+            game_over_type = result.game_over_type
+            errors = list(result.errors)
+            combat_log = list(result.combat_log)
+            success = result.success
+            engine_error = result.engine_error
+            ruled_action = result.ruled_action
+            ruling_retries = list(result.ruling_retries)
+            warnings = list(result.warnings)
+        else:
+            # The turn blew up before producing a result: still derive
+            # the post-turn state so callers inspecting the partial
+            # transcript get a usable snapshot.
+            hard = self._state.hard_state
+            status = snapshot_status(self._state)
+            game_over = hard is not None and hard.game_over is not None
+            game_over_type = hard.game_over.type if game_over and hard else None
+            narration = None
+            errors = []
+            combat_log = []
+            success = None
+            engine_error = None
+            ruled_action = None
+            ruling_retries = []
+            warnings = []
 
         transcript = TurnTranscript(
             command=command,
@@ -459,12 +243,13 @@ class HeadlessSession:
             status=status,
             game_over=game_over,
             game_over_type=game_over_type,
-            errors=new_errors,
+            errors=errors,
             combat_log=combat_log,
             success=success,
             engine_error=engine_error,
             ruled_action=ruled_action,
-            ruling_retries=list(self._loop.ruling_retries[retries_before:]),
+            ruling_retries=ruling_retries,
+            warnings=warnings,
             exception=exception,
         )
         if exception is not None:
@@ -473,4 +258,4 @@ class HeadlessSession:
 
     def status_snapshot(self) -> StatusSnapshot:
         """Build a status snapshot without running a turn."""
-        return _snapshot_status(self._state)
+        return snapshot_status(self._state)

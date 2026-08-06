@@ -382,7 +382,7 @@ def format_indicators_fallback(
 
     This is a convenience wrapper for code paths that do **not** go
     through the marker-based prose generation (e.g. the LLM Call 2
-    fallback path in ``GameLoop._execute_turn``).
+    fallback path in ``GameSession._execute_turn``).
     """
     indicators = build_indicators(result, hard_state, corpus)
     if not indicators:

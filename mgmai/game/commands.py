@@ -21,7 +21,7 @@ import logging
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from mgmai.llm.model_config import (
     get_known_model_labels,
@@ -46,6 +46,27 @@ except ImportError:
 
 _BARE_INV_WORDS = frozenset({"i", "inv", "inventory"})
 _BARE_CHAR_WORDS = frozenset({"c", "char", "character", "sheet"})
+
+
+class Prompter(Protocol):
+    """Interactive prompt surface for /model (injectable per front-end)."""
+
+    def prompt(self, text: str) -> str: ...
+
+    def password(self, text: str) -> str: ...
+
+
+class TerminalPrompter:
+    """Default prompter: blocking terminal input()/getpass()."""
+
+    def prompt(self, text: str) -> str:
+        return input(text)
+
+    def password(self, text: str) -> str:
+        return getpass.getpass(text)
+
+
+_TERMINAL_PROMPTER = TerminalPrompter()
 
 
 def _stdin_is_interactive() -> bool:
@@ -73,6 +94,9 @@ class Commands:
         model_config: object | None = None,
         on_model_change: Callable[[str, object], None] | None = None,
         interactive: bool | None = None,
+        saves_dir: str | Path | None = None,
+        prompter: Prompter | None = None,
+        latest_narration: Callable[[], str | None] | None = None,
     ):
         self._state = state_loader
         self._render = render
@@ -80,12 +104,28 @@ class Commands:
         self._debug = debug
         self._on_load = on_load
         self._config_dir = Path(config_dir) if config_dir else None
+        # Explicit save sandbox (per-chat save dirs on the Telegram
+        # front-end); defaults to get_saves_dir(adventure, config_dir).
+        # config_dir keeps its config/credentials meaning.
+        self._saves_dir = Path(saves_dir) if saves_dir else None
         self._model_config = model_config
         self._on_model_change = on_model_change
         # Interactive prompters (input()/getpass()) are terminal-only;
         # non-interactive front-ends (headless, Telegram) must never
         # block on stdin.  Default to the terminal state of stdin.
         self._interactive = _stdin_is_interactive() if interactive is None else interactive
+        # Injectable prompt surface for /model; defaults to terminal
+        # input()/getpass().  Non-interactive sessions never reach it.
+        self._prompter = prompter
+        # Provider for the most recent narration, stored into named
+        # saves so save browsers can show a snippet per entry.
+        self._latest_narration = latest_narration
+
+    def _prompt(self, text: str) -> str:
+        return (self._prompter or _TERMINAL_PROMPTER).prompt(text)
+
+    def _prompt_password(self, text: str) -> str:
+        return (self._prompter or _TERMINAL_PROMPTER).password(text)
 
     @property
     def debug(self) -> bool:
@@ -183,14 +223,19 @@ class Commands:
         return self._get_saves_dir() / filename
 
     def _get_saves_dir(self) -> Path:
+        if self._saves_dir is not None:
+            return self._saves_dir
         from mgmai.config import get_saves_dir
 
         adv_name = self._adventure_name()
         return get_saves_dir(adv_name, self._config_dir)
 
     def _adventure_name(self) -> str:
-        if getattr(self._state, "_adventure_dir", None):
-            return self._state._adventure_dir.name
+        adv_dir = getattr(self._state, "adventure_dir", None)
+        if adv_dir is None:
+            adv_dir = getattr(self._state, "_adventure_dir", None)
+        if adv_dir:
+            return adv_dir.name
         return "game"
 
     def _cmd_save(self, arg: str) -> None:
@@ -201,7 +246,12 @@ class Commands:
         try:
             save_path = self._resolve_save_path(filename)
             save_path.parent.mkdir(parents=True, exist_ok=True)
-            self._state.save(str(save_path))
+            latest = (
+                self._latest_narration()
+                if self._latest_narration is not None
+                else None
+            )
+            self._state.save(str(save_path), latest_narration=latest)
             self._render(f"[green]Game saved to {save_path}[/green]")
         except (OSError, ValueError) as e:
             self._render(f"[red]Save failed: {e}[/red]")
@@ -302,7 +352,7 @@ class Commands:
             return
 
         try:
-            choice = input("\n  Select model number: ").strip()
+            choice = self._prompt("\n  Select model number: ").strip()
         except (EOFError, KeyboardInterrupt):
             self._render("")
             return
@@ -316,7 +366,7 @@ class Commands:
                 new_model = known_names[idx - 1]
             elif idx == len(known) + 1:
                 try:
-                    new_model = input("  Enter model name: ").strip()
+                    new_model = self._prompt("  Enter model name: ").strip()
                 except (EOFError, KeyboardInterrupt):
                     self._render("")
                     return
@@ -346,7 +396,7 @@ class Commands:
         self._render(f"\n[bold]API Key[/bold]  [dim](current: {display_api})[/dim]")
         self._render("  (leave blank to keep current)")
         try:
-            new_key = getpass.getpass("  Enter API key: ").strip()
+            new_key = self._prompt_password("  Enter API key: ").strip()
         except (EOFError, KeyboardInterrupt):
             self._render("")
             return
@@ -374,7 +424,7 @@ class Commands:
         else:
             self._render("  [yellow]A base URL is required for this model.[/yellow]")
         try:
-            new_url = input("  Enter base URL: ").strip()
+            new_url = self._prompt("  Enter base URL: ").strip()
         except (EOFError, KeyboardInterrupt):
             self._render("")
             return

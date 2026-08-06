@@ -21,7 +21,6 @@ from pathlib import Path
 
 import pytest
 
-from mgmai.engine.event_bus import reset_disabled_once
 from mgmai.models.corpus import ModuleCorpus
 from mgmai.models.hard_state import HardGameState
 from mgmai.models.soft_state import SoftGameState
@@ -126,5 +125,4 @@ def state_manager(sample_corpus, sample_hard_state, sample_soft_state):
     manager.soft_state = copy.deepcopy(sample_soft_state)
     manager._adventure_dir = FIXTURES_DIR
     manager._init_contains_from_corpus()
-    reset_disabled_once()
     return manager

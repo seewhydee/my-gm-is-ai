@@ -22,7 +22,7 @@ fixed turn:
    combat log entries) is controlled — Call 1 (ruling) is bypassed by
    design: what is under test is the narrator's handling of the
    mechanical indicators, not the ruling's classification.
-2. The real ``GameLoop._call_prose`` (Call 2) is invoked with the
+2. The real ``GameSession.call_prose`` (Call 2) is invoked with the
    indicators built from the engine result, exactly as in production.
 3. ``process_narration`` replaces any markers the narrator placed.
 
@@ -239,11 +239,11 @@ def run_indicator_turn(
         indicators: list[NarrativeIndicator] = build_indicators(
             engine_result, hard, corpus
         )
-        prose = session.loop._call_prose(
+        prose = session.session.call_prose(
             briefing, action_obj, engine_result, indicators=indicators
         )
 
-        # Mirror GameLoop._execute_turn's narration selection.
+        # Mirror GameSession._execute_turn's narration selection.
         raw_narration = prose.narration
         if not raw_narration.strip() and prose.npc_response:
             raw_narration = prose.npc_response.strip()
