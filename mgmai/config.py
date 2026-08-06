@@ -75,6 +75,12 @@ class AppConfig:
     prose_temperature: float | None = None
     prose_validation_enabled: bool = True
     adventure_path: str | None = None
+    # Telegram bot: mandatory allow-list of chat IDs that may use the
+    # bot (a public bot is an open proxy to the LLM API budget).
+    telegram_allowed_chat_ids: list[int] = field(default_factory=list)
+    # Telegram bot: directory scanned for adventures (subdirectories
+    # containing corpus.json).  Required for bot startup; no default.
+    telegram_adventures_dir: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {}
@@ -90,6 +96,10 @@ class AppConfig:
             d["prose_validation_enabled"] = self.prose_validation_enabled
         if self.adventure_path is not None:
             d["adventure_path"] = self.adventure_path
+        if self.telegram_allowed_chat_ids:
+            d["telegram_allowed_chat_ids"] = list(self.telegram_allowed_chat_ids)
+        if self.telegram_adventures_dir is not None:
+            d["telegram_adventures_dir"] = self.telegram_adventures_dir
         return d
 
     @classmethod
@@ -101,6 +111,8 @@ class AppConfig:
             prose_temperature=data.get("prose_temperature"),
             prose_validation_enabled=data.get("prose_validation_enabled", True),
             adventure_path=data.get("adventure_path"),
+            telegram_allowed_chat_ids=list(data.get("telegram_allowed_chat_ids", [])),
+            telegram_adventures_dir=data.get("telegram_adventures_dir"),
         )
 
 
@@ -138,20 +150,29 @@ class Credentials:
     base_url, e.g. ``"deepseek"`` for ``https://api.deepseek.com``) to
     its API key, so different models hosted by different providers can
     each have their own key.
+
+    ``telegram_bot_token`` is serialized under a ``"telegram"`` section
+    (``{"telegram": {"bot_token": ...}}``) so a save/load round-trip
+    preserves it instead of silently dropping the key.
     """
 
     api_keys: dict[str, str] = field(default_factory=dict)
+    telegram_bot_token: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {}
         if self.api_keys:
             d["api_keys"] = dict(self.api_keys)
+        if self.telegram_bot_token:
+            d["telegram"] = {"bot_token": self.telegram_bot_token}
         return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Credentials:
+        telegram = data.get("telegram") or {}
         return cls(
             api_keys=data.get("api_keys", {}),
+            telegram_bot_token=telegram.get("bot_token"),
         )
 
 

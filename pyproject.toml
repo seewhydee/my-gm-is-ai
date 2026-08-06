@@ -19,9 +19,13 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+telegram = [
+    "python-telegram-bot>=21,<22",
+]
 
 [project.scripts]
 mgmai = "mgmai.cli:main"
+mgmai-telegram = "mgmai.telegram:main"
 
 [tool.setuptools.packages.find]
 include = ["mgmai*"]

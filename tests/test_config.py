@@ -125,6 +125,38 @@ class TestAppConfig:
         loaded = load_app_config(tmp_path)
         assert loaded.adventure_path == "/some/adventure"
 
+    def test_telegram_defaults(self):
+        c = AppConfig()
+        assert c.telegram_allowed_chat_ids == []
+        assert c.telegram_adventures_dir is None
+
+    def test_telegram_keys_roundtrip(self, tmp_path):
+        c = AppConfig(
+            telegram_allowed_chat_ids=[111, 222],
+            telegram_adventures_dir="./adventures",
+        )
+        save_app_config(c, tmp_path)
+        loaded = load_app_config(tmp_path)
+        assert loaded.telegram_allowed_chat_ids == [111, 222]
+        assert loaded.telegram_adventures_dir == "./adventures"
+
+    def test_telegram_keys_omitted_when_unset(self, tmp_path):
+        save_app_config(AppConfig(), tmp_path)
+        import json
+        data = json.loads(get_config_file(tmp_path).read_text())
+        assert "telegram_allowed_chat_ids" not in data
+        assert "telegram_adventures_dir" not in data
+
+    def test_legacy_config_without_telegram_keys_loads(self, tmp_path):
+        import json
+        path = get_config_file(tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"model_name": "gpt-4o"}))
+        loaded = load_app_config(tmp_path)
+        assert loaded.model_name == "gpt-4o"
+        assert loaded.telegram_allowed_chat_ids == []
+        assert loaded.telegram_adventures_dir is None
+
 
 class TestCredentials:
     def test_default_empty(self):
@@ -163,6 +195,41 @@ class TestCredentials:
         path.write_text("not json")
         c = load_credentials(tmp_path)
         assert c.api_keys == {}
+
+    def test_telegram_default_none(self):
+        c = Credentials()
+        assert c.telegram_bot_token is None
+
+    def test_telegram_section_to_dict(self):
+        c = Credentials(telegram_bot_token="123:abc")
+        assert c.to_dict() == {"telegram": {"bot_token": "123:abc"}}
+
+    def test_telegram_section_roundtrip(self, tmp_path):
+        c = Credentials(
+            api_keys={"deepseek": "sk-secret"},
+            telegram_bot_token="123:abc",
+        )
+        save_credentials(c, tmp_path)
+        loaded = load_credentials(tmp_path)
+        assert loaded.telegram_bot_token == "123:abc"
+        assert loaded.api_keys == {"deepseek": "sk-secret"}
+
+    def test_telegram_section_file_permissions(self, tmp_path):
+        c = Credentials(telegram_bot_token="123:abc")
+        save_credentials(c, tmp_path)
+        path = get_credentials_file(tmp_path)
+        mode = path.stat().st_mode
+        expected = stat.S_IRUSR | stat.S_IWUSR
+        assert mode & 0o777 == expected
+
+    def test_legacy_credentials_without_telegram_section(self, tmp_path):
+        import json
+        path = get_credentials_file(tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"api_keys": {"deepseek": "sk-x"}}))
+        loaded = load_credentials(tmp_path)
+        assert loaded.telegram_bot_token is None
+        assert loaded.api_keys == {"deepseek": "sk-x"}
 
 
 class TestResolveApiKey:
