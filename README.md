@@ -104,6 +104,20 @@ During play, type commands in natural language, e.g.:
 
 Use `/help` during play for a list of special commands.
 
+### Telegram bot
+
+You can also play through a Telegram bot instead of the terminal:
+
+```bash
+pip install -e ".[telegram]"
+mgmai-telegram
+```
+
+This requires a bot token from BotFather and some configuration (a
+mandatory chat-ID allow-list and an adventures directory).  See
+[doc/telegram.md](doc/telegram.md) for setup and play instructions.
+The Telegram front-end is a work in progress; see `telegram-plan.md`.
+
 ## How It Works
 
 Each turn, the player's natural language input flows through a
@@ -155,6 +169,7 @@ The design documentation is in the `doc/` folder:
 - [doc/player-stats.md](doc/player-stats.md) — Player stats (WIP).
 - [doc/soft.md](doc/soft.md) — The soft state system (soft notes, soft items).
 - [doc/models.md](doc/models.md) — LLM model configuration guide.
+- [doc/telegram.md](doc/telegram.md) — Playing via the Telegram bot.
 
 ## Copyright and License
 

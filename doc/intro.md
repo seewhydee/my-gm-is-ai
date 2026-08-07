@@ -268,6 +268,7 @@ mgmai/
 │   ├── view.py           # GameView rendering contract
 │   ├── commands.py       # Slash-command handlers
 │   └── display.py        # Rich console UI (implements GameView)
+├── telegram/             # Telegram bot front-end (optional; PTB extra)
 ├── templates/
 │   ├── ruling.j2        # System prompt for LLM Call 1
 │   ├── ruling_combat.j2 # Combat rules section (included during combat)

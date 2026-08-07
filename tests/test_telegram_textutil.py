@@ -22,6 +22,7 @@ from __future__ import annotations
 from mgmai.telegram.textutil import (
     TELEGRAM_MESSAGE_LIMIT,
     chunk_message,
+    md_to_telegram_html,
     strip_rich_markup,
 )
 
@@ -41,6 +42,39 @@ class TestStripRichMarkup:
 
     def test_plain_text_unchanged(self):
         assert strip_rich_markup("nothing to strip") == "nothing to strip"
+
+
+class TestMdToTelegramHtml:
+    def test_bold_converted(self):
+        assert md_to_telegram_html("**Exits:**") == "<b>Exits:</b>"
+
+    def test_multiple_bold_spans(self):
+        assert (
+            md_to_telegram_html("**a** and **b**")
+            == "<b>a</b> and <b>b</b>"
+        )
+
+    def test_html_special_chars_escaped(self):
+        assert (
+            md_to_telegram_html("1 < 2 & 3 > 2")
+            == "1 &lt; 2 &amp; 3 &gt; 2"
+        )
+
+    def test_bullet_asterisks_left_alone(self):
+        assert (
+            md_to_telegram_html("* Clamber down\n* Drop down")
+            == "* Clamber down\n* Drop down"
+        )
+
+    def test_unbalanced_delimiters_stripped(self):
+        # e.g. a chunk split mid-bold-span: never emit malformed HTML.
+        assert md_to_telegram_html("**dangling") == "dangling"
+
+    def test_escaped_bold_combo(self):
+        assert (
+            md_to_telegram_html("**INT check: <success>**")
+            == "<b>INT check: &lt;success&gt;</b>"
+        )
 
 
 class TestChunkMessage:

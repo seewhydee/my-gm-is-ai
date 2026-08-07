@@ -15,21 +15,30 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """Smoke tests for mgmai/telegram/bot.py — the PTB-independent
-``BotRuntime`` core, driven with plain fakes (no PTB, no network)."""
+``BotRuntime`` core (menus, callbacks, turns), driven with plain fakes
+(no PTB, no network)."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 
 from mgmai.telegram.bot import (
     TURN_FAILURE_TEXT,
     BotRuntime,
+    adventure_title,
     find_adventures,
 )
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+MINI_ADVENTURE_DIR = FIXTURES_DIR / "mini_adventure"
+
+ADVENTURES = [
+    (FIXTURES_DIR, "You're Trapped in a Bag of Holding!"),
+    (MINI_ADVENTURE_DIR, "Mini Test Adventure"),
+]
 
 
 class FakeLLMClient:
@@ -74,29 +83,64 @@ def _wait_llm(narration: str = "Time passes.") -> FakeLLMClient:
 def _make_runtime(tmp_path, llm=None, chat_ids=(123,)) -> BotRuntime:
     return BotRuntime(
         config_dir=tmp_path,
-        adventure_path=FIXTURES_DIR,
+        adventures=ADVENTURES,
         llm_client=llm or _wait_llm(),
         allowed_chat_ids=set(chat_ids),
     )
 
 
-class _FakeChat:
-    """Collects replies and typing heartbeats."""
+class FakeOutbox:
+    """Collects everything BotRuntime sends (ChatOutbox protocol)."""
 
     def __init__(self) -> None:
         self.replies: list[str] = []
+        self.menus: list[tuple[str, list]] = []
+        self.edits: list[tuple[str, list | None]] = []
+        self.answered = 0
         self.typing_count = 0
 
     async def reply(self, text: str) -> None:
         self.replies.append(text)
 
+    async def menu(self, text: str, keyboard: list) -> None:
+        self.menus.append((text, keyboard))
+
+    async def edit(self, text: str, keyboard: list | None = None) -> None:
+        self.edits.append((text, keyboard))
+
+    async def answer(self, text: str = "") -> None:
+        self.answered += 1
+
     async def typing(self) -> None:
         self.typing_count += 1
 
+    def all_text(self) -> str:
+        parts = list(self.replies)
+        parts += [t for t, _ in self.menus]
+        parts += [t for t, _ in self.edits]
+        return "\n".join(parts)
 
-def _send(runtime: BotRuntime, chat_id: int, text: str, chat: _FakeChat) -> None:
-    asyncio.run(runtime.handle_message(
-        chat_id, text, reply=chat.reply, typing=chat.typing))
+    def all_callback_data(self) -> list[str]:
+        return [
+            data
+            for _, keyboard in [*self.menus, *self.edits]
+            for row in (keyboard or [])
+            for _, data in row
+        ]
+
+
+def _send(runtime: BotRuntime, chat_id: int, text: str, outbox: FakeOutbox) -> None:
+    asyncio.run(runtime.handle_message(chat_id, text, outbox))
+
+
+def _press(runtime: BotRuntime, chat_id: int, data: str, outbox: FakeOutbox) -> None:
+    asyncio.run(runtime.handle_callback(chat_id, data, outbox))
+
+
+def _start_game(runtime: BotRuntime, chat_id: int, outbox: FakeOutbox,
+                adventure: int = 0) -> None:
+    """Start a session through the menu flow."""
+    _press(runtime, chat_id, f"adv:{adventure}", outbox)
 
 
 class TestFindAdventures:
@@ -114,6 +158,16 @@ class TestFindAdventures:
         assert find_adventures(tmp_path / "nope") == []
 
 
+class TestAdventureTitle:
+    def test_title_from_corpus(self):
+        assert adventure_title(FIXTURES_DIR) == \
+            "You're Trapped in a Bag of Holding!"
+
+    def test_fallback_to_dir_name(self, tmp_path):
+        (tmp_path / "corpus.json").write_text("not json")
+        assert adventure_title(tmp_path) == tmp_path.name
+
+
 class TestAllowList:
     def test_is_allowed(self, tmp_path):
         runtime = _make_runtime(tmp_path, chat_ids=(1, 2))
@@ -122,52 +176,368 @@ class TestAllowList:
         assert not runtime.is_allowed(3)
 
 
-class TestHandleMessage:
-    def test_first_message_starts_session_and_replies(self, tmp_path):
+class TestMainMenu:
+    def test_start_shows_welcome_menu(self, tmp_path):
         runtime = _make_runtime(tmp_path)
-        chat = _FakeChat()
-        _send(runtime, 123, "I wait", chat)
+        outbox = FakeOutbox()
+        asyncio.run(runtime.send_main_menu(123, outbox, welcome=True))
+        (text, keyboard), = outbox.menus
+        assert "Welcome" in text
+        labels = [label for row in keyboard for label, _ in row]
+        assert labels == ["New game", "Help"]  # no Continue without a save
 
-        assert 123 in runtime.sessions
-        assert chat.typing_count >= 1
-        # Intro (from begin()) comes first, then narration, then status.
-        joined = "\n".join(chat.replies)
-        assert "You're Trapped in a Bag of Holding!" in chat.replies[0]
-        assert "Time passes." in joined
-        assert any(r.startswith("  Turn 1") for r in chat.replies)
-
-    def test_per_chat_saves_sandbox_autosave(self, tmp_path):
+    def test_plain_message_without_session_shows_menu(self, tmp_path):
+        """Sessions are created through the menu flow, never lazily."""
         runtime = _make_runtime(tmp_path)
-        chat = _FakeChat()
-        _send(runtime, 123, "I wait", chat)
-        autosave = tmp_path / "telegram" / "123" / "saves" / "autosave.json"
-        assert autosave.is_file()
+        outbox = FakeOutbox()
+        _send(runtime, 123, "I wait", outbox)
+        assert runtime.registry.get(123) is None
+        (text, _keyboard), = outbox.menus
+        assert "What would you like to do?" in text
+        assert not outbox.replies
 
-    def test_second_message_reuses_session(self, tmp_path):
+    def test_continue_button_only_with_save(self, tmp_path):
         runtime = _make_runtime(tmp_path)
-        chat = _FakeChat()
-        _send(runtime, 123, "I wait", chat)
-        n_replies = len(chat.replies)
-        session = runtime.sessions[123].session
-        _send(runtime, 123, "I wait again", chat)
-        assert runtime.sessions[123].session is session
-        # No intro is re-sent on the second message.
-        new = chat.replies[n_replies:]
-        assert not any("You're Trapped" in r for r in new)
-        assert any("Time passes." in r for r in new)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        _send(runtime, 123, "/quit", outbox)
+        # The post-quit main menu offers Continue (autosave exists).
+        _text, keyboard = outbox.menus[-1]
+        labels = [label for row in keyboard for label, _ in row]
+        assert "Continue" in labels
+
+
+class TestNewGameFlow:
+    def test_picker_lists_adventures(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        asyncio.run(runtime.cmd_new(123, outbox))
+        (text, keyboard), = outbox.menus
+        assert "Choose an adventure" in text
+        data = [d for row in keyboard for _, d in row]
+        assert data == ["adv:0", "adv:1"]
+        labels = [label for row in keyboard for label, _ in row]
+        assert labels[0] == "You're Trapped in a Bag of Holding!"
+        assert labels[1] == "Mini Test Adventure"
+
+    def test_picking_adventure_delivers_intro(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _press(runtime, 123, "adv:0", outbox)
+        assert runtime.registry.get(123) is not None
+        assert outbox.answered == 1
+        assert any("You're Trapped in a Bag of Holding!" in r
+                   for r in outbox.replies)
+        # The picker message was edited into a "starting" notice.
+        assert any("Starting" in text for text, _ in outbox.edits)
+
+    def test_new_with_live_session_asks_confirmation(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        asyncio.run(runtime.cmd_new(123, outbox))
+        text, _keyboard = outbox.menus[-1]
+        assert "End the current game" in text
+        assert outbox.all_callback_data().count("pick") == 1
+        # Confirming shows the picker.
+        _press(runtime, 123, "pick", outbox)
+        assert any("Choose an adventure" in text for text, _ in outbox.edits)
+
+    def test_second_adventure_starts(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox, adventure=1)
+        chat = runtime.registry.get(123)
+        assert chat.adventure_path == MINI_ADVENTURE_DIR
+        assert any("Mini Test Adventure" in r for r in outbox.replies)
+
+
+class TestTurns:
+    def test_turn_replies_narration_and_status(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        assert "Time passes." in outbox.all_text()
+        assert any(r.startswith("  Turn 1") for r in outbox.replies)
+        assert outbox.typing_count >= 1
 
     def test_turn_failure_replies_generic_error(self, tmp_path):
         runtime = _make_runtime(tmp_path, llm=FakeLLMClient())
-        chat = _FakeChat()
-        _send(runtime, 123, "I wait", chat)
-        assert TURN_FAILURE_TEXT in chat.replies
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        assert TURN_FAILURE_TEXT in outbox.replies
 
-    def test_chats_have_independent_sessions(self, tmp_path):
+    def test_in_game_slash_commands_route_through_session(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "/help", outbox)
+        assert "Available Commands" in outbox.all_text()
+
+
+class TestQuit:
+    def test_quit_ends_session_and_shows_menu(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        asyncio.run(runtime.cmd_quit(123, outbox))
+        assert runtime.registry.get(123) is None
+        assert "Thanks for playing!" in outbox.all_text()
+        # Back at the main menu, with Continue available.
+        _text, keyboard = outbox.menus[-1]
+        labels = [label for row in keyboard for label, _ in row]
+        assert "Continue" in labels
+
+    def test_quit_without_session_shows_menu(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        asyncio.run(runtime.cmd_quit(123, outbox))
+        assert runtime.registry.get(123) is None
+        assert outbox.menus
+
+
+class TestContinueResume:
+    def test_continue_resumes_autosave(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        _send(runtime, 123, "/quit", outbox)
+
+        outbox2 = FakeOutbox()
+        _press(runtime, 123, "menu:continue", outbox2)
+        chat = runtime.registry.get(123)
+        assert chat is not None
+        assert chat.session.hard_state.turn_count == 1
+        assert any("Resumed" in text for text, _ in outbox2.edits)
+        # A status line follows the resume notice.
+        assert any(r.startswith("  Turn 1") for r in outbox2.replies)
+
+    def test_resume_after_bot_restart(self, tmp_path):
+        """Phase 2 exit criterion: kill/restart the bot, then continue."""
+        runtime1 = _make_runtime(tmp_path)
+        outbox1 = FakeOutbox()
+        _start_game(runtime1, 123, outbox1)
+        _send(runtime1, 123, "I wait", outbox1)
+
+        # New process: fresh runtime over the same config dir.
+        runtime2 = _make_runtime(tmp_path)
+        assert runtime2.registry.get(123) is None
+        outbox2 = FakeOutbox()
+        # A bare message offers Continue (from the persisted index).
+        _send(runtime2, 123, "hello?", outbox2)
+        (_text, keyboard), = outbox2.menus
+        labels = [label for row in keyboard for label, _ in row]
+        assert "Continue" in labels
+
+        _press(runtime2, 123, "menu:continue", outbox2)
+        chat = runtime2.registry.get(123)
+        assert chat.session.hard_state.turn_count == 1
+
+
+class TestRestart:
+    def test_restart_flow(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+
+        asyncio.run(runtime.cmd_restart(123, outbox))
+        text, _keyboard = outbox.menus[-1]
+        assert "Restart" in text
+        assert "confirm:restart" in outbox.all_callback_data()
+
+        _press(runtime, 123, "confirm:restart", outbox)
+        chat = runtime.registry.get(123)
+        assert chat.session.hard_state.turn_count == 0
+        # The intro is delivered again (once per start).
+        intros = [r for r in outbox.replies
+                  if "You're Trapped in a Bag of Holding!" in r]
+        assert len(intros) == 2
+
+
+class TestLoadBrowser:
+    def test_load_lists_saves_and_loads_one(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        _send(runtime, 123, "/save mysave.json", outbox)
+
+        asyncio.run(runtime.cmd_load(123, outbox))
+        text, keyboard = outbox.menus[-1]
+        assert "Load a save" in text
+        labels = [label for row in keyboard for label, _ in row]
+        assert any("autosave.json" in label for label in labels)
+        assert any("mysave.json" in label for label in labels)
+        # Newest first, and the snippet comes from latest_narration.
+        assert "mysave.json" in labels[0]
+        assert "Time passes." in labels[0]
+        data = [d for row in keyboard for _, d in row]
+        assert data == [f"save:{i}" for i in range(len(labels))]
+
+        _press(runtime, 123, "save:0", outbox)
+        chat = runtime.registry.get(123)
+        assert chat.session.hard_state.turn_count == 1
+        assert any("Loaded" in text for text, _ in outbox.edits)
+
+    def test_load_with_no_saves(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        asyncio.run(runtime.cmd_load(123, outbox))
+        (text, _), = outbox.menus
+        assert "No saves" in text
+
+    def test_stale_save_index(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _press(runtime, 123, "save:9", outbox)
+        assert any("no longer available" in text for text, _ in outbox.edits)
+
+
+class TestGameOver:
+    def _win_game(self, runtime: BotRuntime, chat_id: int,
+                  outbox: FakeOutbox) -> None:
+        # The bag-of-holding win mechanic fires when padlock_unlocked.
+        chat = runtime.registry.get(chat_id)
+        chat.session.state_manager.hard_state.flags["padlock_unlocked"] = True
+        _send(runtime, chat_id, "do something", outbox)
+
+    def test_game_over_sends_final_panel_and_ends_session(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        self._win_game(runtime, 123, outbox)
+
+        assert "Victory" in outbox.all_text()
+        assert runtime.registry.get(123) is None
+        # Final panel with the three lifecycle buttons.
+        _text, keyboard = outbox.menus[-1]
+        data = [d for row in keyboard for _, d in row]
+        assert data == ["go:restart", "go:load", "go:choose"]
+        # The finished game's autosave is not offered as Continue.
+        assert runtime.registry.saved_session(123) is None
+
+    def test_game_over_restart_button(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        self._win_game(runtime, 123, outbox)
+
+        _press(runtime, 123, "go:restart", outbox)
+        chat = runtime.registry.get(123)
+        assert chat is not None
+        assert chat.session.hard_state.turn_count == 0
+
+    def test_game_over_choose_adventure_button(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        self._win_game(runtime, 123, outbox)
+
+        _press(runtime, 123, "go:choose", outbox)
+        assert any("Choose an adventure" in text for text, _ in outbox.edits)
+
+
+class TestTwoChats:
+    def test_chats_play_independently(self, tmp_path):
+        """Phase 2 exit criterion: two chats, one bot process."""
         runtime = _make_runtime(tmp_path, chat_ids=(1, 2))
-        c1, c2 = _FakeChat(), _FakeChat()
-        _send(runtime, 1, "I wait", c1)
-        _send(runtime, 2, "I wait", c2)
-        assert runtime.sessions[1].session is not runtime.sessions[2].session
-        # Each chat autosaves into its own sandbox.
+        o1, o2 = FakeOutbox(), FakeOutbox()
+        _start_game(runtime, 1, o1)
+        _start_game(runtime, 2, o2)
+        _send(runtime, 1, "I wait", o1)
+        _send(runtime, 1, "I wait", o1)
+        _send(runtime, 2, "I wait", o2)
+
+        c1 = runtime.registry.get(1)
+        c2 = runtime.registry.get(2)
+        assert c1.session is not c2.session
+        assert c1.session.hard_state.turn_count == 2
+        assert c2.session.hard_state.turn_count == 1
+        # Separate save sandboxes.
         assert (tmp_path / "telegram" / "1" / "saves" / "autosave.json").is_file()
         assert (tmp_path / "telegram" / "2" / "saves" / "autosave.json").is_file()
+
+    def test_once_reactions_do_not_leak_across_chats(self, tmp_path):
+        """Firing a once-reaction in one chat must not disable it in
+        another (cribbed from tests/test_session.py)."""
+        from mgmai.engine.event_bus import (
+            dispatch_reactions,
+            find_matching_reactions,
+        )
+        from mgmai.models.corpus import Reaction, ReactionEffects, Result
+
+        runtime = _make_runtime(tmp_path, chat_ids=(1, 2))
+        o1, o2 = FakeOutbox(), FakeOutbox()
+        _start_game(runtime, 1, o1)
+        _start_game(runtime, 2, o2)
+        m1 = runtime.registry.get(1).session.state_manager
+        m2 = runtime.registry.get(2).session.state_manager
+
+        for m in (m1, m2):
+            room = m.corpus.rooms[m.hard_state.player.location]
+            room.reactions.append(Reaction(
+                id="once_react",
+                on="flag.set",
+                once=True,
+                effect=ReactionEffects(result=Result(narrative="once")),
+            ))
+
+        matches = find_matching_reactions(
+            "flag.set", {"flag_id": "x"}, m1.hard_state, m1.soft_state,
+            m1.corpus, disabled_once=m1.disabled_once,
+        )
+        dispatch_reactions(matches, m1.hard_state, m1.soft_state, m1.corpus, m1)
+
+        assert "once_react" in m1.disabled_once
+        assert "once_react" not in m2.disabled_once
+
+
+class TestCallbackSerialization:
+    def test_callback_waits_for_turn_lock(self, tmp_path):
+        """Callback queries are handled under the same per-chat lock as
+        turns (plan §5.4 step 5)."""
+        release = threading.Event()
+
+        class SlowLLM(FakeLLMClient):
+            def call_ruling(self, system_prompt, user_prompt):
+                release.wait(5)
+                return super().call_ruling(system_prompt, user_prompt)
+
+        runtime = _make_runtime(tmp_path, llm=SlowLLM(
+            ruling_response=json.dumps({
+                "action_type": "wait",
+                "detail": "Waiting",
+                "follow_up": None,
+                "soft_state_patches": [],
+            }),
+            prose_response=json.dumps({
+                "narration": "Time passes.",
+                "npc_response": None,
+                "knowledge_tags": None,
+                "attitude_changes": None,
+            }),
+        ))
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+
+        async def main() -> None:
+            turn = asyncio.create_task(
+                runtime.handle_message(123, "I wait", outbox))
+            await asyncio.sleep(0.2)  # let the turn reach the LLM call
+            callback = asyncio.create_task(
+                runtime.handle_callback(123, "menu:help", outbox))
+            await asyncio.sleep(0.2)
+            assert not callback.done()  # blocked on the chat lock
+            release.set()
+            await asyncio.gather(turn, callback)
+            assert callback.done()
+
+        asyncio.run(main())
+        # Both button presses were answered (adv:0 and menu:help).
+        assert outbox.answered == 2

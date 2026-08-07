@@ -24,6 +24,7 @@ gets its Rich tags stripped.
 
 from __future__ import annotations
 
+import html
 import re
 
 TELEGRAM_MESSAGE_LIMIT = 4096
@@ -38,6 +39,25 @@ _RICH_TAG_RE = re.compile(r"\[/?[a-zA-Z][^\[\]]*\]")
 def strip_rich_markup(text: str) -> str:
     """Remove Rich markup tags from *text*, leaving the content."""
     return _RICH_TAG_RE.sub("", text)
+
+
+def md_to_telegram_html(text: str) -> str:
+    """Convert the narration's minimal Markdown to Telegram HTML.
+
+    Narration prose uses ``**bold**`` (the CLI renders it via
+    ``rich.Markdown``); Telegram messages are sent with HTML parse
+    mode, so ``**bold**`` becomes ``<b>bold</b>`` and everything else
+    is HTML-escaped.  If the ``**`` delimiters are unbalanced (possible
+    when a message was split mid-span), they are stripped rather than
+    risking a malformed-HTML rejection from Telegram.
+    """
+    escaped = html.escape(text, quote=False)
+    parts = escaped.split("**")
+    if len(parts) % 2 == 0:
+        return escaped.replace("**", "")
+    return "".join(
+        f"<b>{part}</b>" if i % 2 else part for i, part in enumerate(parts)
+    )
 
 
 def chunk_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
