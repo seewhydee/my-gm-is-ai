@@ -62,8 +62,14 @@ def confirm_keyboard(yes_label: str, yes_data: str) -> Keyboard:
 
 def save_browser_keyboard(saves: list[SaveInfo]) -> Keyboard:
     """One button per save, indexed into the chat's save listing
-    (recomputed when the callback arrives)."""
-    return [[(_save_label(s), f"save:{i}")] for i, s in enumerate(saves)]
+    (recomputed when the callback arrives).  When the saves span more
+    than one adventure, each label carries the adventure name."""
+    adventures = {s.adventure for s in saves if s.adventure}
+    show_adventure = len(adventures) > 1
+    return [
+        [(_save_label(s, show_adventure=show_adventure), f"save:{i}")]
+        for i, s in enumerate(saves)
+    ]
 
 
 def game_over_keyboard() -> Keyboard:
@@ -78,10 +84,13 @@ def back_to_menu_keyboard() -> Keyboard:
     return [[("Back", "menu:main")]]
 
 
-def _save_label(save: SaveInfo) -> str:
+def _save_label(save: SaveInfo, *, show_adventure: bool = False) -> str:
     stamp = (datetime.fromtimestamp(save.mtime, tz=UTC)
              .astimezone().strftime("%Y-%m-%d %H:%M"))
-    label = f"{save.name} · {stamp}"
+    name = save.name
+    if show_adventure and save.adventure:
+        name = f"{save.adventure}/{name}"
+    label = f"{name} · {stamp}"
     if save.snippet:
         label += f" — {_truncate(save.snippet, 40)}"
     return label

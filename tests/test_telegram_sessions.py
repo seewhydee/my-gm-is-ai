@@ -26,6 +26,7 @@ from pathlib import Path
 from mgmai.telegram.sessions import SessionRegistry
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+MINI_ADVENTURE_DIR = FIXTURES_DIR / "mini_adventure"
 
 
 class FakeLLMClient:
@@ -106,8 +107,60 @@ class TestStartNew:
         registry.start_new(2, FIXTURES_DIR)
         _play_turn(registry, 1)
         _play_turn(registry, 2)
-        assert (tmp_path / "telegram" / "1" / "saves" / "autosave.json").is_file()
-        assert (tmp_path / "telegram" / "2" / "saves" / "autosave.json").is_file()
+        assert (tmp_path / "telegram" / "1" / "saves" / "fixtures" / "autosave.json").is_file()
+        assert (tmp_path / "telegram" / "2" / "saves" / "fixtures" / "autosave.json").is_file()
+
+    def test_save_output_scrubs_absolute_path(self, tmp_path):
+        """Commands._cmd_save prints the full save path (fine for the
+        CLI); the Telegram view must scrub it down to the filename."""
+        registry = _make_registry(tmp_path)
+        chat = registry.start_new(123, FIXTURES_DIR)
+        chat.view.drain()  # intro
+        chat.session.submit("/save mysave.json")
+        events = chat.view.drain()
+        texts = [e.text for e in events]
+        assert any("Game saved to mysave.json" in t for t in texts)
+        assert not any(str(tmp_path) in t for t in texts)
+
+
+class TestAdventureScopedSaves:
+    def test_saves_are_scoped_per_adventure(self, tmp_path):
+        registry = _make_registry(tmp_path)
+        registry.start_new(123, FIXTURES_DIR)
+        _play_turn(registry, 123)
+        registry.start_new(123, MINI_ADVENTURE_DIR)
+        _play_turn(registry, 123)
+        sandbox = tmp_path / "telegram" / "123" / "saves"
+        assert (sandbox / "fixtures" / "autosave.json").is_file()
+        assert (sandbox / "mini_adventure" / "autosave.json").is_file()
+
+    def test_list_saves_spans_adventures(self, tmp_path):
+        registry = _make_registry(tmp_path)
+        registry.start_new(123, FIXTURES_DIR)
+        _play_turn(registry, 123)
+        registry.start_new(123, MINI_ADVENTURE_DIR)
+        _play_turn(registry, 123)
+
+        saves = registry.list_saves(123)
+        assert {(s.adventure, s.name) for s in saves} == {
+            ("fixtures", "autosave.json"),
+            ("mini_adventure", "autosave.json"),
+        }
+
+    def test_loading_other_adventures_save_switches_adventure(
+            self, tmp_path):
+        registry = _make_registry(tmp_path)
+        registry.start_new(123, FIXTURES_DIR)
+        _play_turn(registry, 123)
+        registry.start_new(123, MINI_ADVENTURE_DIR)
+        assert registry.get(123).adventure_path == MINI_ADVENTURE_DIR
+
+        fixtures_save = next(
+            s for s in registry.list_saves(123)
+            if s.adventure == "fixtures")
+        chat = registry.load_save(123, fixtures_save.path)
+        assert chat.adventure_path.resolve() == FIXTURES_DIR.resolve()
+        assert chat.session.hard_state.turn_count == 1
 
 
 class TestLoadSave:
@@ -115,7 +168,7 @@ class TestLoadSave:
         registry = _make_registry(tmp_path)
         registry.start_new(123, FIXTURES_DIR)
         _play_turn(registry, 123)
-        autosave = tmp_path / "telegram" / "123" / "saves" / "autosave.json"
+        autosave = tmp_path / "telegram" / "123" / "saves" / "fixtures" / "autosave.json"
 
         chat = registry.load_save(123, autosave)
         assert chat.session.hard_state.turn_count == 1
@@ -126,7 +179,7 @@ class TestLoadSave:
         registry = _make_registry(tmp_path)
         registry.start_new(123, FIXTURES_DIR)
         _play_turn(registry, 123)
-        autosave = tmp_path / "telegram" / "123" / "saves" / "autosave.json"
+        autosave = tmp_path / "telegram" / "123" / "saves" / "fixtures" / "autosave.json"
         _play_turn(registry, 123)
 
         chat = registry.load_save(123, autosave)
@@ -136,7 +189,7 @@ class TestLoadSave:
         registry = _make_registry(tmp_path)
         registry.start_new(123, FIXTURES_DIR)
         _play_turn(registry, 123)
-        autosave = tmp_path / "telegram" / "123" / "saves" / "autosave.json"
+        autosave = tmp_path / "telegram" / "123" / "saves" / "fixtures" / "autosave.json"
         registry.load_save(123, autosave)
         entry = registry.saved_session(123)
         assert entry["last_save"] == str(autosave.resolve())
@@ -203,7 +256,7 @@ class TestIndex:
         registry.start_new(123, FIXTURES_DIR)
         _play_turn(registry, 123)
         registry.note_save(123)
-        autosave = tmp_path / "telegram" / "123" / "saves" / "autosave.json"
+        autosave = tmp_path / "telegram" / "123" / "saves" / "fixtures" / "autosave.json"
         assert registry.saved_session(123)["last_save"] == str(autosave.resolve())
 
     def test_clear_last_save_keeps_adventure(self, tmp_path):

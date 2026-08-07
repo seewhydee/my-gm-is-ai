@@ -109,6 +109,53 @@ class TestBuffering:
         assert event.kind == "goodbye"
 
 
+class TestPathScrubbing:
+    """Absolute server paths must not leak into Telegram chat messages
+    (the CLI prints them; the bot must not)."""
+
+    def test_save_path_scrubbed_to_filename(self, tmp_path):
+        saves = tmp_path / "telegram" / "1" / "saves" / "adv"
+        view = TelegramView(scrub_prefixes=[saves, tmp_path])
+        view.print(f"[green]Game saved to {saves}/save.json[/green]")
+        (event,) = view.drain()
+        assert event.text == "Game saved to save.json"
+
+    def test_path_mid_sentence(self, tmp_path):
+        saves = tmp_path / "telegram" / "1" / "saves" / "adv"
+        view = TelegramView(scrub_prefixes=[saves])
+        view.print(f"Resuming from {saves}/mysave.json (adventure: adv)")
+        (event,) = view.drain()
+        assert event.text == "Resuming from mysave.json (adventure: adv)"
+
+    def test_longest_prefix_wins(self, tmp_path):
+        # The nested saves dir must win over the parent config dir,
+        # otherwise "telegram/1/saves/adv/x.json" would leak through.
+        saves = tmp_path / "telegram" / "1" / "saves" / "adv"
+        view = TelegramView(scrub_prefixes=[tmp_path, saves])
+        view.print(f"Game saved to {saves}/x.json")
+        (event,) = view.drain()
+        assert event.text == "Game saved to x.json"
+
+    def test_prefix_boundary_respected(self, tmp_path):
+        # A sibling dir sharing a string prefix must not be scrubbed.
+        view = TelegramView(scrub_prefixes=[tmp_path / "cfg"])
+        view.print(f"look at {tmp_path}/cfg-other/file.txt")
+        (event,) = view.drain()
+        assert "cfg-other/file.txt" in event.text
+
+    def test_errors_and_rest_menus_scrubbed(self, tmp_path):
+        view = TelegramView(scrub_prefixes=[tmp_path])
+        view.render_error(f"Save file not found: {tmp_path}/nope.json")
+        (event,) = view.drain()
+        assert event.text == "Error: Save file not found: nope.json"
+
+    def test_no_prefixes_leaves_text_alone(self):
+        view = TelegramView()
+        view.print("Game saved to /some/where/save.json")
+        (event,) = view.drain()
+        assert event.text == "Game saved to /some/where/save.json"
+
+
 class TestSessionDriven:
     def test_begin_buffers_intro(self, state_manager, tmp_path):
         view = TelegramView()

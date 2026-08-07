@@ -25,7 +25,10 @@ conversion are later phases.
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from mgmai.game.status import build_combat_view, format_exits, snapshot_status
@@ -44,15 +47,33 @@ class ViewEvent:
 
 
 class TelegramView:
-    """Accumulates render events during a turn; the bot flushes them."""
+    """Accumulates render events during a turn; the bot flushes them.
 
-    def __init__(self) -> None:
+    *scrub_prefixes* are absolute path prefixes (the chat's saves dir,
+    the config dir) that must never leak into chat messages — e.g.
+    ``Commands._cmd_save`` prints the full save path, which is fine for
+    the CLI but not for Telegram.  They are stripped from every
+    buffered event, longest prefix first (so a nested dir wins over
+    its parent), wherever they appear in the text.
+    """
+
+    def __init__(self, scrub_prefixes: Iterable[str | Path] = ()) -> None:
         self._events: list[ViewEvent] = []
+        self._scrub_prefixes = sorted(
+            (str(p).rstrip("/\\") + os.sep for p in scrub_prefixes if p),
+            key=len,
+            reverse=True,
+        )
 
     def drain(self) -> list[ViewEvent]:
         """Return the buffered events in order and clear the buffer."""
         events, self._events = self._events, []
         return events
+
+    def _add(self, kind: str, text: str) -> None:
+        for prefix in self._scrub_prefixes:
+            text = text.replace(prefix, "")
+        self._events.append(ViewEvent(kind, text))
 
     # --- game screens ---
 
@@ -78,10 +99,10 @@ class TelegramView:
                 exits = format_exits(room)
                 if exits:
                     lines.append(exits.lstrip("\n"))
-        self._events.append(ViewEvent("intro", "\n".join(lines)))
+        self._add("intro", "\n".join(lines))
 
     def render_narration(self, text: str) -> None:
-        self._events.append(ViewEvent("narration", text))
+        self._add("narration", text)
 
     def render_status(self, state: Any) -> None:
         hard = state.hard_state
@@ -91,13 +112,13 @@ class TelegramView:
             text = _format_combat(build_combat_view(hard, state.corpus))
         else:
             text = _format_status_line(snapshot_status(state))
-        self._events.append(ViewEvent("status", text))
+        self._add("status", text)
 
     def render_error(self, text: str) -> None:
-        self._events.append(ViewEvent("error", f"Error: {text}"))
+        self._add("error", f"Error: {text}")
 
     def render_rest_menu(self, text: str) -> None:
-        self._events.append(ViewEvent("rest_menu", text))
+        self._add("rest_menu", text)
 
     def render_game_over(self, result: Any) -> None:
         go_type = getattr(result, "type", "unknown")
@@ -114,14 +135,14 @@ class TelegramView:
             parts.append(f"Trigger: {trigger}")
         if narrative:
             parts.append(f"\n{narrative}")
-        self._events.append(ViewEvent("game_over", "\n".join(parts)))
+        self._add("game_over", "\n".join(parts))
 
     def render_goodbye(self) -> None:
-        self._events.append(ViewEvent("goodbye", "Thanks for playing!"))
+        self._add("goodbye", "Thanks for playing!")
 
     def print(self, text: str) -> None:
         """Command output; Rich markup stripped (converter is Phase 3)."""
-        self._events.append(ViewEvent("print", strip_rich_markup(text)))
+        self._add("print", strip_rich_markup(text))
 
 
 # ------------------------------------------------------------------

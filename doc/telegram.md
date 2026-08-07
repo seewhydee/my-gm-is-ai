@@ -124,8 +124,11 @@ Ctrl-C.
   adventure**.
 - Multiple chats can play independently in one bot process; each chat
   gets its own save sandbox under
-  `~/.config/mgmai/telegram/<chat_id>/saves/`, so autosaves and `/save`
-  files never collide.
+  `~/.config/mgmai/telegram/<chat_id>/saves/<adventure>/`, so autosaves
+  and `/save` files never collide — even when one chat plays several
+  adventures.  The `/load` browser shows all of the chat's saves,
+  across adventures (loading another adventure's save switches to that
+  adventure).
 
 ## Limitations (current phase)
 

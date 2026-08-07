@@ -392,6 +392,22 @@ class TestLoadBrowser:
         (text, _), = outbox.menus
         assert "No saves" in text
 
+    def test_browser_labels_include_adventure_when_spanning(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox, adventure=0)
+        _send(runtime, 123, "I wait", outbox)
+        _start_game(runtime, 123, outbox, adventure=1)
+        _send(runtime, 123, "I wait", outbox)
+
+        asyncio.run(runtime.cmd_load(123, outbox))
+        _text, keyboard = outbox.menus[-1]
+        labels = [label for row in keyboard for label, _ in row]
+        assert any(label.startswith("fixtures/autosave.json")
+                   for label in labels)
+        assert any(label.startswith("mini_adventure/autosave.json")
+                   for label in labels)
+
     def test_stale_save_index(self, tmp_path):
         runtime = _make_runtime(tmp_path)
         outbox = FakeOutbox()
@@ -460,8 +476,8 @@ class TestTwoChats:
         assert c1.session.hard_state.turn_count == 2
         assert c2.session.hard_state.turn_count == 1
         # Separate save sandboxes.
-        assert (tmp_path / "telegram" / "1" / "saves" / "autosave.json").is_file()
-        assert (tmp_path / "telegram" / "2" / "saves" / "autosave.json").is_file()
+        assert (tmp_path / "telegram" / "1" / "saves" / "fixtures" / "autosave.json").is_file()
+        assert (tmp_path / "telegram" / "2" / "saves" / "fixtures" / "autosave.json").is_file()
 
     def test_once_reactions_do_not_leak_across_chats(self, tmp_path):
         """Firing a once-reaction in one chat must not disable it in

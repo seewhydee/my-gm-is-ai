@@ -49,6 +49,9 @@ class SaveInfo:
     mtime: float
     # Short excerpt of the save's latest_narration, if present.
     snippet: str | None = None
+    # Adventure subdirectory the save lives in (None for stray files
+    # directly in the sandbox root, e.g. pre-scoping saves).
+    adventure: str | None = None
 
 
 @dataclass
@@ -98,10 +101,20 @@ class SessionRegistry:
 
     # --- paths ---
 
-    def saves_dir_for(self, chat_id: int) -> Path:
-        """The chat's save sandbox: autosaves and /save files of two
-        chats playing the same adventure never collide."""
-        return self._telegram_dir / str(chat_id) / "saves"
+    def saves_dir_for(self, chat_id: int,
+                      adventure: str | None = None) -> Path:
+        """The chat's save sandbox, adventure-scoped like the CLI's
+        ``saves/<adventure>/`` scheme: autosaves and /save files of two
+        chats (or of one chat playing two adventures) never collide.
+        With *adventure* omitted, returns the sandbox root."""
+        base = self._telegram_dir / str(chat_id) / "saves"
+        return base / adventure if adventure else base
+
+    @staticmethod
+    def _adventure_name(adventure_path: Path | None) -> str:
+        """Sandbox subdirectory for an adventure: the directory name,
+        matching how the CLI scopes saves."""
+        return adventure_path.name if adventure_path else "game"
 
     # --- live sessions ---
 
@@ -159,13 +172,23 @@ class SessionRegistry:
         state_manager: StateManager,
         adventure_path: Path | None,
     ) -> ChatSession:
-        view = TelegramView()
+        saves_dir = self.saves_dir_for(
+            chat_id, self._adventure_name(adventure_path))
+        view = TelegramView(scrub_prefixes=[
+            # Longest first (the view also sorts): the adventure-scoped
+            # dir scrubs "/save" output down to the bare filename, the
+            # sandbox root covers other adventures' subdirs, and the
+            # config dir is the catch-all.
+            saves_dir,
+            self.saves_dir_for(chat_id),
+            self.config_dir,
+        ])
         session = GameSession(
             state_manager,
             self.llm_client,
             view=view,
             config_dir=self.config_dir,
-            saves_dir=self.saves_dir_for(chat_id),
+            saves_dir=saves_dir,
             interactive=False,
             prose_validation_enabled=self.prose_validation_enabled,
         )
@@ -180,15 +203,12 @@ class SessionRegistry:
     # --- saves and the persisted index ---
 
     def list_saves(self, chat_id: int) -> list[SaveInfo]:
-        """Save files in the chat's sandbox, newest first (autosave
-        included)."""
+        """All save files in the chat's sandbox, across adventure
+        subdirectories (loading another adventure's save switches
+        adventures), newest first (autosaves included)."""
         saves_dir = self.saves_dir_for(chat_id)
         try:
-            paths = sorted(
-                saves_dir.glob("*.json"),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
+            paths = [p for p in saves_dir.rglob("*.json") if p.is_file()]
         except OSError:
             return []
         saves: list[SaveInfo] = []
@@ -203,8 +223,15 @@ class SessionRegistry:
                 mtime = path.stat().st_mtime
             except OSError:
                 continue
-            saves.append(SaveInfo(path=path, name=path.name,
-                                  mtime=mtime, snippet=snippet))
+            saves.append(SaveInfo(
+                path=path,
+                name=path.name,
+                mtime=mtime,
+                snippet=snippet,
+                adventure=(path.parent.name
+                           if path.parent != saves_dir else None),
+            ))
+        saves.sort(key=lambda s: s.mtime, reverse=True)
         return saves
 
     def saved_session(self, chat_id: int) -> dict | None:
@@ -228,9 +255,11 @@ class SessionRegistry:
         return Path(raw) if raw else None
 
     def note_save(self, chat_id: int) -> None:
-        """Point the chat's ``last_save`` at its autosave (written every
-        turn).  Called after each submit."""
-        autosave = self.saves_dir_for(chat_id) / "autosave.json"
+        """Point the chat's ``last_save`` at its (adventure-scoped)
+        autosave (written every turn).  Called after each submit."""
+        adventure = self._adventure_name(
+            self.indexed_adventure_path(chat_id))
+        autosave = self.saves_dir_for(chat_id, adventure) / "autosave.json"
         if autosave.is_file():
             self._update_index(chat_id, last_save=str(autosave.resolve()))
 
