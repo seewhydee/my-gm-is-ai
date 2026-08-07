@@ -16,12 +16,10 @@
 
 """Telegram bot front-end: PTB application setup and message handlers.
 
-Phase 2: menu-driven session lifecycle.  Sessions are created through
-the main menu / commands (New game, Continue, /new, /load, /restart,
-/quit) — never lazily on a bare message — and the registry index is
-persisted, so a chat can resume after a bot restart.  In-chat markup
-conversion, in-place status panels, and rest-mode keyboards are
-Phase 3.
+Phase 3: menu-driven session lifecycle (Phase 2) plus UI polish —
+persistent in-place-edited status/combat panel, rest-mode inline
+keyboards, and Rich-markup → Telegram-HTML conversion of command
+output.
 
 Importing this module does not require python-telegram-bot; the PTB
 import is deferred to ``main()``.  The turn-driving core
@@ -48,10 +46,15 @@ from mgmai.telegram.keyboards import (
     confirm_keyboard,
     game_over_keyboard,
     main_menu_keyboard,
+    rest_menu_keyboard,
     save_browser_keyboard,
 )
 from mgmai.telegram.sessions import ChatSession, SessionRegistry
-from mgmai.telegram.textutil import chunk_message, md_to_telegram_html
+from mgmai.telegram.textutil import (
+    chunk_message,
+    md_to_telegram_html,
+    rich_to_telegram_html,
+)
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +151,19 @@ class ChatOutbox(Protocol):
 
     async def typing(self) -> None:
         """Send one typing indicator."""
+        ...
+
+    async def send_panel(self, text: str,
+                         keyboard: Keyboard | None = None) -> int:
+        """Send a persistent panel message; returns its message id."""
+        ...
+
+    async def edit_panel(self, message_id: int, text: str,
+                         keyboard: Keyboard | None = None) -> bool:
+        """Edit a persistent panel in place.  Returns False when the
+        message can no longer be edited (too old / deleted), so the
+        caller falls back to sending a new one; an unchanged-content
+        edit is treated as success."""
         ...
 
 
@@ -337,6 +353,8 @@ class BotRuntime:
             await self.send_picker(chat_id, outbox, edit=True)
         elif data.startswith("save:"):
             await self._load_save_index(chat_id, data[len("save:"):], outbox)
+        elif data.startswith("rest:"):
+            await self._rest_action(chat_id, data[len("rest:"):], outbox)
         else:
             log.warning("Unknown callback data: %r", data)
 
@@ -414,13 +432,111 @@ class BotRuntime:
         chat.view.render_status(chat.session.state_manager)
         await self._flush(chat, outbox)
 
+    async def _rest_action(
+        self, chat_id: int, arg: str, outbox: ChatOutbox
+    ) -> None:
+        """A rest-menu button press: the index maps to
+        ``RestMode.handle(str(index))``, driven through
+        ``session.submit`` so rest-mode steps keep their autosave."""
+        chat = self.registry.get(chat_id)
+        if chat is None or not chat.session.in_rest_mode:
+            await outbox.edit("That rest menu is no longer active.")
+            return
+        await asyncio.to_thread(chat.session.submit, arg)
+        self.registry.note_save(chat_id)
+        await self._flush(chat, outbox)
+
     # --- helpers ---
 
     async def _flush(self, chat: ChatSession, outbox: ChatOutbox) -> None:
-        """Send the view's buffered events to the chat, in order."""
+        """Send the view's buffered events to the chat, in order.
+
+        Markup split: narration-style events carry minimal Markdown
+        (``md_to_telegram_html``); command output (kind ``print``)
+        carries Rich markup (``rich_to_telegram_html``).  Status and
+        rest-menu events go to their persistent panels (edited in
+        place) rather than being reposted.
+        """
         for event in chat.view.drain():
-            for chunk in chunk_message(event.text):
-                await outbox.reply(md_to_telegram_html(chunk))
+            if event.kind == "status":
+                await self._flush_status(chat, outbox, event.text,
+                                         pre=event.pre)
+            elif event.kind == "rest_menu":
+                await self._flush_rest_menu(chat, outbox, event.text)
+            else:
+                for chunk in chunk_message(event.text):
+                    await outbox.reply(self._event_html(event.kind, chunk))
+
+    @staticmethod
+    def _event_html(kind: str, text: str) -> str:
+        if kind == "print":
+            return rich_to_telegram_html(text)
+        return md_to_telegram_html(text)
+
+    async def _flush_status(
+        self, chat: ChatSession, outbox: ChatOutbox, text: str, *,
+        pre: bool,
+    ) -> None:
+        """The status/combat panel: one persistent message per chat,
+        edited in place between turns.  Combat panels are wrapped in a
+        ``<pre>`` block so the HP bars align; the out-of-combat status
+        line is plain text (edited into the same message when combat
+        ends, so no stale battle panel lingers)."""
+        if pre:
+            html_text = f"<pre>{html.escape(text, quote=False)}</pre>"
+        else:
+            html_text = md_to_telegram_html(text)
+        if (chat.status_message_id is not None
+                and chat.status_message_text == html_text):
+            return  # unchanged: skip the no-op edit
+        if chat.status_message_id is not None and await outbox.edit_panel(
+                chat.status_message_id, html_text):
+            chat.status_message_text = html_text
+            return
+        chat.status_message_id = await outbox.send_panel(html_text)
+        chat.status_message_text = html_text
+
+    async def _flush_rest_menu(
+        self, chat: ChatSession, outbox: ChatOutbox, text: str
+    ) -> None:
+        """The rest-mode menu: a persistent message with an inline
+        keyboard while rest mode is active; edited to the farewell text
+        (keyboard removed) when rest mode exits."""
+        rest_mode = chat.session.rest_mode
+        if chat.session.in_rest_mode and rest_mode is not None:
+            keyboard = rest_menu_keyboard(rest_mode.menu())
+        else:
+            keyboard = None
+        html_text = md_to_telegram_html(text)
+        if chat.rest_message_id is None:
+            if keyboard is None:
+                # No menu message to update (e.g. rest menu text
+                # rendered before any keyboard was shown).
+                await outbox.reply(html_text)
+                return
+            chat.rest_message_id = await outbox.send_panel(
+                html_text, keyboard)
+            chat.rest_message_text = html_text
+            chat.rest_message_keyboard = keyboard
+            return
+        if (chat.rest_message_text == html_text
+                and chat.rest_message_keyboard == keyboard):
+            return  # unchanged: skip the no-op edit
+        if await outbox.edit_panel(
+                chat.rest_message_id, html_text, keyboard):
+            chat.rest_message_text = html_text
+            chat.rest_message_keyboard = keyboard
+        else:
+            chat.rest_message_id = await outbox.send_panel(
+                html_text, keyboard)
+            chat.rest_message_text = html_text
+            chat.rest_message_keyboard = keyboard
+        if keyboard is None:
+            # Rest mode exited: tear the panel tracking down (the
+            # message stays, edited to the farewell text).
+            chat.rest_message_id = None
+            chat.rest_message_text = None
+            chat.rest_message_keyboard = None
 
     @staticmethod
     async def _typing_loop(typing) -> None:
@@ -450,6 +566,7 @@ def _resolve_token(credentials: Any) -> str:
 def main(argv: list[str] | None = None) -> None:
     try:
         from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.error import BadRequest
         from telegram.ext import (
             Application,
             CallbackQueryHandler,
@@ -571,6 +688,24 @@ def main(argv: list[str] | None = None) -> None:
             for row in keyboard
         ])
 
+    async def _edit_message(bot: Any, chat_id: int, message_id: int,
+                            text: str, keyboard: Keyboard | None) -> bool:
+        """edit_message_text with the panel semantics: unchanged content
+        counts as success; an uneditable message returns False."""
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id, message_id=message_id, text=text,
+                parse_mode="HTML", reply_markup=_markup(keyboard))
+            return True
+        except BadRequest as e:
+            msg = str(e).lower()
+            if "not modified" in msg:
+                return True
+            if "not found" in msg or "can't be edited" in msg \
+                    or "too old" in msg:
+                return False
+            raise
+
     class _MessageOutbox:
         """ChatOutbox over an incoming message (nothing to edit/answer)."""
 
@@ -594,6 +729,17 @@ def main(argv: list[str] | None = None) -> None:
         async def typing(self) -> None:
             await self._bot.send_chat_action(
                 chat_id=self._message.chat_id, action="typing")
+
+        async def send_panel(self, text: str,
+                             keyboard: Keyboard | None = None) -> int:
+            sent = await self._message.reply_text(
+                text, parse_mode="HTML", reply_markup=_markup(keyboard))
+            return sent.message_id
+
+        async def edit_panel(self, message_id: int, text: str,
+                             keyboard: Keyboard | None = None) -> bool:
+            return await _edit_message(
+                self._bot, self._message.chat_id, message_id, text, keyboard)
 
     class _CallbackOutbox:
         """ChatOutbox over a callback query: edits the menu message."""
@@ -619,6 +765,18 @@ def main(argv: list[str] | None = None) -> None:
         async def typing(self) -> None:
             await self._bot.send_chat_action(
                 chat_id=self._query.message.chat_id, action="typing")
+
+        async def send_panel(self, text: str,
+                             keyboard: Keyboard | None = None) -> int:
+            sent = await self._query.message.reply_text(
+                text, parse_mode="HTML", reply_markup=_markup(keyboard))
+            return sent.message_id
+
+        async def edit_panel(self, message_id: int, text: str,
+                             keyboard: Keyboard | None = None) -> bool:
+            return await _edit_message(
+                self._bot, self._query.message.chat_id, message_id,
+                text, keyboard)
 
     def _allowed_chat_id(update: Any) -> int | None:
         chat_id = update.effective_chat.id if update.effective_chat else None

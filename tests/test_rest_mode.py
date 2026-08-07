@@ -318,6 +318,27 @@ class TestRestMenuSnapshot:
         assert snap.state == "exited"
         assert snap.options == []
 
+    def test_prepare_snapshot_option_ids(self):
+        rm = _rest_mode()
+        rm.handle("1")
+        snap = rm.menu()
+        # Toggle buttons check aid-in-prepared; options are display
+        # labels, so the ids travel separately, in numbering order.
+        assert snap.option_ids == _SPELLBOOK
+        assert snap.prepared == list(_SPELLBOOK)
+
+    def test_back_discards_selection_and_returns_to_top(self):
+        rm = _rest_mode()
+        rm.handle("1")  # enter prepare
+        rm.handle("1")  # toggle fire_bolt off
+        assert rm.menu().prepared == ["mage_armor", "magic_missile"]
+        rm.handle("back")
+        snap = rm.menu()
+        assert snap.state == "top"
+        # The working selection was discarded, not confirmed.
+        rm.handle("1")
+        assert rm.menu().prepared == list(_SPELLBOOK)
+
 
 # ------------------------------------------------------------------
 # Headless drive-through

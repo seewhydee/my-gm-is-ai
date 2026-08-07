@@ -18,14 +18,10 @@
 
 from __future__ import annotations
 
-import io
 from typing import Any
 
 from mgmai.engine.utils import is_exit_visible
-from mgmai.game.status import (
-    build_combat_view,
-    snapshot_status,
-)
+from mgmai.game.status import build_combat_view
 from mgmai.game.status import (
     format_exits as _format_exits,
 )
@@ -425,77 +421,6 @@ class RichView:
             print()
 
 
-class RecordingView(RichView):
-    """A ``RichView`` that suppresses terminal output and records events.
-
-    Output is redirected to an in-memory buffer (so rich formatting
-    still runs, just nowhere visible).  Each ``render_*`` call is
-    recorded into a typed list so the harness can inspect what was
-    shown to a real player.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        # Replace the rich Console with one writing to a sink so that
-        # super().render_*() calls produce no terminal output.  The
-        # pinned width of 120 keeps the combat panel's wide layout
-        # deterministic under tests.
-        if RICH_AVAILABLE:
-            self._console = Console(
-                file=io.StringIO(),
-                highlight=False,
-                width=120,
-                record=False,
-            )
-        self.narrations: list[str] = []
-        self.status_snapshots: list[dict[str, Any]] = []
-        self.errors: list[str] = []
-        self.game_over_events: list[dict[str, Any]] = []
-        self.intros: list[dict[str, Any]] = []
-        self.rest_menus: list[str] = []
-
-    # --- game screens (override: record + suppress output) ---
-
-    def render_intro(self, state_loader: Any) -> None:
-        corpus = state_loader.corpus
-        adv = corpus.adventure if corpus else None
-        self.intros.append({
-            "title": getattr(adv, "title", None) if adv else None,
-            "introduction": getattr(adv, "introduction", None) if adv else None,
-        })
-        # Skip super().render_intro() — it would dump the room panel,
-        # which we don't want in headless mode.
-
-    def render_narration(self, text: str) -> None:
-        self.narrations.append(text)
-        # Deliberately do NOT call super(): we want zero terminal output.
-
-    def render_status(self, state_loader: Any) -> None:
-        snapshot = snapshot_status(state_loader)
-        self.status_snapshots.append(snapshot.to_dict())
-        # Skip super(): no terminal output.
-
-    def render_error(self, text: str) -> None:
-        self.errors.append(text)
-
-    def render_rest_menu(self, text: str) -> None:
-        self.rest_menus.append(text)
-        # Deliberately do NOT call super(): zero terminal output.
-
-    def render_game_over(self, result: Any) -> None:
-        self.game_over_events.append({
-            "type": getattr(result, "type", None),
-            "trigger": getattr(result, "trigger", None),
-            "narrative": getattr(result, "narrative", None),
-        })
-
-    def render_goodbye(self) -> None:
-        # Nothing to record; the game-over event above carries the
-        # relevant info.  Suppress terminal output.
-        pass
-
-
-# Back-compat aliases: these classes were introduced under these names
-# and existing imports/tests keep using them.
+# Back-compat alias: the class was introduced under this name and
+# existing imports/tests keep using it.
 Display = RichView
-RecordingDisplay = RecordingView

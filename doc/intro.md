@@ -267,7 +267,8 @@ mgmai/
 │   ├── status.py         # Shared status/combat view-models
 │   ├── view.py           # GameView rendering contract
 │   ├── commands.py       # Slash-command handlers
-│   └── display.py        # Rich console UI (implements GameView)
+│   ├── display.py        # Rich console UI (implements GameView)
+│   └── headless.py       # Headless harness (GameSession + RecordingView)
 ├── telegram/             # Telegram bot front-end (optional; PTB extra)
 ├── templates/
 │   ├── ruling.j2        # System prompt for LLM Call 1

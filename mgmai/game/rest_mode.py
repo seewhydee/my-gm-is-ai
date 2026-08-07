@@ -56,9 +56,12 @@ class RestMenuSnapshot:
     numbering order (1-based).  In the ``prepare`` state they are the
     spellbook entries (toggle buttons); ``prepared`` holds the working
     selection so a button UI can mark toggles without parsing menu
-    text.  Confirm is always ``handle("0")``.  The ``exited`` state is
-    the post-"Done" condition: no menu remains and the front-end
-    should tear its keyboard down.
+    text.  ``option_ids`` carries the spellbook ability IDs in the same
+    order as ``options`` (which are display names), so a toggle button
+    can check ``aid in prepared``.  Confirm is always ``handle("0")``;
+    ``handle("back")`` discards the working selection and returns to
+    the top menu.  The ``exited`` state is the post-"Done" condition:
+    no menu remains and the front-end should tear its keyboard down.
     """
 
     kind: str            # "short" | "long"
@@ -68,6 +71,7 @@ class RestMenuSnapshot:
     feedback: str
     options: list[str] = field(default_factory=list)
     prepared: list[str] = field(default_factory=list)
+    option_ids: list[str] = field(default_factory=list)
 
 
 class RestMode:
@@ -127,6 +131,7 @@ class RestMode:
                 status_line=self._status_line(), feedback=self._feedback,
                 options=[self._ability_name(aid) for aid in spellbook],
                 prepared=list(self._prepared),
+                option_ids=list(spellbook),
             )
         if self._state == "spend":
             options = ["Spend another hit die", "Done"]
@@ -241,6 +246,15 @@ class RestMode:
     def _handle_prepare(self, line: str) -> str:
         spellbook = self._hard.player.spellbook
         choice = line.strip()
+        if choice.lower() == "back":
+            # Discard the working selection and return to the top menu
+            # (button UIs have a Back button; the CLI can type it too).
+            self._prepared = [
+                a for a in self._hard.player.abilities
+                if not spellbook or a in spellbook
+            ]
+            self._state = "top"
+            return self._top_menu()
         if choice == "" or choice == "0":
             ok, msg = set_prepared_spells(
                 self._hard, self._corpus, self._prepared

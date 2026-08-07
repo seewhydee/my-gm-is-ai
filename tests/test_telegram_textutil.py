@@ -23,6 +23,7 @@ from mgmai.telegram.textutil import (
     TELEGRAM_MESSAGE_LIMIT,
     chunk_message,
     md_to_telegram_html,
+    rich_to_telegram_html,
     strip_rich_markup,
 )
 
@@ -112,3 +113,57 @@ class TestChunkMessage:
         # The oversize paragraph's tail merges with the next paragraph.
         assert chunks[-1].endswith("outro")
         assert sum(c.count("z") for c in chunks) == 700
+
+
+class TestRichToTelegramHtml:
+    def test_bold_and_aliases(self):
+        assert rich_to_telegram_html("[bold]Hi[/bold]") == "<b>Hi</b>"
+        assert rich_to_telegram_html("[b]Hi[/b]") == "<b>Hi</b>"
+
+    def test_italic_underline_strike_code(self):
+        assert rich_to_telegram_html("[i]x[/i]") == "<i>x</i>"
+        assert rich_to_telegram_html("[underline]x[/underline]") == "<u>x</u>"
+        assert rich_to_telegram_html("[strike]x[/strike]") == "<s>x</s>"
+        assert rich_to_telegram_html("[code]x[/code]") == "<code>x</code>"
+
+    def test_colors_and_dim_unwrap(self):
+        assert rich_to_telegram_html("[dim]x[/dim]") == "x"
+        assert rich_to_telegram_html("[red]err[/red]") == "err"
+        assert rich_to_telegram_html("[dim cyan]x[/dim cyan]") == "x"
+        assert rich_to_telegram_html("[green]ok[/green]") == "ok"
+
+    def test_combined_style_and_color_keeps_style(self):
+        assert rich_to_telegram_html("[bold cyan]x[/bold cyan]") == "<b>x</b>"
+
+    def test_nesting(self):
+        assert rich_to_telegram_html(
+            "[bold]a [italic]b[/italic] c[/bold]") == "<b>a <i>b</i> c</b>"
+
+    def test_unclosed_opener_is_closed_at_end(self):
+        assert rich_to_telegram_html("[bold]never closed") == \
+            "<b>never closed</b>"
+
+    def test_unmatched_closer_dropped(self):
+        assert rich_to_telegram_html("x[/bold]") == "x"
+
+    def test_bare_close_tag(self):
+        assert rich_to_telegram_html("[bold]x[/]") == "<b>x</b>"
+
+    def test_unknown_tag_stripped(self):
+        assert rich_to_telegram_html("[wat]x[/wat]") == "x"
+
+    def test_literal_brackets_kept(self):
+        assert rich_to_telegram_html("Take [3] items") == "Take [3] items"
+
+    def test_content_escaped(self):
+        assert rich_to_telegram_html("[bold]<script> & co[/bold]") == \
+            "<b>&lt;script&gt; &amp; co</b>"
+
+    def test_mismatched_nesting_still_valid(self):
+        # Closing a color unwraps nothing but must not break the bold.
+        assert rich_to_telegram_html("[bold][cyan]x[/cyan][/bold]") == \
+            "<b>x</b>"
+
+    def test_empty_and_plain(self):
+        assert rich_to_telegram_html("") == ""
+        assert rich_to_telegram_html("plain") == "plain"

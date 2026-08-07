@@ -22,7 +22,7 @@ import copy
 import json
 from pathlib import Path
 
-from mgmai.game.display import RecordingView
+from mgmai.game.headless import RecordingView
 from mgmai.game.session import GameSession, TurnResult
 from mgmai.state.manager import StateManager
 

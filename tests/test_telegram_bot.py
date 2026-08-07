@@ -96,6 +96,11 @@ class FakeOutbox:
         self.replies: list[str] = []
         self.menus: list[tuple[str, list]] = []
         self.edits: list[tuple[str, list | None]] = []
+        # Persistent panels: (message_id, text, keyboard) per call.
+        self.panel_sends: list[tuple[int, str, list | None]] = []
+        self.panel_edits: list[tuple[int, str, list | None]] = []
+        self.edit_ok = True  # False simulates an uneditable message
+        self._next_panel_id = 0
         self.answered = 0
         self.typing_count = 0
 
@@ -114,10 +119,27 @@ class FakeOutbox:
     async def typing(self) -> None:
         self.typing_count += 1
 
+    async def send_panel(self, text: str, keyboard: list | None = None) -> int:
+        self._next_panel_id += 1
+        self.panel_sends.append((self._next_panel_id, text, keyboard))
+        return self._next_panel_id
+
+    async def edit_panel(self, message_id: int, text: str,
+                         keyboard: list | None = None) -> bool:
+        if not self.edit_ok:
+            return False
+        self.panel_edits.append((message_id, text, keyboard))
+        return True
+
+    def panel_texts(self) -> list[str]:
+        return ([t for _, t, _ in self.panel_sends]
+                + [t for _, t, _ in self.panel_edits])
+
     def all_text(self) -> str:
         parts = list(self.replies)
         parts += [t for t, _ in self.menus]
         parts += [t for t, _ in self.edits]
+        parts += self.panel_texts()
         return "\n".join(parts)
 
     def all_callback_data(self) -> list[str]:
@@ -260,7 +282,7 @@ class TestTurns:
         _start_game(runtime, 123, outbox)
         _send(runtime, 123, "I wait", outbox)
         assert "Time passes." in outbox.all_text()
-        assert any(r.startswith("  Turn 1") for r in outbox.replies)
+        assert any(r.startswith("  Turn 1") for r in outbox.panel_texts())
         assert outbox.typing_count >= 1
 
     def test_turn_failure_replies_generic_error(self, tmp_path):
@@ -315,7 +337,7 @@ class TestContinueResume:
         assert chat.session.hard_state.turn_count == 1
         assert any("Resumed" in text for text, _ in outbox2.edits)
         # A status line follows the resume notice.
-        assert any(r.startswith("  Turn 1") for r in outbox2.replies)
+        assert any(r.startswith("  Turn 1") for r in outbox2.panel_texts())
 
     def test_resume_after_bot_restart(self, tmp_path):
         """Phase 2 exit criterion: kill/restart the bot, then continue."""
@@ -557,3 +579,293 @@ class TestCallbackSerialization:
         asyncio.run(main())
         # Both button presses were answered (adv:0 and menu:help).
         assert outbox.answered == 2
+
+
+# ------------------------------------------------------------------
+# Phase 3: persistent status/combat panel
+# ------------------------------------------------------------------
+
+
+def _flush_view(runtime: BotRuntime, chat, outbox: FakeOutbox) -> None:
+    asyncio.run(runtime._flush(chat, outbox))
+
+
+class TestStatusPanel:
+    def test_first_status_sends_then_edits_in_place(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        chat = runtime.registry.get(123)
+
+        assert len(outbox.panel_sends) == 1
+        assert chat.status_message_id == outbox.panel_sends[0][0]
+        assert "  Turn 1" in outbox.panel_sends[0][1]
+
+        _send(runtime, 123, "I wait", outbox)
+        # Second turn edits the same message; nothing new is sent.
+        assert len(outbox.panel_sends) == 1
+        (mid, text, _kb), = outbox.panel_edits
+        assert mid == chat.status_message_id
+        assert "  Turn 2" in text
+
+    def test_identical_status_skips_the_edit(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        chat = runtime.registry.get(123)
+
+        # Re-render the unchanged status and flush again: no API call.
+        chat.view.render_status(chat.session.state_manager)
+        _flush_view(runtime, chat, outbox)
+        assert not outbox.panel_edits
+        assert len(outbox.panel_sends) == 1
+
+    def test_combat_panel_pre_block_and_transition(self, tmp_path):
+        from mgmai.models.combat import CombatState
+
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        chat = runtime.registry.get(123)
+        hard = chat.session.state_manager.hard_state
+        mid = chat.status_message_id
+
+        # Combat starts: the same message is edited into a <pre> panel.
+        hard.combat = CombatState(
+            round_number=1,
+            initiative_order=["player", "spider"],
+            combatants=["player", "spider"],
+            active=True,
+        )
+        chat.view.render_status(chat.session.state_manager)
+        _flush_view(runtime, chat, outbox)
+        assert len(outbox.panel_sends) == 1  # no new message
+        edit_mid, edit_text, _ = outbox.panel_edits[-1]
+        assert edit_mid == mid
+        assert edit_text.startswith("<pre>")
+        assert "Combat" in edit_text
+
+        # Combat ends: the same message becomes the plain status line.
+        hard.combat = None
+        chat.view.render_status(chat.session.state_manager)
+        _flush_view(runtime, chat, outbox)
+        assert len(outbox.panel_sends) == 1
+        edit_mid, edit_text, _ = outbox.panel_edits[-1]
+        assert edit_mid == mid
+        assert "<pre>" not in edit_text
+        assert "Turn" in edit_text
+
+    def test_uneditable_message_falls_back_to_new_panel(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        chat = runtime.registry.get(123)
+        old_mid = chat.status_message_id
+
+        outbox.edit_ok = False  # message too old / deleted
+        _send(runtime, 123, "I wait", outbox)
+        assert not outbox.panel_edits
+        assert len(outbox.panel_sends) == 2
+        assert chat.status_message_id != old_mid
+
+    def test_resumed_session_sends_fresh_panel(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "I wait", outbox)
+        _send(runtime, 123, "/quit", outbox)
+
+        outbox2 = FakeOutbox()
+        _press(runtime, 123, "menu:continue", outbox2)
+        # A loaded session has no status message: first render sends one.
+        assert len(outbox2.panel_sends) == 1
+        assert "  Turn 1" in outbox2.panel_sends[0][1]
+
+
+# ------------------------------------------------------------------
+# Phase 3: rest-mode inline keyboards
+# ------------------------------------------------------------------
+
+
+def _make_rest_chat(runtime: BotRuntime, tmp_path):
+    """A chat whose session has a spellbook and hit dice, so rest mode
+    offers Prepare spells / Spend hit dice / Done."""
+    from mgmai.game.session import GameSession
+    from mgmai.models.hard_state import HardGameState, HitDice, PlayerState
+    from mgmai.models.soft_state import SoftGameState
+    from mgmai.telegram.sessions import ChatSession
+    from mgmai.telegram.view import TelegramView
+    from tests.helpers import build_state_manager, make_char_sheet_corpus
+
+    player = PlayerState(
+        location="axe_head",
+        current_hp=4, max_hp=11,
+        stats={s: 10 for s in ("STR", "DEX", "CON", "INT", "WIS", "CHA")},
+        spell_slots={1: 0, 2: 1},
+        max_spell_slots={1: 4, 2: 2},
+        hit_dice=HitDice(die="d8", current=2, max=5),
+        spellbook=["fire_bolt", "mage_armor", "magic_missile"],
+        abilities=["fire_bolt", "mage_armor", "magic_missile"],
+    )
+    sm = build_state_manager(
+        make_char_sheet_corpus(), HardGameState(player=player),
+        SoftGameState())
+    llm = FakeLLMClient(
+        ruling_response=json.dumps({
+            "action_type": "rest", "kind": "short", "detail": "camp",
+            "follow_up": None, "soft_state_patches": [],
+        }),
+        prose_response=json.dumps({
+            "narration": "You take a short rest.",
+            "npc_response": None,
+            "knowledge_tags": None,
+            "attitude_changes": None,
+        }),
+    )
+    view = TelegramView()
+    session = GameSession(
+        sm, llm, view=view, config_dir=tmp_path,
+        saves_dir=runtime.registry.saves_dir_for(123, "game"),
+    )
+    chat = ChatSession(
+        chat_id=123, adventure_path=None, session=session, view=view,
+        lock=runtime.registry.get_lock(123),
+    )
+    runtime.registry.sessions[123] = chat
+    return chat
+
+
+def _rest_keyboard(outbox: FakeOutbox):
+    """The keyboard of the most recent rest-panel send/edit."""
+    for _mid, _text, keyboard in reversed(
+            [*outbox.panel_sends, *outbox.panel_edits]):
+        if keyboard is not None:
+            return keyboard
+    return None
+
+
+def _labels(keyboard) -> list[str]:
+    return [label for row in keyboard for label, _ in row]
+
+
+class TestRestKeyboards:
+    def test_rest_entry_sends_menu_with_keyboard(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        chat = _make_rest_chat(runtime, tmp_path)
+        _send(runtime, 123, "rest short", outbox)
+
+        assert chat.session.in_rest_mode
+        keyboard = _rest_keyboard(outbox)
+        assert _labels(keyboard) == [
+            "Prepare spells", "Spend hit dice", "Done"]
+        assert [d for row in keyboard for _, d in row] == [
+            "rest:1", "rest:2", "rest:3"]
+        assert chat.rest_message_id is not None
+
+    def test_prepare_toggle_confirm_back(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _make_rest_chat(runtime, tmp_path)
+        _send(runtime, 123, "rest short", outbox)
+
+        _press(runtime, 123, "rest:1", outbox)  # Prepare spells
+        keyboard = _rest_keyboard(outbox)
+        labels = _labels(keyboard)
+        assert labels[:3] == ["✅ fire_bolt", "✅ mage_armor",
+                              "✅ magic_missile"]
+        assert labels[3:] == ["Confirm", "Back"]
+
+        _press(runtime, 123, "rest:2", outbox)  # toggle mage_armor off
+        labels = _labels(_rest_keyboard(outbox))
+        assert labels[1] == "▫️ mage_armor"
+
+        # Back discards the working selection and returns to the top.
+        _press(runtime, 123, "rest:back", outbox)
+        labels = _labels(_rest_keyboard(outbox))
+        assert labels == ["Prepare spells", "Spend hit dice", "Done"]
+
+        # Re-enter: the toggle was discarded, all prepared again.
+        _press(runtime, 123, "rest:1", outbox)
+        assert _labels(_rest_keyboard(outbox))[1] == "✅ mage_armor"
+        # Confirm applies and returns to the top menu.
+        _press(runtime, 123, "rest:2", outbox)  # toggle mage_armor off
+        _press(runtime, 123, "rest:0", outbox)
+        chat = runtime.registry.get(123)
+        assert chat.session.hard_state.player.abilities == [
+            "fire_bolt", "magic_missile"]
+        assert _labels(_rest_keyboard(outbox)) == [
+            "Prepare spells", "Spend hit dice", "Done"]
+
+    def test_spend_and_done_exits(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        chat = _make_rest_chat(runtime, tmp_path)
+        _send(runtime, 123, "rest short", outbox)
+        hard = chat.session.hard_state
+
+        _press(runtime, 123, "rest:2", outbox)  # Spend hit dice
+        assert hard.player.hit_dice.current == 1
+        assert _labels(_rest_keyboard(outbox)) == [
+            "Spend another hit die", "Done"]
+
+        _press(runtime, 123, "rest:2", outbox)  # Done → top menu
+        assert _labels(_rest_keyboard(outbox)) == [
+            "Prepare spells", "Spend hit dice", "Done"]
+
+        _press(runtime, 123, "rest:3", outbox)  # Done → exit rest mode
+        assert not chat.session.in_rest_mode
+        # Keyboard torn down, menu message edited to the farewell text,
+        # tracking cleared (a future rest sends a fresh menu message).
+        _mid, text, keyboard = outbox.panel_edits[-1]
+        assert "ready yourself" in text
+        assert keyboard is None
+        assert chat.rest_message_id is None
+
+    def test_typed_numbers_still_work(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        chat = _make_rest_chat(runtime, tmp_path)
+        _send(runtime, 123, "rest short", outbox)
+        _send(runtime, 123, "1", outbox)  # typed: Prepare spells
+        labels = _labels(_rest_keyboard(outbox))
+        assert labels[0].startswith("✅")
+        assert chat.session.rest_mode.menu().state == "prepare"
+
+    def test_stale_rest_button(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        chat = _make_rest_chat(runtime, tmp_path)
+        _send(runtime, 123, "rest short", outbox)
+        _press(runtime, 123, "rest:3", outbox)  # exit rest mode
+        outbox.edits.clear()
+        _press(runtime, 123, "rest:1", outbox)  # stale button
+        assert any("no longer active" in text for text, _ in outbox.edits)
+        assert not chat.session.in_rest_mode
+
+    def test_rest_steps_autosave(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _make_rest_chat(runtime, tmp_path)
+        _send(runtime, 123, "rest short", outbox)
+        _press(runtime, 123, "rest:2", outbox)  # spend one hit die
+        autosave = (tmp_path / "telegram" / "123" / "saves" / "game"
+                    / "autosave.json")
+        saved = json.loads(autosave.read_text())
+        assert saved["hard"]["player"]["hit_dice"]["current"] == 1
+        entry = runtime.registry.saved_session(123)
+        assert entry is not None
+
+
+class TestCommandOutputMarkup:
+    def test_help_output_is_converted_to_html(self, tmp_path):
+        runtime = _make_runtime(tmp_path)
+        outbox = FakeOutbox()
+        _start_game(runtime, 123, outbox)
+        _send(runtime, 123, "/help", outbox)
+        assert any("<b>Available Commands</b>" in r for r in outbox.replies)
+        assert not any("[bold]" in r for r in outbox.replies)

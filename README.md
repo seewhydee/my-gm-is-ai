@@ -116,7 +116,6 @@ mgmai-telegram
 This requires a bot token from BotFather and some configuration (a
 mandatory chat-ID allow-list and an adventures directory).  See
 [doc/telegram.md](doc/telegram.md) for setup and play instructions.
-The Telegram front-end is a work in progress; see `telegram-plan.md`.
 
 ## How It Works
 

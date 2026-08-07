@@ -63,8 +63,14 @@ class ChatSession:
     session: GameSession
     view: TelegramView
     lock: asyncio.Lock
-    # In-place-updated status panel (Phase 3).
+    # In-place-updated status panel.
     status_message_id: int | None = None
+    status_message_text: str | None = None
+    # Persistent rest-mode menu message (edited in place while rest
+    # mode is active; torn down on exit).
+    rest_message_id: int | None = None
+    rest_message_text: str | None = None
+    rest_message_keyboard: list | None = None
 
 
 class SessionRegistry:

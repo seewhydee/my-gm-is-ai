@@ -4,10 +4,6 @@ My GM is AI can be played through a Telegram bot, as an alternative to
 the CLI.  You chat with your own bot (created via BotFather), and each
 message you send is one turn of the game.
 
-The Telegram front-end is a work in progress (see `telegram-plan.md`).
-This document describes the current state; see "Limitations" below for
-what is not there yet.
-
 ## Setup
 
 ### 1. Install the Telegram dependencies
@@ -115,28 +111,26 @@ Ctrl-C.
   `/char`, `/status`.  `/model` is display-only (switching models stays
   in the config files).  `/debug` is disabled, because it would flip
   the process-global log level for every chat.
-- In combat, the bot posts a text battle panel (HP bars, initiative
-  order, status effects) after each turn.  During rests, the rest-mode
-  bookkeeping menu arrives as a plain numbered menu — reply with the
-  number as in the CLI.
+- In combat, the bot keeps a single persistent battle panel (HP bars
+  in a fixed-width block, initiative order, status effects) that is
+  edited in place after each turn; when combat ends, the same message
+  becomes the plain status line.
+- During rests, the bookkeeping menu comes with inline buttons
+  (Prepare spells with toggles, Spend hit dice, Done) — or just reply
+  with the menu number as in the CLI.
+- Command output (`/help`, `/inv`, `/char`) is rendered with
+  Telegram formatting (bold/italic); colors are dropped.
 - When the adventure ends, the bot delivers the ending and a final
   panel with buttons: **Restart adventure**, **Load save**, **Choose
   adventure**.
 - Multiple chats can play independently in one bot process; each chat
-  gets its own save sandbox under
-  `~/.config/mgmai/telegram/<chat_id>/saves/<adventure>/`, so autosaves
-  and `/save` files never collide — even when one chat plays several
-  adventures.  The `/load` browser shows all of the chat's saves,
-  across adventures (loading another adventure's save switches to that
-  adventure).
+  gets its own save sandbox, so autosaves and `/save` files never
+  collide — even when one chat plays several adventures.  The `/load`
+  browser shows all of the chat's saves, across adventures (loading
+  another adventure's save switches to that adventure).
 
-## Limitations (current phase)
+## Limitations
 
-Notable gaps, all planned in `telegram-plan.md`:
-
-- **Combat/status panels are plain messages**, reposted each turn
-  (in-place edits are a later phase), and **rest mode uses the numbered
-  text menu** rather than inline keyboards.
 - **No character-sheet upload, no group chats, no streaming** (turns
   reply once, when complete), and **model switching is display-only**
   (`/model` shows the config; switching stays in the config files).

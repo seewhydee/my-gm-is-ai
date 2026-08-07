@@ -32,7 +32,6 @@ from pathlib import Path
 from typing import Any
 
 from mgmai.game.status import build_combat_view, format_exits, snapshot_status
-from mgmai.telegram.textutil import strip_rich_markup
 
 # Fixed HP-bar width for the combat panel (no terminal to measure).
 _BAR_WIDTH = 10
@@ -40,10 +39,17 @@ _BAR_WIDTH = 10
 
 @dataclass
 class ViewEvent:
-    """One buffered render event, in emission order."""
+    """One buffered render event, in emission order.
+
+    ``text`` is raw source: narration carries minimal Markdown, command
+    output (kind ``print``) carries Rich markup — the flush converts
+    per kind.  ``pre`` marks preformatted text (the combat panel),
+    rendered in a ``<pre>`` block so HP bars align.
+    """
 
     kind: str  # intro | narration | status | error | rest_menu | game_over | goodbye | print
     text: str
+    pre: bool = False
 
 
 class TelegramView:
@@ -70,10 +76,10 @@ class TelegramView:
         events, self._events = self._events, []
         return events
 
-    def _add(self, kind: str, text: str) -> None:
+    def _add(self, kind: str, text: str, *, pre: bool = False) -> None:
         for prefix in self._scrub_prefixes:
             text = text.replace(prefix, "")
-        self._events.append(ViewEvent(kind, text))
+        self._events.append(ViewEvent(kind, text, pre=pre))
 
     # --- game screens ---
 
@@ -110,9 +116,10 @@ class TelegramView:
             return
         if hard.combat is not None and hard.combat.active:
             text = _format_combat(build_combat_view(hard, state.corpus))
+            self._add("status", text, pre=True)
         else:
             text = _format_status_line(snapshot_status(state))
-        self._add("status", text)
+            self._add("status", text)
 
     def render_error(self, text: str) -> None:
         self._add("error", f"Error: {text}")
@@ -141,8 +148,9 @@ class TelegramView:
         self._add("goodbye", "Thanks for playing!")
 
     def print(self, text: str) -> None:
-        """Command output; Rich markup stripped (converter is Phase 3)."""
-        self._add("print", strip_rich_markup(text))
+        """Command output, buffered with its Rich markup intact; the
+        flush converts it to Telegram HTML (``rich_to_telegram_html``)."""
+        self._add("print", text)
 
 
 # ------------------------------------------------------------------

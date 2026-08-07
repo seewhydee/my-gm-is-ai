@@ -17,9 +17,14 @@
 """Telegram message text utilities.
 
 Pure functions, no PTB imports, so they stay unit-testable without the
-optional ``telegram`` dependency installed.  The real Rich-markup →
-Telegram-HTML converter is a later phase; for now command output simply
-gets its Rich tags stripped.
+optional ``telegram`` dependency installed.
+
+The markup split: narration prose carries minimal Markdown
+(``**bold**``) and goes through ``md_to_telegram_html``; ``Commands``
+output carries Rich markup (``[bold]…``) and goes through
+``rich_to_telegram_html``.  Both run at flush time (in
+``BotRuntime._flush``), per event kind, after chunking — the view
+buffers raw text.
 """
 
 from __future__ import annotations
@@ -39,6 +44,102 @@ _RICH_TAG_RE = re.compile(r"\[/?[a-zA-Z][^\[\]]*\]")
 def strip_rich_markup(text: str) -> str:
     """Remove Rich markup tags from *text*, leaving the content."""
     return _RICH_TAG_RE.sub("", text)
+
+
+# ------------------------------------------------------------------
+# Rich markup → Telegram HTML
+# ------------------------------------------------------------------
+
+# Rich style words that have a Telegram HTML equivalent.
+_RICH_STYLE_TAGS = {
+    "bold": "b", "b": "b",
+    "italic": "i", "i": "i",
+    "underline": "u", "u": "u",
+    "strike": "s", "s": "s",
+    "code": "code",
+}
+
+# Rich style words with no Telegram HTML equivalent: unwrapped to
+# their content (dim is de-emphasis; colors don't exist in Telegram).
+_RICH_IGNORE_WORDS = {
+    "dim", "reverse", "blink", "conceal", "on", "not",
+    "black", "red", "green", "yellow", "blue", "magenta", "cyan",
+    "white", "grey", "gray", "default",
+    "bright_black", "bright_red", "bright_green", "bright_yellow",
+    "bright_blue", "bright_magenta", "bright_cyan", "bright_white",
+}
+
+_RICH_TOKEN_RE = re.compile(r"\[(/?)([^\[\]]*)\]")
+
+
+def _rich_open_tags(body: str) -> list[str] | None:
+    """Map a Rich opening-tag body to HTML tags.
+
+    Returns the list of HTML tag names (empty for pure color/dim
+    styles, which are unwrapped), or None when the body contains an
+    unknown word — the caller strips the tag entirely.
+    """
+    tags: list[str] = []
+    for word in body.split():
+        if word in _RICH_STYLE_TAGS:
+            tag = _RICH_STYLE_TAGS[word]
+            if tag not in tags:
+                tags.append(tag)
+        elif word in _RICH_IGNORE_WORDS or word.startswith("#"):
+            continue
+        else:
+            return None
+    return tags
+
+
+def rich_to_telegram_html(text: str) -> str:
+    """Convert Rich markup (``[bold]…``) to Telegram HTML.
+
+    Styles with an HTML equivalent become tags; colors and ``dim``
+    unwrap to their content; unknown tags are stripped.  Content is
+    HTML-escaped, and the result always has balanced tags: a closing
+    tag closes everything up to its matching opener (unmatched closers
+    are dropped), and openers left open at the end are closed in
+    reverse order.
+    """
+    out: list[str] = []
+    # Stack of (key, html_tags) for open Rich tags; the key is the
+    # tag body's first word, matched by closing tags.
+    stack: list[tuple[str, list[str]]] = []
+    pos = 0
+    for match in _RICH_TOKEN_RE.finditer(text):
+        out.append(html.escape(text[pos:match.start()], quote=False))
+        pos = match.end()
+        closing, body = match.group(1) == "/", match.group(2).strip()
+        if closing:
+            key = body.split()[0] if body else ""
+            # Find the matching opener; [/] (empty key) closes the
+            # most recent one.
+            idx = next(
+                (i for i in range(len(stack) - 1, -1, -1)
+                 if not key or stack[i][0] == key),
+                None,
+            )
+            if idx is None:
+                continue  # unmatched closer: drop it
+            for _, tags in reversed(stack[idx:]):
+                out.extend(f"</{t}>" for t in reversed(tags))
+            del stack[idx:]
+            continue
+        if not body or not body[0].isalpha():
+            out.append(html.escape(match.group(0), quote=False))
+            continue  # literal bracket text like "[3]"
+        tags = _rich_open_tags(body)
+        if tags is None:
+            continue  # unknown tag: strip it
+        if tags:
+            out.extend(f"<{t}>" for t in tags)
+            stack.append((body.split()[0], tags))
+        # Pure color/dim tags emit nothing and are not stacked.
+    out.append(html.escape(text[pos:], quote=False))
+    for _, tags in reversed(stack):
+        out.extend(f"</{t}>" for t in reversed(tags))
+    return "".join(out)
 
 
 def md_to_telegram_html(text: str) -> str:

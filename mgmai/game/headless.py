@@ -37,10 +37,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mgmai.game.display import (
-    RecordingDisplay,  # noqa: F401  (re-exported for compat)
-    RecordingView,
-)
 from mgmai.game.session import GameSession
 from mgmai.game.status import (  # noqa: F401  (re-exported for compat)
     StatusSnapshot,
@@ -106,6 +102,63 @@ class TurnTranscript:
                 else None
             ),
         }
+
+
+class RecordingView:
+    """A ``GameView`` that records events instead of rendering them.
+
+    Produces no terminal output and has no Rich dependency; each
+    ``render_*`` call is recorded into a typed list so the harness can
+    inspect what was shown to a real player.  Command output (``print``)
+    and the goodbye screen carry no assertions, so they are discarded.
+    """
+
+    def __init__(self) -> None:
+        self.narrations: list[str] = []
+        self.status_snapshots: list[dict[str, Any]] = []
+        self.errors: list[str] = []
+        self.game_over_events: list[dict[str, Any]] = []
+        self.intros: list[dict[str, Any]] = []
+        self.rest_menus: list[str] = []
+
+    def print(self, text: str) -> None:
+        pass
+
+    def render_intro(self, state_loader: Any) -> None:
+        corpus = state_loader.corpus
+        adv = corpus.adventure if corpus else None
+        self.intros.append({
+            "title": getattr(adv, "title", None) if adv else None,
+            "introduction": getattr(adv, "introduction", None) if adv else None,
+        })
+
+    def render_narration(self, text: str) -> None:
+        self.narrations.append(text)
+
+    def render_status(self, state_loader: Any) -> None:
+        snapshot = snapshot_status(state_loader)
+        self.status_snapshots.append(snapshot.to_dict())
+
+    def render_error(self, text: str) -> None:
+        self.errors.append(text)
+
+    def render_rest_menu(self, text: str) -> None:
+        self.rest_menus.append(text)
+
+    def render_game_over(self, result: Any) -> None:
+        self.game_over_events.append({
+            "type": getattr(result, "type", None),
+            "trigger": getattr(result, "trigger", None),
+            "narrative": getattr(result, "narrative", None),
+        })
+
+    def render_goodbye(self) -> None:
+        pass
+
+
+# Back-compat alias: the class was introduced under this name and
+# existing imports/tests keep using it.
+RecordingDisplay = RecordingView
 
 
 class HeadlessSession:

@@ -95,12 +95,14 @@ class TestBuffering:
         ]
         assert view.drain() == []
 
-    def test_print_strips_rich_markup(self):
+    def test_print_buffers_raw_markup(self):
+        """Command output keeps its Rich markup in the buffer; the
+        flush converts it to Telegram HTML."""
         view = TelegramView()
         view.print("[bold]Inventory[/bold]\n[dim]empty[/dim]")
         (event,) = view.drain()
         assert event.kind == "print"
-        assert event.text == "Inventory\nempty"
+        assert event.text == "[bold]Inventory[/bold]\n[dim]empty[/dim]"
 
     def test_render_goodbye(self):
         view = TelegramView()
@@ -118,7 +120,7 @@ class TestPathScrubbing:
         view = TelegramView(scrub_prefixes=[saves, tmp_path])
         view.print(f"[green]Game saved to {saves}/save.json[/green]")
         (event,) = view.drain()
-        assert event.text == "Game saved to save.json"
+        assert event.text == "[green]Game saved to save.json[/green]"
 
     def test_path_mid_sentence(self, tmp_path):
         saves = tmp_path / "telegram" / "1" / "saves" / "adv"
@@ -190,8 +192,6 @@ class TestSessionDriven:
         events = view.drain()
         assert events
         assert all(e.kind == "print" for e in events)
-        # Rich markup stripped.
-        assert not any("[bold]" in e.text for e in events)
 
 
 class TestStatusRendering:
@@ -214,11 +214,19 @@ class TestStatusRendering:
         view.render_status(state_manager)
         (event,) = view.drain()
         assert event.kind == "status"
+        assert event.pre is True  # rendered in a <pre> block at flush
         assert "Combat — Round 2" in event.text
         assert "Initiative: player → spider" in event.text
         assert "8/10" in event.text
         assert "5/15" in event.text
         assert "It's your turn." in event.text
+
+    def test_plain_status_line_is_not_preformatted(self, state_manager):
+        view = TelegramView()
+        view.render_status(state_manager)
+        (event,) = view.drain()
+        assert event.kind == "status"
+        assert event.pre is False
 
     def test_no_hard_state_buffers_nothing(self):
         from mgmai.state.manager import StateManager

@@ -27,6 +27,7 @@ never an embedded path.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from mgmai.telegram.sessions import SaveInfo
 
@@ -82,6 +83,32 @@ def game_over_keyboard() -> Keyboard:
 
 def back_to_menu_keyboard() -> Keyboard:
     return [[("Back", "menu:main")]]
+
+
+def rest_menu_keyboard(snapshot: Any) -> Keyboard:
+    """Inline keyboard for a RestMenuSnapshot (plan §5.6).
+
+    Buttons map to ``RestMode.handle(str(index))`` via ``rest:<n>``
+    callback data: top and spend menus are one button per (positional,
+    1-based) option; the prepare menu adds a toggle per spellbook entry
+    (marked from ``prepared``/``option_ids``) plus Confirm (``0``) and
+    Back.  The ``exited`` state gets no keyboard.
+    """
+    if snapshot.state == "exited":
+        return []
+    if snapshot.state == "prepare":
+        rows: Keyboard = []
+        for i, label in enumerate(snapshot.options, 1):
+            aid = (snapshot.option_ids[i - 1]
+                   if i - 1 < len(snapshot.option_ids) else None)
+            mark = "✅" if aid is not None and aid in snapshot.prepared else "▫️"
+            rows.append([(f"{mark} {_truncate(label)}", f"rest:{i}")])
+        rows.append([("Confirm", "rest:0"), ("Back", "rest:back")])
+        return rows
+    return [
+        [(_truncate(label), f"rest:{i}")]
+        for i, label in enumerate(snapshot.options, 1)
+    ]
 
 
 def _save_label(save: SaveInfo, *, show_adventure: bool = False) -> str:
