@@ -1855,11 +1855,11 @@ spells, class features, and monster powers — usable by the player (via
 the `use_ability` combat action when listed in the character sheet's
 `abilities`) and by NPCs (via `CombatBlock.abilities` and the combat
 AI).  Each ability has exactly one effect: `attack`, `save`, `heal`,
-`auto_damage`, or `on_cast`.
+`auto_damage`, `on_cast`, or `cure_status`.
 
 A **spell** is just an ability with `spell_level` set; it lives in the
-same `abilities` block.  The engine ships an SRD spell pack (36 spells —
-10 cantrips, 26 leveled) whose entries are minted into the corpus at
+same `abilities` block.  The engine ships an SRD spell pack (42 spells —
+12 cantrips, 30 leveled) whose entries are minted into the corpus at
 load time unless the corpus defines the same ID — see the
 [data-pack manifest](srd-5e-pack.md).
 
@@ -1917,6 +1917,7 @@ load time unless the corpus defines the same ID — see the
 | `heal`¹           | string  | Healing dice expression (only for `self`/`ally` targets) |
 | `auto_damage`¹    | object  | Damage with no attack roll and no save |
 | `on_cast`¹        | object  | Status effect applied to the target on cast |
+| `cure_status`¹    | object  | Ends status conditions on the target (self/ally only) |
 | `spell_level`¹    | integer | `null` (default) = not a spell; `0` = cantrip; `1`-`9` = leveled spell |
 | `school`¹         | string  | Spell school (evocation, abjuration, …) — data/flavor |
 | `casting_time`¹   | string  | `"action"` (default), `"bonus_action"`, `"reaction"`, or `"long"` — `"bonus_action"` is enforced in combat (one bonus action per turn, cast without ending the turn; see [doc/spellcasting.md](../doc/spellcasting.md)); the rest are data-only |
@@ -1931,7 +1932,10 @@ load time unless the corpus defines the same ID — see the
 "1d10", "damage_type": "fire" }`.  Player casters roll with the named
 ability score's modifier plus proficiency bonus (when `proficient`);
 NPC casters use their combat block's `atk` bonus instead.  Crits,
-fumbles, and damage-type mitigation apply as for weapon attacks.
+fumbles, and damage-type mitigation apply as for weapon attacks.  An
+optional `apply_status_effect_on_hit` rider — `{ "id": "poisoned",
+"rounds": 1 }` — applies a status to the target on a hit (skipped on a
+miss or when the target dies; e.g. Ray of Sickness, Chill Touch).
 
 **Save effects**: `{ "stat": "CON", "dc": 12, "damage": "1d12",
 "damage_type": "poison", "half_on_success": true,
@@ -1956,6 +1960,13 @@ Damage applied to the target with no attack roll and no save
 **On-cast effects**: `{ "id": "mage_armor", "rounds": 1 }` — a status
 effect (see [Status Effects](#status-effects)) applied to the ability's
 target when cast (self/ally buffs).
+
+**Cure-status effects**: `{ "ids": ["blinded", "poisoned"],
+"then_apply": { "id": "protection_from_poison", "rounds": 10 } }` —
+ends every active status on the target whose ID is in `ids` (the SRD's
+"end one condition" choice collapses to curing all matching ones), then
+optionally applies a follow-up status.  Self/ally targets only; like
+heals, resolves out of combat too (Lesser Restoration).
 
 **Concentration**: when a spell with `concentration: true` is cast in
 combat, the caster begins concentrating on it — tracked on
@@ -2035,6 +2046,11 @@ modifiers.  For 5e the recognized keys are:
 - `d20_test_modifier` — flat modifier (usually negative) applied to all
   of the afflicted combatant's d20 rolls: attack rolls, ability checks,
   and saving throws (e.g. the exhaustion levels).
+- `no_healing` — the afflicted combatant cannot regain hit points
+  (e.g. Chill Touch's rider).
+- `damage_resistance` — list of damage types the afflicted combatant
+  resists (half damage, rounded down), for player and NPC targets
+  alike (e.g. `protection_from_poison`).
 
 `tick_effect` is a [Result](#result) applied on each of the status
 effect's ticks, but only when the afflicted target is the player

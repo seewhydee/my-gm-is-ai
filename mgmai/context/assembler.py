@@ -309,8 +309,10 @@ def _ability_briefing_entry(
         effect_kind = "heal"
     elif ability.auto_damage is not None:
         effect_kind = "auto_damage"
-    else:
+    elif ability.on_cast is not None:
         effect_kind = "on_cast"
+    else:
+        effect_kind = "cure_status"
     entry: dict[str, Any] = {
         "id": aid,
         "name": ability.name,

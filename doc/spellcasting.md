@@ -5,8 +5,8 @@ separate spell model or `cast_spell` action.  A spell is an `Ability`
 (`mgmai/models/corpus.py:628-664`) with `spell_level` set, cast through
 the same `use_ability` combat action as class features and monster
 powers.  The engine ships an SRD spell pack
-(`mgmai/data/srd_5e/spells.json`) — currently 36 spells (10 cantrips,
-26 leveled; the full catalog is listed in `schema/srd-5e-pack.md`) —
+(`mgmai/data/srd_5e/spells.json`) — currently 42 spells (12 cantrips,
+30 leveled; the full catalog is listed in `schema/srd-5e-pack.md`) —
 whose entries are minted into the corpus at load time unless the corpus
 defines the same ID (corpus wins wholesale, same semantics as
 gear; see `ModuleCorpus.effective_spells`, `mgmai/models/corpus.py:1013`).
@@ -74,11 +74,18 @@ on a pack spell is therefore the NPC-caster value and a display fallback.
 
 ## Effect Kinds
 
-Spells use the same five effect shapes as any ability (see
+Spells use the same six effect shapes as any ability (see
 `schema/corpus.md` — *Abilities*): `attack` (Fire Bolt), `save`
 (Sacred Flame, Sleep), `heal` (Cure Wounds, Healing Word), `auto_damage`
-(Magic Missile — no attack roll, no save), and `on_cast` (Mage Armor —
-applies a status effect to the target).
+(Magic Missile — no attack roll, no save), `on_cast` (Mage Armor —
+applies a status effect to the target), and `cure_status` (Lesser
+Restoration — ends status conditions on the target, with an optional
+`then_apply` follow-up status as on Protection from Poison).
+
+Attack effects may carry an `apply_status_effect_on_hit` rider (Ray of
+Sickness' poisoned, Chill Touch's no-healing via the `no_healing`
+system-effect key, Guiding Bolt's advantage mark); save effects carry
+the long-standing `apply_status_effect_on_failure` twin.
 
 Mage Armor's `on_cast` applies a persistent `mage_armor` status carrying
 `system_effects: {"5e": {"ac_base": 13}}`; `compute_player_ac`
@@ -144,8 +151,9 @@ Outside combat, `use_ability` is a top-level action resolved by
 `resolve_out_of_combat_ability` (`mgmai/engine/combat.py:1819`, routed
 from `mgmai/engine/resolver.py` via `_resolve_use_ability`):
 
-- **Self/ally heal and on-cast** abilities resolve directly — Cure
-  Wounds between fights, Mage Armor before a fight, etc.
+- **Self/ally heal, on-cast, and cure-status** abilities resolve
+  directly — Cure Wounds between fights, Mage Armor before a fight,
+  Lesser Restoration on a poisoned ally, etc.
 - **Enemy-targeted abilities** start combat automatically, mirroring
   `interact`/`attack`: the engine calls `enter_combat`, pulling in the
   target's `combat_group`, and the spell is available on the player's

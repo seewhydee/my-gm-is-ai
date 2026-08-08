@@ -286,6 +286,14 @@ class ResolutionSystem(ABC):
         Default: False."""
         return False
 
+    def blocks_healing(
+        self, status_effects: dict, corpus: ModuleCorpus
+    ) -> bool:
+        """True when the target's active status effects prevent regaining
+        HP (5e: the ``no_healing`` key, e.g. Chill Touch).  Default:
+        False."""
+        return False
+
     @abstractmethod
     def roll_check(
         self,

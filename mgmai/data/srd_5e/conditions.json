@@ -251,5 +251,41 @@
         ]
       }
     }
+  },
+  "no_healing": {
+    "name": "No Healing",
+    "description": "Cannot regain hit points (Chill Touch's rider).",
+    "system_effects": {
+      "5e": {
+        "no_healing": true
+      }
+    }
+  },
+  "guiding_bolt": {
+    "name": "Guiding Bolt",
+    "description": "The Guiding Bolt spell's mark: attack rolls against the target have advantage. (SRD limits this to the next attack roll — not modeled; advantage lasts until the status lapses.)",
+    "system_effects": {
+      "5e": {
+        "advantage_against": true
+      }
+    }
+  },
+  "vicious_mockery": {
+    "name": "Vicious Mockery",
+    "description": "The Vicious Mockery spell's sting: the target has disadvantage on attack rolls. (SRD limits this to the target's next attack roll — not modeled; disadvantage lasts until the status lapses.)",
+    "system_effects": {
+      "5e": {
+        "disadvantage_on_attack": true
+      }
+    }
+  },
+  "protection_from_poison": {
+    "name": "Protection from Poison",
+    "description": "The Protection from Poison spell's ward: resistance to poison damage. (Advantage on saves against the poisoned condition is not modeled — GM-adjudicated.)",
+    "system_effects": {
+      "5e": {
+        "damage_resistance": ["poison"]
+      }
+    }
   }
 }

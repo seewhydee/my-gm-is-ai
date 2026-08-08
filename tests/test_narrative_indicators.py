@@ -464,6 +464,43 @@ class TestFormatSingleCombatEntry:
         assert "cleric uses Cure Wounds on you" in result
         assert "healed 5 HP" in result
 
+    def test_cure_status_player_caster(self):
+        entry = {
+            "actor": "player",
+            "action": "cure_status",
+            "target": "korbar",
+            "attack_name": "Lesser Restoration",
+            "on_hit_effects": [{"cured": ["poisoned"], "status_effect": None}],
+        }
+        result = _format_single_combat_entry(entry)
+        assert "You use Lesser Restoration on korbar: cured poisoned." in result
+
+    def test_cure_status_nothing_to_cure(self):
+        entry = {
+            "actor": "player",
+            "action": "cure_status",
+            "target": "player",
+            "attack_name": "Lesser Restoration",
+            "on_hit_effects": [{"cured": [], "status_effect": "protection_from_poison"}],
+        }
+        result = _format_single_combat_entry(entry)
+        assert "no conditions to cure" in result
+        assert "gains protection_from_poison" in result
+
+    def test_attack_on_hit_status_rider(self):
+        entry = {
+            "actor": "player",
+            "action": "attack",
+            "target": "goblin",
+            "attack_name": "Ray of Sickness",
+            "hit": True,
+            "damage": 9,
+            "on_hit_effects": [{"status_effect": "poisoned"}],
+        }
+        result = _format_single_combat_entry(entry)
+        assert "You use Ray of Sickness on goblin: hit for 9 damage." in result
+        assert "goblin gains poisoned." in result
+
     def test_unknown_action(self):
         entry = {"actor": "player", "action": "dance", "target": None}
         assert _format_single_combat_entry(entry) == ""

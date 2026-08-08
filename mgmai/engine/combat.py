@@ -1207,7 +1207,10 @@ def _apply_healing_to_target(
     hard_changes: HardStateChanges,
 ) -> int:
     """Apply healing clamped to the target's max HP; returns the actual
-    amount healed."""
+    amount healed.  A ``no_healing`` status effect (Chill Touch) blocks
+    all healing while active."""
+    if system.blocks_healing(get_status_effects(target_id, hard), corpus):
+        return 0
     if target_id == "player":
         effective_hp = (hard.player.current_hp or 0) + (
             hard_changes.player_hp_delta or 0
@@ -1377,6 +1380,18 @@ def _resolve_attack_ability(
         target_id, damage, hard, combat, hard_changes, corpus, combat_log, events
     )
     log_entry.remaining_hp = _target_current_hp(target_id, hard, hard_changes)
+    rider = atk.apply_status_effect_on_hit
+    if rider is not None and not died:
+        apply_status_effect(
+            target_id, rider.id, rider.rounds, hard, corpus, "attack_hit", events
+        )
+        log_entry.on_hit_effects = (log_entry.on_hit_effects or []) + [
+            {"status_effect": rider.id}
+        ]
+        # An incapacitating rider ends the target's own concentration.
+        _end_concentration_if_incapacitated(
+            target_id, combat, hard, corpus, events, combat_log
+        )
     if died:
         combat_log.append(
             CombatLogEntry(
@@ -1650,6 +1665,46 @@ def _resolve_on_cast_ability(
     )
 
 
+def _resolve_cure_status_ability(
+    caster_id: str,
+    aid: str,
+    ability: Any,
+    target_id: str,
+    round_number: int,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+) -> None:
+    """Resolve a cure_status ability: end every active status on the
+    target whose ID is in the effect's ``ids`` (e.g. Lesser Restoration),
+    then apply the optional ``then_apply`` status."""
+    cure = ability.cure_status
+    active = get_status_effects(target_id, hard)
+    cured = [sid for sid in cure.ids if sid in active]
+    for sid in cured:
+        remove_status_effect(target_id, sid, hard, corpus, "cured", events)
+    applied: str | None = None
+    if cure.then_apply is not None:
+        effect = cure.then_apply
+        apply_status_effect(
+            target_id, effect.id, effect.rounds, hard, corpus, "ability", events
+        )
+        applied = effect.id
+    combat_log.append(
+        CombatLogEntry(
+            round=round_number,
+            actor=caster_id,
+            action="cure_status",
+            target=target_id,
+            attack_id=aid,
+            attack_name=ability.name,
+            on_hit_effects=[{"cured": cured, "status_effect": applied}],
+            **_spell_log_kwargs(aid, ability),
+        )
+    )
+
+
 def _choose_npc_ability(
     actor_id: str,
     entity: Any,
@@ -1770,6 +1825,12 @@ def _use_npc_ability(
         return died and target_id == "player"
     if ability.on_cast is not None:
         _resolve_on_cast_ability(
+            actor_id, aid, ability, target_id,
+            combat.round_number, hard, corpus, combat_log, events,
+        )
+        return False
+    if ability.cure_status is not None:
+        _resolve_cure_status_ability(
             actor_id, aid, ability, target_id,
             combat.round_number, hard, corpus, combat_log, events,
         )
@@ -1907,6 +1968,13 @@ def _resolve_player_ability(
         )
         return None
 
+    if ability.cure_status is not None:
+        _resolve_cure_status_ability(
+            "player", aid, ability, target_id,
+            combat.round_number, hard, corpus, combat_log, events,
+        )
+        return None
+
     return {"success": False, "error": f"Ability '{aid}' has no effect"}
 
 
@@ -1917,8 +1985,9 @@ def resolve_out_of_combat_ability(
 ) -> dict[str, Any]:
     """Resolve the player's ``use_ability`` action outside combat.
 
-    Self/ally-targeted abilities with a heal or on_cast effect resolve
-    directly (Cure Wounds between fights, Mage Armor).  Enemy-targeted
+    Self/ally-targeted abilities with a heal, on_cast, or cure_status
+    effect resolve directly (Cure Wounds between fights, Mage Armor,
+    Lesser Restoration).  Enemy-targeted
     abilities return a ``combat_triggered`` signal so the caller can
     enter combat (mirroring interact/attack).  Attack/save/auto_damage
     effects without a combat state are still rejected — they need a
@@ -1953,7 +2022,7 @@ def resolve_out_of_combat_ability(
                 f"be cast in combat"
             ),
         }
-    if not ability.heal and ability.on_cast is None:
+    if not ability.heal and ability.on_cast is None and ability.cure_status is None:
         return {
             "success": False,
             "error": f"'{ability.name}' can only be used in combat",
@@ -1996,6 +2065,11 @@ def resolve_out_of_combat_ability(
         _resolve_heal_ability(
             "player", aid, ability, target_id, 0,
             hard, corpus, hard_changes, combat_log,
+        )
+    elif ability.cure_status is not None:
+        _resolve_cure_status_ability(
+            "player", aid, ability, target_id, 0,
+            hard, corpus, combat_log, events,
         )
     else:
         _resolve_on_cast_ability(

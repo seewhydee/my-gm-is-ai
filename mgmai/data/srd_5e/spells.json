@@ -90,7 +90,7 @@
   },
   "chill_touch": {
     "name": "Chill Touch",
-    "description": "Channeling the chill of the grave, you touch a creature: melee spell attack for 1d10 necrotic damage. (The 'can't regain hit points' rider is GM-adjudicated.)",
+    "description": "Channeling the chill of the grave, you touch a creature: melee spell attack for 1d10 necrotic damage, and on a hit it can't regain hit points until the end of your next turn.",
     "target": "enemy",
     "spell_level": 0,
     "school": "necromancy",
@@ -98,7 +98,10 @@
     "range": "Touch",
     "duration": "Instantaneous",
     "components": "V, S",
-    "attack": { "stat": "INT", "proficient": true, "damage": "1d10", "damage_type": "necrotic" }
+    "attack": {
+      "stat": "INT", "proficient": true, "damage": "1d10", "damage_type": "necrotic",
+      "apply_status_effect_on_hit": { "id": "no_healing", "rounds": 1 }
+    }
   },
   "eldritch_blast": {
     "name": "Eldritch Blast",
@@ -162,7 +165,7 @@
   },
   "vicious_mockery": {
     "name": "Vicious Mockery",
-    "description": "You unleash a string of insults laced with subtle enchantments: the target makes a WIS save or takes 1d6 psychic damage. (The disadvantage-on-next-attack rider is GM-adjudicated.)",
+    "description": "You unleash a string of insults laced with subtle enchantments: the target makes a WIS save or takes 1d6 psychic damage and has disadvantage on attack rolls until the end of your next turn. (SRD limits the disadvantage to the target's next attack roll — not modeled.)",
     "target": "enemy",
     "spell_level": 0,
     "school": "enchantment",
@@ -170,7 +173,10 @@
     "range": "60 feet",
     "duration": "Instantaneous",
     "components": "V",
-    "save": { "stat": "WIS", "dc": 12, "damage": "1d6", "damage_type": "psychic", "half_on_success": false }
+    "save": {
+      "stat": "WIS", "dc": 12, "damage": "1d6", "damage_type": "psychic", "half_on_success": false,
+      "apply_status_effect_on_failure": { "id": "vicious_mockery", "rounds": 1 }
+    }
   },
   "charm_person": {
     "name": "Charm Person",
@@ -245,7 +251,7 @@
   },
   "guiding_bolt": {
     "name": "Guiding Bolt",
-    "description": "You hurl a bolt of light: ranged spell attack for 4d6 radiant damage. (The next-attack-roll-against-the-target-has-advantage rider is GM-adjudicated.)",
+    "description": "You hurl a bolt of light: ranged spell attack for 4d6 radiant damage, and on a hit mystical light marks the target — attack rolls against it have advantage until the end of your next turn. (SRD limits the advantage to the next attack roll — not modeled.)",
     "target": "enemy",
     "spell_level": 1,
     "school": "evocation",
@@ -253,7 +259,10 @@
     "range": "120 feet",
     "duration": "1 round",
     "components": "V, S",
-    "attack": { "stat": "WIS", "proficient": true, "damage": "4d6", "damage_type": "radiant" }
+    "attack": {
+      "stat": "WIS", "proficient": true, "damage": "4d6", "damage_type": "radiant",
+      "apply_status_effect_on_hit": { "id": "guiding_bolt", "rounds": 1 }
+    }
   },
   "hideous_laughter": {
     "name": "Hideous Laughter",
@@ -286,7 +295,7 @@
   },
   "ray_of_sickness": {
     "name": "Ray of Sickness",
-    "description": "A greenish ray: ranged spell attack for 2d8 poison damage. (The poisoned-until-the-end-of-your-next-turn rider is GM-adjudicated.)",
+    "description": "A greenish ray: ranged spell attack for 2d8 poison damage, and on a hit the target is poisoned until the end of your next turn.",
     "target": "enemy",
     "spell_level": 1,
     "school": "necromancy",
@@ -294,7 +303,10 @@
     "range": "60 feet",
     "duration": "Instantaneous",
     "components": "V, S",
-    "attack": { "stat": "INT", "proficient": true, "damage": "2d8", "damage_type": "poison" }
+    "attack": {
+      "stat": "INT", "proficient": true, "damage": "2d8", "damage_type": "poison",
+      "apply_status_effect_on_hit": { "id": "poisoned", "rounds": 1 }
+    }
   },
   "barkskin": {
     "name": "Barkskin",
@@ -392,8 +404,7 @@
     "duration": "Instantaneous",
     "components": "V, S",
     "save": {
-      "stat": "DEX", "dc": 12, "damage": "1d6", "damage_type": "acid",
-      "half_on_success": false,
+      "stat": "DEX", "dc": 12, "damage": "1d6", "damage_type": "acid", "half_on_success": false,
       "area": { "shape": "sphere", "size_ft": 5 }
     }
   },
@@ -492,6 +503,89 @@
       "stat": "DEX", "dc": 12, "damage": "",
       "apply_status_effect_on_failure": { "id": "restrained", "rounds": 10 },
       "area": { "shape": "cube", "size_ft": 20 }
+    }
+  },
+  "poison_spray": {
+    "name": "Poison Spray",
+    "description": "You spray toxic mist at a creature: ranged spell attack for 1d12 poison damage. (Cantrip scaling not modeled.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "necromancy",
+    "casting_time": "action",
+    "range": "30 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "INT", "proficient": true, "damage": "1d12", "damage_type": "poison" }
+  },
+  "sorcerous_burst": {
+    "name": "Sorcerous Burst",
+    "description": "You cast sorcerous energy at a creature: ranged spell attack for 1d8 damage of a type you choose. (Type choice collapsed to fire; the reroll-on-8 rider is not modeled.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "120 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "INT", "proficient": true, "damage": "1d8", "damage_type": "fire" }
+  },
+  "animal_friendship": {
+    "name": "Animal Friendship",
+    "description": "A beast you can see makes a WIS save or is charmed by you. (The beast-only target restriction is GM-adjudicated; the 24-hour duration is combat-scoped like other statuses.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "enchantment",
+    "casting_time": "action",
+    "range": "30 feet",
+    "duration": "24 hours",
+    "components": "V, S, M (a morsel of food)",
+    "save": {
+      "stat": "WIS", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "charmed", "rounds": 10 }
+    }
+  },
+  "color_spray": {
+    "name": "Color Spray",
+    "description": "Flashing light bursts from you: creatures in a 15-foot cone make a CON save or are blinded until the end of your next turn. (Area resolved by engagement cluster — everyone engaged with you, friend or foe.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "illusion",
+    "casting_time": "action",
+    "range": "Self (15-foot cone)",
+    "duration": "Instantaneous",
+    "components": "V, S, M (a pinch of colorful sand)",
+    "save": {
+      "stat": "CON", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "blinded", "rounds": 1 },
+      "area": { "shape": "cone", "size_ft": 15, "emanates_from_caster": true }
+    }
+  },
+  "lesser_restoration": {
+    "name": "Lesser Restoration",
+    "description": "You touch a creature and end one condition on it: blinded, deafened, paralyzed, or poisoned. (The choice collapses to curing all matching active conditions.)",
+    "target": "ally",
+    "spell_level": 2,
+    "school": "abjuration",
+    "casting_time": "bonus_action",
+    "range": "Touch",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "cure_status": {
+      "ids": ["blinded", "deafened", "paralyzed", "poisoned"]
+    }
+  },
+  "protection_from_poison": {
+    "name": "Protection from Poison",
+    "description": "You touch a creature, ending the poisoned condition on it and warding it with resistance to poison damage. (Advantage on saves against poison is GM-adjudicated; the 1-hour duration is combat-scoped like other statuses.)",
+    "target": "ally",
+    "spell_level": 2,
+    "school": "abjuration",
+    "casting_time": "action",
+    "range": "Touch",
+    "duration": "1 hour",
+    "components": "V, S",
+    "cure_status": {
+      "ids": ["poisoned"], "then_apply": { "id": "protection_from_poison", "rounds": 10 }
     }
   }
 }

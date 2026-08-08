@@ -162,20 +162,20 @@ def _validate_use_ability(
                     f"that ability's target kind is \"enemy\", so 'target' "
                     f"must be the ID of a visible enemy entity."
                 )
-    # Out of combat, self/ally abilities are restricted to heal/on_cast
-    # effects (attack/save/auto_damage and concentration need a live
-    # CombatState).  Enemy-targeted abilities skip this check: they
+    # Out of combat, self/ally abilities are restricted to heal/on_cast/
+    # cure_status effects (attack/save/auto_damage and concentration need
+    # a live CombatState).  Enemy-targeted abilities skip this check: they
     # start combat (mirroring interact/attack) and resolve on the
     # player's first combat turn, where the effect_kind is legal.
     if not in_combat and kind != "enemy":
         effect_kind = entry.get("effect_kind")
-        if effect_kind not in ("heal", "on_cast"):
+        if effect_kind not in ("heal", "on_cast", "cure_status"):
             return (
                 f"Invalid ability_id '{action.ability_id}' outside combat: "
                 f"'{action.ability_id}' has a {effect_kind} effect, which needs "
-                f"a combatant to resolve against. Outside combat only healing "
-                f"and on-cast (buff) abilities work; attack/save effects "
-                f"require starting combat first."
+                f"a combatant to resolve against. Outside combat only healing, "
+                f"on-cast (buff), and cure-status abilities work; attack/save "
+                f"effects require starting combat first."
             )
         if entry.get("concentration"):
             return (

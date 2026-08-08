@@ -155,6 +155,10 @@ def format_combat_prefix(
 
                 # On-hit effect summaries
                 for eh in entry.get("on_hit_effects") or []:
+                    if "status_effect" in eh and "save_stat" not in eh:
+                        # On-hit status rider (e.g. Ray of Sickness' poisoned).
+                        summaries.append(f"**{target_name} gains {eh['status_effect']}.**")
+                        continue
                     save_stat = eh.get("save_stat", "?")
                     save_success = eh.get("save_success")
                     eh_damage = eh.get("damage", 0)
@@ -257,6 +261,22 @@ def format_combat_prefix(
                 tgt = "you" if target == "player" else _entity_name(target, corpus)
                 summaries.append(
                     f"**{caster} {_conjugate(caster, 'use')} {abil} on {tgt}: healed {healed} HP.**"
+                )
+        elif action == "cure_status":
+            caster = "You" if actor == "player" else _entity_name(actor, corpus)
+            abil = entry.get("attack_name") or "an ability"
+            oh = (entry.get("on_hit_effects") or [{}])[0]
+            cured = oh.get("cured") or []
+            parts = [f"cured {', '.join(cured)}" if cured else "no conditions to cure"]
+            if oh.get("status_effect"):
+                parts.append(f"gains {oh['status_effect']}")
+            outcome = "; ".join(parts)
+            if target == actor:
+                summaries.append(f"**{caster} {_conjugate(caster, 'use')} {abil}: {outcome}.**")
+            else:
+                tgt = "you" if target == "player" else _entity_name(target, corpus)
+                summaries.append(
+                    f"**{caster} {_conjugate(caster, 'use')} {abil} on {tgt}: {outcome}.**"
                 )
         elif action == "reinforcement":
             # A new enemy merged into the ongoing fight.

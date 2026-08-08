@@ -591,11 +591,14 @@ class AbilityAttack(BaseModel):
     Player casters roll with the named ability score's modifier (plus
     proficiency bonus when ``proficient``); NPC casters use their combat
     block's ``atk`` bonus instead (NPCs have no ability scores).
+    ``apply_status_effect_on_hit`` applies a status to the target on a
+    hit (Ray of Sickness' poisoned, Chill Touch's no-healing).
     """
     stat: str
     proficient: bool = True
     damage: str
     damage_type: str = ""
+    apply_status_effect_on_hit: ApplyStatusEffect | None = None
 
 
 class AreaOfEffect(BaseModel):
@@ -637,13 +640,26 @@ class AbilityAutoDamage(BaseModel):
     damage_type: str
 
 
+class CureStatusEffect(BaseModel):
+    """End status conditions on the target (e.g. Lesser Restoration).
+
+    Every active status on the target whose ID is in ``ids`` is removed
+    (the SRD's "end one condition" choice is collapsed to curing all
+    matching conditions).  ``then_apply`` optionally applies a status
+    afterwards (Protection from Poison's lingering ward).
+    """
+    ids: list[str]
+    then_apply: ApplyStatusEffect | None = None
+
+
 class Ability(BaseModel):
     """A named combat ability (spell, class feature, monster power).
 
     Exactly one effect: ``attack`` (attack roll), ``save`` (target saves),
-    ``heal`` (dice expression), ``auto_damage`` (no roll, no save), or
-    ``on_cast`` (apply a status effect to the target).  ``uses_per_combat``
-    of -1 means unlimited use (cantrip-style).
+    ``heal`` (dice expression), ``auto_damage`` (no roll, no save),
+    ``on_cast`` (apply a status effect to the target), or
+    ``cure_status`` (end status conditions on the target).
+    ``uses_per_combat`` of -1 means unlimited use (cantrip-style).
 
     The ``spell_*``/school/concentration/… fields mark the ability as a
     spell: ``spell_level`` of ``None`` (default) means "not a spell",
@@ -659,6 +675,7 @@ class Ability(BaseModel):
     heal: str = ""
     auto_damage: AbilityAutoDamage | None = None
     on_cast: ApplyStatusEffect | None = None
+    cure_status: CureStatusEffect | None = None
     # Spell metadata (all default to "not a spell").  ``spell_level``
     # drives slot consumption and DC/attack-bonus derivation in combat;
     # the rest are data/flavor until later spellcasting phases.
@@ -683,14 +700,17 @@ class Ability(BaseModel):
             bool(self.heal),
             self.auto_damage is not None,
             self.on_cast is not None,
+            self.cure_status is not None,
         ])
         if kinds != 1:
             raise ValueError(
                 "Ability must have exactly one effect: attack, save, heal, "
-                "auto_damage, or on_cast"
+                "auto_damage, on_cast, or cure_status"
             )
         if self.heal and self.target == "enemy":
             raise ValueError("heal abilities must target self or ally")
+        if self.cure_status is not None and self.target == "enemy":
+            raise ValueError("cure_status abilities must target self or ally")
         return self
 
     def effect_summary(self) -> str:
@@ -706,7 +726,11 @@ class Ability(BaseModel):
             prefix += ": "
         if self.attack is not None:
             dtype = f" {self.attack.damage_type}" if self.attack.damage_type else ""
-            return prefix + f"attack ({self.attack.stat}) for {self.attack.damage}{dtype} damage"
+            summary = f"attack ({self.attack.stat}) for {self.attack.damage}{dtype} damage"
+            rider = self.attack.apply_status_effect_on_hit
+            if rider is not None:
+                summary += f", on hit applies status '{rider.id}'"
+            return prefix + summary
         if self.save is not None:
             half = ", half on success" if self.save.half_on_success else ""
             dmg = f"{self.save.damage} damage" if self.save.damage else "no damage"
@@ -721,6 +745,11 @@ class Ability(BaseModel):
             return prefix + f"{self.auto_damage.damage}{dtype} damage (no attack roll or save)"
         if self.on_cast is not None:
             return prefix + f"applies status '{self.on_cast.id}'"
+        if self.cure_status is not None:
+            summary = f"cures statuses: {', '.join(self.cure_status.ids)}"
+            if self.cure_status.then_apply is not None:
+                summary += f", then applies '{self.cure_status.then_apply.id}'"
+            return prefix + summary
         return prefix + f"heals {self.heal}"
 
 

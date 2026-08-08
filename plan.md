@@ -275,11 +275,12 @@ effective = {**ENGINE_DEFAULTS, **corpus_entries}   # corpus entry replaces defa
      `concentration`, etc. — SRD spell *names* and short mechanical
      summaries only; full prose descriptions are large and mostly
      irrelevant to the engine, which needs mechanical parameters plus a
-     one-line flavor blurb for the GM briefing.  The pack ships 36
-     spells (10 cantrips, 26 leveled: the original 7 plus the Tier 1/2
-     expansion and the Tier 3 area spells, which resolve by
-     engagement-cluster targeting — see `srd-spells-plan.md` for the
-     catalog and the remaining engine-work backlog).
+     one-line flavor blurb for the GM briefing.  The pack ships 42
+     spells (12 cantrips, 30 leveled: the original 7 plus the Tier 1/2
+     expansion, the Tier 3 area spells (engagement-cluster targeting),
+     and the drop-in / cure-status / attack-rider batch — see
+     `srd-spells-plan.md` for the catalog and the remaining
+     engine-work backlog).
    - **Phase D — monsters (optional).** SRD stat blocks as
      `CombatBlock` templates. Lower value: encounters are usually
      adventure-specific, but common mobs (goblin, skeleton, wolf)

@@ -84,6 +84,10 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
             dmg_str = f" for {damage} damage{crit_str}{mit_str}" if damage is not None else ""
             lines = [f"**{name} {target_name}: hit{dmg_str}.**"]
             for eh in entry.get("on_hit_effects") or []:
+                if "status_effect" in eh and "save_stat" not in eh:
+                    # On-hit status rider (e.g. Ray of Sickness' poisoned).
+                    lines.append(f"**{target_name} gains {eh['status_effect']}.**")
+                    continue
                 save_stat = eh.get("save_stat", "?")
                 save_success = eh.get("save_success")
                 eh_damage = eh.get("damage", 0)
@@ -183,6 +187,20 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
             f"**{caster} {_conjugate(caster, 'use')} {abil} on {tgt}: "
             f"healed {healed} HP.**"
         )
+
+    if action == "cure_status":
+        caster = "You" if actor == "player" else _entity_name(actor, corpus)
+        abil = entry.get("attack_name") or "an ability"
+        oh = (entry.get("on_hit_effects") or [{}])[0]
+        cured = oh.get("cured") or []
+        parts = [f"cured {', '.join(cured)}" if cured else "no conditions to cure"]
+        if oh.get("status_effect"):
+            parts.append(f"gains {oh['status_effect']}")
+        outcome = "; ".join(parts)
+        if target == actor:
+            return f"**{caster} {_conjugate(caster, 'use')} {abil}: {outcome}.**"
+        tgt = "you" if target == "player" else _entity_name(target, corpus)
+        return f"**{caster} {_conjugate(caster, 'use')} {abil} on {tgt}: {outcome}.**"
 
     if action == "reinforcement":
         # A new enemy merged into the ongoing fight.

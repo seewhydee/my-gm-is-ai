@@ -1,7 +1,7 @@
 # SRD 5e Data-Pack Manifest
 This file is **auto-generated** by `scripts/generate_datapack_manifest.py`.  Do not edit by hand.
 Adventure-module authors can reference any ID listed below in their corpus, rooms, inventories, and character sheets without re-defining the item.  The engine pulls the full definition from its built-in data pack.
-**55 gear items**, **26 conditions**, and **36 spells** are currently available.
+**55 gear items**, **30 conditions**, and **42 spells** are currently available.
 ---
 ## Gear
 Each ID below is a valid reference for items, equipment, and consumables.
@@ -131,6 +131,10 @@ Each ID below is a valid reference for status effects and the `status_effects` b
 | `stunned` | Stunned |
 | `unconscious` | Unconscious |
 | `dodging` | Dodging |
+| `no_healing` | No Healing |
+| `guiding_bolt` | Guiding Bolt |
+| `vicious_mockery` | Vicious Mockery |
+| `protection_from_poison` | Protection from Poison |
 
 ### Exhaustion Levels
 
@@ -159,6 +163,8 @@ Each ID below is a valid reference in the corpus `abilities` block and in player
 | `starry_wisp` | Starry Wisp |
 | `vicious_mockery` | Vicious Mockery |
 | `acid_splash` | Acid Splash |
+| `poison_spray` | Poison Spray |
+| `sorcerous_burst` | Sorcerous Burst |
 
 ### Leveled Spells
 
@@ -190,3 +196,7 @@ Each ID below is a valid reference in the corpus `abilities` block and in player
 | `shatter` | Shatter |
 | `thunderwave` | Thunderwave |
 | `web` | Web |
+| `animal_friendship` | Animal Friendship |
+| `color_spray` | Color Spray |
+| `lesser_restoration` | Lesser Restoration |
+| `protection_from_poison` | Protection from Poison |

@@ -114,9 +114,22 @@ class FiveESystem(ResolutionSystem):
         corpus: ModuleCorpus,
     ) -> tuple[int, str | None]:
         """5e resistance (half, rounded down), vulnerability (double),
-        immunity (zero).  Applied to NPC targets; the player has no
-        damage-type modifiers yet (no-op hook for a future phase)."""
-        if not damage_type or target_id == "player":
+        immunity (zero).  NPC targets use their combat block's lists; any
+        target (including the player) can gain resistance from a status
+        effect's ``damage_resistance`` key (e.g. Protection from
+        Poison)."""
+        if not damage_type:
+            return damage, None
+        # Status-granted resistance applies to player and NPCs alike.
+        effect_defs = corpus.effective_status_effects()
+        if any(
+            damage_type
+            in (effect_defs[c].system_effects.get("5e", {}).get("damage_resistance") or [])
+            for c in get_status_effects(target_id, hard)
+            if c in effect_defs
+        ):
+            return damage // 2, "resisted"
+        if target_id == "player":
             return damage, None
         entity = corpus.entities.get(target_id)
         cb = entity.combat if entity else None
@@ -579,6 +592,13 @@ class FiveESystem(ResolutionSystem):
             for c in status_effects
             if c in effect_defs
         )
+
+    def blocks_healing(
+        self, status_effects: dict, corpus: ModuleCorpus
+    ) -> bool:
+        """5e: any active status effect with the ``no_healing`` key
+        (e.g. Chill Touch's rider) prevents regaining HP."""
+        return self._has_system_effect(status_effects, corpus, "no_healing")
 
     def check_roll_mods(
         self, is_save: bool, status_effects: dict, corpus: ModuleCorpus

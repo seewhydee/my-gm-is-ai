@@ -66,6 +66,9 @@ SRD_SPELL_IDS = {
     # Area spells (Tier 3, engagement-cluster targeting).
     "acid_splash", "burning_hands", "entangle", "grease", "shatter",
     "thunderwave", "web",
+    # Drop-in additions + cure-status shape (Lesser Restoration pattern).
+    "poison_spray", "sorcerous_burst", "animal_friendship", "color_spray",
+    "lesser_restoration", "protection_from_poison",
 }
 
 
@@ -332,6 +335,73 @@ class TestSpellsPack:
         assert thunderwave.save is not None
         assert thunderwave.save.area is not None
         assert thunderwave.save.area.emanates_from_caster is True
+
+        # Drop-in additions.
+        poison_spray = DEFAULT_SPELLS["poison_spray"]
+        assert poison_spray.attack is not None
+        assert poison_spray.attack.damage == "1d12"
+        assert poison_spray.attack.damage_type == "poison"
+
+        animal_friendship = DEFAULT_SPELLS["animal_friendship"]
+        assert animal_friendship.save is not None
+        af_rider = animal_friendship.save.apply_status_effect_on_failure
+        assert af_rider is not None and af_rider.id == "charmed"
+
+        color_spray = DEFAULT_SPELLS["color_spray"]
+        assert color_spray.save is not None and color_spray.save.stat == "CON"
+        cs_rider = color_spray.save.apply_status_effect_on_failure
+        assert cs_rider is not None and cs_rider.id == "blinded"
+        assert color_spray.save.area is not None
+        assert color_spray.save.area.emanates_from_caster is True
+
+        # Cure-status shape: Lesser Restoration cures, Protection from
+        # Poison cures and then applies a warding status.
+        lesser = DEFAULT_SPELLS["lesser_restoration"]
+        assert lesser.casting_time == "bonus_action"
+        assert lesser.cure_status is not None
+        assert set(lesser.cure_status.ids) == {
+            "blinded", "deafened", "paralyzed", "poisoned",
+        }
+
+        prot = DEFAULT_SPELLS["protection_from_poison"]
+        assert prot.cure_status is not None
+        assert prot.cure_status.ids == ["poisoned"]
+        assert prot.cure_status.then_apply is not None
+        assert prot.cure_status.then_apply.id == "protection_from_poison"
+
+        # Attack on-hit riders on the retrofitted spells.
+        chill_touch = DEFAULT_SPELLS["chill_touch"]
+        assert chill_touch.attack is not None
+        ct_rider = chill_touch.attack.apply_status_effect_on_hit
+        assert ct_rider is not None and ct_rider.id == "no_healing"
+
+        ray_of_sickness = DEFAULT_SPELLS["ray_of_sickness"]
+        assert ray_of_sickness.attack is not None
+        ros_rider = ray_of_sickness.attack.apply_status_effect_on_hit
+        assert ros_rider is not None and ros_rider.id == "poisoned"
+
+        guiding_bolt = DEFAULT_SPELLS["guiding_bolt"]
+        assert guiding_bolt.attack is not None
+        gb_rider = guiding_bolt.attack.apply_status_effect_on_hit
+        assert gb_rider is not None and gb_rider.id == "guiding_bolt"
+
+        vicious_mockery = DEFAULT_SPELLS["vicious_mockery"]
+        assert vicious_mockery.save is not None
+        vm_rider = vicious_mockery.save.apply_status_effect_on_failure
+        assert vm_rider is not None and vm_rider.id == "vicious_mockery"
+
+    def test_rider_and_cure_conditions_in_pack(self) -> None:
+        no_healing = DEFAULT_STATUS_EFFECTS["no_healing"]
+        assert no_healing.system_effects["5e"]["no_healing"] is True
+
+        guiding_bolt = DEFAULT_STATUS_EFFECTS["guiding_bolt"]
+        assert guiding_bolt.system_effects["5e"]["advantage_against"] is True
+
+        vicious_mockery = DEFAULT_STATUS_EFFECTS["vicious_mockery"]
+        assert vicious_mockery.system_effects["5e"]["disadvantage_on_attack"] is True
+
+        prot = DEFAULT_STATUS_EFFECTS["protection_from_poison"]
+        assert prot.system_effects["5e"]["damage_resistance"] == ["poison"]
 
     def test_mage_armor_condition_in_pack(self) -> None:
         cond = DEFAULT_STATUS_EFFECTS["mage_armor"]

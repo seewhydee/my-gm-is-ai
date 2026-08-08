@@ -26,6 +26,7 @@ from mgmai.engine.combat import (
     get_player_max_hp,
     resolve_combat_enemies,
     resolve_combat_turn,
+    resolve_out_of_combat_ability,
     roll_damage,
     roll_initiative,
 )
@@ -3745,6 +3746,266 @@ class TestAreaSaveAbilities:
         assert result["success"]
         assert self._save_entries(result) == []
         assert area_hard.combat.ability_uses["player"]["flame_burst"] == 1
+
+
+# ------------------------------------------------------------------
+# 20c. Cure-status abilities and attack on-hit riders
+# ------------------------------------------------------------------
+
+class TestCureStatusAndRiders:
+    """cure_status abilities (Lesser Restoration pattern) and attack
+    on-hit status riders (Ray of Sickness pattern), including the
+    no_healing and damage_resistance system-effect keys they rely on."""
+
+    @pytest.fixture
+    def cure_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Cure Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1", "description": "A room.",
+                    "contains": ["goblin", "korbar"],
+                },
+            },
+            "abilities": {
+                "sick_ray": {
+                    "name": "Sick Ray",
+                    "description": "A greenish ray.",
+                    "target": "enemy",
+                    "uses_per_combat": -1,
+                    "attack": {
+                        "stat": "INT", "proficient": True,
+                        "damage": "1d8", "damage_type": "poison",
+                        # rounds 2 so the status survives the target's own
+                        # turn-start tick within the test turn.
+                        "apply_status_effect_on_hit": {
+                            "id": "poisoned", "rounds": 2,
+                        },
+                    },
+                },
+                "cure_wounds": {
+                    "name": "Cure Wounds",
+                    "description": "Healing light.",
+                    "target": "ally",
+                    "uses_per_combat": -1,
+                    "heal": "1d8+2",
+                },
+                "restoration": {
+                    "name": "Restoration",
+                    "description": "End afflictions.",
+                    "target": "ally",
+                    "uses_per_combat": -1,
+                    "cure_status": {"ids": ["paralyzed", "poisoned"]},
+                },
+                "ward": {
+                    "name": "Ward",
+                    "description": "Cure poison and ward against it.",
+                    "target": "ally",
+                    "uses_per_combat": -1,
+                    "cure_status": {
+                        "ids": ["poisoned"],
+                        "then_apply": {
+                            "id": "protection_from_poison", "rounds": 5,
+                        },
+                    },
+                },
+            },
+            "entities": {
+                "goblin": {
+                    "type": "npc",
+                    "description": "A goblin.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 30, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                },
+                "korbar": {
+                    "type": "npc",
+                    "name": "Korbar",
+                    "description": "A stout ally.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 20, "ac": 12, "atk": 3, "dmg": "1d6+1"},
+                },
+            },
+        })
+
+    @pytest.fixture
+    def cure_hard(self, combat_hard_state) -> HardGameState:
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.abilities = ["sick_ray", "cure_wounds", "restoration", "ward"]
+        hard.entity_states = {
+            "goblin": {"alive": True, "current_hp": 30},
+            "korbar": {"alive": True, "current_hp": 20},
+        }
+        hard.room_contains = {"room1": {"goblin": 1, "korbar": 1}}
+        return hard
+
+    def _combat_state(self, hard, allies=(), order=None):
+        if order is None:
+            order = ["player", "korbar", "goblin"]
+        hard.combat = CombatState(
+            active=True,
+            combatants=list(order),
+            allies=list(allies),
+            initiative_order=list(order),
+            current_index=0,
+            round_number=1,
+        )
+
+    def _ability(self, ability_id, target):
+        return UseAbilityAction(
+            action_type="use_ability",
+            ability_id=ability_id, target=target, detail="Use an ability!",
+        )
+
+    # -- cure_status -------------------------------------------------
+
+    def test_cure_removes_matching_conditions_only(
+        self, cure_hard, cure_corpus, monkeypatch
+    ):
+        self._combat_state(cure_hard, allies=["korbar"])
+        cure_hard.entity_states["korbar"]["status_effects"] = {
+            "poisoned": 3, "paralyzed": 2, "charmed": 4,
+        }
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        result = resolve_combat_turn(
+            self._ability("restoration", "korbar"), cure_hard, cure_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.action == "cure_status"
+        assert entry.on_hit_effects[0]["cured"] == ["paralyzed", "poisoned"]
+        remaining = cure_hard.entity_states["korbar"].get("status_effects", {})
+        assert "poisoned" not in remaining
+        assert "paralyzed" not in remaining
+        assert "charmed" in remaining  # not in the cure list
+
+    def test_cure_then_apply_grants_status(
+        self, cure_hard, cure_corpus, monkeypatch
+    ):
+        self._combat_state(cure_hard, allies=["korbar"])
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        result = resolve_combat_turn(
+            self._ability("ward", "korbar"), cure_hard, cure_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.on_hit_effects[0] == {
+            "cured": [], "status_effect": "protection_from_poison",
+        }
+        remaining = cure_hard.entity_states["korbar"].get("status_effects", {})
+        assert "protection_from_poison" in remaining
+
+    def test_cure_out_of_combat(self, cure_hard, cure_corpus):
+        cure_hard.player.status_effects = {"poisoned": 3}
+        result = resolve_out_of_combat_ability(
+            self._ability("restoration", "player"), cure_hard, cure_corpus
+        )
+        assert result["success"]
+        assert "poisoned" not in cure_hard.player.status_effects
+
+    def test_cure_status_rejects_enemy_target(self):
+        with pytest.raises(ValueError, match="self or ally"):
+            ModuleCorpus.model_validate({
+                "adventure": {"title": "T", "introduction": "T."},
+                "rooms": {"r": {"name": "R", "description": "R."}},
+                "abilities": {
+                    "bad": {
+                        "name": "Bad", "target": "enemy",
+                        "cure_status": {"ids": ["poisoned"]},
+                    },
+                },
+            })
+
+    # -- attack on-hit riders -----------------------------------------
+
+    def test_attack_rider_applies_on_hit(
+        self, cure_hard, cure_corpus, monkeypatch
+    ):
+        self._combat_state(cure_hard)
+        # 15+2=17 vs AC 12 hits; everything after lands on 5 (the goblin's
+        # poisoned attack rolls twice for disadvantage).
+        rand_vals = iter([15] + [5] * 20)
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sick_ray", "goblin"), cure_hard, cure_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.hit is True
+        assert entry.on_hit_effects == [{"status_effect": "poisoned"}]
+        assert "poisoned" in cure_hard.entity_states["goblin"].get(
+            "status_effects", {}
+        )
+
+    def test_attack_rider_skipped_on_miss(
+        self, cure_hard, cure_corpus, monkeypatch
+    ):
+        self._combat_state(cure_hard)
+        rand_vals = iter([5, 5, 5])  # 5+2=7 < AC 12: miss
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sick_ray", "goblin"), cure_hard, cure_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.hit is False
+        assert entry.on_hit_effects == []
+        assert "status_effects" not in cure_hard.entity_states["goblin"]
+
+    def test_attack_rider_skipped_when_target_dies(
+        self, cure_hard, cure_corpus, monkeypatch
+    ):
+        self._combat_state(cure_hard)
+        cure_hard.entity_states["goblin"]["current_hp"] = 5
+        rand_vals = iter([15, 8, 5, 5])  # hit for 8 -> goblin dies
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sick_ray", "goblin"), cure_hard, cure_corpus
+        )
+        assert result["success"]
+        assert result["hard_changes"].entity_state_changes["goblin"]["alive"] is False
+        assert "status_effects" not in cure_hard.entity_states["goblin"]
+
+    # -- the system-effect keys the riders rely on ---------------------
+
+    def test_no_healing_blocks_heal_abilities(
+        self, cure_hard, cure_corpus, monkeypatch
+    ):
+        self._combat_state(cure_hard)
+        cure_hard.player.current_hp = 4
+        cure_hard.player.status_effects = {"no_healing": 2}
+        rand_vals = iter([6, 5, 5])  # heal 6+2 blocked; korbar/goblin miss
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("cure_wounds", "player"), cure_hard, cure_corpus
+        )
+        assert result["success"]
+        entry = result["combat_log"][0]
+        assert entry.action == "heal"
+        assert entry.damage == 0
+        assert not result["hard_changes"].player_hp_delta
+
+    def test_status_granted_damage_resistance(
+        self, cure_hard, cure_corpus, monkeypatch
+    ):
+        self._combat_state(cure_hard)
+        cure_hard.entity_states["goblin"]["status_effects"] = {
+            "protection_from_poison": 5,
+        }
+        rand_vals = iter([15] + [5] * 20)  # hit; 5 poison halved to 2
+        monkeypatch.setattr(random, "randint", lambda a, b: next(rand_vals))
+        result = resolve_combat_turn(
+            self._ability("sick_ray", "goblin"), cure_hard, cure_corpus
+        )
+        entry = result["combat_log"][0]
+        assert entry.hit is True
+        assert entry.damage == 2
+        assert entry.mitigation == "resisted"
 
 
 # ------------------------------------------------------------------
