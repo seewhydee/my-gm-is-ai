@@ -250,6 +250,7 @@ def _update_index(
         "overall_score": judge.get("overall_score"),
         "aborted": summary.get("aborted", data.get("aborted", False)),
         "error": payload.get("error"),
+        "warnings": summary.get("warnings") or [],
     }
     entries = [
         e for e in index.get(scenario_name, [])
@@ -390,9 +391,19 @@ def summarize_scenario(result_or_dict: Any) -> dict[str, Any]:
     for t in turns:
         for entry in t.get("combat_log") or []:
             action = entry.get("action")
+            # "use_item" is the legacy action name (old artifacts);
+            # consumables now resolve via InteractAction, with the
+            # entry's target_is_item flag distinguishing a carried item
+            # (potion, antidote) from a room feature (lever, cage).
             if action == "use_item":
                 if entry.get("target"):
                     items.add(entry["target"])
+            elif (
+                action == "interact"
+                and entry.get("target_is_item")
+                and entry.get("target")
+            ):
+                items.add(entry["target"])
             elif action == "death":
                 outcomes[entry.get("actor")] = "dead"
             elif action == "flee":
@@ -411,6 +422,7 @@ def summarize_scenario(result_or_dict: Any) -> dict[str, Any]:
         "aborted": bool(_get(data, "aborted", False)),
         "abort_reason": _get(data, "abort_reason"),
         "error": error,
+        "warnings": list(_get(data, "warnings") or []),
         "game_over": last.get("game_over", False),
         "game_over_type": last.get("game_over_type"),
         "player_hp": last_status.get("player_hp"),
@@ -464,5 +476,6 @@ def summarize_indicator(result_or_dict: Any) -> dict[str, Any]:
         "final_narration_len": len(final),
         "leftover_markers": final.count("[MECH:"),
         "error": error,
+        "warnings": list(_get(data, "warnings") or []),
         "judge": judge_digest(judge_block),
     }

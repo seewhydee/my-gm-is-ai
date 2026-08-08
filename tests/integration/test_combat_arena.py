@@ -25,10 +25,9 @@ the artifact (it does not gate the test).
 
 from __future__ import annotations
 
-import warnings
-
 import pytest
 
+from tests.integration.helpers import record_warning
 from tests.integration.judge import record_judge_verdict
 from tests.integration.runner import ScenarioResult, run_scenario
 
@@ -417,7 +416,8 @@ def test_consumable_ability_scenario(
         and entry.get("target") == "potion_of_healing"
     }
     if not potion_rounds:
-        warnings.warn(
+        record_warning(
+            result,
             "Driver did not use a healing potion (HP may not have dropped "
             "low enough); see artifact: " + str(result.artifacts_path),
             stacklevel=2,
@@ -540,7 +540,8 @@ def test_ally_death_scenario(
             "Korbar has a 'death' combat-log entry but is alive in entity "
             f"state; see artifact: {result.artifacts_path}"
         )
-        warnings.warn(
+        record_warning(
+            result,
             "Korbar survived at 1 HP/AC 1; follower-KO path not exercised "
             "this run", stacklevel=2,
         )

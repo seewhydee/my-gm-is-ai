@@ -31,11 +31,13 @@ the path was exercised at all, and emit warnings when it wasn't.
 
 from __future__ import annotations
 
-import warnings
-
 import pytest
 
-from tests.integration.helpers import assert_combat_concluded, combat_log_entries
+from tests.integration.helpers import (
+    assert_combat_concluded,
+    combat_log_entries,
+    record_warning,
+)
 from tests.integration.judge import record_judge_verdict
 from tests.integration.runner import run_scenario
 from tests.integration.test_combat_arena import _stop_when_combat_ended
@@ -114,41 +116,75 @@ def test_poisoned_and_cured(
 
     # Every viper hit carries the CON-save poison on-hit effect — except
     # the killing blow: the engine skips on-hit effects once the player
-    # is dead (poisoning a corpse is pointless).
-    failed_save = False
-    for e in viper_hits:
-        effects = e.get("on_hit_effects") or []
-        if not effects and (e.get("remaining_hp") or 0) <= 0:
-            continue
-        assert effects, (
-            "Viper hit without on_hit_effects; see artifact: "
-            f"{result.artifacts_path}"
-        )
-        for fx in effects:
-            assert fx.get("save_stat") == "CON" and fx.get("damage_type") == "poison", (
-                f"Unexpected on-hit effect {fx!r}; see artifact: "
+    # is dead (poisoning a corpse is pointless).  Only hits ON THE PLAYER
+    # are scanned: on-hit effects resolve exclusively against the player
+    # (combat.py: they reference player stats and saves), so a hit on
+    # Willa legitimately carries none.
+    failed_save_turn: int | None = None
+    for ti, t in enumerate(result.turns):
+        for e in t.combat_log:
+            if (
+                e.get("actor") != "pit_viper"
+                or e.get("action") != "attack"
+                or not e.get("hit")
+                or e.get("target") not in (None, "player")
+            ):
+                continue
+            effects = e.get("on_hit_effects") or []
+            if not effects and (e.get("remaining_hp") or 0) <= 0:
+                continue
+            assert effects, (
+                "Viper hit without on_hit_effects; see artifact: "
                 f"{result.artifacts_path}"
             )
-            if fx.get("save_success") is False:
-                failed_save = True
+            for fx in effects:
+                assert (
+                    fx.get("save_stat") == "CON" and fx.get("damage_type") == "poison"
+                ), (
+                    f"Unexpected on-hit effect {fx!r}; see artifact: "
+                    f"{result.artifacts_path}"
+                )
+                if fx.get("save_success") is False and failed_save_turn is None:
+                    failed_save_turn = ti
 
     # If a save was failed, the player was poisoned and the driver was
-    # told to drink an antidote.
-    if failed_save:
+    # told to drink an antidote on its next turn.  A mid-combat drink
+    # logs a player 'interact' entry targeting the antidote (potions
+    # and other consumables resolve via InteractAction; 'use_item' is
+    # the legacy action name).
+    if failed_save_turn is not None:
         has_antidote = any(
             e.get("target") == "antidote"
-            for e in combat_log_entries(result, actor="player", action="use_item")
+            for e in combat_log_entries(result, actor="player", action="interact")
         )
         if not has_antidote:
-            warnings.warn(
-                "Player was poisoned but no 'use_item' combat-log entry "
-                "for antidote was found (items are now used via "
-                "InteractAction, which does not produce combat-log "
-                "entries); see artifact: " + str(result.artifacts_path),
+            # The antidote can only be demanded if the player survived
+            # to take another turn with the fight still ongoing — a
+            # poison hit that kills the player leaves no chance, and a
+            # turn that ends combat (killing the viper) makes the
+            # combat-scoped poison moot.  Anything else means the
+            # driver ignored the directive: hard failure.
+            actionable_turn_after = any(
+                (t.status.player_hp or 0) > 0
+                and t.status.in_combat
+                and any(e.get("actor") == "player" for e in t.combat_log)
+                for t in result.turns[failed_save_turn + 1:]
+            )
+            assert not actionable_turn_after, (
+                "Player was poisoned but never drank an antidote (no "
+                "player 'interact' entry targeting antidote); "
+                f"see artifact: {result.artifacts_path}"
+            )
+            record_warning(
+                result,
+                "Player was poisoned but never got an actionable turn "
+                "(died, or combat ended first); antidote path untested "
+                f"this run; see artifact: {result.artifacts_path}",
                 stacklevel=2,
             )
     else:
-        warnings.warn(
+        record_warning(
+            result,
             "Player never failed a poison save; antidote path untested "
             f"this run; see artifact: {result.artifacts_path}",
             stacklevel=2,
@@ -246,13 +282,15 @@ def test_multiattack_and_stun(
     ) if failed_turn is not None else False
 
     if failed_turn is None:
-        warnings.warn(
+        record_warning(
+            result,
             "Player never failed a tentacle save; stun path untested "
             f"this run; see artifact: {result.artifacts_path}",
             stacklevel=2,
         )
     elif failed_turn == len(result.turns) - 1:
-        warnings.warn(
+        record_warning(
+            result,
             "Stun applied on the final turn; no later turn to observe "
             f"the lost turn; see artifact: {result.artifacts_path}",
             stacklevel=2,
@@ -430,7 +468,8 @@ def test_player_abilities(
             f"with Healing Hands; see artifact: {result.artifacts_path}"
         )
     else:
-        warnings.warn(
+        record_warning(
+            result,
             "Willa never dropped below half HP; Healing Hands path "
             f"untested this run; see artifact: {result.artifacts_path}",
             stacklevel=2,

@@ -66,6 +66,11 @@ class ScenarioResult:
     error_traceback: str | None = None
     aborted: bool = False
     abort_reason: str | None = None
+    # Non-fatal findings from the test's warn-don't-fail convention
+    # (RNG-gated paths that were not exercised this run).  Appended by
+    # tests/integration/helpers.record_warning and finalized in the
+    # artifact by the post-judge rewrite.
+    warnings: list[str] = field(default_factory=list)
     # Write-path state, set by run_scenario so rewrite_artifact() can
     # re-emit through write_artifact (keeping index.json current).
     _artifacts_dir: Path | None = None
@@ -97,6 +102,7 @@ class ScenarioResult:
                 "final_status": self.final_status,
                 "aborted": self.aborted,
                 "abort_reason": self.abort_reason,
+                "warnings": list(self.warnings),
             },
             "error": (
                 f"{type(self.error).__name__}: {self.error}"

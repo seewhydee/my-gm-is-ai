@@ -29,7 +29,7 @@ You MUST output a single JSON object with the following structure.
 | `action_type` | string | One of: `move`, `examine`, `interact`, `talk`, `transfer`, `gear`, `combat`, `use_ability`, `rest`, `wait`, `ooc_discussion` |
 | `detail` | string | Natural-language description of what the player attempts |
 | `follow_up` | string\|null | If player described a chained action, put the rest here (omit or null otherwise) |
-| `soft_state_patches` | array | Soft state changes (see below). Empty array if none. |
+| `soft_state_patches` | array | Soft state changes (see below). Omit (or empty array) if none. |
 
 Each `action_type` may support additional (required or optional) fields. The different actions, and their additional fields, are explained below.
 
@@ -71,6 +71,8 @@ The generic `attack` interaction is deliberate physical violence: against a defe
 - `interaction_id` (string, required): An interaction ID from target's `interactions_available`.
 - `using` (string, optional): Item used to aid the interaction (must be in inventory or equipped)
 - `interaction_cost` (string, optional, default `"action"`): `"action"` (the Utilize action — consumes the player's action in combat) or `"free"` (the player's one free object interaction per turn). Use `"free"` only for a genuinely simple object interaction (opening a door, drawing a torch). At most one free interaction per turn. Potions and other `usable_items` always require an action — never tag them `"free"`.
+
+Consuming a carried item (drinking a potion, eating a ration) typically uses the ITEM's own ID as `target`, utilizing the interaction ID defined on that item, without any `using` slot.
 
 **talk** — Talk to an NPC.
 
@@ -174,7 +176,7 @@ For entity IDs, remember to use verbatim from the briefing; do not invent your o
 Example — briefing shows `rubbish_pile.contains = [{"id":"rusty_sword", "name":"Rusty Sword", "count":1, ...}]`:
 
 Input: "I pull the sword free from the pile"
-Output: `{"action_type": "transfer", "target": "rubbish_pile", "taken_items": ["rusty_sword"], "detail": "Player pulls the rusty sword free from the rubbish pile", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "rubbish_pile", "taken_items": ["rusty_sword"], "detail": "Player pulls the rusty sword free from the rubbish pile"}`
 
 ## Soft Items
 
@@ -238,36 +240,39 @@ If the player picks up an object as an improvised weapon, or wields a carried so
 ## Examples
 
 Input: "I go north"
-Output: `{"action_type": "move", "target": "exit_north", "detail": "Player heads north through the doorway", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "move", "target": "exit_north", "detail": "Player heads north through the doorway"}`
 
 Input: "I search the room thoroughly"
-Output: `{"action_type": "examine", "target": "current_room", "rigorous": true, "detail": "Player conducts a thorough search of the entrance hall", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "examine", "target": "current_room", "rigorous": true, "detail": "Player conducts a thorough search of the entrance hall"}`
 
 Input: "I pick up the rusty key and unlock the padlock"
-Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key", "soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rusty_key"], "detail": "Player picks up the rusty key", "follow_up": "unlock the padlock with the rusty key"}`
 
 Input: "I pull a loose rock from the wall and keep it" (taking an item automatically puts it into the player's inventory, so "and keep it" needs no follow_up)
-Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "transfer", "target": "current_room", "taken_items": ["rock"], "detail": "Player pulls a loose rock from the wall"}`
 
 Input: "I stride out the back door and dive into the marsh water" (travel-then-act: the move is resolved first; the dive is re-ruled from the destination room)
-Output: `{"action_type": "move", "target": "back_door", "detail": "Player strides out the back door to the dock", "follow_up": "dive into the marsh water", "soft_state_patches": []}`
+Output: `{"action_type": "move", "target": "back_door", "detail": "Player strides out the back door to the dock", "follow_up": "dive into the marsh water"}`
 
 Input: "I hurl the rock at the spider" (the player carries a "rock" soft item; the spider is visible)
-Output: `{"action_type": "interact", "target": "spider", "interaction_id": "attack", "detail": "Player hurls the rock at the spider", "follow_up": null, "soft_state_patches": [{"field": "set_improvised_weapon", "new_value": {"keyword": "light", "source_item": "rock", "clears_after_turn": true}, "reason": "The hurled rock is a one-shot improvised weapon"}]}`
+Output: `{"action_type": "interact", "target": "spider", "interaction_id": "attack", "detail": "Player hurls the rock at the spider", "soft_state_patches": [{"field": "set_improvised_weapon", "new_value": {"keyword": "light", "source_item": "rock", "clears_after_turn": true}, "reason": "The hurled rock is a one-shot improvised weapon"}]}`
+
+Input: "I quaff a healing draught" (`healing_draught` is in the player's inventory and has a `drink` interaction)
+Output: `{"action_type": "interact", "target": "healing_draught", "interaction_id": "drink", "detail": "Player quaffs their healing draught"}`
 
 Input: "ooc: wait, what room am I in again?"
-Output: `{"action_type": "ooc_discussion", "detail": "Player asks what room they are in", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "ooc_discussion", "detail": "Player asks what room they are in"}`
 
 ### Invalid or ambiguous movement — fall back to `wait`
 
 Input: "go north" (no exit to the north is available in the current room)
-Output: `{"action_type": "wait", "detail": "Player tries to go north, but there is no exit to the north", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "wait", "detail": "Player tries to go north, but there is no exit to the north"}`
 
 Input: "go through the door" (two doors are available)
-Output: `{"action_type": "wait", "detail": "Player wants to go through a door, but it is unclear which door", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "wait", "detail": "Player wants to go through a door, but it is unclear which door"}`
 
 Input: "go down the axe handle" (matching exit available)
-Output: `{"action_type": "move", "target": "exit_climb_down_handle", "detail": "Player climbs carefully down the axe handle", "follow_up": null, "soft_state_patches": []}`
+Output: `{"action_type": "move", "target": "exit_climb_down_handle", "detail": "Player climbs carefully down the axe handle"}`
 
 ---
 

@@ -44,14 +44,12 @@ attack in ``positioning_opportunity_attack`` deterministically hits for
 
 from __future__ import annotations
 
-import warnings
-
 import pytest
 
 from mgmai.game.headless import _snapshot_status
 from mgmai.models.combat import CombatState
 from mgmai.state.manager import StateManager
-from tests.integration.helpers import assert_combat_concluded
+from tests.integration.helpers import assert_combat_concluded, record_warning
 from tests.integration.indicator_runner import run_indicator_turn
 from tests.integration.judge import record_judge_verdict
 from tests.integration.runner import run_scenario
@@ -602,7 +600,8 @@ def test_positioning_playtest(
         for entry in t.combat_log
     } & set(_POSITIONING_ACTIONS)
     if not seen:
-        warnings.warn(
+        record_warning(
+            result,
             "GM never exercised positioning mechanics (no reposition / "
             "opportunity_attack / maneuver / impeded log entries); "
             "see artifact: " + str(result.artifacts_path),

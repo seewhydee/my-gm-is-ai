@@ -57,13 +57,13 @@ authored with unreachable/pass-everything targets so their outcomes
 
 from __future__ import annotations
 
-import warnings
 from collections import Counter
 
 import pytest
 
 from mgmai.models.combat import CombatState
 from mgmai.state.manager import StateManager
+from tests.integration.helpers import record_warning
 from tests.integration.indicator_runner import run_indicator_turn
 from tests.integration.judge import record_judge_verdict
 
@@ -128,14 +128,16 @@ def _assert_indicator_turn(
     # non-use is visible without making the red/green signal flaky.
     placed = result.placed_count
     if placed == 0:
-        warnings.warn(
+        record_warning(
+            result,
             f"Narrator placed no markers inline (0/{len(result.indicators)}); "
             f"the interleaving mechanism went unused this turn; "
             f"see artifact: {result.artifacts_path}",
             stacklevel=2,
         )
     elif placed < len(result.indicators):
-        warnings.warn(
+        record_warning(
+            result,
             f"Narrator placed {placed}/{len(result.indicators)} markers "
             f"inline; the rest fell back to prepending; "
             f"see artifact: {result.artifacts_path}",

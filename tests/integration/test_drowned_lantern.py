@@ -28,10 +28,9 @@ narration-quality verdict in each artifact (it does not gate tests).
 
 from __future__ import annotations
 
-import warnings
-
 import pytest
 
+from tests.integration.helpers import record_warning
 from tests.integration.judge import record_judge_verdict
 from tests.integration.runner import run_scenario
 
@@ -302,7 +301,8 @@ def test_marta_ladder(
     # The attitude >= 5 tier is RNG-gated (sympathetic_ear checks and
     # GM-discretion raises) — warn rather than fail.
     if not _flag_ever_set(result, "knows_janis_link"):
-        warnings.warn(
+        record_warning(
+            result,
             "marta_ladder: attitude >= 5 tier (janis_payout) not reached "
             "in this run", stacklevel=2,
         )
@@ -373,7 +373,8 @@ def test_berrin_confront(
     _assert_attitude_steps_capped(result, "berrin", 2)
 
     if "janis_vanishing" not in _knowledge_topics(result):
-        warnings.warn(
+        record_warning(
+            result,
             "berrin_confront: janis_vanishing topic not revealed in this run",
             stacklevel=2,
         )
@@ -444,7 +445,8 @@ def test_berrin_bluff(
             "(no failure branch applied); "
             f"see artifact: {result.artifacts_path}"
         )
-        warnings.warn(
+        record_warning(
+            result,
             "berrin_bluff: CHA-14 success branch not exercised in this run",
             stacklevel=2,
         )
@@ -537,7 +539,8 @@ def test_old_wellington_and_stall(
         _dialogue(result, t).get("active_npc") == "marta"
         for t in result.turns[stall_idx + 1:]
     ):
-        warnings.warn(
+        record_warning(
+            result,
             "old_wellington_and_stall: player did not re-engage Marta "
             "after the stall exit", stacklevel=2,
         )
@@ -636,7 +639,8 @@ def test_npc_switching(
     )
     marta_final = _final_entity_state(result, "marta").get("attitude", 0)
     if marta_final <= 0:
-        warnings.warn(
+        record_warning(
+            result,
             f"npc_switching: Marta's final attitude is {marta_final} — "
             "the GM docked her for the mockery of Berrin she witnessed; "
             "her ladder still rose under direct warmth (peak "
@@ -799,7 +803,8 @@ def test_crate_and_crossing(
     assert _final_entity_state(result, "ghost_lights_mid_marsh").get("hidden") is False
 
     if "janis_vanishing" not in _knowledge_topics(result):
-        warnings.warn(
+        record_warning(
+            result,
             "crate_and_crossing: janis_vanishing not drawn out of Berrin "
             "mid-crossing in this run", stacklevel=2,
         )
@@ -853,7 +858,8 @@ def test_free_play(
         and result.last_turn.game_over
         and result.last_turn.game_over_type == "win"
     ):
-        warnings.warn(
+        record_warning(
+            result,
             "free_play: the driver did not complete the adventure within "
             "100 turns", stacklevel=2,
         )

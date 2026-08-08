@@ -380,6 +380,48 @@ def build_combat_view(hard: Any, corpus: Any) -> CombatView:
     )
 
 
+def format_combat_panel(view: CombatView) -> str:
+    """Plain-text rendering of the shared combat panel.
+
+    The same information a real player gets from the front-end panels
+    (per-side rows with HP, status effects, discovered mitigations,
+    engagement, impede; the resource footer) without HP bars or
+    front-end markup — for text-only consumers such as the
+    integration-test driver LLM.
+    """
+
+    def _row(row: CombatantRow) -> str:
+        tag = ""
+        if row.fled:
+            tag = " (fled)"
+        elif row.dead:
+            tag = " †"
+        line = f"{row.name + tag}: {row.hp}/{row.max_hp} HP"
+        if row.status_effects_text:
+            line += f" [{row.status_effects_text}]"
+        if row.mitigation_text:
+            line += f" ({row.mitigation_text})"
+        pos: list[str] = []
+        if row.engaged_with:
+            pos.append("engaged with " + ", ".join(row.engaged_with))
+        if row.impeded:
+            pos.append("impeded")
+        if pos:
+            line += " " + " ".join(pos)
+        return line
+
+    initiative = " → ".join(view.initiative_order)
+    lines = [f"Combat round {view.round_number}", f"Initiative: {initiative}", ""]
+    if view.party:
+        lines.append("Party")
+        lines.extend("  " + _row(r) for r in view.party)
+    if view.enemies:
+        lines.append("Enemies")
+        lines.extend("  " + _row(r) for r in view.enemies)
+    lines += ["", view.footer]
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------
 # Exits formatting (shared by the turn pipeline and intro panels)
 # ------------------------------------------------------------------

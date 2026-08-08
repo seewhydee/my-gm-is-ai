@@ -70,13 +70,11 @@ turn still open).
 
 from __future__ import annotations
 
-import warnings
-
 import pytest
 
 from mgmai.models.combat import CombatState
 from mgmai.state.manager import StateManager
-from tests.integration.helpers import assert_combat_concluded
+from tests.integration.helpers import assert_combat_concluded, record_warning
 from tests.integration.indicator_runner import run_indicator_turn
 from tests.integration.judge import record_judge_verdict
 from tests.integration.runner import run_scenario
@@ -895,7 +893,8 @@ def test_action_economy_playtest(
         return any("this turn" in err for err in t.ruling_retries)
 
     if not any(_budget_rejected(t) for t in result.turns):
-        warnings.warn(
+        record_warning(
+            result,
             "No over-budget rejection occurred (GM never ruled an "
             "over-budget action); see artifact: " + str(result.artifacts_path),
             stacklevel=2,

@@ -67,6 +67,7 @@ def _scan_entries(artifacts_dir: Path) -> dict[str, list[dict]]:
                 "overall_score": judge.get("overall_score"),
                 "aborted": summary.get("aborted", False),
                 "error": d.get("error"),
+                "warnings": summary.get("warnings") or [],
             })
         else:
             judge = judge_digest(d.get("judge_verdict")) or {}
@@ -78,6 +79,7 @@ def _scan_entries(artifacts_dir: Path) -> dict[str, list[dict]]:
                 "overall_score": judge.get("overall_score"),
                 "aborted": d.get("aborted", False),
                 "error": d.get("error"),
+                "warnings": [],
             })
         groups.setdefault(scenario, []).append(entry)
     return groups
@@ -104,11 +106,14 @@ def _fmt_entry(scenario: str, e: dict) -> str:
     judge = e.get("judge_pass")
     judge_s = "n/a" if judge is None else ("pass" if judge else "FAIL")
     score = e.get("overall_score")
+    warns = e.get("warnings") or []
+    warned_s = f"warned={len(warns)}" if warns else ""
     return (
         f"{date}  {scenario:<32} turns={e.get('turn_count', '?'):<3} "
         f"judge={judge_s}({score if score is not None else '—'})  "
         f"aborted={str(e.get('aborted', False)).lower()}  "
-        f"error={'yes' if e.get('error') else 'no'}  {e.get('file')}"
+        f"error={'yes' if e.get('error') else 'no'}  "
+        f"{warned_s + '  ' if warned_s else ''}{e.get('file')}"
     )
 
 

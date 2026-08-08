@@ -30,6 +30,7 @@ suite with no network access.  They verify:
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -39,6 +40,8 @@ from mgmai.game.headless import (
     TurnTranscript,
 )
 from mgmai.game.loop import GameLoop
+from mgmai.game.status import snapshot_status
+from tests.integration.driver import _format_situation
 
 
 class FakeLLMClient:
@@ -938,3 +941,150 @@ class TestDialoguePathFiltering:
         # post-confession guard by design, only bluff does).
         sm.hard_state.flags["berrin_confessed"] = True
         assert self._berrin_paths(sm) == {"confront_janis", "convince_crossing"}
+
+
+# ------------------------------------------------------------------
+# Driver situation format (tests/integration/driver.py)
+# ------------------------------------------------------------------
+
+
+class _SituationSession:
+    """Minimal stand-in for ``HeadlessSession`` exposing the surface
+    ``_format_situation`` reads (hard state, corpus, status snapshot,
+    recorded narrations)."""
+
+    def __init__(self, sm) -> None:
+        self._sm = sm
+        self.display = SimpleNamespace(narrations=[])
+
+    @property
+    def hard_state(self):
+        return self._sm.hard_state
+
+    @property
+    def corpus(self):
+        return self._sm.corpus
+
+    def status_snapshot(self):
+        return snapshot_status(self._sm)
+
+
+class TestDriverSituation:
+    """The driver's per-turn situation (``_format_situation``) must
+    carry at least as much combat information as a real player's
+    combat panel (AC, weapon damage, ability uses, items, status
+    effects, engagement), plus room/exits the driver would otherwise
+    never see — the driver must not be less informed than a human."""
+
+    def _arena_session(self):
+        from pathlib import Path
+
+        from mgmai.state.manager import StateManager
+
+        fixture = (
+            Path(__file__).resolve().parent
+            / "integration" / "fixtures" / "combat_arena"
+        )
+        return _SituationSession(StateManager(adventure_dir=str(fixture)))
+
+    def test_first_turn_includes_room_and_exits(self):
+        session = self._arena_session()
+        text = _format_situation(session)
+        assert "location: arena" in text
+        assert "Not in combat. Player HP 24/24." in text
+        # Room name + description (real players get the intro) and
+        # visible exits (real players see them on room changes).
+        assert "Room: The Arena" in text
+        assert "circular sand-floored arena" in text
+        assert "Exits:" in text
+        assert "North to the exit corridor" in text
+
+    def test_room_description_only_on_first_turn(self):
+        # Once a narration has been recorded the room description is
+        # dropped (the GM has taken over describing); name and exits
+        # stay.
+        session = self._arena_session()
+        session.display.narrations.append("You look around.")
+        text = _format_situation(session)
+        assert "Room: The Arena" in text
+        assert "circular sand-floored arena" not in text
+        assert "Exits: North to the exit corridor" in text
+
+    def test_multi_exit_rooms_keep_separators(self):
+        # Each exit must stay a distinct "; "-separated entry — merging
+        # them ("north east") reads as one bogus exit.
+        session = self._arena_session()
+        room = session.corpus.rooms["arena"]
+        room.exits.append(type(room.exits[0])(
+            id="exit_south", direction="South to the pens",
+            target_room="pens",
+        ))
+        text = _format_situation(session)
+        assert "Exits: North to the exit corridor; South to the pens" in text
+
+    def test_first_turn_description_on_real_headless_session(self, tmp_path):
+        """On a real HeadlessSession the intro goes to ``intros``, not
+        ``narrations`` — so the first-turn room description is not
+        suppressed before the first command."""
+        from pathlib import Path
+
+        from mgmai.game.headless import HeadlessSession
+
+        fixture = (
+            Path(__file__).resolve().parent
+            / "integration" / "fixtures" / "combat_arena"
+        )
+        session = HeadlessSession(
+            llm_client=FakeLLMClient(),
+            adventure_dir=fixture,
+            config_dir=tmp_path,
+        )
+        text = _format_situation(session)
+        assert "Room: The Arena" in text
+        assert "circular sand-floored arena" in text
+
+    def test_combat_situation_carries_the_real_panel(self):
+        from mgmai.models.combat import CombatState
+
+        session = self._arena_session()
+        sm = session._sm
+        sm.hard_state.combat = CombatState(
+            active=True,
+            combatants=["player", "goblin_grunt", "bugbear"],
+            initiative_order=["player", "goblin_grunt", "bugbear"],
+            current_index=0,
+            round_number=1,
+            engagement=[["player", "bugbear"]],
+        )
+        sm.hard_state.player.status_effects = {"poisoned": 2}
+        text = _format_situation(session)
+        assert "In combat, round 1." in text
+        assert "Combat round 1" in text
+        assert "Initiative:" in text
+        # Footer parity: AC, equipped weapon damage, ability uses, items.
+        assert "AC 14" in text
+        assert "1d8 slashing" in text
+        assert "Flame Strike 2/2" in text
+        assert "Potion of Healing" in text
+        # Row parity: canonical status name and engagement by display name.
+        assert "[Poisoned 2]" in text
+        assert "engaged with Bugbear" in text
+
+    def test_combat_situation_shows_dead_party_member(self):
+        from mgmai.models.combat import CombatState
+
+        session = self._arena_session()
+        sm = session._sm
+        sm.hard_state.entity_states["korbar"]["current_hp"] = 0
+        sm.hard_state.combat = CombatState(
+            active=True,
+            combatants=["player", "korbar", "goblin_grunt"],
+            allies=["korbar"],
+            initiative_order=["player", "goblin_grunt", "korbar"],
+            current_index=0,
+            round_number=1,
+        )
+        text = _format_situation(session)
+        # A dead ally stays visible (real players see the † row); the
+        # driver must not silently lose track of her.
+        assert "Korbar †" in text

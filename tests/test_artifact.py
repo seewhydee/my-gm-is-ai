@@ -100,6 +100,11 @@ class TestSummarizeScenario:
             {"actor": "player", "action": "ability_save", "attack_id": "flame_strike"},
             {"actor": "goblin", "action": "death", "attack_id": None},
             {"actor": "player", "action": "use_item", "target": "antidote"},
+            # Modern item use: interact on a carried item (engine sets
+            # target_is_item); a room-feature interact does not count.
+            {"actor": "player", "action": "interact",
+             "target": "health_potion", "target_is_item": True},
+            {"actor": "player", "action": "interact", "target": "winch_lever"},
         ], flags={"a": True, "b": True}))
         result.judge_record = JudgeRecord(
             verdict={"pass": True, "overall_score": 5, "criteria": {}},
@@ -112,7 +117,7 @@ class TestSummarizeScenario:
         assert s["combat"]["concluded"] is True
         assert s["milestones"] == ["a", "b"]
         assert s["abilities_used"] == ["flame_strike"]
-        assert s["items_used"] == ["antidote"]
+        assert s["items_used"] == ["antidote", "health_potion"]
         assert s["enemy_outcomes"] == {"goblin": "dead"}
         assert s["hp_over_turns"] == [24, 10]
         assert s["judge"]["pass"] is True

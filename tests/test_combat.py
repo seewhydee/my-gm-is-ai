@@ -2818,6 +2818,9 @@ class TestUseItem:
         entry = result.combat_log[0]
         assert entry.action == "interact"
         assert entry.target == "potion"
+        # A carried-item interact is flagged so summaries can tell item
+        # use apart from room-feature manipulation.
+        assert entry.target_is_item is True
         # the goblin still took its turn afterwards (action consumed)
         goblin_attacks = [
             e for e in result.combat_log

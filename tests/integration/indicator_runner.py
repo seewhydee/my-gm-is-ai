@@ -86,6 +86,11 @@ class IndicatorTurnResult:
     created_utc: str = ""
     error: BaseException | None = None
     artifacts_path: Path | None = None
+    # Non-fatal findings from the warn-don't-fail convention (e.g.
+    # markers left to the fallback).  Appended by
+    # tests/integration/helpers.record_warning and finalized in the
+    # artifact by the post-judge rewrite.
+    warnings: list[str] = field(default_factory=list)
     # Write-path state, set by run_indicator_turn so rewrite_artifact()
     # can re-emit through write_artifact (keeping index.json current).
     _artifacts_dir: Path | None = None
@@ -117,6 +122,7 @@ class IndicatorTurnResult:
                 "raw_narration": self.raw_narration,
                 "final_narration": self.final_narration,
                 "engine_result": self.engine_result,
+                "warnings": list(self.warnings),
             },
             "error": (
                 f"{type(self.error).__name__}: {self.error}"

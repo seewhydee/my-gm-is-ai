@@ -24,6 +24,24 @@ ambush_alley).  The arena module is deliberately left untouched.
 
 from __future__ import annotations
 
+import warnings
+
+
+def record_warning(result, message: str, *, stacklevel: int = 2) -> None:
+    """Record a non-fatal finding on a run result and surface it as a
+    pytest warning.
+
+    The suite's warn-don't-fail convention (RNG-gated paths that were
+    not exercised this run, model-quality behaviour that varies): the
+    message is appended to ``result.warnings`` so it lands in the
+    artifact summary (finalized on the post-judge rewrite) and stays
+    queryable via ``list_runs.py`` / an orchestrator, not just visible
+    in pytest stderr.  Tests must call this BEFORE
+    ``record_judge_verdict``, which is what triggers the rewrite.
+    """
+    result.warnings.append(message)
+    warnings.warn(message, stacklevel=stacklevel)
+
 
 def enemy_dead_or_fled(result, enemy_id: str, *, accept_fled: bool = False) -> bool:
     """Check whether *enemy_id* died (and optionally fled) in the combat

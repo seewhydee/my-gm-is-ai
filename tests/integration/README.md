@@ -43,6 +43,7 @@ LLM-vs-LLM runs:
 | **Attack variety** | NPC `multiattack` with named attacks, damage **immunity**, mid-combat weapon swap (`gear` with `equip_targets` + `unequip_targets`), player attack-roll and heal abilities |
 | **Combat AI** | `player` targeting, HP-gated NPC abilities (`use_below_own_hp_pct`), passive NPCs (join combat, never act) |
 | **Encounter-driven combat** | Combat started by an encounter (`trigger_encounter` → `start_combat`) instead of a direct attack; the player's `wait` action; out-of-bounds talk attempts handled gracefully |
+| **Environmental actions in combat** | Non-combat actions mid-fight: an `interact` Result fires while the enemies still take their turns; a `start_combat` Result merges a reinforcement into the running fight; mid-combat talk attempts handled gracefully |
 | **Combat positioning** | Engagement auto-forms on melee attacks and is exposed in status snapshots; scripted `positioning` rulings (engage/disengage/impede) produce `reposition` / `opportunity_attack` / `maneuver` / `impeded` log entries and indicator lines; the Disengage maneuver; impede turn-consumption; graceful degradation of invalid positioning blocks |
 | **Action economy** | Per-turn budget (one action / bonus action / free interaction / reaction, one slot spell): open-turn continuation across commands, over-budget rejection costing nothing, Light-weapon off-hand attacks, the opportunity-attack reaction cap, potions always costing the action, the bonus-action slot rule; `status.player_budget` exposure in headless snapshots |
 | **Spellcasting** | SRD pack spells through the scripted harness: save → status (hold_person, faerie_fire), skipped turns from `skip_turn` statuses, concentration engaged/held and broken by damage (`concentration_check` / `concentration_end`, sustained-status cleanup), bonus-action attack cantrips keeping the turn open, on-cast buffs changing attack modifiers (blur/invisibility), no-slot rejection narrated gracefully, out-of-combat on-cast casting (barkskin `ac_base`) |
@@ -132,6 +133,9 @@ artifact is a self-describing envelope (`schema_version: 2`):
 - `summary` — the at-a-glance digest: outcome, player HP trajectory,
   combat entered/concluded/rounds, milestones (flags), knowledge
   topics, archived NPC notes, abilities/items used, enemy outcomes,
+  per-run warnings (paths that ran but were not exercised this run —
+  the warn-don't-fail convention, recorded by
+  `helpers.record_warning` and finalized on the post-judge rewrite),
   and a compact judge digest.  Computed by
   `tests/integration/artifact.py`, which doubles as the shared query
   layer for the scripts below
@@ -221,6 +225,12 @@ Three scenarios use the `ambush_alley` fixture (`test_ambush_alley.py`):
 | `ambush_trigger` | Confront and grab the cutpurse (no attack), then fight | Combat entered via the encounter: `ambush_triggered` flag set and all three gang members enemy combatants on the combat-start turn; combat concluded |
 | `targeting_and_frenzy` | Ambush, then fight howler-first | Every thug attack targets the player; `frenzy` entries only at/after the howler first dropped below half HP; pack mule a party combatant with zero attack entries |
 | `hold_and_talk_rejected` | Ambush, hold ground first turn, then try to talk, then fight | A `wait` player entry; no exceptions or empty narrations across the talk attempt; combat concluded |
+
+One scenario uses the `lever_room` fixture (`test_combat_environmental.py`):
+
+| Scenario | Directive | Key assertions |
+|----------|-----------|----------------|
+| `environmental_actions_in_combat` | Attack the golem; turn 1 pull the winch lever, turn 2 open the hound's cage, turn 3 try talking to the golem, then fight | The lever pull fires its Result (`lever_pulled`) AND costs the player's combat turn (the golem still attacks, the round advances); opening the cage mid-combat merges the hound as a reinforcement (`reinforcement` entry, joins as an enemy); the talk attempt is rejected without breaking the fight; combat concludes cleanly |
 
 ## The NPC-conversation scenarios
 
@@ -454,6 +464,24 @@ non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 - **Rooms**: Market Alley (start, all combatants, exit east) → Dead-End
   Court
 
+## The lever room fixture
+
+Located at `tests/integration/fixtures/lever_room/`, validated by a
+non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
+Built for `test_combat_environmental.py` — non-combat actions taken
+mid-combat.
+
+- **Player** (level 2): longsword (1d8 slashing, from the SRD data
+  pack), 2 potions of healing, no abilities, HP 28, AC 14
+- **Sentry golem** (enemy): HP 16, AC 13, halberd (1d6+1 slashing)
+- **War hound** (enemy): HP 8, AC 12, bite (1d6 piercing); its cage
+  release interaction triggers an encounter that merges it into the
+  active combat as a reinforcement (`start_combat` Result, `hound_released` flag)
+- **Winch lever** (feature): `pull` interaction whose Result sets
+  `lever_pulled` — usable mid-combat, costing the player's turn
+- **Hound cage** (feature): `open` interaction — releases the hound
+- **Rooms**: Gatehouse (start, both enemies + both features, no exits)
+
 ## The spell arena fixture
 
 Located at `tests/integration/fixtures/spell_arena/`, validated by a
@@ -564,7 +592,14 @@ pytest tests/test_headless.py -k integration_fixture_smoke -v
    `run_scenario` with your directive and `stop_when`.
 4. Add hard assertions appropriate to the scenario — check combat log
    entries, location, HP bounds, entity states, etc.
-5. Run the test to verify it passes, then check the artifact for the
+5. For mechanics gated by RNG or model behaviour (a save that may not
+   be failed, a ruling that may not happen), keep the
+   warn-don't-fail convention: call `helpers.record_warning(result,
+   "...")` instead of `warnings.warn(...)` so the "path not exercised"
+   finding lands in the artifact summary, not just pytest stderr.
+   Record it BEFORE `record_judge_verdict` (the rewrite that finalizes
+   the artifact).
+6. Run the test to verify it passes, then check the artifact for the
    judge verdict.
 
 ### Adding a new fixture adventure

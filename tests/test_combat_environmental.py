@@ -456,6 +456,8 @@ class TestCombatEnvironmental:
         # goblin took its turn.
         assert result.combat_log[0].actor == "player"
         assert result.combat_log[0].action == "interact"
+        # A room-feature interact is not an item use.
+        assert result.combat_log[0].target_is_item is False
         goblin_attacks = [
             e for e in result.combat_log
             if e.actor == "goblin" and e.action == "attack"

@@ -2465,12 +2465,21 @@ def _resolve_combat_environmental(
                 ),
             )
         # Log the player's action so the combat prefix can summarize it.
+        interact_target = getattr(action, "target", None)
         combat_log.append(
             CombatLogEntry(
                 round=combat.round_number,
                 actor="player",
                 action=action.action_type,
-                target=getattr(action, "target", None),
+                target=interact_target,
+                target_is_item=(
+                    action.action_type == "interact"
+                    and interact_target is not None
+                    and (
+                        interact_target in hard.player.inventory
+                        or interact_target in hard.player.equipped
+                    )
+                ),
             )
         )
         if action.action_type == "interact":

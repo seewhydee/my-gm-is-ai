@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 
 from mgmai.game.headless import HeadlessSession
+from mgmai.game.status import build_combat_view, format_combat_panel, format_exits
 from mgmai.llm.client import LLMClient
 
 log = logging.getLogger(__name__)
@@ -52,8 +53,6 @@ job is to play the game naturally, pursuing the scenario objective.
   your character does.
 - During combat, pick a specific enemy or ally by name.  Switch
   targets when your current target is dead.
-- If you are badly hurt, drink a healing potion or use a healing
-  ability.
 - Keep your command short (one sentence, under 200 characters).
 
 If the game has gone badly off the rails — the GM narrates something
@@ -192,44 +191,92 @@ def sanitize_command(raw: str) -> str:
 
 
 def _format_situation(session: HeadlessSession) -> str:
-    """Compact one-paragraph summary of the current game state."""
+    """Per-turn summary of the current game state for the driver prompt.
+
+    In combat this carries the same combat panel a real player sees
+    (``build_combat_view`` → ``format_combat_panel``: per-side rows
+    with HP, status effects, discovered mitigations, engagement, and
+    impede, plus the resource footer with AC, equipped weapon, ability
+    uses, and items) rather than a reduced hand-rolled summary, so the
+    driver is never less informed than a human player.  Flags and the
+    dialogue partner stay as driver-specific affordances.
+    """
     hard = session.hard_state
     if hard is None:
         return "Game state unavailable."
     snap = session.status_snapshot()
+    corpus = session.corpus
     parts: list[str] = []
     parts.append(f"Turn {snap.turn_count}, location: {snap.location}.")
+
+    # The current room: name and exits every turn, plus the full
+    # description on the first turn (the real player sees the intro
+    # before their first command) — the driver otherwise navigates
+    # blind until the GM happens to narrate an exit.
+    room = corpus.rooms.get(snap.location) if corpus else None
+    if room is not None:
+        room_part = f"Room: {room.name}"
+        if not session.display.narrations and getattr(room, "description", None):
+            room_part += f". {room.description}"
+        exits_text = format_exits(room)
+        if exits_text:
+            # Flatten the markdown bullet list ("**Exits:**\n* north\n* east")
+            # into one "; "-separated line — dropping the bullets without
+            # a separator would merge adjacent exits ("north east").
+            labels = []
+            for line in exits_text.splitlines():
+                line = line.strip()
+                if line and line != "**Exits:**":
+                    labels.append(line.removeprefix("* ").strip())
+            if labels:
+                room_part += " Exits: " + "; ".join(labels)
+        parts.append(room_part)
+
     if snap.in_combat:
         parts.append(f"In combat, round {snap.combat_round}.")
+        # The player-facing combat panel (parity with a real player).
+        # A panel build failure falls back to the compact summary so
+        # display problems never kill a run mid-fight.
+        panel: str | None = None
+        if hard.combat is not None:
+            try:
+                panel = format_combat_panel(build_combat_view(hard, corpus))
+            except Exception:
+                log.exception("Combat panel build failed; using compact summary")
+        if panel is not None:
+            parts.append(panel)
+        else:
 
-        def _entry(cid: str, c: dict) -> str:
-            s = f"{cid} {c['hp']}/{c['max_hp']}"
-            effects = c.get("status_effects") or {}
-            if effects:
-                s += " (" + ", ".join(f"{k}: {v} rounds" for k, v in effects.items()) + ")"
-            return s
+            def _entry(cid: str, c: dict) -> str:
+                s = f"{cid} {c['hp']}/{c['max_hp']}"
+                effects = c.get("status_effects") or {}
+                if effects:
+                    s += " (" + ", ".join(
+                        f"{k}: {v} rounds" for k, v in effects.items()
+                    ) + ")"
+                return s
 
-        party = [
-            _entry(cid, c)
-            for cid, c in snap.combatants.items()
-            if c["side"] == "party" and c["alive"]
-        ]
-        enemies = [
-            _entry(cid, c)
-            for cid, c in snap.combatants.items()
-            if c["side"] == "enemy" and c["alive"] and not c.get("fled")
-        ]
-        gone = [
-            f"{cid} ({'fled' if c.get('fled') else 'dead'})"
-            for cid, c in snap.combatants.items()
-            if c["side"] == "enemy" and (not c["alive"] or c.get("fled"))
-        ]
-        if party:
-            parts.append("Party: " + ", ".join(party) + ".")
-        if enemies:
-            parts.append("Enemies: " + ", ".join(enemies) + ".")
-        if gone:
-            parts.append("Out of the fight: " + ", ".join(gone) + ".")
+            party = [
+                _entry(cid, c)
+                for cid, c in snap.combatants.items()
+                if c["side"] == "party" and c["alive"]
+            ]
+            enemies = [
+                _entry(cid, c)
+                for cid, c in snap.combatants.items()
+                if c["side"] == "enemy" and c["alive"] and not c.get("fled")
+            ]
+            gone = [
+                f"{cid} ({'fled' if c.get('fled') else 'dead'})"
+                for cid, c in snap.combatants.items()
+                if c["side"] == "enemy" and (not c["alive"] or c.get("fled"))
+            ]
+            if party:
+                parts.append("Party: " + ", ".join(party) + ".")
+            if enemies:
+                parts.append("Enemies: " + ", ".join(enemies) + ".")
+            if gone:
+                parts.append("Out of the fight: " + ", ".join(gone) + ".")
     else:
         parts.append(f"Not in combat. Player HP {snap.player_hp}/{snap.player_max_hp}.")
         # Announce the active conversation partner so the driver can
@@ -249,10 +296,11 @@ def _format_situation(session: HeadlessSession) -> str:
     if snap.active_flags:
         parts.append("Flags: " + ", ".join(snap.active_flags.keys()) + ".")
 
-    # Inventory: only show consumables the driver should know about
-    # (not weapons/armour).
-    corpus = session.corpus
-    if corpus and hard.player.inventory:
+    # Inventory: consumables the driver should know about.  In combat
+    # the panel footer already lists them ("Items: ..."), so this is
+    # only surfaced out of combat — weapons/armour stay hidden either
+    # way (the footer shows the equipped one).
+    if corpus and hard.player.inventory and not snap.in_combat:
         usable: list[str] = []
         for item_id, count in hard.player.inventory.items():
             if count <= 0:
@@ -264,21 +312,6 @@ def _format_situation(session: HeadlessSession) -> str:
                 usable.append(f"{ent.name} x{count}")
         if usable:
             parts.append("Usable items: " + ", ".join(usable) + ".")
-        elif snap.in_combat:
-            # Say so explicitly — a line that silently disappears is
-            # easy for the driver to miss mid-fight.
-            parts.append("No usable items left.")
-
-    # Ability uses remaining this combat (only when in combat).
-    combat = hard.combat
-    if snap.in_combat and combat is not None and corpus:
-        for aid in hard.player.abilities:
-            ability = corpus.abilities.get(aid)
-            if ability is None or ability.uses_per_combat < 0:
-                continue
-            used = combat.ability_uses.get("player", {}).get(aid, 0)
-            remaining = ability.uses_per_combat - used
-            parts.append(f"{ability.name}: {remaining}/{ability.uses_per_combat} uses left.")
 
     return " ".join(parts)
 
@@ -302,6 +335,8 @@ def _format_transcript(
     lines: list[str] = []
     for i, (cmd, narration) in enumerate(zip(cmds, narrations), 1):
         c_snippet = cmd if len(cmd) <= 200 else cmd[:200] + "..."
-        n_snippet = narration if len(narration) <= 500 else narration[:500] + "..."
+        # Keep narration long enough that a key event buried in a
+        # verbose GM turn (e.g. a damage-immunity hint) is not cut off.
+        n_snippet = narration if len(narration) <= 1200 else narration[:1200] + "..."
         lines.append(f"Turn {i}: You ⇒ {c_snippet}\nTurn {i}: GM ⇒ {n_snippet}")
     return "\n\n".join(lines)

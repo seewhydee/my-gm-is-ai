@@ -70,6 +70,10 @@ class CombatLogEntry(BaseModel):
     # Spell identity (set when the resolved ability is a spell)
     spell_id: str | None = None
     spell_level: int | None = None
+    # Set on player "interact" entries when the target is a carried item
+    # (potion, antidote) rather than a room feature — lets summaries
+    # distinguish item use from feature manipulation.
+    target_is_item: bool = False
 
 
 class CombatState(BaseModel):

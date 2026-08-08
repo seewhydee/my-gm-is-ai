@@ -27,11 +27,13 @@ test).
 
 from __future__ import annotations
 
-import warnings
-
 import pytest
 
-from tests.integration.helpers import assert_combat_concluded, combat_log_entries
+from tests.integration.helpers import (
+    assert_combat_concluded,
+    combat_log_entries,
+    record_warning,
+)
 from tests.integration.judge import record_judge_verdict
 from tests.integration.runner import run_scenario
 from tests.integration.test_combat_arena import _stop_when_combat_ended
@@ -206,7 +208,8 @@ def test_targeting_and_frenzy(
             f"see artifact: {result.artifacts_path}"
         )
     else:
-        warnings.warn(
+        record_warning(
+            result,
             "Howler never frenzied (died before acting while bloodied, or "
             "never bloodied); HP-gated ability path untested this run; "
             f"see artifact: {result.artifacts_path}",
