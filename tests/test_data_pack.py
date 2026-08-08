@@ -63,6 +63,9 @@ SRD_SPELL_IDS = {
     # Level 2 (Tier 1 + Tier 2).
     "barkskin", "blindness_deafness", "blur", "hold_person",
     "invisibility", "mind_spike",
+    # Area spells (Tier 3, engagement-cluster targeting).
+    "acid_splash", "burning_hands", "entangle", "grease", "shatter",
+    "thunderwave", "web",
 }
 
 
@@ -289,6 +292,46 @@ class TestSpellsPack:
         blur = DEFAULT_SPELLS["blur"]
         assert blur.target == "self"
         assert blur.on_cast is not None and blur.on_cast.id == "blur"
+
+        # Tier 3: area save spells carry a structured area block.
+        burning_hands = DEFAULT_SPELLS["burning_hands"]
+        assert burning_hands.save is not None
+        assert burning_hands.save.damage == "3d6"
+        assert burning_hands.save.area is not None
+        assert burning_hands.save.area.shape == "cone"
+        assert burning_hands.save.area.emanates_from_caster is True
+
+        shatter = DEFAULT_SPELLS["shatter"]
+        assert shatter.save is not None
+        assert shatter.save.stat == "CON" and shatter.save.damage == "3d8"
+        assert shatter.save.area is not None
+        assert shatter.save.area.emanates_from_caster is False
+
+        acid_splash = DEFAULT_SPELLS["acid_splash"]
+        assert acid_splash.save is not None
+        assert acid_splash.save.half_on_success is False
+
+        web = DEFAULT_SPELLS["web"]
+        assert web.concentration is True
+        assert web.sustained_status_effects == ["restrained"]
+        web_rider = web.save.apply_status_effect_on_failure
+        assert web_rider is not None and web_rider.id == "restrained"
+        assert web.save.area is not None and web.save.area.shape == "cube"
+
+        entangle = DEFAULT_SPELLS["entangle"]
+        assert entangle.save is not None and entangle.save.stat == "STR"
+        ent_rider = entangle.save.apply_status_effect_on_failure
+        assert ent_rider is not None and ent_rider.id == "restrained"
+
+        grease = DEFAULT_SPELLS["grease"]
+        assert grease.concentration is False
+        grease_rider = grease.save.apply_status_effect_on_failure
+        assert grease_rider is not None and grease_rider.id == "prone"
+
+        thunderwave = DEFAULT_SPELLS["thunderwave"]
+        assert thunderwave.save is not None
+        assert thunderwave.save.area is not None
+        assert thunderwave.save.area.emanates_from_caster is True
 
     def test_mage_armor_condition_in_pack(self) -> None:
         cond = DEFAULT_STATUS_EFFECTS["mage_armor"]

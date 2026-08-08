@@ -380,5 +380,118 @@
     "components": "S",
     "concentration": true,
     "save": { "stat": "WIS", "dc": 12, "damage": "3d8", "damage_type": "psychic" }
+  },
+  "acid_splash": {
+    "name": "Acid Splash",
+    "description": "An acidic bubble explodes at a point: creatures in a 5-foot sphere make a DEX save or take 1d6 acid damage. (Area resolved by engagement cluster — the target plus everything engaged with it, friend or foe; cantrip scaling not modeled.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "save": {
+      "stat": "DEX", "dc": 12, "damage": "1d6", "damage_type": "acid",
+      "half_on_success": false,
+      "area": { "shape": "sphere", "size_ft": 5 }
+    }
+  },
+  "burning_hands": {
+    "name": "Burning Hands",
+    "description": "A sheet of flame shoots from you: creatures in a 15-foot cone make a DEX save, taking 3d6 fire damage, half on success. (Area resolved by engagement cluster — everyone engaged with you, friend or foe; upcasting not modeled.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "Self (15-foot cone)",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "save": {
+      "stat": "DEX", "dc": 12, "damage": "3d6", "damage_type": "fire",
+      "area": { "shape": "cone", "size_ft": 15, "emanates_from_caster": true }
+    }
+  },
+  "entangle": {
+    "name": "Entangle",
+    "description": "Grasping plants sprout in a 20-foot square: creatures make a STR save or are restrained while you concentrate. (Area resolved by engagement cluster — the target plus everything engaged with it; difficult terrain and the escape Athletics check are not modeled — restraint lasts until concentration breaks or the duration lapses.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "conjuration",
+    "casting_time": "action",
+    "range": "90 feet",
+    "duration": "Concentration, up to 1 minute",
+    "components": "V, S",
+    "concentration": true,
+    "sustained_status_effects": ["restrained"],
+    "save": {
+      "stat": "STR", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "restrained", "rounds": 10 },
+      "area": { "shape": "square", "size_ft": 20 }
+    }
+  },
+  "grease": {
+    "name": "Grease",
+    "description": "Slick grease covers a 10-foot square: creatures standing in it make a DEX save or fall prone. (Area resolved by engagement cluster — the target plus everything engaged with it; difficult terrain and the enter/end-of-turn repeat saves are not modeled.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "conjuration",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "1 minute",
+    "components": "V, S, M (a bit of pork rind or butter)",
+    "save": {
+      "stat": "DEX", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "prone", "rounds": 1 },
+      "area": { "shape": "square", "size_ft": 10 }
+    }
+  },
+  "shatter": {
+    "name": "Shatter",
+    "description": "A loud noise erupts at a point: creatures in a 10-foot sphere make a CON save, taking 3d8 thunder damage, half on success. (Area resolved by engagement cluster — the target plus everything engaged with it; the construct's disadvantage on the save and upcasting are not modeled.)",
+    "target": "enemy",
+    "spell_level": 2,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V, S, M (a chip of mica)",
+    "save": {
+      "stat": "CON", "dc": 12, "damage": "3d8", "damage_type": "thunder",
+      "area": { "shape": "sphere", "size_ft": 10 }
+    }
+  },
+  "thunderwave": {
+    "name": "Thunderwave",
+    "description": "A wave of thunderous force sweeps out from you: creatures in a 15-foot cube make a CON save, taking 2d8 thunder damage, half on success. (Area resolved by engagement cluster — everyone engaged with you, friend or foe; the 10-foot push and upcasting are not modeled.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "Self (15-foot cube)",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "save": {
+      "stat": "CON", "dc": 12, "damage": "2d8", "damage_type": "thunder",
+      "area": { "shape": "cube", "size_ft": 15, "emanates_from_caster": true }
+    }
+  },
+  "web": {
+    "name": "Web",
+    "description": "Sticky webbing fills a 20-foot cube: creatures make a DEX save or are restrained while you concentrate. (Area resolved by engagement cluster — the target plus everything engaged with it; difficult terrain, light obscurement, the escape Athletics check, and flammability are not modeled — restraint lasts until concentration breaks or the duration lapses.)",
+    "target": "enemy",
+    "spell_level": 2,
+    "school": "conjuration",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Concentration, up to 1 hour",
+    "components": "V, S, M (a bit of spiderweb)",
+    "concentration": true,
+    "sustained_status_effects": ["restrained"],
+    "save": {
+      "stat": "DEX", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "restrained", "rounds": 10 },
+      "area": { "shape": "cube", "size_ft": 20 }
+    }
   }
 }

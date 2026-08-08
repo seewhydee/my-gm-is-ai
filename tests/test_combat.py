@@ -3536,6 +3536,218 @@ class TestAbilities:
 
 
 # ------------------------------------------------------------------
+# 20b. Area save abilities (engagement-cluster targeting)
+# ------------------------------------------------------------------
+
+class TestAreaSaveAbilities:
+    """Area-effect save abilities resolve against the TotM engagement
+    graph: emanating shapes hit everything engaged with the caster,
+    point-target shapes hit the target's cluster; friendly fire applies.
+    """
+
+    @pytest.fixture
+    def area_corpus(self) -> ModuleCorpus:
+        return ModuleCorpus.model_validate({
+            "adventure": {"title": "Area Test", "introduction": "Test."},
+            "rooms": {
+                "room1": {
+                    "name": "Room 1", "description": "A room.",
+                    "contains": ["goblin_a", "goblin_b", "goblin_c", "medic"],
+                },
+            },
+            "abilities": {
+                "flame_burst": {
+                    "name": "Flame Burst",
+                    "description": "Flames sweep out from you.",
+                    "target": "enemy",
+                    "uses_per_combat": -1,
+                    "save": {
+                        "stat": "DEX", "dc": 12, "damage": "2d6",
+                        "damage_type": "fire", "half_on_success": True,
+                        "area": {
+                            "shape": "cone", "size_ft": 15,
+                            "emanates_from_caster": True,
+                        },
+                    },
+                },
+                "shatter_like": {
+                    "name": "Shatter-like",
+                    "description": "A bang at a point.",
+                    "target": "enemy",
+                    "uses_per_combat": -1,
+                    "save": {
+                        "stat": "CON", "dc": 12, "damage": "2d8",
+                        "damage_type": "thunder", "half_on_success": True,
+                        "area": {"shape": "sphere", "size_ft": 10},
+                    },
+                },
+            },
+            "entities": {
+                g: {
+                    "type": "npc",
+                    "description": f"A goblin ({g}).",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 20, "ac": 12, "atk": 4, "dmg": "1d6+2"},
+                }
+                for g in ("goblin_a", "goblin_b", "goblin_c")
+            } | {
+                "medic": {
+                    "type": "npc",
+                    "name": "Medic",
+                    "description": "A field medic.",
+                    "state_fields": {
+                        "alive": {"type": "boolean", "description": "Alive?"},
+                        "current_hp": {"type": "number", "description": "HP"},
+                    },
+                    "combat": {"hp": 20, "ac": 12, "atk": 2, "dmg": "1d4+1"},
+                },
+            },
+        })
+
+    @pytest.fixture
+    def area_hard(self, combat_hard_state) -> HardGameState:
+        hard = combat_hard_state.model_copy(deep=True)
+        hard.player.current_hp = 20
+        hard.player.max_hp = 20
+        hard.player.abilities = ["flame_burst", "shatter_like"]
+        hard.entity_states = {
+            g: {"alive": True, "current_hp": 20}
+            for g in ("goblin_a", "goblin_b", "goblin_c")
+        } | {"medic": {"alive": True, "current_hp": 20}}
+        hard.room_contains = {
+            "room1": {"goblin_a": 1, "goblin_b": 1, "goblin_c": 1},
+        }
+        return hard
+
+    def _combat_state(self, hard, pairs=(), allies=(), order=None):
+        if order is None:
+            order = ["player", "goblin_a", "goblin_b", "goblin_c"]
+        hard.combat = CombatState(
+            active=True,
+            combatants=list(order) + [a for a in allies if a not in order],
+            allies=list(allies),
+            initiative_order=list(order) + [a for a in allies if a not in order],
+            current_index=0,
+            round_number=1,
+            engagement=[sorted(p) for p in pairs],
+        )
+
+    def _ability(self, ability_id, target):
+        return UseAbilityAction(
+            action_type="use_ability",
+            ability_id=ability_id, target=target, detail="Use an ability!",
+        )
+
+    @staticmethod
+    def _save_entries(result):
+        return [e for e in result["combat_log"] if e.action == "ability_save"]
+
+    def test_emanating_hits_engaged_enemies_skips_unengaged(
+        self, area_hard, area_corpus, monkeypatch
+    ):
+        self._combat_state(
+            area_hard, pairs=[("player", "goblin_a"), ("player", "goblin_b")]
+        )
+        # All d20s and damage dice land on 5: saves fail vs DC 12, 2d6 = 10.
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        result = resolve_combat_turn(
+            self._ability("flame_burst", "goblin_a"), area_hard, area_corpus
+        )
+        assert result["success"]
+        entries = self._save_entries(result)
+        assert {e.target for e in entries} == {"goblin_a", "goblin_b"}
+        assert all(e.damage == 10 for e in entries)
+        changes = result["hard_changes"].entity_state_changes
+        assert changes["goblin_a"]["current_hp"] == 10
+        assert changes["goblin_b"]["current_hp"] == 10
+        assert "goblin_c" not in changes
+        # One cast consumes one use regardless of target count.
+        assert area_hard.combat.ability_uses["player"]["flame_burst"] == 1
+
+    def test_emanating_friendly_fire_hits_engaged_ally(
+        self, area_hard, area_corpus, monkeypatch
+    ):
+        self._combat_state(
+            area_hard,
+            pairs=[("player", "goblin_a"), ("player", "medic")],
+            allies=["medic"],
+        )
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        result = resolve_combat_turn(
+            self._ability("flame_burst", "goblin_a"), area_hard, area_corpus
+        )
+        assert result["success"]
+        entries = self._save_entries(result)
+        assert {e.target for e in entries} == {"goblin_a", "medic"}
+        changes = result["hard_changes"].entity_state_changes
+        assert changes["medic"]["current_hp"] == 10
+
+    def test_point_target_hits_target_cluster(
+        self, area_hard, area_corpus, monkeypatch
+    ):
+        # goblin_c is engaged with the target goblin_a, not with the
+        # player: a point-target sphere catches both goblins only.
+        self._combat_state(area_hard, pairs=[("goblin_a", "goblin_c")])
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        result = resolve_combat_turn(
+            self._ability("shatter_like", "goblin_a"), area_hard, area_corpus
+        )
+        assert result["success"]
+        entries = self._save_entries(result)
+        assert {e.target for e in entries} == {"goblin_a", "goblin_c"}
+        assert all(e.damage == 10 for e in entries)  # 2d8 at 5 per die
+
+    def test_point_target_catches_caster_engaged_with_target(
+        self, area_hard, area_corpus, monkeypatch
+    ):
+        # The player is engaged with the target: they are inside their
+        # own blast and must save too (fail at 5 + 2 DEX... CON +1 = 6 < 12).
+        self._combat_state(area_hard, pairs=[("player", "goblin_a")])
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        result = resolve_combat_turn(
+            self._ability("shatter_like", "goblin_a"), area_hard, area_corpus
+        )
+        assert result["success"]
+        entries = self._save_entries(result)
+        assert {e.target for e in entries} == {"player", "goblin_a"}
+        player_entry = next(e for e in entries if e.target == "player")
+        assert player_entry.on_hit_effects[0]["save_success"] is False
+        assert result["hard_changes"].player_hp_delta == -10
+
+    def test_dead_cluster_members_skipped(
+        self, area_hard, area_corpus, monkeypatch
+    ):
+        area_hard.entity_states["goblin_b"]["current_hp"] = 0
+        self._combat_state(
+            area_hard, pairs=[("player", "goblin_a"), ("player", "goblin_b")]
+        )
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        result = resolve_combat_turn(
+            self._ability("flame_burst", "goblin_a"), area_hard, area_corpus
+        )
+        assert result["success"]
+        entries = self._save_entries(result)
+        assert {e.target for e in entries} == {"goblin_a"}
+
+    def test_nothing_engaged_hits_nobody(
+        self, area_hard, area_corpus, monkeypatch
+    ):
+        # Nobody engaged with the caster: an emanating burst fizzles,
+        # but the use is still consumed.
+        self._combat_state(area_hard)
+        monkeypatch.setattr(random, "randint", lambda a, b: 5)
+        result = resolve_combat_turn(
+            self._ability("flame_burst", "goblin_a"), area_hard, area_corpus
+        )
+        assert result["success"]
+        assert self._save_entries(result) == []
+        assert area_hard.combat.ability_uses["player"]["flame_burst"] == 1
+
+
+# ------------------------------------------------------------------
 # 21. Spellcasting in combat (slots, derived DCs, new effect kinds)
 # ------------------------------------------------------------------
 

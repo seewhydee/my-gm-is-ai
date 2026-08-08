@@ -1,7 +1,7 @@
 # SRD 5e Data-Pack Manifest
 This file is **auto-generated** by `scripts/generate_datapack_manifest.py`.  Do not edit by hand.
 Adventure-module authors can reference any ID listed below in their corpus, rooms, inventories, and character sheets without re-defining the item.  The engine pulls the full definition from its built-in data pack.
-**55 gear items**, **26 conditions**, and **29 spells** are currently available.
+**55 gear items**, **26 conditions**, and **36 spells** are currently available.
 ---
 ## Gear
 Each ID below is a valid reference for items, equipment, and consumables.
@@ -158,6 +158,7 @@ Each ID below is a valid reference in the corpus `abilities` block and in player
 | `shocking_grasp` | Shocking Grasp |
 | `starry_wisp` | Starry Wisp |
 | `vicious_mockery` | Vicious Mockery |
+| `acid_splash` | Acid Splash |
 
 ### Leveled Spells
 
@@ -183,3 +184,9 @@ Each ID below is a valid reference in the corpus `abilities` block and in player
 | `hold_person` | Hold Person |
 | `invisibility` | Invisibility |
 | `mind_spike` | Mind Spike |
+| `burning_hands` | Burning Hands |
+| `entangle` | Entangle |
+| `grease` | Grease |
+| `shatter` | Shatter |
+| `thunderwave` | Thunderwave |
+| `web` | Web |

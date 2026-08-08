@@ -5,8 +5,8 @@ separate spell model or `cast_spell` action.  A spell is an `Ability`
 (`mgmai/models/corpus.py:628-664`) with `spell_level` set, cast through
 the same `use_ability` combat action as class features and monster
 powers.  The engine ships an SRD spell pack
-(`mgmai/data/srd_5e/spells.json`) — currently 29 spells (9 cantrips,
-20 leveled; the full catalog is listed in `schema/srd-5e-pack.md`) —
+(`mgmai/data/srd_5e/spells.json`) — currently 36 spells (10 cantrips,
+26 leveled; the full catalog is listed in `schema/srd-5e-pack.md`) —
 whose entries are minted into the corpus at load time unless the corpus
 defines the same ID (corpus wins wholesale, same semantics as
 gear; see `ModuleCorpus.effective_spells`, `mgmai/models/corpus.py:1013`).
@@ -85,6 +85,25 @@ Mage Armor's `on_cast` applies a persistent `mage_armor` status carrying
 (`mgmai/engine/systems/five_e.py:827`, hook at :858-870) then uses
 `13 + DEX mod` as the base AC, replacing the unarmored base or any armor
 `ac_override`, while `ac_bonus` items (e.g. a shield) still stack.
+
+## Area Effects
+
+A `save` effect may carry an `area` block — `{"shape": "cone",
+"size_ft": 15, "emanates_from_caster": true}` — as on Burning Hands,
+Thunderwave, Web, and the other area spells in the pack.  TotM combat
+has no grid, so area targeting resolves against the engagement graph
+(`_area_save_targets`, `mgmai/engine/combat.py`):
+
+- Shapes **emanating from the caster** (cones, self-centered cubes)
+  hit every living combatant **engaged with the caster**.
+- **Point-target** shapes (spheres, squares, remote cubes) hit the
+  target plus every living combatant **engaged with the target**.
+
+Friendly fire applies in both cases — an ally swarmed by the same
+enemies is caught in your Burning Hands.  Each caught combatant saves
+separately and gets its own `ability_save` combat-log entry (and its
+own damage roll).  `shape`/`size_ft` document the true SRD area for
+briefings and any future richer targeting model.
 
 ## Concentration
 

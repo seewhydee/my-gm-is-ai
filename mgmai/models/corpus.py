@@ -598,12 +598,29 @@ class AbilityAttack(BaseModel):
     damage_type: str = ""
 
 
+class AreaOfEffect(BaseModel):
+    """Area of an area-effect save ability (e.g. Burning Hands' cone).
+
+    The engine's TotM combat has no grid, so area targeting resolves
+    against the engagement graph: shapes emanating from the caster
+    (cones, self-centered cubes) hit every living combatant engaged
+    with the caster; point-target shapes hit the target plus every
+    living combatant engaged with it.  Friendly fire applies in both
+    cases.  ``shape``/``size_ft`` document the true SRD area for
+    briefings and any future richer targeting model.
+    """
+    shape: Literal["cone", "sphere", "cube", "square"]
+    size_ft: int
+    emanates_from_caster: bool = False
+
+
 class AbilitySave(BaseModel):
     """Save-based ability effect (e.g. Poison Spray, a breath weapon).
 
     The target saves: the player rolls with stat modifier plus save
     proficiency as usual; NPC targets roll ``d20 + save_bonus`` from
-    their combat block.
+    their combat block.  When ``area`` is set, every combatant in the
+    engagement cluster (see :class:`AreaOfEffect`) saves separately.
     """
     stat: str
     dc: int
@@ -611,6 +628,7 @@ class AbilitySave(BaseModel):
     damage_type: str = ""
     half_on_success: bool = True     # successful save halves damage
     apply_status_effect_on_failure: ApplyStatusEffect | None = None
+    area: AreaOfEffect | None = None
 
 
 class AbilityAutoDamage(BaseModel):
@@ -692,7 +710,12 @@ class Ability(BaseModel):
         if self.save is not None:
             half = ", half on success" if self.save.half_on_success else ""
             dmg = f"{self.save.damage} damage" if self.save.damage else "no damage"
-            return prefix + f"{self.save.stat} save DC {self.save.dc}: {dmg}{half}"
+            summary = f"{self.save.stat} save DC {self.save.dc}: {dmg}{half}"
+            if self.save.area is not None:
+                area = self.save.area
+                origin = " from caster" if area.emanates_from_caster else ""
+                summary += f" (area: {area.size_ft}-foot {area.shape}{origin})"
+            return prefix + summary
         if self.auto_damage is not None:
             dtype = f" {self.auto_damage.damage_type}" if self.auto_damage.damage_type else ""
             return prefix + f"{self.auto_damage.damage}{dtype} damage (no attack roll or save)"

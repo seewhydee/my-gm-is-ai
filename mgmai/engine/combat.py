@@ -1511,6 +1511,65 @@ def _resolve_save_ability(
     return died
 
 
+def _area_save_targets(
+    caster_id: str,
+    target_id: str,
+    area: Any,
+    combat: CombatState,
+    hard: HardGameState,
+    hard_changes: HardStateChanges,
+) -> list[str]:
+    """Return the living combatants caught in an area-effect save.
+
+    TotM engagement-cluster targeting: shapes emanating from the caster
+    hit everything engaged with the caster; point-target shapes hit the
+    target plus everything engaged with it.  Friendly fire applies.
+    """
+    if area.emanates_from_caster:
+        caught = _engaged_with(combat, caster_id)
+    else:
+        caught = {target_id} | _engaged_with(combat, target_id)
+    return [
+        cid
+        for cid in combat.combatants
+        if cid in caught
+        and (_target_current_hp(cid, hard, hard_changes) or 0) > 0
+    ]
+
+
+def _resolve_save_ability_multi(
+    caster_id: str,
+    aid: str,
+    ability: Any,
+    target_id: str,
+    combat: CombatState,
+    hard: HardGameState,
+    corpus: ModuleCorpus,
+    hard_changes: HardStateChanges,
+    combat_log: list[CombatLogEntry],
+    events: list[tuple[str, dict[str, Any]]] | None = None,
+) -> bool:
+    """Resolve a save ability against its full target set: the declared
+    target alone, or the engagement cluster when the save carries an
+    ``area``.  Each caught combatant saves separately (one combat-log
+    entry each).  Returns True when the player died."""
+    area = ability.save.area
+    if area is None:
+        targets = [target_id]
+    else:
+        targets = _area_save_targets(
+            caster_id, target_id, area, combat, hard, hard_changes
+        )
+    player_died = False
+    for tid in targets:
+        died = _resolve_save_ability(
+            caster_id, aid, ability, tid,
+            combat, hard, corpus, hard_changes, combat_log, events,
+        )
+        player_died = player_died or (died and tid == "player")
+    return player_died
+
+
 def _resolve_auto_damage_ability(
     caster_id: str,
     aid: str,
@@ -1699,11 +1758,10 @@ def _use_npc_ability(
         )
         return died and target_id == "player"
     if ability.save is not None:
-        died = _resolve_save_ability(
+        return _resolve_save_ability_multi(
             actor_id, aid, ability, target_id,
             combat, hard, corpus, hard_changes, combat_log, events,
         )
-        return died and target_id == "player"
     if ability.auto_damage is not None:
         died = _resolve_auto_damage_ability(
             actor_id, aid, ability, target_id,
@@ -1829,7 +1887,7 @@ def _resolve_player_ability(
         return None
 
     if ability.save is not None:
-        _resolve_save_ability(
+        _resolve_save_ability_multi(
             "player", aid, ability, target_id,
             combat, hard, corpus, hard_changes, combat_log, events,
         )

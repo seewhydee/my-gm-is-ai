@@ -1858,8 +1858,8 @@ AI).  Each ability has exactly one effect: `attack`, `save`, `heal`,
 `auto_damage`, or `on_cast`.
 
 A **spell** is just an ability with `spell_level` set; it lives in the
-same `abilities` block.  The engine ships an SRD spell pack (29 spells —
-9 cantrips, 20 leveled) whose entries are minted into the corpus at
+same `abilities` block.  The engine ships an SRD spell pack (36 spells —
+10 cantrips, 26 leveled) whose entries are minted into the corpus at
 load time unless the corpus defines the same ID — see the
 [data-pack manifest](srd-5e-pack.md).
 
@@ -1940,6 +1940,14 @@ The target saves — the player with the usual stat modifier and save
 proficiencies, NPCs with `d20 + save_bonus`.  On success the damage is
 halved (`half_on_success`) or negated; on failure the full damage
 (`""` = no damage) and any status effect apply.
+
+A save effect may also carry an `area` block — `{ "shape": "cone",
+"size_ft": 15, "emanates_from_caster": true }` — turning it into an
+area effect resolved by engagement cluster: shapes emanating from the
+caster hit every living combatant engaged with the caster, point-target
+shapes hit the target plus every living combatant engaged with it
+(friendly fire applies; each caught combatant saves separately).  See
+[doc/spellcasting.md](../doc/spellcasting.md) — *Area Effects*.
 
 **Auto-damage effects**: `{ "damage": "3d4+3", "damage_type": "force" }`.
 Damage applied to the target with no attack roll and no save
