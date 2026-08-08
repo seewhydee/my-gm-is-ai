@@ -21,6 +21,18 @@
       "DEX",
       "INT"
     ],
+    "skill_proficiencies": [
+      "acrobatics",
+      "arcana",
+      "athletics",
+      "deception",
+      "insight",
+      "investigation",
+      "perception",
+      "persuasion",
+      "sleight of hand",
+      "stealth"
+    ],
     "weapon_proficiencies": ["simple", "martial"]
   }
 }

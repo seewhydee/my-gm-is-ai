@@ -24,12 +24,71 @@
     "toenail_freed",
     "rapport_1",
     "rapport_2",
-    "rapport_3"
+    "rapport_3",
+    "rubbish_vats_found",
+    "rubbish_scroll_found",
+    "rubbish_bag_found",
+    "read_label",
+    "wizard_voice_heard",
+    "told_about_stone",
+    "knows_axe_mark",
+    "knows_axe_is_korbars",
+    "knows_abandonment",
+    "knows_lockpick_method",
+    "fly_freed",
+    "fly_watching_lower",
+    "fly_vouched",
+    "fly_revived",
+    "quiet_cut_failed",
+    "korbar_armed",
+    "korbar_has_lockpick",
+    "korbar_mage_armored",
+    "bag_within_warned",
+    "bag_within_identified"
   ],
+  "status_effects": {
+    "invisible": {
+      "name": "Invisible",
+      "description": "Can't be seen without special sense; its attack rolls have advantage, and attack rolls against it have disadvantage. This corpus override lasts across rooms: the crimson potion's veil persists until the player attacks or enters combat (see the invisible_breaks_on_attack / invisible_breaks_on_combat mechanics), the GM judges a revealing action, or it is otherwise cleared. Combat-scoped, so resting does not end it.",
+      "scope": "combat",
+      "duration": "until_cleared",
+      "system_effects": {
+        "5e": {
+          "advantage_on_attack": true,
+          "disadvantage_against": true
+        }
+      }
+    },
+    "poisoned": {
+      "name": "Poisoned",
+      "description": "Disadvantage on attack rolls and ability checks. This corpus override is persistent: the spider's venom lingers after combat until cured (the emerald antivenom) or cleared by a long rest.",
+      "scope": "persistent",
+      "duration": "until_cleared",
+      "system_effects": {
+        "5e": {
+          "disadvantage_on_attack": true,
+          "disadvantage_on_ability_checks": true
+        }
+      }
+    },
+    "antivenom": {
+      "name": "Antivenom",
+      "description": "The emerald potion's lingering protection: a hot, righteous taste that grants advantage on CON saving throws while it lasts.",
+      "scope": "persistent",
+      "duration": "until_cleared",
+      "system_effects": {
+        "5e": {
+          "save_advantage": [
+            "CON"
+          ]
+        }
+      }
+    }
+  },
   "rooms": {
     "axe_head": {
       "name": "Axe Head",
-      "description": "The broad, flat head of a giant battleaxe, wedged high against the wall of an immense cave. The walls are woven canvas, lit by a faint, sourceless luminescence that barely holds back the darkness. Above head height the walls converge into a low dome, scrunched shut in the center. The very tip of the axe blade has torn a small rip in the fabric. From here the axe handle, about the width of a narrow sidewalk, slopes down into the murk.",
+      "description": "The broad, flat head of a giant battleaxe, wedged high against the wall of an immense cave. The walls are woven canvas, lit by a faint, sourceless luminescence that barely holds back the darkness — here at the top the glow is at its faintest, a cold blue that does nothing to warm the air. Above head height the walls converge into a low dome, scrunched shut in the center. The very tip of the axe blade has torn a small rip in the fabric. From here the axe handle, about the width of a narrow sidewalk, slopes down into the murk.",
       "contains": [
         "giant_axe",
         "the_rip",
@@ -107,7 +166,8 @@
             "narrative": "The walls glow with a faint luminescence that has no source — no flames, no glowing moss, no crystals. You deduce that the glow is magical, a side effect of whatever enchantment pervades this place.",
             "set_flag": {
               "knows_glow_magical": true
-            }
+            },
+            "reveals": "The faint luminescence of the cave walls is magical in nature."
           },
           "failure": {
             "narrative": "The walls glow faintly, but you cannot tell what causes it."
@@ -123,7 +183,7 @@
           },
           "effect": {
             "result": {
-              "narrative": "You drop from the axe head into the darkness and crash down onto the piled rubbish far below, bruising yourself badly.",
+              "narrative": "You drop from the axe head into the darkness and crash down onto the piled rubbish far below, badly spraining an ankle.",
               "player_damage": "3d6",
               "alter_stat": {
                 "DEX": {
@@ -132,7 +192,8 @@
                 "CON": {
                   "value": -2
                 }
-              }
+              },
+              "note": "Scenario: the drop costs 1d4 DEX and 1d4 CON (permanent) plus 3d6 HP. alter_stat accepts only integer deltas, so the mean (-2 each) is used."
             }
           }
         },
@@ -157,11 +218,12 @@
     },
     "axe_handle_upper": {
       "name": "Axe Handle (Upper)",
-      "description": "A stretch of the sloping axe handle, about the width of a narrow sidewalk. Masses of sticky webbing cling to the handle here, dimming the glow from the canvas walls so that your footing is hard to make out. Strange wrapped masses of different sizes are stuck in the webs. The handle continues up toward the axe head, and down toward even denser webbing; over the edge lies unseen darkness.",
+      "description": "A stretch of the sloping axe handle, about the width of a narrow sidewalk. Masses of sticky webbing cling to the handle here, dimming the glow from the canvas walls to a sickly gray-green so that your footing is hard to make out. Strange wrapped masses of different sizes are stuck in the webs. The handle continues up toward the axe head, and down toward even denser webbing; over the edge lies unseen darkness.",
       "contains": [
         "giant_axe",
         "webs",
-        "fly"
+        "fly",
+        "prisoner_husk"
       ],
       "exits": [
         {
@@ -278,17 +340,19 @@
     },
     "axe_handle_lower": {
       "name": "Axe Handle (Lower)",
-      "description": "The lower stretch of the axe handle, choked with dense, heavy webbing that must be forced through to continue along the path. Peering over the side, numerous irregularly-shaped objects are just visible heaped on the cave floor below, and a drop from here looks survivable. The handle continues up toward sparser webbing, and down to the cave floor.",
+      "description": "The lower stretch of the axe handle, choked with dense, heavy webbing that must be got through to continue along the path. The glow is nearly swallowed by the web here; the air smells of old dust and something faintly sweet. Peering over the side, numerous irregularly-shaped objects are just visible heaped on the cave floor below, and a drop from here looks survivable. The handle continues up toward sparser webbing, and down to the cave floor.",
       "contains": [
         "giant_axe",
         "webs",
-        "spider"
+        "spider",
+        "spider_hoard",
+        "spider_corpse"
       ],
       "state_fields": {
         "web_cleared": {
           "type": "boolean",
           "initial": false,
-          "description": "The blocking web has been forced through; passage along the handle is thenceforth free."
+          "description": "The blocking web has been cleared (by force, by quiet cutting, by invisible passage, or by the spider's own frantic flight); passage along the handle is thenceforth free."
         },
         "entered_from": {
           "type": "string",
@@ -310,12 +374,12 @@
             },
             "check": {
               "type": "stat_check",
-              "stat": "STR",
+              "stat": "athletics",
               "target": 14,
               "repeatable": true
             },
             "success": {
-              "narrative": "You force your way through the clinging mass of webbing, tearing open a passage you can use freely from now on.",
+              "narrative": "You force your way through the clinging mass of webbing, tearing open a passage you can use freely from now on. The web shivers with the strain.",
               "set_room_state": {
                 "axe_handle_lower": {
                   "web_cleared": true
@@ -323,13 +387,13 @@
               }
             },
             "failure": {
-              "narrative": "You strain against the dense webbing, but cannot force your way through."
+              "narrative": "You strain against the dense webbing, but cannot force your way through. The web shivers with the strain."
             },
             "using_results": {
               "toenail_sword": {
                 "check": {
                   "type": "stat_check",
-                  "stat": "STR",
+                  "stat": "athletics",
                   "target": 10,
                   "repeatable": true
                 },
@@ -343,6 +407,44 @@
                 },
                 "failure": {
                   "narrative": "You slash at the dense webbing with the toenail clipping, but cannot force your way through."
+                }
+              },
+              "dagger": {
+                "check": {
+                  "type": "stat_check",
+                  "stat": "athletics",
+                  "target": 10,
+                  "repeatable": true
+                },
+                "success": {
+                  "narrative": "You slice through the clinging webbing with the dagger, tearing open a passage you can use freely from now on.",
+                  "set_room_state": {
+                    "axe_handle_lower": {
+                      "web_cleared": true
+                    }
+                  }
+                },
+                "failure": {
+                  "narrative": "You slash at the dense webbing with the dagger, but cannot force your way through."
+                }
+              },
+              "giant_lockpick": {
+                "check": {
+                  "type": "stat_check",
+                  "stat": "athletics",
+                  "target": 10,
+                  "repeatable": true
+                },
+                "success": {
+                  "narrative": "You saw through the clinging webbing with the giant lockpick's edge, tearing open a passage you can use freely from now on.",
+                  "set_room_state": {
+                    "axe_handle_lower": {
+                      "web_cleared": true
+                    }
+                  }
+                },
+                "failure": {
+                  "narrative": "You saw at the dense webbing with the giant lockpick, but cannot force your way through."
                 }
               }
             }
@@ -361,12 +463,12 @@
             },
             "check": {
               "type": "stat_check",
-              "stat": "STR",
+              "stat": "athletics",
               "target": 14,
               "repeatable": true
             },
             "success": {
-              "narrative": "You force your way through the clinging mass of webbing, tearing open a passage you can use freely from now on.",
+              "narrative": "You force your way through the clinging mass of webbing, tearing open a passage you can use freely from now on. The web shivers with the strain.",
               "set_room_state": {
                 "axe_handle_lower": {
                   "web_cleared": true
@@ -374,13 +476,13 @@
               }
             },
             "failure": {
-              "narrative": "You strain against the dense webbing, but cannot force your way through."
+              "narrative": "You strain against the dense webbing, but cannot force your way through. The web shivers with the strain."
             },
             "using_results": {
               "toenail_sword": {
                 "check": {
                   "type": "stat_check",
-                  "stat": "STR",
+                  "stat": "athletics",
                   "target": 10,
                   "repeatable": true
                 },
@@ -394,6 +496,44 @@
                 },
                 "failure": {
                   "narrative": "You slash at the dense webbing with the toenail clipping, but cannot force your way through."
+                }
+              },
+              "dagger": {
+                "check": {
+                  "type": "stat_check",
+                  "stat": "athletics",
+                  "target": 10,
+                  "repeatable": true
+                },
+                "success": {
+                  "narrative": "You slice through the clinging webbing with the dagger, tearing open a passage you can use freely from now on.",
+                  "set_room_state": {
+                    "axe_handle_lower": {
+                      "web_cleared": true
+                    }
+                  }
+                },
+                "failure": {
+                  "narrative": "You slash at the dense webbing with the dagger, but cannot force your way through."
+                }
+              },
+              "giant_lockpick": {
+                "check": {
+                  "type": "stat_check",
+                  "stat": "athletics",
+                  "target": 10,
+                  "repeatable": true
+                },
+                "success": {
+                  "narrative": "You saw through the clinging webbing with the giant lockpick's edge, tearing open a passage you can use freely from now on.",
+                  "set_room_state": {
+                    "axe_handle_lower": {
+                      "web_cleared": true
+                    }
+                  }
+                },
+                "failure": {
+                  "narrative": "You saw at the dense webbing with the giant lockpick, but cannot force your way through."
                 }
               }
             }
@@ -451,20 +591,14 @@
           "condition": {
             "all": [
               "entity:korbar.alive == true",
-              "entity:korbar.location == room:bag_floor"
+              "entity:korbar.location == room:bag_floor",
+              {
+                "unless": "room:bag_floor.visited == true"
+              }
             ]
           },
-          "skip_check_if": {
-            "require": "room:bag_floor.visited == true"
-          },
-          "check": {
-            "type": "stat_check",
-            "stat": "WIS",
-            "target": 11,
-            "repeatable": true
-          },
-          "success": {
-            "narrative": "From below come faint sounds: the clank of metal and low, miserable muttering. Someone — or something — is down there."
+          "result": {
+            "narrative": "From below come faint sounds: the clank of metal and low, miserable muttering. Someone - or something - is down there."
           }
         }
       ],
@@ -484,7 +618,7 @@
               "then_check": {
                 "check": {
                   "type": "stat_check",
-                  "stat": "WIS",
+                  "stat": "perception",
                   "target": 13,
                   "repeatable": true
                 },
@@ -509,6 +643,9 @@
               "entity:spider.alive == true",
               "entity:spider.departed == false",
               "entity:spider.location == room:axe_handle_lower",
+              {
+                "unless": "status_effect:spider.incapacitated"
+              },
               {
                 "any": [
                   {
@@ -544,17 +681,84 @@
               "narrative": "You drop over the side and land on the piled rubbish below, momentarily winded but unhurt."
             }
           }
+        },
+        {
+          "id": "fly_alarm_reveals_spider",
+          "on": "room.entered",
+          "condition": {
+            "all": [
+              "entity:fly.alive == true",
+              "flag:fly_watching_lower == true",
+              "entity:spider.alive == true",
+              "entity:spider.hidden == true",
+              "entity:spider.departed == false"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "A frantic buzzing erupts from the webs ahead: the fly, keeping watch, shrieks its tiny alarm. Eight glittering eyes open in the shadows above — a huge spider lurks there.",
+              "set_entity_state": {
+                "spider": {
+                  "hidden": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "fly_dies_after_watch",
+          "on": "room.entered",
+          "condition": {
+            "all": [
+              "entity:fly.alive == true",
+              "flag:fly_watching_lower == true",
+              "flag:fly_revived == false"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "Its watch done, the little fly sinks onto a strand of webbing, utterly spent. Its weak buzzing fades into silence. Its tiny body goes still.",
+              "set_flag": {
+                "fly_watching_lower": false
+              },
+              "set_entity_state": {
+                "fly": {
+                  "alive": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "fly_watch_ends_revived",
+          "on": "room.entered",
+          "condition": {
+            "all": [
+              "entity:fly.alive == true",
+              "flag:fly_watching_lower == true",
+              "flag:fly_revived == true"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "Its watch done, the revived fly zips back to your shoulder, buzzing a tiny all-clear report.",
+              "set_flag": {
+                "fly_watching_lower": false
+              }
+            }
+          }
         }
       ]
     },
     "bag_floor": {
       "name": "Bag Floor",
-      "description": "The floor of the cave, buried under a loose pile of giant-sized rubbish: copper pieces, empty potion bottles, used corks, lint, moldy sandwiches, and more disgusting items. The base of the giant axe rests in the center of the pile, its handle rising into the gloom overhead. A giant overturned soup ladle lies against the pile like a makeshift shelter.",
+      "description": "The floor of the cave, buried under a loose pile of giant-sized rubbish: copper pieces, empty potion bottles, used corks, lint, moldy sandwiches, and more disgusting items. The glow is warmest here, but the smell is worst: rot, dust, and stale wine all at once. The base of the giant axe rests in the center of the pile, its handle rising into the gloom overhead. A giant overturned soup ladle lies against the pile like a makeshift shelter.",
       "contains": [
         "giant_axe",
         "korbar",
         "rubbish_pile",
-        "handkerchief"
+        "handkerchief",
+        "korbar_shelter"
       ],
       "soft_item_guidance": "Nondescript giant-sized rubbish the player might pick up or use: copper pieces, empty potion bottles, used corks, lint balls, moldy sandwiches, a bent spoon, a broken belt buckle, a single moldy boot, a tattered glove, a dented tin cup, an apple core, a chipped die, a snapped quill, a length of frayed rope, a wineskin with no cork.",
       "exits": [
@@ -636,7 +840,7 @@
           },
           "check": {
             "type": "stat_check",
-            "stat": "INT",
+            "stat": "investigation",
             "target": 8,
             "repeatable": false
           },
@@ -644,7 +848,8 @@
             "narrative": "This is not a random pile of junk. Copper pieces, potion bottles, rations — these are some adventurer's supplies, much like your own missing pack.",
             "set_flag": {
               "knows_rubbish_is_supplies": true
-            }
+            },
+            "reveals": "The rubbish pile is some adventurer's shrunken supplies, not random junk."
           },
           "failure": {
             "narrative": "It's a disgusting heap of giant rubbish, nothing more."
@@ -668,7 +873,8 @@
             "narrative": "An adventurer's supplies, giant-sized yet all shrunken to fit — you realize you are inside a magical Bag of Holding. The rubbish's proportions are uneven: the bag's magic shrinks items by different amounts to make them fit.",
             "set_flag": {
               "knows_bag_of_holding": true
-            }
+            },
+            "reveals": "The cave is the inside of a Bag of Holding; its magic shrinks items by different amounts."
           },
           "failure": {
             "narrative": "The heap of giant supplies tells you nothing new."
@@ -685,7 +891,7 @@
           },
           "check": {
             "type": "stat_check",
-            "stat": "WIS",
+            "stat": "perception",
             "target": 15,
             "repeatable": false
           },
@@ -699,6 +905,111 @@
           },
           "failure": {
             "narrative": "Your thorough search turns up nothing but more revolting garbage."
+          }
+        },
+        {
+          "id": "room_deep_rubbish_stage_one",
+          "rigorous_only": true,
+          "condition": {
+            "require": "flag:rubbish_vats_found == false"
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "investigation",
+            "target": 12,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "Digging deeper into the pile, you turn up the unbroken finds: four giant potion bottles, each the size of a vat, their corks still in place — one amber, one emerald, one crimson, one ink-black — plus a wad of edible-if-revolting rations and a giant lockpick the size of a two-handed staff.",
+            "set_flag": {
+              "rubbish_vats_found": true
+            },
+            "set_entity_state": {
+              "potion_vat_amber": {
+                "hidden": false
+              },
+              "potion_vat_emerald": {
+                "hidden": false
+              },
+              "potion_vat_crimson": {
+                "hidden": false
+              },
+              "potion_vat_black": {
+                "hidden": false
+              },
+              "giant_rations": {
+                "hidden": false
+              },
+              "giant_lockpick": {
+                "hidden": false
+              }
+            },
+            "reveals": "Deep in the rubbish: four giant potion vats (amber, emerald, crimson, ink-black), giant rations, and a giant lockpick."
+          },
+          "failure": {
+            "narrative": "You dig into the pile, but turn up nothing beyond the usual revolting garbage."
+          }
+        },
+        {
+          "id": "room_deep_rubbish_stage_two",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "flag:rubbish_vats_found == true",
+              "flag:rubbish_scroll_found == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "investigation",
+            "target": 15,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "Digging deeper still, you uncover a giant scroll, twice your height and rolled tight, its surface dense with cramped writing.",
+            "set_flag": {
+              "rubbish_scroll_found": true
+            },
+            "set_entity_state": {
+              "giant_faerie_fire_scroll": {
+                "hidden": false
+              }
+            },
+            "reveals": "Deeper in the rubbish: a giant scroll, twice the player's height."
+          },
+          "failure": {
+            "narrative": "You dig deeper into the pile, but turn up nothing new."
+          }
+        },
+        {
+          "id": "room_deep_rubbish_stage_three",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "flag:rubbish_scroll_found == true",
+              "flag:rubbish_bag_found == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "investigation",
+            "target": 17,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "At the very bottom of the pile, your hands close on something small — a tiny leather pouch, far too small to be one of the giant's belongings. At your scale, it is exactly the size of a normal adventurer's bag.",
+            "set_flag": {
+              "rubbish_bag_found": true
+            },
+            "set_entity_state": {
+              "bag_within": {
+                "hidden": false
+              }
+            },
+            "reveals": "At the bottom of the rubbish: a tiny leather pouch, far too small to be one of the giant's belongings."
+          },
+          "failure": {
+            "narrative": "You dig to the very bottom of the pile, but turn up nothing new."
           }
         }
       ],
@@ -723,9 +1034,12 @@
     },
     "secret_pocket": {
       "name": "Secret Pocket",
-      "description": "A cramped, closet-sized space below the cave floor. The walls are the same faintly glowing canvas as the cave above, but stickier and smellier, and the air is close and damp.",
+      "description": "A cramped, closet-sized space below the cave floor. The walls are the same faintly glowing canvas as the cave above, but stickier and smellier, and the air is close and damp — the smell here is the worst in the whole cave, as if this pocket were the oldest part of it. A giant care label is sewn into one seam, and a heavy stone sits half-buried in the floor.",
       "contains": [
-        "key"
+        "key",
+        "care_label",
+        "sending_stone",
+        "emergency_gin"
       ],
       "exits": [
         {
@@ -765,6 +1079,20 @@
           "result": {
             "narrative": "It is an enormous battleaxe, its steel head pitted with age. The very tip of the blade has punched a small rip in the canvas wall."
           }
+        },
+        {
+          "id": "examine_forge_mark",
+          "rigorous_only": true,
+          "condition": {
+            "require": "flag:knows_axe_mark == false"
+          },
+          "result": {
+            "narrative": "Near the tang, the steel bears a dwarven smith's mark — a runic stamp, worn but readable. Someone made this axe, and signed it.",
+            "set_flag": {
+              "knows_axe_mark": true
+            },
+            "reveals": "The giant axe bears a dwarven smith's mark near the tang."
+          }
         }
       ]
     },
@@ -789,7 +1117,7 @@
           },
           "check": {
             "type": "stat_check",
-            "stat": "DEX",
+            "stat": "acrobatics",
             "target": 12,
             "repeatable": false
           },
@@ -819,30 +1147,26 @@
               "trigger_id": "squeezed_through_rip"
             }
           }
-        }
-      ],
-      "reactions": [
+        },
         {
-          "id": "rip_key_dropped",
-          "on": "item.lost",
+          "id": "drop_key_through_rip",
+          "label": "Drop the giant key through the rip",
+          "description": "Deliberately drop the giant iron key through the rip into the gray void beyond - the key is lost forever, and the padlock can then only be opened by picking it, if at all.",
           "condition": {
-            "all": [
-              "event:item_id == key",
-              "event:reason == transfer"
-            ]
+            "require": "inventory:key"
           },
-          "effect": {
-            "result": {
-              "narrative": "The giant key tumbles through the rip and dwindles into the gray void. Without it, the padlock can never be opened. You are trapped in here forever.",
-              "set_entity_state": {
-                "key": {
-                  "location": null
-                }
-              },
-              "game_over": {
-                "type": "lose",
-                "trigger_id": "key_lost_through_rip"
+          "result": {
+            "narrative": "You heft the giant key to the rip and let it go. It tumbles into the gray and dwindles, gone forever. That way out is closed.",
+            "remove_item": [
+              "key"
+            ],
+            "set_entity_state": {
+              "key": {
+                "location": null
               }
+            },
+            "set_flag": {
+              "key_lost": true
             }
           }
         }
@@ -863,7 +1187,8 @@
             "narrative": "Sticking your head through the rip, you see a gray, featureless nothing stretching in every direction — and you recognize it: the Astral Plane.",
             "set_flag": {
               "knows_astral_plane": true
-            }
+            },
+            "reveals": "The gray nothing outside the rip is the Astral Plane."
           },
           "failure": {
             "narrative": "Sticking your head through the rip, you see a gray, featureless nothing stretching in every direction. You have no idea what it is."
@@ -901,10 +1226,21 @@
             "narrative": "A gray void outside; a sack impossibly vast inside. You realize what this place is: a Bag of Holding, the legendary magical storage item that exists in the prime and astral planes simultaneously.",
             "set_flag": {
               "knows_bag_of_holding": true
-            }
+            },
+            "reveals": "The cave is the inside of a Bag of Holding, existing in the prime and astral planes simultaneously."
           },
           "failure": {
             "narrative": "A giant sack hanging in a gray void. You cannot fathom what manner of place this is."
+          }
+        },
+        {
+          "id": "astral_drifter",
+          "condition": {
+            "require": "flag:knows_astral_plane == true"
+          },
+          "result": {
+            "narrative": "As you gaze into the gray, something vast drifts past in the distance: a shape like a mountain made of silence, or a whale made of stars. It does not notice you. You are glad.",
+            "reveals": "Something vast and indifferent drifts through the Astral Plane outside the bag."
           }
         }
       ]
@@ -964,7 +1300,7 @@
                 "narrative": "You manage to haul the key back in before it slips away. You can try again."
               },
               "failure": {
-                "narrative": "The key slides from your grasp, tumbles through the rip, and dwindles into the gray void. The padlock will never open now. You are trapped forever.",
+                "narrative": "The key slides from your grasp, tumbles through the rip, and dwindles into the gray void. The key is gone for good - that way out is closed.",
                 "set_entity_state": {
                   "key": {
                     "location": null
@@ -972,7 +1308,10 @@
                 },
                 "set_flag": {
                   "key_lost": true
-                }
+                },
+                "remove_item": [
+                  "key"
+                ]
               }
             }
           }
@@ -1016,7 +1355,7 @@
                 "narrative": "You manage to haul the key back in before it slips away. You can try again."
               },
               "failure": {
-                "narrative": "The key slides from your grasp, tumbles through the rip, and dwindles into the gray void. The padlock will never open now. You are trapped forever.",
+                "narrative": "The key slides from your grasp, tumbles through the rip, and dwindles into the gray void. The key is gone for good - that way out is closed.",
                 "set_entity_state": {
                   "key": {
                     "location": null
@@ -1024,9 +1363,112 @@
                 },
                 "set_flag": {
                   "key_lost": true
-                }
+                },
+                "remove_item": [
+                  "key"
+                ]
               }
             }
+          }
+        },
+        {
+          "id": "study_lock",
+          "label": "Study the padlock's keyway",
+          "description": "Examine the keyway closely and work out whether the padlock can be picked, and how.",
+          "condition": {
+            "all": [
+              "entity:padlock.hidden == false",
+              "flag:knows_lockpick_method == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "INT",
+            "target": 12,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "Peering out of the rip, you study the keyhole: at your scale it is a narrow tunnel, and its tumblers could be worked — but it is a two-person job. Someone inside the bag would have to thrust a giant lockpick out through the rip, while you climb across the pick, into the keyway, and guide the pick head into the tumblers one by one.",
+            "set_flag": {
+              "knows_lockpick_method": true
+            },
+            "reveals": "The padlock can be picked as a two-person job: Korbar holds the giant lockpick out through the rip while the player climbs into the keyway and works the tumblers."
+          },
+          "failure": {
+            "narrative": "You study the giant keyhole, but its mechanism defeats your inspection."
+          }
+        },
+        {
+          "id": "pick_lock",
+          "label": "Pick the giant lock",
+          "description": "The lock-picking set-piece: with Korbar holding the giant lockpick thrust out through the rip, climb across the pick into the keyway and work the tumblers.",
+          "condition": {
+            "all": [
+              "flag:knows_lockpick_method == true",
+              {
+                "any": [
+                  "inventory:giant_lockpick",
+                  "flag:korbar_has_lockpick == true"
+                ]
+              },
+              "entity:korbar.following == true",
+              "entity:korbar.alive == true",
+              "entity:korbar.unconscious == false",
+              "entity:padlock.hidden == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "acrobatics",
+            "target": 14,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "Korbar braces the giant lockpick and thrusts it out through the rip. You crawl across the pick's shaft, the gray void yawning below, and squirm into the keyway.",
+            "then_check": {
+              "check": {
+                "type": "stat_check",
+                "stat": "sleight of hand",
+                "target": 15,
+                "repeatable": true
+              },
+              "success": {
+                "narrative": "Wedged inside the keyway, you guide the pick head into the tumblers, one by one, feeling each seat itself.",
+                "then_check": {
+                  "check": {
+                    "type": "stat_check",
+                    "stat": "STR",
+                    "target": 13,
+                    "repeatable": true
+                  },
+                  "success": {
+                    "narrative": "You throw your whole weight against the pick, and the tumblers turn against the spring. The padlock clicks open. The neck of the bag loosens and gapes wide, and you squirm up and out — free at last, and you never even touched the key! The GM narrates the escape entertainingly; the player's fate afterward (and Korbar's) is left open-ended.",
+                    "game_over": {
+                      "type": "win",
+                      "trigger_id": "picked_lock"
+                    }
+                  },
+                  "failure": {
+                    "narrative": "The tumblers refuse to turn against the spring, and the pick slips out of them. You can climb back in and try again."
+                  }
+                }
+              },
+              "failure": {
+                "narrative": "The pick head slips out of the tumblers with a clang. You can try again."
+              }
+            }
+          },
+          "failure": {
+            "narrative": "Halfway across the pick, your foot slips — you dangle over the endless gray void for a heart-stopping moment before Korbar hauls you back in. No damage, just embarrassment and a racing heart."
+          }
+        }
+      ],
+      "on_examine": [
+        {
+          "id": "read_lock_makers_mark",
+          "result": {
+            "narrative": "The padlock's steel bears a maker's mark: \"Steadfast Lock Co. — tested against 47 rogues. The 48th is pending.\"",
+            "reveals": "The padlock's maker's mark reads: \"Steadfast Lock Co. — tested against 47 rogues. The 48th is pending.\""
           }
         }
       ]
@@ -1034,7 +1476,7 @@
     "webs": {
       "type": "feature",
       "name": "sticky webs",
-      "description": "Masses of sticky webbing attached to the giant axe handle, greatly dimming the glow from the canvas walls. Various strange wrapped masses of different sizes are stuck in the webs; they are too tightly wrapped to identify or extricate, and the webbing itself is too sticky to do anything useful with. The webs are much denser on the lower stretch of the handle.",
+      "description": "Masses of sticky webbing attached to the giant axe handle, greatly dimming the glow from the canvas walls. Various strange wrapped masses of different sizes are stuck in the webs; they are too tightly wrapped to identify or extricate at a glance, and the webbing itself is too sticky to do anything useful with. The webs are much denser on the lower stretch of the handle.",
       "on_examine": [
         {
           "id": "reveal_fly",
@@ -1054,6 +1496,25 @@
           }
         },
         {
+          "id": "reveal_husk",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "room:axe_handle_upper.is_current == true",
+              "entity:prisoner_husk.hidden == true"
+            ]
+          },
+          "result": {
+            "narrative": "Working carefully at one of the larger wrapped masses, you tease it open — and recoil. Inside is a desiccated, shrunken person: a previous prisoner, wrapped in the web long ago, still holding something in a skeletal grip.",
+            "set_entity_state": {
+              "prisoner_husk": {
+                "hidden": false
+              }
+            },
+            "reveals": "One of the larger web-wrapped masses on the upper handle is a desiccated previous prisoner."
+          }
+        },
+        {
           "id": "notice_spider",
           "condition": {
             "all": [
@@ -1065,7 +1526,7 @@
           },
           "check": {
             "type": "stat_check",
-            "stat": "WIS",
+            "stat": "perception",
             "target": 13,
             "repeatable": true
           },
@@ -1080,13 +1541,266 @@
           "failure": {
             "narrative": "The webs here are thick and heavy, dense with tightly-wrapped masses. Nothing else catches your eye."
           }
+        },
+        {
+          "id": "reveal_spider_hoard",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "room:axe_handle_lower.is_current == true",
+              "entity:spider_hoard.hidden == true",
+              {
+                "any": [
+                  "entity:spider.alive == false",
+                  "entity:spider.departed == true",
+                  "status_effect:spider.incapacitated"
+                ]
+              }
+            ]
+          },
+          "result": {
+            "narrative": "With the spider no longer a threat, you search the base of the web and turn up its hoard: a shiny drift of giant copper pieces, a wooden button, a bottle cap, and a few lint-covered silver pieces. All of it is far too cumbersome to carry.",
+            "set_entity_state": {
+              "spider_hoard": {
+                "hidden": false
+              }
+            },
+            "reveals": "The spider's hoard at the base of the lower web: giant coins and shiny junk, too cumbersome to carry."
+          }
+        },
+        {
+          "id": "reveal_spider_corpse",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "room:axe_handle_lower.is_current == true",
+              "entity:spider_corpse.hidden == true",
+              "entity:spider.alive == false"
+            ]
+          },
+          "result": {
+            "narrative": "Tangled in the dense webbing lies the spider's corpse, its legs curled in death. It might yield trophies.",
+            "set_entity_state": {
+              "spider_corpse": {
+                "hidden": false
+              }
+            }
+          }
+        }
+      ],
+      "interactions": [
+        {
+          "id": "cut_web_quietly",
+          "label": "Cut through the web quietly",
+          "description": "Slowly and carefully part the dense web with blade and patience, strand by strand, so as not to alert whatever made it.",
+          "condition": {
+            "all": [
+              "room:axe_handle_lower.is_current == true",
+              "room:axe_handle_lower.web_cleared == false",
+              {
+                "any": [
+                  "entity:korbar.following == false",
+                  "entity:korbar.alive == false",
+                  "entity:korbar.korbar_doffed_armor == true"
+                ]
+              }
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "stealth",
+            "target": 13,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "Working slowly and patiently, you part the web strand by strand in total stillness, opening a passage you can use freely from now on. Nothing stirs above.",
+            "set_room_state": {
+              "axe_handle_lower": {
+                "web_cleared": true
+              }
+            },
+            "reveals": "The web can be parted quietly with slow, careful work."
+          },
+          "failure": {
+            "narrative": "Your careful work disturbs the web — a shiver runs through the strands, transmitting your presence to whatever waits above.",
+            "set_flag": {
+              "quiet_cut_failed": true
+            }
+          },
+          "using_results": {
+            "toenail_sword": {
+              "check": {
+                "type": "stat_check",
+                "stat": "stealth",
+                "target": 10,
+                "repeatable": true
+              }
+            },
+            "dagger": {
+              "check": {
+                "type": "stat_check",
+                "stat": "stealth",
+                "target": 10,
+                "repeatable": true
+              }
+            },
+            "giant_lockpick": {
+              "check": {
+                "type": "stat_check",
+                "stat": "stealth",
+                "target": 10,
+                "repeatable": true
+              }
+            }
+          }
+        },
+        {
+          "id": "cut_web_quietly_with_korbar",
+          "label": "Cut through the web quietly (with Korbar in tow)",
+          "description": "Slowly and carefully part the dense web with blade and patience — hampered by Korbar's clanking plate armor, which gives you away (disadvantage).",
+          "condition": {
+            "all": [
+              "room:axe_handle_lower.is_current == true",
+              "room:axe_handle_lower.web_cleared == false",
+              "entity:korbar.following == true",
+              "entity:korbar.alive == true",
+              "entity:korbar.korbar_doffed_armor == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "stealth",
+            "target": 13,
+            "repeatable": true,
+            "disadvantage": true
+          },
+          "success": {
+            "narrative": "Working slowly and patiently — and pausing every time Korbar's armor so much as ticks — you part the web strand by strand, opening a passage you can use freely from now on. Nothing stirs above.",
+            "set_room_state": {
+              "axe_handle_lower": {
+                "web_cleared": true
+              }
+            },
+            "reveals": "The web can be parted quietly with slow, careful work."
+          },
+          "failure": {
+            "narrative": "Korbar's armor clanks at the worst possible moment — a shiver runs through the web, transmitting your presence to whatever waits above.",
+            "set_flag": {
+              "quiet_cut_failed": true
+            }
+          },
+          "using_results": {
+            "toenail_sword": {
+              "check": {
+                "type": "stat_check",
+                "stat": "stealth",
+                "target": 10,
+                "repeatable": true,
+                "disadvantage": true
+              }
+            },
+            "dagger": {
+              "check": {
+                "type": "stat_check",
+                "stat": "stealth",
+                "target": 10,
+                "repeatable": true,
+                "disadvantage": true
+              }
+            },
+            "giant_lockpick": {
+              "check": {
+                "type": "stat_check",
+                "stat": "stealth",
+                "target": 10,
+                "repeatable": true,
+                "disadvantage": true
+              }
+            }
+          }
+        },
+        {
+          "id": "sneak_past_invisible",
+          "label": "Walk through the web while invisible",
+          "description": "Under the cover of invisibility, move slowly and carefully through the dense web, transmitting nothing.",
+          "condition": {
+            "all": [
+              "room:axe_handle_lower.is_current == true",
+              "room:axe_handle_lower.web_cleared == false",
+              "status_effect:invisible"
+            ]
+          },
+          "result": {
+            "narrative": "Unseen, you move through the dense web slowly and carefully, easing each strand aside. The web transmits nothing; nothing stirs above. The passage is open.",
+            "set_room_state": {
+              "axe_handle_lower": {
+                "web_cleared": true
+              }
+            },
+            "reveals": "Invisible and careful, the player walked straight through the web without alerting the spider."
+          }
+        },
+        {
+          "id": "free_fly",
+          "label": "Work the fly free of the web",
+          "description": "Carefully work the stuck fly free of the webbing.",
+          "condition": {
+            "all": [
+              "room:axe_handle_upper.is_current == true",
+              "entity:fly.alive == true",
+              "entity:fly.hidden == false",
+              "flag:fly_freed == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "DEX",
+            "target": 13,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "You tease the sticky strands away one by one, and the fly crawls free — weak, but alive. It flutters up and clings to your shoulder, humming faintly.",
+            "set_flag": {
+              "fly_freed": true
+            },
+            "reveals": "The fly has been freed from the web; it rides on the player's shoulder."
+          },
+          "failure": {
+            "narrative": "The webbing clings tighter the more you work at it, and the fly remains stuck. You can try again."
+          },
+          "using_results": {
+            "toenail_sword": {
+              "check": {
+                "type": "stat_check",
+                "stat": "DEX",
+                "target": 10,
+                "repeatable": true
+              }
+            },
+            "dagger": {
+              "check": {
+                "type": "stat_check",
+                "stat": "DEX",
+                "target": 10,
+                "repeatable": true
+              }
+            },
+            "giant_lockpick": {
+              "check": {
+                "type": "stat_check",
+                "stat": "DEX",
+                "target": 10,
+                "repeatable": true
+              }
+            }
+          }
         }
       ]
     },
     "fly": {
       "type": "npc",
       "name": "Fly",
-      "description": "A talking fly, about the size of a dog relative to the player, hopelessly stuck in the webs on the upper stretch of the axe handle. It is mortally wounded and speaks in a weak nasally whine.",
+      "description": "A talking fly, about the size of a dog relative to the player, stuck in the webs on the upper stretch of the axe handle. It is mortally wounded and speaks in a weak nasally whine.",
       "state_fields": {
         "hidden": {
           "type": "boolean",
@@ -1105,7 +1819,7 @@
         }
       },
       "dialogue": {
-        "guidelines": "The fly speaks in a weak nasally whine. It is mortally wounded and dying. It has no useful information about this place or anything else — after all, it's a fly (albeit one that talks).",
+        "guidelines": "The fly speaks in a weak nasally whine. It is mortally wounded and dying. It has no useful information about this place or anything else — after all, it's a fly (albeit one that talks). It claims to be a polymorphed adventurer, but can no longer remember anything; the claim is never confirmed.",
         "attitude_limits": {
           "min": 0,
           "max": 0
@@ -1117,9 +1831,36 @@
             "set_flag": {
               "knows_spider_threat": true
             }
+          },
+          "polymorph_claim": {
+            "description": "The fly claims to be a polymorphed adventurer — \"tell Eldrin I— wait. What was I saying?\" — but can no longer remember anything. The claim is never confirmed.",
+            "conditions": [
+              "flag:fly_freed == true"
+            ]
           }
         }
       },
+      "interactions": [
+        {
+          "id": "fly_guard_lower",
+          "label": "Send the fly ahead to keep watch",
+          "description": "Send the freed fly buzzing down to the lower stretch of the handle to keep watch for the spider.",
+          "condition": {
+            "all": [
+              "room:axe_handle_upper.is_current == true",
+              "flag:fly_freed == true",
+              "entity:fly.alive == true",
+              "flag:fly_watching_lower == false"
+            ]
+          },
+          "result": {
+            "narrative": "The fly disengages from your shoulder and buzzes weakly down the handle to keep watch below. The next time you enter the lower stretch, its alarm will warn you of anything lurking there.",
+            "set_flag": {
+              "fly_watching_lower": true
+            }
+          }
+        }
+      ],
       "reactions": [
         {
           "id": "fly_groaning",
@@ -1165,7 +1906,8 @@
           "condition": {
             "all": [
               "event:npc_id == fly",
-              "entity:fly.delivered_warning == true"
+              "entity:fly.delivered_warning == true",
+              "flag:fly_freed == false"
             ]
           },
           "effect": {
@@ -1183,7 +1925,10 @@
           "id": "fly_dies_on_departure",
           "on": "traversal.attempted",
           "condition": {
-            "require": "entity:fly.delivered_warning == true"
+            "all": [
+              "entity:fly.delivered_warning == true",
+              "flag:fly_freed == false"
+            ]
           },
           "effect": {
             "result": {
@@ -1201,7 +1946,7 @@
     "spider": {
       "type": "npc",
       "name": "Spider",
-      "description": "A huge spider, hungry for blood, that lurks concealed in the webbing and shadows above the lower stretch of the axe handle. It is vain, stupid, suspicious, and malicious, but can be flattered. It can talk, though it never initiates conversation.",
+      "description": "A huge spider, hungry for blood, that lurks concealed in the webbing and shadows above the lower stretch of the axe handle. It is vain, stupid, suspicious, and malicious, but can be flattered. It can talk, though it never initiates conversation. Deep down, it is a coward.",
       "combat": {
         "hp": 14,
         "ac": 8,
@@ -1209,6 +1954,9 @@
         "dmg": "1d4+2",
         "dmg_type": "piercing",
         "initiative_mod": 3,
+        "ai": {
+          "flee_below_hp_pct": 30
+        },
         "on_hit_effects": [
           {
             "check": {
@@ -1224,8 +1972,12 @@
               "player_damage": "half(1d8)"
             },
             "failure": {
-              "narrative": "The spider's venom burns through your veins.",
-              "player_damage": "1d8"
+              "narrative": "The spider's venom burns through your veins, and keeps burning — you are poisoned until it is cured or you get a long rest.",
+              "player_damage": "1d8",
+              "apply_status_effect": {
+                "id": "poisoned",
+                "target": "player"
+              }
             }
           }
         ]
@@ -1244,7 +1996,7 @@
         "departed": {
           "type": "boolean",
           "initial": false,
-          "description": "The spider has slunk away for good (successful persuasion)."
+          "description": "The spider has slunk away for good (successful persuasion or flight); a departed spider is removed from play."
         },
         "attitude_fixed": {
           "type": "boolean",
@@ -1280,11 +2032,41 @@
             "all": [
               "event:room_id == axe_handle_lower",
               "entity:spider.hidden == false",
-              "entity:spider.departed == false"
+              "entity:spider.departed == false",
+              {
+                "unless": "status_effect:spider.incapacitated"
+              }
             ]
           },
           "effect": {
             "trigger_encounter": "self"
+          }
+        },
+        {
+          "id": "spider_flee_fallout",
+          "on": "combat.ended",
+          "condition": {
+            "all": [
+              "event:reason == victory",
+              "entity:spider.alive == true",
+              "entity:spider.departed == false"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "Badly hurt, the spider breaks off and scrambles up into the dark in a frantic, clattering retreat, gone for good. Its flight tears straight through the dense webbing, ripping open the passage it guarded.",
+              "set_entity_state": {
+                "spider": {
+                  "departed": true,
+                  "location": null
+                }
+              },
+              "set_room_state": {
+                "axe_handle_lower": {
+                  "web_cleared": true
+                }
+              }
+            }
           }
         }
       ],
@@ -1304,7 +2086,7 @@
             },
             "check": {
               "type": "stat_check",
-              "stat": "CHA",
+              "stat": "persuasion",
               "target": 9,
               "repeatable": true
             },
@@ -1436,6 +2218,11 @@
           "type": "number",
           "initial": 29,
           "description": "Current hit points."
+        },
+        "korbar_doffed_armor": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Korbar has taken off the noisy plate mail. Her combat AC remains 18 (pre-computed); the doff is narrative and stealth-path only: while true, her following no longer imposes disadvantage on the quiet web-cut."
         }
       },
       "aggro": [
@@ -1480,7 +2267,7 @@
         }
       ],
       "dialogue": {
-        "guidelines": "Korbar is cynical, tired, drunk, and miserable, but willing to converse. Her adventuring party stuffed her into this place during a stealth mission, then forgot about her; she is unsure how long ago — time, like space, functions strangely in here. The giant battleaxe was her weapon when she was full-sized outside. Her armor clatters every time she moves; she is unarmed. She is very afraid of spiders and refuses to fight the spider unless persuaded (see persuade_fight).",
+        "guidelines": "Korbar is cynical, tired, drunk, and miserable, but willing to converse. Her adventuring party stuffed her into this place during a stealth mission, then forgot about her; she is unsure how long ago — time, like space, functions strangely in here. The giant battleaxe was her weapon when she was full-sized outside; she forged it herself, at her own forge. Her armor clatters every time she moves — it is why the party ditched her on the stealth mission — and she only half-believes that. She is unarmed. She is very afraid of spiders and refuses to fight the spider unless persuaded (see persuade_fight). In her cups she mutters fragments of useful truth ('pocket under the cloth,' 'mark on the axe,' 'the key, the key, the key').",
         "attitude_limits": {
           "min": -10,
           "max": 10,
@@ -1489,7 +2276,7 @@
         },
         "dialogue_paths": {
           "positive_rapport_first": {
-            "description": "The player engages Korbar positively — treating her respectfully, commiserating with her plight. Apply only if the player makes an actual effort (GM discretion); do not hand it out like candy. General conversation-based increases are capped at 3 total (see also positive_rapport_second/third).",
+            "description": "The player engages Korbar positively — treating her respectfully, commiserating with her plight. Giving her a gift (the giant rations, the wineskin dregs, or the emergency gin) also counts as such an effort. Apply only if the player makes an actual effort (GM discretion); do not hand it out like candy. General conversation-based increases are capped at 3 total (see also positive_rapport_second/third).",
             "condition": {
               "unless": "flag:rapport_1 == true"
             },
@@ -1504,7 +2291,7 @@
             }
           },
           "positive_rapport_second": {
-            "description": "The player continues to engage Korbar positively and makes a genuine further effort (GM discretion).",
+            "description": "The player continues to engage Korbar positively and makes a genuine further effort, including gifts (GM discretion).",
             "condition": {
               "all": [
                 "flag:rapport_1 == true",
@@ -1522,7 +2309,7 @@
             }
           },
           "positive_rapport_third": {
-            "description": "The player makes a third genuine effort to engage Korbar positively (GM discretion); this is the last general conversation-based increase.",
+            "description": "The player makes a third genuine effort to engage Korbar positively, including gifts (GM discretion); this is the last general conversation-based increase.",
             "condition": {
               "all": [
                 "flag:rapport_2 == true",
@@ -1549,9 +2336,12 @@
             }
           },
           "convince_spider_dead": {
-            "description": "The player tries to convince Korbar that the spider is dead (regardless of whether it is true). The GM must judge that the player makes a convincing case based on the dialogue. If the player provides physical evidence, such as a body part cut from the spider, the CHA check is skipped (modeled as: the check is skipped if the spider is actually dead).",
+            "description": "The player tries to convince Korbar that the spider is dead (regardless of whether it is true). The GM must judge that the player makes a convincing case based on the dialogue. Physical evidence — the spider actually being dead, or the spider fang harvested from its corpse — skips the CHA check.",
             "skip_check_if": {
-              "require": "entity:spider.alive == false"
+              "any": [
+                "entity:spider.alive == false",
+                "inventory:spider_fang"
+              ]
             },
             "check": {
               "type": "stat_check",
@@ -1575,7 +2365,7 @@
             }
           },
           "convince_follow": {
-            "description": "The player convinces Korbar to follow them up (or down) the axe. She refuses to enter the secret pocket — her armor can't squeeze through the flap.",
+            "description": "The player convinces Korbar to follow them up (or down) the axe. She refuses to enter the secret pocket — her armor can't squeeze through the flap. While following she helps lug the giant key, helps at the padlock, and (once persuaded to fight) fights alongside the player.",
             "condition": {
               "all": [
                 "entity:korbar.attitude >= 1",
@@ -1603,7 +2393,10 @@
           "persuade_fight": {
             "description": "The player persuades Korbar to stand and fight despite her fear of the spider. No check is required — the trust already earned is enough.",
             "condition": {
-              "require": "entity:korbar.attitude >= 3"
+              "all": [
+                "entity:korbar.attitude >= 3",
+                "entity:korbar.will_fight == false"
+              ]
             },
             "result": {
               "narrative": "Korbar takes a deep breath and squares her shoulders, armor rattling. 'All right. If that overgrown bug shows its face, I'll fight.' From now on she fights alongside the player whenever combat breaks out in her presence.",
@@ -1611,6 +2404,182 @@
                 "korbar": {
                   "will_fight": true,
                   "passive": false
+                }
+              }
+            }
+          },
+          "persuade_fight_armed": {
+            "description": "The player persuades Korbar to stand and fight despite her fear of the spider; a weapon in her hands is worth a point of trust. No check is required. She fights with the blade — her damage is unchanged (her combat stats are pre-computed), but the GM should narrate the difference.",
+            "condition": {
+              "all": [
+                "entity:korbar.attitude >= 2",
+                "flag:korbar_armed == true",
+                "entity:korbar.will_fight == false"
+              ]
+            },
+            "result": {
+              "narrative": "Korbar hefts the weapon you gave her, takes a deep breath, and squares her shoulders. 'All right. With steel in my hand — if that overgrown bug shows its face, I'll fight.' From now on she fights alongside the player whenever combat breaks out in her presence.",
+              "set_entity_state": {
+                "korbar": {
+                  "will_fight": true,
+                  "passive": false
+                }
+              }
+            }
+          },
+          "ask_about_axe_mark": {
+            "description": "The player asks Korbar about the dwarven smith's mark on the giant axe.",
+            "condition": {
+              "all": [
+                "flag:knows_axe_mark == true",
+                "flag:knows_axe_is_korbars == false"
+              ]
+            },
+            "result": {
+              "narrative": "Korbar goes very still. Then, quietly: it is her own forge mark. She forged that axe; it was her weapon, when she was full-sized outside. It is, she admits, the only thing she ever made that was worth a damn.",
+              "adjust_attitude": {
+                "korbar": 1
+              },
+              "set_flag": {
+                "knows_axe_is_korbars": true
+              },
+              "reveals": "Korbar forged the giant axe herself; it was her weapon when she was full-sized."
+            }
+          },
+          "doff_armor": {
+            "description": "The player convinces Korbar to take off her comically loud plate armor — possible once she believes the spider is dead, or once she has magical protection from the Scroll of Mage Armor. Her combat AC remains 18 (pre-computed); the doff ends the clanking, so her following no longer imposes disadvantage on the quiet web-cut.",
+            "condition": {
+              "all": [
+                "entity:korbar.korbar_doffed_armor == false",
+                {
+                  "any": [
+                    "entity:korbar.believes_spider_dead == true",
+                    "flag:korbar_mage_armored == true"
+                  ]
+                }
+              ]
+            },
+            "result": {
+              "narrative": "Grunting and cursing, Korbar strips off the plate mail, piece by clattering piece — and then stands there in padded clothes, suddenly, strangely quiet. 'Huh,' she says. 'Forgot what quiet felt like.'",
+              "set_entity_state": {
+                "korbar": {
+                  "korbar_doffed_armor": true
+                }
+              }
+            }
+          },
+          "offer_weapon": {
+            "description": "The player offers Korbar a weapon, without any concrete weapon to hand over. She looks at the player's empty hands — 'With what?' (To actually give her a weapon, see offer_toenail_sword / offer_dagger / offer_lockpick.)",
+            "condition": {
+              "require": "flag:korbar_armed == false"
+            },
+            "result": {
+              "narrative": "Korbar looks at your empty hands. 'With what?'"
+            }
+          },
+          "offer_toenail_sword": {
+            "description": "The player offers Korbar the giant toenail clipping as a weapon. A genuine gift: +2 attitude, and a weapon in her hands lowers the trust needed to persuade her to fight (see persuade_fight_armed).",
+            "condition": {
+              "all": [
+                "flag:korbar_armed == false",
+                "inventory:toenail_sword"
+              ]
+            },
+            "result": {
+              "narrative": "Korbar takes the giant toenail clipping, tests its edge with her thumb, and gives a grim little nod. 'Huh. Gross. Good edge, though.' A genuine gift — she won't forget it.",
+              "remove_item": [
+                "toenail_sword"
+              ],
+              "set_flag": {
+                "korbar_armed": true
+              },
+              "adjust_attitude": {
+                "korbar": 2
+              }
+            }
+          },
+          "offer_dagger": {
+            "description": "The player offers Korbar the dagger as a weapon. A genuine gift: +2 attitude, and a weapon in her hands lowers the trust needed to persuade her to fight (see persuade_fight_armed).",
+            "condition": {
+              "all": [
+                "flag:korbar_armed == false",
+                "inventory:dagger"
+              ]
+            },
+            "result": {
+              "narrative": "Korbar takes the dagger, turns it over in her gauntleted hands, and gives a grim little nod. 'Good steel. Thank you.' A genuine gift — she won't forget it.",
+              "remove_item": [
+                "dagger"
+              ],
+              "set_flag": {
+                "korbar_armed": true
+              },
+              "adjust_attitude": {
+                "korbar": 2
+              }
+            }
+          },
+          "offer_lockpick": {
+            "description": "The player offers Korbar the giant lockpick as a weapon. A genuine gift: +2 attitude, and a weapon in her hands lowers the trust needed to persuade her to fight (see persuade_fight_armed). While she carries it she can still hold it out through the rip for the lock-picking set-piece - the pick route stays open.",
+            "condition": {
+              "all": [
+                "flag:korbar_armed == false",
+                "inventory:giant_lockpick"
+              ]
+            },
+            "result": {
+              "narrative": "Korbar takes the giant lockpick and shoulders it like a staff. 'Heavy. Ugly. I like it.' A genuine gift - she won't forget it. And when the time comes, she can hold it out through the rip for the lock.",
+              "remove_item": [
+                "giant_lockpick"
+              ],
+              "set_flag": {
+                "korbar_armed": true,
+                "korbar_has_lockpick": true
+              },
+              "adjust_attitude": {
+                "korbar": 2
+              }
+            }
+          },
+          "tell_about_stone": {
+            "description": "The player tells Korbar about the voice from the sending stone - a distant voice calling her name, from outside the bag.",
+            "condition": {
+              "all": [
+                "flag:wizard_voice_heard == true",
+                "flag:told_about_stone == false"
+              ]
+            },
+            "result": {
+              "narrative": "Korbar goes pale, then quiet. 'That's him — that's the wizard. They still have the other stone.' She thanks you, gruffly, for telling her.",
+              "adjust_attitude": {
+                "korbar": 1
+              },
+              "set_flag": {
+                "told_about_stone": true
+              }
+            }
+          },
+          "fly_vouch": {
+            "description": "The freed fly, riding along with the player, buzzes around Korbar's head vouching for them until she swats at it — somehow getting across that the player is all right. Spent, it dies.",
+            "condition": {
+              "all": [
+                "flag:fly_freed == true",
+                "entity:fly.alive == true",
+                "flag:fly_watching_lower == false",
+                "flag:fly_vouched == false"
+              ]
+            },
+            "result": {
+              "narrative": "The fly launches off your shoulder and buzzes in frantic loops around Korbar's head, whining your praises, until she swats at it — and then, somehow, she understands. 'The little bug says you're all right,' she mutters. 'Fine.' Its work done, the fly sags to the ground and goes still.",
+              "adjust_attitude": {
+                "korbar": 1
+              },
+              "set_flag": {
+                "fly_vouched": true
+              },
+              "set_entity_state": {
+                "fly": {
+                  "alive": false
                 }
               }
             }
@@ -1646,6 +2615,32 @@
                 "hidden": false
               }
             }
+          },
+          "abandonment_story_badge": {
+            "description": "Shown her old company's party badge, Korbar tells the story of who abandoned her: her own adventuring party stuffed her in the bag for a stealth mission and never let her out; she heard them through the bag's neck, arguing about the padlock, before the lock clicked shut. She does not like to talk about it.",
+            "conditions": [
+              "inventory:party_badge",
+              "flag:knows_abandonment == false"
+            ],
+            "set_flag": {
+              "knows_abandonment": true
+            }
+          },
+          "abandonment_story_axe": {
+            "description": "After the axe-mark conversation, Korbar can be drawn out to tell the story of who abandoned her: her own adventuring party stuffed her in the bag for a stealth mission and never let her out; she heard them through the bag's neck, arguing about the padlock, before the lock clicked shut. She does not like to talk about it.",
+            "conditions": [
+              "flag:knows_axe_is_korbars == true",
+              "flag:knows_abandonment == false"
+            ],
+            "set_flag": {
+              "knows_abandonment": true
+            }
+          },
+          "why_bag_locked": {
+            "description": "Once she has told the abandonment story, Korbar can be drawn out further: the padlock is the party's insurance. Whatever went in the bag, the party wanted to be sure it could not follow them out. She has made her peace with being 'whatever.'",
+            "conditions": [
+              "flag:knows_abandonment == true"
+            ]
           }
         }
       }
@@ -1655,7 +2650,15 @@
       "name": "pile of giant rubbish",
       "description": "A loose pile of giant-sized refuse covering the cave floor: copper pieces, empty potion bottles, used corks, lint, moldy sandwiches, and more disgusting items, heaped around the base of the giant axe.",
       "contains": [
-        "toenail_sword"
+        "toenail_sword",
+        "potion_vat_amber",
+        "potion_vat_emerald",
+        "potion_vat_crimson",
+        "potion_vat_black",
+        "giant_rations",
+        "giant_lockpick",
+        "giant_faerie_fire_scroll",
+        "bag_within"
       ],
       "soft_item_guidance": "Nondescript giant-sized rubbish the player might pick up or use: copper pieces, empty potion bottles, used corks, lint balls, moldy sandwiches, a bent spoon, a broken belt buckle, a single moldy boot, a tattered glove, a dented tin cup, an apple core, a chipped die, a snapped quill, a length of frayed rope, a wineskin with no cork.",
       "on_examine": [
@@ -1680,7 +2683,7 @@
           },
           "check": {
             "type": "stat_check",
-            "stat": "INT",
+            "stat": "investigation",
             "target": 8,
             "repeatable": false
           },
@@ -1688,7 +2691,8 @@
             "narrative": "This is not a random pile of junk. Copper pieces, potion bottles, rations — these are some adventurer's supplies, much like your own missing pack.",
             "set_flag": {
               "knows_rubbish_is_supplies": true
-            }
+            },
+            "reveals": "The rubbish pile is some adventurer's shrunken supplies, not random junk."
           },
           "failure": {
             "narrative": "It's a disgusting heap of giant rubbish, nothing more."
@@ -1712,7 +2716,8 @@
             "narrative": "An adventurer's supplies, giant-sized yet all shrunken to fit — you realize you are inside a magical Bag of Holding. The rubbish's proportions are uneven: the bag's magic shrinks items by different amounts to make them fit.",
             "set_flag": {
               "knows_bag_of_holding": true
-            }
+            },
+            "reveals": "The cave is the inside of a Bag of Holding; its magic shrinks items by different amounts."
           },
           "failure": {
             "narrative": "The heap of giant supplies tells you nothing new."
@@ -1729,7 +2734,7 @@
           },
           "check": {
             "type": "stat_check",
-            "stat": "WIS",
+            "stat": "perception",
             "target": 15,
             "repeatable": false
           },
@@ -1743,6 +2748,111 @@
           },
           "failure": {
             "narrative": "Your thorough search turns up nothing but more revolting garbage."
+          }
+        },
+        {
+          "id": "deep_rubbish_stage_one",
+          "rigorous_only": true,
+          "condition": {
+            "require": "flag:rubbish_vats_found == false"
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "investigation",
+            "target": 12,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "Digging deeper into the pile, you turn up the unbroken finds: four giant potion bottles, each the size of a vat, their corks still in place — one amber, one emerald, one crimson, one ink-black — plus a wad of edible-if-revolting rations and a giant lockpick the size of a two-handed staff.",
+            "set_flag": {
+              "rubbish_vats_found": true
+            },
+            "set_entity_state": {
+              "potion_vat_amber": {
+                "hidden": false
+              },
+              "potion_vat_emerald": {
+                "hidden": false
+              },
+              "potion_vat_crimson": {
+                "hidden": false
+              },
+              "potion_vat_black": {
+                "hidden": false
+              },
+              "giant_rations": {
+                "hidden": false
+              },
+              "giant_lockpick": {
+                "hidden": false
+              }
+            },
+            "reveals": "Deep in the rubbish: four giant potion vats (amber, emerald, crimson, ink-black), giant rations, and a giant lockpick."
+          },
+          "failure": {
+            "narrative": "You dig into the pile, but turn up nothing beyond the usual revolting garbage."
+          }
+        },
+        {
+          "id": "deep_rubbish_stage_two",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "flag:rubbish_vats_found == true",
+              "flag:rubbish_scroll_found == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "investigation",
+            "target": 15,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "Digging deeper still, you uncover a giant scroll, twice your height and rolled tight, its surface dense with cramped writing.",
+            "set_flag": {
+              "rubbish_scroll_found": true
+            },
+            "set_entity_state": {
+              "giant_faerie_fire_scroll": {
+                "hidden": false
+              }
+            },
+            "reveals": "Deeper in the rubbish: a giant scroll, twice the player's height."
+          },
+          "failure": {
+            "narrative": "You dig deeper into the pile, but turn up nothing new."
+          }
+        },
+        {
+          "id": "deep_rubbish_stage_three",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "flag:rubbish_scroll_found == true",
+              "flag:rubbish_bag_found == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "investigation",
+            "target": 17,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "At the very bottom of the pile, your hands close on something small — a tiny leather pouch, far too small to be one of the giant's belongings. At your scale, it is exactly the size of a normal adventurer's bag.",
+            "set_flag": {
+              "rubbish_bag_found": true
+            },
+            "set_entity_state": {
+              "bag_within": {
+                "hidden": false
+              }
+            },
+            "reveals": "At the bottom of the rubbish: a tiny leather pouch, far too small to be one of the giant's belongings."
+          },
+          "failure": {
+            "narrative": "You dig to the very bottom of the pile, but turn up nothing new."
           }
         }
       ]
@@ -1762,10 +2872,16 @@
         }
       },
       "equip_block": {
-        "equip_tags": ["weapon", "martial"],
+        "equip_tags": [
+          "weapon",
+          "martial"
+        ],
         "damage_expr": "1d6",
         "damage_type": "piercing",
-        "properties": ["finesse", "light"]
+        "properties": [
+          "finesse",
+          "light"
+        ]
       },
       "take_check": {
         "gating": {
@@ -1857,6 +2973,1380 @@
           "narrative": "Korbar is wearing the armor, and she is very much awake. There is no way to strip it off her."
         }
       }
+    },
+    "prisoner_husk": {
+      "type": "feature",
+      "name": "web-wrapped mass",
+      "description": "One of the larger wrapped masses stuck in the webs on the upper stretch of the axe handle: a desiccated, shrunken person — a previous prisoner, wrapped in the web long ago, still holding something in a skeletal grip.",
+      "contains": [
+        "dagger",
+        "prisoner_journal",
+        "scroll_of_mage_armor",
+        "scroll_of_sleep"
+      ],
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the mass has been identified as a previous prisoner (via rigorous examination of the webs)."
+        }
+      },
+      "on_examine": [
+        {
+          "id": "examine_husk",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "entity:prisoner_husk.hidden == false",
+              "entity:prisoner_journal.hidden == true"
+            ]
+          },
+          "result": {
+            "narrative": "You carefully extricate the husk from the web. It is a desiccated, shrunken person — a previous prisoner, dead for a long time. Its belongings come free: a normal-sized dagger, a journal tucked in the folds of its clothing, and two scrolls — one tucked in the journal's pages, one lodged in the husk's skeletal grip, the spell the prisoner never got to cast.",
+            "set_entity_state": {
+              "dagger": {
+                "hidden": false
+              },
+              "prisoner_journal": {
+                "hidden": false
+              },
+              "scroll_of_mage_armor": {
+                "hidden": false
+              },
+              "scroll_of_sleep": {
+                "hidden": false
+              }
+            },
+            "reveals": "The previous prisoner's husk holds a dagger, a journal, and two scrolls."
+          }
+        }
+      ]
+    },
+    "dagger": {
+      "type": "item",
+      "name": "dagger",
+      "description": "A normal-sized dagger, taken from a previous prisoner's husk. Simple melee weapon, 1d4 piercing, finesse, light, thrown (range 20/60).",
+      "tags": [
+        "weapon"
+      ],
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the dagger has been found among the husk's belongings."
+        }
+      },
+      "equip_block": {
+        "equip_tags": [
+          "weapon",
+          "simple"
+        ],
+        "damage_expr": "1d4",
+        "damage_type": "piercing",
+        "properties": [
+          "finesse",
+          "light",
+          "thrown"
+        ],
+        "max_equipped": 2
+      }
+    },
+    "prisoner_journal": {
+      "type": "item",
+      "name": "prisoner's journal",
+      "description": "The journal of a previous prisoner, tucked in the folds of the husk's clothing. Its entries are lucid at first, then devolve into lint-obsession.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the journal has been found among the husk's belongings."
+        }
+      },
+      "interactions": [
+        {
+          "id": "read",
+          "label": "Read the journal",
+          "description": "Read the previous prisoner's journal.",
+          "condition": {
+            "require": "entity:prisoner_journal.hidden == false"
+          },
+          "result": {
+            "narrative": "The entries are lucid at first — 'Day 9: the dwarf under the ladle will not stop talking about her armor' — then devolve into lint-obsession: 'Day 41: still no rescue. Day 42: I have named the lint.' Two real hints pass by in the middle, buried in the noise: on Day 33 the prisoner overheard the dwarf muttering in her sleep about 'a pocket under a cloth', and on Day 39 he notes that 'the spider does not eat me; it talks at me; it likes compliments.' The final entry trails off mid-sentence: 'The spider is actually quite reasonable if you—'",
+            "reveals": "The prisoner's journal hints at 'a pocket under a cloth' and notes that the spider 'likes compliments'; its final entry trails off mid-sentence."
+          }
+        }
+      ]
+    },
+    "scroll_of_sleep": {
+      "type": "item",
+      "name": "Scroll of Sleep",
+      "description": "A spell scroll, once lodged in a dead prisoner's skeletal grip — the spell the prisoner never got to cast. Until studied, its writing means nothing.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the scroll has been found among the husk's belongings."
+        },
+        "identified": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the scroll's spell has been identified by study."
+        }
+      },
+      "interactions": [
+        {
+          "id": "study_scroll",
+          "label": "Study the scroll",
+          "description": "Study the scroll's writing to identify the spell it holds.",
+          "condition": {
+            "all": [
+              "entity:scroll_of_sleep.hidden == false",
+              "entity:scroll_of_sleep.identified == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 10,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You decipher the scroll: it holds Sleep — the spell that has ended more low-level encounters than every sword in history combined. Read aloud in the spider's presence, it would wash over the beast and drop it into a magical slumber. One use; the scroll crumbles afterward.",
+            "set_entity_state": {
+              "scroll_of_sleep": {
+                "identified": true
+              }
+            },
+            "reveals": "The scroll from the husk's grip is a Scroll of Sleep: read aloud at the spider, it puts it to sleep. One use."
+          },
+          "failure": {
+            "narrative": "The scroll's cramped arcane writing means nothing to you."
+          }
+        },
+        {
+          "id": "read_at_spider",
+          "label": "Read the scroll aloud at the spider",
+          "description": "Read the Scroll of Sleep aloud in the spider's presence, washing the spell over it.",
+          "condition": {
+            "all": [
+              "entity:scroll_of_sleep.identified == true",
+              "room:axe_handle_lower.is_current == true",
+              "entity:spider.alive == true",
+              "entity:spider.location == room:axe_handle_lower",
+              "entity:spider.departed == false",
+              {
+                "unless": "status_effect:spider.incapacitated"
+              }
+            ]
+          },
+          "result": {
+            "narrative": "You read the scroll aloud, and the spell washes over the spider: its many eyes droop, its legs fold, and it sinks into the webbing in a deep magical slumber. It does not attack, and notices nothing. The scroll crumbles to dust in your hands.",
+            "apply_status_effect": {
+              "id": "incapacitated",
+              "rounds": 10,
+              "target": "spider"
+            },
+            "remove_item_count": {
+              "scroll_of_sleep": 1
+            },
+            "reveals": "The Scroll of Sleep put the spider into a magical slumber.",
+            "note": "Scenario: the spider is incapacitated for 10 rounds. The built-in incapacitated status is combat-scoped (it ticks only in combat), so outside combat it does not expire; the GM may rule the sleep ends after an in-fiction interval (e.g., a rest)."
+          }
+        }
+      ]
+    },
+    "scroll_of_mage_armor": {
+      "type": "item",
+      "name": "Scroll of Mage Armor",
+      "description": "A spell scroll, once tucked in a dead prisoner's journal. Until studied, its writing means nothing.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the scroll has been found among the husk's belongings."
+        },
+        "identified": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the scroll's spell has been identified by study."
+        }
+      },
+      "interactions": [
+        {
+          "id": "study_scroll",
+          "label": "Study the scroll",
+          "description": "Study the scroll's writing to identify the spell it holds.",
+          "condition": {
+            "all": [
+              "entity:scroll_of_mage_armor.hidden == false",
+              "entity:scroll_of_mage_armor.identified == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 10,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You decipher the scroll: it holds Mage Armor. Read aloud, it wards one creature — the target's base AC becomes 13 + its Dexterity modifier until it dons armor or the effect is cleared. On you, that is AC 14, up from 11. On Korbar it would not beat her plate — but with magic on her skin, she might finally agree to take that noisy armor off. One use; the scroll crumbles afterward.",
+            "set_entity_state": {
+              "scroll_of_mage_armor": {
+                "identified": true
+              }
+            },
+            "reveals": "The scroll from the journal is a Scroll of Mage Armor: wards one creature (base AC 13 + DEX). One use; works on the player or on Korbar."
+          },
+          "failure": {
+            "narrative": "The scroll's cramped arcane writing means nothing to you."
+          }
+        },
+        {
+          "id": "read_on_self",
+          "label": "Read the scroll over yourself",
+          "description": "Read the Scroll of Mage Armor aloud, warding yourself.",
+          "condition": {
+            "require": "entity:scroll_of_mage_armor.identified == true"
+          },
+          "result": {
+            "narrative": "You read the scroll aloud, and an invisible shield of force settles over you like a second skin (base AC becomes 13 + your Dexterity modifier, until you don armor or the effect is cleared). The scroll crumbles to dust in your hands.",
+            "apply_status_effect": {
+              "id": "mage_armor",
+              "target": "player"
+            },
+            "remove_item_count": {
+              "scroll_of_mage_armor": 1
+            },
+            "reveals": "The player is warded by Mage Armor (base AC 13 + DEX)."
+          }
+        },
+        {
+          "id": "read_on_korbar",
+          "label": "Read the scroll over Korbar",
+          "description": "Read the Scroll of Mage Armor aloud, warding Korbar — narrative protection that lets her agree to doff the plate armor even before the spider is dead.",
+          "condition": {
+            "all": [
+              "entity:scroll_of_mage_armor.identified == true",
+              "entity:korbar.alive == true",
+              {
+                "any": [
+                  "entity:korbar.location == room:bag_floor",
+                  "entity:korbar.following == true"
+                ]
+              }
+            ]
+          },
+          "result": {
+            "narrative": "You read the scroll aloud, and an invisible shield of force settles over Korbar. She pats herself down, wide-eyed. With magic on her skin, the plate mail is no longer her only protection. The scroll crumbles to dust in your hands.",
+            "apply_status_effect": {
+              "id": "mage_armor",
+              "target": "korbar"
+            },
+            "set_flag": {
+              "korbar_mage_armored": true
+            },
+            "remove_item_count": {
+              "scroll_of_mage_armor": 1
+            },
+            "reveals": "Korbar is warded by Mage Armor; she will now agree to doff her noisy plate mail even before the spider is dead."
+          }
+        }
+      ]
+    },
+    "potion_vat_amber": {
+      "type": "feature",
+      "name": "amber potion vat",
+      "description": "A giant potion bottle the size of a vat, found in the deep rubbish. The liquid inside is honey-colored and viscous. Its label is worn and tiny. It cannot be carried; it must be drunk from directly, leaning over the rim.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the vat has been found in the deep rubbish."
+        },
+        "corked": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the vat's cork is still in place."
+        },
+        "identified": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the vat's contents have been identified."
+        },
+        "drained": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the vat has been drunk dry."
+        }
+      },
+      "interactions": [
+        {
+          "id": "uncork",
+          "label": "Uncork the amber vat",
+          "description": "Wrestle the giant cork out of the amber potion vat.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_amber.hidden == false",
+              "entity:potion_vat_amber.corked == true"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "STR",
+            "target": 10,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "You brace against the rim and haul; the giant cork comes free with a wet pop. A sweet, honeyed smell wafts out.",
+            "set_entity_state": {
+              "potion_vat_amber": {
+                "corked": false
+              }
+            }
+          },
+          "failure": {
+            "narrative": "The giant cork refuses to budge. You can try again."
+          }
+        },
+        {
+          "id": "examine_label",
+          "label": "Examine the amber vat's label",
+          "description": "Try to read the tiny, worn label on the amber vat.",
+          "condition": {
+            "require": "entity:potion_vat_amber.hidden == false"
+          },
+          "result": {
+            "narrative": "The label's fine print is far too small and worn to read at a glance. Deciphering it would take real arcane study."
+          }
+        },
+        {
+          "id": "identify_vat",
+          "label": "Decipher the amber vat's label",
+          "description": "Apply arcane knowledge to decipher the fine print on the amber vat's label.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_amber.hidden == false",
+              "entity:potion_vat_amber.identified == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 12,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You decipher the tiny label: 'Potion of Healing — honey-flavored. Best served at room temperature, which is not a temperature in here.'",
+            "set_entity_state": {
+              "potion_vat_amber": {
+                "identified": true
+              }
+            },
+            "reveals": "The amber vat is a Potion of Healing (2d4+2); a drop of it can also revive a dying friend."
+          },
+          "failure": {
+            "narrative": "The fine print defeats you."
+          }
+        },
+        {
+          "id": "sip",
+          "label": "Sip from the amber vat",
+          "description": "Take a cautious sip from the amber vat — a taste test to identify the potion.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_amber.hidden == false",
+              "entity:potion_vat_amber.corked == false",
+              "entity:potion_vat_amber.identified == false"
+            ]
+          },
+          "result": {
+            "narrative": "You lean over the rim and take a cautious sip. The amber liquid is sweet and warm: a healing potion, you'd stake your life on it.",
+            "set_entity_state": {
+              "potion_vat_amber": {
+                "identified": true
+              }
+            }
+          }
+        },
+        {
+          "id": "drink",
+          "label": "Drink deeply from the amber vat",
+          "description": "Drink deeply from the amber vat.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_amber.hidden == false",
+              "entity:potion_vat_amber.corked == false",
+              "entity:potion_vat_amber.drained == false"
+            ]
+          },
+          "result": {
+            "narrative": "You lean over the rim and drink deeply. Warmth spreads through you, knitting flesh and soothing bruises.",
+            "player_heal": "2d4+2",
+            "set_entity_state": {
+              "potion_vat_amber": {
+                "drained": true
+              }
+            }
+          }
+        },
+        {
+          "id": "heal_fly",
+          "label": "Give a drop to the fly",
+          "description": "Give a drop of the amber healing potion to the freed fly clinging to your shoulder.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_amber.hidden == false",
+              "entity:potion_vat_amber.drained == false",
+              "flag:fly_freed == true",
+              "entity:fly.alive == true",
+              "flag:fly_revived == false"
+            ]
+          },
+          "result": {
+            "narrative": "You coax a drop of the amber potion onto the fly's mouthparts. It drinks deep — and revives entirely, wings buzzing strong for the first time. It lives, and it will not forget this: over the coming turns it watches your back at the web and sings your praises to the dwarf. Your only healing, spent on a friend.",
+            "set_flag": {
+              "fly_revived": true,
+              "fly_watching_lower": true,
+              "fly_vouched": true
+            },
+            "adjust_attitude": {
+              "korbar": 1
+            },
+            "reveals": "The fly was revived with a drop of the healing potion; it now both keeps watch and vouches for the player to Korbar."
+          }
+        }
+      ]
+    },
+    "potion_vat_emerald": {
+      "type": "feature",
+      "name": "emerald potion vat",
+      "description": "A giant potion bottle the size of a vat, found in the deep rubbish. The liquid inside is a murky green. Its label is worn and tiny. It cannot be carried; it must be drunk from directly, leaning over the rim.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the vat has been found in the deep rubbish."
+        },
+        "corked": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the vat's cork is still in place."
+        },
+        "identified": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the vat's contents have been identified."
+        },
+        "drained": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the vat has been drunk dry."
+        }
+      },
+      "interactions": [
+        {
+          "id": "uncork",
+          "label": "Uncork the emerald vat",
+          "description": "Wrestle the giant cork out of the emerald potion vat.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_emerald.hidden == false",
+              "entity:potion_vat_emerald.corked == true"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "STR",
+            "target": 10,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "You brace against the rim and haul; the giant cork comes free with a wet pop. A clean, green smell wafts out, like cut grass.",
+            "set_entity_state": {
+              "potion_vat_emerald": {
+                "corked": false
+              }
+            }
+          },
+          "failure": {
+            "narrative": "The giant cork refuses to budge. You can try again."
+          }
+        },
+        {
+          "id": "examine_label",
+          "label": "Examine the emerald vat's label",
+          "description": "Try to read the tiny, worn label on the emerald vat.",
+          "condition": {
+            "require": "entity:potion_vat_emerald.hidden == false"
+          },
+          "result": {
+            "narrative": "The label's fine print is far too small and worn to read at a glance. Deciphering it would take real arcane study."
+          }
+        },
+        {
+          "id": "identify_vat",
+          "label": "Decipher the emerald vat's label",
+          "description": "Apply arcane knowledge to decipher the fine print on the emerald vat's label.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_emerald.hidden == false",
+              "entity:potion_vat_emerald.identified == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 12,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You decipher the tiny label: 'Antivenom — for the adventurer who has made a mistake. Drink the whole thing. Yes, all of it.'",
+            "set_entity_state": {
+              "potion_vat_emerald": {
+                "identified": true
+              }
+            },
+            "reveals": "The emerald vat is Antivenom: cures poison and grants protection against further poison."
+          },
+          "failure": {
+            "narrative": "The fine print defeats you."
+          }
+        },
+        {
+          "id": "sip",
+          "label": "Sip from the emerald vat",
+          "description": "Take a cautious sip from the emerald vat — a taste test to identify the potion.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_emerald.hidden == false",
+              "entity:potion_vat_emerald.corked == false",
+              "entity:potion_vat_emerald.identified == false"
+            ]
+          },
+          "result": {
+            "narrative": "You lean over the rim and take a cautious sip. The emerald liquid tastes of cut grass and clean water: an antivenom, you'd guess.",
+            "set_entity_state": {
+              "potion_vat_emerald": {
+                "identified": true
+              }
+            }
+          }
+        },
+        {
+          "id": "drink",
+          "label": "Drink deeply from the emerald vat",
+          "description": "Drink deeply from the emerald vat.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_emerald.hidden == false",
+              "entity:potion_vat_emerald.corked == false",
+              "entity:potion_vat_emerald.drained == false"
+            ]
+          },
+          "result": {
+            "narrative": "You lean over the rim and drink deeply. A hot, righteous taste scours through you, burning out every trace of venom and lingering on your tongue like a promise. The taste of survival.",
+            "cure_status_effects": [
+              "poisoned"
+            ],
+            "apply_status_effect": {
+              "id": "antivenom",
+              "target": "player"
+            },
+            "set_entity_state": {
+              "potion_vat_emerald": {
+                "drained": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "potion_vat_crimson": {
+      "type": "feature",
+      "name": "crimson potion vat",
+      "description": "A giant potion bottle the size of a vat, found in the deep rubbish. The liquid inside is clear and swirling, with a crimson cast. Its label is worn and tiny. It cannot be carried; it must be drunk from directly, leaning over the rim.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the vat has been found in the deep rubbish."
+        },
+        "corked": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the vat's cork is still in place."
+        },
+        "identified": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the vat's contents have been identified."
+        },
+        "drained": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the vat has been drunk dry."
+        }
+      },
+      "interactions": [
+        {
+          "id": "uncork",
+          "label": "Uncork the crimson vat",
+          "description": "Wrestle the giant cork out of the crimson potion vat.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_crimson.hidden == false",
+              "entity:potion_vat_crimson.corked == true"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "STR",
+            "target": 10,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "You brace against the rim and haul; the giant cork comes free with a wet pop. The liquid inside swirls, clear as water with a crimson cast.",
+            "set_entity_state": {
+              "potion_vat_crimson": {
+                "corked": false
+              }
+            }
+          },
+          "failure": {
+            "narrative": "The giant cork refuses to budge. You can try again."
+          }
+        },
+        {
+          "id": "examine_label",
+          "label": "Examine the crimson vat's label",
+          "description": "Try to read the tiny, worn label on the crimson vat.",
+          "condition": {
+            "require": "entity:potion_vat_crimson.hidden == false"
+          },
+          "result": {
+            "narrative": "The label's fine print is far too small and worn to read at a glance. Deciphering it would take real arcane study."
+          }
+        },
+        {
+          "id": "identify_vat",
+          "label": "Decipher the crimson vat's label",
+          "description": "Apply arcane knowledge to decipher the fine print on the crimson vat's label.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_crimson.hidden == false",
+              "entity:potion_vat_crimson.identified == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 12,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You decipher the tiny label: 'Potion of Invisibility — for the adventurer who would rather not. Do not operate heavy machinery while unseen.'",
+            "set_entity_state": {
+              "potion_vat_crimson": {
+                "identified": true
+              }
+            },
+            "reveals": "The crimson vat is a Potion of Invisibility: unseen until the drinker attacks or enters combat."
+          },
+          "failure": {
+            "narrative": "The fine print defeats you."
+          }
+        },
+        {
+          "id": "sip",
+          "label": "Sip from the crimson vat",
+          "description": "Take a cautious sip from the crimson vat — a taste test to identify the potion.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_crimson.hidden == false",
+              "entity:potion_vat_crimson.corked == false",
+              "entity:potion_vat_crimson.identified == false"
+            ]
+          },
+          "result": {
+            "narrative": "You lean over the rim and take a cautious sip. The crimson liquid is clear as water and tastes faintly of moonlight: an invisibility potion, almost certainly.",
+            "set_entity_state": {
+              "potion_vat_crimson": {
+                "identified": true
+              }
+            }
+          }
+        },
+        {
+          "id": "drink",
+          "label": "Drink deeply from the crimson vat",
+          "description": "Drink deeply from the crimson vat.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_crimson.hidden == false",
+              "entity:potion_vat_crimson.corked == false",
+              "entity:potion_vat_crimson.drained == false"
+            ]
+          },
+          "result": {
+            "narrative": "You lean over the rim and drink deeply. The world shimmers — and you are gone from it, unseen. The veil lasts until you attack, enter combat, or do something else that gives you away.",
+            "apply_status_effect": {
+              "id": "invisible",
+              "target": "player"
+            },
+            "set_entity_state": {
+              "potion_vat_crimson": {
+                "drained": true
+              }
+            },
+            "reveals": "The player is invisible until they attack or enter combat."
+          }
+        }
+      ]
+    },
+    "potion_vat_black": {
+      "type": "feature",
+      "name": "ink-black potion vat",
+      "description": "A giant potion bottle the size of a vat, found in the deep rubbish. The liquid inside is ink-black and still, like a hole in the world. Its label is worn and tiny. It cannot be carried; it must be drunk from directly, leaning over the rim.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the vat has been found in the deep rubbish."
+        },
+        "corked": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the vat's cork is still in place."
+        },
+        "identified": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the vat's contents have been identified."
+        },
+        "drained": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the vat has been drunk dry."
+        }
+      },
+      "interactions": [
+        {
+          "id": "uncork",
+          "label": "Uncork the ink-black vat",
+          "description": "Wrestle the giant cork out of the ink-black potion vat.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_black.hidden == false",
+              "entity:potion_vat_black.corked == true"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "STR",
+            "target": 10,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "You brace against the rim and haul; the giant cork comes free with a wet pop. The liquid within is plainly wrong: it seems to drink the faint glow around it, it gives off no scent at all, and the air above the rim is cold.",
+            "set_entity_state": {
+              "potion_vat_black": {
+                "corked": false
+              }
+            }
+          },
+          "failure": {
+            "narrative": "The giant cork refuses to budge. You can try again."
+          }
+        },
+        {
+          "id": "examine_label",
+          "label": "Examine the ink-black vat's label",
+          "description": "Try to read the tiny, worn label on the ink-black vat.",
+          "condition": {
+            "require": "entity:potion_vat_black.hidden == false"
+          },
+          "result": {
+            "narrative": "The label's fine print is far too small and worn to read at a glance. Deciphering it would take real arcane study."
+          }
+        },
+        {
+          "id": "identify_vat",
+          "label": "Decipher the ink-black vat's label",
+          "description": "Apply arcane knowledge to decipher the fine print on the ink-black vat's label.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_black.hidden == false",
+              "entity:potion_vat_black.identified == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 12,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You decipher the tiny label: 'Do not consume. Contains 100% pure essence of death. Not for human consumption. Not for dwarf consumption. NOT for consumption.'",
+            "set_entity_state": {
+              "potion_vat_black": {
+                "identified": true
+              }
+            },
+            "reveals": "The ink-black vat is pure poison; its label screams 'NOT for consumption.'"
+          },
+          "failure": {
+            "narrative": "The fine print defeats you."
+          }
+        },
+        {
+          "id": "sip",
+          "label": "Sip from the ink-black vat",
+          "description": "Take a cautious sip from the ink-black vat — a taste test to identify the potion.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_black.hidden == false",
+              "entity:potion_vat_black.corked == false",
+              "entity:potion_vat_black.identified == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "CON",
+            "target": 11,
+            "save": true,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "The ink-black liquid burns like swallowed lightning, but you spit most of it out in time. Your tongue goes numb — this is poison, unmistakably.",
+            "player_damage": "half(1d8)",
+            "set_entity_state": {
+              "potion_vat_black": {
+                "identified": true
+              }
+            }
+          },
+          "failure": {
+            "narrative": "The ink-black liquid burns like swallowed lightning all the way down. Your tongue goes numb — this is poison, unmistakably.",
+            "player_damage": "1d8",
+            "set_entity_state": {
+              "potion_vat_black": {
+                "identified": true
+              }
+            }
+          }
+        },
+        {
+          "id": "drink",
+          "label": "Drink deeply from the ink-black vat",
+          "description": "Drink deeply from the ink-black vat.",
+          "condition": {
+            "all": [
+              "entity:potion_vat_black.hidden == false",
+              "entity:potion_vat_black.corked == false",
+              "entity:potion_vat_black.drained == false"
+            ]
+          },
+          "result": {
+            "narrative": "You lean over the rim and drink deeply of the ink-black liquid. It is cold going down, and then it is not. You convulse once, twice — the fine print kills.",
+            "game_over": {
+              "type": "lose",
+              "trigger_id": "drank_poison"
+            }
+          }
+        }
+      ]
+    },
+    "giant_rations": {
+      "type": "item",
+      "name": "giant rations",
+      "description": "A wad of giant rations from the deep rubbish: dense, gray, and faintly greasy. Edible, if revolting. A single serving.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the rations have been found in the deep rubbish."
+        }
+      },
+      "interactions": [
+        {
+          "id": "nibble",
+          "label": "Nibble the rations",
+          "description": "Nibble the dense, gray, faintly greasy rations.",
+          "condition": {
+            "require": "entity:giant_rations.hidden == false"
+          },
+          "result": {
+            "narrative": "You nibble the rations. They are dense, gray, faintly greasy, and revolting — but they are food, and you feel a little better.",
+            "player_heal": "1",
+            "remove_item_count": {
+              "giant_rations": 1
+            }
+          }
+        }
+      ]
+    },
+    "giant_lockpick": {
+      "type": "item",
+      "name": "giant lockpick",
+      "description": "A giant lockpick from the deep rubbish, the size of a two-handed staff at the player's scale. It can be wielded as a weapon, used as a blade-like tool, and — with Korbar's help — used to pick the giant padlock.",
+      "tags": [
+        "weapon"
+      ],
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the lockpick has been found in the deep rubbish."
+        }
+      },
+      "equip_block": {
+        "equip_tags": [
+          "weapon",
+          "simple",
+          "two_handed"
+        ],
+        "damage_expr": "1d6",
+        "damage_type": "bludgeoning",
+        "properties": [
+          "two_handed"
+        ]
+      }
+    },
+    "giant_faerie_fire_scroll": {
+      "type": "feature",
+      "name": "giant scroll",
+      "description": "A giant scroll from the deep rubbish, twice the player's height and rolled tight, its surface dense with cramped writing. Far too large to carry.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the giant scroll has been found in the deep rubbish."
+        },
+        "unfurled": {
+          "type": "boolean",
+          "initial": false,
+          "description": "Whether the giant scroll has been wrestled open."
+        }
+      },
+      "interactions": [
+        {
+          "id": "identify_scroll",
+          "label": "Study the giant scroll",
+          "description": "Study the cramped writing on the giant scroll to identify the spell it holds.",
+          "condition": {
+            "require": "entity:giant_faerie_fire_scroll.hidden == false"
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 12,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You study the cramped writing, walking up and down the giant parchment to read it: a spell scroll of Faerie Fire. Read aloud, it would wash the room in magical light — against a creature it would outline it in flickering flames, but the only creature ever here is Korbar, and lighting up your own ally is counterproductive. As a lamp, though, it would sweep every corner of this room.",
+            "reveals": "The giant scroll is a Scroll of Faerie Fire; read aloud here it would light up the whole room."
+          },
+          "failure": {
+            "narrative": "The cramped writing, twice your height, defeats your study."
+          }
+        },
+        {
+          "id": "unfurl",
+          "label": "Unfurl the giant scroll",
+          "description": "Wrestle the giant parchment open; it keeps snapping shut.",
+          "condition": {
+            "all": [
+              "entity:giant_faerie_fire_scroll.hidden == false",
+              "entity:giant_faerie_fire_scroll.unfurled == false"
+            ]
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "STR",
+            "target": 12,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "You wrestle the giant parchment open and pin its corners under rubbish. It lies flat, ready to be read aloud.",
+            "set_entity_state": {
+              "giant_faerie_fire_scroll": {
+                "unfurled": true
+              }
+            }
+          },
+          "failure": {
+            "narrative": "The giant parchment snaps shut again, nearly taking your fingers off. You can try again."
+          }
+        },
+        {
+          "id": "read_aloud",
+          "label": "Read the giant scroll aloud",
+          "description": "Read the Scroll of Faerie Fire aloud, washing the room in magical light.",
+          "condition": {
+            "all": [
+              "entity:giant_faerie_fire_scroll.hidden == false",
+              "entity:giant_faerie_fire_scroll.unfurled == true",
+              "room:bag_floor.is_current == true"
+            ]
+          },
+          "result": {
+            "narrative": "You read the giant scroll aloud, and pale flickering light washes over the whole room, sweeping every corner of the rubbish pile. In its glow you spot, draped over a corner of the pile, a giant handkerchief — filthy, disgustingly damp, and suddenly very interesting. The scroll crumbles to dust.",
+            "set_entity_state": {
+              "handkerchief": {
+                "hidden": false
+              }
+            },
+            "reveals": "The faerie-fire scroll's light revealed the giant handkerchief on the rubbish pile."
+          }
+        }
+      ]
+    },
+    "bag_within": {
+      "type": "feature",
+      "name": "leather pouch",
+      "description": "A tiny leather pouch from the deepest rubbish, far too small to be one of the giant's belongings — at the player's scale, exactly the size of a normal adventurer's bag.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the pouch has been found in the deepest rubbish."
+        }
+      },
+      "on_examine": [
+        {
+          "id": "identify_bag_within",
+          "condition": {
+            "all": [
+              "entity:bag_within.hidden == false",
+              "flag:bag_within_identified == false"
+            ]
+          },
+          "skip_check_if": {
+            "require": "flag:read_label == true"
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 12,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You examine the tiny pouch, and the planes hold their breath: it is unmistakably a Bag of Holding. You, a person trapped inside a magic item, are now holding a magic item.",
+            "set_flag": {
+              "bag_within_identified": true
+            },
+            "reveals": "The tiny pouch is a Bag of Holding — a bag within the bag."
+          },
+          "failure": {
+            "narrative": "A tiny leather pouch. There is something deeply strange about it that you cannot quite place."
+          }
+        }
+      ],
+      "interactions": [
+        {
+          "id": "open_it",
+          "label": "Open the pouch",
+          "description": "Open the tiny leather pouch — a Bag of Holding within a Bag of Holding.",
+          "condition": {
+            "all": [
+              "entity:bag_within.hidden == false",
+              "flag:bag_within_identified == true",
+              "flag:bag_within_warned == false"
+            ]
+          },
+          "result": {
+            "narrative": "You begin to work the pouch's drawstring, and its mouth yawns wider than it should. Your hand feels the pull of somewhere else. The GM asks the player if they are absolutely sure; if the player repeats the action, they open it.",
+            "set_flag": {
+              "bag_within_warned": true
+            }
+          }
+        },
+        {
+          "id": "open_it_confirmed",
+          "label": "Open the pouch (confirmed)",
+          "description": "Despite the warning, open the Bag of Holding within the Bag of Holding.",
+          "condition": {
+            "all": [
+              "entity:bag_within.hidden == false",
+              "flag:bag_within_identified == true",
+              "flag:bag_within_warned == true"
+            ]
+          },
+          "result": {
+            "narrative": "You open the pouch. Both bags rupture. Everything — you, the rubbish, the axe, Korbar, the bag itself — is scattered across the Astral Plane with maximum ceremony. The care label warned you. The care label always warns you.",
+            "game_over": {
+              "type": "lose",
+              "trigger_id": "bag_within_rupture"
+            }
+          }
+        }
+      ]
+    },
+    "care_label": {
+      "type": "feature",
+      "name": "care label",
+      "description": "A giant care label sewn into the seam of the secret pocket, like the kind on a cheap coat.",
+      "on_examine": [
+        {
+          "id": "read_care_label",
+          "result": {
+            "narrative": "The label reads: 'Do not wash. Do not iron. Do not place living creatures inside. Do not place within another extradimensional space. Contents may shrink by different amounts. This is normal. Tears compromise containment.' Beneath the main block, there is fine print too small to read without study.",
+            "reveals": "The bag's care label: do not place living creatures inside; do not place within another extradimensional space; contents shrink by different amounts; tears compromise containment."
+          }
+        },
+        {
+          "id": "read_fine_print",
+          "condition": {
+            "require": "flag:read_label == false"
+          },
+          "check": {
+            "type": "stat_check",
+            "stat": "arcana",
+            "target": 12,
+            "repeatable": false
+          },
+          "success": {
+            "narrative": "You study the fine print until it resolves: 'WARNING: nested extradimensional spaces void all warranties. Do not insert bags into bags. Do not insert bags into bags. DO NOT INSERT BAGS INTO BAGS.'",
+            "set_flag": {
+              "read_label": true
+            },
+            "reveals": "The care label's fine print warns, three times, never to insert bags into bags."
+          },
+          "failure": {
+            "narrative": "The fine print is too small to make out."
+          }
+        }
+      ]
+    },
+    "sending_stone": {
+      "type": "feature",
+      "name": "sending stone",
+      "description": "A smooth stone, half of a pair of sending stones, half-buried in the floor of the secret pocket. It was tossed in here because it wouldn't stop buzzing. Far too heavy to move.",
+      "interactions": [
+        {
+          "id": "listen",
+          "label": "Listen to the stone",
+          "description": "Put your ear to the sending stone and listen.",
+          "check": {
+            "type": "stat_check",
+            "stat": "WIS",
+            "target": 12,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "The stone crackles alive with a distant voice — a man's voice, tinny and far away: 'Korbar? Korbar, where did you—' — then static. The voice comes from the same direction as the padlock: outside the bag.",
+            "set_flag": {
+              "wizard_voice_heard": true
+            },
+            "reveals": "The sending stone carries the party wizard's voice, calling for Korbar from outside the bag."
+          },
+          "failure": {
+            "narrative": "Nothing but the faint, intermittent buzz it was presumably tossed in here for."
+          }
+        },
+        {
+          "id": "speak_into",
+          "label": "Speak into the stone",
+          "description": "Shout your name, your situation, and your location into the sending stone.",
+          "result": {
+            "narrative": "You shout your name, your situation, and your location into the stone. Nothing comes back. Somewhere, a wizard's pocket buzzes. He does not check it.",
+            "reveals": "Speaking into the sending stone gets no answer; somewhere, a wizard's pocket buzzes."
+          }
+        },
+        {
+          "id": "try_lift",
+          "label": "Try to move the stone",
+          "description": "Try to lift or shift the sending stone.",
+          "check": {
+            "type": "roll",
+            "threshold": 0.0,
+            "repeatable": true
+          },
+          "success": {
+            "narrative": "You somehow shift the stone. (This should be impossible at your scale.)"
+          },
+          "failure": {
+            "narrative": "The stone does not budge. At your scale, it might as well be a boulder."
+          }
+        }
+      ]
+    },
+    "emergency_gin": {
+      "type": "item",
+      "name": "hip flask of gin",
+      "description": "A hip flask of emergency gin, the size of a beer barrel at the player's scale, jammed into a corner of the secret pocket.",
+      "take_check": {
+        "gating": {
+          "require": "entity:emergency_gin.location == room:secret_pocket"
+        },
+        "check": {
+          "type": "stat_check",
+          "stat": "STR",
+          "target": 12,
+          "repeatable": true
+        },
+        "success": {
+          "narrative": "You haul the giant hip flask free of the corner it was jammed into and shoulder it with a grunt."
+        },
+        "failure": {
+          "narrative": "The giant flask stays jammed in its corner. You can try again."
+        }
+      },
+      "interactions": [
+        {
+          "id": "sip",
+          "label": "Take a sip of gin",
+          "description": "Take a sip of the emergency gin — liquid courage.",
+          "result": {
+            "narrative": "You take a sip of the gin. It burns all the way down, and you stand a little straighter. Liquid courage.",
+            "player_heal": "1"
+          }
+        }
+      ]
+    },
+    "korbar_shelter": {
+      "type": "feature",
+      "name": "overturned soup ladle",
+      "description": "A giant overturned soup ladle lying against the rubbish pile, propped into a makeshift shelter — Korbar's meager home.",
+      "contains": [
+        "party_badge",
+        "wineskin_dregs"
+      ],
+      "on_examine": [
+        {
+          "id": "examine_shelter",
+          "result": {
+            "narrative": "A giant overturned soup ladle, propped against the rubbish to make a low shelter. Someone has been living under it for a long time."
+          }
+        },
+        {
+          "id": "find_stash",
+          "rigorous_only": true,
+          "condition": {
+            "any": [
+              "entity:party_badge.hidden == true",
+              "entity:wineskin_dregs.hidden == true"
+            ]
+          },
+          "result": {
+            "narrative": "Tucked under the ladle's handle you find Korbar's meager stash: a small enameled crest — a party badge — and a wineskin of dregs. Korbar watches you like a hawk the entire time you poke through her things.",
+            "set_entity_state": {
+              "party_badge": {
+                "hidden": false
+              },
+              "wineskin_dregs": {
+                "hidden": false
+              }
+            },
+            "reveals": "Korbar's stash under the ladle: her old party badge and a jealously-guarded wineskin of dregs."
+          }
+        }
+      ]
+    },
+    "party_badge": {
+      "type": "item",
+      "name": "party badge",
+      "description": "A small enameled crest — the badge of Korbar's old adventuring company, from her stash under the ladle.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the badge has been found in Korbar's stash."
+        }
+      }
+    },
+    "wineskin_dregs": {
+      "type": "item",
+      "name": "wineskin of dregs",
+      "description": "A wineskin holding only dregs, from Korbar's stash under the ladle. She guards it jealously; she has been rationing these dregs for what feels like years.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the wineskin has been found in Korbar's stash."
+        }
+      },
+      "take_check": {
+        "gating": {
+          "all": [
+            "entity:korbar.alive == true",
+            "entity:korbar.unconscious == false"
+          ]
+        },
+        "check": {
+          "type": "roll",
+          "threshold": 0.0,
+          "repeatable": true
+        },
+        "success": {
+          "narrative": "You somehow take the wineskin. (This should be impossible while Korbar is awake.)"
+        },
+        "failure": {
+          "narrative": "Korbar's hand is on the wineskin before you are halfway there. She glares at you. The wineskin stays exactly where it is."
+        }
+      }
+    },
+    "spider_hoard": {
+      "type": "feature",
+      "name": "spider's hoard",
+      "description": "The vain spider's hoard at the base of the web on the lower stretch of the handle: a shiny drift of giant copper pieces, a wooden button, a bottle cap, and a few lint-covered silver pieces.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the hoard has been found by searching the lower web."
+        }
+      },
+      "soft_item_guidance": "The hoard's shiny junk — giant copper pieces, a wooden button, a bottle cap, lint-covered silver pieces — is all far too cumbersome to carry. The GM may allow the player to pocket one tiny soft item as a memento."
+    },
+    "spider_corpse": {
+      "type": "feature",
+      "name": "spider corpse",
+      "description": "The dead spider, tangled in the dense webbing on the lower stretch of the handle, its legs curled in death.",
+      "contains": [
+        "spider_fang"
+      ],
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the corpse has been found by searching the lower web."
+        }
+      },
+      "soft_item_guidance": "The corpse also yields a venom sac (soft item); the GM may bless it as a one-shot blade coating (poison damage on the next hit) or as bait.",
+      "on_examine": [
+        {
+          "id": "harvest_corpse",
+          "rigorous_only": true,
+          "condition": {
+            "all": [
+              "entity:spider_corpse.hidden == false",
+              "entity:spider_fang.hidden == true"
+            ]
+          },
+          "result": {
+            "narrative": "You work over the spider's corpse and harvest a wicked curved fang — explicit physical evidence that the spider is dead — along with its venom sac.",
+            "set_entity_state": {
+              "spider_fang": {
+                "hidden": false
+              }
+            },
+            "reveals": "The spider's corpse yielded a fang (proof of its death) and a venom sac."
+          }
+        }
+      ]
+    },
+    "spider_fang": {
+      "type": "item",
+      "name": "spider fang",
+      "description": "A wicked curved fang harvested from the spider's corpse — explicit physical evidence that the spider is dead.",
+      "state_fields": {
+        "hidden": {
+          "type": "boolean",
+          "initial": true,
+          "description": "Whether the fang has been harvested from the spider's corpse."
+        }
+      }
     }
   },
   "mechanics": {
@@ -1888,16 +4378,153 @@
           }
         }
       ]
+    },
+    "quiet_cut_fallout": {
+      "description": "A failed quiet web-cut disturbs the web: the spider senses the vibrations and attacks. The failure sets the quiet_cut_failed flag; the first reaction converts it into the spider's attack encounter, the second resets the flag so a later failure can re-trigger.",
+      "reactions": [
+        {
+          "id": "quiet_cut_failure_reset",
+          "on": "flag.set",
+          "priority": 0,
+          "condition": {
+            "require": "event:flag_id == quiet_cut_failed"
+          },
+          "effect": {
+            "result": {
+              "set_flag": {
+                "quiet_cut_failed": false
+              }
+            }
+          }
+        },
+        {
+          "id": "quiet_cut_failure_spider",
+          "on": "flag.set",
+          "priority": 1,
+          "condition": {
+            "all": [
+              "event:flag_id == quiet_cut_failed",
+              "entity:spider.alive == true",
+              "entity:spider.location == room:axe_handle_lower",
+              "entity:spider.departed == false",
+              {
+                "unless": "status_effect:spider.incapacitated"
+              }
+            ]
+          },
+          "effect": {
+            "trigger_encounter": "spider"
+          }
+        }
+      ]
+    },
+    "invisible_breaks_on_attack": {
+      "description": "The crimson potion's invisibility does not survive violence: when the player takes an attack action while invisible, the veil drops first.",
+      "reactions": [
+        {
+          "id": "invisible_breaks_on_attack",
+          "on": "interaction.used",
+          "phase": "immediate",
+          "condition": {
+            "all": [
+              "event:interaction_id == attack",
+              "status_effect:invisible"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "As you lash out, the veil of invisibility drops away from you.",
+              "cure_status_effects": [
+                "invisible"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "invisible_breaks_on_combat": {
+      "description": "Combat is a revealing action: when combat starts while the player is invisible, the veil drops.",
+      "reactions": [
+        {
+          "id": "invisible_breaks_on_combat",
+          "on": "combat.started",
+          "condition": {
+            "require": "status_effect:invisible"
+          },
+          "effect": {
+            "result": {
+              "narrative": "With violence joined, the veil of invisibility drops away from you.",
+              "cure_status_effects": [
+                "invisible"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "overhear_korbar_muttering": {
+      "description": "Resting at Korbar's shelter (Korbar alive and friendly enough to let the player rest there), the player may overhear one of her drunken muttering fragments.",
+      "reactions": [
+        {
+          "id": "overhear_korbar_muttering",
+          "on": "rest.completed",
+          "condition": {
+            "all": [
+              "entity:korbar.alive == true",
+              "entity:korbar.attitude >= 1",
+              "room:bag_floor.is_current == true"
+            ]
+          },
+          "effect": {
+            "result": {
+              "narrative": "As you rest under the ladle, Korbar mutters in her cups: fragments of truth, half-swallowed — '...pocket under the cloth...', '...mark on the axe...', '...the key, the key, the key...'",
+              "then_check": {
+                "check": {
+                  "type": "stat_check",
+                  "stat": "insight",
+                  "target": 11,
+                  "repeatable": true
+                },
+                "success": {
+                  "narrative": "Listening closely, you catch the useful part of her muttering and file it away.",
+                  "reveals": "Korbar mutters in her sleep about a pocket under a cloth, a mark on the axe, and 'the key, the key, the key.'"
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "game_over_conditions": [
     {
       "type": "lose",
-      "note": "The giant key has fallen through the rip (insert_key failure cascade); the padlock can never be opened.",
+      "note": "The giant key has fallen through the rip (deliberately dropped, or lost in the insert_key failure cascade). Key loss alone is not an endgame: the scenario lets a Rogue still win by picking the lock (Picking the Giant Lock), so the game ends only when that route is impossible - Korbar cannot help (dead or unconscious), or the giant lockpick is gone (found, but neither in the player's hands nor in Korbar's).",
       "condition": {
-        "require": "flag:key_lost == true"
+        "all": [
+          "flag:key_lost == true",
+          {
+            "any": [
+              {
+                "unless": "entity:korbar.alive == true"
+              },
+              "entity:korbar.unconscious == true",
+              {
+                "all": [
+                  "entity:giant_lockpick.hidden == false",
+                  {
+                    "unless": "inventory:giant_lockpick"
+                  },
+                  {
+                    "unless": "flag:korbar_has_lockpick == true"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
-      "narrative": "The key is gone, swallowed by the endless gray beyond the rip. Without it, the padlock will never open. You are trapped in the bag forever.",
+      "narrative": "The key is gone, swallowed by the endless gray beyond the rip - and there is no other way through the lock. You are trapped in the bag forever.",
       "trigger_id": "key_lost_game_over"
     }
   ],
