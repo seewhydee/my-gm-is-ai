@@ -87,5 +87,298 @@
       "stat": "WIS", "dc": 12, "damage": "",
       "apply_status_effect_on_failure": { "id": "incapacitated", "rounds": 10 }
     }
+  },
+  "chill_touch": {
+    "name": "Chill Touch",
+    "description": "Channeling the chill of the grave, you touch a creature: melee spell attack for 1d10 necrotic damage. (The 'can't regain hit points' rider is GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "necromancy",
+    "casting_time": "action",
+    "range": "Touch",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "INT", "proficient": true, "damage": "1d10", "damage_type": "necrotic" }
+  },
+  "eldritch_blast": {
+    "name": "Eldritch Blast",
+    "description": "A beam of crackling energy: ranged spell attack for 1d10 force damage. (SRD: two beams at level 5+ — cantrip scaling is not modeled.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "120 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "CHA", "proficient": true, "damage": "1d10", "damage_type": "force" }
+  },
+  "produce_flame": {
+    "name": "Produce Flame",
+    "description": "A flame appears in your hand and you hurl it: ranged spell attack for 1d8 fire damage. (SRD: bonus action to create the flame, then an action to hurl it — collapsed to a single bonus-action attack.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "conjuration",
+    "casting_time": "bonus_action",
+    "range": "Self",
+    "duration": "10 minutes",
+    "components": "V, S",
+    "attack": { "stat": "WIS", "proficient": true, "damage": "1d8", "damage_type": "fire" }
+  },
+  "ray_of_frost": {
+    "name": "Ray of Frost",
+    "description": "A frigid beam of blue-white light: ranged spell attack for 1d8 cold damage. (The 10-foot speed reduction is GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "INT", "proficient": true, "damage": "1d8", "damage_type": "cold" }
+  },
+  "shocking_grasp": {
+    "name": "Shocking Grasp",
+    "description": "Lightning springs from your hand: melee spell attack for 1d8 lightning damage. (The 'can't take opportunity attacks' rider is GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "Touch",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "INT", "proficient": true, "damage": "1d8", "damage_type": "lightning" }
+  },
+  "starry_wisp": {
+    "name": "Starry Wisp",
+    "description": "A mote of light streaks toward a creature: ranged spell attack for 1d8 radiant damage. (The dim-light and can't-benefit-from-invisibility riders are GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "WIS", "proficient": true, "damage": "1d8", "damage_type": "radiant" }
+  },
+  "vicious_mockery": {
+    "name": "Vicious Mockery",
+    "description": "You unleash a string of insults laced with subtle enchantments: the target makes a WIS save or takes 1d6 psychic damage. (The disadvantage-on-next-attack rider is GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 0,
+    "school": "enchantment",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V",
+    "save": { "stat": "WIS", "dc": 12, "damage": "1d6", "damage_type": "psychic", "half_on_success": false }
+  },
+  "charm_person": {
+    "name": "Charm Person",
+    "description": "One humanoid makes a WIS save or has the Charmed condition until the spell ends or you damage it. (Charmed is GM-adjudicated; the status is combat-scoped and clears at combat end, and the save-with-advantage-if-fighting rule is not modeled.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "enchantment",
+    "casting_time": "action",
+    "range": "30 feet",
+    "duration": "1 hour",
+    "components": "V, S",
+    "save": {
+      "stat": "WIS", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "charmed", "rounds": 10 }
+    }
+  },
+  "chromatic_orb": {
+    "name": "Chromatic Orb",
+    "description": "You hurl an orb of acid: ranged spell attack for 3d8 acid damage. (SRD lets you choose acid, cold, fire, lightning, poison, or thunder at cast time — the type is fixed here; the 50 GP diamond component and the orb's leap are not modeled.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "90 feet",
+    "duration": "Instantaneous",
+    "components": "V, S, M (a diamond worth 50+ GP)",
+    "attack": { "stat": "INT", "proficient": true, "damage": "3d8", "damage_type": "acid" }
+  },
+  "command": {
+    "name": "Command",
+    "description": "You speak a one-word command; on a failed WIS save the target falls prone (the Grovel command). (The Approach/Drop/Flee/Halt/Heel commands and choosing among them are GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "enchantment",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V",
+    "save": {
+      "stat": "WIS", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "prone", "rounds": 1 }
+    }
+  },
+  "dissonant_whispers": {
+    "name": "Dissonant Whispers",
+    "description": "A discordant melody echoes in the target's mind: WIS save or 3d6 psychic damage, half on success. (The forced-move reaction rider is GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "enchantment",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V",
+    "save": { "stat": "WIS", "dc": 12, "damage": "3d6", "damage_type": "psychic" }
+  },
+  "faerie_fire": {
+    "name": "Faerie Fire",
+    "description": "Creatures in a 20-foot cube are outlined in light (simplified to a single target): DEX save or attack rolls against it have advantage while you concentrate.",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Concentration, up to 1 minute",
+    "components": "V",
+    "concentration": true,
+    "sustained_status_effects": ["faerie_fire"],
+    "save": {
+      "stat": "DEX", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "faerie_fire", "rounds": 10 }
+    }
+  },
+  "guiding_bolt": {
+    "name": "Guiding Bolt",
+    "description": "You hurl a bolt of light: ranged spell attack for 4d6 radiant damage. (The next-attack-roll-against-the-target-has-advantage rider is GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "evocation",
+    "casting_time": "action",
+    "range": "120 feet",
+    "duration": "1 round",
+    "components": "V, S",
+    "attack": { "stat": "WIS", "proficient": true, "damage": "4d6", "damage_type": "radiant" }
+  },
+  "hideous_laughter": {
+    "name": "Hideous Laughter",
+    "description": "A creature hears a hideous melody: WIS save or it is incapacitated with laughter while you concentrate. (SRD also applies prone and lets the target repeat the save each turn — simplified to a single save, matching Sleep.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "enchantment",
+    "casting_time": "action",
+    "range": "30 feet",
+    "duration": "Concentration, up to 1 minute",
+    "components": "V, S, M (a tart and a feather)",
+    "concentration": true,
+    "sustained_status_effects": ["incapacitated"],
+    "save": {
+      "stat": "WIS", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "incapacitated", "rounds": 10 }
+    }
+  },
+  "inflict_wounds": {
+    "name": "Inflict Wounds",
+    "description": "Necrotic energy ravages a creature you touch: CON save or 2d10 necrotic damage, half on success. (SRD 5.2.1: a save, not an attack roll.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "necromancy",
+    "casting_time": "action",
+    "range": "Touch",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "save": { "stat": "CON", "dc": 12, "damage": "2d10", "damage_type": "necrotic" }
+  },
+  "ray_of_sickness": {
+    "name": "Ray of Sickness",
+    "description": "A greenish ray: ranged spell attack for 2d8 poison damage. (The poisoned-until-the-end-of-your-next-turn rider is GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 1,
+    "school": "necromancy",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Instantaneous",
+    "components": "V, S",
+    "attack": { "stat": "INT", "proficient": true, "damage": "2d8", "damage_type": "poison" }
+  },
+  "barkskin": {
+    "name": "Barkskin",
+    "description": "The target's skin assumes a bark-like appearance: base AC becomes 17. (The 'if its AC is lower' floor is not modeled — the effect replaces the base AC, like Mage Armor; a long rest ends it.)",
+    "target": "ally",
+    "spell_level": 2,
+    "school": "transmutation",
+    "casting_time": "bonus_action",
+    "range": "Touch",
+    "duration": "1 hour",
+    "components": "V, S, M (a handful of bark)",
+    "on_cast": { "id": "barkskin", "rounds": 1 }
+  },
+  "blindness_deafness": {
+    "name": "Blindness/Deafness",
+    "description": "One creature makes a CON save or is blinded for the duration. (The deafened variant and the end-of-turn repeat saves are not modeled.)",
+    "target": "enemy",
+    "spell_level": 2,
+    "school": "transmutation",
+    "casting_time": "action",
+    "range": "120 feet",
+    "duration": "1 minute",
+    "components": "V",
+    "save": {
+      "stat": "CON", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "blinded", "rounds": 10 }
+    }
+  },
+  "blur": {
+    "name": "Blur",
+    "description": "Your body becomes blurred: attack rolls against you have disadvantage while you concentrate.",
+    "target": "self",
+    "spell_level": 2,
+    "school": "illusion",
+    "casting_time": "action",
+    "range": "Self",
+    "duration": "Concentration, up to 1 minute",
+    "components": "V",
+    "concentration": true,
+    "sustained_status_effects": ["blur"],
+    "on_cast": { "id": "blur", "rounds": 10 }
+  },
+  "hold_person": {
+    "name": "Hold Person",
+    "description": "A humanoid makes a WIS save or is paralyzed while you concentrate. (The end-of-turn repeat save is not modeled — paralysis lasts until concentration breaks or the duration lapses.)",
+    "target": "enemy",
+    "spell_level": 2,
+    "school": "enchantment",
+    "casting_time": "action",
+    "range": "60 feet",
+    "duration": "Concentration, up to 1 minute",
+    "components": "V, S, M (a straight piece of iron)",
+    "concentration": true,
+    "sustained_status_effects": ["paralyzed"],
+    "save": {
+      "stat": "WIS", "dc": 12, "damage": "",
+      "apply_status_effect_on_failure": { "id": "paralyzed", "rounds": 10 }
+    }
+  },
+  "invisibility": {
+    "name": "Invisibility",
+    "description": "A creature you touch becomes invisible while you concentrate: attack rolls against it have disadvantage and its own have advantage. (SRD ends the spell when the target attacks, deals damage, or casts — not modeled, so the target attacks with advantage for the whole duration; self/ally-targeted concentration spells are combat-only.)",
+    "target": "ally",
+    "spell_level": 2,
+    "school": "illusion",
+    "casting_time": "action",
+    "range": "Touch",
+    "duration": "Concentration, up to 1 hour",
+    "components": "V, S, M (an eyelash in gum arabic)",
+    "concentration": true,
+    "sustained_status_effects": ["invisible"],
+    "on_cast": { "id": "invisible", "rounds": 10 }
+  },
+  "mind_spike": {
+    "name": "Mind Spike",
+    "description": "You drive a spike of psionic energy into a creature's mind: WIS save or 3d8 psychic damage, half on success. (The always-know-the-target's-location rider is GM-adjudicated.)",
+    "target": "enemy",
+    "spell_level": 2,
+    "school": "divination",
+    "casting_time": "action",
+    "range": "120 feet",
+    "duration": "Concentration, up to 1 hour",
+    "components": "S",
+    "concentration": true,
+    "save": { "stat": "WIS", "dc": 12, "damage": "3d8", "damage_type": "psychic" }
   }
 }

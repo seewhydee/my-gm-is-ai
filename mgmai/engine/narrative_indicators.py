@@ -29,6 +29,13 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def _conjugate(caster: str, verb: str) -> str:
+    """Agree *verb* with *caster*: second person for the player ("You
+    use/cast"), third-person singular for entity names ("Goblin
+    uses/casts")."""
+    return verb if caster == "You" else f"{verb}s"
+
+
 def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> str:
     """Format a single combat log entry as a bold markdown line.
 
@@ -139,7 +146,10 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
         dmg = entry.get("damage") or 0
         oh = (entry.get("on_hit_effects") or [{}])[0]
         outcome = "resists" if oh.get("save_success") else "fails to resist"
-        return f"**{caster} uses {abil}: {tgt} {outcome} — {dmg} damage.**"
+        return (
+            f"**{caster} {_conjugate(caster, 'use')} {abil}: "
+            f"{tgt} {outcome} — {dmg} damage.**"
+        )
 
     if action == "ability_auto":
         caster = "You" if actor == "player" else _entity_name(actor, corpus)
@@ -147,8 +157,8 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
         tgt = "you" if target == "player" else _entity_name(target, corpus)
         dmg = entry.get("damage") or 0
         return (
-            f"**{caster} uses {abil}: {tgt} takes {dmg} damage "
-            f"(no attack roll or save).**"
+            f"**{caster} {_conjugate(caster, 'use')} {abil}: {tgt} takes "
+            f"{dmg} damage (no attack roll or save).**"
         )
 
     if action == "ability_on_cast":
@@ -157,16 +167,22 @@ def _format_single_combat_entry(entry: dict[str, Any], corpus: Any = None) -> st
         tgt = "you" if target == "player" else _entity_name(target, corpus)
         oh = (entry.get("on_hit_effects") or [{}])[0]
         effect = oh.get("status_effect") or "a magical effect"
-        return f"**{caster} casts {abil}: {tgt} gains {effect}.**"
+        return (
+            f"**{caster} {_conjugate(caster, 'cast')} {abil}: "
+            f"{tgt} gains {effect}.**"
+        )
 
     if action == "heal":
         caster = "You" if actor == "player" else _entity_name(actor, corpus)
         abil = entry.get("attack_name") or "an ability"
         healed = entry.get("damage") or 0
         if target == actor:
-            return f"**{caster} uses {abil}: healed {healed} HP.**"
+            return f"**{caster} {_conjugate(caster, 'use')} {abil}: healed {healed} HP.**"
         tgt = "you" if target == "player" else _entity_name(target, corpus)
-        return f"**{caster} uses {abil} on {tgt}: healed {healed} HP.**"
+        return (
+            f"**{caster} {_conjugate(caster, 'use')} {abil} on {tgt}: "
+            f"healed {healed} HP.**"
+        )
 
     if action == "reinforcement":
         # A new enemy merged into the ongoing fight.

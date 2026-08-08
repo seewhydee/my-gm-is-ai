@@ -45,6 +45,7 @@ LLM-vs-LLM runs:
 | **Encounter-driven combat** | Combat started by an encounter (`trigger_encounter` → `start_combat`) instead of a direct attack; the player's `wait` action; out-of-bounds talk attempts handled gracefully |
 | **Combat positioning** | Engagement auto-forms on melee attacks and is exposed in status snapshots; scripted `positioning` rulings (engage/disengage/impede) produce `reposition` / `opportunity_attack` / `maneuver` / `impeded` log entries and indicator lines; the Disengage maneuver; impede turn-consumption; graceful degradation of invalid positioning blocks |
 | **Action economy** | Per-turn budget (one action / bonus action / free interaction / reaction, one slot spell): open-turn continuation across commands, over-budget rejection costing nothing, Light-weapon off-hand attacks, the opportunity-attack reaction cap, potions always costing the action, the bonus-action slot rule; `status.player_budget` exposure in headless snapshots |
+| **Spellcasting** | SRD pack spells through the scripted harness: save → status (hold_person, faerie_fire), skipped turns from `skip_turn` statuses, concentration engaged/held and broken by damage (`concentration_check` / `concentration_end`, sustained-status cleanup), bonus-action attack cantrips keeping the turn open, on-cast buffs changing attack modifiers (blur/invisibility), no-slot rejection narrated gracefully, out-of-combat on-cast casting (barkskin `ac_base`) |
 | **GM rulings** | LLM Call 1 correctly classifies player commands in natural language as combat actions, ability uses, item uses, and flee attempts |
 | **GM prose** | LLM Call 2 produces a coherent narration that reflects the engine outcome, without hallucinating hits/misses/KOs that didn't happen |
 | **Narration quality** | No verbatim repetition, no degenerate loops, consistent HP tracking across turns (advisory judge) |
@@ -360,6 +361,34 @@ One **playtest** scenario uses the driver-vs-GM harness
 |----------|-----------|----------------|
 | `action_economy_playtest` | Defeat all enemies while combining attack + flame strike + potion every turn | Combat concludes cleanly; at most one action-costing player log entry per round; every failed turn carries an engine error; every in-combat snapshot exposes `status.player_budget`.  Whether an over-budget ruling actually occurred is a warning, never a gate |
 
+## The spellcasting scenarios
+
+`test_spellcasting.py` exercises the SRD spell pack's Tier 1/2
+expansion (see `srd-spells-plan.md`) through the scripted
+single-turn harness (`run_indicator_turn`) against the `spell_arena`
+fixture, with pinned dice (`seed=7`; `seed=82` for the
+concentration-break scenario, derived offline).  Each scenario grants
+exactly the spells it exercises — a granted bonus-action ability keeps
+the player turn open after the main action, so the round flow depends
+on the spell list.  Each segment costs 1 GM call; the last segment of
+each scenario gets 1 judge call:
+
+| Scenario | Fixed actions | Key assertions |
+|----------|---------------|----------------|
+| `hold_person_paralyzes_and_skips_turn` | Cast `hold_person` at the goblin | Failed WIS save (roll 11 vs derived DC 13) → `paralyzed` status; the goblin's turn consumed (`stunned` entry, no attack); concentration engaged; level-2 slot spent |
+| `faerie_fire_marks_target_then_attack` | Cast `faerie_fire`, then `fire_bolt` next round | Failed DEX save → `faerie_fire` status; round-2 fire bolt lands (roll 11, total 16, 7 damage) while concentration is held; status persists |
+| `produce_flame_bonus_action_keeps_turn_open` | Cast `produce_flame` (bonus), then `fire_bolt` (action) | A bonus-action *attack* cantrip deals damage without ending the turn (`turn_continuation` set, no NPC turns); the main action closes it; NPC turns run only after the second segment |
+| `blur_self_buff_disadvantages_enemy_attacks` | Cast `blur` on self | `blur` + `concentrating` statuses; the goblin's attack at disadvantage misses (pinned roll 5 + 4 = 9 vs AC 12) |
+| `invisibility_on_cast_persists_through_attack` | Cast `invisibility` on self, then `fire_bolt` | `invisible` + `concentrating` statuses; attacker disadvantaged; the round-2 attack keeps advantage and — per the documented simplification — the spell does not end when the caster attacks |
+| `leveled_spell_without_slot_rejected_gracefully` | Cast `magic_missile` with no level-1 slots | `success: False` with the engine error; empty log; slots and budget untouched; the failed cast is still narrated |
+| `barkskin_out_of_combat` | Cast `barkskin` on self (no combat) | Resolves out of combat; `barkskin` status applied; level-2 slot spent; no combat started; player AC becomes 17 + DEX modifier |
+| `damage_breaks_concentration_clears_status` | Cast `hold_person`, hobgoblin hits the player (seed 82) | The goblin is paralyzed, then the hobgoblin's hit (6 damage) forces a CON save (6 + 2 = 8 < DC 10) that fails: `concentration_check` + `concentration_end` logged and the sustained `paralyzed` is cleared from the goblin |
+
+These scenarios also surfaced a template bug in the narrative-indicator
+formatter (the player-caster ability templates rendered "You uses /
+You casts"); fixed with verb conjugation and unit-tested in
+`test_narrative_indicators.py::TestFormatSingleCombatEntry`.
+
 ## The combat arena fixture
 
 Located at `tests/integration/fixtures/combat_arena/`, validated by a
@@ -430,9 +459,11 @@ non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 Located at `tests/integration/fixtures/spell_arena/`, validated by a
 non-LLM smoke test (`test_headless.py::TestIntegrationFixtureSmoke`).
 Built for spellcasting scenarios: the player is a caster whose spells
-come from the SRD spell pack (not declared in the fixture corpus).  No
-scenarios use this fixture yet — it is reserved for future
-spellcasting playtests (see `spellcasting-plan.md`).
+come from the SRD spell pack (not declared in the fixture corpus).  The
+scripted spellcasting scenarios in `test_spellcasting.py` use it (see
+below); each grants exactly the SRD pack spells it exercises, since any
+granted bonus-action ability keeps the player turn open after the main
+action.
 
 - **Player** (level 1 wizard): quarterstaff (1d6 bludgeoning), 1 potion
   of healing — both from the SRD data pack — `spellcasting_ability:

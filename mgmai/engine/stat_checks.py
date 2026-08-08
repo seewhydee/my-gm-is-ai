@@ -31,6 +31,7 @@ too.
 import random  # noqa: F401  — kept as a monkeypatch anchor for tests
 from typing import Any
 
+from mgmai.engine.narrative_indicators import _conjugate
 from mgmai.engine.systems import get_system
 from mgmai.models.corpus import StatModifier
 
@@ -223,7 +224,8 @@ def format_combat_prefix(
             oh = (entry.get("on_hit_effects") or [{}])[0]
             outcome = "resists" if oh.get("save_success") else "fails to resist"
             summaries.append(
-                f"**{caster} uses {abil}: {tgt} {outcome} — {dmg} damage.**"
+                f"**{caster} {_conjugate(caster, 'use')} {abil}: "
+                f"{tgt} {outcome} — {dmg} damage.**"
             )
         elif action == "ability_auto":
             caster = "You" if actor == "player" else _entity_name(actor, corpus)
@@ -231,7 +233,7 @@ def format_combat_prefix(
             tgt = "you" if target == "player" else _entity_name(target, corpus)
             dmg = entry.get("damage") or 0
             summaries.append(
-                f"**{caster} uses {abil}: {tgt} takes {dmg} damage "
+                f"**{caster} {_conjugate(caster, 'use')} {abil}: {tgt} takes {dmg} damage "
                 f"(no attack roll or save).**"
             )
         elif action == "ability_on_cast":
@@ -240,17 +242,21 @@ def format_combat_prefix(
             tgt = "you" if target == "player" else _entity_name(target, corpus)
             oh = (entry.get("on_hit_effects") or [{}])[0]
             effect = oh.get("status_effect") or "a magical effect"
-            summaries.append(f"**{caster} casts {abil}: {tgt} gains {effect}.**")
+            summaries.append(
+                f"**{caster} {_conjugate(caster, 'cast')} {abil}: {tgt} gains {effect}.**"
+            )
         elif action == "heal":
             caster = "You" if actor == "player" else _entity_name(actor, corpus)
             abil = entry.get("attack_name") or "an ability"
             healed = entry.get("damage") or 0
             if target == actor:
-                summaries.append(f"**{caster} uses {abil}: healed {healed} HP.**")
+                summaries.append(
+                    f"**{caster} {_conjugate(caster, 'use')} {abil}: healed {healed} HP.**"
+                )
             else:
                 tgt = "you" if target == "player" else _entity_name(target, corpus)
                 summaries.append(
-                    f"**{caster} uses {abil} on {tgt}: healed {healed} HP.**"
+                    f"**{caster} {_conjugate(caster, 'use')} {abil} on {tgt}: healed {healed} HP.**"
                 )
         elif action == "reinforcement":
             # A new enemy merged into the ongoing fight.

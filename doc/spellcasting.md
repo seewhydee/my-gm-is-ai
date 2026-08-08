@@ -4,11 +4,11 @@ MGMAI models spells as **abilities with spell metadata** — there is no
 separate spell model or `cast_spell` action.  A spell is an `Ability`
 (`mgmai/models/corpus.py:628-664`) with `spell_level` set, cast through
 the same `use_ability` combat action as class features and monster
-powers.  The engine ships a small SRD spell pack
-(`mgmai/data/srd_5e/spells.json`) whose entries — `fire_bolt`,
-`sacred_flame`, `cure_wounds`, `magic_missile`, `healing_word`,
-`mage_armor`, `sleep` — are minted into the corpus at load time unless
-the corpus defines the same ID (corpus wins wholesale, same semantics as
+powers.  The engine ships an SRD spell pack
+(`mgmai/data/srd_5e/spells.json`) — currently 29 spells (9 cantrips,
+20 leveled; the full catalog is listed in `schema/srd-5e-pack.md`) —
+whose entries are minted into the corpus at load time unless the corpus
+defines the same ID (corpus wins wholesale, same semantics as
 gear; see `ModuleCorpus.effective_spells`, `mgmai/models/corpus.py:1013`).
 
 ---

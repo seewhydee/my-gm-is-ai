@@ -1858,10 +1858,9 @@ AI).  Each ability has exactly one effect: `attack`, `save`, `heal`,
 `auto_damage`, or `on_cast`.
 
 A **spell** is just an ability with `spell_level` set; it lives in the
-same `abilities` block.  The engine ships a small SRD spell pack
-(`fire_bolt`, `sacred_flame`, `cure_wounds`, `magic_missile`,
-`healing_word`, `mage_armor`, `sleep`) whose entries are minted into
-the corpus at load time unless the corpus defines the same ID — see the
+same `abilities` block.  The engine ships an SRD spell pack (29 spells —
+9 cantrips, 20 leveled) whose entries are minted into the corpus at
+load time unless the corpus defines the same ID — see the
 [data-pack manifest](srd-5e-pack.md).
 
 ```json

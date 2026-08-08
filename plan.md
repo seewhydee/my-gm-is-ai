@@ -115,8 +115,8 @@ history for the archived text.
       Done: loader (`mgmai/datapack.py`), pack (`mgmai/data/srd_5e/`),
       `DEFAULT_STATUS_EFFECTS` now loaded from `conditions.json`,
       condition list as built-in defaults.  Also, standard weapons,
-      armor, and healing potions; integration tests now use these.  No
-      spells or spell-like abilities yet.
+      armor, and healing potions; integration tests now use these; a
+      29-spell / 26-condition catalog (see `srd-spells-plan.md`).
 - [~] **Spellcasting** — spells are abilities with `spell_level` set;
       slot consumption (`PlayerState.spell_slots`; **recharged by long
       rests** — see Rests below), derived save DC / spell attack bonus
@@ -270,13 +270,15 @@ effective = {**ENGINE_DEFAULTS, **corpus_entries}   # corpus entry replaces defa
      over near-duplicate custom ones.  Also fixed a pre-existing
      fixture/test mismatch: the arena ally is `korbar` again (was
      `gargan`, which broke `test_ally_death_scenario`).
-   - **Phase C — spells.** Only after spellcasting engine support
-     (slots, DC derivation) lands. Spell entries extend the existing
-     `Ability` shape with `spell_level`, `concentration`, etc. —
-     SRD spell *names* and short mechanical summaries only; full
-     prose descriptions are large and mostly irrelevant to the
-     engine, which needs mechanical parameters plus a one-line
-     flavor blurb for the GM briefing.
+   - **Phase C — spells.** ✅ **Done (initial catalog).** Spell entries
+     extend the existing `Ability` shape with `spell_level`,
+     `concentration`, etc. — SRD spell *names* and short mechanical
+     summaries only; full prose descriptions are large and mostly
+     irrelevant to the engine, which needs mechanical parameters plus a
+     one-line flavor blurb for the GM briefing.  The pack ships 29
+     spells (9 cantrips, 20 leveled: the original 7 plus the Tier 1/2
+     expansion — see `srd-spells-plan.md` for the catalog and the
+     deferred Tier 3 / engine-work backlog).
    - **Phase D — monsters (optional).** SRD stat blocks as
      `CombatBlock` templates. Lower value: encounters are usually
      adventure-specific, but common mobs (goblin, skeleton, wolf)

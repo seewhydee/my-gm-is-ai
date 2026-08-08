@@ -1,4 +1,15 @@
 {
+  "barkskin": {
+    "name": "Barkskin",
+    "description": "The Barkskin spell: the target's skin assumes a bark-like appearance, and its base AC becomes 17 if its AC is lower. Ends when the spell's 1-hour duration lapses (a long rest clears it) or the effect is otherwise cleared.",
+    "scope": "persistent",
+    "duration": "until_cleared",
+    "system_effects": {
+      "5e": {
+        "ac_base": 17
+      }
+    }
+  },
   "blinded": {
     "name": "Blinded",
     "description": "Can't see; automatically fails ability checks that require sight. Attack rolls against it have advantage, and its own attack rolls have disadvantage.",
@@ -6,6 +17,15 @@
       "5e": {
         "advantage_against": true,
         "disadvantage_on_attack": true
+      }
+    }
+  },
+  "blur": {
+    "name": "Blur",
+    "description": "The Blur spell: the caster's body becomes blurred, and attack rolls against it have disadvantage. Ends when the caster's concentration on the spell ends.",
+    "system_effects": {
+      "5e": {
+        "disadvantage_against": true
       }
     }
   },
@@ -21,6 +41,15 @@
   "deafened": {
     "name": "Deafened",
     "description": "Can't hear; automatically fails ability checks that require hearing. (Adjudicated by the GM; no roll modifiers.)"
+  },
+  "faerie_fire": {
+    "name": "Faerie Fire",
+    "description": "The Faerie Fire spell: the target is outlined in light; attack rolls against it have advantage, and it can't benefit from the Invisible condition. Ends when the caster's concentration on the spell ends.",
+    "system_effects": {
+      "5e": {
+        "advantage_against": true
+      }
+    }
   },
   "frightened": {
     "name": "Frightened",

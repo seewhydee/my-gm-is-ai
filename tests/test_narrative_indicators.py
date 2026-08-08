@@ -369,8 +369,88 @@ class TestFormatSingleCombatEntry:
             "on_hit_effects": [{"save_stat": "CON", "save_success": False}],
         }
         result = _format_single_combat_entry(entry)
-        assert "Venom Spray" in result
+        assert "spider uses Venom Spray" in result
         assert "fails to resist" in result
+
+    def test_ability_save_player_caster(self):
+        # A player-cast save spell renders in the second person
+        # ("You use", not "You uses").
+        entry = {
+            "actor": "player",
+            "action": "ability_save",
+            "target": "goblin",
+            "attack_name": "Hold Person",
+            "damage": 0,
+            "on_hit_effects": [{"save_stat": "WIS", "save_success": False}],
+        }
+        result = _format_single_combat_entry(entry)
+        assert "You use Hold Person" in result
+        assert "You uses" not in result
+
+    def test_ability_on_cast_player_caster(self):
+        entry = {
+            "actor": "player",
+            "action": "ability_on_cast",
+            "target": "player",
+            "attack_name": "Blur",
+            "on_hit_effects": [{"status_effect": "blur"}],
+        }
+        result = _format_single_combat_entry(entry)
+        assert "You cast Blur" in result
+        assert "You casts" not in result
+        assert "gains blur" in result
+
+    def test_ability_on_cast_npc_caster(self):
+        # Third-person singular conjugation for an NPC caster.
+        entry = {
+            "actor": "mage",
+            "action": "ability_on_cast",
+            "target": "mage",
+            "attack_name": "Blur",
+            "on_hit_effects": [{"status_effect": "blur"}],
+        }
+        result = _format_single_combat_entry(entry)
+        assert "mage casts Blur" in result
+
+    def test_heal_player_caster(self):
+        entry = {
+            "actor": "player",
+            "action": "heal",
+            "target": "player",
+            "attack_name": "Cure Wounds",
+            "damage": 5,
+        }
+        result = _format_single_combat_entry(entry)
+        assert "You use Cure Wounds" in result
+        assert "You uses" not in result
+
+    def test_ability_auto_player_caster(self):
+        # A player-cast auto-damage spell renders in the second person
+        # ("You use", not "You uses").
+        entry = {
+            "actor": "player",
+            "action": "ability_auto",
+            "target": "goblin",
+            "attack_name": "Magic Missile",
+            "damage": 7,
+        }
+        result = _format_single_combat_entry(entry)
+        assert "You use Magic Missile" in result
+        assert "You uses" not in result
+        assert "takes 7 damage (no attack roll or save)" in result
+
+    def test_ability_auto_npc_caster(self):
+        # Third-person singular conjugation for an NPC caster.
+        entry = {
+            "actor": "mage",
+            "action": "ability_auto",
+            "target": "player",
+            "attack_name": "Magic Missile",
+            "damage": 7,
+        }
+        result = _format_single_combat_entry(entry)
+        assert "mage uses Magic Missile" in result
+        assert "takes 7 damage" in result
 
     def test_heal(self):
         entry = {
@@ -381,7 +461,7 @@ class TestFormatSingleCombatEntry:
             "damage": 5,
         }
         result = _format_single_combat_entry(entry)
-        assert "Cure Wounds" in result
+        assert "cleric uses Cure Wounds on you" in result
         assert "healed 5 HP" in result
 
     def test_unknown_action(self):

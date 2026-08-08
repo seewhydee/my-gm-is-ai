@@ -53,6 +53,16 @@ EXHAUSTION_LEVELS = {f"exhaustion-{n}" for n in range(1, 7)}
 SRD_SPELL_IDS = {
     "fire_bolt", "sacred_flame", "cure_wounds", "magic_missile",
     "healing_word", "mage_armor", "sleep",
+    # Cantrips (Tier 1 expansion).
+    "chill_touch", "eldritch_blast", "produce_flame", "ray_of_frost",
+    "shocking_grasp", "starry_wisp", "vicious_mockery",
+    # Level 1 (Tier 1 + Tier 2).
+    "charm_person", "chromatic_orb", "command", "dissonant_whispers",
+    "faerie_fire", "guiding_bolt", "hideous_laughter", "inflict_wounds",
+    "ray_of_sickness",
+    # Level 2 (Tier 1 + Tier 2).
+    "barkskin", "blindness_deafness", "blur", "hold_person",
+    "invisibility", "mind_spike",
 }
 
 
@@ -244,11 +254,63 @@ class TestSpellsPack:
         rider = sleep.save.apply_status_effect_on_failure
         assert rider is not None and rider.id == "incapacitated"
 
+        # Tier 1 expansion: attack cantrips carry the pack's derived-attack
+        # shape; 2024 Inflict Wounds is a CON save, not an attack roll.
+        eldritch_blast = DEFAULT_SPELLS["eldritch_blast"]
+        assert eldritch_blast.spell_level == 0
+        assert eldritch_blast.attack is not None
+        assert eldritch_blast.attack.damage == "1d10"
+        assert eldritch_blast.attack.damage_type == "force"
+
+        inflict_wounds = DEFAULT_SPELLS["inflict_wounds"]
+        assert inflict_wounds.spell_level == 1
+        assert inflict_wounds.save is not None
+        assert inflict_wounds.save.stat == "CON"
+        assert inflict_wounds.save.damage == "2d10"
+
+        # Concentration + save-status spells keep the Sleep pattern.
+        hold_person = DEFAULT_SPELLS["hold_person"]
+        assert hold_person.concentration is True
+        assert hold_person.sustained_status_effects == ["paralyzed"]
+        hold_rider = hold_person.save.apply_status_effect_on_failure
+        assert hold_rider is not None and hold_rider.id == "paralyzed"
+
+        # Tier 2: on_cast buff spells with their new pack conditions.
+        barkskin = DEFAULT_SPELLS["barkskin"]
+        assert barkskin.casting_time == "bonus_action"
+        assert barkskin.on_cast is not None and barkskin.on_cast.id == "barkskin"
+        assert barkskin.concentration is False
+
+        invisibility = DEFAULT_SPELLS["invisibility"]
+        assert invisibility.on_cast is not None
+        assert invisibility.on_cast.id == "invisible"
+        assert invisibility.sustained_status_effects == ["invisible"]
+
+        blur = DEFAULT_SPELLS["blur"]
+        assert blur.target == "self"
+        assert blur.on_cast is not None and blur.on_cast.id == "blur"
+
     def test_mage_armor_condition_in_pack(self) -> None:
         cond = DEFAULT_STATUS_EFFECTS["mage_armor"]
         assert cond.scope == "persistent"
         assert cond.duration == "until_cleared"
         assert cond.system_effects["5e"]["ac_base"] == 13
+
+    def test_tier2_conditions_in_pack(self) -> None:
+        # Barkskin mirrors mage_armor (persistent AC replacement); a long
+        # rest clears every persistent-scope status, so it ends there too.
+        barkskin = DEFAULT_STATUS_EFFECTS["barkskin"]
+        assert barkskin.scope == "persistent"
+        assert barkskin.duration == "until_cleared"
+        assert barkskin.system_effects["5e"]["ac_base"] == 17
+
+        # Blur / faerie fire are combat-scoped concentration riders using
+        # the engine's existing roll-modifier keys.
+        blur = DEFAULT_STATUS_EFFECTS["blur"]
+        assert blur.system_effects["5e"]["disadvantage_against"] is True
+
+        faerie_fire = DEFAULT_STATUS_EFFECTS["faerie_fire"]
+        assert faerie_fire.system_effects["5e"]["advantage_against"] is True
 
 
 class TestEffectiveSpells:
